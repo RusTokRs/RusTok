@@ -51,10 +51,19 @@ pub struct SeaOrmArtifactBindingIdempotencyStore {
 }
 
 /// Canonical digest of a host-owned binding request envelope.
+///
+/// The digest is computed over the canonical JSON encoding (object keys
+/// sorted recursively): the envelope embeds client-supplied JSON values,
+/// and the workspace enables serde_json's `preserve_order`, so hashing the
+/// raw serialization would treat the same logical request with reordered
+/// keys as a different request and reject its retry as a conflict.
+/// Receipts stored before this canonicalization fail closed as
+/// [`ArtifactBindingIdempotencyError::Conflict`] on replay instead of
+/// executing twice.
 pub fn artifact_binding_request_digest(
     request: &Value,
 ) -> Result<String, ArtifactBindingIdempotencyError> {
-    let bytes = serde_json::to_vec(request).map_err(storage_error)?;
+    let bytes = rustok_api::manifest_hash::canonical_json_bytes(request).map_err(storage_error)?;
     let digest = Sha256::digest(bytes);
     let hex = digest
         .iter()
@@ -79,18 +88,17 @@ impl SeaOrmArtifactBindingIdempotencyStore {
         &self,
         request: &ArtifactBindingIdempotencyRequest,
     ) -> Result<ArtifactBindingIdempotencyClaim, ArtifactBindingIdempotencyError> {
-        validate_request(request)?;
+        let tenant_id = validate_request(request)?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
-        ensure_supported_backend(backend)?;
-        configure_tenant_scope(&transaction, request_tenant_id(request))
+        let backend = SupportedBackend::new(transaction.get_database_backend())?;
+        configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
         let existing = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 select_operation_sql(backend),
-                request_values(request, backend),
+                request_values(request, tenant_id, backend),
             ))
             .await
             .map_err(storage_error)?;
@@ -124,12 +132,12 @@ impl SeaOrmArtifactBindingIdempotencyStore {
             let operation_id = self.infrastructure.new_id();
             let recovered = transaction
                 .execute_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     recover_operation_sql(backend),
                     vec![
                         uuid_value(operation_id, backend),
                         lease_value(self.infrastructure.now(), backend),
-                        uuid_value(request_tenant_id(request), backend),
+                        uuid_value(tenant_id, backend),
                         uuid_value(request.context.actor_id, backend),
                         uuid_value(request.installation_id, backend),
                         request.binding_id.clone().into(),
@@ -151,11 +159,11 @@ impl SeaOrmArtifactBindingIdempotencyStore {
         let operation_id = self.infrastructure.new_id();
         let inserted = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 insert_operation_sql(backend),
                 vec![
                     uuid_value(operation_id, backend),
-                    uuid_value(request_tenant_id(request), backend),
+                    uuid_value(tenant_id, backend),
                     uuid_value(request.context.actor_id, backend),
                     uuid_value(request.installation_id, backend),
                     request.binding_id.clone().into(),
@@ -184,24 +192,23 @@ impl SeaOrmArtifactBindingIdempotencyStore {
         operation_id: Uuid,
         response: &Value,
     ) -> Result<(), ArtifactBindingIdempotencyError> {
-        validate_request(request)?;
+        let tenant_id = validate_request(request)?;
         if operation_id.is_nil() {
             return Err(ArtifactBindingIdempotencyError::InvalidRequest);
         }
         let transaction = self.db.begin().await.map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
-        ensure_supported_backend(backend)?;
-        configure_tenant_scope(&transaction, request_tenant_id(request))
+        let backend = SupportedBackend::new(transaction.get_database_backend())?;
+        configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
         let completed = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 complete_operation_sql(backend),
                 vec![
                     SqlValue::Json(Some(Box::new(response.clone()))),
                     uuid_value(operation_id, backend),
-                    uuid_value(request_tenant_id(request), backend),
+                    uuid_value(tenant_id, backend),
                     uuid_value(request.context.actor_id, backend),
                     uuid_value(request.installation_id, backend),
                     request.binding_id.clone().into(),
@@ -227,23 +234,22 @@ impl SeaOrmArtifactBindingIdempotencyStore {
         request: &ArtifactBindingIdempotencyRequest,
         operation_id: Uuid,
     ) -> Result<(), ArtifactBindingIdempotencyError> {
-        validate_request(request)?;
+        let tenant_id = validate_request(request)?;
         if operation_id.is_nil() {
             return Err(ArtifactBindingIdempotencyError::InvalidRequest);
         }
         let transaction = self.db.begin().await.map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
-        ensure_supported_backend(backend)?;
-        configure_tenant_scope(&transaction, request_tenant_id(request))
+        let backend = SupportedBackend::new(transaction.get_database_backend())?;
+        configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 abandon_operation_sql(backend),
                 vec![
                     uuid_value(operation_id, backend),
-                    uuid_value(request_tenant_id(request), backend),
+                    uuid_value(tenant_id, backend),
                     uuid_value(request.context.actor_id, backend),
                     uuid_value(request.installation_id, backend),
                     request.binding_id.clone().into(),
@@ -260,11 +266,15 @@ impl SeaOrmArtifactBindingIdempotencyStore {
     }
 }
 
+/// Validates the request and returns its tenant scope, so callers never
+/// re-extract the tenant id behind an unchecked invariant.
 fn validate_request(
     request: &ArtifactBindingIdempotencyRequest,
-) -> Result<(), ArtifactBindingIdempotencyError> {
-    if request.context.tenant_id.is_none()
-        || request.context.validate().is_err()
+) -> Result<Uuid, ArtifactBindingIdempotencyError> {
+    let Some(tenant_id) = request.context.tenant_id else {
+        return Err(ArtifactBindingIdempotencyError::InvalidRequest);
+    };
+    if request.context.validate().is_err()
         || request.installation_id.is_nil()
         || request.binding_id.trim().is_empty()
         || request.binding_id.len() > 256
@@ -272,7 +282,7 @@ fn validate_request(
     {
         return Err(ArtifactBindingIdempotencyError::InvalidRequest);
     }
-    Ok(())
+    Ok(tenant_id)
 }
 
 fn is_digest(value: &str) -> bool {
@@ -283,21 +293,41 @@ fn is_digest(value: &str) -> bool {
             .all(|character| character.is_ascii_hexdigit())
 }
 
-fn ensure_supported_backend(backend: DbBackend) -> Result<(), ArtifactBindingIdempotencyError> {
-    match backend {
-        DbBackend::Postgres | DbBackend::Sqlite => Ok(()),
-        backend => Err(ArtifactBindingIdempotencyError::Storage(format!(
-            "artifact binding idempotency does not support {backend:?}"
-        ))),
+/// Database backend validated once at the store boundary. Helpers match
+/// on this type exhaustively, so an unsupported backend is a typed error
+/// at entry instead of an `unreachable!` panic deep in SQL construction.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SupportedBackend {
+    Postgres,
+    Sqlite,
+}
+
+impl SupportedBackend {
+    fn new(backend: DbBackend) -> Result<Self, ArtifactBindingIdempotencyError> {
+        match backend {
+            DbBackend::Postgres => Ok(Self::Postgres),
+            DbBackend::Sqlite => Ok(Self::Sqlite),
+            backend => Err(ArtifactBindingIdempotencyError::Storage(format!(
+                "artifact binding idempotency does not support {backend:?}"
+            ))),
+        }
+    }
+
+    fn db_backend(self) -> DbBackend {
+        match self {
+            Self::Postgres => DbBackend::Postgres,
+            Self::Sqlite => DbBackend::Sqlite,
+        }
     }
 }
 
 fn request_values(
     request: &ArtifactBindingIdempotencyRequest,
-    backend: DbBackend,
+    tenant_id: Uuid,
+    backend: SupportedBackend,
 ) -> Vec<sea_orm::Value> {
     vec![
-        uuid_value(request_tenant_id(request), backend),
+        uuid_value(tenant_id, backend),
         uuid_value(request.context.actor_id, backend),
         uuid_value(request.installation_id, backend),
         request.binding_id.clone().into(),
@@ -305,75 +335,62 @@ fn request_values(
     ]
 }
 
-fn request_tenant_id(request: &ArtifactBindingIdempotencyRequest) -> Uuid {
-    request
-        .context
-        .tenant_id
-        .expect("artifact binding idempotency validates tenant-scoped context before persistence")
-}
 
-fn lease_value(now: DateTime<Utc>, backend: DbBackend) -> sea_orm::Value {
+fn lease_value(now: DateTime<Utc>, backend: SupportedBackend) -> sea_orm::Value {
     let lease = now + Duration::seconds(LEASE_SECONDS);
     match backend {
-        DbBackend::Postgres => lease.into(),
-        DbBackend::Sqlite => lease.to_rfc3339().into(),
-        _ => unreachable!("unsupported database backend was validated"),
+        SupportedBackend::Postgres => lease.into(),
+        SupportedBackend::Sqlite => lease.to_rfc3339().into(),
     }
 }
 
-fn uuid_value(value: Uuid, backend: DbBackend) -> sea_orm::Value {
-    match backend {
-        DbBackend::Postgres => value.into(),
-        DbBackend::Sqlite => value.to_string().into(),
-        _ => unreachable!("unsupported database backend was validated"),
-    }
+fn uuid_value(value: Uuid, backend: SupportedBackend) -> sea_orm::Value {
+    crate::data::uuid_value(value, backend.db_backend())
 }
 
-fn select_operation_sql(backend: DbBackend) -> String {
+fn select_operation_sql(backend: SupportedBackend) -> String {
     let prefix = placeholder_prefix(backend);
     format!(
         "SELECT request_digest, trace_id, CAST(correlation_id AS TEXT) AS correlation_id, status, CAST(response AS TEXT) AS response FROM module_artifact_binding_operations WHERE tenant_id = {prefix}1 AND actor_id = {prefix}2 AND installation_id = {prefix}3 AND binding_id = {prefix}4 AND idempotency_key = {prefix}5 LIMIT 1"
     )
 }
 
-fn recover_operation_sql(backend: DbBackend) -> String {
+fn recover_operation_sql(backend: SupportedBackend) -> String {
     let prefix = placeholder_prefix(backend);
     let expired = match backend {
-        DbBackend::Postgres => "lease_expires_at <= CURRENT_TIMESTAMP",
-        DbBackend::Sqlite => "datetime(lease_expires_at) <= CURRENT_TIMESTAMP",
-        _ => unreachable!("unsupported database backend was validated"),
+        SupportedBackend::Postgres => "lease_expires_at <= CURRENT_TIMESTAMP",
+        SupportedBackend::Sqlite => "datetime(lease_expires_at) <= CURRENT_TIMESTAMP",
     };
     format!(
         "UPDATE module_artifact_binding_operations SET operation_id = {prefix}1, lease_expires_at = {prefix}2 WHERE tenant_id = {prefix}3 AND actor_id = {prefix}4 AND installation_id = {prefix}5 AND binding_id = {prefix}6 AND idempotency_key = {prefix}7 AND trace_id = {prefix}8 AND correlation_id = {prefix}9 AND status = 'pending' AND {expired}"
     )
 }
 
-fn insert_operation_sql(backend: DbBackend) -> String {
+fn insert_operation_sql(backend: SupportedBackend) -> String {
     let prefix = placeholder_prefix(backend);
     format!(
         "INSERT INTO module_artifact_binding_operations (operation_id, tenant_id, actor_id, installation_id, binding_id, idempotency_key, request_digest, trace_id, correlation_id, status, lease_expires_at) VALUES ({prefix}1, {prefix}2, {prefix}3, {prefix}4, {prefix}5, {prefix}6, {prefix}7, {prefix}8, {prefix}9, 'pending', {prefix}10) ON CONFLICT (tenant_id, actor_id, installation_id, binding_id, idempotency_key) DO NOTHING"
     )
 }
 
-fn complete_operation_sql(backend: DbBackend) -> String {
+fn complete_operation_sql(backend: SupportedBackend) -> String {
     let prefix = placeholder_prefix(backend);
     format!(
         "UPDATE module_artifact_binding_operations SET status = 'completed', response = {prefix}1, completed_at = CURRENT_TIMESTAMP WHERE operation_id = {prefix}2 AND tenant_id = {prefix}3 AND actor_id = {prefix}4 AND installation_id = {prefix}5 AND binding_id = {prefix}6 AND idempotency_key = {prefix}7 AND request_digest = {prefix}8 AND trace_id = {prefix}9 AND correlation_id = {prefix}10 AND status = 'pending'"
     )
 }
 
-fn abandon_operation_sql(backend: DbBackend) -> String {
+fn abandon_operation_sql(backend: SupportedBackend) -> String {
     let prefix = placeholder_prefix(backend);
     format!(
         "DELETE FROM module_artifact_binding_operations WHERE operation_id = {prefix}1 AND tenant_id = {prefix}2 AND actor_id = {prefix}3 AND installation_id = {prefix}4 AND binding_id = {prefix}5 AND idempotency_key = {prefix}6 AND request_digest = {prefix}7 AND trace_id = {prefix}8 AND correlation_id = {prefix}9 AND status = 'pending'"
     )
 }
 
-fn placeholder_prefix(backend: DbBackend) -> &'static str {
+fn placeholder_prefix(backend: SupportedBackend) -> &'static str {
     match backend {
-        DbBackend::Postgres => "$",
-        DbBackend::Sqlite => "?",
-        _ => unreachable!("unsupported database backend was validated"),
+        SupportedBackend::Postgres => "$",
+        SupportedBackend::Sqlite => "?",
     }
 }
 

@@ -1117,8 +1117,14 @@ fn positive_revision(row: &QueryResult, column: &str) -> Result<u64, ModuleStati
         .ok_or_else(|| ModuleStaticPromotionError::Store("revision is invalid".to_string()))
 }
 
+/// Digest over the canonical JSON encoding (object keys sorted
+/// recursively), matching every other stored digest in the crate. The
+/// workspace enables serde_json's `preserve_order`, so hashing the raw
+/// serialization would make these digests depend on the key order of any
+/// embedded `serde_json::Value`/`HashMap` instead of only on content.
 pub(crate) fn digest_json(value: &impl Serialize) -> Result<String, ModuleStaticPromotionError> {
-    let bytes = serde_json::to_vec(value).map_err(store_error)?;
+    let bytes =
+        rustok_api::manifest_hash::canonical_json_bytes(value).map_err(store_error)?;
     Ok(format!("sha256:{}", hex::encode(Sha256::digest(bytes))))
 }
 
