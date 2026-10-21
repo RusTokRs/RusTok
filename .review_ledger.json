@@ -781,10 +781,10 @@
       "path": "crates/modules/rustok-media/cli",
       "category": "modules",
       "files": 1,
-      "loc": 175,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 389,
+      "completed": true,
+      "completed_at": "2026-10-21 22:50",
+      "notes": "Audited; verified operational command routing to MediaService reconciliation, typed ReconcileOptions derivation with optional tenant-scoping (service.reconcile_storage(tenant_id, limit)) and all-tenant fallback (service.reconcile_storage_all_tenants(limit)), explicit typed rejection of unsupported --dry-run requests via CliCoreError::DryRunNotSupported preventing unintended mutations, robust limit parsing supporting both numeric and trimmed string inputs with lower/upper bound checks (1 <= limit <= 1000), and strict UUID validation rejecting nil or malformed tenant IDs; added comprehensive unit tests covering descriptors, limit defaults, limit bounds/rejections, tenant UUID parsing/rejection, dry-run rejection, and unknown commands; 8/8 tests passed, 0 clippy warnings, remediation gate passed."
     },
     "crates/modules/rustok-media-transport": {
       "name": "rustok-media-transport",
