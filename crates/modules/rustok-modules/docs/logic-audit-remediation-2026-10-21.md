@@ -308,3 +308,21 @@ inaccurate. D6 is refined accordingly: simulated behavior must not be
 *presented as production* — these modules stay compiled and tested but
 explicitly unwired and recorded here as unfinished until their §5
 dispositions are executed.
+
+### 5.6 Plan-document status corrections (disposition 4)
+
+*Executed 2026-10-21.* `docs/modules/module-release-rollback-plan.md`
+was corrected in place: `DynamicLifecycleService` implementation and
+"verified by `dynamic_lifecycle_tests.rs`" claims now name the canonical
+owners (`installation.rs` admission/uninstall, `release_admission_journal`)
+with dated removal notes, and the items whose evidence died with the
+simulation explicitly say coverage must be re-established (the
+atomic-generation/delayed-work item is unchecked). `wave_rollout` and
+`gc` entries now state the unwired in-memory status next to their test
+citations. The two operator-experience items that claimed transport
+exposure and full lifecycle-command coverage are unchecked with
+corrections (read-model only, no transport, no built-in authorization),
+and the automatic-mode enforcement note now matches the rewritten
+preview (`generate_preview` for schema/dependents, `data_upgrade` for
+irreversibility). Remaining plan mentions of the deleted service exist
+only inside these dated corrections, as historical evidence.
