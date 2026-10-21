@@ -92,7 +92,10 @@ pub struct TenantModuleStateRecord {
     pub id: Uuid,
     /// Explicit enablement persisted by this operation.
     pub enabled: bool,
-    pub previous_enabled: bool,
+    /// Enablement recorded before this operation, or `None` when no
+    /// `tenant_modules` row existed. (Previously the insert path fabricated
+    /// `!enabled` here, inventing a predecessor state that never existed.)
+    pub previous_enabled: Option<bool>,
     pub changed: bool,
 }
 
@@ -1061,7 +1064,7 @@ impl TenantModuleStateStore {
             Ok(TenantModuleStateRecord {
                 id: row.try_get("", "id").map_err(database_error)?,
                 enabled,
-                previous_enabled: enabled,
+                previous_enabled: Some(enabled),
                 changed: false,
             })
         })
@@ -1110,7 +1113,7 @@ impl TenantModuleStateStore {
             return Ok(TenantModuleStateRecord {
                 id,
                 enabled: request.enabled,
-                previous_enabled,
+                previous_enabled: Some(previous_enabled),
                 changed: previous_enabled != request.enabled,
             });
         }
@@ -1130,7 +1133,8 @@ impl TenantModuleStateStore {
         Ok(TenantModuleStateRecord {
             id,
             enabled: request.enabled,
-            previous_enabled: !request.enabled,
+            // The row was just created: there is no predecessor state.
+            previous_enabled: None,
             changed: true,
         })
     }

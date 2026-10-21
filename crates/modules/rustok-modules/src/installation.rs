@@ -950,17 +950,8 @@ pub trait ArtifactAdmissionStore: Send + Sync {
         command: &ArtifactAdmissionCommand,
         request_digest: &str,
     ) -> Result<ArtifactAdmissionResult, ModuleInstallationError>;
-    async fn unfinished_admissions(
-        &self,
-    ) -> Result<Vec<ArtifactAdmissionRecoveryRecord>, ModuleInstallationError>;
     /// Returns the durable CAS digests retained by a committed installation.
     async fn referenced_blob_digests(&self) -> Result<BTreeSet<String>, ModuleInstallationError>;
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ArtifactAdmissionRecoveryRecord {
-    pub staged: StagedArtifactBlob,
-    pub stage: ArtifactAdmissionStage,
 }
 
 #[async_trait]
@@ -1026,17 +1017,12 @@ where
         Self { blobs, admissions }
     }
 
-    pub async fn discard_unpublished_staging(&self) -> Result<usize, ModuleInstallationError> {
-        let records = self.admissions.unfinished_admissions().await?;
-        let mut discarded = 0;
-        for record in records {
-            if record.stage == ArtifactAdmissionStage::Staged {
-                self.blobs.discard(&record.staged).await?;
-                discarded += 1;
-            }
-        }
-        Ok(discarded)
-    }
+    // There is deliberately no "discard unfinished staging" sweep: the
+    // admission-command ledger does not record staged-blob identities, so a
+    // truthful recovery record cannot be reconstructed from it. (The former
+    // implementation fabricated blobs from idempotency keys and request
+    // digests.) Staging cleanup belongs to the blob store's own TTL/GC over
+    // unpublished staging objects, keyed by real stage ids.
 
     pub async fn delete_unreferenced_published(
         &self,
@@ -4176,40 +4162,6 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
         })
     }
 
-    async fn unfinished_admissions(
-        &self,
-    ) -> Result<Vec<ArtifactAdmissionRecoveryRecord>, ModuleInstallationError> {
-        let backend = self.db.get_database_backend();
-        let rows = self
-            .db
-            .query_all_raw(Statement::from_string(
-                backend,
-                "SELECT idempotency_key, request_digest FROM module_artifact_admission_commands \
-                 WHERE installation_id IS NULL"
-                    .to_string(),
-            ))
-            .await
-            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-        let mut records = Vec::with_capacity(rows.len());
-        for row in rows {
-            let stage_id = required_uuid_from_row(&row, "idempotency_key", backend)?;
-            let digest: String = row
-                .try_get("", "request_digest")
-                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-            records.push(ArtifactAdmissionRecoveryRecord {
-                staged: StagedArtifactBlob {
-                    stage_id,
-                    digest,
-                    media_type: "application/vnd.rustok.module.artifact.v1+wasm".to_string(),
-                    size_bytes: 0,
-                    staging_object_key: None,
-                },
-                stage: ArtifactAdmissionStage::Staged,
-            });
-        }
-        Ok(records)
-    }
-
     async fn referenced_blob_digests(&self) -> Result<BTreeSet<String>, ModuleInstallationError> {
         let backend = self.db.get_database_backend();
         let rows = self
@@ -6130,12 +6082,6 @@ mod tests {
             })
         }
 
-        async fn unfinished_admissions(
-            &self,
-        ) -> Result<Vec<ArtifactAdmissionRecoveryRecord>, ModuleInstallationError> {
-            Ok(Vec::new())
-        }
-
         async fn referenced_blob_digests(
             &self,
         ) -> Result<BTreeSet<String>, ModuleInstallationError> {
@@ -6149,7 +6095,7 @@ mod tests {
         }
     }
 
-    struct RecoveryStore(Vec<ArtifactAdmissionRecoveryRecord>);
+    struct RecoveryStore;
 
     struct AllowBlobDeletion;
 
@@ -6182,12 +6128,6 @@ mod tests {
                 installation_id: artifact.installation_id,
                 created: true,
             })
-        }
-
-        async fn unfinished_admissions(
-            &self,
-        ) -> Result<Vec<ArtifactAdmissionRecoveryRecord>, ModuleInstallationError> {
-            Ok(self.0.clone())
         }
 
         async fn referenced_blob_digests(
@@ -6333,36 +6273,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reconciler_discards_only_unpublished_staging() {
-        let blobs = InMemoryArtifactBlobStore::default();
-        let payload = b"staged module payload";
-        let digest = sha256_digest(payload);
-        let staged = blobs
-            .stage(
-                &digest,
-                crate::MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE,
-                payload,
-            )
-            .await
-            .expect("stage blob");
-        let reconciler = ArtifactAdmissionReconciler::new(
-            blobs,
-            RecoveryStore(vec![ArtifactAdmissionRecoveryRecord {
-                staged,
-                stage: ArtifactAdmissionStage::Staged,
-            }]),
-        );
-
-        assert_eq!(
-            reconciler
-                .discard_unpublished_staging()
-                .await
-                .expect("reconcile"),
-            1
-        );
-    }
-
-    #[tokio::test]
     async fn reconciler_deletes_only_unreferenced_published_blobs_allowed_by_policy() {
         let blobs = InMemoryArtifactBlobStore::default();
         let payload = b"orphaned admitted payload";
@@ -6376,7 +6286,7 @@ mod tests {
             .await
             .expect("stage blob");
         blobs.publish(&staged).await.expect("publish blob");
-        let reconciler = ArtifactAdmissionReconciler::new(blobs, RecoveryStore(Vec::new()));
+        let reconciler = ArtifactAdmissionReconciler::new(blobs, RecoveryStore);
 
         assert_eq!(
             reconciler

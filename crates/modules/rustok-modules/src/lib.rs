@@ -450,8 +450,8 @@ pub use governance::{
 pub use infrastructure::{ControlPlaneClock, ControlPlaneIdGenerator, ControlPlaneInfrastructure};
 pub use installation::{
     ArtifactActivationRequest, ArtifactActivationResult, ArtifactAdmissionCommand,
-    ArtifactAdmissionLimits, ArtifactAdmissionReconciler, ArtifactAdmissionRecoveryRecord,
-    ArtifactAdmissionResult, ArtifactAdmissionReverification, ArtifactAdmissionService,
+    ArtifactAdmissionLimits, ArtifactAdmissionReconciler, ArtifactAdmissionResult,
+    ArtifactAdmissionReverification, ArtifactAdmissionService,
     ArtifactAdmissionStage, ArtifactAdmissionStatus, ArtifactAdmissionStore,
     ArtifactBlobRetentionPolicy, ArtifactBlobRetentionRule, ArtifactBlobStore,
     ArtifactDeactivationRequest, ArtifactDeactivationResult, ArtifactMigrationCheckpointRequest,
