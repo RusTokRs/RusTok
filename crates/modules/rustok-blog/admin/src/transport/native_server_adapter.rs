@@ -590,6 +590,7 @@ async fn blog_admin_moderation_comments_native(
                     per_page: per_page.clamp(1, 100),
                 },
                 Some(context.tenant.default_locale.as_str()),
+                None,
             )
             .await
             .map_err(public_blog_error)?;

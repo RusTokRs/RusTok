@@ -286,23 +286,49 @@ impl PostService {
 
         let mut items = Vec::with_capacity(posts.len());
         for post in posts {
-            Self::validate_persisted_version(&post)?;
+            if let Err(error) = Self::validate_persisted_version(&post) {
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    post_id = %post.id,
+                    version = post.version,
+                    %error,
+                    "Skipping Blog post with an invalid persisted version in post list"
+                );
+                continue;
+            }
             let translations = translations_map.get(&post.id).cloned().unwrap_or_default();
+            // One damaged row must not fail the whole page for every reader:
+            // skip it loudly instead. The write path still rejects creating
+            // such rows; this only contains pre-existing corruption.
             if translations.is_empty() {
-                return Err(BlogError::invariant(format!(
-                    "Blog post {} has no localized records",
-                    post.id
-                )));
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    post_id = %post.id,
+                    "Skipping Blog post without localized records in post list"
+                );
+                continue;
             }
             let resolved =
                 resolve_translation_record(&translations, &locale, fallback_locale.as_deref());
-            let translation = resolved.translation.ok_or_else(|| {
-                BlogError::invariant(format!(
-                    "Blog post {} locale resolver returned no translation from a non-empty set",
-                    post.id
-                ))
-            })?;
+            let Some(translation) = resolved.translation else {
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    post_id = %post.id,
+                    "Skipping Blog post whose locale resolver returned no translation in post list"
+                );
+                continue;
+            };
             let tags = tags_map.get(&post.id).cloned().unwrap_or_default();
+
+            let Ok(status) = storage_to_status(&post.status) else {
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    post_id = %post.id,
+                    status = %post.status,
+                    "Skipping Blog post with an unknown persisted status in post list"
+                );
+                continue;
+            };
 
             items.push(PostSummary {
                 id: post.id,
@@ -314,7 +340,7 @@ impl PostService {
                     item.locale.as_str()
                 }),
                 excerpt: translation.excerpt.clone(),
-                status: storage_to_status(&post.status)?,
+                status,
                 author_id: post.author_id,
                 author_name: None,
                 category_id: post.category_id,
@@ -397,23 +423,49 @@ impl PostService {
 
         let mut items = Vec::with_capacity(posts.len());
         for post in posts {
-            Self::validate_persisted_version(&post)?;
+            if let Err(error) = Self::validate_persisted_version(&post) {
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    post_id = %post.id,
+                    version = post.version,
+                    %error,
+                    "Skipping Blog post with an invalid persisted version in post list"
+                );
+                continue;
+            }
             let translations = translations_map.get(&post.id).cloned().unwrap_or_default();
+            // One damaged row must not fail the whole page for every reader:
+            // skip it loudly instead. The write path still rejects creating
+            // such rows; this only contains pre-existing corruption.
             if translations.is_empty() {
-                return Err(BlogError::invariant(format!(
-                    "Blog post {} has no localized records",
-                    post.id
-                )));
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    post_id = %post.id,
+                    "Skipping Blog post without localized records in post list"
+                );
+                continue;
             }
             let resolved =
                 resolve_translation_record(&translations, &locale, fallback_locale.as_deref());
-            let translation = resolved.translation.ok_or_else(|| {
-                BlogError::invariant(format!(
-                    "Blog post {} locale resolver returned no translation from a non-empty set",
-                    post.id
-                ))
-            })?;
+            let Some(translation) = resolved.translation else {
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    post_id = %post.id,
+                    "Skipping Blog post whose locale resolver returned no translation in post list"
+                );
+                continue;
+            };
             let tags = tags_map.get(&post.id).cloned().unwrap_or_default();
+
+            let Ok(status) = storage_to_status(&post.status) else {
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    post_id = %post.id,
+                    status = %post.status,
+                    "Skipping Blog post with an unknown persisted status in post list"
+                );
+                continue;
+            };
 
             items.push(PostSummary {
                 id: post.id,
@@ -425,7 +477,7 @@ impl PostService {
                     item.locale.as_str()
                 }),
                 excerpt: translation.excerpt.clone(),
-                status: storage_to_status(&post.status)?,
+                status,
                 author_id: post.author_id,
                 author_name: None,
                 category_id: post.category_id,
@@ -460,6 +512,9 @@ impl PostService {
         fallback_locale: Option<&str>,
         channel_slug: Option<&str>,
     ) -> BlogResult<PublicPostPage> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
         let locale = query
             .locale
             .clone()
@@ -546,6 +601,9 @@ impl PostService {
         after: Option<Uuid>,
         per_page: u32,
     ) -> BlogResult<PublishedPostScanPage> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let per_page = u64::from(per_page.clamp(1, 100));

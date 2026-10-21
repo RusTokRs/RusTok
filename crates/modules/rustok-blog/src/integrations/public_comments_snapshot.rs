@@ -117,6 +117,7 @@ pub async fn list_public_comments_with_snapshot(
                 per_page,
             },
             fallback_locale,
+            public_channel_slug,
         )
         .await
     {

@@ -32,6 +32,7 @@ pub async fn fetch_blog(
         request.locale,
         request.tag,
         request.category_id,
+        request.posts_after,
         comments_page,
     )
     .await
@@ -152,6 +153,7 @@ async fn fetch_storefront_blog_server(
     locale: Option<String>,
     tag: Option<String>,
     category_id: Option<String>,
+    posts_after: Option<String>,
     comments_page: u64,
 ) -> Result<StorefrontBlogData, ApiError> {
     storefront_blog_native(
@@ -160,6 +162,7 @@ async fn fetch_storefront_blog_server(
         locale,
         tag,
         category_id,
+        posts_after,
         comments_page,
     )
     .await
@@ -186,6 +189,7 @@ async fn storefront_blog_native(
     locale: Option<String>,
     tag: Option<String>,
     category_id: Option<String>,
+    posts_after: Option<String>,
     comments_page: u64,
 ) -> Result<StorefrontBlogData, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -310,6 +314,14 @@ async fn storefront_blog_native(
             .filter(|s| !s.is_empty())
             .map(ToOwned::to_owned);
 
+        let posts_after = posts_after
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(rustok_blog::PublishedPostCursor::decode)
+            .transpose()
+            .map_err(public_blog_error)?;
+
         let page = service
             .list_public_visible_keyset(
                 tenant_id,
@@ -319,7 +331,7 @@ async fn storefront_blog_native(
                     author_id: None,
                     locale: Some(requested_locale),
                     per_page: Some(6),
-                    after: None,
+                    after: posts_after,
                 },
                 Some(fallback_locale.as_str()),
                 public_channel_slug.as_deref(),
@@ -331,6 +343,7 @@ async fn storefront_blog_native(
             selected_post,
             posts: BlogPostList {
                 items: page.items.into_iter().map(map_post_list_item).collect(),
+                next_cursor: page.next_cursor.map(|cursor| cursor.encode()),
             },
         })
     }
@@ -342,6 +355,7 @@ async fn storefront_blog_native(
             locale,
             tag,
             category_id,
+            posts_after,
             comments_page,
         );
         Err(ServerFnError::new(

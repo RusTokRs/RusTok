@@ -245,6 +245,7 @@ impl GqlPost {
                     per_page: per_page.unwrap_or(50).clamp(1, 100),
                 },
                 Some(request_tenant.default_locale.as_str()),
+                None,
             )
             .await
             .map_err(crate::error::public::to_graphql_error)?;

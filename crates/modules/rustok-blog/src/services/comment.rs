@@ -273,7 +273,10 @@ impl CommentService {
         tenant_id: Uuid,
         comment_id: Uuid,
     ) -> BlogResult<()> {
-        let compensation_command_id = Uuid::new_v4();
+        // Deterministic per compensated comment: a retry after a lost response
+        // replays the same idempotency key instead of issuing a fresh delete
+        // command that could fail with NotFound and mask the original error.
+        let compensation_command_id = comment_id;
         let system_security = SecurityContext::system();
         self.require_comments_thread_port()?
             .delete_comment(
@@ -435,14 +438,30 @@ impl CommentService {
         let record = self
             .require_comments_thread_port()?
             .set_comment_status(
-                comments_write_port_context(
-                    tenant_id,
-                    &SecurityContext::system(),
-                    locale,
-                    "moderate",
-                    comment_id,
-                    input.command_id,
-                )?,
+                // The write crosses into the Comments owner under system
+                // delegation (Blog already enforced `BlogPosts:Manage`
+                // above), but the human moderator must stay attributable:
+                // carry the actor identity as a port claim instead of
+                // letting the audit trail end at "system".
+                match security.user_id {
+                    Some(moderator_id) => comments_write_port_context(
+                        tenant_id,
+                        &SecurityContext::system(),
+                        locale,
+                        "moderate",
+                        comment_id,
+                        input.command_id,
+                    )?
+                    .with_claim(format!("blog_moderator:{moderator_id}")),
+                    None => comments_write_port_context(
+                        tenant_id,
+                        &SecurityContext::system(),
+                        locale,
+                        "moderate",
+                        comment_id,
+                        input.command_id,
+                    )?,
+                },
                 comment_id,
                 ApiSetCommentStatusRequest {
                     status: input.status.into(),
@@ -515,7 +534,7 @@ impl CommentService {
         post_id: Uuid,
         filter: ListCommentsFilter,
     ) -> BlogResult<(Vec<CommentListItem>, u64)> {
-        self.list_for_post_with_locale_fallback(tenant_id, security, post_id, filter, None)
+        self.list_for_post_with_locale_fallback(tenant_id, security, post_id, filter, None, None)
             .await
     }
 
@@ -527,13 +546,23 @@ impl CommentService {
         post_id: Uuid,
         filter: ListCommentsFilter,
         fallback_locale: Option<&str>,
+        public_channel_slug: Option<&str>,
     ) -> BlogResult<(Vec<CommentListItem>, u64)> {
         if !security.is_public_read() {
             enforce_scope(&security, Resource::Comments, Action::List)?;
-        } else if self.public_comments_mode(tenant_id).await? == BlogCommentsMode::Disabled {
-            return Err(BlogError::CommentsDisabled);
+            self.ensure_post_exists(tenant_id, post_id).await?;
+        } else {
+            if self.public_comments_mode(tenant_id).await? == BlogCommentsMode::Disabled {
+                return Err(BlogError::CommentsDisabled);
+            }
+            // The public boundary lives in the owner service, not only in its
+            // transports: a public reader may list comments only for a post
+            // that is published and visible in the current channel. Existence
+            // alone would leak the comment thread of drafts, archived posts
+            // and channel-hidden posts to anyone who learns the post id.
+            self.ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
+                .await?;
         }
-        self.ensure_post_exists(tenant_id, post_id).await?;
 
         let locale = filter
             .locale

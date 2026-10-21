@@ -58,9 +58,15 @@ fn tenant_scoped_work_item(worker_slug: &str, tenant_id: Uuid) -> ModuleWorkItem
         id: tenant_id,
         tenant_id,
         worker_slug: worker_slug.to_string(),
-        // The envelope lease only orders delivery. The authoritative claim is the
-        // owner-side predicate (post version CAS, expiry predicate, or existence
-        // check), which every handler repeats before it writes.
+        // This envelope carries no exclusive lease: `claim` is a read-only
+        // discovery hint, the token is not persisted anywhere, and two
+        // scheduler instances may legitimately receive the same tenant at
+        // the same time. Every handler is therefore required to be safe
+        // under concurrent duplicate execution — scheduled publishing relies
+        // on the post version CAS, token cleanup deletes by an expiry
+        // predicate, and route reconciliation re-checks target existence
+        // inside its transaction — so a duplicate execution is wasted work,
+        // never a duplicate effect.
         lease_token: Uuid::new_v4().to_string(),
         payload: serde_json::json!({ "tenant_id": tenant_id }),
     }

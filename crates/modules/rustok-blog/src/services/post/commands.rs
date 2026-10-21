@@ -857,6 +857,7 @@ pub(super) async fn apply_status_transition_in_tx(
         );
     }
 
+
     let result = update
         .filter(blog_post::Column::Id.eq(post_id))
         .filter(blog_post::Column::TenantId.eq(tenant_id))

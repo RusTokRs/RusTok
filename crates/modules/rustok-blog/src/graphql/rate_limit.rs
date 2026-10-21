@@ -71,6 +71,7 @@ enum BlogGraphqlSurface {
     BulkPublishPosts,
     BulkUnpublishPosts,
     BulkArchivePosts,
+    BulkRestorePosts,
     BulkDeletePosts,
     PinPost,
     UnpinPost,
@@ -104,6 +105,7 @@ impl BlogGraphqlSurface {
             (OperationType::Mutation, "bulkPublishPosts") => Some(Self::BulkPublishPosts),
             (OperationType::Mutation, "bulkUnpublishPosts") => Some(Self::BulkUnpublishPosts),
             (OperationType::Mutation, "bulkArchivePosts") => Some(Self::BulkArchivePosts),
+            (OperationType::Mutation, "bulkRestorePosts") => Some(Self::BulkRestorePosts),
             (OperationType::Mutation, "bulkDeletePosts") => Some(Self::BulkDeletePosts),
             (OperationType::Mutation, "pinPost") => Some(Self::PinPost),
             (OperationType::Mutation, "unpinPost") => Some(Self::UnpinPost),
@@ -138,6 +140,7 @@ impl BlogGraphqlSurface {
             Self::BulkPublishPosts => "bulk_publish_posts",
             Self::BulkUnpublishPosts => "bulk_unpublish_posts",
             Self::BulkArchivePosts => "bulk_archive_posts",
+            Self::BulkRestorePosts => "bulk_restore_posts",
             Self::BulkDeletePosts => "bulk_delete_posts",
             Self::PinPost => "pin_post",
             Self::UnpinPost => "unpin_post",
@@ -187,7 +190,8 @@ impl BlogGraphqlSurface {
             | Self::RestorePost
             | Self::BulkPublishPosts
             | Self::BulkUnpublishPosts
-            | Self::BulkArchivePosts => Some(Permission::BLOG_POSTS_PUBLISH),
+            | Self::BulkArchivePosts
+            | Self::BulkRestorePosts => Some(Permission::BLOG_POSTS_PUBLISH),
             Self::CreateBlogComment => Some(Permission::new(Resource::Comments, Action::Create)),
             Self::ModerateComment => Some(Permission::BLOG_POSTS_MANAGE),
             Self::CreateBlogCategory => Some(Permission::BLOG_CATEGORIES_CREATE),
