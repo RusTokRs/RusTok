@@ -861,9 +861,7 @@ fn setting_value_matches_type(value_type: &str, value: &serde_json::Value) -> bo
                     // exactly integral and representable as i64/u64; an
                     // approximate epsilon test would also accept values
                     // that later range checks compare imprecisely.
-                    number.fract() == 0.0
-                        && number >= i64::MIN as f64
-                        && number <= u64::MAX as f64
+                    number.fract() == 0.0 && number >= i64::MIN as f64 && number <= u64::MAX as f64
                 })
         }
         "number" => value.is_number(),

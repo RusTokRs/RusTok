@@ -18,6 +18,7 @@ use rustok_events::DomainEvent;
 
 use crate::{
     ArtifactReleaseRef, ControlPlaneInfrastructure, ModuleCommandContext,
+    SeaOrmSecurityEpochStore,
     data::{now_expression, placeholder, uuid_value},
     promotion::{digest_json, valid_digest},
 };
@@ -250,6 +251,27 @@ where
             .checked_add(1)
             .ok_or(ModuleArtifactSecurityError::RevisionOverflow)?;
         persist_state(&transaction, action.target_status(), revision, &command).await?;
+        if matches!(action, SecurityAction::Quarantine | SecurityAction::Revoke) {
+            // Preempt every in-flight transition recorded against the
+            // previous epoch, atomically with the security decision itself:
+            // a quarantine/revocation that committed without advancing the
+            // durable epoch would leave stale transitions finalizable.
+            SeaOrmSecurityEpochStore::advance(
+                &transaction,
+                &format!(
+                    "Artifact {} for {}@{} ({}): {} — {}",
+                    action.as_str(),
+                    command.release.slug,
+                    command.release.version,
+                    command.release.digest,
+                    command.reason_code,
+                    command.reason_detail,
+                ),
+                self.infrastructure.now(),
+            )
+            .await
+            .map_err(store_error)?;
+        }
         let mut snapshot = load_snapshot(&transaction, &command.release, false).await?;
         snapshot.registry_status = current.registry_status;
         let receipt = ModuleArtifactSecurityReceipt {

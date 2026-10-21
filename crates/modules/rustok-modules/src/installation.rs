@@ -26,9 +26,10 @@ use crate::{
     ArtifactDataError, ArtifactDataMigrationCheckpointStore, ArtifactModuleKind,
     ArtifactPayloadKind, ArtifactReleaseRef, ArtifactSandboxPolicyResolver,
     ArtifactUiContributionContent, ConflictFenceSet, ControlPlaneInfrastructure,
-    GlobalSecurityEpoch, ModuleArtifactDescriptor, ModuleArtifactError, ModuleCommandContext,
+    ModuleArtifactDescriptor, ModuleArtifactError, ModuleCommandContext,
     ModuleDependencyLockGraph, ModuleTransitionCheckpoint, ModuleTransitionState,
     RetentionHoldKind, RetentionHoldRecord, RetentionHoldStore, RetentionTarget,
+    SeaOrmSecurityEpochStore,
     TransitionCheckpointStore, TrustEvidenceReference, TrustPolicyRevision,
     TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
 };
@@ -2029,6 +2030,13 @@ impl SeaOrmArtifactInstallationStore {
                 .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         }
 
+        // Record the durable security epoch this transition starts under, so
+        // a later quarantine/revocation (which advances the epoch) preempts
+        // finalization instead of validating against a constant epoch 1.
+        let security_epoch = SeaOrmSecurityEpochStore::current(&transaction)
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+
         // Save durable transition checkpoint for transition coordinator & watchdog
         let checkpoint = ModuleTransitionCheckpoint {
             operation_id,
@@ -2038,7 +2046,7 @@ impl SeaOrmArtifactInstallationStore {
             predecessor_digest,
             candidate_digest: candidate_descriptor.artifact_digest.clone(),
             state: ModuleTransitionState::Observing { timeout_at },
-            security_epoch: GlobalSecurityEpoch::INITIAL,
+            security_epoch,
             fences,
             recovery_attempt_count: 0,
             created_at: now,
@@ -8102,8 +8110,14 @@ mod tests {
             .await
             .expect("rollback transition operation succeeds");
 
-        assert_eq!(rollback_result.source_installation_id, successor.installation_id);
-        assert_eq!(rollback_result.target_installation_id, predecessor.installation_id);
+        assert_eq!(
+            rollback_result.source_installation_id,
+            successor.installation_id
+        );
+        assert_eq!(
+            rollback_result.target_installation_id,
+            predecessor.installation_id
+        );
     }
 
     #[tokio::test]

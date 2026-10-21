@@ -64,9 +64,7 @@ impl ModuleOperationRecoveryPlan {
         let issue = match (operation.status, operation.error_message.as_deref()) {
             // Typed outcome recorded by the executor since the
             // committed/hook-failed status split.
-            (ModuleOperationStatus::CommittedHookFailed, _) => {
-                ModuleOperationIssue::PostHookFailed
-            }
+            (ModuleOperationStatus::CommittedHookFailed, _) => ModuleOperationIssue::PostHookFailed,
             // Legacy rows: post-hook failures were recorded as `failed` with
             // a `post-hook:` message prefix before the status split.
             (ModuleOperationStatus::Failed, Some(message)) if message.starts_with("post-hook:") => {

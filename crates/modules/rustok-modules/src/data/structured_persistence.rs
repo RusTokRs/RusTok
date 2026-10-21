@@ -451,9 +451,7 @@ pub(crate) fn index_contract_digest(indexes: &[ArtifactDataIndexField]) -> Optio
             left.name
                 .cmp(&right.name)
                 .then_with(|| left.json_pointer.cmp(&right.json_pointer))
-                .then_with(|| {
-                    (left.value_type as u8).cmp(&(right.value_type as u8))
-                })
+                .then_with(|| (left.value_type as u8).cmp(&(right.value_type as u8)))
         });
         let encoded = serde_json::to_vec(&canonical)
             .expect("artifact data index declarations are always serializable");

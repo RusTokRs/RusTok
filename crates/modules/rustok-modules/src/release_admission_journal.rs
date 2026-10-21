@@ -333,11 +333,7 @@ impl ReleaseAdmissionIntentJournal {
                      WHERE scope_kind = {} AND scope_tenant_key = {} \
                        AND actor_id = {} AND idempotency_key = {} \
                        AND installation_id IS NULL",
-                    placeholders.0,
-                    placeholders.1,
-                    placeholders.2,
-                    placeholders.3,
-                    placeholders.4
+                    placeholders.0, placeholders.1, placeholders.2, placeholders.3, placeholders.4
                 ),
                 vec![
                     uuid_value(installation_id, backend),

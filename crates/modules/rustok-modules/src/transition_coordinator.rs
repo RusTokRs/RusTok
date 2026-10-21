@@ -45,7 +45,10 @@ pub enum ModuleTransitionState {
         failure_reason: String,
         recovered_at: DateTime<Utc>,
     },
-    /// Observation window elapsed and transition converged successfully.
+    /// Explicit, actor-authorized finalize attested the candidate and the
+    /// transition converged. (An elapsed observation window alone never
+    /// converges a transition: no health evidence is recorded while
+    /// observing, so the watchdog fails such checkpoints closed instead.)
     Converged { finalized_at: DateTime<Utc> },
     /// Terminal failure where automatic action is exhausted or forbidden; operator intervention required.
     FailedClosed { failure_reason: String },

@@ -154,7 +154,8 @@ pub use retention::{
     RetentionHoldRecord, RetentionTarget,
 };
 pub use security_epoch::{
-    GlobalSecurityEpoch, SecurityEpochConflictError, SecurityEpochRecord, SecurityEpochRegistry,
+    GlobalSecurityEpoch, SeaOrmSecurityEpochStore, SecurityEpochConflictError,
+    SecurityEpochRecord, SecurityEpochRegistry, SecurityEpochStoreError,
 };
 pub use settings_guard::{
     SettingsCompatibilityGuard, SettingsGuardError, SettingsGuardState,

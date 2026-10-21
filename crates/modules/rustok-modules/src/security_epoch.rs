@@ -70,6 +70,25 @@ impl SecurityEpochRegistry {
         Self::default()
     }
 
+    /// Builds a validation snapshot from a durable current epoch (loaded via
+    /// [`SeaOrmSecurityEpochStore`]). The full advancement history lives in
+    /// the database; the snapshot only needs the current value and the latest
+    /// reason for fail-closed validation and diagnostics.
+    pub fn from_current(
+        current: GlobalSecurityEpoch,
+        latest_reason: impl Into<String>,
+        advanced_at: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            current,
+            history: vec![SecurityEpochRecord {
+                epoch: current,
+                advanced_at,
+                reason: latest_reason.into(),
+            }],
+        }
+    }
+
     pub fn current_epoch(&self) -> GlobalSecurityEpoch {
         self.current
     }
@@ -114,6 +133,146 @@ impl SecurityEpochRegistry {
                 latest_reason: self.latest_reason().to_string(),
             })
         }
+    }
+}
+
+/// Errors from the durable security-epoch store.
+#[derive(Debug, Error)]
+pub enum SecurityEpochStoreError {
+    #[error("security epoch persistence failed: {0}")]
+    Persistence(String),
+    #[error("stored security epoch must be >= 1, found {0}")]
+    InvalidStoredEpoch(i64),
+    #[error("security epoch row is missing (run the module security epoch migration)")]
+    MissingRow,
+    #[error("security epoch advancement matched no row")]
+    AdvanceMatchedNoRow,
+}
+
+impl From<sea_orm::DbErr> for SecurityEpochStoreError {
+    fn from(error: sea_orm::DbErr) -> Self {
+        Self::Persistence(error.to_string())
+    }
+}
+
+/// Durable security epoch backed by the `module_security_epoch` singleton row
+/// (audit remediation D9/H-7).
+///
+/// Until this store existed, every process constructed an in-memory registry
+/// permanently stuck at epoch 1, so quarantine/revocation never preempted
+/// in-flight transitions and checkpoints always recorded epoch 1. All epoch
+/// reads and advancements now go through this single durable owner;
+/// [`SecurityEpochRegistry`] remains only as an in-memory validation
+/// snapshot built from the durable value.
+pub struct SeaOrmSecurityEpochStore;
+
+impl SeaOrmSecurityEpochStore {
+    /// Loads the durable current epoch and the reason for its latest
+    /// advancement.
+    pub async fn load_record<C>(
+        db: &C,
+    ) -> Result<SecurityEpochRecord, SecurityEpochStoreError>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
+        use sea_orm::Statement;
+
+        let row = db
+            .query_one_raw(Statement::from_string(
+                db.get_database_backend(),
+                "SELECT epoch, last_reason, updated_at FROM module_security_epoch \
+                 WHERE singleton_id = 1",
+            ))
+            .await?
+            .ok_or(SecurityEpochStoreError::MissingRow)?;
+        let epoch: i64 = row.try_get("", "epoch")?;
+        let epoch = u64::try_from(epoch)
+            .ok()
+            .filter(|value| *value >= 1)
+            .ok_or(SecurityEpochStoreError::InvalidStoredEpoch(epoch))?;
+        let last_reason: String = row.try_get("", "last_reason")?;
+        let advanced_at = match db.get_database_backend() {
+            sea_orm::DbBackend::Postgres => {
+                let value: chrono::DateTime<chrono::FixedOffset> =
+                    row.try_get("", "updated_at")?;
+                value.with_timezone(&Utc)
+            }
+            _ => {
+                let value: String = row.try_get("", "updated_at")?;
+                chrono::DateTime::parse_from_rfc3339(&value)
+                    .map(|parsed| parsed.with_timezone(&Utc))
+                    .map_err(|error| {
+                        SecurityEpochStoreError::Persistence(format!(
+                            "stored security epoch timestamp is not RFC3339: {error}"
+                        ))
+                    })?
+            }
+        };
+        Ok(SecurityEpochRecord {
+            epoch: GlobalSecurityEpoch(epoch),
+            advanced_at,
+            reason: last_reason,
+        })
+    }
+
+    /// Loads the durable current epoch.
+    pub async fn current<C>(db: &C) -> Result<GlobalSecurityEpoch, SecurityEpochStoreError>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
+        Ok(Self::load_record(db).await?.epoch)
+    }
+
+    /// Loads a validation snapshot from the durable epoch.
+    pub async fn load_registry<C>(
+        db: &C,
+    ) -> Result<SecurityEpochRegistry, SecurityEpochStoreError>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
+        let record = Self::load_record(db).await?;
+        Ok(SecurityEpochRegistry::from_current(
+            record.epoch,
+            record.reason,
+            record.advanced_at,
+        ))
+    }
+
+    /// Durably advances the epoch by one and records `reason`. Callers run
+    /// this in the same transaction as the quarantine/revocation write so
+    /// preemption is atomic with the security decision.
+    pub async fn advance<C>(
+        db: &C,
+        reason: &str,
+        now: DateTime<Utc>,
+    ) -> Result<GlobalSecurityEpoch, SecurityEpochStoreError>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
+        use sea_orm::Statement;
+
+        let backend = db.get_database_backend();
+        let updated_at: sea_orm::Value = match backend {
+            sea_orm::DbBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(now)),
+            _ => now.to_rfc3339().into(),
+        };
+        let p1 = crate::data::placeholder(backend, 1);
+        let p2 = crate::data::placeholder(backend, 2);
+        let result = db
+            .execute_raw(Statement::from_sql_and_values(
+                backend,
+                &format!(
+                    "UPDATE module_security_epoch \
+                     SET epoch = epoch + 1, last_reason = {p1}, updated_at = {p2} \
+                     WHERE singleton_id = 1"
+                ),
+                [reason.to_string().into(), updated_at],
+            ))
+            .await?;
+        if result.rows_affected() != 1 {
+            return Err(SecurityEpochStoreError::AdvanceMatchedNoRow);
+        }
+        Self::current(db).await
     }
 }
 

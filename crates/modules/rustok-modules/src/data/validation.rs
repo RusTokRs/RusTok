@@ -25,7 +25,9 @@ pub(crate) fn canonical_index_value(value: &Value) -> Result<String, ArtifactDat
             } else if let Some(integer) = number.as_u64() {
                 Value::Number(integer.into())
             } else if let Some(float) = number.as_f64() {
-                if float.fract() == 0.0 && float >= i64::MIN as f64 && float < 9_007_199_254_740_992.0
+                if float.fract() == 0.0
+                    && float >= i64::MIN as f64
+                    && float < 9_007_199_254_740_992.0
                 {
                     // Exactly-integral floats within the precisely
                     // representable range index as integers.

@@ -465,8 +465,7 @@ fn due_slots(
             // Run the most recently missed slot once; every earlier missed
             // slot is a skipped misfire. (Previously the *oldest* slot ran,
             // which executes the stalest possible work and hides the rest.)
-            let (latest, due_count, exhausted) =
-                latest_due(&schedule, timezone, through, now);
+            let (latest, due_count, exhausted) = latest_due(&schedule, timezone, through, now);
             match latest {
                 Some(latest) => {
                     let skipped_misfires = due_count.saturating_sub(1);

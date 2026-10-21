@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use crate::{
     ControlPlaneInfrastructure, ModuleTransitionCheckpoint, ModuleTransitionCoordinator,
-    ModuleTransitionFinalizeCommand, RetentionHoldStore, SecurityEpochRegistry,
+    ModuleTransitionFinalizeCommand, RetentionHoldStore, SeaOrmSecurityEpochStore,
     TransitionCheckpointStore, TransitionCoordinatorError, TransitionStoreError,
     data::{now_expression, placeholder, uuid_from_row},
 };
@@ -251,7 +251,13 @@ impl SeaOrmModuleTransitionService {
             return Ok(receipt);
         }
 
-        let security_registry = SecurityEpochRegistry::new();
+        // Validate against the durable platform epoch: a quarantine or
+        // revocation recorded by any process since the checkpoint was taken
+        // must preempt this finalization. (Previously a fresh in-memory
+        // registry pinned at epoch 1 made the check a permanent no-op.)
+        let security_registry = SeaOrmSecurityEpochStore::load_registry(&transaction)
+            .await
+            .map_err(store_error)?;
         let mut coordinator = ModuleTransitionCoordinator::new(checkpoint);
         coordinator.finalize_convergence(&security_registry)?;
         TransitionCheckpointStore::save_checkpoint(&transaction, coordinator.checkpoint())
@@ -286,10 +292,27 @@ impl SeaOrmModuleTransitionService {
         Ok(receipt)
     }
 
+    /// Sweeps active transition checkpoints against the durable security
+    /// epoch and their observation windows.
+    ///
+    /// Convergence is an attested decision, never an automatic timeout
+    /// consequence: the checkpoint model records no positive health evidence
+    /// during `Observing`, so an elapsed window proves nothing about the
+    /// candidate. The watchdog therefore fails both stale-epoch and
+    /// expired-window checkpoints closed (retaining predecessor holds); the
+    /// only convergence path is the explicit, actor-authorized
+    /// [`finalize`](Self::finalize) command. Until this change the watchdog
+    /// silently marked every candidate converged ~300s after activation.
     pub async fn evaluate_watchdog(
         &self,
-        security_registry: &SecurityEpochRegistry,
     ) -> Result<Vec<ModuleTransitionCheckpoint>, ModuleTransitionServiceError> {
+        // The epoch is durable and shared across processes; a snapshot taken
+        // at sweep start is sufficient because a racing advancement is then
+        // picked up by the next sweep, and `finalize` re-reads the epoch
+        // inside its own transaction.
+        let security_registry = SeaOrmSecurityEpochStore::load_registry(&self.db)
+            .await
+            .map_err(database_error)?;
         let active = TransitionCheckpointStore::list_active_checkpoints(&self.db)
             .await
             .map_err(store_error)?;
@@ -303,9 +326,20 @@ impl SeaOrmModuleTransitionService {
                 crate::ModuleTransitionState::Observing { timeout_at }
                     if self.infrastructure.now() >= timeout_at
             );
-            if !stale_epoch && !timed_out {
+            let failure_reason = if stale_epoch {
+                format!(
+                    "Security epoch preemption: epoch {} is stale; current epoch is {}. Automatic rollback requires a fresh owner policy grant and was not attempted.",
+                    observed.security_epoch.value(),
+                    security_registry.current_epoch().value(),
+                )
+            } else if timed_out {
+                "Observation window elapsed without an explicit finalize attestation; \
+                 no positive health evidence is recorded for the candidate, so automatic \
+                 convergence is not permitted and the transition failed closed."
+                    .to_string()
+            } else {
                 continue;
-            }
+            };
 
             let transaction = self.db.begin().await.map_err(database_error)?;
             let current =
@@ -319,60 +353,26 @@ impl SeaOrmModuleTransitionService {
                 continue;
             }
             let mut coordinator = ModuleTransitionCoordinator::new(current);
-            if stale_epoch {
-                let reason = format!(
-                    "Security epoch preemption: epoch {} is stale; current epoch is {}. Automatic rollback requires a fresh owner policy grant and was not attempted.",
-                    coordinator.checkpoint().security_epoch.value(),
-                    security_registry.current_epoch().value(),
-                );
-                coordinator.fail_closed(reason.clone())?;
-                TransitionCheckpointStore::save_checkpoint(&transaction, coordinator.checkpoint())
-                    .await
-                    .map_err(store_error)?;
-                self.infrastructure
-                    .write_event(
-                        &transaction,
-                        self.infrastructure.event_envelope(
-                            coordinator.checkpoint().tenant_id,
-                            None,
-                            DomainEvent::ModuleTransitionFailedClosed {
-                                operation_id: coordinator.checkpoint().operation_id,
-                                module_slug: coordinator.checkpoint().module_slug.clone(),
-                                revision: coordinator.checkpoint().revision,
-                                failure_reason: reason,
-                            },
-                        ),
-                    )
-                    .await
-                    .map_err(|error| ModuleTransitionServiceError::Outbox(error.to_string()))?;
-            } else {
-                coordinator.finalize_convergence(security_registry)?;
-                TransitionCheckpointStore::save_checkpoint(&transaction, coordinator.checkpoint())
-                    .await
-                    .map_err(store_error)?;
-                let released_holds = RetentionHoldStore::release_holds_for_operation(
-                    &transaction,
-                    coordinator.checkpoint().operation_id,
-                )
+            coordinator.fail_closed(failure_reason.clone())?;
+            TransitionCheckpointStore::save_checkpoint(&transaction, coordinator.checkpoint())
                 .await
                 .map_err(store_error)?;
-                self.infrastructure
-                    .write_event(
-                        &transaction,
-                        self.infrastructure.event_envelope(
-                            coordinator.checkpoint().tenant_id,
-                            None,
-                            DomainEvent::ModuleTransitionFinalized {
-                                operation_id: coordinator.checkpoint().operation_id,
-                                module_slug: coordinator.checkpoint().module_slug.clone(),
-                                revision: coordinator.checkpoint().revision,
-                                released_holds,
-                            },
-                        ),
-                    )
-                    .await
-                    .map_err(|error| ModuleTransitionServiceError::Outbox(error.to_string()))?;
-            }
+            self.infrastructure
+                .write_event(
+                    &transaction,
+                    self.infrastructure.event_envelope(
+                        coordinator.checkpoint().tenant_id,
+                        None,
+                        DomainEvent::ModuleTransitionFailedClosed {
+                            operation_id: coordinator.checkpoint().operation_id,
+                            module_slug: coordinator.checkpoint().module_slug.clone(),
+                            revision: coordinator.checkpoint().revision,
+                            failure_reason,
+                        },
+                    ),
+                )
+                .await
+                .map_err(|error| ModuleTransitionServiceError::Outbox(error.to_string()))?;
             transaction.commit().await.map_err(database_error)?;
             updated.push(coordinator.checkpoint().clone());
         }
@@ -382,13 +382,12 @@ impl SeaOrmModuleTransitionService {
 
 pub async fn evaluate_transition_watchdog(
     db: &DatabaseConnection,
-    security_registry: &SecurityEpochRegistry,
 ) -> Result<Vec<ModuleTransitionCheckpoint>, ModuleTransitionServiceError> {
     SeaOrmModuleTransitionService::with_infrastructure(
         db.clone(),
         ControlPlaneInfrastructure::for_database(db.clone()),
     )
-    .evaluate_watchdog(security_registry)
+    .evaluate_watchdog()
     .await
 }
 

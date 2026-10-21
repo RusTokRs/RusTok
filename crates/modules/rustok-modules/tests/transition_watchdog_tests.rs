@@ -2,7 +2,7 @@ use chrono::{Duration, Utc};
 use rustok_core::MigrationSource;
 use rustok_modules::{
     ConflictFenceSet, ModuleTransitionCheckpoint, ModuleTransitionState, RetentionHoldKind,
-    RetentionHoldRecord, RetentionHoldStore, RetentionTarget, SecurityEpochRegistry,
+    RetentionHoldRecord, RetentionHoldStore, RetentionTarget, SeaOrmSecurityEpochStore,
     TransitionCheckpointStore, evaluate_transition_watchdog,
 };
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
@@ -41,9 +41,11 @@ async fn setup_test_db() -> DatabaseConnection {
 }
 
 #[tokio::test]
-async fn test_watchdog_automatic_convergence_and_hold_release() {
+async fn test_watchdog_expired_window_fails_closed_and_retains_holds() {
     let db = setup_test_db().await;
-    let registry = SecurityEpochRegistry::new();
+    let current_epoch = SeaOrmSecurityEpochStore::current(&db)
+        .await
+        .expect("durable epoch seeded by migration");
     let operation_id = Uuid::new_v4();
 
     // 1. Seed expired observation window (10 seconds in the past)
@@ -58,7 +60,7 @@ async fn test_watchdog_automatic_convergence_and_hold_release() {
         state: ModuleTransitionState::Observing {
             timeout_at: expired_timeout,
         },
-        security_epoch: registry.current_epoch(),
+        security_epoch: current_epoch,
         fences: ConflictFenceSet::new(vec![]),
         recovery_attempt_count: 0,
         created_at: Utc::now() - Duration::minutes(10),
@@ -68,7 +70,9 @@ async fn test_watchdog_automatic_convergence_and_hold_release() {
         .await
         .expect("save checkpoint");
 
-    // 2. Seed active rollout retention hold tied to this operation
+    // 2. Seed active rollout retention hold tied to this operation. It must
+    // be RETAINED: without an attested convergence the predecessor bytes
+    // stay protected from GC.
     let rollout_hold_id = Uuid::new_v4();
     let rollout_hold = RetentionHoldRecord {
         hold_id: rollout_hold_id,
@@ -85,7 +89,7 @@ async fn test_watchdog_automatic_convergence_and_hold_release() {
         .await
         .expect("insert rollout hold");
 
-    // 3. Seed an unrelated audit hold that MUST NOT be released
+    // 3. Seed an unrelated audit hold that must also remain untouched.
     let audit_hold_id = Uuid::new_v4();
     let audit_hold = RetentionHoldRecord {
         hold_id: audit_hold_id,
@@ -99,40 +103,53 @@ async fn test_watchdog_automatic_convergence_and_hold_release() {
         .await
         .expect("insert audit hold");
 
-    // 4. Run transition watchdog evaluator
-    let updated = evaluate_transition_watchdog(&db, &registry)
+    // 4. Run transition watchdog evaluator. An elapsed window is not health
+    // evidence, so the checkpoint must fail closed instead of converging.
+    let updated = evaluate_transition_watchdog(&db)
         .await
         .expect("evaluate watchdog");
 
     assert_eq!(updated.len(), 1);
     assert_eq!(updated[0].operation_id, operation_id);
-    assert!(matches!(
-        updated[0].state,
-        ModuleTransitionState::Converged { .. }
-    ));
+    match &updated[0].state {
+        ModuleTransitionState::FailedClosed { failure_reason } => {
+            assert!(
+                failure_reason.contains("explicit finalize attestation"),
+                "unexpected failure reason: {failure_reason}"
+            );
+        }
+        other => panic!("expected FailedClosed, got {other:?}"),
+    }
 
-    // 5. Verify persisted checkpoint is converged
+    // 5. Verify the failed-closed state is persisted.
     let reloaded = TransitionCheckpointStore::load_checkpoint(&db, operation_id)
         .await
         .expect("load checkpoint")
         .expect("checkpoint exists");
     assert!(matches!(
         reloaded.state,
-        ModuleTransitionState::Converged { .. }
+        ModuleTransitionState::FailedClosed { .. }
     ));
 
-    // 6. Verify rollout hold was released while audit hold remains
+    // 6. Verify BOTH holds remain active (no convergence, no release).
     let active_holds = RetentionHoldStore::list_active_holds(&db)
         .await
         .expect("list holds");
-    assert_eq!(active_holds.len(), 1);
-    assert_eq!(active_holds[0].hold_id, audit_hold_id);
+    assert_eq!(active_holds.len(), 2);
+    assert!(
+        active_holds
+            .iter()
+            .any(|hold| hold.hold_id == rollout_hold_id)
+    );
+    assert!(active_holds.iter().any(|hold| hold.hold_id == audit_hold_id));
 }
 
 #[tokio::test]
 async fn test_watchdog_active_window_not_prematurely_converged() {
     let db = setup_test_db().await;
-    let registry = SecurityEpochRegistry::new();
+    let current_epoch = SeaOrmSecurityEpochStore::current(&db)
+        .await
+        .expect("durable epoch seeded by migration");
     let operation_id = Uuid::new_v4();
 
     // Observation window still active (10 minutes in the future)
@@ -147,7 +164,7 @@ async fn test_watchdog_active_window_not_prematurely_converged() {
         state: ModuleTransitionState::Observing {
             timeout_at: active_timeout,
         },
-        security_epoch: registry.current_epoch(),
+        security_epoch: current_epoch,
         fences: ConflictFenceSet::new(vec![]),
         recovery_attempt_count: 0,
         created_at: Utc::now(),
@@ -157,7 +174,7 @@ async fn test_watchdog_active_window_not_prematurely_converged() {
         .await
         .expect("save checkpoint");
 
-    let updated = evaluate_transition_watchdog(&db, &registry)
+    let updated = evaluate_transition_watchdog(&db)
         .await
         .expect("evaluate watchdog");
 
@@ -177,11 +194,21 @@ async fn test_watchdog_active_window_not_prematurely_converged() {
 #[tokio::test]
 async fn test_watchdog_epoch_preemption_fails_closed_without_claiming_recovery() {
     let db = setup_test_db().await;
-    let mut registry = SecurityEpochRegistry::new();
-    let stale_epoch = registry.current_epoch();
+    // The checkpoint starts under the epoch durable at activation time...
+    let stale_epoch = SeaOrmSecurityEpochStore::current(&db)
+        .await
+        .expect("durable epoch seeded by migration");
 
-    // Advance registry epoch to invalidate stale transitions
-    registry.advance_epoch("Global security quarantine: supply-chain threat detected");
+    // ...then a quarantine anywhere in the platform advances the durable
+    // epoch, invalidating every in-flight transition from the old epoch.
+    let advanced = SeaOrmSecurityEpochStore::advance(
+        &db,
+        "Global security quarantine: supply-chain threat detected",
+        Utc::now(),
+    )
+    .await
+    .expect("advance durable epoch");
+    assert!(advanced > stale_epoch);
 
     let operation_id = Uuid::new_v4();
     let checkpoint = ModuleTransitionCheckpoint {
@@ -204,15 +231,20 @@ async fn test_watchdog_epoch_preemption_fails_closed_without_claiming_recovery()
         .await
         .expect("save checkpoint");
 
-    let updated = evaluate_transition_watchdog(&db, &registry)
+    let updated = evaluate_transition_watchdog(&db)
         .await
         .expect("evaluate watchdog");
 
     assert_eq!(updated.len(), 1);
     assert_eq!(updated[0].operation_id, operation_id);
-    assert!(matches!(
-        updated[0].state,
-        ModuleTransitionState::FailedClosed { .. }
-    ));
+    match &updated[0].state {
+        ModuleTransitionState::FailedClosed { failure_reason } => {
+            assert!(
+                failure_reason.contains("Security epoch preemption"),
+                "unexpected failure reason: {failure_reason}"
+            );
+        }
+        other => panic!("expected FailedClosed, got {other:?}"),
+    }
     assert_eq!(updated[0].recovery_attempt_count, 0);
 }
