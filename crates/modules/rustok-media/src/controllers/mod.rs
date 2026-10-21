@@ -116,6 +116,9 @@ fn media_error(error: MediaError) -> HttpError {
             "media_asset_referenced",
             format!("Media asset {id} is still retained by an owner reference"),
         ),
+        MediaError::NilTenantId => {
+            HttpError::bad_request("invalid_tenant_id", "Tenant ID cannot be nil")
+        }
         MediaError::InvalidAssetReferenceId => HttpError::bad_request(
             "invalid_asset_reference_id",
             "Media asset reference identity is invalid",

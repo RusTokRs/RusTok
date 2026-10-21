@@ -365,7 +365,10 @@ fn encode_image(
 }
 
 fn flatten_alpha(image: &RgbaImage, background: ImageBackground) -> Vec<u8> {
-    let mut rgb = Vec::with_capacity(image.width() as usize * image.height() as usize * 3);
+    let capacity = (image.width() as usize)
+        .saturating_mul(image.height() as usize)
+        .saturating_mul(3);
+    let mut rgb = Vec::with_capacity(capacity);
     for pixel in image.pixels() {
         let alpha = u16::from(pixel[3]);
         for (foreground, background) in
@@ -476,16 +479,19 @@ fn contained_dimensions(
     max_width: u32,
     max_height: u32,
 ) -> (u32, u32) {
+    if source_width == 0 || source_height == 0 {
+        return (max_width.max(1), max_height.max(1));
+    }
     let width_limited = u64::from(max_width) * u64::from(source_height)
         <= u64::from(max_height) * u64::from(source_width);
     if width_limited {
         let height = (u64::from(source_height) * u64::from(max_width) / u64::from(source_width))
             .max(1) as u32;
-        (max_width, height)
+        (max_width.max(1), height)
     } else {
         let width = (u64::from(source_width) * u64::from(max_height) / u64::from(source_height))
             .max(1) as u32;
-        (width, max_height)
+        (width, max_height.max(1))
     }
 }
 
@@ -811,5 +817,19 @@ mod tests {
         let result = worker.process(png(12, 6), recipe()).await;
         drop(held);
         assert!(matches!(result, Err(ImageProcessingError::Timeout)));
+    }
+
+    #[test]
+    fn test_contained_dimensions_edge_cases() {
+        // Zero dimensions do not divide by zero or panic
+        assert_eq!(contained_dimensions(0, 0, 100, 200), (100, 200));
+        assert_eq!(contained_dimensions(0, 100, 100, 200), (100, 200));
+        assert_eq!(contained_dimensions(100, 0, 100, 200), (100, 200));
+        assert_eq!(contained_dimensions(0, 0, 0, 0), (1, 1));
+
+        // Normal aspect ratio containment
+        assert_eq!(contained_dimensions(1000, 500, 200, 200), (200, 100));
+        assert_eq!(contained_dimensions(500, 1000, 200, 200), (100, 200));
+        assert_eq!(contained_dimensions(200, 200, 50, 50), (50, 50));
     }
 }
