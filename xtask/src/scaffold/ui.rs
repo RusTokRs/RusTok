@@ -187,12 +187,12 @@ mod tests {{
 "#
     );
     write_file_content(
-        &admin_dir.join("src").join("core.rs"),
+        &admin_dir.join("src").join("core").join("mod.rs"),
         &core_rs,
         opts.dry_run,
     )?;
 
-    // src/transport.rs
+    // src/transport/mod.rs
     let transport_rs = format!(
         r#"/*
  * Copyright (c) 2026 RusTokRs.
@@ -218,12 +218,12 @@ impl {pascal}AdminTransport {{
 "#
     );
     write_file_content(
-        &admin_dir.join("src").join("transport.rs"),
+        &admin_dir.join("src").join("transport").join("mod.rs"),
         &transport_rs,
         opts.dry_run,
     )?;
 
-    // src/ui.rs
+    // src/ui/mod.rs
     let ui_rs = format!(
         r#"/*
  * Copyright (c) 2026 RusTokRs.
@@ -250,7 +250,11 @@ pub fn {pascal}AdminPage() -> impl IntoView {{
 }}
 "#
     );
-    write_file_content(&admin_dir.join("src").join("ui.rs"), &ui_rs, opts.dry_run)?;
+    write_file_content(
+        &admin_dir.join("src").join("ui").join("mod.rs"),
+        &ui_rs,
+        opts.dry_run,
+    )?;
 
     // src/lib.rs
     let lib_rs = format!(
@@ -421,9 +425,13 @@ impl {pascal}StorefrontViewModel {{
 }}
 "#
     );
-    write_file_content(&sf_dir.join("src").join("core.rs"), &core_rs, opts.dry_run)?;
+    write_file_content(
+        &sf_dir.join("src").join("core").join("mod.rs"),
+        &core_rs,
+        opts.dry_run,
+    )?;
 
-    // src/transport.rs
+    // src/transport/mod.rs
     let transport_rs = format!(
         r#"/*
  * Copyright (c) 2026 RusTokRs.
@@ -448,12 +456,12 @@ impl {pascal}StorefrontTransport {{
 "#
     );
     write_file_content(
-        &sf_dir.join("src").join("transport.rs"),
+        &sf_dir.join("src").join("transport").join("mod.rs"),
         &transport_rs,
         opts.dry_run,
     )?;
 
-    // src/ui.rs
+    // src/ui/mod.rs
     let ui_rs = format!(
         r#"/*
  * Copyright (c) 2026 RusTokRs.
@@ -478,7 +486,11 @@ pub fn {pascal}StorefrontView() -> impl IntoView {{
 }}
 "#
     );
-    write_file_content(&sf_dir.join("src").join("ui.rs"), &ui_rs, opts.dry_run)?;
+    write_file_content(
+        &sf_dir.join("src").join("ui").join("mod.rs"),
+        &ui_rs,
+        opts.dry_run,
+    )?;
 
     // src/lib.rs
     let lib_rs = format!(

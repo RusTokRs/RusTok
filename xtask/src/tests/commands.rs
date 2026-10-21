@@ -1121,4 +1121,21 @@ fn test_scaffold_slug_validation() {
     assert!(!is_valid_slug("has_underscore"));
 }
 
+#[test]
+fn test_scaffold_dry_run_events_and_integrations() {
+    let opts = ScaffoldOptions {
+        slug: "video-calls".to_string(),
+        title: "Video Calls".to_string(),
+        description: "Enterprise encrypted video calls capability".to_string(),
+        category: "collaboration".to_string(),
+        with_db: true,
+        ui: ScaffoldUi::Dual,
+        dry_run: true,
+        skip_server_wire: true,
+        skip_validate: true,
+    };
+
+    assert!(scaffold(&opts).is_ok());
+}
+
 

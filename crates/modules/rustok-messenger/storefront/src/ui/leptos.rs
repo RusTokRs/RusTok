@@ -85,7 +85,9 @@ pub fn MessengerWorkstation() -> impl IntoView {
                     let tok = token.get();
                     let ten = tenant.get();
                     leptos::task::spawn_local(async move {
-                        let _ = transport::send_message(tok, ten, payload).await;
+                        if transport::send_message(tok, ten, payload).await.is_ok() {
+                            messages_resource.refetch();
+                        }
                     });
                 }
                 Err(err) => {

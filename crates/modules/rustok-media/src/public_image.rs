@@ -280,7 +280,8 @@ fn map_storage_error(error: object_store::Error) -> PortError {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_checksum, public_image_path};
+    use super::{MediaPublicImageBody, normalize_checksum, public_image_path};
+    use bytes::Bytes;
     use uuid::Uuid;
 
     #[test]
@@ -293,5 +294,41 @@ mod tests {
         );
         assert_eq!(normalize_checksum(&checksum), Some("a".repeat(64)));
         assert_eq!(normalize_checksum("not-a-checksum"), None);
+    }
+
+    #[test]
+    fn normalize_checksum_bounds_and_character_validation() {
+        assert_eq!(normalize_checksum(""), None);
+        assert_eq!(normalize_checksum(&"a".repeat(63)), None);
+        assert_eq!(normalize_checksum(&"a".repeat(65)), None);
+
+        let valid_64 = "0123456789abcdef0123456789ABCDEF0123456789abcdef0123456789ABCDEF";
+        assert_eq!(
+            normalize_checksum(valid_64),
+            Some(valid_64.to_ascii_lowercase())
+        );
+
+        // Leading/trailing whitespace is trimmed
+        let padded = format!("  {valid_64}  ");
+        assert_eq!(
+            normalize_checksum(&padded),
+            Some(valid_64.to_ascii_lowercase())
+        );
+
+        // Non-hex characters are rejected
+        let invalid_char = format!("{}g", &"0".repeat(63));
+        assert_eq!(normalize_checksum(&invalid_char), None);
+        let special_char = format!("{}!", &"0".repeat(63));
+        assert_eq!(normalize_checksum(&special_char), None);
+    }
+
+    #[test]
+    fn public_image_body_etag_formatting() {
+        let body = MediaPublicImageBody {
+            bytes: Bytes::from_static(b"data"),
+            mime_type: "image/png".to_string(),
+            checksum_sha256: "abc123def456".to_string(),
+        };
+        assert_eq!(body.etag(), "\"sha256-abc123def456\"");
     }
 }

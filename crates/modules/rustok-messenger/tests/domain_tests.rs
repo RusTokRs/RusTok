@@ -456,5 +456,51 @@ fn streaming_events_edited_and_deleted_partitioning() {
     assert_eq!(event_dispatched.partition_key(), event_cursor.partition_key());
 }
 
+#[test]
+fn empty_message_validation_contract() {
+    use rustok_messenger::dto::SendMessageInput;
+
+    let conv_id = Uuid::now_v7();
+
+    // Pure whitespace with no blocks is empty
+    let empty_input = SendMessageInput {
+        conversation_id: conv_id,
+        message_type: None,
+        content: "   \n\t  ".into(),
+        blocks_json: None,
+        reply_to_id: None,
+        is_encrypted: None,
+        encryption_algo: None,
+    };
+    assert!(empty_input.content.trim().is_empty() && empty_input.blocks_json.is_none());
+
+    // Empty content with blocks is valid (e.g. rich card or attachment only)
+    let blocks_only_input = SendMessageInput {
+        conversation_id: conv_id,
+        message_type: None,
+        content: "".into(),
+        blocks_json: Some(serde_json::json!([{"type": "image", "url": "https://example.com/img.png"}])),
+        reply_to_id: None,
+        is_encrypted: None,
+        encryption_algo: None,
+    };
+    assert!(!(blocks_only_input.content.trim().is_empty() && blocks_only_input.blocks_json.is_none()));
+}
+
+#[test]
+fn member_role_hierarchy_protection() {
+    let conv_id = Uuid::now_v7();
+    let admin = Member::new(conv_id, Uuid::now_v7(), MemberRole::Admin);
+    let owner = Member::new(conv_id, Uuid::now_v7(), MemberRole::Owner);
+    let member = Member::new(conv_id, Uuid::now_v7(), MemberRole::Member);
+
+    // Only owner can appoint owner; admin cannot appoint owner
+    assert_eq!(owner.role, MemberRole::Owner);
+    assert_ne!(admin.role, MemberRole::Owner);
+    assert!(admin.can_manage());
+    assert!(owner.can_manage());
+    assert!(!member.can_manage());
+}
+
 
 

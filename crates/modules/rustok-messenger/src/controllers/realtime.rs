@@ -385,7 +385,7 @@ async fn handle_socket(
                                 .delete_message(tenant_id, actor_id, message_id)
                                 .await
                             {
-                                Ok(()) => {
+                                Ok(_) => {
                                     let _ = room_sender_for_recv
                                         .send(MessengerServerMessage::MessageDeleted { message_id });
                                 }

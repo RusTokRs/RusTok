@@ -111,6 +111,8 @@ pub fn BlogView() -> impl IntoView {
 fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let posts_query_writer = use_route_query_writer();
+    let first_page_writer = posts_query_writer.clone();
+    let next_page_writer = posts_query_writer;
     let posts_next_cursor = data.posts.next_cursor.clone();
     let posts_cursor_query = use_route_query_value(core::POSTS_CURSOR_QUERY_KEY);
     let first_page_label =
@@ -323,7 +325,7 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                 .into_any()
             }}
             {move || posts_cursor_query.get().filter(|value| !value.trim().is_empty()).map(|_| {
-                let writer = posts_query_writer.clone();
+                let writer = first_page_writer.clone();
                 view! {
                     <div class="mt-6 flex justify-center">
                         <button
@@ -341,7 +343,7 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                 }
             })}
             {posts_next_cursor.map(|cursor| {
-                let writer = posts_query_writer.clone();
+                let writer = next_page_writer.clone();
                 view! {
                     <div class="mt-6 flex justify-center">
                         <button

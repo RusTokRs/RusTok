@@ -5,7 +5,6 @@ use axum::{
 };
 use rustok_api::{AuthContext, TenantContext};
 use rustok_web::{HttpError, HttpResult};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -334,24 +333,16 @@ pub async fn delete_message(
 
     let actor_id = auth.user_id;
 
-    let msg = crate::entities::Message::find_by_id(message_id)
-        .filter(crate::entities::message::Column::TenantId.eq(tenant_id))
-        .one(&runtime.db)
-        .await
-        .map_err(crate::error::MessengerError::from)?;
-
-    runtime
+    let conv_id = runtime
         .service
         .delete_message(tenant_id, actor_id, message_id)
         .await?;
 
-    if let Some(m) = msg {
-        runtime.room_hub.broadcast(
-            tenant_id,
-            m.conversation_id,
-            super::MessengerServerMessage::MessageDeleted { message_id },
-        );
-    }
+    runtime.room_hub.broadcast(
+        tenant_id,
+        conv_id,
+        super::MessengerServerMessage::MessageDeleted { message_id },
+    );
 
     Ok(StatusCode::NO_CONTENT)
 }

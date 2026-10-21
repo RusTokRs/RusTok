@@ -190,8 +190,10 @@ impl MessengerService {
         creator_member.insert(&txn).await?;
 
         // 3. Add other invited participants
+        let mut seen = std::collections::HashSet::new();
+        seen.insert(actor_id);
         for participant_id in input.participant_ids {
-            if participant_id != actor_id {
+            if seen.insert(participant_id) {
                 let p_member = member::ActiveModel {
                     id: Set(Uuid::now_v7()),
                     conversation_id: Set(conv_id),
@@ -200,7 +202,7 @@ impl MessengerService {
                     joined_at: Set(now),
                     muted_until: Set(None),
                 };
-                let _ = p_member.insert(&txn).await;
+                p_member.insert(&txn).await?;
             }
         }
 
@@ -412,6 +414,11 @@ impl MessengerService {
                 actual: content_len,
                 max: MAX_MESSAGE_CONTENT_SIZE,
             });
+        }
+        if input.content.trim().is_empty() && input.blocks_json.is_none() {
+            return Err(MessengerError::Validation(
+                "Message content cannot be empty".to_string(),
+            ));
         }
 
         let conv = Conversation::find_by_id(input.conversation_id)
@@ -664,12 +671,13 @@ impl MessengerService {
     }
 
     /// Soft-delete a message, preserving sequence monotonicity.
+    /// Returns the conversation_id of the deleted message.
     pub async fn delete_message(
         &self,
         tenant_id: Uuid,
         actor_id: Uuid,
         message_id: i64,
-    ) -> MessengerResult<()> {
+    ) -> MessengerResult<Uuid> {
         let msg = Message::find_by_id(message_id)
             .filter(message::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -677,13 +685,24 @@ impl MessengerService {
             .ok_or(MessengerError::MessageNotFound(message_id))?;
 
         if msg.deleted_at.is_some() {
-            return Ok(()); // Idempotent
+            return Ok(msg.conversation_id); // Idempotent
         }
 
         self.ensure_membership(msg.conversation_id, actor_id).await?;
 
         // Author can delete their own message. Channel owner/admin can also delete messages.
         if msg.sender_id != actor_id {
+            let conv = Conversation::find_by_id(msg.conversation_id)
+                .filter(conversation::Column::TenantId.eq(tenant_id))
+                .one(&self.db)
+                .await?
+                .ok_or(MessengerError::ConversationNotFound(msg.conversation_id))?;
+
+            // In 1-on-1 direct dialogues, counterparties cannot delete the other party's messages
+            if conv.conversation_type == ConversationType::Direct as i16 {
+                return Err(MessengerError::ConversationAccessDenied(msg.conversation_id));
+            }
+
             let member_record = Member::find()
                 .filter(member::Column::ConversationId.eq(msg.conversation_id))
                 .filter(member::Column::UserId.eq(actor_id))
@@ -698,9 +717,9 @@ impl MessengerService {
 
         let mut active: message::ActiveModel = msg.into();
         active.deleted_at = Set(Some(Utc::now()));
-        active.update(&self.db).await?;
+        let updated = active.update(&self.db).await?;
 
-        Ok(())
+        Ok(updated.conversation_id)
     }
 
     /// Add a member to a conversation (group or channel).
@@ -734,6 +753,11 @@ impl MessengerService {
             return Err(MessengerError::ConversationAccessDenied(conversation_id));
         }
 
+        let role = input.role.unwrap_or(MemberRole::Member);
+        if role == MemberRole::Owner && actor_member.role != MemberRole::Owner as i16 {
+            return Err(MessengerError::ConversationAccessDenied(conversation_id));
+        }
+
         let existing = Member::find()
             .filter(member::Column::ConversationId.eq(conversation_id))
             .filter(member::Column::UserId.eq(input.user_id))
@@ -746,8 +770,6 @@ impl MessengerService {
                 user_id: input.user_id,
             });
         }
-
-        let role = input.role.unwrap_or(MemberRole::Member);
         let now = Utc::now();
         let new_id = Uuid::now_v7();
         let new_member = member::ActiveModel {

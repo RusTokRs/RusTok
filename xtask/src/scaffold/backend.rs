@@ -13,6 +13,7 @@ pub(crate) fn generate_backend(
     let title = &opts.title;
     let desc = &opts.description;
     let crate_name = format!("rustok-{slug}");
+    let pascal_upper = snake.to_uppercase();
 
     // Cargo.toml
     let mut cargo_toml = format!(
@@ -32,8 +33,10 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dependencies]
 async-trait.workspace = true
 chrono = {{ workspace = true, features = ["serde"] }}
+rustok-api = {{ workspace = true }}
 rustok-core.workspace = true
 rustok-outbox.workspace = true
+sea-orm-migration = {{ workspace = true }}
 serde = {{ workspace = true, features = ["derive"] }}
 serde_json.workspace = true
 thiserror.workspace = true
@@ -46,7 +49,6 @@ uuid = {{ workspace = true, features = ["serde", "v4"] }}
     if opts.with_db {
         cargo_toml.push_str(
             r#"sea-orm = { workspace = true }
-sea-orm-migration = { workspace = true }
 "#,
         );
     }
@@ -145,14 +147,19 @@ Provides sovereign {title} domain capability for RusToK.
 ## Responsibility Zone
 - Domain entities, state invariants and business rules for {slug}
 - Storage and transactional boundaries for {slug} operations
+- Emits transactional domain events via `rustok-outbox`
+- Authorized via `rustok-api` permissions
 
 ## Entry points
 - `{pascal}Module` implementing `RusToKModule`
 - Domain services in `services`
+- Transactional Outbox events in `events`
+- Capability integration seams in `integrations`
 
 ## Interactions
 - Emits transactional domain events via `rustok-outbox`
-- Authorized via `rustok-rbac` permissions
+- Search index projections via `rustok-core` search integration
+- Multi-language translation targets via `rustok-translation-targets`
 "#
     );
     write_file_content(&module_dir.join("README.md"), &readme, opts.dry_run)?;
@@ -165,9 +172,17 @@ Provides sovereign {title} domain capability for RusToK.
 - `{pascal}Module`: platform lifecycle descriptor implementing `RusToKModule`.
 - `{pascal}Error`: domain error catalog for {slug}.
 - `{pascal}Result<T>`: standard result type alias.
+- Domain events: `{pascal}CreatedEvent`, `{pascal}UpdatedEvent`, `{pascal}DeletedEvent`, `{pascal}DomainEvent`.
+- Topic constant: `{pascal_upper}_EVENT_TOPIC`.
 
 ## Services
 - Domain and application use cases exported from `services`.
+
+## Integrations
+- Cache key and prefix helpers in `integrations::cache`.
+- Search projection source skeleton in `integrations::search`.
+- Media attachment invariants in `integrations::media`.
+- Translation provider blueprint in `integrations::translation`.
 "#
     );
     write_file_content(&module_dir.join("CRATE_API.md"), &crate_api, opts.dry_run)?;
@@ -186,7 +201,8 @@ The `{slug}` module provides canonical {title} domain functionality for RusToK.
 
 ## Integration
 - Core runtime registration in `apps/server` via `RusToKModule`
-- Event bus subscription via `rustok-outbox`
+- Event bus subscription and emission via `rustok-outbox`
+- Full-text search discovery projection via `rustok-core`
 - Client surfaces in `admin/` and `storefront/`
 
 ## Verification
@@ -271,6 +287,8 @@ Sovereign domain capability and client surfaces for {title}.
 pub mod domain;
 pub mod dto;
 pub mod error;
+pub mod events;
+pub mod integrations;
 pub mod module;
 pub mod services;
 "#
@@ -288,6 +306,10 @@ pub mod migrations;
     lib_rs.push_str(&format!(
         r#"
 pub use error::{{{pascal}Error, {pascal}Result}};
+pub use events::{{
+    {pascal}CreatedEvent, {pascal}DeletedEvent, {pascal}DomainEvent, {pascal}UpdatedEvent,
+    {pascal_upper}_EVENT_TOPIC,
+}};
 pub use module::{pascal}Module;
 "#
     ));
@@ -298,8 +320,8 @@ pub use module::{pascal}Module;
         opts.dry_run,
     )?;
 
-    // src/error.rs
-    let error_rs = format!(
+    // src/error/mod.rs (directory compliance for enrolled layout)
+    let error_mod = format!(
         r#"/*
  * Copyright (c) 2026 RusTokRs.
  *
@@ -309,6 +331,8 @@ pub use module::{pascal}Module;
  *
  * You may not remove or alter this copyright notice or license header.
  */
+
+//! Domain and transactional error catalog for {slug}.
 
 use thiserror::Error;
 
@@ -336,13 +360,194 @@ pub enum {pascal}Error {{
 "#
     );
     write_file_content(
-        &module_dir.join("src").join("error.rs"),
-        &error_rs,
+        &module_dir.join("src").join("error").join("mod.rs"),
+        &error_mod,
+        opts.dry_run,
+    )?;
+
+    // src/events/mod.rs (Outbox domain events)
+    let events_mod = format!(
+        r#"/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok.
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
+
+//! Transactional Outbox domain events for {slug}.
+//!
+//! All state mutations emit typed events through `rustok-outbox` for
+//! asynchronous distribution, cache invalidation, and CQRS projection updates.
+
+use chrono::{{DateTime, Utc}};
+use serde::{{Deserialize, Serialize}};
+use uuid::Uuid;
+
+/// Canonical event topic for all {slug} domain events.
+pub const {pascal_upper}_EVENT_TOPIC: &str = "{slug}.events";
+
+pub const {pascal_upper}_EVENT_CREATED: &str = "{slug}.created";
+pub const {pascal_upper}_EVENT_UPDATED: &str = "{slug}.updated";
+pub const {pascal_upper}_EVENT_DELETED: &str = "{slug}.deleted";
+
+/// Published when a new {slug} record is created.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct {pascal}CreatedEvent {{
+    pub tenant_id: Uuid,
+    pub entity_id: Uuid,
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+}}
+
+/// Published when an existing {slug} record is updated.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct {pascal}UpdatedEvent {{
+    pub tenant_id: Uuid,
+    pub entity_id: Uuid,
+    pub name: Option<String>,
+    pub updated_at: DateTime<Utc>,
+}}
+
+/// Published when a {slug} record is deleted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct {pascal}DeletedEvent {{
+    pub tenant_id: Uuid,
+    pub entity_id: Uuid,
+    pub deleted_at: DateTime<Utc>,
+}}
+
+/// Enumeration of all domain events emitted by {slug}.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum {pascal}DomainEvent {{
+    Created({pascal}CreatedEvent),
+    Updated({pascal}UpdatedEvent),
+    Deleted({pascal}DeletedEvent),
+}}
+
+#[cfg(test)]
+mod tests {{
+    use super::*;
+
+    #[test]
+    fn test_event_serde_roundtrip() {{
+        let now = Utc::now();
+        let tenant_id = Uuid::new_v4();
+        let entity_id = Uuid::new_v4();
+
+        let event = {pascal}CreatedEvent {{
+            tenant_id,
+            entity_id,
+            name: "Test entity".into(),
+            created_at: now,
+        }};
+
+        let json = serde_json::to_string(&event).expect("serialize event");
+        let decoded: {pascal}CreatedEvent = serde_json::from_str(&json).expect("deserialize event");
+        assert_eq!(event, decoded);
+
+        let domain_event = {pascal}DomainEvent::Created(event);
+        let domain_json = serde_json::to_string(&domain_event).expect("serialize domain event");
+        let domain_decoded: {pascal}DomainEvent =
+            serde_json::from_str(&domain_json).expect("deserialize domain event");
+        assert_eq!(domain_event, domain_decoded);
+    }}
+}}
+"#
+    );
+    write_file_content(
+        &module_dir.join("src").join("events").join("mod.rs"),
+        &events_mod,
+        opts.dry_run,
+    )?;
+
+    // src/integrations/mod.rs (Platform capability bridges)
+    let integrations_mod = format!(
+        r#"/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok.
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
+
+//! Canonical integration seams and capability bridges for {slug}.
+//!
+//! This module provides uniform conventions for interacting with cross-cutting
+//! platform capabilities: Caching, Search indexing, Media attachments, and Translation.
+
+pub mod cache {{
+    //! Cache key helpers and invalidation conventions.
+    //!
+    //! Standard Redis / in-memory cache key format:
+    //! `tenant:{{tenant_id}}:{slug}:{{entity_name}}:{{entity_id}}`
+
+    use uuid::Uuid;
+
+    /// Formats a canonical tenant-scoped cache key for a record.
+    pub fn record_cache_key(tenant_id: Uuid, id: Uuid) -> String {{
+        format!("tenant:{{tenant_id}}:{slug}:record:{{id}}")
+    }}
+
+    /// Formats a tenant-scoped cache prefix for bulk invalidation sweeps.
+    pub fn tenant_cache_prefix(tenant_id: Uuid) -> String {{
+        format!("tenant:{{tenant_id}}:{slug}:")
+    }}
+}}
+
+pub mod search {{
+    //! Search & discovery projection seam.
+    //!
+    //! To make {slug} entities discoverable in `rustok-search`:
+    //! 1. Implement `SearchProjectionSource` and `SearchProjectionSourceFactory`
+    //!    from `rustok_core::search_projection`.
+    //! 2. Register the factory in `{pascal}Module::register_runtime_extensions`:
+    //!
+    //! ```rust,ignore
+    //! rustok_core::search_projection::register_search_projection_source(
+    //!     extensions,
+    //!     crate::integrations::search::{pascal}SearchProjectionSourceFactory,
+    //! )?;
+    //! ```
+    //!
+    //! See `crates/modules/rustok-blog/src/services/search_projection.rs` as canonical reference.
+}}
+
+pub mod media {{
+    //! Media asset attachment conventions.
+    //!
+    //! Assets (images, documents, video) are sovereignly owned by `rustok-media`.
+    //! When {slug} entities associate with media:
+    //! - Store referenced media asset IDs as `Option<uuid::Uuid>` or `Vec<uuid::Uuid>`.
+    //! - Invariant: Verify tenant ownership of the media asset before linking.
+    //! - Side-effect: When deleting an entity, emit a deletion event so media references can be reclaimed.
+}}
+
+pub mod translation {{
+    //! Multi-language translation target seam.
+    //!
+    //! When {slug} domain entities contain localized strings (e.g. title, description, content),
+    //! implement `TranslationTargetProvider` from `rustok_translation_targets` and register
+    //! the provider inside `{pascal}Module::register_runtime_extensions`.
+    //!
+    //! See `crates/modules/rustok-taxonomy/src/translation_target.rs` as canonical reference.
+}}
+"#
+    );
+    write_file_content(
+        &module_dir.join("src").join("integrations").join("mod.rs"),
+        &integrations_mod,
         opts.dry_run,
     )?;
 
     // src/module.rs
-    let mut module_rs = r#"/*
+    let mut module_rs = format!(
+        r#"/*
  * Copyright (c) 2026 RusTokRs.
  *
  * This file is part of RusTok.
@@ -353,20 +558,13 @@ pub enum {pascal}Error {{
  */
 
 use async_trait::async_trait;
-use rustok_core::{ModuleKind, RusToKModule};
-"#
-    .to_string();
-
-    if opts.with_db {
-        module_rs.push_str(
-            r#"use rustok_core::MigrationSource;
+use rustok_api::Permission;
+use rustok_core::module::{{
+    MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry,
+    ModuleKind, ModuleRuntimeExtensions, RusToKModule,
+}};
 use sea_orm_migration::MigrationTrait;
-"#,
-        );
-    }
 
-    module_rs.push_str(&format!(
-        r#"
 pub struct {pascal}Module;
 
 #[async_trait]
@@ -388,11 +586,38 @@ impl RusToKModule for {pascal}Module {{
     }}
 
     fn kind(&self) -> ModuleKind {{
-        ModuleKind::Domain
+        ModuleKind::Optional
+    }}
+
+    fn dependencies(&self) -> &[&'static str] {{
+        &["outbox"]
+    }}
+
+    fn permissions(&self) -> Vec<Permission> {{
+        // Standard RBAC permissions for {slug}.
+        // Declare registered permissions here once corresponding Resource
+        // variants are added to `rustok_api::permissions::Resource`.
+        Vec::new()
+    }}
+
+    fn register_runtime_extensions(
+        &self,
+        _extensions: &mut ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {{
+        // Register search projection sources, translation targets, or custom runtime extensions:
+        Ok(())
+    }}
+
+    fn register_event_listeners(
+        &self,
+        _registry: &mut ModuleEventListenerRegistry,
+        _ctx: &ModuleEventListenerContext<'_>,
+    ) {{
+        // Register event listeners for cross-module integration or outbox event handling:
     }}
 }}
 "#
-    ));
+    );
 
     if opts.with_db {
         module_rs.push_str(&format!(
@@ -404,7 +629,42 @@ impl MigrationSource for {pascal}Module {{
 }}
 "#
         ));
+    } else {
+        module_rs.push_str(&format!(
+            r#"
+impl MigrationSource for {pascal}Module {{
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {{
+        Vec::new()
+    }}
+}}
+"#
+        ));
     }
+
+    module_rs.push_str(&format!(
+        r#"
+#[cfg(test)]
+mod tests {{
+    use super::*;
+
+    #[test]
+    fn test_module_metadata() {{
+        let module = {pascal}Module;
+        assert_eq!(module.slug(), "{slug}");
+        assert_eq!(module.name(), "{title}");
+        assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
+        assert_eq!(module.dependencies(), &["outbox"]);
+        assert_eq!(module.kind(), ModuleKind::Optional);
+    }}
+
+    #[test]
+    fn test_module_permissions_contract() {{
+        let module = {pascal}Module;
+        let _perms = module.permissions();
+    }}
+}}
+"#
+    ));
 
     write_file_content(
         &module_dir.join("src").join("module.rs"),

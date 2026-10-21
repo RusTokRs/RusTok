@@ -168,7 +168,7 @@ async fn missing_public_base_image_gets_owner_capability_url_and_immutable_body(
     })
     .expect("direct-public runtime should initialize");
     let direct = MediaPublicImageReadPort::get_public_image_asset(
-        &MediaPublicImageService::new(database, direct_storage),
+        &MediaPublicImageService::new(database.clone(), direct_storage),
         context(tenant_id),
         item.id,
         None,
@@ -179,4 +179,37 @@ async fn missing_public_base_image_gets_owner_capability_url_and_immutable_body(
     .expect("image descriptor should remain available");
     assert!(direct.url.starts_with("/media/"));
     assert!(!direct.url.contains("/api/media/public/images/"));
+
+    // Nil UUID validation guards
+    let nil_media = MediaPublicImageReadPort::get_public_image_asset(
+        &service,
+        context(tenant_id),
+        Uuid::nil(),
+        None,
+    )
+    .await
+    .expect_err("nil media ID must be rejected");
+    assert_eq!(nil_media.kind, PortErrorKind::Validation);
+
+    let nil_tenant = MediaPublicImageReadPort::get_public_image_asset(
+        &service,
+        context(Uuid::nil()),
+        item.id,
+        None,
+    )
+    .await
+    .expect_err("nil tenant ID must be rejected");
+    assert_eq!(nil_tenant.kind, PortErrorKind::Validation);
+
+    let nil_read_tenant = service
+        .read_public_image(Uuid::nil(), item.id, checksum)
+        .await
+        .expect_err("nil tenant must return not found");
+    assert_eq!(nil_read_tenant.kind, PortErrorKind::NotFound);
+
+    let nil_read_media = service
+        .read_public_image(tenant_id, Uuid::nil(), checksum)
+        .await
+        .expect_err("nil media must return not found");
+    assert_eq!(nil_read_media.kind, PortErrorKind::NotFound);
 }

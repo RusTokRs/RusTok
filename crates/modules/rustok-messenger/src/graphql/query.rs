@@ -1,6 +1,6 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use rustok_api::{AuthContext, TenantContext};
-use sea_orm::{DatabaseConnection, EntityTrait};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use super::runtime_data::MessengerGraphqlRuntimeData;
@@ -155,33 +155,44 @@ impl MessengerQuery {
             .await
             .map_err(|e| FieldError::new(e.to_string()))?;
 
-        let mut items = Vec::with_capacity(convs.len());
-        for c in convs {
-            let last_content = if let Some(msg_id) = c.last_message_id {
-                crate::entities::Message::find_by_id(msg_id)
-                    .one(db)
-                    .await
-                    .ok()
-                    .flatten()
-                    .filter(|m| !m.is_encrypted && m.deleted_at.is_none())
-                    .map(|m| m.content)
-            } else {
-                None
-            };
+        let last_msg_ids: Vec<i64> = convs
+            .iter()
+            .filter_map(|c| c.last_message_id)
+            .collect();
 
-            items.push(ConversationItemGql {
-                id: c.id,
-                conversation_type: c.conversation_type.as_str().to_string(),
-                title: c.title,
-                topic: None,
-                last_message_content: last_content,
-                last_message_at: c.last_message_at,
-                unread_count: c.unread_count as usize,
-                is_encrypted: c.is_encrypted,
-                entity_type: c.entity_type,
-                entity_id: c.entity_id,
-            });
-        }
+        let message_map: std::collections::HashMap<i64, String> = if last_msg_ids.is_empty() {
+            std::collections::HashMap::new()
+        } else {
+            crate::entities::Message::find()
+                .filter(crate::entities::message::Column::Id.is_in(last_msg_ids))
+                .filter(crate::entities::message::Column::DeletedAt.is_null())
+                .filter(crate::entities::message::Column::IsEncrypted.eq(false))
+                .all(db)
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .map(|m| (m.id, m.content))
+                .collect()
+        };
+
+        let items = convs
+            .into_iter()
+            .map(|c| {
+                let last_content = c.last_message_id.and_then(|id| message_map.get(&id).cloned());
+                ConversationItemGql {
+                    id: c.id,
+                    conversation_type: c.conversation_type.as_str().to_string(),
+                    title: c.title,
+                    topic: None,
+                    last_message_content: last_content,
+                    last_message_at: c.last_message_at,
+                    unread_count: c.unread_count as usize,
+                    is_encrypted: c.is_encrypted,
+                    entity_type: c.entity_type,
+                    entity_id: c.entity_id,
+                }
+            })
+            .collect();
 
         Ok(items)
     }
@@ -205,19 +216,35 @@ impl MessengerQuery {
             .map_err(|e| FieldError::new(e.message))?;
 
         let service = MessengerService::new(db.clone(), 1);
-        let msgs = service
-            .list_messages(
-                tenant.id,
-                auth.user_id,
-                crate::dto::ListMessagesQuery {
-                    conversation_id,
-                    limit: limit.map(|l| l.max(1) as u64),
-                    before_id: None,
-                    after_id: since_seq,
-                },
-            )
-            .await
-            .map_err(|e| FieldError::new(e.to_string()))?;
+        let msgs = if let Some(seq) = since_seq {
+            let sync_res = service
+                .fast_sync(
+                    tenant.id,
+                    auth.user_id,
+                    crate::dto::FastSyncRequest {
+                        conversation_id,
+                        since_seq: seq,
+                        limit: limit.map(|l| l.max(1) as u64),
+                    },
+                )
+                .await
+                .map_err(|e| FieldError::new(e.to_string()))?;
+            sync_res.messages
+        } else {
+            service
+                .list_messages(
+                    tenant.id,
+                    auth.user_id,
+                    crate::dto::ListMessagesQuery {
+                        conversation_id,
+                        limit: limit.map(|l| l.max(1) as u64),
+                        before_id: None,
+                        after_id: None,
+                    },
+                )
+                .await
+                .map_err(|e| FieldError::new(e.to_string()))?
+        };
 
         let result = msgs
             .into_iter()
