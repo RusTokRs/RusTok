@@ -87,11 +87,15 @@ async fn concurrent_duplicate_envelope_commits_once_and_replays_cleanly() -> Tes
     let envelope = EventEnvelope::new(
         tenant_id,
         Some(actor_id),
-        DomainEvent::CommentCreated {
+        // The approval is the counted transition, so the race is over the one
+        // envelope that must move the counter and the outbox exactly once.
+        DomainEvent::CommentStatusChanged {
             comment_id: Uuid::new_v4(),
             target_type: "blog_post".to_string(),
             target_id: post_id,
             author_id: actor_id,
+            old_status: "pending".to_string(),
+            new_status: "approved".to_string(),
         },
     );
 

@@ -88,9 +88,9 @@ for (const marker of [
   'DomainEvent::CommentCreated',
   'DomainEvent::CommentUpdated',
   'DomainEvent::CommentStatusChanged',
-  'delta: 1',
+  'counted: Some(false)',
   'DomainEvent::CommentDeleted',
-  'delta: -1',
+  'counted: Some(new_status == "approved")',
   'fn projection_applied_delta(',
   'fn next_comment_count(comment_count: i32, delta: i32)',
   'comment_count.saturating_add(delta).max(0)',
@@ -102,11 +102,11 @@ for (const marker of [
   'Column::CommentId.eq(change.comment_id)',
   'order_by_desc(blog_comment_projection_delivery::Column::EventId)',
   'delivery.event_id >= envelope.id',
-  'let applied_delta = projection_applied_delta(',
+  'let (applied_delta, counted) = projection_applied_delta(',
   'let next_comment_count = next_comment_count(post.comment_count, applied_delta);',
   'let post_updated =',
   'Column::CommentCount.eq(post.comment_count)',
-  'delta: Set(change.delta)',
+  'delta: Set(i32::from(counted))',
   'OnConflict::column(blog_comment_projection_delivery::Column::EventId)',
   '.do_nothing()',
   'if post_updated',
@@ -148,7 +148,7 @@ requireMarker(
 requireCount(
   handler,
   'target_type == BLOG_POST_TARGET_TYPE',
-  3,
+  4,
   `${handlerPath}: Blog target classification`,
 );
 requireNoMarker(
@@ -188,7 +188,7 @@ const lifecycleGate = handler.indexOf(
   latestQuery,
 );
 const appliedDelta = handler.indexOf(
-  'let applied_delta = projection_applied_delta(',
+  'let (applied_delta, counted) = projection_applied_delta(',
   lifecycleGate,
 );
 const postUpdate = handler.indexOf('let post_updated =', appliedDelta);
@@ -271,7 +271,7 @@ for (const marker of [
   'async fn missing_post_replay_commits_only_after_source_appears()',
   'missing Blog post must keep the delivery retryable',
   'async fn outbox_failure_rolls_back_counter_and_delivery_before_retry()',
-  'async fn update_and_status_events_advance_projection_cursor_without_count_change()',
+  'async fn approval_counts_once_and_update_events_preserve_the_count()',
   'DROP TABLE sys_events',
   'missing outbox table must fail the projection transaction',
   'create_outbox_table(&test_db.db).await?;',
@@ -499,7 +499,7 @@ if (evidence) {
       'delete_before_create_stays_non_negative_and_replays_in_order',
       'missing_post_replay_commits_only_after_source_appears',
       'outbox_failure_rolls_back_counter_and_delivery_before_retry',
-      'update_and_status_events_advance_projection_cursor_without_count_change',
+      'approval_counts_once_and_update_events_preserve_the_count',
     ].sort().join('|')
   ) {
     failures.push(`${evidencePath}: PostgreSQL harness case drift`);

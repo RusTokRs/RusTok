@@ -140,7 +140,7 @@ async fn preview_token_reads_stop_after_revocation_and_expiry() {
         .await
         .expect("a draft may be previewed");
     let preview = service
-        .get_post_by_token(&token.token, "en", None)
+        .get_post_by_token(token.token.as_deref().expect("a created token carries its one-time plaintext"), "en", None)
         .await
         .expect("token read should not fail")
         .expect("a live token must resolve");
@@ -152,7 +152,7 @@ async fn preview_token_reads_stop_after_revocation_and_expiry() {
         .expect("revocation should succeed");
     assert!(
         service
-            .get_post_by_token(&token.token, "en", None)
+            .get_post_by_token(token.token.as_deref().expect("a created token carries its one-time plaintext"), "en", None)
             .await
             .expect("token read should not fail")
             .is_none(),
@@ -194,7 +194,7 @@ async fn preview_token_read_fails_closed_when_blog_is_disabled_for_the_tenant() 
         .expect("a draft may be previewed");
     assert!(
         service
-            .get_post_by_token(&token.token, "en", None)
+            .get_post_by_token(token.token.as_deref().expect("a created token carries its one-time plaintext"), "en", None)
             .await
             .expect("token read should not fail")
             .is_some(),
@@ -204,7 +204,7 @@ async fn preview_token_read_fails_closed_when_blog_is_disabled_for_the_tenant() 
     set_blog_module_enabled(&db, tenant_id, false).await;
     assert!(
         service
-            .get_post_by_token(&token.token, "en", None)
+            .get_post_by_token(token.token.as_deref().expect("a created token carries its one-time plaintext"), "en", None)
             .await
             .expect("token read should not fail")
             .is_none(),
@@ -257,7 +257,7 @@ async fn preview_token_cleanup_is_tenant_scoped_and_bounded() {
     );
     assert!(
         service
-            .get_post_by_token(&live.token, "en", None)
+            .get_post_by_token(live.token.as_deref().expect("a created token carries its one-time plaintext"), "en", None)
             .await
             .expect("token read should not fail")
             .is_some(),
@@ -303,7 +303,7 @@ async fn leaving_draft_revokes_the_post_preview_tokens() {
         .expect("a draft may be previewed");
     assert!(
         service
-            .get_post_by_token(&token.token, "en", None)
+            .get_post_by_token(token.token.as_deref().expect("a created token carries its one-time plaintext"), "en", None)
             .await
             .expect("token read should not fail")
             .is_some(),
@@ -321,7 +321,7 @@ async fn leaving_draft_revokes_the_post_preview_tokens() {
     );
     assert!(
         service
-            .get_post_by_token(&token.token, "en", None)
+            .get_post_by_token(token.token.as_deref().expect("a created token carries its one-time plaintext"), "en", None)
             .await
             .expect("token read should not fail")
             .is_none(),
@@ -341,7 +341,7 @@ async fn leaving_draft_revokes_the_post_preview_tokens() {
         .expect("the post should unpublish");
     assert!(
         service
-            .get_post_by_token(&token.token, "en", None)
+            .get_post_by_token(token.token.as_deref().expect("a created token carries its one-time plaintext"), "en", None)
             .await
             .expect("token read should not fail")
             .is_none(),
@@ -375,7 +375,7 @@ async fn leaving_draft_revokes_the_post_preview_tokens() {
     );
     assert!(
         service
-            .get_post_by_token(&archived_token.token, "en", None)
+            .get_post_by_token(archived_token.token.as_deref().expect("a created token carries its one-time plaintext"), "en", None)
             .await
             .expect("token read should not fail")
             .is_none(),
@@ -385,5 +385,62 @@ async fn leaving_draft_revokes_the_post_preview_tokens() {
         token_rows(&db, other_tenant).await,
         1,
         "the other tenant's live token survives the whole lifecycle"
+    );
+}
+
+#[tokio::test]
+async fn preview_tokens_are_stored_as_digests_and_never_listed() {
+    let (db, event_bus) = setup_hardening_schema().await;
+    let tenant_id = Uuid::new_v4();
+    set_blog_module_enabled(&db, tenant_id, true).await;
+    let post_id = create_draft_post(&db, &event_bus, tenant_id, "digest-storage").await;
+    let service = token_service(&db, &event_bus);
+
+    let created = service
+        .create_token(tenant_id, post_id, admin(), None)
+        .await
+        .expect("a draft may be previewed");
+    let plaintext = created
+        .token
+        .clone()
+        .expect("the create result carries the one-time plaintext");
+
+    let stored = blog_preview_token::Entity::find_by_id(created.id)
+        .one(&db)
+        .await
+        .expect("token row should be readable")
+        .expect("token row should exist");
+    assert_ne!(
+        stored.token, plaintext,
+        "the database must never store a usable preview token"
+    );
+    assert_eq!(
+        stored.token.len(),
+        64,
+        "the stored value is a SHA-256 hex digest"
+    );
+    assert!(
+        stored.token.chars().all(|c| c.is_ascii_hexdigit()),
+        "the stored value is a hex digest"
+    );
+
+    let listed = service
+        .list_tokens(tenant_id, post_id, admin())
+        .await
+        .expect("the author may list token metadata");
+    assert_eq!(listed.len(), 1);
+    assert!(
+        listed[0].token.is_none(),
+        "a token listing must not carry a credential"
+    );
+
+    // The plaintext still resolves exactly once through the digest lookup.
+    assert!(
+        service
+            .get_post_by_token(&plaintext, "en", None)
+            .await
+            .expect("token read should not fail")
+            .is_some(),
+        "the minted plaintext resolves through its stored digest"
     );
 }

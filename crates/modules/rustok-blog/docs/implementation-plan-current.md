@@ -27,7 +27,7 @@ The hardened contract now requires:
   explicit Archived -> Draft restore command;
 - derived Comments counters that preserve Blog business `version` and
   `updated_at` and publish locale-neutral reindex requests;
-- Comments lifecycle projections serialize on the tenant-scoped Blog post row lock, order delivery state per comment by envelope id, derive counter transitions from lifecycle state, record update/status-change events without changing `comment_count`, and never mutate Blog business `version` or `updated_at`;
+- Comments lifecycle projections serialize on the tenant-scoped Blog post row lock, order delivery state per comment by envelope id, derive counter transitions from the counted state of the comment (`comment_count` counts approved comments only: creation is pending and uncounted, approval counts once, spam/trash/delete un-count, body edits preserve the state), and never mutate Blog business `version` or `updated_at`;
 - public-comment snapshot keys include the latest committed monotonic Blog comment projection revision per tenant/post; invalidation survives cross-comment out-of-order delivery and requires no cache-key enumeration or second invalidation index;
 - current-tenant authority on GraphQL reads and writes;
 - one redacted Blog public-error mapping boundary;
@@ -525,7 +525,7 @@ base `1a420c8`).
   routes in bounded, tenant-scoped batches as the safety net for a missed delivery.
 - **M-6 OpenAPI registration drift.** `BlogApiDoc` (`src/controllers/openapi.rs`)
   registered 16 of the 19 handlers that declare a `#[utoipa::path]`: `preview_post`
-  (`GET /api/blog/preview/{token}`), `pin_post` and `unpin_post`
+  (`GET /api/blog/preview` with the token in the `x-blog-preview-token` header), `pin_post` and `unpin_post`
   (`POST /api/blog/posts/{id}/pin|unpin`) are served by `axum_router` but were absent
   from the document the server merges and exports, so they were invisible to generated
   clients. All three are registered now, and the pairing is gated by

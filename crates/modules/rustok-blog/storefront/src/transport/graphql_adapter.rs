@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{ApiError, configured_tenant_slug};
 
-const STOREFRONT_BLOG_QUERY: &str = "query StorefrontBlog($postSlug: String!, $filter: PublicPostsFilter, $locale: String, $commentsPage: Int!, $commentsPerPage: Int!) { selectedPost: postBySlug(slug: $postSlug, locale: $locale) { id effectiveLocale title slug excerpt categoryId categoryName authorProfile { userId handle displayName tags avatarMediaId } content { document html } contentPlainText status publishedAt tags featuredImageUrl publicComments(locale: $locale, page: $commentsPage, perPage: $commentsPerPage) { availability cachedSnapshot total items { id effectiveLocale authorId contentPreview parentCommentId createdAt } } } posts: publicBlogPosts(filter: $filter) { items { id title effectiveLocale slug excerpt categoryId categoryName status publishedAt tags featuredImageUrl authorProfile { userId handle displayName tags avatarMediaId } } } }";
+const STOREFRONT_BLOG_QUERY: &str = "query StorefrontBlog($postSlug: String!, $filter: PublicPostsFilter, $locale: String, $commentsPage: Int!, $commentsPerPage: Int!) { selectedPost: postBySlug(slug: $postSlug, locale: $locale) { id effectiveLocale title slug excerpt categoryId categoryName authorProfile { userId handle displayName tags avatarMediaId } content { document html } contentPlainText status publishedAt tags featuredImageUrl publicComments(locale: $locale, page: $commentsPage, perPage: $commentsPerPage) { availability cachedSnapshot total items { id effectiveLocale authorId contentPreview parentCommentId createdAt } } } posts: publicBlogPosts(filter: $filter) { nextCursor items { id title effectiveLocale slug excerpt categoryId categoryName status publishedAt tags featuredImageUrl authorProfile { userId handle displayName tags avatarMediaId } } } }";
 const CREATE_BLOG_COMMENT_MUTATION: &str = "mutation CreateBlogComment($postId: UUID!, $input: CreateBlogCommentInput!) { createBlogComment(postId: $postId, input: $input) { id requestedLocale effectiveLocale postId authorId content { document html } contentPlainText status parentCommentId createdAt updatedAt } }";
 
 #[derive(Debug, Deserialize)]
@@ -63,6 +63,8 @@ struct PublicPostsFilter {
     locale: Option<String>,
     #[serde(rename = "perPage")]
     per_page: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    after: Option<String>,
 }
 
 async fn request<V, T>(query: &str, variables: V, token: Option<String>) -> Result<T, ApiError>
@@ -94,6 +96,7 @@ pub async fn fetch_blog(
                 tag: fetch_request.tag,
                 locale: fetch_request.locale.clone(),
                 per_page: 6,
+                after: fetch_request.posts_after,
             },
             locale: fetch_request.locale,
             comments_page: bounded_comments_request_page(comments_page),

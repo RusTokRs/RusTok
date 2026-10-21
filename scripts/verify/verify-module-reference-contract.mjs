@@ -275,7 +275,7 @@ requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
 ]);
 requireAll("crates/modules/rustok-blog/src/services/post/queries.rs", [
   "pub async fn list_public_visible_keyset(",
-  "Self::validate_persisted_version(&post)?",
+  "if let Err(error) = Self::validate_persisted_version(&post)",
 ]);
 forbid("crates/modules/rustok-blog/src/services/post/repository.rs", [
   "translation_seed_in_tx",
@@ -419,7 +419,7 @@ requireAll("crates/modules/rustok-blog/src/services/comment_projection.rs", [
   "order_by_desc(blog_comment_projection_delivery::Column::EventId)",
   "delivery.event_id >= envelope.id",
   "fn projection_applied_delta(",
-  "delta: Set(change.delta)",
+  "delta: Set(i32::from(counted))",
 ]);
 forbid("crates/modules/rustok-blog/src/services/comment_projection.rs", [
   "blog_post::Column::Version",

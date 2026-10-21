@@ -123,6 +123,11 @@ copy must use the canonical Taxonomy owner contract.
 - The static `blog -> comments` lifecycle edge is removed. Blog owns comment-surface
   policy; Comments owns threads, bodies, moderation, and retention. Provider absence
   fails comment operations closed while Blog publication serving remains available.
+- The projected `comment_count` on a post counts **approved comments only** — the
+  number a public reader can actually see. Creation is moderation-pending and does
+  not move the counter; approval moves it exactly once; moving a comment to
+  spam/trash or deleting it moves it back; body edits never change it. The
+  moderation queue reports its own totals separately and is not this counter.
 - Reactions remains an optional integration. Blog owns whether its post surface
   requests reactions; the Reactions owner controls reaction capabilities and state,
   and effective availability must be resolved through an owner contract rather than
@@ -226,7 +231,12 @@ See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../
 ## Preview tokens
 
 - `PreviewTokenService` mints an opaque 256-bit token (`URL_SAFE_NO_PAD` base64) for one post of
-  one tenant. A token read is unauthenticated by design: the token is the whole authorization of
+  one tenant. Only the token's SHA-256 digest is persisted; the plaintext is returned exactly
+  once, by the create command, and token listings carry identity and expiry only. Tokens minted
+  before the digest cutover no longer resolve and must be re-created. The REST read takes the
+  token in the `x-blog-preview-token` header (never in the URL, which leaks into logs and
+  browser history); the GraphQL `postByPreviewToken` argument is unchanged. A token read is
+  unauthenticated by design: the token is the whole authorization of
   that read, which is why minting, expiry and revocation are strict.
 - Minting is restricted to **drafts** and to the post author or a caller with post update
   permission. The TTL (`ttl_hours`, default 168) is validated against `1..=720`, so a token can
@@ -284,7 +294,7 @@ See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../
   boundary: an `Invariant` or `Database` failure reaches the caller as the internal code and a
   generic message, never as display text naming storage internals.
 - The fan-out is bounded from both sides: the 100-id cap and the per-root rate limit
-  (`bulk_publish_posts`, `bulk_unpublish_posts`, `bulk_archive_posts`, `bulk_delete_posts` in
+  (`bulk_publish_posts`, `bulk_unpublish_posts`, `bulk_archive_posts`, `bulk_restore_posts`, `bulk_delete_posts` in
   the GraphQL rate-limit table), so one request is at most 100 transactions and 100 events.
 
 ## Known Limitations / Pending Implementation
@@ -296,7 +306,8 @@ The following are not implemented. Each is tracked with its audit identifier in
 - The rich-text body has no inline images, tables, or embeds (H-8).
 - Readers cannot edit, delete, or report comments, and comments send no
   notifications (H-9).
-- No trash, draft preview, or revision history (M-3, M-4).
+- No trash or revision history (M-3, M-4). Draft preview exists through
+  preview tokens (see "Preview tokens" above).
 - Tag and category archives are query-string filters without their own pages (M-7).
 - Anonymous REST read access is not available (M-8).
 - Newsletter, membership, and paid content are not available (M-9).

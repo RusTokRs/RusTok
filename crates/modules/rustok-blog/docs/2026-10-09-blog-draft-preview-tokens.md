@@ -72,7 +72,7 @@ Author creates draft → generates preview token → shares URL with reviewer
 
 ### REST API
 
-- **GET** `/api/blog/preview/{token}?locale=en` → `PostResponse` (no auth required)
+- **GET** `/api/blog/preview?locale=en` with the token in the `x-blog-preview-token` header → `PostResponse` (no auth required; the token never travels in the URL)
 
 ### PostService
 

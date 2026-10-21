@@ -15,11 +15,18 @@ use uuid::Uuid;
 use crate::entities::{blog_comment_projection_delivery, blog_post};
 use crate::services::BLOG_POST_TARGET_TYPE;
 
+/// Whether the comment counts toward the public `comment_count` after this
+/// event. `None` means "keep the previously projected state" (a body edit does
+/// not change visibility). Only `approved` comments are publicly visible
+/// (`CommentStatus::is_visible`), so only they may be counted: Blog creates
+/// comments as `pending`, and a status change into `spam`/`trash` must remove
+/// the comment from the count rather than keep or add it. The moderation queue
+/// total is a separate, owner-side number and is not what this counter means.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct CommentProjectionChange {
     comment_id: Uuid,
     post_id: Uuid,
-    delta: i32,
+    counted: Option<bool>,
 }
 
 fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionChange> {
@@ -32,15 +39,12 @@ fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionCha
         } if target_type == BLOG_POST_TARGET_TYPE => Some(CommentProjectionChange {
             comment_id: *comment_id,
             post_id: *target_id,
-            delta: 1,
+            // Blog comment creation is moderation-pending, so a created
+            // comment is not yet part of the public count; approval arrives
+            // as a status change.
+            counted: Some(false),
         }),
         DomainEvent::CommentUpdated {
-            comment_id,
-            target_type,
-            target_id,
-            ..
-        }
-        | DomainEvent::CommentStatusChanged {
             comment_id,
             target_type,
             target_id,
@@ -48,7 +52,18 @@ fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionCha
         } if target_type == BLOG_POST_TARGET_TYPE => Some(CommentProjectionChange {
             comment_id: *comment_id,
             post_id: *target_id,
-            delta: 1,
+            counted: None,
+        }),
+        DomainEvent::CommentStatusChanged {
+            comment_id,
+            target_type,
+            target_id,
+            new_status,
+            ..
+        } if target_type == BLOG_POST_TARGET_TYPE => Some(CommentProjectionChange {
+            comment_id: *comment_id,
+            post_id: *target_id,
+            counted: Some(new_status == "approved"),
         }),
         DomainEvent::CommentDeleted {
             comment_id,
@@ -58,7 +73,7 @@ fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionCha
         } if target_type == BLOG_POST_TARGET_TYPE => Some(CommentProjectionChange {
             comment_id: *comment_id,
             post_id: *target_id,
-            delta: -1,
+            counted: Some(false),
         }),
         _ => None,
     }
@@ -157,7 +172,7 @@ impl BlogCommentProjectionHandler {
             })?;
 
         let latest_delta = latest.as_ref().map(|delivery| delivery.delta);
-        let applied_delta = projection_applied_delta(latest_delta, change.delta);
+        let (applied_delta, counted) = projection_applied_delta(latest_delta, change.counted);
 
         let next_comment_count = next_comment_count(post.comment_count, applied_delta);
         let post_updated = if applied_delta == 0 {
@@ -193,9 +208,13 @@ impl BlogCommentProjectionHandler {
                 comment_id: Set(change.comment_id),
                 post_id: Set(change.post_id),
                 projection_revision: Set(next_projection_revision),
-                // Keep the source lifecycle state (+1 active / -1 deleted). Update and status-change
-                // events therefore advance the durable lifecycle cursor without changing count.
-                delta: Set(change.delta),
+                // Persist the resulting counted state (1 = counts toward the public
+                // counter, 0 = does not). Legacy rows written by the previous
+                // encoding used +1 for any non-deleted event and -1 for a delete;
+                // `projection_applied_delta` reads any positive value as counted,
+                // so pre-fix rows keep their meaning until the next event for the
+                // comment rewrites them in the new encoding.
+                delta: Set(i32::from(counted)),
                 processed_at: Set(Utc::now().into()),
             },
         )
@@ -225,10 +244,17 @@ impl BlogCommentProjectionHandler {
     }
 }
 
-fn projection_applied_delta(previous_delta: Option<i32>, current_delta: i32) -> i32 {
-    let previous_active = previous_delta.is_some_and(|delta| delta > 0);
-    let current_active = current_delta > 0;
-    (current_active as i32) - (previous_active as i32)
+/// Returns `(applied_delta, resulting_counted)`. A stored positive delta means
+/// "currently counted" in both the legacy (+1/-1) and the current (1/0)
+/// encoding. `target_counted = None` (a body edit) preserves the prior state,
+/// so editing a deleted or still-pending comment never changes the counter.
+fn projection_applied_delta(
+    previous_delta: Option<i32>,
+    target_counted: Option<bool>,
+) -> (i32, bool) {
+    let previous_counted = previous_delta.is_some_and(|delta| delta > 0);
+    let counted = target_counted.unwrap_or(previous_counted);
+    ((counted as i32) - (previous_counted as i32), counted)
 }
 
 #[async_trait]
@@ -288,7 +314,7 @@ mod tests {
             Some(CommentProjectionChange {
                 comment_id: id(1),
                 post_id: id(2),
-                delta: 1,
+                counted: Some(false),
             })
         );
         assert_eq!(
@@ -296,7 +322,7 @@ mod tests {
             Some(CommentProjectionChange {
                 comment_id: id(4),
                 post_id: id(5),
-                delta: 1,
+                counted: None,
             })
         );
         assert_eq!(
@@ -304,7 +330,7 @@ mod tests {
             Some(CommentProjectionChange {
                 comment_id: id(7),
                 post_id: id(8),
-                delta: 1,
+                counted: Some(true),
             })
         );
         assert_eq!(
@@ -312,7 +338,25 @@ mod tests {
             Some(CommentProjectionChange {
                 comment_id: id(10),
                 post_id: id(11),
-                delta: -1,
+                counted: Some(false),
+            })
+        );
+
+        // A status change into a non-public status must un-count the comment.
+        let trashed = DomainEvent::CommentStatusChanged {
+            comment_id: id(7),
+            target_type: BLOG_POST_TARGET_TYPE.to_string(),
+            target_id: id(8),
+            author_id: id(9),
+            old_status: "approved".to_string(),
+            new_status: "trash".to_string(),
+        };
+        assert_eq!(
+            comment_projection_change(&trashed),
+            Some(CommentProjectionChange {
+                comment_id: id(7),
+                post_id: id(8),
+                counted: Some(false),
             })
         );
     }
@@ -336,11 +380,18 @@ mod tests {
 
     #[test]
     fn projection_delta_tracks_comment_state_not_delivery_order() {
-        assert_eq!(projection_applied_delta(None, 1), 1);
-        assert_eq!(projection_applied_delta(None, -1), 0);
-        assert_eq!(projection_applied_delta(Some(1), 1), 0);
-        assert_eq!(projection_applied_delta(Some(1), -1), -1);
-        assert_eq!(projection_applied_delta(Some(-1), 1), 1);
+        // Creation is pending: not counted. Approval counts it exactly once.
+        assert_eq!(projection_applied_delta(None, Some(false)), (0, false));
+        assert_eq!(projection_applied_delta(Some(0), Some(true)), (1, true));
+        assert_eq!(projection_applied_delta(Some(1), Some(true)), (0, true));
+        // Moving an approved comment to spam/trash or deleting it un-counts it.
+        assert_eq!(projection_applied_delta(Some(1), Some(false)), (-1, false));
+        // A body edit preserves the previous counted state in both directions:
+        // it neither resurrects a deleted comment nor hides an approved one.
+        assert_eq!(projection_applied_delta(Some(1), None), (0, true));
+        assert_eq!(projection_applied_delta(Some(0), None), (0, false));
+        assert_eq!(projection_applied_delta(Some(-1), None), (0, false));
+        assert_eq!(projection_applied_delta(None, None), (0, false));
     }
 
     #[test]

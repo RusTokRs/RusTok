@@ -10,6 +10,7 @@ Blog administrators can now perform bulk operations on multiple posts simultaneo
 - **Bulk Publish**: Publish multiple draft posts at once
 - **Bulk Unpublish**: Unpublish multiple published posts at once
 - **Bulk Archive**: Archive multiple published posts at once
+- **Bulk Restore**: Restore multiple archived posts to draft at once
 - **Bulk Delete**: Delete multiple draft/archived posts at once
 
 ## Design
@@ -35,6 +36,7 @@ Bulk operations respect the same state machine as single-post operations:
 - **Publish**: Only Draft → Published
 - **Unpublish**: Only Published → Draft
 - **Archive**: Only Published → Archived
+- **Restore**: Only Archived → Draft (a distinct command from Unpublish: an unpublish request must fail for archived posts, never restore them)
 - **Delete**: Only Draft or Archived (Published posts must be unpublished first)
 
 ## Changes

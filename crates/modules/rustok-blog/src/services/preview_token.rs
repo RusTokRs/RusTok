@@ -1,6 +1,7 @@
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect,
+    Set, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -9,7 +10,7 @@ use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 
 use crate::PostResponse;
-use crate::entities::blog_preview_token;
+use crate::entities::{blog_post, blog_preview_token};
 use crate::error::{BlogError, BlogResult};
 use crate::services::post::{PostService, storage_to_status};
 use crate::services::rbac::enforce_owned_scope;
@@ -43,10 +44,28 @@ pub struct PreviewTokenService {
 #[derive(Debug, Clone)]
 pub struct PreviewToken {
     pub id: Uuid,
-    pub token: String,
+    /// The plaintext bearer token. Present exactly once, on the value returned
+    /// by `create_token`; token listings never carry it (`None`), because the
+    /// database stores only its SHA-256 digest and the secret cannot be
+    /// recovered or re-displayed after minting.
+    pub token: Option<String>,
     pub post_id: Uuid,
     pub expires_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
+}
+
+/// SHA-256 digest (hex) under which a preview token is stored and looked up.
+/// The plaintext token exists only in the create response and in the caller's
+/// hands; a database leak therefore does not leak usable preview credentials.
+fn preview_token_digest(token: &str) -> String {
+    use std::fmt::Write as _;
+
+    let digest = rustok_api::sha256_digest(&[token.as_bytes()]);
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        let _ = write!(&mut hex, "{byte:02x}");
+    }
+    hex
 }
 
 impl PreviewTokenService {
@@ -69,9 +88,38 @@ impl PreviewTokenService {
         security: SecurityContext,
         ttl_hours: Option<i64>,
     ) -> BlogResult<PreviewToken> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if post_id.is_nil() {
+            return Err(BlogError::validation("Post ID must not be nil"));
+        }
+        let ttl = match ttl_hours {
+            Some(requested) if !(MIN_TTL_HOURS..=MAX_TTL_HOURS).contains(&requested) => {
+                return Err(BlogError::validation(format!(
+                    "Preview token TTL must be between {MIN_TTL_HOURS} and {MAX_TTL_HOURS} hours"
+                )));
+            }
+            Some(requested) => requested,
+            None => DEFAULT_TTL_HOURS,
+        };
+
+        // The draft check and the token insert share one transaction on a
+        // row-locked post read. A concurrent lifecycle transition either
+        // commits first (this create then observes the non-draft status and
+        // refuses) or waits for this transaction and revokes the freshly
+        // minted token as part of leaving the draft state. The earlier
+        // check-then-insert shape allowed a token minted mid-publish to
+        // survive and silently reactivate when the post returned to draft.
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
+        let post = blog_post::Entity::find_by_id(post_id)
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .lock_exclusive()
+            .one(&txn)
+            .await
+            .map_err(BlogError::from)?
+            .ok_or_else(|| BlogError::post_not_found(post_id))?;
         // Only the post author or users with update permission can create tokens
-        let post_service = PostService::new(self.db.clone(), self.event_bus.clone());
-        let post = post_service.find_post(tenant_id, post_id).await?;
         enforce_owned_scope(
             &security,
             Resource::BlogPosts,
@@ -84,37 +132,31 @@ impl PreviewTokenService {
             ));
         }
 
-        let ttl = match ttl_hours {
-            Some(requested) if !(MIN_TTL_HOURS..=MAX_TTL_HOURS).contains(&requested) => {
-                return Err(BlogError::validation(format!(
-                    "Preview token TTL must be between {MIN_TTL_HOURS} and {MAX_TTL_HOURS} hours"
-                )));
-            }
-            Some(requested) => requested,
-            None => DEFAULT_TTL_HOURS,
-        };
         let now = Utc::now();
         let expires_at = now + Duration::hours(ttl);
 
-        // Generate a cryptographically random token
+        // Generate a cryptographically random token. Only its SHA-256 digest
+        // is persisted; the plaintext is returned exactly once, here.
         let token = generate_preview_token();
 
         let id = Uuid::new_v4();
-        let model = blog_preview_token::ActiveModel {
+        blog_preview_token::ActiveModel {
             id: Set(id),
             tenant_id: Set(tenant_id),
             post_id: Set(post_id),
-            token: Set(token.clone()),
+            token: Set(preview_token_digest(&token)),
             created_by: Set(security.user_id),
             expires_at: Set(expires_at.into()),
             created_at: Set(now.into()),
-        };
-
-        model.insert(&self.db).await.map_err(BlogError::from)?;
+        }
+        .insert(&txn)
+        .await
+        .map_err(BlogError::from)?;
+        txn.commit().await.map_err(BlogError::from)?;
 
         Ok(PreviewToken {
             id,
-            token,
+            token: Some(token),
             post_id,
             expires_at,
             created_at: now,
@@ -141,7 +183,7 @@ impl PreviewTokenService {
             return Ok(None);
         }
         let token_record = blog_preview_token::Entity::find()
-            .filter(blog_preview_token::Column::Token.eq(token))
+            .filter(blog_preview_token::Column::Token.eq(preview_token_digest(token)))
             .one(&self.db)
             .await
             .map_err(BlogError::from)?;
@@ -258,7 +300,10 @@ impl PreviewTokenService {
             .into_iter()
             .map(|t| PreviewToken {
                 id: t.id,
-                token: t.token,
+                // Listings identify tokens by id and expiry only. The stored
+                // value is a digest and the plaintext is unrecoverable, so a
+                // listing must never carry a usable credential.
+                token: None,
                 post_id: t.post_id,
                 expires_at: t.expires_at.into(),
                 created_at: t.created_at.into(),

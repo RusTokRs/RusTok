@@ -12,13 +12,13 @@ const typesPath = 'crates/modules/rustok-blog/src/graphql/types.rs';
 const createMarkers = [
   'create_post_input_conversion_preserves_canonical_content',
   'RichTextDocument::single_paragraph',
-  'let domain: DomainCreatePostInput = input.into();',
+  'input.try_into().expect("valid input converts");',
   'assert_eq!(domain.content, canonical)',
 ];
 const updateMarkers = [
   'update_post_input_conversion_preserves_canonical_content',
   'RichTextDocument::single_paragraph',
-  'let domain: DomainUpdatePostInput = input.into();',
+  'input.try_into().expect("valid update input converts");',
   'assert_eq!(domain.content, Some(canonical))',
 ];
 
@@ -32,7 +32,7 @@ function canonicalEvidence() {
       write: 'rustok_api::RichTextDocument',
       read: 'rustok_api::RichTextView',
       plain_text: 'server-derived',
-      resolver_conversion: 'typed input.into() delegation with direct content mapping',
+      resolver_conversion: 'typed fallible input.try_into() delegation with direct content mapping',
     },
     scan_scope: 'crates/modules/rustok-blog/src/graphql/**/*.rs',
     legacy_adapter_fields: [],
@@ -40,8 +40,8 @@ function canonicalEvidence() {
     conversion_owner: {
       file: typesPath,
       scopes: [
-        'impl From<CreatePostInput> for DomainCreatePostInput',
-        'impl From<UpdatePostInput> for DomainUpdatePostInput',
+        'impl TryFrom<CreatePostInput> for DomainCreatePostInput',
+        'impl TryFrom<UpdatePostInput> for DomainUpdatePostInput',
       ],
       reason: 'target-only typed GraphQL-to-owner conversion',
     },
@@ -60,30 +60,30 @@ pub content: RichTextView,
 pub content_plain_text: String,
 pub content: RichTextDocument,
 pub content: Option<RichTextDocument>,
-impl From<CreatePostInput> for DomainCreatePostInput {
-  fn from(input: CreatePostInput) -> Self { Self { content: input.content, } }
+impl TryFrom<CreatePostInput> for DomainCreatePostInput {
+  fn try_from(input: CreatePostInput) -> Result<Self, Self::Error> { Ok(Self { content: input.content, }) }
 }
-impl From<UpdatePostInput> for DomainUpdatePostInput {
-  fn from(input: UpdatePostInput) -> Self { Self { content: input.content, } }
+impl TryFrom<UpdatePostInput> for DomainUpdatePostInput {
+  fn try_from(input: UpdatePostInput) -> Result<Self, Self::Error> { Ok(Self { content: input.content, }) }
 }
 #[cfg(test)]
 mod tests {
   fn update_post_input_conversion_preserves_canonical_content() {
     let canonical = RichTextDocument::single_paragraph("canonical update");
-    let domain: DomainUpdatePostInput = input.into();
+    let domain: DomainUpdatePostInput = input.try_into().expect("valid update input converts");
     assert_eq!(domain.content, Some(canonical));
   }
 }
 `;
 const canonicalMutation = `
-async fn create_post(input: CreatePostInput) { service.create_post(input.into()); }
-async fn update_post(input: UpdatePostInput) { service.update_post(input.into()); }
+async fn create_post(input: CreatePostInput) { service.create_post(input.try_into()); }
+async fn update_post(input: UpdatePostInput) { service.update_post(input.try_into()); }
 async fn delete_post() {}
 `;
 const canonicalCreateTest = `
 fn create_post_input_conversion_preserves_canonical_content() {
   let canonical = RichTextDocument::single_paragraph("canonical");
-  let domain: DomainCreatePostInput = input.into();
+  let domain: DomainCreatePostInput = input.try_into().expect("valid input converts");
   assert_eq!(domain.content, canonical);
 }
 `;
@@ -124,7 +124,7 @@ result = await run({ types: `${canonicalTypes}\npub body_format: String,` });
 assert.notEqual(result.status, 0);
 
 result = await run({
-  mutation: canonicalMutation.replace('service.create_post(input.into())', 'service.create_post(input.content)'),
+  mutation: canonicalMutation.replace('service.create_post(input.try_into())', 'service.create_post(input.content)'),
 });
 assert.notEqual(result.status, 0);
 
@@ -136,8 +136,8 @@ assert.match(result.stderr, /create conversion must map canonical content direct
 
 result = await run({
   types: canonicalTypes.replace(
-    'fn from(input: UpdatePostInput) -> Self { Self { content: input.content, } }',
-    'fn from(input: UpdatePostInput) -> Self { Self { content: None, } }',
+    'fn try_from(input: UpdatePostInput) -> Result<Self, Self::Error> { Ok(Self { content: input.content, }) }',
+    'fn try_from(input: UpdatePostInput) -> Result<Self, Self::Error> { Ok(Self { content: None, }) }',
   ),
 });
 assert.notEqual(result.status, 0);

@@ -95,11 +95,36 @@ async fn duplicate_delivery_updates_counter_and_outbox_once() -> TestResult<()> 
     handler.handle(&envelope).await?;
     handler.handle(&envelope).await?;
 
+    // A created comment is moderation-pending: it is delivered once but does
+    // not enter the public counter and requests no reindex.
+    assert_eq!(
+        load_post_state(&test_db.db, tenant_id, post_id).await?,
+        (0, 1)
+    );
+    assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
+    assert_eq!(count_outbox_events(&test_db.db).await?, 0);
+
+    // The approval is the counted transition; its duplicate changes nothing.
+    let approved = EventEnvelope::new(
+        tenant_id,
+        Some(actor_id),
+        DomainEvent::CommentStatusChanged {
+            comment_id,
+            target_type: "blog_post".to_string(),
+            target_id: post_id,
+            author_id: actor_id,
+            old_status: "pending".to_string(),
+            new_status: "approved".to_string(),
+        },
+    );
+    handler.handle(&approved).await?;
+    handler.handle(&approved).await?;
+
     assert_eq!(
         load_post_state(&test_db.db, tenant_id, post_id).await?,
         (1, 1)
     );
-    assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
+    assert_eq!(count_delivery(&test_db.db, approved.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
 
     test_db.cleanup().await
@@ -141,7 +166,18 @@ async fn event_dispatcher_routes_registered_handler_and_commits_projection() -> 
     }
     assert_eq!(dispatcher.handler_count(), 1);
 
-    let envelope = comment_created_envelope(tenant_id, actor_id, comment_id, post_id);
+    let envelope = EventEnvelope::new(
+        tenant_id,
+        Some(actor_id),
+        DomainEvent::CommentStatusChanged {
+            comment_id,
+            target_type: "blog_post".to_string(),
+            target_id: post_id,
+            author_id: actor_id,
+            old_status: "pending".to_string(),
+            new_status: "approved".to_string(),
+        },
+    );
     let running = dispatcher.start();
     running.bus().publish_envelope(envelope.clone())?;
     wait_for_dispatch_commit(&test_db.db, envelope.id).await?;
@@ -168,8 +204,23 @@ async fn concurrent_created_events_converge_without_lost_updates() -> TestResult
     let actor_id = Uuid::new_v4();
     insert_post(&test_db.db, tenant_id, post_id, actor_id, 0, 1).await?;
 
+    // Approvals of distinct comments are the counted transitions; racing them
+    // must converge to one increment per comment without lost updates.
     let envelopes = (0..CONCURRENT_PROJECTION_DELIVERIES)
-        .map(|_| comment_created_envelope(tenant_id, actor_id, Uuid::new_v4(), post_id))
+        .map(|_| {
+            EventEnvelope::new(
+                tenant_id,
+                Some(actor_id),
+                DomainEvent::CommentStatusChanged {
+                    comment_id: Uuid::new_v4(),
+                    target_type: "blog_post".to_string(),
+                    target_id: post_id,
+                    author_id: actor_id,
+                    old_status: "pending".to_string(),
+                    new_status: "approved".to_string(),
+                },
+            )
+        })
         .collect::<Vec<_>>();
     let barrier = Arc::new(Barrier::new(envelopes.len()));
     let mut tasks = Vec::with_capacity(envelopes.len());
@@ -209,7 +260,7 @@ async fn concurrent_created_events_converge_without_lost_updates() -> TestResult
 }
 
 #[tokio::test]
-async fn update_and_status_events_advance_projection_cursor_without_count_change() -> TestResult<()>
+async fn approval_counts_once_and_update_events_preserve_the_count() -> TestResult<()>
 {
     let Some(test_db) = PostgresBlogProjectionTestDb::setup("lifecycle_cursor").await? else {
         return Ok(());
@@ -297,13 +348,15 @@ async fn delete_before_create_stays_non_negative_and_replays_in_order() -> TestR
     let created = comment_created_envelope(tenant_id, actor_id, comment_id, post_id);
     handler.handle(&created).await?;
 
+    // The replayed create is newer than the delete, so it is recorded, but a
+    // pending comment never enters the public counter.
     assert_eq!(
         load_post_state(&test_db.db, tenant_id, post_id).await?,
-        (1, 1)
+        (0, 1)
     );
     assert_eq!(count_delivery(&test_db.db, deleted.id).await?, 1);
     assert_eq!(count_delivery(&test_db.db, created.id).await?, 1);
-    assert_eq!(count_outbox_events(&test_db.db).await?, 2);
+    assert_eq!(count_outbox_events(&test_db.db).await?, 0);
 
     test_db.cleanup().await
 }
@@ -317,7 +370,18 @@ async fn missing_post_replay_commits_only_after_source_appears() -> TestResult<(
     let tenant_id = Uuid::new_v4();
     let post_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
-    let envelope = comment_created_envelope(tenant_id, actor_id, Uuid::new_v4(), post_id);
+    let envelope = EventEnvelope::new(
+        tenant_id,
+        Some(actor_id),
+        DomainEvent::CommentStatusChanged {
+            comment_id: Uuid::new_v4(),
+            target_type: "blog_post".to_string(),
+            target_id: post_id,
+            author_id: actor_id,
+            old_status: "pending".to_string(),
+            new_status: "approved".to_string(),
+        },
+    );
     let handler = BlogCommentProjectionHandler::new(test_db.db.clone());
 
     let error = handler
@@ -352,7 +416,18 @@ async fn outbox_failure_rolls_back_counter_and_delivery_before_retry() -> TestRe
     let actor_id = Uuid::new_v4();
     insert_post(&test_db.db, tenant_id, post_id, actor_id, 0, 1).await?;
 
-    let envelope = comment_created_envelope(tenant_id, actor_id, Uuid::new_v4(), post_id);
+    let envelope = EventEnvelope::new(
+        tenant_id,
+        Some(actor_id),
+        DomainEvent::CommentStatusChanged {
+            comment_id: Uuid::new_v4(),
+            target_type: "blog_post".to_string(),
+            target_id: post_id,
+            author_id: actor_id,
+            old_status: "pending".to_string(),
+            new_status: "approved".to_string(),
+        },
+    );
     let handler = BlogCommentProjectionHandler::new(test_db.db.clone());
 
     test_db

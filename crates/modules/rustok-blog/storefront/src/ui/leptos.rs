@@ -1,10 +1,10 @@
 use leptos::prelude::*;
 use leptos_auth::hooks::use_token;
 use leptos_ui::{RichTextHtml, TableOfContents};
-use leptos_ui_routing::{read_route_query_value, use_route_query_value};
+use leptos_ui_routing::{read_route_query_value, use_route_query_value, use_route_query_writer};
 #[cfg(target_arch = "wasm32")]
 use rustok_comments_storefront_support::CommentComposer;
-use rustok_ui_core::UiRouteContext;
+use rustok_ui_core::{UiRouteContext, UiRouteQueryIntent};
 
 use super::comments_list::PublicCommentsList;
 use super::share::{BlogShareButtons, BlogStatusBadge};
@@ -20,6 +20,7 @@ pub fn BlogView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let selected_locale = route_context.locale.clone();
     let comments_page_query = use_route_query_value(comments_pagination::COMMENTS_PAGE_QUERY_KEY);
+    let posts_cursor_query = use_route_query_value(core::POSTS_CURSOR_QUERY_KEY);
     let tag_query = use_route_query_value("tag");
     let category_query = use_route_query_value("category");
     let shell_view = core::build_storefront_shell_view_model(selected_locale.as_deref());
@@ -37,10 +38,14 @@ pub fn BlogView() -> impl IntoView {
                 route_context_for_fetch.route_segment.as_ref().cloned(),
             )
             .with_filters(tag_query.get(), category_query.get());
-            let fetch_request = core::build_storefront_fetch_request(
+            let mut fetch_request = core::build_storefront_fetch_request(
                 &route_state,
                 selected_locale_for_fetch.clone(),
             );
+            fetch_request.posts_after = posts_cursor_query
+                .get()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
             (
                 fetch_request,
                 comments_pagination::comments_page_from_query(comments_page_query.get()),
@@ -105,6 +110,11 @@ pub fn BlogView() -> impl IntoView {
 #[component]
 fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let posts_query_writer = use_route_query_writer();
+    let posts_next_cursor = data.posts.next_cursor.clone();
+    let posts_cursor_query = use_route_query_value(core::POSTS_CURSOR_QUERY_KEY);
+    let first_page_label =
+        t(locale.as_deref(), "blog.posts.firstPage", "Back to the first page");
     let selected_post_slug = data.selected_post.as_ref().and_then(|p| p.slug.clone());
     let is_post_selected = data.selected_post.is_some();
 
@@ -312,6 +322,43 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                 }
                 .into_any()
             }}
+            {move || posts_cursor_query.get().filter(|value| !value.trim().is_empty()).map(|_| {
+                let writer = posts_query_writer.clone();
+                view! {
+                    <div class="mt-6 flex justify-center">
+                        <button
+                            type="button"
+                            class="rounded-full border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:border-primary/50"
+                            on:click=move |_| {
+                                writer.apply_query_intent(UiRouteQueryIntent::clear(
+                                    core::POSTS_CURSOR_QUERY_KEY,
+                                ));
+                            }
+                        >
+                            {first_page_label.clone()}
+                        </button>
+                    </div>
+                }
+            })}
+            {posts_next_cursor.map(|cursor| {
+                let writer = posts_query_writer.clone();
+                view! {
+                    <div class="mt-6 flex justify-center">
+                        <button
+                            type="button"
+                            class="rounded-full border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:border-primary/50"
+                            on:click=move |_| {
+                                writer.apply_query_intent(UiRouteQueryIntent::replace(
+                                    core::POSTS_CURSOR_QUERY_KEY,
+                                    cursor.clone(),
+                                ));
+                            }
+                        >
+                            {t(locale.as_deref(), "blog.posts.nextPage", "Next page")}
+                        </button>
+                    </div>
+                }
+            })}
         </div>
     }
 }

@@ -12,6 +12,11 @@ pub struct StorefrontBlogData {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlogPostList {
     pub items: Vec<BlogPostListItem>,
+    /// Keyset cursor of the next page, when one exists. Both transports must
+    /// populate it: dropping it makes every post past the first page
+    /// unreachable in the storefront.
+    #[serde(default, rename = "nextCursor")]
+    pub next_cursor: Option<String>,
 }
 
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]

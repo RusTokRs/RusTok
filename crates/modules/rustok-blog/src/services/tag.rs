@@ -133,6 +133,19 @@ impl TagService {
         self.ensure_blog_owned_tag(tenant_id, tag_id, &locale)
             .await?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
+        // The ownership pre-check above runs outside this transaction. Lock
+        // the scoped term row before writing, mirroring `delete_tag`, so a
+        // concurrent scope change by the Taxonomy owner cannot interleave
+        // between the check and the update and leave a Blog write on a term
+        // that is no longer Blog-owned.
+        lock_module_term_in_tx(
+            &txn,
+            tenant_id,
+            tag_id,
+            TaxonomyTermKind::Tag,
+            BLOG_SCOPE_VALUE,
+        )
+        .await?;
         let term = update_module_term_in_tx(
             &txn,
             tenant_id,
@@ -395,10 +408,19 @@ async fn bump_posts_for_tag_relation_removal_in_tx(
         .count(txn)
         .await?;
 
+    // Posts with an exhausted/invalid revision are not bumped: they cannot be
+    // CAS-edited either, so no concurrency protection is lost, and refusing
+    // here would make the tag permanently undeletable because of one such
+    // post. The tag delete publishes the reindex event that repairs their
+    // search projection. `relation_count` is still observed for diagnostics.
     if relation_count != valid_relation_count {
-        return Err(BlogError::invariant(format!(
-            "Blog tag {tag_id} has {relation_count} post relation(s), but only {valid_relation_count} reference posts with a valid persisted version",
-        )));
+        tracing::warn!(
+            tenant_id = %tenant_id,
+            tag_id = %tag_id,
+            relation_count,
+            valid_relation_count,
+            "Blog tag removal skips the revision bump for posts without a valid persisted version"
+        );
     }
 
     let now = Utc::now();
@@ -454,6 +476,9 @@ pub(crate) async fn sync_post_tags_in_tx(
 ) -> BlogResult<()> {
     let normalized_locale = normalize_locale(locale)?;
     let normalized_names = normalize_tag_names(tag_names);
+    for name in &normalized_names {
+        validate_tag_name(name)?;
+    }
 
     let previous_relations = blog_post_tag::Entity::find()
         .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
@@ -797,10 +822,11 @@ fn validate_tag_name(name: &str) -> BlogResult<()> {
     if name.trim().is_empty() {
         return Err(BlogError::validation("Tag name cannot be empty"));
     }
-    if name.chars().count() > 100 {
-        return Err(BlogError::validation(
-            "Tag name cannot exceed 100 characters",
-        ));
+    if name.chars().count() > crate::services::post::MAX_TAG_NAME_CHARS {
+        return Err(BlogError::validation(format!(
+            "Tag name cannot exceed {} characters",
+            crate::services::post::MAX_TAG_NAME_CHARS
+        )));
     }
     Ok(())
 }
@@ -813,7 +839,11 @@ fn normalize_tag_names(tag_names: &[String]) -> Vec<String> {
         if trimmed.is_empty() {
             continue;
         }
-        let key = trimmed.to_ascii_lowercase();
+        // Unicode-aware case folding: ASCII-only folding let pairs like
+        // "Новости"/"НОВОСТИ" through as distinct names, which then resolved
+        // to duplicate Taxonomy terms and failed the post write on the
+        // relation primary key instead of deduplicating here.
+        let key = trimmed.to_lowercase();
         if seen.insert(key) {
             normalized.push(trimmed.to_string());
         }

@@ -14,7 +14,7 @@ pub use category_command::{
 };
 pub use comment::{
     CommentListItem, CommentResponse, CreateCommentInput, ListCommentsFilter, ModerateCommentInput,
-    ModerateCommentStatus, UpdateCommentInput,
+    ModerateCommentStatus, UpdateCommentInput, bounded_comment_page,
 };
 pub use post::{
     AdminPostCursor, ArchivePostInput, BulkOperationFailure, BulkOperationResult, CreatePostInput,

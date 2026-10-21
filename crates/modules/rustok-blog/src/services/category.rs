@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, PaginatorTrait, QueryFilter, TransactionTrait, sea_query::Expr,
+    EntityTrait, PaginatorTrait, QueryFilter, QuerySelect, TransactionTrait, sea_query::Expr,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -130,13 +130,15 @@ impl CategoryService {
         tenant_id: Uuid,
         parent_id: Option<Uuid>,
     ) -> BlogResult<Option<u64>> {
+        // Only identities are needed for the coverage check; do not load full
+        // category rows (settings payloads included) on every create.
         let category_ids = blog_category::Entity::find()
+            .select_only()
+            .column(blog_category::Column::Id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
+            .into_tuple::<Uuid>()
             .all(&self.db)
-            .await?
-            .into_iter()
-            .map(|category| category.id)
-            .collect::<Vec<_>>();
+            .await?;
         if category_ids.is_empty() {
             return Ok(Some(0));
         }

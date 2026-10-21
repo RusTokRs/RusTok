@@ -39,6 +39,8 @@ impl BlogMutation {
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = PostService::new(db.clone(), event_bus.clone());
+        let input: crate::CreatePostInput =
+            input.try_into().map_err(crate::error::public::to_graphql_error)?;
         let post_id = service
             .create_post(
                 tenant_id,
@@ -47,7 +49,7 @@ impl BlogMutation {
                     &auth.grant_type,
                     &auth.permissions,
                 ),
-                input.into(),
+                input,
             )
             .await
             .map_err(crate::error::public::to_graphql_error)?;
@@ -74,6 +76,8 @@ impl BlogMutation {
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = PostService::new(db.clone(), event_bus.clone());
+        let input: crate::UpdatePostInput =
+            input.try_into().map_err(crate::error::public::to_graphql_error)?;
         service
             .update_post(
                 tenant_id,
@@ -83,7 +87,7 @@ impl BlogMutation {
                     &auth.grant_type,
                     &auth.permissions,
                 ),
-                input.into(),
+                input,
             )
             .await
             .map_err(crate::error::public::to_graphql_error)?;
@@ -384,7 +388,7 @@ impl BlogMutation {
                     &auth.grant_type,
                     &auth.permissions,
                 ),
-                input.into(),
+                input.try_into().map_err(crate::error::public::to_graphql_error)?,
             )
             .await
             .map_err(crate::error::public::to_graphql_error)?;
@@ -421,7 +425,7 @@ impl BlogMutation {
                     &auth.grant_type,
                     &auth.permissions,
                 ),
-                input.into(),
+                input.try_into().map_err(crate::error::public::to_graphql_error)?,
             )
             .await
             .map_err(crate::error::public::to_graphql_error)?;
@@ -498,7 +502,12 @@ impl BlogMutation {
 
         Ok(GqlPreviewToken {
             id: token.id,
-            token: token.token,
+            // The plaintext exists only on the create result; it is never stored.
+            token: token.token.ok_or_else(|| {
+                crate::error::public::to_graphql_error(crate::BlogError::invariant(
+                    "preview token create result is missing its one-time plaintext",
+                ))
+            })?,
             post_id: token.post_id,
             expires_at: token.expires_at.to_rfc3339(),
             created_at: token.created_at.to_rfc3339(),
@@ -605,12 +614,7 @@ impl BlogMutation {
             &auth.permissions,
         );
         let result = service
-            .bulk_transition_posts(
-                tenant_id,
-                &input.post_ids,
-                crate::BlogPostStatus::Draft,
-                security,
-            )
+            .bulk_unpublish_posts(tenant_id, &input.post_ids, security)
             .await
             .map_err(crate::error::public::to_graphql_error)?;
 
@@ -648,6 +652,38 @@ impl BlogMutation {
                 crate::BlogPostStatus::Archived,
                 security,
             )
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
+
+        Ok(result.into())
+    }
+
+    /// Restore multiple archived posts to Draft at once.
+    async fn bulk_restore_posts(
+        &self,
+        ctx: &Context<'_>,
+        input: BulkOperationInput,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlBulkOperationResult> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_blog_permission(
+            ctx,
+            &[Permission::BLOG_POSTS_PUBLISH],
+            "Permission denied: blog_posts:publish required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        let service = PostService::new(db.clone(), event_bus.clone());
+        let security = rustok_core::security_context_from_access_token(
+            auth.user_id,
+            &auth.grant_type,
+            &auth.permissions,
+        );
+        let result = service
+            .bulk_restore_posts(tenant_id, &input.post_ids, security)
             .await
             .map_err(crate::error::public::to_graphql_error)?;
 

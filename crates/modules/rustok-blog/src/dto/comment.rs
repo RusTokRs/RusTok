@@ -56,6 +56,20 @@ pub struct ListCommentsFilter {
     pub per_page: u64,
 }
 
+/// Upper bound of one comment list page. Every Blog transport that already
+/// clamps (GraphQL moderation, the admin adapter, the public snapshot read)
+/// uses 100; the bound is applied in the Blog comment service, at the
+/// owner-service boundary, so a transport that forgets to clamp (the REST
+/// controller passes the query through) cannot ask the Comments owner for
+/// an unbounded page.
+pub(crate) const MAX_COMMENTS_PER_PAGE: u64 = 100;
+
+/// Bounds a comment list page request: pages are 1-based and one page holds
+/// at most [`MAX_COMMENTS_PER_PAGE`] comments.
+pub(crate) fn bounded_comment_page(page: u64, per_page: u64) -> (u64, u64) {
+    (page.max(1), per_page.clamp(1, MAX_COMMENTS_PER_PAGE))
+}
+
 fn default_page() -> u64 {
     1
 }
@@ -139,6 +153,23 @@ mod tests {
         let d: CommentResponse = serde_json::from_value(v).expect("deserialize");
         assert_eq!(d.content.document.kind, "doc");
         assert_eq!(d.content_text, "plain");
+    }
+
+    #[test]
+    fn comment_pages_are_one_based_and_bounded() {
+        use super::{MAX_COMMENTS_PER_PAGE, bounded_comment_page};
+
+        assert_eq!(bounded_comment_page(0, 20), (1, 20));
+        assert_eq!(bounded_comment_page(2, 0), (2, 1));
+        assert_eq!(
+            bounded_comment_page(1, MAX_COMMENTS_PER_PAGE),
+            (1, MAX_COMMENTS_PER_PAGE)
+        );
+        assert_eq!(
+            bounded_comment_page(1, u64::MAX),
+            (1, MAX_COMMENTS_PER_PAGE),
+            "an unbounded page size is clamped, not honoured"
+        );
     }
 
     #[test]
