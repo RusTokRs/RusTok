@@ -23,6 +23,7 @@ impl MarketplaceLedgerService {
         tenant_id: Uuid,
         request: ReadMarketplaceSellerBalanceRequest,
     ) -> MarketplaceLedgerResult<MarketplaceSellerBalanceResponse> {
+        validate_tenant_id(tenant_id)?;
         validate_seller_id(request.seller_id)?;
         let currency_code = normalize_currency(request.currency_code)?;
         let model = seller_balance::Entity::find()
@@ -43,6 +44,7 @@ impl MarketplaceLedgerService {
         tenant_id: Uuid,
         request: RebuildMarketplaceSellerBalanceInput,
     ) -> MarketplaceLedgerResult<MarketplaceSellerBalanceResponse> {
+        validate_tenant_id(tenant_id)?;
         validate_seller_id(request.seller_id)?;
         let currency_code = normalize_currency(request.currency_code)?;
         let entries = entry::Entity::find()
@@ -202,6 +204,7 @@ impl MarketplaceLedgerService {
         tenant_id: Uuid,
         transaction: &MarketplaceLedgerTransactionResponse,
     ) -> MarketplaceLedgerResult<Vec<MarketplaceSellerBalanceResponse>> {
+        validate_tenant_id(tenant_id)?;
         let mut scopes = HashSet::new();
         for entry in &transaction.entries {
             if entry.account_code == MarketplaceLedgerAccountCode::SellerPayable
@@ -296,6 +299,15 @@ fn parse_bucket(value: &str) -> MarketplaceLedgerResult<MarketplaceSellerBalance
     MarketplaceSellerBalanceBucket::parse(value).ok_or_else(|| {
         MarketplaceLedgerError::Validation(format!("unknown seller balance bucket `{value}`"))
     })
+}
+
+fn validate_tenant_id(tenant_id: Uuid) -> MarketplaceLedgerResult<()> {
+    if tenant_id.is_nil() {
+        return Err(MarketplaceLedgerError::Validation(
+            "tenant_id must not be nil".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_seller_id(seller_id: Uuid) -> MarketplaceLedgerResult<()> {
