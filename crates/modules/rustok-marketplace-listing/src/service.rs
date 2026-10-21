@@ -66,6 +66,11 @@ impl MarketplaceListingService {
         tenant_id: Uuid,
         listing_id: Uuid,
     ) -> MarketplaceListingResult<MarketplaceListingResponse> {
+        if tenant_id.is_nil() || listing_id.is_nil() {
+            return Err(MarketplaceListingError::Validation(
+                "tenant_id and listing_id must not be nil".to_string(),
+            ));
+        }
         load_listing_response(&self.db, tenant_id, listing_id).await
     }
 
@@ -74,6 +79,11 @@ impl MarketplaceListingService {
         tenant_id: Uuid,
         input: ListMarketplaceListingsInput,
     ) -> MarketplaceListingResult<MarketplaceListingListResponse> {
+        if tenant_id.is_nil() {
+            return Err(MarketplaceListingError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
         let page = input.page.max(1);
         let per_page = input.per_page.clamp(1, MAX_LISTINGS_PER_PAGE);
         let mut query = listing::Entity::find().filter(listing::Column::TenantId.eq(tenant_id));
@@ -121,6 +131,11 @@ impl MarketplaceListingService {
         request: MarketplaceListingEligibilityRequest,
     ) -> MarketplaceListingResult<Vec<MarketplaceListingEligibilityProjection>> {
         let tenant_id = parse_tenant_id(&context)?;
+        if request.master_variant_id.is_nil() {
+            return Err(MarketplaceListingError::Validation(
+                "master_variant_id must not be nil".to_string(),
+            ));
+        }
         let market_slug = required_slug(request.market_slug, "market_slug")?;
         let channel_slug = required_slug(request.channel_slug, "channel_slug")?;
         let models = listing::Entity::find()
@@ -201,6 +216,11 @@ pub(crate) async fn find_listing<C: ConnectionTrait>(
     tenant_id: Uuid,
     listing_id: Uuid,
 ) -> MarketplaceListingResult<listing::Model> {
+    if tenant_id.is_nil() || listing_id.is_nil() {
+        return Err(MarketplaceListingError::Validation(
+            "tenant_id and listing_id must not be nil".to_string(),
+        ));
+    }
     listing::Entity::find_by_id(listing_id)
         .filter(listing::Column::TenantId.eq(tenant_id))
         .one(connection)
@@ -214,6 +234,11 @@ pub(crate) async fn find_current_terms<C: ConnectionTrait>(
     listing_id: Uuid,
     version: i32,
 ) -> MarketplaceListingResult<listing_terms::Model> {
+    if tenant_id.is_nil() || listing_id.is_nil() || version <= 0 {
+        return Err(MarketplaceListingError::Validation(
+            "tenant_id and listing_id must not be nil and version must be positive".to_string(),
+        ));
+    }
     listing_terms::Entity::find()
         .filter(listing_terms::Column::TenantId.eq(tenant_id))
         .filter(listing_terms::Column::ListingId.eq(listing_id))
@@ -353,11 +378,17 @@ fn listing_reason_codes(listing: &MarketplaceListingResponse) -> Vec<String> {
 }
 
 fn parse_tenant_id(context: &PortContext) -> MarketplaceListingResult<Uuid> {
-    Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
+    let id = Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
         MarketplaceListingError::Validation(
             "PortContext.tenant_id must be a UUID for marketplace listing ports".to_string(),
         )
-    })
+    })?;
+    if id.is_nil() {
+        return Err(MarketplaceListingError::Validation(
+            "PortContext.tenant_id must not be nil for marketplace listing ports".to_string(),
+        ));
+    }
+    Ok(id)
 }
 
 fn required_slug(value: String, field: &str) -> MarketplaceListingResult<String> {

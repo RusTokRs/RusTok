@@ -76,6 +76,11 @@ pub(crate) async fn replay_existing<R: DeserializeOwned>(
     expected_command_kind: &str,
     expected_hash: &str,
 ) -> MarketplaceListingResult<Option<R>> {
+    if tenant_id.is_nil() {
+        return Err(MarketplaceListingError::Validation(
+            "tenant_id must not be nil".to_string(),
+        ));
+    }
     match find_receipt(db, tenant_id, idempotency_key).await? {
         Some(receipt) => replay(receipt, expected_command_kind, expected_hash).map(Some),
         None => Ok(None),
@@ -91,6 +96,11 @@ pub(crate) async fn admit(
     command_kind: &str,
     hash: &str,
 ) -> MarketplaceListingResult<ListingCommandAdmission> {
+    if tenant_id.is_nil() || actor_id.is_nil() {
+        return Err(MarketplaceListingError::Validation(
+            "tenant_id and actor_id must not be nil".to_string(),
+        ));
+    }
     if let Some(existing) = find_receipt(db, tenant_id, idempotency_key.as_str()).await? {
         return Ok(ListingCommandAdmission::Replay(existing));
     }
