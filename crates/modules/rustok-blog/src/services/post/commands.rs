@@ -284,13 +284,17 @@ impl PostService {
             .map(canonical_article_body)
             .transpose()?;
 
-        let normalized_slug = slug
-            .as_deref()
-            .map(normalize_slug)
-            .filter(|slug| !slug.is_empty());
-        if slug.is_some() && normalized_slug.is_none() {
+        let requested_slug = slug.as_deref().map(normalize_slug);
+        if let Some(requested_slug) = requested_slug.as_deref()
+            && requested_slug.is_empty()
+        {
             return Err(BlogError::validation("Slug cannot be empty"));
         }
+        // A slug that normalizes to the stored one is not a change: treating
+        // it as one would turn a copy-only edit into a full reindex event and
+        // a route claim for a route the post already owns.
+        let normalized_slug =
+            requested_slug.filter(|slug| !slug.is_empty() && slug != &post.slug);
         if let Some(normalized_slug) = normalized_slug.as_deref()
             && normalized_slug.len() > MAX_POST_SLUG_BYTES
         {
@@ -757,6 +761,16 @@ impl PostService {
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         remove_post_tag_usage_in_tx(&txn, tenant_id, post_id).await?;
+        // The comment projection ledger of a deleted post is terminal state:
+        // no post can ever be projected for it again (a later Comments event
+        // for the post re-cleans and is dropped by the projection handler),
+        // so leaving the rows behind would retain per-comment state forever.
+        blog_comment_projection_delivery::Entity::delete_many()
+            .filter(blog_comment_projection_delivery::Column::TenantId.eq(tenant_id))
+            .filter(blog_comment_projection_delivery::Column::PostId.eq(post_id))
+            .exec(&txn)
+            .await
+            .map_err(BlogError::from)?;
         // Preview tokens are the deleted post's authorization; they must not survive
         // it in the same transaction (the FK cascade is the second, database-level
         // guarantee).

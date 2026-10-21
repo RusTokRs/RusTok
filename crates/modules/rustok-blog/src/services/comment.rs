@@ -23,7 +23,7 @@ use crate::domain::comment_policy::{
 };
 use crate::dto::{
     CommentListItem, CommentResponse, CreateCommentInput, ListCommentsFilter, ModerateCommentInput,
-    UpdateCommentInput,
+    UpdateCommentInput, bounded_comment_page,
 };
 use crate::entities::{blog_comment_projection_delivery, blog_post, blog_post_channel_visibility};
 use crate::error::{BlogError, BlogResult};
@@ -568,10 +568,11 @@ impl CommentService {
             .locale
             .clone()
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+        let (page, per_page) = bounded_comment_page(filter.page, filter.per_page);
         let domain_filter = ApiListCommentsFilter {
             locale: locale.clone(),
-            page: filter.page,
-            per_page: filter.per_page,
+            page,
+            per_page,
         };
 
         let result = if security.is_public_read() {

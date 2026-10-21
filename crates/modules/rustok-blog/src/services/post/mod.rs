@@ -32,7 +32,8 @@ use crate::dto::{
     PublishedPostCursor, PublishedPostScanPage, UpdatePostInput,
 };
 use crate::entities::{
-    blog_post, blog_post_channel_visibility, blog_post_tag, blog_post_translation,
+    blog_comment_projection_delivery, blog_post, blog_post_channel_visibility, blog_post_tag,
+    blog_post_translation,
 };
 use crate::error::{BlogError, BlogResult};
 use crate::richtext::{canonical_article_body, normalize_article, project_stored_article};
