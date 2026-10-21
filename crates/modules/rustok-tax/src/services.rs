@@ -5,6 +5,8 @@ use serde_json::{Value, json};
 use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
 
+use rustok_core::money;
+
 use crate::error::{TaxError, TaxResult};
 
 pub const REGION_DEFAULT_TAX_PROVIDER_ID: &str = "region_default";
@@ -128,7 +130,8 @@ impl TaxProvider for RegionTaxProvider {
                 amount.amount,
                 resolved_policy.tax_rate,
                 resolved_policy.tax_included,
-            );
+                currency_code.as_str(),
+            )?;
             if line_tax <= Decimal::ZERO {
                 continue;
             }
@@ -297,13 +300,23 @@ fn normalize_country_code(value: Option<&str>) -> TaxResult<Option<String>> {
     Ok(Some(normalized))
 }
 
-fn calculate_tax_amount(amount: Decimal, rate: Decimal, tax_included: bool) -> Decimal {
+/// Tax is rounded with the canonical currency rule (`rustok_core::money::round_to_currency`,
+/// half away from zero at the currency's minor-unit exponent) so tax amounts stay convertible to
+/// provider minor units for zero- and three-decimal currencies, not only for 2-decimal ones.
+fn calculate_tax_amount(
+    amount: Decimal,
+    rate: Decimal,
+    tax_included: bool,
+    currency_code: &str,
+) -> TaxResult<Decimal> {
     let hundred = Decimal::from(100);
-    if tax_included {
-        (amount - (amount / (Decimal::ONE + rate / hundred))).round_dp(2)
+    let raw_tax = if tax_included {
+        amount - (amount / (Decimal::ONE + rate / hundred))
     } else {
-        (amount * rate / hundred).round_dp(2)
-    }
+        amount * rate / hundred
+    };
+    money::round_to_currency(raw_tax, currency_code)
+        .map_err(|error| TaxError::Validation(error.to_string()))
 }
 
 #[cfg(test)]
@@ -646,5 +659,47 @@ mod tests {
         assert_eq!(result.tax_total, Decimal::ZERO);
         assert!(!result.tax_included);
         assert!(result.lines.is_empty());
+    }
+
+    async fn calculate_single_line(currency_code: &str, amount: Decimal) -> Decimal {
+        RegionTaxProvider
+            .calculate(TaxCalculationInput {
+                currency_code: currency_code.to_string(),
+                channel_id: None,
+                policy: TaxPolicySnapshot {
+                    provider_id: None,
+                    channel_provider_id: None,
+                    country_code: None,
+                    tax_rate: Decimal::from(10),
+                    tax_included: false,
+                    country_rules: Vec::new(),
+                },
+                taxable_amounts: vec![TaxableAmount {
+                    line_item_id: Some(Uuid::new_v4()),
+                    shipping_option_id: None,
+                    item_tax_class: None,
+                    shipping_tax_class: None,
+                    description: None,
+                    amount,
+                }],
+                customer_tax_exempt: false,
+            })
+            .await
+            .expect("tax calculation should succeed")
+            .tax_total
+    }
+
+    #[tokio::test]
+    async fn tax_amount_is_rounded_at_currency_precision_half_away_from_zero() {
+        // 10% of 105 JPY is 10.5: a zero-decimal currency must round to whole yen, half away from zero.
+        assert_eq!(
+            calculate_single_line("JPY", Decimal::from(105)).await,
+            Decimal::from(11)
+        );
+        // 10% of 1.25 USD is 0.125: half away from zero gives 0.13 (banker's rounding gave 0.12).
+        assert_eq!(
+            calculate_single_line("USD", Decimal::new(125, 2)).await,
+            Decimal::new(13, 2)
+        );
     }
 }

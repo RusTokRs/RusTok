@@ -164,21 +164,17 @@ impl AtomicCartCheckoutHandle {
             ));
         }
 
-        let snapshot = if status == CartStatus::Completed {
-            self.snapshot_port
-                .read_checkout_snapshot(
-                    snapshot_port_context(tenant_id, &self.prepare_request),
-                    self.prepare_request.cart_id,
-                )
-                .await?
-        } else {
-            self.snapshot_port
-                .prepare_checkout(
-                    snapshot_port_context(tenant_id, &self.prepare_request),
-                    self.prepare_request.clone(),
-                )
-                .await?
-        };
+        // `prepare_bound_cart` already applied the request context and pricing atomically. Re-running
+        // `prepare_checkout` here would replay `update_context` with the request input, whose
+        // replace semantics erase the cart email, locale and shipping selection that the
+        // preparation step just preserved. Only read the prepared state.
+        let snapshot = self
+            .snapshot_port
+            .read_checkout_snapshot(
+                snapshot_port_context(tenant_id, &self.prepare_request),
+                self.prepare_request.cart_id,
+            )
+            .await?;
         if status == CartStatus::CheckingOut {
             store_snapshot(&self.prepared_state, snapshot.clone())?;
         }

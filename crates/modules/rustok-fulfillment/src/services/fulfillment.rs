@@ -1228,6 +1228,9 @@ impl FulfillmentService {
         let all_items_delivered = adjusted_items
             .iter()
             .all(|item| item.delivered_quantity >= item.quantity);
+        // Read before the `ActiveModel` conversion: `take()` on an unchanged
+        // `ActiveValue<Option<_>>` yields `Some(None)`, which never reads as "unset".
+        let first_shipment = fulfillment.shipped_at.is_none();
         let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
         let metadata = active.metadata.clone().take().unwrap_or_default();
         // The audit entry records the status this write produces; binding it here
@@ -1252,7 +1255,7 @@ impl FulfillmentService {
                 status_after,
             ),
         )?);
-        if active.shipped_at.clone().take().is_none() {
+        if first_shipment {
             active.shipped_at = Set(Some(now.into()));
         }
         active.updated_at = Set(now.into());
