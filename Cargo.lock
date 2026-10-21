@@ -14434,6 +14434,7 @@ dependencies = [
  "async-trait",
  "rustok-api",
  "serde",
+ "serde_json",
  "uuid",
 ]
 
