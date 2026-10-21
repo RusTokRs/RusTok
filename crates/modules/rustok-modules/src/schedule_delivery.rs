@@ -317,7 +317,8 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
                 .map_err(storage_error)?;
             let scheduled_for = datetime_from_row(&candidate, "scheduled_for", backend)?;
             let descriptor =
-                match load_admitted_descriptor(&transaction, backend, tenant_id, installation_id).await
+                match load_admitted_descriptor(&transaction, backend, tenant_id, installation_id)
+                    .await
                 {
                     Ok(descriptor) => descriptor,
                     Err(ArtifactScheduleDeliveryError::InstallationUnavailable) => {

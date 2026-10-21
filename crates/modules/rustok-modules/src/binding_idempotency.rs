@@ -335,7 +335,6 @@ fn request_values(
     ]
 }
 
-
 fn lease_value(now: DateTime<Utc>, backend: SupportedBackend) -> sea_orm::Value {
     let lease = now + Duration::seconds(LEASE_SECONDS);
     match backend {
