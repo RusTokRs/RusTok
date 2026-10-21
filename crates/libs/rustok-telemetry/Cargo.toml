@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description.workspace = true
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 once_cell.workspace = true
 tracing.workspace = true

@@ -65,7 +65,7 @@ fn shared_redis_backend_connects_lazily_and_recovers_generation_through_monitor(
         shared.contains("configured_redis_outage_remains_visible_and_local_writes_stay_bounded")
     );
 
-    assert!(cache_lib.contains("include!(\"backend_generation_recovery.rs\");"));
+    assert!(cache_lib.contains("mod backend_generation_recovery;"));
     assert!(shared.contains("self.wrap_generation_recovery_health(prefix, backend)"));
     assert!(weighted.contains("self.wrap_generation_recovery_health(prefix, backend)"));
     assert!(generation_recovery.contains("MAX_GENERATION_RECOVERIES_PER_PROBE"));

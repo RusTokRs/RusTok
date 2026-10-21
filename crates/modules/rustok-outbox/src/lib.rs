@@ -1,10 +1,38 @@
-use async_trait::async_trait;
-use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
-use sea_orm_migration::MigrationTrait;
+/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok.
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
+
+//! # RusToK Outbox
+//!
+//! Transactional event persistence, reliable outbox relay, DLQ, and event retention
+//! infrastructure for the RusToK platform.
+//!
+//! `rustok-outbox` guarantees atomic event persistence within database transactions
+//! (`sys_events` table) and reliable asynchronous dispatch through background relay workers,
+//! preventing dual-write inconsistencies and phantom events.
+//!
+//! ## Core Architecture & Modules
+//!
+//! - **Transactional Bus**: [`TransactionalEventBus`] provides transactional publish methods
+//!   for root events and bounded typed contract events within caller transactions.
+//! - **Relay Engine**: [`OutboxRelay`] polls, claims, batches, and dispatches pending events with
+//!   lease-based concurrency controls and dead-letter queue (DLQ) transitions.
+//! - **Idempotency & Write-Once**: [`ContractEventWriteOnceError`] and idempotency mechanics
+//!   enforce exact-replay matching and detect conflict reuse.
+//! - **Retention & Pruning**: [`OutboxRetention`] and [`OutboxRetentionConfig`] clean up
+//!   dispatched events based on tenant or platform retention windows.
+//! - **Module Entry Point**: [`OutboxModule`] exposes canonical module metadata and migrations.
 
 pub mod entity;
 pub mod idempotency;
 pub mod migration;
+pub mod module;
 pub mod ports;
 pub mod relay;
 pub mod retention;
@@ -13,7 +41,11 @@ pub mod transport;
 
 pub use entity::{Entity as SysEvents, Model as SysEvent};
 pub use migration::SysEventsMigration;
-pub use ports::*;
+pub use module::OutboxModule;
+pub use ports::{
+    OutboxRelayPort, OutboxRelayRunOnceProjection, OutboxRelayRunOnceRequest,
+    TransactionalEventWriter, require_outbox_relay_policy,
+};
 pub use relay::{OutboxRelay, RelayConfig, RelayMetricsSnapshot};
 pub use retention::{
     DEFAULT_OUTBOX_RETENTION_BATCH_SIZE, OutboxPruneReport, OutboxRetention, OutboxRetentionConfig,
@@ -21,55 +53,5 @@ pub use retention::{
 pub use transactional::TransactionalEventBus;
 pub use transport::{ContractEventWriteOnceError, OutboxTransport};
 
-/// Core outbox module — transactional event persistence and relay infrastructure.
-pub struct OutboxModule;
-
-impl MigrationSource for OutboxModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        vec![Box::new(SysEventsMigration)]
-    }
-}
-
-#[async_trait]
-impl RusToKModule for OutboxModule {
-    fn slug(&self) -> &'static str {
-        "outbox"
-    }
-
-    fn name(&self) -> &'static str {
-        "Outbox"
-    }
-
-    fn description(&self) -> &'static str {
-        "Transactional event persistence, relay, retry, DLQ, and delivered-event retention."
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn kind(&self) -> ModuleKind {
-        ModuleKind::Core
-    }
-
-    async fn health(&self) -> HealthStatus {
-        // Module-level health has no host AppContext, so it cannot inspect
-        // sys_events, relay worker state, backlog, lag or DLQ. The server
-        // readiness layer owns those concrete checks.
-        HealthStatus::Degraded
-    }
-}
-
 #[cfg(test)]
 mod contract_tests;
-
-#[cfg(test)]
-mod health_tests {
-    use super::OutboxModule;
-    use rustok_core::module::{HealthStatus, RusToKModule};
-
-    #[tokio::test]
-    async fn outbox_module_health_defers_to_host_readiness() {
-        assert_eq!(OutboxModule.health().await, HealthStatus::Degraded);
-    }
-}

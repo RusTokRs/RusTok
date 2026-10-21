@@ -72,5 +72,6 @@
 
 ## Docs
 
+- [CRATE_API.md](./CRATE_API.md): Public Rust API specification and invariants.
 - [Module docs](./docs/README.md)
 - [Platform docs index](../../../docs/index.md)

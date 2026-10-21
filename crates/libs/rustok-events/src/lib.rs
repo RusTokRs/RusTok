@@ -1,4 +1,21 @@
-//! Canonical event contracts crate for RusToK.
+//! # RusToK Events
+//!
+//! Canonical event contracts and schemas library for the RusToK platform.
+//!
+//! `rustok-events` owns the shared event envelope definitions, root domain events,
+//! bounded-family event contracts, and schema validation logic used across sovereign domain
+//! modules and the host server.
+//!
+//! ## Architecture & Components
+//!
+//! - **Event Envelopes & Types**: [`EventEnvelope`] (and [`RootEventEnvelope`]) wrap root [`DomainEvent`]
+//!   records carrying correlation, causation, tenant scope, and actor identity.
+//! - **Bounded Typed Contracts**: [`ContractEventEnvelope`] and [`EventContract`] provide sealed,
+//!   strongly-typed event payloads for high-throughput and cross-module workflows.
+//! - **Schema Validation**: [`EventSchema`], [`FieldSchema`], [`ValidateEvent`], and [`event_schema`]
+//!   enforce schema-driven fail-closed validation on serialization and deserialization.
+//! - **Contract Digests**: [`event_contract_digests`] guarantees tamper-proof verification of all
+//!   versioned event schemas against the committed release artifact.
 
 mod blog_comments_schedule_audit;
 mod checkout_operation;

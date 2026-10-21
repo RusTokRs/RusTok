@@ -63,6 +63,7 @@ families.
 
 ## Docs
 
+- [Public Contract Reference (CRATE_API.md)](./CRATE_API.md)
 - [Module docs](./docs/README.md)
 - [Event contract digest admission](./docs/event-contract-digest-admission.md)
 - [Event schema release decision](../../../DECISIONS/2026-07-23-event-schema-release-discipline.md)

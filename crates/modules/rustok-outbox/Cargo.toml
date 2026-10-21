@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description.workspace = true
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [features]
 default = []
 # Enables the in-memory EventTransport fallback exclusively for test utility
