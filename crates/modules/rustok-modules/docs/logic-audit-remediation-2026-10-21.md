@@ -73,7 +73,7 @@ then records what was changed, in what order, and how it was verified.
 | B | H-2 policy cache TTL/bound/poison + host invalidation completeness | implemented (`087acf3`) |
 | C | H-3 claim lease/reclaim + executor outcome ordering | implemented (`052053a`) |
 | D | M-4 settings strictness; M-6 materializer honesty; M-9 numeric index canonicalization | implemented (`9249557`) |
-| E | D5/D6 deletions: `dynamic_lifecycle`, in-memory `gc`/`wave_rollout`/`operator` fakes; journal fixed in place (see §4) | implemented (`f59142d`) |
+| E | D5/D6 initially deleted `dynamic_lifecycle`/`gc`/`wave_rollout`/`operator`; **restored and reclassified** after provenance review (see §5); journal fixed in place (see §4) | partially reverted — modules restored, disposition per §5 |
 | F | D4 RLS FORCE + GUC coverage (migration; needs PostgreSQL evidence) | pending |
 | G | D9 durable epoch + attestation-only watchdog convergence | implemented |
 | H | M-12 schema ownership + backend newtype; typed errors at pub boundary; bounded lists | pending |
@@ -96,12 +96,21 @@ The development sandbox has no `cargo`/`rustc`. Verification therefore is:
 
 ## 4. Change log
 
-- **E (deletions):** `dynamic_lifecycle.rs`, `operator.rs`, `wave_rollout.rs`,
-  `gc.rs` and their tests/facade methods were deleted after a
-  workspace-wide usage scan showed zero external callers. The surviving
-  owners are: lifecycle = executor + `lifecycle_writer`; rollout =
-  `artifact_node_reconciliation` / `distribution_rollout`; GC of data
-  objects = `data::gc` + `retention`.
+- **E (deletions, later reverted):** `dynamic_lifecycle.rs`, `operator.rs`,
+  `wave_rollout.rs`, `gc.rs` and their tests/facade methods were deleted
+  after a workspace-wide usage scan showed zero external callers. On
+  review this was **reverted**: the scan proved only "unwired today", and
+  a provenance check found all four are deliverables of the active
+  `docs/modules/module-release-rollback-plan.md`, with their schema
+  created by migration `m20260904_000051`. Deleting them also orphaned
+  the sole writers of `module_artifact_work_generations` (read by the
+  canonical delivery descriptor loader) and
+  `module_production_operations`. All four modules, their five test
+  files, the `lib.rs` exports, and the `ModuleControlPlane` facade
+  accessors are restored; §5 records the per-module classification
+  (parallel implementation vs unfinished planned functionality) that
+  determines each module's disposition. They remain unwired in
+  production until that disposition is executed.
 - **E (journal):** `release_admission_journal` was *kept and fixed* rather
   than deleted: inspection showed it is the pre-staging intent journal the
   OCI admission layers record before CAS mutation, complementing the
@@ -139,3 +148,109 @@ The development sandbox has no `cargo`/`rustc`. Verification therefore is:
   spots; all reformatted in the Phase G commit. Workspace-level
   `Cargo Check` failure on the same PR is in `rustok-forum`
   (E0061/E0252/E0382/E0425) — pre-existing on the red `main` baseline.
+
+## 5. Appendix: classification of the four restored modules (2026-10-21)
+
+Provenance. All four modules arrived in the single repository-import
+commit `d69e768` (12 453 files), so per-file git history carries no
+intent signal. The authoring plan is `docs/modules/module-release-rollback-plan.md`
+(status `active`), which names all four as implemented deliverables with
+checked work items and "verified by tests" claims, and migration
+`m20260904_000051` creates their schema (`module_admitted_oci_releases`,
+`module_external_prebuilt_ingress`, `module_executor_readiness_receipts`,
+`module_artifact_work_generations`, `module_production_operations`).
+The restored integration tests run the real crate migrations on SQLite.
+None of the four has a production caller: in the whole workspace they are
+referenced only by `lib.rs` re-exports, two `ModuleControlPlane` facade
+accessors, and their own tests. "Unwired" is therefore fact; the open
+question per module is whether the code is (a) a parallel implementation
+of a canonical owner, (b) unfinished planned functionality, or (c) both.
+
+### 5.1 `dynamic_lifecycle.rs` — mixed, predominantly (a) parallel
+
+- Parallel re-implementation: `execute_install` / `execute_enable` /
+  `execute_disable` duplicate canonical owners (`installation.rs`
+  admission commit, executor + `lifecycle_writer`) with weaker evidence
+  and safety: fabricated admission fields (registry `ghcr.io`,
+  repository `rustok/{slug}`, empty dependency lock `graph_revision: 1`,
+  `size_bytes = 1024`, `verification_evidence = "{}"`), no idempotency
+  check on `operation_id`, TOCTOU work-generation check (read outside the
+  transaction; the UPDATE does not predicate the generation, and enable /
+  disable never check `rows_affected`), caller-asserted
+  `smoke_test_passed` instead of readiness evidence, no context
+  validation, authorization, or tenant GUC configuration, and `unwrap()`
+  on stored UUIDs. If wired as-is it would admit installations the
+  canonical path rejects.
+- Sole-owner planned pieces with canonical readers: work-generation
+  create/advance/retire (`module_artifact_work_generations` has no other
+  writer; the canonical delivery descriptor loader and `operator.rs`
+  read retired generations to fence work), publisher-continuity rule on
+  reinstall (currently fail-open: `continuity_token` ignored, NULL
+  publisher passes), and the purge-requires-retired invariant.
+- Simulated parts: `execute_data_purge` deletes from the nonexistent
+  table `module_artifact_data_records` and swallows the error with
+  `.ok()` (deletes nothing, reports success); `execute_settings_purge`
+  deletes one table with `.ok()` and no receipt; `get_work_generation`
+  selects `retired_at` but always returns `None`. Declared actions
+  `admit`/`update`/`remove`/`rollback` have no implementing methods.
+  The `module_production_operations` journal is written only here and
+  read nowhere.
+- Disposition: do not wire. Fold work-generation lifecycle, continuity,
+  and the retire precondition into the canonical installation/uninstall/
+  purge owners (canonical uninstall currently never retires the
+  generation, leaving the delivery-side fence permanently inert), then
+  delete this parallel service.
+
+### 5.2 `gc.rs` — (b) unfinished planned functionality
+
+Pure-logic tombstone → grace → final-recheck → execution-token →
+collect coordinator over the canonical `RetentionTarget` /
+`RetentionHoldLedger` (`retention.rs` has no collection machinery;
+`data::gc` covers artifact data objects only). Missing for production:
+any persistence (all state is in-memory `HashMap`s despite the "durable
+coordinator" doc claim), real owner adapters (the 11 adapters are
+hand-populated in-memory sets; `execute_physical_purge` removes from a
+`HashSet`), and a scheduler/caller. Keep; wire only behind a durable
+tombstone store and adapters backed by the real owner stores.
+
+### 5.3 `operator.rs` — (b) unfinished planned read model, fabricated fields
+
+Real SQL reads, invented projection values: blast radius hardcodes
+`affected_roles = ["api", "monolith"]`, `affected_tenants_count = 1` for
+both scopes, `dependent_modules = []` (the cross-module automatic-mode
+denial can never trigger from data), `has_schema_migration` = "candidate
+is Static", `is_irreversible = false` always; `predecessor_identity` is a
+clone of current; `publisher_identity` hardcoded `"platform"`;
+unparseable or missing data-owner/settings IDs silently replaced with
+random `Uuid::new_v4()`; `active_retention_holds_count = 0` hardcoded;
+support bundle always emits `installation_id: None, operation_id: None`
+with no authorization despite the "authorized" contract; `get_status`
+INNER JOINs `module_artifact_work_generations`, so installations created
+by the canonical path are invisible ("No installation found"). No
+canonical equivalent of this operator surface exists (transition
+receipts/preflight overlap only partially). Keep restored but unwired;
+a rewrite against canonical sources (predecessor chain, dependency
+graph, retention ledger, production-operation journal) is required
+before any transport exposes it.
+
+### 5.4 `wave_rollout.rs` — (b) unfinished planned policy state machine
+
+Pure in-memory cohort policy (dual pre-staging barrier, sequential wave
+mutation, verify-before-widen, single-attempt rollback). No persistence,
+no node I/O, `verify_wave` trusts the caller's health assertion. No
+canonical wave/cohort counterpart exists (`distribution_rollout` and
+`artifact_node_reconciliation` have no wave concepts; per-node mechanics
+live in the artifact node agent). Keep; future wiring must drive it
+from durable reconciliation state, not from a disposable struct.
+
+### 5.5 Consequence for audit finding H-5 / decision D6
+
+H-5's factual core stands (dynamic_lifecycle fabricates admission
+evidence and must never be wired as-is), but its "delete the simulated
+services" framing was overbroad for `gc`, `operator`, and `wave_rollout`:
+they are unfinished deliverables of an active plan, and the plan's
+checked-off "implemented/verified" status for all four is itself
+inaccurate. D6 is refined accordingly: simulated behavior must not be
+*presented as production* — these modules stay compiled and tested but
+explicitly unwired and recorded here as unfinished until their §5
+dispositions are executed.

@@ -124,6 +124,18 @@ caller-supplied `smoke_test_passed` flag, and does not check
 `rows_affected` (plus `unwrap` at `:439,451,488`). Zero production callers
 today — it must be deleted or rewritten before anyone wires it.
 
+> Addendum (2026-10-21, remediation review): `dynamic_lifecycle.rs` and
+> the related `gc.rs`, `operator.rs`, `wave_rollout.rs` were deleted in
+> remediation Phase E, then **restored** after a provenance check showed
+> they are deliverables of the active
+> `docs/modules/module-release-rollback-plan.md` and that
+> `dynamic_lifecycle` is the sole writer of
+> `module_artifact_work_generations`, which canonical delivery code
+> reads. The factual core of H-5 stands (fabricated admission evidence;
+> never wire as-is). Per-module classification — parallel implementation
+> vs unfinished planned functionality — and dispositions are recorded in
+> `logic-audit-remediation-2026-10-21.md` §5.
+
 **H-6. Governance authorization by display-label string equality.**
 `principal_matches_governance_actor` (`governance/mapping.rs:541`) falls
 back from `user_id` to `subject` string, then to **display/legacy label

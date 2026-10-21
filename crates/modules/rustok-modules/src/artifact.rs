@@ -2398,12 +2398,14 @@ mod tests {
         }];
         let input_schema = schema_document("lifecycle_input");
         let output_schema = schema_document("lifecycle_output");
+        let input_digest = input_schema.digest.clone();
+        let output_digest = output_schema.digest.clone();
         let lifecycle_binding = |id: &str| ModuleRuntimeBinding {
             id: id.to_string(),
             kind: ModuleRuntimeBindingKind::PreEnable,
             entrypoint: "lifecycle.pre_enable".to_string(),
-            input_schema_digest: input_schema.digest.clone(),
-            output_schema_digest: output_schema.digest.clone(),
+            input_schema_digest: input_digest.clone(),
+            output_schema_digest: output_digest.clone(),
             permission: "sample_module.lifecycle.manage".to_string(),
             idempotency: ModuleBindingIdempotency::Required,
             limit_profile: "lifecycle".to_string(),

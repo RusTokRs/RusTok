@@ -18,7 +18,7 @@ use crate::{
     ArtifactSecretHandleAuthorizer, ArtifactSecretUseAuthorizer, ArtifactSecretValueConsumer,
     ArtifactSettingsPurgePreviewService, ArtifactSettingsRecoveryAuthorizer,
     ArtifactSettingsRecoveryCipher, ControlPlaneInfrastructure, DurableArtifactBlobStore,
-    ExecutorReadinessService, ExternalPrebuiltIngressService,
+    DynamicLifecycleService, ExecutorReadinessService, ExternalPrebuiltIngressService,
     ModuleArtifactNodeReconciliationAuthorizer, ModuleArtifactNodeTopologyResolver,
     ModuleArtifactSecurityAuthorizer, ModuleDefinitionCatalog, ModuleDefinitionError,
     ModuleEffectivePolicy, ModuleEffectivePolicyChannelInput,
@@ -447,6 +447,19 @@ impl ModuleControlPlane {
     ) -> ExecutorReadinessService {
         ExecutorReadinessService::new(self.db.clone(), blobs)
             .with_infrastructure(self.infrastructure.clone())
+    }
+
+    /// Returns the dynamic lifecycle service for distinct lifecycle semantics
+    /// (install, enable, update, disable, remove, uninstall, rollback, data_purge,
+    /// settings_purge), atomic uninstall with work generation, and publisher continuity.
+    pub fn dynamic_lifecycle(&self) -> DynamicLifecycleService {
+        DynamicLifecycleService::new(self.db.clone())
+    }
+
+    /// Returns the unified operator service for release projections, preview generation,
+    /// status reporting, and diagnostic support bundle retrieval.
+    pub fn operator(&self) -> crate::operator::ModuleOperatorService {
+        crate::operator::ModuleOperatorService::new(self.db.clone())
     }
 
     /// Returns the platform security owner for immutable artifact release
