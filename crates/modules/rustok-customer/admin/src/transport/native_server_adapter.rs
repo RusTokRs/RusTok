@@ -265,8 +265,12 @@ fn ensure_permission(
 
 #[cfg(feature = "ssr")]
 fn parse_uuid(value: &str, field_name: &str) -> Result<uuid::Uuid, ServerFnError> {
-    uuid::Uuid::parse_str(value.trim())
-        .map_err(|_| ServerFnError::new(format!("Invalid {field_name}")))
+    let parsed = uuid::Uuid::parse_str(value.trim())
+        .map_err(|_| ServerFnError::new(format!("Invalid {field_name}")))?;
+    if parsed.is_nil() {
+        return Err(ServerFnError::new(format!("Invalid {field_name}")));
+    }
+    Ok(parsed)
 }
 
 #[cfg(feature = "ssr")]

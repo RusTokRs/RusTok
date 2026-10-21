@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 #[path = "support/forum_public_settings.rs"]
 mod forum_public_settings;
 
@@ -22,7 +24,7 @@ use rustok_events::{
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumAudienceConstraints,
     ForumAudienceFacts, ForumAudienceFactsPort, ForumAudienceFactsRequest,
-    ForumCategoryAudiencePolicyService, ForumModule, ForumSearchProjectionSourceFactory,
+    ForumCategoryAudiencePolicyService, ForumModule,
     ForumSearchResultCandidate, ForumSearchResultCandidateKind,
     ForumSearchResultEligibilityService, ForumTopicAudiencePolicyService,
     SetForumCategoryAudiencePolicyInput, SetForumTopicAudiencePolicyInput,
@@ -32,7 +34,7 @@ use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_search::{
     ForumProjectionReconciler, ForumSearchContractIngress, ForumSearchContractIngressOutcome,
     ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchRequest, SearchModule,
-    SearchProjectionSourceFactory, SharedStorefrontSearchCategoryScopePort,
+    SharedStorefrontSearchCategoryScopePort,
     SharedStorefrontSearchResultEligibilityPort, StorefrontSearchCategoryScopePort,
     StorefrontSearchCategoryScopeRequest, StorefrontSearchResultCandidate,
     StorefrontSearchResultCandidateKind, StorefrontSearchResultEligibilityPort,

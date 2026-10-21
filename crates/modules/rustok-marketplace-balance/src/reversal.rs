@@ -38,6 +38,11 @@ impl MarketplaceLedgerService {
         idempotency_key: impl Into<String>,
         input: PostMarketplaceLedgerReversalInput,
     ) -> MarketplaceLedgerResult<MarketplaceLedgerReversalResponse> {
+        if tenant_id.is_nil() || actor_id.is_nil() {
+            return Err(MarketplaceLedgerError::Validation(
+                "tenant_id and actor_id must not be nil".to_string(),
+            ));
+        }
         validate_input(&input)?;
         let key = normalize_idempotency_key(idempotency_key)?;
         let hash = command_request_hash(COMMAND_KIND, actor_id, &input)?;

@@ -227,3 +227,46 @@ impl ContentTypeConfig {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config() {
+        let config = ContentRevisionConfig::default();
+        assert!(config.enabled);
+        assert!(config.is_enabled("blog_post"));
+        assert!(!config.is_enabled("blog_category"));
+        assert!(!config.is_enabled("forum_topic"));
+        assert!(!config.is_enabled("product"));
+        assert!(!config.is_enabled("unknown_type"));
+
+        let blog_config = config.get_content_type("blog_post").unwrap();
+        assert_eq!(blog_config.condition_field.as_deref(), Some("status"));
+        assert_eq!(blog_config.condition_value.as_deref(), Some("published"));
+        assert!(matches!(blog_config.retention, RetentionPolicy::KeepLast(50)));
+    }
+
+    #[test]
+    fn test_content_type_builder() {
+        let custom = ContentTypeConfig::new(true)
+            .track_on(vec![RevisionEvent::Update, RevisionEvent::Create])
+            .condition("is_active", "true")
+            .retention(RetentionPolicy::KeepDays(30))
+            .tracked_fields(vec!["body", "title"])
+            .ignored_fields(vec!["updated_at"]);
+
+        assert!(custom.enabled);
+        assert_eq!(custom.track_on.len(), 2);
+        assert_eq!(custom.condition_field.as_deref(), Some("is_active"));
+        assert_eq!(custom.condition_value.as_deref(), Some("true"));
+        assert!(matches!(custom.retention, RetentionPolicy::KeepDays(30)));
+        assert_eq!(
+            custom.tracked_fields,
+            vec!["body".to_string(), "title".to_string()]
+        );
+        assert_eq!(custom.ignored_fields, vec!["updated_at".to_string()]);
+    }
+}
+

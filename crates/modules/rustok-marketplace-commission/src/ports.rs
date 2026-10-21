@@ -76,6 +76,12 @@ impl MarketplaceCommissionReadPort for crate::MarketplaceCommissionService {
         request: ReadMarketplaceCommissionAssessmentRequest,
     ) -> Result<MarketplaceCommissionAssessmentResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if request.allocation_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_commission.allocation_id_invalid",
+                "allocation_id must not be nil UUID",
+            ));
+        }
         self.get_assessment_by_allocation(parse_tenant_id(&context)?, request.allocation_id)
             .await
             .map_err(map_owner_error)
@@ -87,6 +93,12 @@ impl MarketplaceCommissionReadPort for crate::MarketplaceCommissionService {
         request: ListMarketplaceCommissionAssessmentsByOrderRequest,
     ) -> Result<Vec<MarketplaceCommissionAssessmentResponse>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if request.order_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_commission.order_id_invalid",
+                "order_id must not be nil UUID",
+            ));
+        }
         self.list_assessments_by_order(parse_tenant_id(&context)?, request.order_id)
             .await
             .map_err(map_owner_error)
@@ -98,6 +110,12 @@ impl MarketplaceCommissionReadPort for crate::MarketplaceCommissionService {
         request: ListMarketplaceCommissionAssessmentsBySellerRequest,
     ) -> Result<MarketplaceCommissionAssessmentListResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if request.seller_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_commission.seller_id_invalid",
+                "seller_id must not be nil UUID",
+            ));
+        }
         self.list_assessments_by_seller(parse_tenant_id(&context)?, request)
             .await
             .map_err(map_owner_error)
@@ -109,6 +127,15 @@ impl MarketplaceCommissionReadPort for crate::MarketplaceCommissionService {
         request: ListMarketplaceCommissionRulesRequest,
     ) -> Result<MarketplaceCommissionRuleListResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if request.rule_key.is_some_and(|id| id.is_nil())
+            || request.seller_id.is_some_and(|id| id.is_nil())
+            || request.listing_id.is_some_and(|id| id.is_nil())
+        {
+            return Err(PortError::validation(
+                "marketplace_commission.filter_id_invalid",
+                "filter rule_key, seller_id, and listing_id must not be nil UUID when present",
+            ));
+        }
         self.list_rules(parse_tenant_id(&context)?, request)
             .await
             .map_err(map_owner_error)
@@ -123,6 +150,20 @@ impl MarketplaceCommissionCommandPort for crate::MarketplaceCommissionService {
         request: CreateMarketplaceCommissionRuleVersionInput,
     ) -> Result<MarketplaceCommissionRuleResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        if request.rule_key.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_commission.rule_key_invalid",
+                "rule_key must not be nil UUID",
+            ));
+        }
+        if request.seller_id.is_some_and(|id| id.is_nil())
+            || request.listing_id.is_some_and(|id| id.is_nil())
+        {
+            return Err(PortError::validation(
+                "marketplace_commission.target_id_invalid",
+                "seller_id and listing_id must not be nil UUID when present",
+            ));
+        }
         self.create_rule_version_with_receipt(
             parse_tenant_id(&context)?,
             parse_actor_id(&context)?,
@@ -139,6 +180,12 @@ impl MarketplaceCommissionCommandPort for crate::MarketplaceCommissionService {
         request: AssessMarketplaceOrderCommissionsInput,
     ) -> Result<AssessMarketplaceOrderCommissionsResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        if request.order_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_commission.order_id_invalid",
+                "order_id must not be nil UUID",
+            ));
+        }
         let tenant_id = parse_tenant_id(&context)?;
         let actor_id = parse_actor_id(&context)?;
         let idempotency_key = parse_idempotency_key(&context)?;
@@ -149,21 +196,35 @@ impl MarketplaceCommissionCommandPort for crate::MarketplaceCommissionService {
 }
 
 fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
+    let id = Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
         PortError::validation(
             "marketplace_commission.tenant_id_invalid",
             "PortContext.tenant_id must be a UUID for marketplace commission ports",
         )
-    })
+    })?;
+    if id.is_nil() {
+        return Err(PortError::validation(
+            "marketplace_commission.tenant_id_invalid",
+            "PortContext.tenant_id must not be nil UUID for marketplace commission ports",
+        ));
+    }
+    Ok(id)
 }
 
 fn parse_actor_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.actor.id.as_str()).map_err(|_| {
+    let id = Uuid::parse_str(context.actor.id.as_str()).map_err(|_| {
         PortError::validation(
             "marketplace_commission.actor_id_invalid",
             "write PortContext.actor.id must be a UUID for marketplace commission audit",
         )
-    })
+    })?;
+    if id.is_nil() {
+        return Err(PortError::validation(
+            "marketplace_commission.actor_id_invalid",
+            "write PortContext.actor.id must not be nil UUID for marketplace commission audit",
+        ));
+    }
+    Ok(id)
 }
 
 fn parse_idempotency_key(context: &PortContext) -> Result<String, PortError> {
@@ -249,5 +310,145 @@ fn map_owner_error(error: MarketplaceCommissionError) -> PortError {
             "marketplace commission storage is temporarily unavailable",
             true,
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::MarketplaceAllocationBoundaryKind;
+    use rustok_api::{PortActor, PortErrorKind};
+
+    #[test]
+    fn parse_tenant_id_invariants() {
+        let valid_uuid = Uuid::new_v4();
+        let ctx = PortContext::new(
+            valid_uuid.to_string(),
+            PortActor::system(),
+            "en",
+            "corr-1",
+        );
+        assert_eq!(parse_tenant_id(&ctx).unwrap(), valid_uuid);
+
+        let invalid_ctx = PortContext::new(
+            "not-a-uuid",
+            PortActor::system(),
+            "en",
+            "corr-1",
+        );
+        assert_eq!(
+            parse_tenant_id(&invalid_ctx).unwrap_err().code,
+            "marketplace_commission.tenant_id_invalid"
+        );
+
+        let nil_ctx = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::system(),
+            "en",
+            "corr-1",
+        );
+        assert_eq!(
+            parse_tenant_id(&nil_ctx).unwrap_err().code,
+            "marketplace_commission.tenant_id_invalid"
+        );
+    }
+
+    #[test]
+    fn parse_actor_id_invariants() {
+        let valid_uuid = Uuid::new_v4();
+        let ctx = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::user(valid_uuid.to_string()),
+            "en",
+            "corr-1",
+        );
+        assert_eq!(parse_actor_id(&ctx).unwrap(), valid_uuid);
+
+        let invalid_ctx = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::user("not-a-uuid"),
+            "en",
+            "corr-1",
+        );
+        assert_eq!(
+            parse_actor_id(&invalid_ctx).unwrap_err().code,
+            "marketplace_commission.actor_id_invalid"
+        );
+
+        let nil_ctx = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::user(Uuid::nil().to_string()),
+            "en",
+            "corr-1",
+        );
+        assert_eq!(
+            parse_actor_id(&nil_ctx).unwrap_err().code,
+            "marketplace_commission.actor_id_invalid"
+        );
+    }
+
+    #[test]
+    fn parse_idempotency_key_invariants() {
+        let mut ctx = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::system(),
+            "en",
+            "corr-1",
+        );
+        assert_eq!(
+            parse_idempotency_key(&ctx).unwrap_err().code,
+            "marketplace_commission.idempotency_key_required"
+        );
+
+        ctx.idempotency_key = Some("   ".to_string());
+        assert_eq!(
+            parse_idempotency_key(&ctx).unwrap_err().code,
+            "marketplace_commission.idempotency_key_required"
+        );
+
+        ctx.idempotency_key = Some("  comm-idem-123  ".to_string());
+        assert_eq!(parse_idempotency_key(&ctx).unwrap(), "comm-idem-123");
+    }
+
+    #[test]
+    fn map_owner_error_branches() {
+        let rule_id = Uuid::new_v4();
+        let err = map_owner_error(MarketplaceCommissionError::RuleNotFound(rule_id));
+        assert_eq!(err.code, "marketplace_commission.rule_not_found");
+        assert_eq!(err.kind, PortErrorKind::NotFound);
+
+        let err = map_owner_error(MarketplaceCommissionError::AssessmentNotFound(rule_id));
+        assert_eq!(err.code, "marketplace_commission.assessment_not_found");
+        assert_eq!(err.kind, PortErrorKind::NotFound);
+
+        let err = map_owner_error(MarketplaceCommissionError::RuleNotMatched(rule_id));
+        assert_eq!(err.code, "marketplace_commission.rule_not_matched");
+        assert_eq!(err.kind, PortErrorKind::Conflict);
+
+        let err = map_owner_error(MarketplaceCommissionError::AllocationAlreadyAssessed(rule_id));
+        assert_eq!(err.code, "marketplace_commission.allocation_already_assessed");
+        assert_eq!(err.kind, PortErrorKind::Conflict);
+
+        let err = map_owner_error(MarketplaceCommissionError::IdempotencyConflict);
+        assert_eq!(err.code, "marketplace_commission.idempotency_conflict");
+        assert_eq!(err.kind, PortErrorKind::Conflict);
+
+        let err = map_owner_error(MarketplaceCommissionError::ReceiptCorrupt);
+        assert_eq!(err.code, "marketplace_commission.receipt_corrupt");
+        assert_eq!(err.kind, PortErrorKind::InvariantViolation);
+
+        let err = map_owner_error(MarketplaceCommissionError::Validation("bad rule".to_string()));
+        assert_eq!(err.code, "marketplace_commission.validation");
+        assert_eq!(err.kind, PortErrorKind::Validation);
+
+        let err = map_owner_error(MarketplaceCommissionError::AllocationBoundary {
+            code: "alloc.failed".to_string(),
+            message: "allocation unavailable".to_string(),
+            retryable: true,
+            kind: MarketplaceAllocationBoundaryKind::Unavailable,
+        });
+        assert_eq!(err.code, "alloc.failed");
+        assert_eq!(err.kind, PortErrorKind::Unavailable);
+        assert!(err.retryable);
     }
 }

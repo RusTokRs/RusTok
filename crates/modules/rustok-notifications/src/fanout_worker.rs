@@ -414,3 +414,42 @@ fn validate_worker_id(worker_id: &str) -> NotificationResult<()> {
 fn now() -> DateTime<FixedOffset> {
     Utc::now().fixed_offset()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fanout_worker_id_validation_rejects_empty_whitespace_and_oversized() {
+        assert!(validate_worker_id("").is_err());
+        assert!(validate_worker_id("   ").is_err());
+        assert!(validate_worker_id(&"f".repeat(MAX_WORKER_ID_BYTES + 1)).is_err());
+        assert!(validate_worker_id("fanout-worker-1").is_ok());
+        assert!(validate_worker_id(&"w".repeat(MAX_WORKER_ID_BYTES)).is_ok());
+    }
+
+    #[test]
+    fn fanout_policy_deferral_reasons_expose_canonical_backoff_and_codes() {
+        let tenant_disabled = NotificationFanoutPolicyDeferral::TenantDisabled;
+        assert_eq!(tenant_disabled.retry_seconds(), 300);
+        assert_eq!(
+            tenant_disabled.error_code(),
+            "NOTIFICATION_TENANT_CAPABILITY_DISABLED"
+        );
+        assert_eq!(
+            tenant_disabled.error_message(),
+            "notifications capability is disabled for tenant"
+        );
+
+        let policy_unavail = NotificationFanoutPolicyDeferral::PolicyUnavailable;
+        assert_eq!(policy_unavail.retry_seconds(), 30);
+        assert_eq!(
+            policy_unavail.error_code(),
+            "NOTIFICATION_TENANT_POLICY_UNAVAILABLE"
+        );
+        assert_eq!(
+            policy_unavail.error_message(),
+            "notifications tenant policy is temporarily unavailable"
+        );
+    }
+}

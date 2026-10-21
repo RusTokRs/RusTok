@@ -574,8 +574,12 @@ fn parse_approval_status(
 
 #[cfg(feature = "ssr")]
 fn parse_uuid(value: &str, field: &str) -> Result<uuid::Uuid, ServerFnError> {
-    uuid::Uuid::parse_str(value.trim())
-        .map_err(|_| ServerFnError::new(format!("{field} must be a UUID")))
+    let id = uuid::Uuid::parse_str(value.trim())
+        .map_err(|_| ServerFnError::new(format!("{field} must be a UUID")))?;
+    if id.is_nil() {
+        return Err(ServerFnError::new(format!("{field} must not be nil")));
+    }
+    Ok(id)
 }
 
 #[cfg(feature = "ssr")]
@@ -637,4 +641,55 @@ fn map_port_error(error: rustok_api::PortError) -> ServerFnError {
         }
     };
     ServerFnError::new(message)
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_uuid_validates_non_nil_and_format() {
+        let valid = uuid::Uuid::new_v4();
+        assert_eq!(parse_uuid(&valid.to_string(), "listing_id").unwrap(), valid);
+
+        let nil = uuid::Uuid::nil();
+        let nil_err = parse_uuid(&nil.to_string(), "listing_id").unwrap_err();
+        assert!(nil_err.to_string().contains("must not be nil"));
+
+        let malformed_err = parse_uuid("not-a-uuid", "listing_id").unwrap_err();
+        assert!(malformed_err.to_string().contains("must be a UUID"));
+    }
+
+    #[test]
+    fn parse_statuses_validate_input() {
+        assert_eq!(
+            parse_status(Some("active")).unwrap(),
+            Some(rustok_marketplace_listing::MarketplaceListingStatus::Active)
+        );
+        assert_eq!(parse_status(Some("  ")).unwrap(), None);
+        assert!(parse_status(Some("invalid_status")).is_err());
+
+        assert_eq!(
+            parse_approval_status(Some("approved")).unwrap(),
+            Some(rustok_marketplace_listing::MarketplaceListingApprovalStatus::Approved)
+        );
+        assert_eq!(parse_approval_status(Some("  ")).unwrap(), None);
+        assert!(parse_approval_status(Some("unknown")).is_err());
+    }
+
+    #[test]
+    fn required_text_and_object_or_empty_validate_input() {
+        assert_eq!(required_text("  abc  ", "field").unwrap(), "abc");
+        assert!(required_text("   ", "field").is_err());
+
+        assert_eq!(
+            object_or_empty(serde_json::json!({"key": "val"}), "metadata").unwrap(),
+            serde_json::json!({"key": "val"})
+        );
+        assert_eq!(
+            object_or_empty(serde_json::Value::Null, "metadata").unwrap(),
+            serde_json::json!({})
+        );
+        assert!(object_or_empty(serde_json::json!("not an object"), "metadata").is_err());
+    }
 }

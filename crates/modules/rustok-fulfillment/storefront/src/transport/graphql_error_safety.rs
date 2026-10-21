@@ -140,3 +140,82 @@ fn configured_tenant_slug_length() -> Option<usize> {
         })
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_context() -> GraphqlCallContext {
+        GraphqlCallContext {
+            correlation_id: "test-corr-id".to_string(),
+            tenant_slug_length: Some(7),
+            cart_id_length: 36,
+            delivery_group_count: 1,
+            shipping_profile_slug_length: 7,
+            seller_id_present: false,
+            shipping_option_id_present: true,
+        }
+    }
+
+    #[test]
+    fn map_error_passes_through_non_graphql_errors() {
+        let ctx = test_context();
+        let val_err = ShippingSelectionTransportError::Validation("validation failure".to_string());
+        assert_eq!(ctx.map_error(val_err.clone()), val_err);
+
+        let srv_err = ShippingSelectionTransportError::ServerFn("server fn failure".to_string());
+        assert_eq!(ctx.map_error(srv_err.clone()), srv_err);
+    }
+
+    #[test]
+    fn map_error_redacts_sensitive_details() {
+        let ctx = test_context();
+        let raw = ShippingSelectionTransportError::Graphql(
+            rustok_graphql::GraphqlHttpError::Http("500 token=secret-bearer-123".into()).to_string(),
+        );
+        let mapped = ctx.map_error(raw);
+
+        assert_eq!(
+            mapped,
+            ShippingSelectionTransportError::Graphql(
+                "Shipping selection is temporarily unavailable".to_string()
+            )
+        );
+        assert!(!mapped.message().contains("secret"));
+
+        let network_raw = ShippingSelectionTransportError::Graphql(
+            rustok_graphql::GraphqlHttpError::Network.to_string(),
+        );
+        assert_eq!(
+            ctx.map_error(network_raw),
+            ShippingSelectionTransportError::Graphql(
+                "Shipping selection is temporarily unavailable".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn map_error_handles_unauthorized_and_rejection() {
+        let ctx = test_context();
+
+        let unauth = ShippingSelectionTransportError::Graphql(
+            rustok_graphql::GraphqlHttpError::Unauthorized.to_string(),
+        );
+        assert_eq!(
+            ctx.map_error(unauth),
+            ShippingSelectionTransportError::Graphql(
+                "Shipping selection authentication is required".to_string()
+            )
+        );
+
+        let rejection = ShippingSelectionTransportError::Graphql(
+            rustok_graphql::GraphqlHttpError::Graphql("syntax error".into()).to_string(),
+        );
+        assert_eq!(
+            ctx.map_error(rejection),
+            ShippingSelectionTransportError::Graphql(
+                "Shipping selection request could not be completed".to_string()
+            )
+        );
+    }
+}

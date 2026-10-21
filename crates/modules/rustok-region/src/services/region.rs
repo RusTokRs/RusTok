@@ -34,15 +34,36 @@ impl RegionService {
         tenant_id: Uuid,
         input: CreateRegionInput,
     ) -> RegionResult<RegionResponse> {
+        if tenant_id.is_nil() {
+            return Err(RegionError::Validation("tenant_id must not be nil".to_string()));
+        }
         input
             .validate()
             .map_err(|error| RegionError::Validation(error.to_string()))?;
+
+        if input.tax_rate < rust_decimal::Decimal::ZERO
+            || input.tax_rate > rust_decimal::Decimal::from(100)
+        {
+            return Err(RegionError::Validation(
+                "tax_rate must be between 0 and 100".to_string(),
+            ));
+        }
 
         let currency_code = normalize_currency_code(&input.currency_code)?;
         let countries = normalize_countries(input.countries)?;
         let tax_provider_id = normalize_tax_provider_id(input.tax_provider_id.as_deref())?;
         let country_tax_policies =
             normalize_country_tax_policies(input.country_tax_policies.unwrap_or_default())?;
+
+        for policy in &country_tax_policies {
+            if !countries.contains(&policy.country_code) {
+                return Err(RegionError::Validation(format!(
+                    "country tax policy targets `{}` which is not in region countries",
+                    policy.country_code
+                )));
+            }
+        }
+
         let now = Utc::now();
         let region_id = generate_id();
         let translations = normalize_translation_inputs(input.translations)?;
@@ -81,6 +102,13 @@ impl RegionService {
         requested_locale: Option<&str>,
         tenant_default_locale: Option<&str>,
     ) -> RegionResult<RegionResponse> {
+        if tenant_id.is_nil() {
+            return Err(RegionError::Validation("tenant_id must not be nil".to_string()));
+        }
+        if region_id.is_nil() {
+            return Err(RegionError::Validation("region_id must not be nil".to_string()));
+        }
+
         let model = entities::region::Entity::find_by_id(region_id)
             .filter(entities::region::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -106,6 +134,10 @@ impl RegionService {
         requested_locale: Option<&str>,
         tenant_default_locale: Option<&str>,
     ) -> RegionResult<Vec<RegionResponse>> {
+        if tenant_id.is_nil() {
+            return Err(RegionError::Validation("tenant_id must not be nil".to_string()));
+        }
+
         let rows = entities::region::Entity::find()
             .filter(entities::region::Column::TenantId.eq(tenant_id))
             .order_by_asc(entities::region::Column::CreatedAt)
@@ -123,9 +155,24 @@ impl RegionService {
         region_id: Uuid,
         input: UpdateRegionInput,
     ) -> RegionResult<RegionResponse> {
+        if tenant_id.is_nil() {
+            return Err(RegionError::Validation("tenant_id must not be nil".to_string()));
+        }
+        if region_id.is_nil() {
+            return Err(RegionError::Validation("region_id must not be nil".to_string()));
+        }
+
         input
             .validate()
             .map_err(|error| RegionError::Validation(error.to_string()))?;
+
+        if let Some(rate) = input.tax_rate
+            && (rate < rust_decimal::Decimal::ZERO || rate > rust_decimal::Decimal::from(100))
+        {
+            return Err(RegionError::Validation(
+                "tax_rate must be between 0 and 100".to_string(),
+            ));
+        }
 
         let normalized_country_tax_policies = input
             .country_tax_policies
@@ -144,6 +191,43 @@ impl RegionService {
             .one(&txn)
             .await?
             .ok_or(RegionError::RegionNotFound(region_id))?;
+
+        let existing_countries = serde_json::from_value::<Vec<String>>(existing.countries.clone())
+            .map_err(|error| RegionError::Validation(error.to_string()))?;
+        let effective_countries = normalized_countries.as_ref().unwrap_or(&existing_countries);
+
+        if let Some(policies) = &normalized_country_tax_policies {
+            for policy in policies {
+                if !effective_countries.contains(&policy.country_code) {
+                    return Err(RegionError::Validation(format!(
+                        "country tax policy targets `{}` which is not in region countries",
+                        policy.country_code
+                    )));
+                }
+            }
+        } else if let Some(new_countries) = &normalized_countries {
+            let existing_policies = entities::region_country_tax_policy::Entity::find()
+                .filter(entities::region_country_tax_policy::Column::RegionId.eq(region_id))
+                .all(&txn)
+                .await?;
+            for policy in existing_policies {
+                if !new_countries.contains(&policy.country_code) {
+                    return Err(RegionError::Validation(format!(
+                        "region countries cannot exclude existing country tax policy for `{}` without providing updated country tax policies",
+                        policy.country_code
+                    )));
+                }
+            }
+        }
+
+        // If country tax policies are being replaced, delete old ones before updating regions
+        // to prevent triggering the region exclusion guard constraint.
+        if normalized_country_tax_policies.is_some() {
+            entities::region_country_tax_policy::Entity::delete_many()
+                .filter(entities::region_country_tax_policy::Column::RegionId.eq(region_id))
+                .exec(&txn)
+                .await?;
+        }
 
         let mut active: entities::region::ActiveModel = existing.into();
         if let Some(currency_code) = input.currency_code {
@@ -169,7 +253,17 @@ impl RegionService {
         active.update(&txn).await?;
 
         if let Some(country_tax_policies) = normalized_country_tax_policies {
-            replace_country_tax_policies(&txn, region_id, &country_tax_policies).await?;
+            for policy in country_tax_policies {
+                entities::region_country_tax_policy::ActiveModel {
+                    id: Set(generate_id()),
+                    region_id: Set(region_id),
+                    country_code: Set(policy.country_code),
+                    tax_rate: Set(policy.tax_rate),
+                    tax_included: Set(policy.tax_included),
+                }
+                .insert(&txn)
+                .await?;
+            }
         }
         if let Some(translations) = normalized_translations {
             replace_translations(&txn, region_id, &translations).await?;
@@ -196,6 +290,9 @@ impl RegionService {
         requested_locale: Option<&str>,
         tenant_default_locale: Option<&str>,
     ) -> RegionResult<Option<RegionResponse>> {
+        if tenant_id.is_nil() {
+            return Err(RegionError::Validation("tenant_id must not be nil".to_string()));
+        }
         let normalized_country = normalize_country_code(country_code)?;
         let regions = self
             .list_regions(tenant_id, requested_locale, tenant_default_locale)
@@ -336,9 +433,11 @@ fn normalize_country_tax_policies(
                 "Duplicate country_code in region country tax policies".to_string(),
             ));
         }
-        if policy.tax_rate < rust_decimal::Decimal::ZERO {
+        if policy.tax_rate < rust_decimal::Decimal::ZERO
+            || policy.tax_rate > rust_decimal::Decimal::from(100)
+        {
             return Err(RegionError::Validation(
-                "country tax policy tax_rate must be zero or greater".to_string(),
+                "country tax policy tax_rate must be between 0 and 100".to_string(),
             ));
         }
         normalized.push(RegionCountryTaxPolicyInput {
@@ -478,11 +577,11 @@ fn resolve_translation<'a>(
 
 fn normalize_currency_code(value: &str) -> RegionResult<String> {
     let normalized = value.trim().to_ascii_uppercase();
-    if normalized.len() == 3 {
+    if normalized.len() == 3 && normalized.chars().all(|ch| ch.is_ascii_alphabetic()) {
         Ok(normalized)
     } else {
         Err(RegionError::Validation(
-            "currency_code must be a 3-letter code".to_string(),
+            "currency_code must be a 3-letter alphabetic code".to_string(),
         ))
     }
 }
@@ -515,10 +614,18 @@ fn normalize_countries(values: Vec<String>) -> RegionResult<Vec<String>> {
         ));
     }
 
-    values
-        .into_iter()
-        .map(|value| normalize_country_code(&value))
-        .collect()
+    let mut seen = HashSet::new();
+    let mut normalized = Vec::with_capacity(values.len());
+    for value in values {
+        let code = normalize_country_code(&value)?;
+        if !seen.insert(code.clone()) {
+            return Err(RegionError::Validation(format!(
+                "duplicate country code `{code}` in region countries"
+            )));
+        }
+        normalized.push(code);
+    }
+    Ok(normalized)
 }
 
 fn normalize_country_code(value: &str) -> RegionResult<String> {

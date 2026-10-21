@@ -206,6 +206,18 @@ impl RegionTranslationService {
         source_locale: &str,
         target_locale: &str,
     ) -> RegionTranslationExactLocaleResult<RegionTranslationExactLocaleSnapshot> {
+        if tenant_id.is_nil() {
+            return Err(RegionError::Validation(
+                "Region translation tenant_id must not be nil".to_string(),
+            )
+            .into());
+        }
+        if region_id.is_nil() {
+            return Err(RegionError::Validation(
+                "Region translation region_id must not be nil".to_string(),
+            )
+            .into());
+        }
         let source_locale = canonical_locale(source_locale)?;
         let target_locale = canonical_locale(target_locale)?;
         validate_locale_pair(&source_locale, &target_locale)?;
@@ -243,6 +255,18 @@ impl RegionTranslationService {
         request: RegionTranslationExactLocaleApply,
         operation_lease: Option<idempotency::Lease>,
     ) -> RegionTranslationExactLocaleResult<RegionTranslationExactLocaleApplyReceipt> {
+        if tenant_id.is_nil() {
+            return Err(RegionError::Validation(
+                "Region translation tenant_id must not be nil".to_string(),
+            )
+            .into());
+        }
+        if region_id.is_nil() {
+            return Err(RegionError::Validation(
+                "Region translation region_id must not be nil".to_string(),
+            )
+            .into());
+        }
         let source_locale = canonical_locale(&request.source_locale)?;
         let target_locale = canonical_locale(&request.target_locale)?;
         validate_locale_pair(&source_locale, &target_locale)?;

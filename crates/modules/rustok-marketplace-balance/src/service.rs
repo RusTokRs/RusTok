@@ -58,9 +58,9 @@ impl MarketplaceLedgerService {
         idempotency_key: impl Into<String>,
         input: PostMarketplaceOrderLedgerInput,
     ) -> MarketplaceLedgerResult<MarketplaceLedgerTransactionResponse> {
-        if input.order_id.is_nil() {
+        if tenant_id.is_nil() || actor_id.is_nil() || input.order_id.is_nil() {
             return Err(MarketplaceLedgerError::Validation(
-                "order_id must not be nil".to_string(),
+                "tenant_id, actor_id, and order_id must not be nil".to_string(),
             ));
         }
         let key = normalize_idempotency_key(idempotency_key)?;
@@ -107,6 +107,11 @@ impl MarketplaceLedgerService {
         tenant_id: Uuid,
         order_id: Uuid,
     ) -> MarketplaceLedgerResult<MarketplaceLedgerTransactionResponse> {
+        if tenant_id.is_nil() || order_id.is_nil() {
+            return Err(MarketplaceLedgerError::Validation(
+                "tenant_id and order_id must not be nil".to_string(),
+            ));
+        }
         let transaction = transaction::Entity::find()
             .filter(transaction::Column::TenantId.eq(tenant_id))
             .filter(transaction::Column::SourceKind.eq(SOURCE_KIND_COMMISSION_BATCH))
@@ -133,9 +138,9 @@ impl MarketplaceLedgerService {
         tenant_id: Uuid,
         mut request: ListMarketplaceSellerLedgerEntriesRequest,
     ) -> MarketplaceLedgerResult<MarketplaceLedgerEntryListResponse> {
-        if request.seller_id.is_nil() {
+        if tenant_id.is_nil() || request.seller_id.is_nil() {
             return Err(MarketplaceLedgerError::Validation(
-                "seller_id must not be nil".to_string(),
+                "tenant_id and seller_id must not be nil".to_string(),
             ));
         }
         request.currency_code = match request.currency_code.take() {

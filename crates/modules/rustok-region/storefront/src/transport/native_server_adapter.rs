@@ -159,6 +159,12 @@ async fn fetch_storefront_regions_server(
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(|error| map_tenant_context_error(request_context.as_ref(), error))?;
+        if tenant.id.is_nil() {
+            return Err(map_tenant_context_error(
+                request_context.as_ref(),
+                "tenant_id cannot be nil UUID",
+            ));
+        }
         let requested_locale = resolve_requested_locale(
             locale,
             request_context

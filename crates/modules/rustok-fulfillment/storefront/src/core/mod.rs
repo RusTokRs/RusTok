@@ -79,13 +79,17 @@ pub fn format_provider_label(provider_label: &str, provider_id: &str) -> String 
 }
 
 pub fn is_shipping_option_selected(selected_id: Option<&str>, option_id: &str) -> bool {
-    selected_id.map(str::trim) == Some(option_id.trim())
+    let option_id = option_id.trim();
+    if option_id.is_empty() {
+        return false;
+    }
+    selected_id.map(str::trim).filter(|s| !s.is_empty()) == Some(option_id)
 }
 
-pub fn selection_action_label<'a>(
+pub fn selection_action_label(
     is_selected: bool,
-    labels: &'a ShippingSelectionLabels,
-) -> &'a str {
+    labels: &ShippingSelectionLabels,
+) -> &str {
     if is_selected {
         &labels.selected_label
     } else {
@@ -208,6 +212,9 @@ mod tests {
         assert!(is_shipping_option_selected(Some(" opt-1 "), "opt-1"));
         assert!(!is_shipping_option_selected(Some("opt-1"), "opt-2"));
         assert!(!is_shipping_option_selected(None, "opt-1"));
+        assert!(!is_shipping_option_selected(Some("   "), "   "));
+        assert!(!is_shipping_option_selected(Some(""), ""));
+        assert!(!is_shipping_option_selected(Some("opt-1"), "   "));
 
         let labels = ShippingSelectionLabels {
             badge: "Badge".into(),

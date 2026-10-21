@@ -30,3 +30,25 @@ impl From<sea_orm::DbErr> for ContentRevisionError {
         ContentRevisionError::Database(err.to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_display() {
+        let err = ContentRevisionError::TenantMismatch;
+        assert_eq!(err.to_string(), "Tenant mismatch");
+
+        let err = ContentRevisionError::PermissionDenied;
+        assert_eq!(err.to_string(), "Permission denied");
+
+        let err = ContentRevisionError::ContentTypeNotConfigured("custom".to_string());
+        assert!(err.to_string().contains("custom"));
+
+        let db_err = sea_orm::DbErr::Custom("db error".to_string());
+        let converted: ContentRevisionError = db_err.into();
+        assert!(converted.to_string().contains("db error"));
+    }
+}
+

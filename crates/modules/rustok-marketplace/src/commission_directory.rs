@@ -27,6 +27,12 @@ impl MarketplaceCommissionDirectoryService {
         context: PortContext,
         allocation_id: Uuid,
     ) -> Result<MarketplaceCommissionAssessmentResponse, PortError> {
+        if allocation_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace.commission.allocation_id",
+                "allocation_id must not be nil",
+            ));
+        }
         self.commission_reader
             .read_assessment(
                 context,
@@ -40,6 +46,12 @@ impl MarketplaceCommissionDirectoryService {
         context: PortContext,
         order_id: Uuid,
     ) -> Result<Vec<MarketplaceCommissionAssessmentResponse>, PortError> {
+        if order_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace.commission.order_id",
+                "order_id must not be nil",
+            ));
+        }
         self.commission_reader
             .list_assessments_by_order(
                 context,
@@ -53,6 +65,12 @@ impl MarketplaceCommissionDirectoryService {
         context: PortContext,
         request: ListMarketplaceCommissionAssessmentsBySellerRequest,
     ) -> Result<MarketplaceCommissionAssessmentListResponse, PortError> {
+        if request.seller_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace.commission.seller_id",
+                "seller_id must not be nil",
+            ));
+        }
         self.commission_reader
             .list_assessments_by_seller(context, request)
             .await

@@ -128,6 +128,12 @@ impl MarketplaceAccountingBridge {
         original_gl_transaction_id: Uuid,
         reversal: &MarketplaceLedgerReversalResponse,
     ) -> Result<JournalTransactionResponse, PortError> {
+        if original_gl_transaction_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_accounting_bridge.original_gl_transaction_id_invalid",
+                "original_gl_transaction_id must not be nil UUID",
+            ));
+        }
         let reason = format!("Marketplace reversal {}: {:?}", reversal.id, reversal.kind);
         self.journal_port
             .post_storno_reversal(context, original_gl_transaction_id, Some(reason))

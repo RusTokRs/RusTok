@@ -29,6 +29,11 @@ pub(crate) async fn append_listing_event<C: ConnectionTrait>(
     connection: &C,
     params: AppendListingEventParams<'_>,
 ) -> MarketplaceListingResult<MarketplaceListingEventResponse> {
+    if params.tenant_id.is_nil() || params.listing_id.is_nil() || params.actor_id.is_nil() {
+        return Err(MarketplaceListingError::Validation(
+            "tenant_id, listing_id, and actor_id must not be nil".to_string(),
+        ));
+    }
     let locale = normalize_listing_event_locale(params.locale)?;
     let model = listing_event::ActiveModel {
         id: Set(generate_id()),
@@ -55,6 +60,11 @@ pub(crate) async fn list_listing_events<C: ConnectionTrait>(
     listing_id: Uuid,
     limit: u64,
 ) -> MarketplaceListingResult<Vec<MarketplaceListingEventResponse>> {
+    if tenant_id.is_nil() || listing_id.is_nil() {
+        return Err(MarketplaceListingError::Validation(
+            "tenant_id and listing_id must not be nil".to_string(),
+        ));
+    }
     listing_event::Entity::find()
         .filter(listing_event::Column::TenantId.eq(tenant_id))
         .filter(listing_event::Column::ListingId.eq(listing_id))

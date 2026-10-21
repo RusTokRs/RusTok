@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 #[path = "support/forum_public_settings.rs"]
 mod forum_public_settings;
 
@@ -22,8 +24,7 @@ use rustok_events::{
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumError, ForumEventService,
     ForumModule, ForumProjectionOwnerRevisionImpact as ForumOwnerRevisionImpact,
-    ForumSearchResultCandidate, ForumSearchResultCandidateKind,
-    ForumSearchResultEligibilityService, TopicService,
+    ForumSearchResultCandidate, ForumSearchResultCandidateKind, TopicService,
 };
 use rustok_iggy::{
     ConsumedContractEvent, ExternalConfig, IggyConfig, IggyMode, IggyTransport,
@@ -38,7 +39,7 @@ use rustok_search::{
     ForumProjectionOwnerRevisionSourcePort, ForumProjectionOwnerTenantHead,
     ForumProjectionOwnerTenantPageRequest, ForumProjectionReconciler, ForumSearchContractIngress,
     ForumSearchContractIngressOutcome, ForumStorefrontSearchAttributeFilter,
-    ForumStorefrontSearchRequest, SearchModule, SearchProjectionSourceFactory,
+    ForumStorefrontSearchRequest, SearchModule,
     SharedStorefrontSearchCategoryScopePort, SharedStorefrontSearchResultEligibilityPort,
     StorefrontSearchCategoryScopePort, StorefrontSearchCategoryScopeRequest,
     StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,

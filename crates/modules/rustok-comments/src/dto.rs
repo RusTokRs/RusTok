@@ -138,3 +138,115 @@ pub struct CommentThreadDetail {
     pub comments: Vec<CommentRecord>,
     pub total_comments: u64,
 }
+
+#[cfg(feature = "server")]
+use crate::error::{CommentsError, CommentsResult};
+
+#[cfg(feature = "server")]
+impl CreateCommentInput {
+    pub fn validate(&self) -> CommentsResult<()> {
+        if self.target_type.trim().is_empty() {
+            return Err(CommentsError::Validation("target_type cannot be empty".to_string()));
+        }
+        if self.target_id.is_nil() {
+            return Err(CommentsError::Validation("target_id cannot be nil".to_string()));
+        }
+        if self.parent_comment_id.is_some_and(|id| id.is_nil()) {
+            return Err(CommentsError::Validation("parent_comment_id cannot be nil".to_string()));
+        }
+        if self.locale.trim().is_empty() {
+            return Err(CommentsError::Validation("locale cannot be empty".to_string()));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "server")]
+impl UpdateCommentInput {
+    pub fn validate(&self) -> CommentsResult<()> {
+        if self.locale.trim().is_empty() {
+            return Err(CommentsError::Validation("locale cannot be empty".to_string()));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "server")]
+impl ListCommentsFilter {
+    pub fn validate(&self) -> CommentsResult<()> {
+        if self.locale.trim().is_empty() {
+            return Err(CommentsError::Validation("locale cannot be empty".to_string()));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "server")]
+impl GetThreadDetailFilter {
+    pub fn validate(&self) -> CommentsResult<()> {
+        if self.thread_id.is_nil() {
+            return Err(CommentsError::Validation("thread_id cannot be nil".to_string()));
+        }
+        if self.locale.trim().is_empty() {
+            return Err(CommentsError::Validation("locale cannot be empty".to_string()));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(all(test, feature = "server"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_comment_input_validate_rejects_empty_target_type() {
+        let input = CreateCommentInput {
+            target_type: "".to_string(),
+            target_id: Uuid::new_v4(),
+            locale: "en".to_string(),
+            body: RichTextDocument::empty(),
+            parent_comment_id: None,
+            status: CommentStatus::Pending,
+        };
+        assert!(input.validate().is_err());
+    }
+
+    #[test]
+    fn create_comment_input_validate_rejects_nil_target_id() {
+        let input = CreateCommentInput {
+            target_type: "post".to_string(),
+            target_id: Uuid::nil(),
+            locale: "en".to_string(),
+            body: RichTextDocument::empty(),
+            parent_comment_id: None,
+            status: CommentStatus::Pending,
+        };
+        assert!(input.validate().is_err());
+    }
+
+    #[test]
+    fn create_comment_input_validate_rejects_nil_parent_comment_id() {
+        let input = CreateCommentInput {
+            target_type: "post".to_string(),
+            target_id: Uuid::new_v4(),
+            locale: "en".to_string(),
+            body: RichTextDocument::empty(),
+            parent_comment_id: Some(Uuid::nil()),
+            status: CommentStatus::Pending,
+        };
+        assert!(input.validate().is_err());
+    }
+
+    #[test]
+    fn create_comment_input_validate_accepts_valid() {
+        let input = CreateCommentInput {
+            target_type: "post".to_string(),
+            target_id: Uuid::new_v4(),
+            locale: "en".to_string(),
+            body: RichTextDocument::empty(),
+            parent_comment_id: None,
+            status: CommentStatus::Pending,
+        };
+        assert!(input.validate().is_ok());
+    }
+}
