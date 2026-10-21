@@ -216,11 +216,12 @@ To ensure instantaneous reconnection across flaky mobile networks without databa
    - Active gateway nodes buffer recent dispatches in an in-memory circular buffer (last 200 events).
    - If a client's WebSocket drops momentarily (e.g. cellular handoff), it sends `Resume { session_id, last_seq }`. The gateway replays missing frames directly from RAM in < 2 ms without querying PostgreSQL or Iggy.
 
-### 3.7 Instant Full-Text Chat Search Engine (`tantivy`)
-To enable sub-5ms search across millions of messages with typo tolerance and morphology:
-* **Embedded Tantivy Core:** `rustok-messenger` embeds the high-performance pure-Rust search engine **Tantivy** (the Lucene counterpart in Rust).
-* **Faceted & Scoped Filtering:** Instant search queries can be filtered by tenant, conversation, author, date range, message type, or attachment presence.
-* **Offline Client Search:** The Flutter client maintains an offline index using SQLite FTS5 / Tantivy-WASM, enabling instantaneous local search even in airplane mode.
+### 3.7 Decoupled Multi-Backend Chat Search Architecture (`rustok-search` / Meilisearch / PG FTS)
+To avoid architectural lock-in to any single search engine and keep `rustok-messenger` lightweight:
+* **Decoupled Search Seam:** `rustok-messenger` does not embed a hardcoded search engine. Instead, it emits transactional domain events (`MessageDispatched`, `MessageEdited`, `MessageDeleted`) via `rustok-outbox`.
+* **Multi-Backend Ingestion via `rustok-search`:** The platform's central search module (`rustok-search`) projects public conversation messages into the tenant's configured search backend (such as **Meilisearch**, PostgreSQL Full-Text Search, OpenSearch, or Tantivy).
+* **Faceted & Scoped Filtering:** Search queries are routed through `SearchPort` and enforce strict conversation membership authorization (users can only search conversations where they are active members).
+* **Zero-Knowledge Exclusion for E2EE:** Messages flagged with `is_encrypted: true` are strictly excluded from server-side indexing. For encrypted conversations, search is performed entirely client-side (e.g. SQLite FTS in the mobile/desktop app).
 
 ### 3.8 Multi-Platform Push Notification Pipeline (APNs, FCM, WebPush)
 A unified push notification worker processes mentions, DMs, and high-priority alarms:
@@ -236,6 +237,17 @@ Following the proven architecture of Telegram Mini Apps (TMA) and WeChat Mini Pr
   - Access the current user's authenticated session without re-login;
   - Trigger native haptic feedback, camera barcode scanning, and biometric authentication;
   - Return structured data back to the conversation (e.g., sharing a finalized order cart or signing a contract).
+
+### 3.10 Dual-Surface Frontend Architecture (`rustok-messenger/storefront`)
+To support both deep workplace collaboration and instant e-commerce/support interactions, `rustok-messenger` provides two complementary presentation modes:
+1. **Dedicated Full-Page Workplace Messenger:**
+   - **3-Column Workstation Layout:**
+     - *Left Sidebar:* Folders and categories («All», «Channels», «Direct Messages», «Deals / Orders UER»), conversation search bar, channel creation trigger, dialog list with online indicators, draft previews, and unread badges.
+     - *Center Chat Pane:* Conversation header (title, topic, participants, call action), virtualized message stream with date separators, message delivery ticks (`last_read_message_id`), reply banners, typing indicators, and a rich markdown composer with attachment upload controls.
+     - *Right Context Drawer:* Collapsible panel showing channel members, shared media/documents, and threaded conversation branches (Thread View) without polluting main channel history.
+2. **Contextual Floating Chat Widget:**
+   - Compact overlay dockable on product pages, checkout flows, and order status screens.
+   - Automatically initializes or binds to the context's Universal Entity Reference (UER: `entity_type` + `entity_id`) to allow instant communication with sellers or customer support.
 
 ---
 

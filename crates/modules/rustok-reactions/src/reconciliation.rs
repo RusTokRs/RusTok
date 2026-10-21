@@ -722,6 +722,20 @@ fn authorize_reconciliation(
             "reaction reconciliation requires the reactions:reconcile claim",
         ));
     }
+    if context.actor.kind == rustok_api::PortActorKind::User {
+        let user_id = Uuid::parse_str(&context.actor.id).map_err(|_| {
+            PortError::validation(
+                "reactions.actor_id_invalid",
+                "reaction user actor identity must be a UUID",
+            )
+        })?;
+        if user_id.is_nil() {
+            return Err(PortError::validation(
+                "reactions.actor_id_nil",
+                "reaction user actor identity cannot be nil",
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -801,3 +815,187 @@ fn decode_replay<T: DeserializeOwned>(value: serde_json::Value) -> Result<T, Por
         PortError::invariant_violation("outbox.operation_receipt_corrupt", error.to_string())
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use rustok_api::{PortActor, PortContext};
+    use rustok_reactions_api::{ReactionKey, ReactionSourceSlug, ReactionSubjectKind, ReactionSubjectRef};
+    use uuid::Uuid;
+
+    use super::*;
+
+    fn sample_subject(tenant_id: Uuid) -> ReactionSubjectRef {
+        ReactionSubjectRef::new(
+            tenant_id,
+            ReactionSourceSlug::new("forum").expect("source"),
+            ReactionSubjectKind::new("post").expect("kind"),
+            Uuid::new_v4(),
+            1,
+        )
+        .expect("subject")
+    }
+
+    #[test]
+    fn reconciliation_request_validates_bounds() {
+        let tenant_id = Uuid::new_v4();
+        let subject = sample_subject(tenant_id);
+
+        let valid = ReactionReconciliationRequest::new(subject.clone(), 100);
+        assert!(valid.is_ok());
+
+        let zero = ReactionReconciliationRequest::new(subject.clone(), 0);
+        assert_eq!(
+            zero.expect_err("zero states").code,
+            "reactions.reconciliation_scope_invalid"
+        );
+
+        let excess = ReactionReconciliationRequest::new(
+            subject,
+            MAX_REACTION_RECONCILIATION_ACTOR_STATES + 1,
+        );
+        assert_eq!(
+            excess.expect_err("excess states").code,
+            "reactions.reconciliation_scope_invalid"
+        );
+    }
+
+    #[test]
+    fn repair_command_requires_non_nil_id_and_valid_request() {
+        let tenant_id = Uuid::new_v4();
+        let subject = sample_subject(tenant_id);
+        let req = ReactionReconciliationRequest::new(subject, 50).expect("valid req");
+
+        let valid = RepairReactionSubjectCommand::new(Uuid::new_v4(), req.clone());
+        assert!(valid.is_ok());
+
+        let nil_cmd = RepairReactionSubjectCommand::new(Uuid::nil(), req);
+        assert_eq!(
+            nil_cmd.expect_err("nil command id").code,
+            "reactions.reconciliation_command_id_invalid"
+        );
+    }
+
+    #[test]
+    fn authorize_reconciliation_enforces_tenant_and_claim() {
+        let tenant_id = Uuid::new_v4();
+        let subject = sample_subject(tenant_id);
+        let req = ReactionReconciliationRequest::new(subject, 10).expect("req");
+
+        let actor = PortActor::system();
+        let mut context = PortContext::new(
+            tenant_id.to_string(),
+            actor,
+            "en".to_string(),
+            "req-1".to_string(),
+        );
+
+        let missing_claim = authorize_reconciliation(&context, &req);
+        assert_eq!(
+            missing_claim.expect_err("missing claim").code,
+            "reactions.reconciliation_forbidden"
+        );
+
+        context = context.with_claim(RECONCILE_REACTIONS_CLAIM.to_string());
+        assert!(authorize_reconciliation(&context, &req).is_ok());
+
+        let other_tenant = Uuid::new_v4();
+        let mismatch_context = PortContext::new(
+            other_tenant.to_string(),
+            PortActor::system(),
+            "en".to_string(),
+            "req-2".to_string(),
+        )
+        .with_claim(RECONCILE_REACTIONS_CLAIM.to_string());
+
+        assert_eq!(
+            authorize_reconciliation(&mismatch_context, &req)
+                .expect_err("tenant mismatch")
+                .code,
+            "reactions.tenant_mismatch"
+        );
+    }
+
+    #[test]
+    fn authorize_reconciliation_validates_user_actor_identity() {
+        let tenant_id = Uuid::new_v4();
+        let subject = sample_subject(tenant_id);
+        let req = ReactionReconciliationRequest::new(subject, 10).expect("req");
+
+        let invalid_user_ctx = PortContext::new(
+            tenant_id.to_string(),
+            PortActor::user("not-a-uuid"),
+            "en".to_string(),
+            "req-3".to_string(),
+        )
+        .with_claim(RECONCILE_REACTIONS_CLAIM.to_string());
+
+        assert_eq!(
+            authorize_reconciliation(&invalid_user_ctx, &req)
+                .expect_err("invalid user uuid")
+                .code,
+            "reactions.actor_id_invalid"
+        );
+
+        let nil_user_ctx = PortContext::new(
+            tenant_id.to_string(),
+            PortActor::user(Uuid::nil().to_string()),
+            "en".to_string(),
+            "req-4".to_string(),
+        )
+        .with_claim(RECONCILE_REACTIONS_CLAIM.to_string());
+
+        assert_eq!(
+            authorize_reconciliation(&nil_user_ctx, &req)
+                .expect_err("nil user uuid")
+                .code,
+            "reactions.actor_id_nil"
+        );
+
+        let valid_user_ctx = PortContext::new(
+            tenant_id.to_string(),
+            PortActor::user(Uuid::new_v4().to_string()),
+            "en".to_string(),
+            "req-5".to_string(),
+        )
+        .with_claim(RECONCILE_REACTIONS_CLAIM.to_string());
+
+        assert!(authorize_reconciliation(&valid_user_ctx, &req).is_ok());
+    }
+
+    #[test]
+    fn push_issue_caps_at_maximum() {
+        let mut issues = Vec::new();
+        let mut truncated = false;
+        let reaction = ReactionKey::new("like").expect("key");
+
+        for i in 0..MAX_REACTION_RECONCILIATION_ISSUES {
+            push_issue(
+                &mut issues,
+                &mut truncated,
+                issue(&format!("issue_{i}"), None, Some(reaction.clone())),
+            );
+        }
+        assert_eq!(issues.len(), MAX_REACTION_RECONCILIATION_ISSUES);
+        assert!(!truncated);
+
+        push_issue(
+            &mut issues,
+            &mut truncated,
+            issue("excess_issue", None, Some(reaction)),
+        );
+        assert_eq!(issues.len(), MAX_REACTION_RECONCILIATION_ISSUES);
+        assert!(truncated);
+    }
+
+    #[test]
+    fn integer_conversions_protect_against_underflow_and_overflow() {
+        assert_eq!(u64_to_i64(0, "test").unwrap(), 0);
+        assert_eq!(u64_to_i64(100, "test").unwrap(), 100);
+        assert!(u64_to_i64(u64::MAX, "test").is_err());
+
+        assert_eq!(i64_to_u64(0, "test").unwrap(), 0);
+        assert_eq!(i64_to_u64(100, "test").unwrap(), 100);
+        assert!(i64_to_u64(-1, "test").is_err());
+    }
+}
+

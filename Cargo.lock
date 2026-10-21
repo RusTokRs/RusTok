@@ -15873,6 +15873,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-messenger-storefront"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos",
+ "leptos-auth",
+ "leptos-ui",
+ "leptos-ui-routing",
+ "leptos_axum",
+ "leptos_router",
+ "rustok-api",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-messenger",
+ "rustok-ui-core",
+ "rustok-ui-i18n",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-migrations"
 version = "0.1.0"
 dependencies = [

@@ -8,6 +8,7 @@ pub(crate) fn module_command(args: &[String]) -> Result<()> {
     }
 
     match args[0].as_str() {
+        "new" | "scaffold" => module_scaffold_command(&args[1..]),
         "validate" => module_validate_command(&args[1..]),
         "test" => module_test_command(&args[1..]),
         "stage-run" => module_stage_run_command(&args[1..]),
@@ -28,6 +29,7 @@ pub(crate) fn module_command(args: &[String]) -> Result<()> {
 
 pub(crate) fn print_module_usage() {
     println!("Usage:");
+    println!("  cargo xtask module new <slug> [--title <title>] [--description <desc>] [--category <cat>] [--with-db] [--ui <dual|admin|storefront|none>]");
     println!("  cargo xtask module validate [slug]");
     println!("  cargo xtask module test <slug> [--dry-run]");
     println!(
