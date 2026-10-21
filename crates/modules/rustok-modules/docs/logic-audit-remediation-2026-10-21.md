@@ -73,7 +73,7 @@ then records what was changed, in what order, and how it was verified.
 | B | H-2 policy cache TTL/bound/poison + host invalidation completeness | implemented (`087acf3`) |
 | C | H-3 claim lease/reclaim + executor outcome ordering | implemented (`052053a`) |
 | D | M-4 settings strictness; M-6 materializer honesty; M-9 numeric index canonicalization | implemented (`9249557`) |
-| E | D5/D6 initially deleted `dynamic_lifecycle`/`gc`/`wave_rollout`/`operator`; **restored and reclassified** after provenance review (see §5); journal fixed in place (see §4) | partially reverted — modules restored, disposition per §5 |
+| E | D5/D6 initially deleted `dynamic_lifecycle`/`gc`/`wave_rollout`/`operator`; restored and reclassified after provenance review (see §5); §5.1 executed (generations folded into canonical owners, parallel service deleted); journal fixed in place (see §4) | partially reverted — `gc`/`wave_rollout`/`operator` remain restored and unwired per §5.2–§5.4 |
 | F | D4 RLS FORCE + GUC coverage (migration; needs PostgreSQL evidence) | pending |
 | G | D9 durable epoch + attestation-only watchdog convergence | implemented |
 | H | M-12 schema ownership + backend newtype; typed errors at pub boundary; bounded lists | pending |
@@ -195,11 +195,36 @@ of a canonical owner, (b) unfinished planned functionality, or (c) both.
   `admit`/`update`/`remove`/`rollback` have no implementing methods.
   The `module_production_operations` journal is written only here and
   read nowhere.
-- Disposition: do not wire. Fold work-generation lifecycle, continuity,
-  and the retire precondition into the canonical installation/uninstall/
-  purge owners (canonical uninstall currently never retires the
-  generation, leaving the delivery-side fence permanently inert), then
-  delete this parallel service.
+- Disposition (EXECUTED): deleted after folding its sole-owner pieces
+  into the canonical owners. `installation.rs::commit_admission` now
+  creates the work-generation row (generation 1) in the admission
+  transaction, and `uninstall_artifact` advances and retires the
+  generation (upsert, so pre-fold installations retire from implicit
+  generation 1 to 2) and clears tenant intent in the uninstall
+  transaction. Investigation showed the purge retire precondition
+  needed no fold: the canonical data purge
+  (`ensure_artifact_data_purge_target_is_retired`: inactive +
+  uninstalled, plus an active-scope collision check) and the canonical
+  settings purge (`load_retired_source_in`, authorizer, tombstone
+  revision) already enforce it more strongly than this service did.
+  Publisher continuity was NOT folded because it guards a decision point
+  that does not exist canonically: `ArtifactAdmissionCommand` cannot
+  attach a retained data owner (admission always allocates fresh
+  owner/settings identities; update continuity is handled by the
+  activation cutover). Attach-retained-on-reinstall remains
+  unimplemented plan functionality, and the continuity rule must be
+  enforced at whatever reattach entry point implements it. The
+  read-by-nobody journal table `module_production_operations` is
+  dropped by migration `m20261021_000056`. The wave/operator scenario
+  tests that used this service as their arrange step were rewritten to
+  seed state directly and to retire installations through the canonical
+  uninstall; assertions on this service's simulated purges were removed
+  (canonical purge suites cover the precondition). Note for context:
+  the generation number itself is still consumed by no queue — delivery
+  reads only the retired flag (already double-covered by the
+  uninstall-operations existence check) — so the fold makes the schema
+  concept truthful and gives the operator projection real values;
+  generation pinning of queued work remains future plan work.
 
 ### 5.2 `gc.rs` — (b) unfinished planned functionality
 

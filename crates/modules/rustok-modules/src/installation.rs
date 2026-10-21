@@ -2886,6 +2886,14 @@ impl SeaOrmArtifactInstallationStore {
                 "installation became stale during uninstall".into(),
             ));
         }
+        // Advance and retire the work generation and clear tenant intent in
+        // the same transaction as the uninstall record: after this commit,
+        // delivery admission must never admit work for the uninstalled
+        // installation again. The upsert also retires installations that
+        // were admitted before generation rows were written at admission
+        // time (they retire from implicit generation 1 to 2).
+        transaction.execute_raw(Statement::from_sql_and_values(backend, work_generation_retire_sql(backend), vec![uuid_value(request.installation_id, backend)])).await.map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
+        transaction.execute_raw(Statement::from_sql_and_values(backend, format!("DELETE FROM module_artifact_tenant_lifecycle WHERE installation_id = {}", if backend == DbBackend::Postgres { "$1" } else { "?1" }), vec![uuid_value(request.installation_id, backend)])).await.map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
         self.infrastructure
             .write_event(
                 &transaction,
@@ -4100,6 +4108,21 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        // Every installation is born at work generation 1. The durable
+        // generation row is the fence delivery admission checks: uninstall
+        // advances and retires it, after which queued or delayed work for
+        // the installation is never admitted again.
+        transaction
+            .execute_raw(Statement::from_sql_and_values(
+                backend,
+                work_generation_insert_sql(backend),
+                vec![
+                    uuid_value(artifact.installation_id, backend),
+                    datetime_value(backend, &committed_at),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
                 backend,
@@ -4497,6 +4520,25 @@ fn installation_insert_sql(backend: DbBackend) -> String {
          ) VALUES ({})",
         placeholders.join(", ")
     )
+}
+
+fn work_generation_insert_sql(backend: DbBackend) -> String {
+    let (installation_id, updated_at, not_retired) = match backend {
+        DbBackend::Postgres => ("$1", "$2", "FALSE"),
+        _ => ("?1", "?2", "0"),
+    };
+    format!(
+        "INSERT INTO module_artifact_work_generations (\
+            installation_id, work_generation, retired, retired_at, updated_at\
+         ) VALUES ({installation_id}, 1, {not_retired}, NULL, {updated_at})"
+    )
+}
+
+fn work_generation_retire_sql(backend: DbBackend) -> String {
+    match backend {
+        DbBackend::Postgres => "INSERT INTO module_artifact_work_generations (installation_id, work_generation, retired, retired_at, updated_at) VALUES ($1, 2, TRUE, NOW(), NOW()) ON CONFLICT (installation_id) DO UPDATE SET work_generation = module_artifact_work_generations.work_generation + 1, retired = TRUE, retired_at = NOW(), updated_at = NOW()".to_string(),
+        _ => "INSERT INTO module_artifact_work_generations (installation_id, work_generation, retired, retired_at, updated_at) VALUES (?1, 2, 1, datetime('now'), datetime('now')) ON CONFLICT (installation_id) DO UPDATE SET work_generation = work_generation + 1, retired = 1, retired_at = datetime('now'), updated_at = datetime('now')".to_string(),
+    }
 }
 
 fn sandbox_policy_insert_sql(backend: DbBackend) -> String {

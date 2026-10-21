@@ -13,8 +13,8 @@ use rustok_api::ArtifactPermissionLocalization;
 use rustok_core::MigrationSource;
 use rustok_modules::{
     ArtifactModuleKind, ArtifactPayloadKind, ArtifactPermissionDescriptor, ArtifactSchemaDocument,
-    CanonicalPresentationState, ExecuteInstallCommand, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
-    ModuleArtifactDescriptor, ModuleCommandContext, ModuleInstallationScope, ModuleOperatorError,
+    CanonicalPresentationState, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+    ModuleArtifactDescriptor, ModuleInstallationScope, ModuleOperatorError,
     ModuleOperatorService, ModuleReleaseCoordinate, ModulesModule, UpdateMode,
 };
 use rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI;
@@ -39,16 +39,6 @@ async fn setup_test_db() -> sea_orm::DatabaseConnection {
             .expect("migration succeeds");
     }
     db
-}
-
-fn sample_command_context() -> ModuleCommandContext {
-    ModuleCommandContext {
-        actor_id: Uuid::new_v4(),
-        tenant_id: None,
-        idempotency_key: Uuid::new_v4(),
-        trace_id: "trace-operator-test-01".to_string(),
-        correlation_id: Uuid::new_v4(),
-    }
 }
 
 fn sample_descriptor(slug: &str, version: &str, payload_digest: &str) -> ModuleArtifactDescriptor {
@@ -171,6 +161,155 @@ async fn admit_test_release(
     .expect("external prebuilt ingress insert succeeds");
 
     release_digest
+}
+
+/// Arranges the durable rows of a freshly installed, still inactive
+/// installation at work generation 1 for an already admitted release.
+async fn insert_inactive_installation(
+    db: &sea_orm::DatabaseConnection,
+    release_digest: &str,
+    scope: &ModuleInstallationScope,
+) -> Uuid {
+    let backend = db.get_database_backend();
+    let placeholder = match backend {
+        sea_orm::DbBackend::Postgres => "$1",
+        _ => "?1",
+    };
+    let release = db
+        .query_one_raw(sea_orm::Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT registry, repository, slug, version, descriptor_json, payload_digest, \
+                        payload_media_type, payload_size_bytes \
+                 FROM module_admitted_oci_releases WHERE release_digest = {placeholder}"
+            ),
+            vec![release_digest.to_string().into()],
+        ))
+        .await
+        .expect("release lookup succeeds")
+        .expect("admitted release exists");
+    let text = |column: &str| -> String {
+        release
+            .try_get("", column)
+            .expect("release column is present")
+    };
+    let descriptor: ModuleArtifactDescriptor =
+        serde_json::from_str(&text("descriptor_json")).expect("descriptor parses");
+    let size_bytes: i64 = release
+        .try_get("", "payload_size_bytes")
+        .expect("payload size is present");
+
+    let installation_id = Uuid::new_v4();
+    let data_owner_id = Uuid::new_v4();
+    let settings_instance_id = Uuid::new_v4();
+    let (scope_kind, tenant_id) = match scope {
+        ModuleInstallationScope::Platform => ("platform", None),
+        ModuleInstallationScope::Tenant { tenant_id } => ("tenant", Some(*tenant_id)),
+    };
+    let uuid_value = |value: Uuid| -> sea_orm::Value {
+        match backend {
+            sea_orm::DbBackend::Postgres => value.into(),
+            _ => value.to_string().into(),
+        }
+    };
+    let optional_uuid_value = |value: Option<Uuid>| -> sea_orm::Value {
+        match backend {
+            sea_orm::DbBackend::Postgres => sea_orm::Value::Uuid(value),
+            _ => match value {
+                Some(value) => value.to_string().into(),
+                None => sea_orm::Value::String(None),
+            },
+        }
+    };
+    let placeholders = |count: usize| -> Vec<String> {
+        match backend {
+            sea_orm::DbBackend::Postgres => (1..=count).map(|i| format!("${i}")).collect(),
+            _ => (1..=count).map(|i| format!("?{i}")).collect(),
+        }
+    };
+    let dependency_lock = format!(
+        "{{\"graph_revision\":1,\"graph_digest\":\"{}\",\"nodes\":[]}}",
+        sha256_digest(b"[]")
+    );
+
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
+        backend,
+        format!(
+            "INSERT INTO module_artifact_installations (\
+                installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, \
+                slug, version, payload_kind, runtime_abi, payload_digest, entrypoint, descriptor, \
+                data_owner_id, settings_instance_id, dependency_graph_revision, \
+                dependency_graph_digest, dependency_lock, previous_installation_id, \
+                capability_grant_revision, installed_at\
+             ) VALUES ({}, datetime('now'))",
+            placeholders(20).join(", ")
+        ),
+        vec![
+            uuid_value(installation_id),
+            scope_kind.into(),
+            optional_uuid_value(tenant_id),
+            text("registry").into(),
+            text("repository").into(),
+            release_digest.to_string().into(),
+            text("slug").into(),
+            text("version").into(),
+            descriptor.payload_kind.as_str().into(),
+            descriptor.runtime_abi.clone().into(),
+            text("payload_digest").into(),
+            descriptor.entrypoint.clone().into(),
+            text("descriptor_json").into(),
+            uuid_value(data_owner_id),
+            uuid_value(settings_instance_id),
+            1i64.into(),
+            sha256_digest(b"[]").into(),
+            dependency_lock.into(),
+            optional_uuid_value(None),
+            1i64.into(),
+        ],
+    ))
+    .await
+    .expect("installation insert succeeds");
+
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
+        backend,
+        format!(
+            "INSERT INTO module_artifact_admissions (\
+                stage_id, installation_id, payload_digest, media_type, size_bytes, \
+                verification_evidence, status, revision, committed_at\
+             ) VALUES ({}, datetime('now'))",
+            placeholders(8).join(", ")
+        ),
+        vec![
+            uuid_value(Uuid::new_v4()),
+            uuid_value(installation_id),
+            descriptor.artifact_digest.clone().into(),
+            text("payload_media_type").into(),
+            size_bytes.into(),
+            "{}".into(),
+            "inactive".into(),
+            1i64.into(),
+        ],
+    ))
+    .await
+    .expect("admission insert succeeds");
+
+    let not_retired = match backend {
+        sea_orm::DbBackend::Postgres => "FALSE",
+        _ => "0",
+    };
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
+        backend,
+        format!(
+            "INSERT INTO module_artifact_work_generations (\
+                installation_id, work_generation, retired, retired_at, updated_at\
+             ) VALUES ({placeholder}, 1, {not_retired}, NULL, datetime('now'))"
+        ),
+        vec![uuid_value(installation_id)],
+    ))
+    .await
+    .expect("work generation insert succeeds");
+
+    installation_id
 }
 
 #[tokio::test]
@@ -387,21 +526,8 @@ async fn test_operator_status_reads_and_support_bundle_generation() {
     assert_eq!(status_initial.work_generation, 0);
     assert!(!status_initial.retired);
 
-    // 2. Perform install
-    let install_res = operator
-        .dynamic_lifecycle()
-        .execute_install(ExecuteInstallCommand {
-            operation_id: Uuid::new_v4(),
-            release_digest: release_digest.clone(),
-            scope: scope.clone(),
-            publisher_identity: "inventory-corp".to_string(),
-            reinstall_choice: None,
-            context: sample_command_context(),
-        })
-        .await
-        .expect("install succeeds");
-
-    assert_eq!(install_res.work_generation, 1);
+    // 2. Arrange an inactive installation at work generation 1
+    insert_inactive_installation(&db, &release_digest, &scope).await;
 
     // 3. Status after install: Inactive -> Ready with instructions to enable
     let status_installed = operator

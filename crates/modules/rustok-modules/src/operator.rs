@@ -17,10 +17,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::{
-    ConflictFenceSet, DynamicLifecycleService, ModuleInstallationScope, RetentionHoldRecord,
-    UpdateMode,
-};
+use crate::{ConflictFenceSet, ModuleInstallationScope, RetentionHoldRecord, UpdateMode};
 
 /// Canonical presentation state tokens.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -205,8 +202,6 @@ pub enum ModuleOperatorError {
     TransitionIneligible(Vec<String>),
     #[error("Database error: {0}")]
     Database(String),
-    #[error("Dynamic lifecycle error: {0}")]
-    Lifecycle(String),
 }
 
 fn sha256_digest(bytes: &[u8]) -> String {
@@ -217,21 +212,11 @@ fn sha256_digest(bytes: &[u8]) -> String {
 #[derive(Clone)]
 pub struct ModuleOperatorService {
     db: DatabaseConnection,
-    dynamic_lifecycle: DynamicLifecycleService,
 }
 
 impl ModuleOperatorService {
     pub fn new(db: DatabaseConnection) -> Self {
-        let dynamic_lifecycle = DynamicLifecycleService::new(db.clone());
-        Self {
-            db,
-            dynamic_lifecycle,
-        }
-    }
-
-    /// Returns a reference to the dynamic lifecycle service.
-    pub fn dynamic_lifecycle(&self) -> &DynamicLifecycleService {
-        &self.dynamic_lifecycle
+        Self { db }
     }
 
     /// Validates version coordinate immutability:

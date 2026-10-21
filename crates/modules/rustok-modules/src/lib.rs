@@ -34,7 +34,6 @@ mod distribution;
 mod distribution_bootstrap;
 mod distribution_release;
 mod distribution_rollout;
-pub mod dynamic_lifecycle;
 mod event_delivery;
 mod execution_audit;
 mod executor;
@@ -128,12 +127,6 @@ pub use data_snapshot_readiness::{
 };
 pub use data_upgrade::{
     DataUpgradeDecision, DataUpgradeEvidence, DataUpgradePhase, evaluate_data_upgrade_decision,
-};
-pub use dynamic_lifecycle::{
-    DynamicLifecycleAction, DynamicLifecycleError, DynamicLifecycleService,
-    ExecuteDataPurgeCommand, ExecuteDisableCommand, ExecuteEnableCommand, ExecuteInstallCommand,
-    ExecuteInstallResult, ExecuteSettingsPurgeCommand, ExecuteUninstallCommand,
-    ExecuteUninstallResult, ProductionOperationStatus, ReinstallChoice, WorkGenerationRecord,
 };
 pub use executor_readiness::{
     CachedPreparedPayload, DEFAULT_VERIFIED_PAYLOAD_CACHE_MAX_BYTES,
