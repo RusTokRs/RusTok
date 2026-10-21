@@ -802,9 +802,9 @@
       "category": "modules",
       "files": 36,
       "loc": 9292,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-22 02:45",
+      "notes": "Audited; verified Universal Logic Dimensions across moderation reports, cases, assignments, decisions, and decision-application operations; enforced nil-UUID guards on get_application_operation, list_due_application_operations, claim_application_operation, mark_application_applied, and finish_with_error; enforced nil-tenant rejection on idempotency replay_existing and admit; added unit tests for seconds bounds, text normalization bounds, and idempotency key length/whitespace bounds. 16/16 tests passed, 0 clippy warnings, remediation gate passed."
     },
     "crates/modules/rustok-moderation-api": {
       "name": "rustok-moderation-api",
