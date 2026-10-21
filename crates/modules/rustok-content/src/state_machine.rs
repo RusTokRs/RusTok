@@ -262,15 +262,15 @@ impl<S> ContentNode<S> {
         self.tenant_id
     }
 
-    /// Set parent
+    /// Set parent (nil UUID is normalized to None)
     pub fn set_parent(mut self, parent_id: Uuid) -> Self {
-        self.parent_id = Some(parent_id);
+        self.parent_id = (!parent_id.is_nil()).then_some(parent_id);
         self
     }
 
-    /// Set category
+    /// Set category (nil UUID is normalized to None)
     pub fn set_category(mut self, category_id: Uuid) -> Self {
-        self.category_id = Some(category_id);
+        self.category_id = (!category_id.is_nil()).then_some(category_id);
         self
     }
 }
@@ -532,6 +532,26 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("Draft"));
         assert!(msg.contains("Archived"));
+    }
+
+    #[test]
+    fn test_set_parent_and_category_nil_uuid() {
+        let node = ContentNode::new_draft(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            "article".to_string(),
+        );
+
+        let valid_parent = Uuid::new_v4();
+        let valid_category = Uuid::new_v4();
+        let node = node.set_parent(valid_parent).set_category(valid_category);
+        assert_eq!(node.parent_id, Some(valid_parent));
+        assert_eq!(node.category_id, Some(valid_category));
+
+        let node = node.set_parent(Uuid::nil()).set_category(Uuid::nil());
+        assert_eq!(node.parent_id, None);
+        assert_eq!(node.category_id, None);
     }
 
     // Compile-time safety tests (these should NOT compile if uncommented)

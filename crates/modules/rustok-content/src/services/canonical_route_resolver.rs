@@ -62,3 +62,28 @@ pub fn normalize_route(route: &str) -> ContentResult<String> {
 /// (SEO, storefront, GraphQL). Typed wrappers keep the lookup key unambiguous.
 #[derive(Clone)]
 pub struct SharedCanonicalRouteResolver(pub std::sync::Arc<dyn CanonicalRouteResolver>);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_valid_route() {
+        assert_eq!(normalize_route("/blog/my-post").unwrap(), "/blog/my-post");
+        assert_eq!(
+            normalize_route("  /forum/topics/123  ").unwrap(),
+            "/forum/topics/123"
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_routes() {
+        assert!(normalize_route("").is_err());
+        assert!(normalize_route("   ").is_err());
+        assert!(normalize_route("relative/no-leading-slash").is_err());
+        assert!(normalize_route("/has whitespace").is_err());
+        assert!(normalize_route("https://example.com/blog").is_err());
+        let too_long = format!("/{}", "a".repeat(513));
+        assert!(normalize_route(&too_long).is_err());
+    }
+}
