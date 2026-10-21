@@ -787,7 +787,7 @@ async fn load_admitted_descriptor<C: ConnectionTrait>(
          WHERE installation.installation_id = {} AND admission.status = 'active' \
            AND NOT EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall WHERE uninstall.installation_id = installation.installation_id) \
            AND NOT EXISTS (SELECT 1 FROM module_artifact_work_generations wg WHERE wg.installation_id = installation.installation_id AND wg.retired = {true_val}) \
-           AND NOT EXISTS (SELECT 1 FROM module_artifact_security_states sec WHERE sec.module_slug = installation.slug AND sec.module_version = installation.version AND sec.status IN ('quarantined', 'revoked')) \
+           AND NOT EXISTS (SELECT 1 FROM module_artifact_security_states sec WHERE sec.module_slug = installation.slug AND sec.module_version = installation.version AND sec.payload_digest = installation.payload_digest AND sec.status IN ('quarantined', 'revoked')) \
            AND {enabled} \
            AND ((installation.scope_kind = 'tenant' AND installation.tenant_id = {}) \
                 OR (installation.scope_kind = 'platform' AND installation.tenant_id IS NULL))",

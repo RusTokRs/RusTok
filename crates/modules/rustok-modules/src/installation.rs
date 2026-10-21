@@ -6307,7 +6307,7 @@ mod tests {
     }
 
     fn empty_dependency_lock() -> ModuleDependencyLockGraph {
-        ModuleDependencyLockGraph::create(0, Vec::new()).expect("empty dependency lock")
+        ModuleDependencyLockGraph::create(1, Vec::new()).expect("empty dependency lock")
     }
 
     fn admission_command(

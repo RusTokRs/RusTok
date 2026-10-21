@@ -664,7 +664,7 @@ mod tests {
             },
             descriptor: package.descriptor.clone(),
             payload_media_type: package.media_type.clone(),
-            dependency_lock: ModuleDependencyLockGraph::create(0, Vec::new())
+            dependency_lock: ModuleDependencyLockGraph::create(1, Vec::new())
                 .expect("empty dependency lock"),
             capability_grant_revision: 1,
             installed_at: Utc::now(),

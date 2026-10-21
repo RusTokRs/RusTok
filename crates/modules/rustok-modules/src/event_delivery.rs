@@ -788,7 +788,7 @@ impl SeaOrmArtifactEventDeliveryQueue {
                     "SELECT \
                         admission.status AS admission_status, \
                         (EXISTS (SELECT 1 FROM module_artifact_uninstall_operations u WHERE u.installation_id = i.installation_id)) AS is_uninstalled, \
-                        (EXISTS (SELECT 1 FROM module_artifact_security_states s WHERE s.module_slug = i.slug AND s.module_version = i.version AND s.status IN ('quarantined', 'revoked'))) AS is_revoked \
+                        (EXISTS (SELECT 1 FROM module_artifact_security_states s WHERE s.module_slug = i.slug AND s.module_version = i.version AND s.payload_digest = i.payload_digest AND s.status IN ('quarantined', 'revoked'))) AS is_revoked \
                      FROM module_artifact_installations i \
                      JOIN module_artifact_admissions admission ON admission.installation_id = i.installation_id \
                      WHERE i.installation_id = {}",

@@ -1251,7 +1251,7 @@ mod tests {
         };
         descriptor.validate().expect("valid fixture descriptor");
         let dependency_lock =
-            ModuleDependencyLockGraph::create(0, Vec::new()).expect("empty dependency lock");
+            ModuleDependencyLockGraph::create(1, Vec::new()).expect("empty dependency lock");
         let sandbox_policy = SandboxPolicy {
             grants: vec![CapabilityGrant {
                 name: capability,

@@ -580,6 +580,13 @@ impl ModuleArtifactDescriptor {
     }
 
     fn validate_declaration(&self) -> Result<(), ModuleArtifactError> {
+        // Core status is granted exclusively by platform composition (the
+        // static registry / composition manifest). An artifact payload must
+        // never be able to assert it: a Core definition is auto-enabled and
+        // cannot be disabled by a tenant.
+        if self.module_kind == ArtifactModuleKind::Core {
+            return Err(ModuleArtifactError::CoreModuleKindNotAllowed);
+        }
         if !is_valid_module_slug(&self.slug) {
             return Err(ModuleArtifactError::InvalidSlug(self.slug.clone()));
         }
@@ -1321,6 +1328,10 @@ impl ArtifactReleaseDraft {
 pub enum ModuleArtifactError {
     #[error("artifact slug `{0}` must be a short snake_case identifier")]
     InvalidSlug(String),
+    #[error(
+        "artifact module kind `core` is reserved for platform composition and cannot be declared by an artifact"
+    )]
+    CoreModuleKindNotAllowed,
     #[error("artifact version is not valid semantic versioning: {0}")]
     InvalidVersion(String),
     #[error("artifact descriptor schema version `{0}` is unsupported")]
@@ -1791,6 +1802,16 @@ mod tests {
         assert!(matches!(
             descriptor.validate(),
             Err(ModuleArtifactError::InvalidDependencyVersionRequirement { .. })
+        ));
+    }
+
+    #[test]
+    fn descriptor_rejects_artifact_asserted_core_kind() {
+        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        descriptor.module_kind = ArtifactModuleKind::Core;
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::CoreModuleKindNotAllowed)
         ));
     }
 
