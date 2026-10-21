@@ -771,10 +771,10 @@
       "path": "crates/modules/rustok-media/admin",
       "category": "modules",
       "files": 10,
-      "loc": 2125,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 2435,
+      "completed": true,
+      "completed_at": "2026-10-21 22:40",
+      "notes": "Audited; verified framework-agnostic FFA architecture in core.rs with zero Leptos imports, full Fluent en/ru parity, dual-path transport isolation (GraphQL / ServerFn), and REST upload adapter; fixed Fluent placeholder template handling to support all variations ({ $count }, {$count}, {count}), guarded against non-positive dimensions in media_dimensions_label, clamped negative usage counts in media_usage_stat_cards, eliminated i32 overflow in GraphQL pagination offset calculation, enforced non-empty trimmed tenant and media IDs across all GraphQL operations, added nil-UUID and empty-string guards to parse_uuid and native server function handlers, enforced trimmed non-empty locale on translation upsert, hardened REST upload with input validation on empty filenames and empty data, and captured HTTP status codes on REST failures; added comprehensive unit tests for core view models, GraphQL offset/ID guards, native UUID parsing, and REST upload validation; 31/31 unit tests passed (including SSR feature), 0 clippy warnings, remediation gate passed."
     },
     "crates/modules/rustok-media/cli": {
       "name": "cli",

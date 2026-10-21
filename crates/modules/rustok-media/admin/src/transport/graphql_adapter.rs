@@ -182,8 +182,19 @@ where
 
 fn required_tenant_id(tenant_slug: &Option<String>) -> Result<String, ApiError> {
     tenant_slug
-        .clone()
+        .as_deref()
+        .map(str::trim)
+        .filter(|slug| !slug.is_empty())
+        .map(str::to_string)
         .ok_or_else(|| ApiError::Validation("tenant slug is required".to_string()))
+}
+
+fn required_media_id(media_id: &str) -> Result<String, ApiError> {
+    let trimmed = media_id.trim();
+    if trimmed.is_empty() {
+        return Err(ApiError::Validation("media id cannot be empty".to_string()));
+    }
+    Ok(trimmed.to_string())
 }
 
 fn map_media_item(item: GraphqlMediaItem) -> MediaListItem {
@@ -218,9 +229,10 @@ fn cursor_for_page(page: i32, limit: i32) -> Option<String> {
     if page <= 1 {
         None
     } else {
+        let offset = (i64::from(page) - 1).saturating_mul(i64::from(limit.max(1)));
         Some(base64::Engine::encode(
             &base64::engine::general_purpose::STANDARD,
-            ((page - 1) * limit).to_string(),
+            offset.to_string(),
         ))
     }
 }
@@ -262,13 +274,11 @@ pub(super) async fn fetch_media_detail_graphql(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<Option<MediaListItem>, ApiError> {
+    let id = required_media_id(&media_id)?;
     let tenant_id = required_tenant_id(&tenant_slug)?;
     let response: MediaItemResponse = graphql_request(
         MEDIA_ITEM_QUERY,
-        Some(MediaItemVariables {
-            tenant_id,
-            id: media_id,
-        }),
+        Some(MediaItemVariables { tenant_id, id }),
         token,
         tenant_slug,
     )
@@ -281,6 +291,7 @@ pub(super) async fn fetch_media_translations_graphql(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<Vec<MediaTranslationPayload>, ApiError> {
+    let media_id = required_media_id(&media_id)?;
     let tenant_id = required_tenant_id(&tenant_slug)?;
     let response: MediaTranslationsResponse = graphql_request(
         MEDIA_TRANSLATIONS_QUERY,
@@ -324,6 +335,7 @@ pub(super) async fn upsert_translation_graphql(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<MediaTranslationPayload, ApiError> {
+    let media_id = required_media_id(&media_id)?;
     let tenant_id = required_tenant_id(&tenant_slug)?;
     let response: UpsertMediaTranslationResponse = graphql_request(
         UPSERT_MEDIA_TRANSLATION_MUTATION,
@@ -349,16 +361,78 @@ pub(super) async fn delete_media_graphql(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<bool, ApiError> {
+    let id = required_media_id(&media_id)?;
     let tenant_id = required_tenant_id(&tenant_slug)?;
     let response: DeleteMediaResponse = graphql_request(
         DELETE_MEDIA_MUTATION,
-        Some(DeleteMediaVariables {
-            tenant_id,
-            id: media_id,
-        }),
+        Some(DeleteMediaVariables { tenant_id, id }),
         token,
         tenant_slug,
     )
     .await?;
     Ok(response.delete_media)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{cursor_for_page, required_media_id, required_tenant_id};
+
+    #[test]
+    fn cursor_for_page_first_page_is_none() {
+        assert_eq!(cursor_for_page(1, 12), None);
+        assert_eq!(cursor_for_page(0, 12), None);
+        assert_eq!(cursor_for_page(-5, 12), None);
+    }
+
+    #[test]
+    fn cursor_for_page_calculates_correct_offset() {
+        let cursor = cursor_for_page(2, 12).expect("page 2 should have cursor");
+        let decoded = String::from_utf8(
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, cursor).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(decoded, "12");
+
+        let cursor_p3 = cursor_for_page(3, 10).expect("page 3 should have cursor");
+        let decoded_p3 = String::from_utf8(
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, cursor_p3).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(decoded_p3, "20");
+    }
+
+    #[test]
+    fn cursor_for_page_saturates_without_overflow_on_large_page() {
+        let cursor = cursor_for_page(i32::MAX, 100);
+        assert!(cursor.is_some());
+    }
+
+    #[test]
+    fn required_tenant_id_accepts_valid_slug() {
+        assert_eq!(
+            required_tenant_id(&Some("  tenant-a  ".to_string())).unwrap(),
+            "tenant-a"
+        );
+    }
+
+    #[test]
+    fn required_tenant_id_rejects_empty_or_whitespace() {
+        assert!(required_tenant_id(&None).is_err());
+        assert!(required_tenant_id(&Some("".to_string())).is_err());
+        assert!(required_tenant_id(&Some("   ".to_string())).is_err());
+    }
+
+    #[test]
+    fn required_media_id_accepts_valid_id() {
+        assert_eq!(
+            required_media_id("  media-123  ").unwrap(),
+            "media-123"
+        );
+    }
+
+    #[test]
+    fn required_media_id_rejects_empty_or_whitespace() {
+        assert!(required_media_id("").is_err());
+        assert!(required_media_id("   ").is_err());
+    }
 }
