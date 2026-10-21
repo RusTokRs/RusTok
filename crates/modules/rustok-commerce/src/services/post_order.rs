@@ -328,7 +328,23 @@ impl PostOrderOrchestrationService {
                     error.to_string(),
                 ),
             })?;
-        validate_return_quantities_were_shipped(&order, order_return, &fulfillments)?;
+        let (other_returns, _) = OrderService::new(self.db.clone(), self.event_bus.clone())
+            .list_returns(
+                tenant_id,
+                rustok_order::dto::ListOrderReturnsInput {
+                    page: 1,
+                    per_page: 100,
+                    order_id: Some(order_id),
+                    status: None,
+                },
+            )
+            .await?;
+        validate_return_quantities_were_shipped(
+            &order,
+            order_return,
+            &other_returns,
+            &fulfillments,
+        )?;
         let amount = resolve_return_refund_amount(
             input.amount,
             return_refundable_value(&order, order_return)?,

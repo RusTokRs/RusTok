@@ -32,7 +32,8 @@ is no longer read. A return without items cannot be valued; only an explicit pos
 accepted and the payment-level cap still applies.
 
 Quantity truth: when the order has fulfillment records, a physical line cannot be returned beyond
-its shipped quantity; digital lines and orders without fulfillment records are exempt.
+its shipped quantity, counted cumulatively over this return and every other non-cancelled return of
+the order; digital lines and orders without fulfillment records are exempt.
 
 Both the mounted owner-port orchestration (`ReturnDecisionOwnerOrchestrationService`, which now needs
 `with_order_read_port` and fails closed without it) and the legacy `PostOrderOrchestrationService`
@@ -60,8 +61,7 @@ physical goods when shipment truth exists.
 Restocking inventory on `complete_return` (needs an inventory restock port with an idempotency ledger,
 and a per-item resellable decision: not implemented); requiring `paid`-or-later status for creating
 return records (a refund already requires a captured collection, and ~15 existing order and commerce
-tests create returns on unpaid orders); cumulative shipped-quantity checks across several returns;
-shipping refunds.
+tests create returns on unpaid orders); shipping refunds.
 
 ## Data, transaction, and concurrency boundary
 
@@ -94,7 +94,7 @@ not have); trusting operators (current behavior, rejected by the finding).
 
 ## Verification
 
-Unit tests in `return_refund_value.rs`. Existing bridge test uses an item-less return with an explicit
+Unit tests in `return_refund_value.rs` (including the cumulative shipped cap). Existing bridge test uses an item-less return with an explicit
 amount and stays valid. **Not compiled or run when written.**
 
 ## Consequences

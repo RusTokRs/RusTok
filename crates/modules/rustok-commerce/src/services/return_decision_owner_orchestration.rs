@@ -5,7 +5,8 @@ use rustok_fulfillment::FulfillmentService;
 use rustok_order::{
     CompleteOrderReturnInput, CompleteOrderReturnRequest, CreateOrderChangeInput,
     CreateOrderChangeRequest, CreateOrderReturnRequest, OrderPostOrderCommandPort,
-    OrderReadPort, OrderReturnResponse, ReadOrderProjectionRequest,
+    ListOrderReturnProjectionsRequest, OrderReadPort, OrderReturnResponse,
+    ReadOrderProjectionRequest,
 };
 use rustok_payment::{
     ListPaymentCollectionProjectionsRequest, PaymentAdminReadPort,
@@ -371,7 +372,25 @@ impl ReturnDecisionOwnerOrchestrationService {
                     ),
                 }
             })?;
-        validate_return_quantities_were_shipped(&order, order_return, &fulfillments)?;
+        let other_returns = order_reads
+            .list_order_return_projections(
+                payment_read_context_for(base_context, "list_order_returns", order_id),
+                ListOrderReturnProjectionsRequest {
+                    page: 1,
+                    per_page: 100,
+                    order_id: Some(order_id),
+                    status: None,
+                },
+            )
+            .await
+            .map_err(ReturnDecisionOwnerOrchestrationError::OrderCommand)?
+            .items;
+        validate_return_quantities_were_shipped(
+            &order,
+            order_return,
+            &other_returns,
+            &fulfillments,
+        )?;
         let amount = resolve_return_refund_amount(
             input.amount,
             return_refundable_value(&order, order_return)?,

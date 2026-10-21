@@ -96,7 +96,7 @@ profile to digital lines. See
   rejected (use a return). See `DECISIONS/2026-10-21-order-cancellation-orchestration.md`.
 - Return refunds are valued on the server (`return_refund_value.rs`) from the order line price,
   discounts and tax; an explicit amount may only be lower. Physical lines cannot be returned beyond
-  their shipped quantity when fulfillment records exist. See
+  their shipped quantity (cumulative over live returns) when fulfillment records exist. See
   `DECISIONS/2026-10-21-return-refund-server-side-valuation.md`.
 - Order `shipped`/`delivered` follow fulfillment truth (`OrderShipmentProjector`, decorator of
   `FulfillmentAdminCommandPort`); manual order `ship`/`deliver` are refused while live fulfillments
@@ -108,10 +108,11 @@ profile to digital lines. See
   Run `cargo test -p rustok-commerce` (crate-scoped) before relying on it.
 - Cancellation has no durable journal; it is a stateless re-runnable saga. The cancellation refund
   is created `pending` and is completed by the provider or operator.
-- `complete_return` does not restock inventory (needs an inventory restock port with an
-  idempotency ledger and a per-item resellable decision).
-- Return records can still be created on unpaid orders (a refund needs a captured collection);
-  the shipped-quantity cap is per return, not cumulative.
+- `complete_return` does not restock inventory. It needs an inventory restock port, a per-item
+  resellable decision, and a new `return_completion_operations` stage; that stage list is
+  enforced by a CHECK constraint and transition triggers (`m20260716_000004`), so it requires a
+  migration verified on PostgreSQL and SQLite.
+- Return records can still be created on unpaid orders (a refund needs a captured collection).
 - Shipment projection skips fulfillment changes made outside the admin command port (provider
   reconciliation) and never moves an order status backwards on reopen/reship.
 - Stock consumption on shipment is still the `fulfillment_inventory_consume_on_ship` database

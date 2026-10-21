@@ -49,6 +49,10 @@ const ORDER_CANCELLATION_BOUNDARY: &str = "commerce_order_cancellation";
 const ORDER_CANCELLATION_METADATA_KEY: &str = "order_cancellation";
 const COLLECTION_PAGE_SIZE: u64 = 100;
 
+/// Longest cancellation reason the fulfillment owner accepts; checked up front so an over-long
+/// reason is a validation error instead of a retryable failure in the middle of the saga.
+const MAX_CANCELLATION_REASON_CHARS: usize = 500;
+
 /// Order statuses an operator may cancel from (mirrors the order owner's `can_cancel`).
 const CANCELLABLE_ORDER_STATUSES: [&str; 4] = ["pending", "confirmed", "paid", "shipped"];
 
@@ -168,6 +172,18 @@ pub(crate) fn plan_payment_cancellation(
     Ok(actions)
 }
 
+pub(crate) fn validate_cancellation_reason(reason: Option<&str>) -> Result<(), PortError> {
+    match reason {
+        Some(reason) if reason.trim().chars().count() > MAX_CANCELLATION_REASON_CHARS => {
+            Err(PortError::validation(
+                "order_cancellation.reason_too_long",
+                format!("cancellation reason must be at most {MAX_CANCELLATION_REASON_CHARS} characters"),
+            ))
+        }
+        _ => Ok(()),
+    }
+}
+
 fn is_cancellation_refund(metadata: &Value) -> bool {
     metadata.get(ORDER_CANCELLATION_METADATA_KEY).is_some()
 }
@@ -222,6 +238,7 @@ impl OrderCancellationOrchestrator {
                 "order_id must not be a nil UUID",
             ));
         }
+        validate_cancellation_reason(request.reason.as_deref())?;
         let tenant_id = parse_uuid(context.tenant_id.as_str(), "tenant_id")?;
         let actor_id = parse_uuid(context.actor.id.as_str(), "actor_id")?;
         let order_id = request.order_id;
@@ -694,5 +711,13 @@ mod tests {
     fn unknown_collection_status_blocks_the_cancellation() {
         let unknown = collection("mystery", Decimal::ZERO, Vec::new());
         assert!(plan_payment_cancellation(&[unknown]).is_err());
+    }
+
+    #[test]
+    fn over_long_reason_is_a_validation_error() {
+        assert!(validate_cancellation_reason(None).is_ok());
+        assert!(validate_cancellation_reason(Some("customer asked")).is_ok());
+        assert!(validate_cancellation_reason(Some(&"x".repeat(500))).is_ok());
+        assert!(validate_cancellation_reason(Some(&"x".repeat(501))).is_err());
     }
 }

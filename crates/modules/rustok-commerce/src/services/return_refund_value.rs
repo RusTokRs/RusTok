@@ -152,11 +152,12 @@ pub(crate) fn resolve_return_refund_amount(
 ///
 /// Only enforced when the order has fulfillment records: orders driven purely by manual status
 /// changes carry no shipment truth to compare against. Digital lines need no shipment. Quantities
-/// are compared per return; cumulative quantity across several returns is bounded by the order
-/// owner against the ordered quantity.
+/// are compared cumulatively: the returned quantity of this return plus every other live return of
+/// the order must not exceed the shipped quantity of the line.
 pub(crate) fn validate_return_quantities_were_shipped(
     order: &OrderResponse,
     order_return: &OrderReturnResponse,
+    other_returns: &[OrderReturnResponse],
     fulfillments: &[FulfillmentResponse],
 ) -> PostOrderOrchestrationResult<()> {
     if fulfillments.is_empty() {
@@ -169,9 +170,21 @@ pub(crate) fn validate_return_quantities_were_shipped(
             i64::from(item.shipped_quantity.max(0));
     }
 
+    // Cumulative: this return plus every other live (non-cancelled) return of the order.
     let mut returned_by_line: HashMap<uuid::Uuid, i64> = HashMap::new();
     for item in &order_return.items {
         *returned_by_line.entry(item.line_item_id).or_insert(0) += i64::from(item.quantity);
+    }
+    for other in other_returns
+        .iter()
+        .filter(|other| other.id != order_return.id && other.status != "cancelled")
+    {
+        for item in &other.items {
+            if returned_by_line.contains_key(&item.line_item_id) {
+                *returned_by_line.entry(item.line_item_id).or_insert(0) +=
+                    i64::from(item.quantity);
+            }
+        }
     }
 
     for (line_item_id, returned) in returned_by_line {
@@ -452,11 +465,11 @@ mod tests {
         let order = order(vec![a.clone()], vec![], vec![], false);
         let shipped = [fulfillment(a.id, 1)];
         assert!(
-            validate_return_quantities_were_shipped(&order, &order_return(&[(a.id, 1)]), &shipped)
+            validate_return_quantities_were_shipped(&order, &order_return(&[(a.id, 1)]), &[], &shipped)
                 .is_ok()
         );
         assert!(
-            validate_return_quantities_were_shipped(&order, &order_return(&[(a.id, 2)]), &shipped)
+            validate_return_quantities_were_shipped(&order, &order_return(&[(a.id, 2)]), &[], &shipped)
                 .is_err()
         );
     }
@@ -467,14 +480,46 @@ mod tests {
         digital.fulfillment_requirement = OrderLineFulfillmentRequirement::Digital;
         let order = order(vec![digital.clone()], vec![], vec![], false);
         let ret = order_return(&[(digital.id, 1)]);
-        assert!(validate_return_quantities_were_shipped(&order, &ret, &[]).is_ok());
+        assert!(validate_return_quantities_were_shipped(&order, &ret, &[], &[]).is_ok());
         assert!(
             validate_return_quantities_were_shipped(
                 &order,
                 &ret,
+                &[],
                 &[fulfillment(Uuid::new_v4(), 1)]
             )
             .is_ok()
+        );
+    }
+
+    #[test]
+    fn shipped_cap_is_cumulative_across_live_returns() {
+        let a = line(3, dec!(10));
+        let order = order(vec![a.clone()], vec![], vec![], false);
+        let shipped = [fulfillment(a.id, 2)];
+        let earlier = order_return(&[(a.id, 1)]);
+        let mut cancelled = order_return(&[(a.id, 2)]);
+        cancelled.status = "cancelled".to_string();
+
+        // 1 earlier + 1 now = 2 <= 2 shipped; the cancelled return does not count.
+        assert!(
+            validate_return_quantities_were_shipped(
+                &order,
+                &order_return(&[(a.id, 1)]),
+                &[earlier.clone(), cancelled],
+                &shipped
+            )
+            .is_ok()
+        );
+        // 1 earlier + 2 now = 3 > 2 shipped.
+        assert!(
+            validate_return_quantities_were_shipped(
+                &order,
+                &order_return(&[(a.id, 2)]),
+                &[earlier],
+                &shipped
+            )
+            .is_err()
         );
     }
 }
