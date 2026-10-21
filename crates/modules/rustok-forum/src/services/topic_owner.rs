@@ -281,16 +281,19 @@ impl TopicService {
         )
         .await?;
 
-        CategoryService::adjust_counters_in_tx(
-            &txn,
-            tenant_id,
-            topic.category_id,
-            -1,
-            -public_reply_count,
-        )
-        .await?;
-
+        // Counter invariant: decrement release applies only when the topic was
+        // still counted at delete time. A topic already archived before the
+        // delete had its aggregate contribution released by the archive
+        // transition, so decrementing here would double-release it.
         if topic.status != TopicStatus::Archived {
+            CategoryService::adjust_counters_in_tx(
+                &txn,
+                tenant_id,
+                topic.category_id,
+                -1,
+                -public_reply_count,
+            )
+            .await?;
             self.event_bus
                 .publish_in_tx(
                     &txn,
@@ -465,16 +468,22 @@ impl TopicService {
         )
         .await?;
 
-        UserStatsService::adjust_topic_count_in_tx(&txn, tenant_id, topic.author_id, 1)
+        // Counter invariant: only a topic restored to a non-`Archived` status
+        // re-enters the public aggregates. Restoring a topic that had been
+        // archived before its delete must not duplicate the contribution that
+        // the archive transition already released.
+        if snapshot.previous_status != TopicStatus::Archived {
+            UserStatsService::adjust_topic_count_in_tx(&txn, tenant_id, topic.author_id, 1)
+                .await?;
+            CategoryService::adjust_counters_in_tx(
+                &txn,
+                tenant_id,
+                topic.category_id,
+                1,
+                public_reply_count as i32,
+            )
             .await?;
-        CategoryService::adjust_counters_in_tx(
-            &txn,
-            tenant_id,
-            topic.category_id,
-            1,
-            public_reply_count as i32,
-        )
-        .await?;
+        }
 
         if snapshot.previous_status != TopicStatus::Archived {
             self.event_bus

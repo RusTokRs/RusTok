@@ -3,7 +3,7 @@ use sea_orm::{
     ActiveModelTrait,
     ActiveValue::{NotSet, Set},
     ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, QueryFilter, Statement, TransactionTrait,
+    EntityTrait, PaginatorTrait, QueryFilter, Statement, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
@@ -122,6 +122,26 @@ impl ForumTopicMoveService {
         if topic.reply_count < 0 {
             return Err(ForumError::Validation(
                 "Forum topic contains an invalid published reply count".to_string(),
+            ));
+        }
+        // Move carries the topic's stored reply count into the target
+        // category. Fail closed when the stored counter disagrees with the
+        // authoritative approved rows (merge does the same), otherwise any
+        // existing drift would leak across categories unnoticeably.
+        let actual_approved_count = forum_reply::Entity::find()
+            .filter(forum_reply::Column::TenantId.eq(tenant_id))
+            .filter(forum_reply::Column::TopicId.eq(topic_id))
+            .filter(forum_reply::Column::Status.eq(ReplyStatus::Approved))
+            .count(&txn)
+            .await?;
+        let actual_approved_count = i32::try_from(actual_approved_count).map_err(|_| {
+            ForumError::Validation(
+                "Forum topic published reply count exceeds supported range".to_string(),
+            )
+        })?;
+        if actual_approved_count != topic.reply_count {
+            return Err(ForumError::Validation(
+                "Forum topic published reply counter is inconsistent".to_string(),
             ));
         }
 

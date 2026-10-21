@@ -87,13 +87,43 @@ impl ForumTopicMergeTagReconciliationService {
         let reason = validate_input(tenant_id, merge_operation_id, actor_id, &input)?;
 
         let txn = self.db.begin().await?;
-        lock_reconciliation_tenant_in_tx(&txn, tenant_id).await?;
+        let operation = self
+            .reconcile_in_tx(
+                &txn,
+                tenant_id,
+                merge_operation_id,
+                actor_id,
+                input.operation_id,
+                &reason,
+            )
+            .await?
+            .ok_or_else(|| ForumError::TopicMergeTagReconciliationConflict(input.operation_id))?;
+        txn.commit().await?;
+        Ok(operation_to_result(operation))
+    }
+
+    /// Transaction-composed core of [`Self::reconcile_merge_tags`]. The Forum
+    /// topic merge owner calls it inside the merge transaction so
+    /// source-topic tag assignments follow the retained target atomically with every
+    /// other merge effect. Returns the persisted reconciliation row, or `None` when a
+    /// reconciliation for this merge operation already ran — the caller treats
+    /// `None` as an idempotent no-op.
+    pub(crate) async fn reconcile_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        merge_operation_id: Uuid,
+        actor_id: Uuid,
+        operation_id: Uuid,
+        reason: &str,
+    ) -> ForumResult<Option<forum_topic_merge_tag_reconciliation::Model>> {
+        lock_reconciliation_tenant_in_tx(txn, tenant_id).await?;
 
         if let Some(existing) = forum_topic_merge_tag_reconciliation::Entity::find_by_id((
             tenant_id,
-            input.operation_id,
+            operation_id,
         ))
-        .one(&txn)
+        .one(txn)
         .await?
         {
             if existing.merge_operation_id != merge_operation_id
@@ -101,19 +131,18 @@ impl ForumTopicMergeTagReconciliationService {
                 || existing.reason != reason
             {
                 return Err(ForumError::TopicMergeTagReconciliationConflict(
-                    input.operation_id,
+                    operation_id,
                 ));
             }
-            validate_reconciliation_event_in_tx(&txn, &existing).await?;
+            validate_reconciliation_event_in_tx(txn, &existing).await?;
             lock_topic_tag_scopes_in_tx(
-                &txn,
+                txn,
                 tenant_id,
                 &[existing.source_topic_id, existing.target_topic_id],
             )
             .await?;
-            ensure_source_tags_empty_in_tx(&txn, tenant_id, existing.source_topic_id).await?;
-            txn.commit().await?;
-            return Ok(operation_to_result(existing));
+            ensure_source_tags_empty_in_tx(txn, tenant_id, existing.source_topic_id).await?;
+            return Ok(Some(existing));
         }
 
         if forum_topic_merge_tag_reconciliation::Entity::find()
@@ -122,18 +151,20 @@ impl ForumTopicMergeTagReconciliationService {
                 forum_topic_merge_tag_reconciliation::Column::MergeOperationId
                     .eq(merge_operation_id),
             )
-            .one(&txn)
+            .one(txn)
             .await?
             .is_some()
         {
-            return Err(ForumError::TopicMergeTagReconciliationConflict(
-                input.operation_id,
-            ));
+            // The reconciliation for this merge already ran (in the merge
+            // transaction itself or through this owner): replaying would
+            // duplicate the audit row, so the caller receives an idempotent
+            // no-op instead.
+            return Ok(None);
         }
 
         let merge =
             forum_topic_merge_operation::Entity::find_by_id((tenant_id, merge_operation_id))
-                .one(&txn)
+                .one(txn)
                 .await?
                 .ok_or_else(|| {
                     ForumError::Validation(
@@ -141,10 +172,10 @@ impl ForumTopicMergeTagReconciliationService {
                             .to_string(),
                     )
                 })?;
-        validate_merge_event_in_tx(&txn, &merge).await?;
+        validate_merge_event_in_tx(txn, &merge).await?;
 
         let topics = lock_topic_rows_for_tags_in_tx(
-            &txn,
+            txn,
             tenant_id,
             &[merge.source_topic_id, merge.target_topic_id],
         )
@@ -182,7 +213,7 @@ impl ForumTopicMergeTagReconciliationService {
         }
 
         lock_topic_tag_scopes_in_tx(
-            &txn,
+            txn,
             tenant_id,
             &[merge.source_topic_id, merge.target_topic_id],
         )
@@ -194,7 +225,7 @@ impl ForumTopicMergeTagReconciliationService {
             .order_by_asc(forum_topic_tag::Column::TermId)
             .order_by_asc(forum_topic_tag::Column::Id)
             .limit(MAX_FORUM_TOPIC_MERGE_TAGS + 1)
-            .all(&txn)
+            .all(txn)
             .await?;
         if source_rows.len() as u64 > MAX_FORUM_TOPIC_MERGE_TAGS {
             return Err(ForumError::Validation(format!(
@@ -213,7 +244,7 @@ impl ForumTopicMergeTagReconciliationService {
                 .filter(forum_topic_tag::Column::TenantId.eq(tenant_id))
                 .filter(forum_topic_tag::Column::TopicId.eq(merge.target_topic_id))
                 .filter(forum_topic_tag::Column::TermId.is_in(source_term_ids))
-                .all(&txn)
+                .all(txn)
                 .await?
         };
         let target_by_term = target_rows
@@ -225,13 +256,13 @@ impl ForumTopicMergeTagReconciliationService {
         let mut deduplicated_existing_count = 0i32;
         for source_row in &source_rows {
             if target_by_term.contains_key(&source_row.term_id) {
-                delete_source_row_in_tx(&txn, source_row).await?;
+                delete_source_row_in_tx(txn, source_row).await?;
                 deduplicated_existing_count =
                     deduplicated_existing_count.checked_add(1).ok_or_else(|| {
                         ForumError::Validation("Forum topic merge tag count overflow".to_string())
                     })?;
             } else {
-                move_source_row_in_tx(&txn, source_row, merge.target_topic_id).await?;
+                move_source_row_in_tx(txn, source_row, merge.target_topic_id).await?;
                 moved_source_only_count =
                     moved_source_only_count.checked_add(1).ok_or_else(|| {
                         ForumError::Validation("Forum topic merge tag count overflow".to_string())
@@ -239,7 +270,7 @@ impl ForumTopicMergeTagReconciliationService {
             }
         }
 
-        ensure_source_tags_empty_in_tx(&txn, tenant_id, merge.source_topic_id).await?;
+        ensure_source_tags_empty_in_tx(txn, tenant_id, merge.source_topic_id).await?;
         let source_tag_count = i32::try_from(source_rows.len()).map_err(|_| {
             ForumError::Validation(
                 "Forum topic merge tag count exceeds supported range".to_string(),
@@ -258,18 +289,18 @@ impl ForumTopicMergeTagReconciliationService {
 
         let now = Utc::now();
         let payload = reconciliation_payload(
-            input.operation_id,
+            operation_id,
             merge_operation_id,
             merge.source_topic_id,
             merge.target_topic_id,
             source_tag_count,
             moved_source_only_count,
             deduplicated_existing_count,
-            &reason,
+            reason,
         );
         forum_domain_event::ActiveModel {
             sequence_no: NotSet,
-            event_id: Set(input.operation_id),
+            event_id: Set(operation_id),
             tenant_id: Set(tenant_id),
             aggregate_type: Set(FORUM_TOPIC_MERGE_TAGS_AGGREGATE_TYPE.to_string()),
             aggregate_id: Set(merge.target_topic_id),
@@ -279,29 +310,29 @@ impl ForumTopicMergeTagReconciliationService {
             payload: Set(payload),
             created_at: Set(now.into()),
         }
-        .insert(&txn)
+        .insert(txn)
         .await?;
 
         let operation = forum_topic_merge_tag_reconciliation::ActiveModel {
             tenant_id: Set(tenant_id),
-            operation_id: Set(input.operation_id),
+            operation_id: Set(operation_id),
             merge_operation_id: Set(merge_operation_id),
             source_topic_id: Set(merge.source_topic_id),
             target_topic_id: Set(merge.target_topic_id),
             actor_id: Set(actor_id),
-            reason: Set(reason),
+            reason: Set(reason.to_string()),
             source_tag_count: Set(source_tag_count),
             moved_source_only_count: Set(moved_source_only_count),
             deduplicated_existing_count: Set(deduplicated_existing_count),
-            event_id: Set(input.operation_id),
+            event_id: Set(operation_id),
             reconciled_at: Set(now.into()),
         }
-        .insert(&txn)
+        .insert(txn)
         .await?;
 
         publish_forum_topic_projection_in_tx(
             &self.event_bus,
-            &txn,
+            txn,
             tenant_id,
             Some(actor_id),
             merge.source_topic_id,
@@ -309,15 +340,15 @@ impl ForumTopicMergeTagReconciliationService {
         .await?;
         publish_forum_topic_projection_in_tx(
             &self.event_bus,
-            &txn,
+            txn,
             tenant_id,
             Some(actor_id),
             merge.target_topic_id,
         )
         .await?;
 
-        txn.commit().await?;
-        Ok(operation_to_result(operation))
+
+        Ok(Some(operation))
     }
 }
 

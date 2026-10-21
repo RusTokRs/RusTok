@@ -300,7 +300,16 @@ impl VoteService {
     async fn internal_voting_enabled_for_read(&self, tenant_id: Uuid) -> ForumResult<bool> {
         match ForumEngagementMode::resolve(&self.settings, tenant_id).await {
             Ok(mode) => Ok(mode.is_internal_voting()),
-            Err(ForumError::CapabilityUnavailable { .. }) => Ok(false),
+            Err(ForumError::CapabilityUnavailable { .. }) => {
+                // `use_reactions = true` with the reactions module disabled
+                // fails vote writes closed; keep reads from silently hiding
+                // the vote UI without an operator-visible signal.
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    "forum vote summaries hidden: use_reactions is enabled but the reactions module is unavailable"
+                );
+                Ok(false)
+            }
             Err(error) => Err(error),
         }
     }

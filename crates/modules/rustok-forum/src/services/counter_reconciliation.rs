@@ -426,6 +426,7 @@ LEFT JOIN forum_topics t
     ON t.tenant_id = c.tenant_id
    AND t.category_id = c.id
    AND t.deleted_at IS NULL
+   AND t.status <> 'archived'
 LEFT JOIN forum_replies r
     ON r.tenant_id = t.tenant_id
    AND r.topic_id = t.id
@@ -450,6 +451,7 @@ LEFT JOIN forum_topics t
     ON t.tenant_id = c.tenant_id
    AND t.category_id = c.id
    AND t.deleted_at IS NULL
+   AND t.status <> 'archived'
 LEFT JOIN forum_replies r
     ON r.tenant_id = t.tenant_id
    AND r.topic_id = t.id
@@ -475,6 +477,7 @@ LEFT JOIN forum_topics t
     ON t.tenant_id = c.tenant_id
    AND t.category_id = c.id
    AND t.deleted_at IS NULL
+   AND t.status <> 'archived'
 LEFT JOIN forum_replies r
     ON r.tenant_id = t.tenant_id
    AND r.topic_id = t.id
@@ -499,6 +502,7 @@ LEFT JOIN forum_topics t
     ON t.tenant_id = c.tenant_id
    AND t.category_id = c.id
    AND t.deleted_at IS NULL
+   AND t.status <> 'archived'
 LEFT JOIN forum_replies r
     ON r.tenant_id = t.tenant_id
    AND r.topic_id = t.id

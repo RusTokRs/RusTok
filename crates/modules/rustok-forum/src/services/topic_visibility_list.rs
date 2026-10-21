@@ -1,4 +1,4 @@
-use super::pending_visibility::topic_pending_condition;
+use super::pending_visibility::topic_owner_read_condition;
 
 impl TopicService {
     #[instrument(skip(self, security, filter, hidden_category_ids))]
@@ -31,7 +31,7 @@ impl TopicService {
             select = select
                 .filter(forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec()));
         }
-        select = select.filter(topic_pending_condition(&security));
+        select = select.filter(topic_owner_read_condition(&security));
 
         let scope = filter.cursor_scope(
             tenant_id,

@@ -92,6 +92,12 @@ impl ReplyService {
             Action::Update,
             existing.author_id,
         )?;
+        if existing.status == crate::state_machine::ReplyStatus::Deleted {
+            // A deleted reply is immutable for its author: edits would
+            // silently mutate content covered by the delete snapshot and
+            // revive on restore with changes made after the tombstone.
+            return Err(ForumError::ReplyNotFound(reply_id));
+        }
 
         let max_edit_window_minutes = self
             .settings

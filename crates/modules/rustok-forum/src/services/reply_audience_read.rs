@@ -8,7 +8,7 @@ use rustok_outbox::TransactionalEventBus;
 use crate::audience::SharedForumAudienceFactsPort;
 use crate::dto::{ListRepliesFilter, ReplyListItem, ReplyPage, ReplyResponse};
 use crate::error::{ForumError, ForumResult};
-use crate::services::pending_visibility::can_see_pending;
+use crate::services::pending_visibility::can_read_non_public;
 use crate::state_machine::ReplyStatus;
 
 use super::engagement_mode::ForumSettingsProviders;
@@ -68,8 +68,8 @@ impl ForumReplyAudienceReadService {
         enforce_scope(&security, Resource::ForumReplies, Action::Read)?;
         let locale = required_context_locale(&context)?;
         let reply = self.reply_service.find_reply(tenant_id, reply_id).await?;
-        if reply.status == ReplyStatus::Pending
-            && !can_see_pending(&security, Resource::ForumReplies, reply.author_id)
+        if reply.status != ReplyStatus::Approved
+            && !can_read_non_public(&security, Resource::ForumReplies, reply.author_id)
         {
             return Err(ForumError::ReplyNotFound(reply_id));
         }
@@ -109,8 +109,8 @@ impl ForumReplyAudienceReadService {
             Err(ForumError::ReplyNotFound(_)) => return Ok(None),
             Err(error) => return Err(error),
         };
-        if reply.status == ReplyStatus::Pending
-            && !can_see_pending(&security, Resource::ForumReplies, reply.author_id)
+        if reply.status != ReplyStatus::Approved
+            && !can_read_non_public(&security, Resource::ForumReplies, reply.author_id)
         {
             return Ok(None);
         }
@@ -156,8 +156,8 @@ impl ForumReplyAudienceReadService {
             Err(ForumError::ReplyNotFound(_)) => return Ok(None),
             Err(error) => return Err(error),
         };
-        if reply.status == ReplyStatus::Pending
-            && !can_see_pending(&security, Resource::ForumReplies, reply.author_id)
+        if reply.status != ReplyStatus::Approved
+            && !can_read_non_public(&security, Resource::ForumReplies, reply.author_id)
         {
             return Ok(None);
         }

@@ -23,6 +23,8 @@ use crate::error::{ForumError, ForumResult};
 use crate::state_machine::{ReplyStatus, TopicStatus};
 
 use super::category_lifecycle::ensure_category_tree_target_is_active_in_tx;
+use super::category_owner::CategoryService;
+use super::topic_merge_follow_up_reconciliation::reconcile_topic_merge_follow_up_relations_in_tx;
 use super::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
 };
@@ -328,8 +330,23 @@ impl ForumTopicMergeService {
         }
 
         let now = Utc::now();
+        // `last_reply_at` is the derived recency projection of the newest
+        // approved reply (see `TopicService::adjust_reply_count_in_tx`). Merge
+        // rewrites the counter directly, so it must recompute the projection
+        // after the reply rows moved: otherwise the target keeps a stale
+        // recency until its next reply and the fixed recent-activity order (and
+        // its keyset cursor) disagree with the counter the merge just wrote.
+        let target_last_reply_at = forum_reply::Entity::find()
+            .filter(forum_reply::Column::TenantId.eq(tenant_id))
+            .filter(forum_reply::Column::TopicId.eq(target.id))
+            .filter(forum_reply::Column::Status.eq(ReplyStatus::Approved))
+            .order_by_desc(forum_reply::Column::CreatedAt)
+            .one(&txn)
+            .await?
+            .map(|reply| reply.created_at);
         let mut target_active: forum_topic::ActiveModel = target.into();
         target_active.reply_count = Set(resulting_published_reply_count);
+        target_active.last_reply_at = Set(target_last_reply_at);
         target_active.updated_at = Set(now.into());
         let target = target_active.update(&txn).await?;
         load_policy_for_topic(&txn, tenant_id, &target).await?;
@@ -341,6 +358,16 @@ impl ForumTopicMergeService {
         source_active.last_reply_at = Set(None);
         source_active.updated_at = Set(now.into());
         source_active.update(&txn).await?;
+
+        // Counter invariant: an archived topic no longer contributes to the
+        // public category aggregate or to its author's topic total (deleted
+        // topics follow the same rule via the delete owner). The source was
+        // counted from creation, so archiving it as the merge tombstone must
+        // release that contribution.
+        CategoryService::adjust_counters_in_tx(&txn, tenant_id, source_category_id, -1, 0)
+            .await?;
+        UserStatsService::adjust_topic_count_in_tx(&txn, tenant_id, source.author_id, -1)
+            .await?;
 
         transfer_cross_category_reply_counters_in_tx(
             &txn,
@@ -393,7 +420,7 @@ impl ForumTopicMergeService {
             target_topic_id: Set(target_topic_id),
             category_id: Set(target.category_id),
             actor_id: Set(actor_id),
-            reason: Set(reason),
+            reason: Set(reason.clone()),
             moved_reply_count: Set(moved_reply_count),
             moved_published_reply_count: Set(moved_published_reply_count),
             resulting_published_reply_count: Set(resulting_published_reply_count),
@@ -453,6 +480,23 @@ impl ForumTopicMergeService {
             )
             .await?;
         }
+
+        // Reconcile per-user and per-topic relations that would otherwise stay
+        // stranded on the archived merge tombstone: subscriptions, read
+        // states, votes, tags and the richer audience membership rows of the
+        // source topic follow its replies into the retained target inside the
+        // same transaction. Each reconciliation owner is idempotent and keyed
+        // by a deterministic derivation of this merge operation id, so an
+        // exact retry of the operator request replays them harmlessly.
+        reconcile_topic_merge_follow_up_relations_in_tx(
+            &self.db,
+            &txn,
+            tenant_id,
+            input.operation_id,
+            actor_id,
+            target_category_id != source_category_id,
+        )
+        .await?;
 
         txn.commit().await?;
         Ok(operation_to_result(operation))
