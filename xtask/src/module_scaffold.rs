@@ -1,6 +1,7 @@
 use super::*;
+use crate::manifest_validation::module_validate_command;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModuleScaffoldUi {
@@ -175,14 +176,14 @@ pub fn scaffold_module(options: &ModuleScaffoldOptions) -> Result<()> {
     }
 
     // 1. Generate core backend files
-    generate_backend_crate(options, &root, &module_dir, &pascal_name, &snake_name)?;
+    generate_backend_crate(options, &module_dir, &pascal_name, &snake_name)?;
 
     // 2. Generate UI packages (FFA: core, transport, ui, i18n)
     if options.ui.has_admin() {
-        generate_admin_ui_crate(options, &root, &module_dir, &pascal_name, &snake_name)?;
+        generate_admin_ui_crate(options, &module_dir, &pascal_name)?;
     }
     if options.ui.has_storefront() {
-        generate_storefront_ui_crate(options, &root, &module_dir, &pascal_name, &snake_name)?;
+        generate_storefront_ui_crate(options, &module_dir, &pascal_name)?;
     }
 
     // 3. Update manifests and global registration
@@ -212,7 +213,7 @@ pub fn scaffold_module(options: &ModuleScaffoldOptions) -> Result<()> {
         // 4. Run post-scaffold validation if not skipped
         if !options.skip_validate {
             println!("\nVerifying module publish-readiness contracts for '{slug}'...");
-            match module_validate_command(&[slug.clone()]) {
+            match module_validate_command(std::slice::from_ref(slug)) {
                 Ok(_) => {
                     println!("\n  SUCCESS: Module '{slug}' created and verified!");
                     println!("  Next steps:");
@@ -256,7 +257,6 @@ fn write_file_content(path: &Path, content: &str, dry_run: bool) -> Result<()> {
 
 fn generate_backend_crate(
     opts: &ModuleScaffoldOptions,
-    root: &Path,
     module_dir: &Path,
     pascal: &str,
     snake: &str,
@@ -579,8 +579,7 @@ pub enum {pascal}Error {{
     )?;
 
     // src/module.rs
-    let mut module_rs = format!(
-        r#"/*
+    let mut module_rs = r#"/*
  * Copyright (c) 2026 RusTokRs.
  *
  * This file is part of RusTok.
@@ -591,9 +590,9 @@ pub enum {pascal}Error {{
  */
 
 use async_trait::async_trait;
-use rustok_core::{{ModuleKind, Permission, RusToKModule}};
+use rustok_core::{ModuleKind, Permission, RusToKModule};
 "#
-    );
+    .to_string();
 
     if opts.with_db {
         module_rs.push_str(
@@ -651,8 +650,7 @@ impl MigrationSource for {pascal}Module {{
     )?;
 
     // src/domain/mod.rs
-    let domain_mod = format!(
-        r#"/*
+    let domain_mod = r#"/*
  * Copyright (c) 2026 RusTokRs.
  *
  * This file is part of RusTok.
@@ -666,7 +664,7 @@ impl MigrationSource for {pascal}Module {{
 //!
 //! In accordance with FBA, this module MUST NOT depend on database or transport frameworks.
 "#
-    );
+    .to_string();
     write_file_content(
         &module_dir.join("src").join("domain").join("mod.rs"),
         &domain_mod,
@@ -703,8 +701,7 @@ pub struct {pascal}Summary {{
     )?;
 
     // src/services/mod.rs
-    let services_mod = format!(
-        r#"/*
+    let services_mod = r#"/*
  * Copyright (c) 2026 RusTokRs.
  *
  * This file is part of RusTok.
@@ -716,7 +713,7 @@ pub struct {pascal}Summary {{
 
 //! Application and domain services orchestrating business use cases.
 "#
-    );
+    .to_string();
     write_file_content(
         &module_dir.join("src").join("services").join("mod.rs"),
         &services_mod,
@@ -844,10 +841,8 @@ impl MigrationTrait for Migration {{
 
 fn generate_admin_ui_crate(
     opts: &ModuleScaffoldOptions,
-    root: &Path,
     module_dir: &Path,
     pascal: &str,
-    snake: &str,
 ) -> Result<()> {
     let slug = &opts.slug;
     let title = &opts.title;
@@ -1112,10 +1107,8 @@ pub use ui::{pascal}AdminPage;
 
 fn generate_storefront_ui_crate(
     opts: &ModuleScaffoldOptions,
-    root: &Path,
     module_dir: &Path,
     pascal: &str,
-    snake: &str,
 ) -> Result<()> {
     let slug = &opts.slug;
     let title = &opts.title;
@@ -1351,7 +1344,7 @@ fn register_in_workspace_cargo_toml(
     // 1. Add admin/storefront UI to members array if present
     if ui.has_admin() {
         let admin_entry = format!("    \"crates/modules/{crate_name}/admin\",");
-        if !content.contains(&admin_entry.trim()) {
+        if !content.contains(admin_entry.trim()) {
             if let Some(pos) = lines.iter().position(|l| l.trim() == "tests/e2e-rust\",") {
                 lines.insert(pos, admin_entry);
                 modified = true;
@@ -1364,7 +1357,7 @@ fn register_in_workspace_cargo_toml(
 
     if ui.has_storefront() {
         let sf_entry = format!("    \"crates/modules/{crate_name}/storefront\",");
-        if !content.contains(&sf_entry.trim()) {
+        if !content.contains(sf_entry.trim()) {
             if let Some(pos) = lines.iter().position(|l| l.trim() == "tests/e2e-rust\",") {
                 lines.insert(pos, sf_entry);
                 modified = true;
@@ -1626,7 +1619,6 @@ fn register_in_server_cargo_toml(root: &Path, slug: &str, crate_name: &str) -> R
     }
 
     // 3. udeps ignore
-    let udeps_entry = format!("\"{crate_name}\",");
     if !content.contains(&format!("\"{crate_name}\"")) {
         if let Some(pos) = lines.iter().position(|l| l.contains("normal = [\"rustok-rbac\"")) {
             lines[pos] = lines[pos].replace("]", &format!(", \"{crate_name}\"]"));

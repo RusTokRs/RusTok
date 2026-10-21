@@ -1,6 +1,6 @@
 use super::*;
 
-fn cli_option_value(args: &[String], flag: &str) -> Option<String> {
+pub(crate) fn cli_option_value(args: &[String], flag: &str) -> Option<String> {
     let index = args.iter().position(|arg| arg == flag)?;
     args.get(index + 1).cloned()
 }

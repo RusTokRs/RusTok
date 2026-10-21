@@ -7,4 +7,4 @@ pub mod ui;
 pub use core::*;
 pub use model::*;
 pub use transport::*;
-pub use ui::{MessengerFloatingWidget, MessengerWorkstation};
+pub use ui::{MessengerFloatingWidget, MessengerView, MessengerWorkstation};

@@ -551,3 +551,13 @@ pub fn MessengerFloatingWidget(
         </div>
     }
 }
+
+/// Storefront page view mounting the workplace collaboration workstation.
+#[component]
+pub fn MessengerView() -> impl IntoView {
+    view! {
+        <div class="w-full">
+            <MessengerWorkstation />
+        </div>
+    }
+}

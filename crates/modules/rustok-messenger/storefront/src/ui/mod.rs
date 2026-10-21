@@ -1,3 +1,3 @@
 pub mod leptos;
 
-pub use leptos::{MessengerFloatingWidget, MessengerWorkstation};
+pub use leptos::{MessengerFloatingWidget, MessengerView, MessengerWorkstation};

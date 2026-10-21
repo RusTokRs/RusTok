@@ -1073,3 +1073,20 @@ fn auto_approve_argument_detects_flag() {
         "http://127.0.0.1:5150".to_string(),
     ]));
 }
+
+#[test]
+fn test_module_scaffold_dry_run() {
+    let opts = ModuleScaffoldOptions {
+        slug: "test-scaffold".to_string(),
+        title: "Test Scaffold".to_string(),
+        description: "Test scaffold capability".to_string(),
+        category: "collaboration".to_string(),
+        with_db: true,
+        ui: ModuleScaffoldUi::Dual,
+        dry_run: true,
+        skip_server_wire: false,
+        skip_validate: true,
+    };
+
+    assert!(scaffold_module(&opts).is_ok());
+}
