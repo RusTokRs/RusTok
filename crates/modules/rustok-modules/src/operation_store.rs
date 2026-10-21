@@ -6,6 +6,15 @@ use uuid::Uuid;
 
 use crate::ModuleOperationStatus;
 
+/// Maximum number of attention-needed operations returned per tenant query.
+pub const MAX_FAILED_OPERATIONS_FOR_TENANT: u32 = 200;
+
+/// Lease granted to a static lifecycle aggregate claim. A claim whose owner
+/// crashed (or never released) may be reclaimed by a later command only
+/// after this interval; the previous holder is fenced out because every
+/// subsequent advance/release matches on its own idempotency key.
+pub const STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS: i64 = 300;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ModuleOperationRequest {
     pub tenant_id: Uuid,
@@ -170,54 +179,53 @@ impl ModuleOperationJournal {
         .transpose()
     }
 
+    /// Lists operations needing operator attention for one tenant: hard
+    /// failures plus state-committed operations whose post-hook is still
+    /// outstanding. Bounded to the most recent
+    /// [`MAX_FAILED_OPERATIONS_FOR_TENANT`] rows.
     pub async fn failed_for_tenant<C: ConnectionTrait>(
         db: &C,
         tenant_id: Uuid,
         module_slug: Option<&str>,
     ) -> Result<Vec<ModuleOperationSnapshot>, ModuleOperationStoreError> {
         let backend = db.get_database_backend();
+        let statuses = format!(
+            "status IN ('{}', '{}')",
+            ModuleOperationStatus::Failed.as_str(),
+            ModuleOperationStatus::CommittedHookFailed.as_str()
+        );
         let (sql, values) = match (backend, module_slug) {
             (DbBackend::Postgres, Some(module_slug)) => (
                 format!(
-                    "{} WHERE tenant_id = $1 AND status = $2 AND module_slug = $3 ORDER BY created_at DESC",
-                    operation_select_sql()
+                    "{} WHERE tenant_id = $1 AND {statuses} AND module_slug = $2 ORDER BY created_at DESC LIMIT {}",
+                    operation_select_sql(),
+                    MAX_FAILED_OPERATIONS_FOR_TENANT
                 ),
-                vec![
-                    tenant_id.into(),
-                    ModuleOperationStatus::Failed.as_str().into(),
-                    module_slug.into(),
-                ],
+                vec![tenant_id.into(), module_slug.into()],
             ),
             (DbBackend::Postgres, None) => (
                 format!(
-                    "{} WHERE tenant_id = $1 AND status = $2 ORDER BY created_at DESC",
-                    operation_select_sql()
+                    "{} WHERE tenant_id = $1 AND {statuses} ORDER BY created_at DESC LIMIT {}",
+                    operation_select_sql(),
+                    MAX_FAILED_OPERATIONS_FOR_TENANT
                 ),
-                vec![
-                    tenant_id.into(),
-                    ModuleOperationStatus::Failed.as_str().into(),
-                ],
+                vec![tenant_id.into()],
             ),
             (_, Some(module_slug)) => (
                 format!(
-                    "{} WHERE tenant_id = ?1 AND status = ?2 AND module_slug = ?3 ORDER BY created_at DESC",
-                    operation_select_sql()
+                    "{} WHERE tenant_id = ?1 AND {statuses} AND module_slug = ?2 ORDER BY created_at DESC LIMIT {}",
+                    operation_select_sql(),
+                    MAX_FAILED_OPERATIONS_FOR_TENANT
                 ),
-                vec![
-                    tenant_id.into(),
-                    ModuleOperationStatus::Failed.as_str().into(),
-                    module_slug.into(),
-                ],
+                vec![tenant_id.into(), module_slug.into()],
             ),
             (_, None) => (
                 format!(
-                    "{} WHERE tenant_id = ?1 AND status = ?2 ORDER BY created_at DESC",
-                    operation_select_sql()
+                    "{} WHERE tenant_id = ?1 AND {statuses} ORDER BY created_at DESC LIMIT {}",
+                    operation_select_sql(),
+                    MAX_FAILED_OPERATIONS_FOR_TENANT
                 ),
-                vec![
-                    tenant_id.into(),
-                    ModuleOperationStatus::Failed.as_str().into(),
-                ],
+                vec![tenant_id.into()],
             ),
         };
         db.query_all_raw(Statement::from_sql_and_values(backend, sql, values))
@@ -367,14 +375,52 @@ impl ModuleOperationJournal {
         db: &C,
         operation_id: Uuid,
     ) -> Result<(), ModuleOperationStoreError> {
-        Self::mark_status(db, operation_id, ModuleOperationStatus::Running, None).await
+        Self::mark_status(
+            db,
+            operation_id,
+            ModuleOperationStatus::Running,
+            &[ModuleOperationStatus::Validated],
+            None,
+        )
+        .await
     }
 
     pub async fn mark_committed<C: ConnectionTrait>(
         db: &C,
         operation_id: Uuid,
     ) -> Result<(), ModuleOperationStoreError> {
-        Self::mark_status(db, operation_id, ModuleOperationStatus::Committed, None).await
+        Self::mark_status(
+            db,
+            operation_id,
+            ModuleOperationStatus::Committed,
+            &[
+                ModuleOperationStatus::Validated,
+                ModuleOperationStatus::Running,
+                // Post-hook recovery resolves a committed-but-hook-failed
+                // operation once the hook finally succeeds.
+                ModuleOperationStatus::CommittedHookFailed,
+            ],
+            None,
+        )
+        .await
+    }
+
+    /// Records that the operation's state commit is durable but its post-hook
+    /// failed. This is the only transition allowed out of `Committed`; the
+    /// operation must never be rewritten to `Failed` after its state applied.
+    pub async fn mark_committed_hook_failed<C: ConnectionTrait>(
+        db: &C,
+        operation_id: Uuid,
+        error_message: &str,
+    ) -> Result<(), ModuleOperationStoreError> {
+        Self::mark_status(
+            db,
+            operation_id,
+            ModuleOperationStatus::CommittedHookFailed,
+            &[ModuleOperationStatus::Committed],
+            Some(error_message),
+        )
+        .await
     }
 
     pub async fn mark_failed<C: ConnectionTrait>(
@@ -386,31 +432,66 @@ impl ModuleOperationJournal {
             db,
             operation_id,
             ModuleOperationStatus::Failed,
+            &[
+                ModuleOperationStatus::Validated,
+                ModuleOperationStatus::Running,
+            ],
             Some(error_message),
         )
         .await
     }
 
+    /// Guarded status transition: the update only applies from one of
+    /// `allowed_from`, and a missing or already-advanced operation is an
+    /// error rather than a silently ignored no-op.
     async fn mark_status<C: ConnectionTrait>(
         db: &C,
         operation_id: Uuid,
         status: ModuleOperationStatus,
+        allowed_from: &[ModuleOperationStatus],
         error_message: Option<&str>,
     ) -> Result<(), ModuleOperationStoreError> {
-        match error_message {
-            Some(error_message) => execute(
-                db,
-                "UPDATE module_operations SET status = {1}, error_message = {2}, updated_at = CURRENT_TIMESTAMP WHERE id = {3}",
-                vec![status.as_str().into(), error_message.into(), operation_id.into()],
-            )
-            .await,
-            None => execute(
-                db,
-                "UPDATE module_operations SET status = {1}, updated_at = CURRENT_TIMESTAMP WHERE id = {2}",
+        let allowed_from_sql = allowed_from
+            .iter()
+            .map(|status| format!("'{}'", status.as_str()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let (sql_template, values) = match error_message {
+            Some(error_message) => (
+                format!(
+                    "UPDATE module_operations SET status = {{1}}, error_message = {{2}}, \
+                     updated_at = CURRENT_TIMESTAMP WHERE id = {{3}} AND status IN ({allowed_from_sql})"
+                ),
+                vec![
+                    status.as_str().into(),
+                    error_message.into(),
+                    operation_id.into(),
+                ],
+            ),
+            None => (
+                format!(
+                    "UPDATE module_operations SET status = {{1}}, updated_at = CURRENT_TIMESTAMP \
+                     WHERE id = {{2}} AND status IN ({allowed_from_sql})"
+                ),
                 vec![status.as_str().into(), operation_id.into()],
-            )
-            .await,
+            ),
+        };
+        let backend = db.get_database_backend();
+        let result = db
+            .execute_raw(Statement::from_sql_and_values(
+                backend,
+                render_parameters(&sql_template, backend),
+                values,
+            ))
+            .await
+            .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?;
+        if result.rows_affected() != 1 {
+            return Err(ModuleOperationStoreError::Database(format!(
+                "module operation {operation_id} cannot transition to `{status}` \
+                 from its current status"
+            )));
         }
+        Ok(())
     }
 }
 
@@ -530,8 +611,12 @@ impl StaticTenantLifecycleStore {
     }
 
     /// Admits one command only when its reviewed aggregate revision is current.
-    /// The claim is intentionally durable and is cleared only by the owner when
-    /// that same operation reaches a terminal lifecycle boundary.
+    /// The claim is durable and is cleared by its owner at a terminal
+    /// lifecycle boundary. As a crash-safety net the claim also carries a
+    /// lease ([`STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS`]): once it expires, a
+    /// later command at the same expected revision may CAS-reclaim the
+    /// aggregate, fencing out the previous holder (its advance/release match
+    /// on its own idempotency key and will fail).
     pub async fn claim<C: ConnectionTrait>(
         db: &C,
         tenant_id: Uuid,
@@ -547,13 +632,35 @@ impl StaticTenantLifecycleStore {
             active_idempotency_key: None,
         });
         if let Some(active_idempotency_key) = current.active_idempotency_key {
-            return if active_idempotency_key == idempotency_key {
-                Ok(StaticTenantLifecycleClaim::AlreadyHeld(current))
-            } else {
-                Err(StaticTenantLifecycleStoreError::OperationInProgress {
-                    module_slug: module_slug.to_string(),
-                })
-            };
+            if active_idempotency_key == idempotency_key {
+                return Ok(StaticTenantLifecycleClaim::AlreadyHeld(current));
+            }
+            // The holder may have crashed without releasing. Reclaim is only
+            // attempted at the exact expected revision and only when the
+            // recorded claim lease has expired in database time.
+            if current.revision == expected_revision
+                && Self::reclaim_expired_claim(
+                    db,
+                    tenant_id,
+                    module_slug,
+                    expected_revision,
+                    active_idempotency_key,
+                    idempotency_key,
+                )
+                .await?
+            {
+                return Ok(StaticTenantLifecycleClaim::Acquired(
+                    StaticTenantLifecycleSnapshot {
+                        tenant_id,
+                        module_slug: module_slug.to_string(),
+                        revision: expected_revision,
+                        active_idempotency_key: Some(idempotency_key),
+                    },
+                ));
+            }
+            return Err(StaticTenantLifecycleStoreError::OperationInProgress {
+                module_slug: module_slug.to_string(),
+            });
         }
         if current.revision != expected_revision {
             return Err(StaticTenantLifecycleStoreError::RevisionConflict {
@@ -571,13 +678,13 @@ impl StaticTenantLifecycleStore {
                     match backend {
                         DbBackend::Postgres => {
                             "INSERT INTO module_static_tenant_lifecycle \
-                             (tenant_id, module_slug, revision, active_idempotency_key) \
-                             VALUES ($1, $2, $3, $4)"
+                             (tenant_id, module_slug, revision, active_idempotency_key, active_claimed_at) \
+                             VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)"
                         }
                         _ => {
                             "INSERT INTO module_static_tenant_lifecycle \
-                             (tenant_id, module_slug, revision, active_idempotency_key) \
-                             VALUES (?1, ?2, ?3, ?4)"
+                             (tenant_id, module_slug, revision, active_idempotency_key, active_claimed_at) \
+                             VALUES (?1, ?2, ?3, ?4, CURRENT_TIMESTAMP)"
                         }
                     },
                     vec![
@@ -636,7 +743,8 @@ impl StaticTenantLifecycleStore {
                 backend,
                 render_parameters(
                     "UPDATE module_static_tenant_lifecycle \
-                     SET active_idempotency_key = {1}, updated_at = CURRENT_TIMESTAMP \
+                     SET active_idempotency_key = {1}, active_claimed_at = CURRENT_TIMESTAMP, \
+                         updated_at = CURRENT_TIMESTAMP \
                      WHERE tenant_id = {2} AND module_slug = {3} \
                        AND revision = {4} AND active_idempotency_key IS NULL",
                     backend,
@@ -681,6 +789,60 @@ impl StaticTenantLifecycleStore {
                 current: refreshed.revision,
             })
         }
+    }
+
+    /// CAS-reclaims an aggregate whose recorded claim lease has expired.
+    /// Returns `true` when this command now holds the claim. A claim recorded
+    /// before the lease column existed (`NULL`) is treated as expired: fresh
+    /// claims always record their timestamp.
+    async fn reclaim_expired_claim<C: ConnectionTrait>(
+        db: &C,
+        tenant_id: Uuid,
+        module_slug: &str,
+        expected_revision: u64,
+        expired_idempotency_key: Uuid,
+        idempotency_key: Uuid,
+    ) -> Result<bool, StaticTenantLifecycleStoreError> {
+        let backend = db.get_database_backend();
+        let claim_expired = match backend {
+            DbBackend::Postgres => format!(
+                "(active_claimed_at IS NULL OR active_claimed_at <= CURRENT_TIMESTAMP - INTERVAL '{STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS} seconds')"
+            ),
+            _ => format!(
+                "(active_claimed_at IS NULL OR datetime(active_claimed_at) <= datetime('now', '-{STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS} seconds'))"
+            ),
+        };
+        let result = db
+            .execute_raw(Statement::from_sql_and_values(
+                backend,
+                render_parameters(
+                    &format!(
+                        "UPDATE module_static_tenant_lifecycle \
+                         SET active_idempotency_key = {{1}}, active_claimed_at = CURRENT_TIMESTAMP, \
+                             updated_at = CURRENT_TIMESTAMP \
+                         WHERE tenant_id = {{2}} AND module_slug = {{3}} \
+                           AND revision = {{4}} AND active_idempotency_key = {{5}} \
+                           AND {claim_expired}"
+                    ),
+                    backend,
+                ),
+                vec![
+                    uuid_query_value(backend, idempotency_key),
+                    uuid_query_value(backend, tenant_id),
+                    module_slug.into(),
+                    i64::try_from(expected_revision)
+                        .map_err(|_| {
+                            StaticTenantLifecycleStoreError::RevisionOverflow(
+                                module_slug.to_string(),
+                            )
+                        })?
+                        .into(),
+                    uuid_query_value(backend, expired_idempotency_key),
+                ],
+            ))
+            .await
+            .map_err(static_lifecycle_database_error)?;
+        Ok(result.rows_affected() == 1)
     }
 
     /// Advances a claimed aggregate while deliberately retaining the claim for
@@ -751,7 +913,8 @@ impl StaticTenantLifecycleStore {
                 backend,
                 render_parameters(
                     "UPDATE module_static_tenant_lifecycle \
-                     SET active_idempotency_key = NULL, updated_at = CURRENT_TIMESTAMP \
+                     SET active_idempotency_key = NULL, active_claimed_at = NULL, \
+                         updated_at = CURRENT_TIMESTAMP \
                      WHERE tenant_id = {1} AND module_slug = {2} \
                        AND active_idempotency_key = {3}",
                     backend,

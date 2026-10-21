@@ -411,6 +411,7 @@ async fn setup_db() -> DatabaseConnection {
             module_slug TEXT NOT NULL,
             revision INTEGER NOT NULL DEFAULT 0,
             active_idempotency_key TEXT NULL,
+            active_claimed_at TEXT NULL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (tenant_id, module_slug),

@@ -62,6 +62,13 @@ impl ModuleOperationRecoveryPlan {
         override_state: Option<ModuleOperationOverrideState>,
     ) -> Self {
         let issue = match (operation.status, operation.error_message.as_deref()) {
+            // Typed outcome recorded by the executor since the
+            // committed/hook-failed status split.
+            (ModuleOperationStatus::CommittedHookFailed, _) => {
+                ModuleOperationIssue::PostHookFailed
+            }
+            // Legacy rows: post-hook failures were recorded as `failed` with
+            // a `post-hook:` message prefix before the status split.
             (ModuleOperationStatus::Failed, Some(message)) if message.starts_with("post-hook:") => {
                 ModuleOperationIssue::PostHookFailed
             }
@@ -307,6 +314,14 @@ pub(crate) async fn retry_failed_post_hook_operation(
     ModuleOperationJournal::mark_committed(db, operation.id)
         .await
         .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
+    if plan.status == crate::ModuleOperationStatus::CommittedHookFailed {
+        // The original operation's state was already committed; the hook has
+        // now succeeded, so resolve it instead of leaving it in the
+        // attention-needed list forever.
+        ModuleOperationJournal::mark_committed(db, plan.operation_id)
+            .await
+            .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
+    }
     Ok(operation)
 }
 

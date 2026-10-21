@@ -51,6 +51,7 @@ pub(crate) mod m20260904_000052_module_source_objects;
 pub(crate) mod m20260904_000052_static_settings_change_cursor;
 pub(crate) mod m20260904_000053_module_operations_tool;
 pub(crate) mod m20260904_000053_static_settings_source_locale;
+mod m20261021_000054_static_lifecycle_claim_lease;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -106,6 +107,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260904_000051_static_localized_settings::Migration),
         Box::new(m20260904_000052_static_settings_change_cursor::Migration),
         Box::new(m20260904_000053_static_settings_source_locale::Migration),
+        Box::new(m20261021_000054_static_lifecycle_claim_lease::Migration),
         Box::new(m20260904_000051_admitted_oci_releases::Migration),
         Box::new(m20260904_000052_module_source_objects::Migration),
         Box::new(m20260904_000053_module_operations_tool::Migration),

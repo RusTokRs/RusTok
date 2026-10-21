@@ -190,15 +190,19 @@ pub async fn execute_module_toggle(
     )
     .await
     {
-        if let Some((_, idempotency_key)) = static_lifecycle {
-            let _ = StaticTenantLifecycleStore::release(
-                db,
-                request.tenant_id,
-                &request.module_slug,
-                idempotency_key,
-            )
-            .await;
-        }
+        let error = match static_lifecycle {
+            Some((_, idempotency_key)) => {
+                release_claim_after_error(
+                    db,
+                    request.tenant_id,
+                    &request.module_slug,
+                    idempotency_key,
+                    error,
+                )
+                .await
+            }
+            None => error,
+        };
         return Err(error);
     }
 
@@ -259,15 +263,19 @@ pub async fn execute_module_toggle(
                     .map_err(|error| {
                         ModuleLifecycleExecutionError::Persistence(error.to_string())
                     })?;
-                if let Some((_, idempotency_key)) = static_lifecycle {
-                    let _ = StaticTenantLifecycleStore::release(
-                        db,
-                        request.tenant_id,
-                        &request.module_slug,
-                        idempotency_key,
-                    )
-                    .await;
-                }
+                let error = match static_lifecycle {
+                    Some((_, idempotency_key)) => {
+                        release_claim_after_error(
+                            db,
+                            request.tenant_id,
+                            &request.module_slug,
+                            idempotency_key,
+                            error,
+                        )
+                        .await
+                    }
+                    None => error,
+                };
                 return Err(error);
             }
         };
@@ -388,15 +396,19 @@ pub async fn execute_module_toggle(
             ModuleOperationJournal::mark_failed(db, operation.id, &journal_message)
                 .await
                 .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
-            if let Some((_, idempotency_key)) = static_lifecycle {
-                let _ = StaticTenantLifecycleStore::release(
-                    db,
-                    request.tenant_id,
-                    &request.module_slug,
-                    idempotency_key,
-                )
-                .await;
-            }
+            let error = match static_lifecycle {
+                Some((_, idempotency_key)) => {
+                    release_claim_after_error(
+                        db,
+                        request.tenant_id,
+                        &request.module_slug,
+                        idempotency_key,
+                        error,
+                    )
+                    .await
+                }
+                None => error,
+            };
             return Err(error);
         }
     };
@@ -417,8 +429,13 @@ pub async fn execute_module_toggle(
         .await
     {
         let message = error.to_string();
+        // The override state commit is already durable: record the distinct
+        // committed-but-hook-failed outcome instead of rewriting history to
+        // `Failed`. Recovery retries only the post-hook for this status.
+        // The `post-hook:` message prefix is retained for projections that
+        // still classify legacy rows by message.
         let journal_message = format!("post-hook: {message}");
-        ModuleOperationJournal::mark_failed(db, operation.id, &journal_message)
+        ModuleOperationJournal::mark_committed_hook_failed(db, operation.id, &journal_message)
             .await
             .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
         if let Some((_, idempotency_key)) = static_lifecycle {
@@ -461,6 +478,26 @@ pub async fn execute_module_toggle(
             .transpose()?,
         settings,
     })
+}
+
+/// Releases the static lifecycle claim on an error path without ever
+/// discarding either failure: the primary error stays visible, and a
+/// release failure is reported alongside it (the claim lease remains as
+/// the final self-healing bound).
+async fn release_claim_after_error(
+    db: &DatabaseConnection,
+    tenant_id: uuid::Uuid,
+    module_slug: &str,
+    idempotency_key: uuid::Uuid,
+    primary_error: ModuleLifecycleExecutionError,
+) -> ModuleLifecycleExecutionError {
+    match StaticTenantLifecycleStore::release(db, tenant_id, module_slug, idempotency_key).await {
+        Ok(()) => primary_error,
+        Err(release_error) => ModuleLifecycleExecutionError::Persistence(format!(
+            "{primary_error}; additionally failed to release the static lifecycle \
+             claim (it will expire via its lease): {release_error}"
+        )),
+    }
 }
 
 async fn record_override_state_or_fail(
@@ -580,6 +617,16 @@ async fn replay_lifecycle_operation(
                 },
                 settings,
             })
+        }
+        ModuleOperationStatus::CommittedHookFailed => {
+            // State is committed; only the post-hook is outstanding. Replay
+            // must not re-apply state — surface the hook failure so the
+            // caller can route to post-hook recovery.
+            let message = operation
+                .error_message
+                .unwrap_or_else(|| "unknown failure".to_string());
+            let message = message.strip_prefix("post-hook: ").unwrap_or(&message);
+            Err(ModuleLifecycleExecutionError::PostHook(message.to_string()))
         }
         ModuleOperationStatus::Failed => {
             let message = operation
@@ -709,6 +756,7 @@ mod tests {
                     module_slug TEXT NOT NULL, \
                     revision INTEGER NOT NULL, \
                     active_idempotency_key TEXT, \
+                    active_claimed_at TEXT, \
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
                     PRIMARY KEY (tenant_id, module_slug)\
