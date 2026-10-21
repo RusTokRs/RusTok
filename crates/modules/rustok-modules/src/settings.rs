@@ -212,7 +212,17 @@ pub fn normalize_module_settings(
     })?;
 
     if schema.is_empty() {
-        return Ok(serde_json::Value::Object(settings_object));
+        // A module that declares no settings schema accepts no settings.
+        // Passing arbitrary keys through would silently persist ungoverned
+        // configuration that no schema ever validated.
+        if settings_object.is_empty() {
+            return Ok(serde_json::Value::Object(settings_object));
+        }
+        return Err(invalid_value(
+            module_slug,
+            "$root",
+            "module declares no settings schema; settings must be empty",
+        ));
     }
 
     let mut allowed_keys = schema.keys().cloned().collect::<Vec<_>>();
@@ -238,7 +248,7 @@ pub fn normalize_module_settings(
             .expect("allowed settings key must exist in schema");
         match settings_object.remove(&key) {
             Some(value) => {
-                validate_setting_value(module_slug, &key, spec, &value)?;
+                let value = normalize_setting_value(module_slug, &key, spec, value)?;
                 normalized.insert(key, value);
             }
             None if spec.required && spec.default.is_none() => {
@@ -250,6 +260,9 @@ pub fn normalize_module_settings(
             }
             None => {
                 if let Some(default) = spec.default.clone() {
+                    // Defaults pass through the same validation and nested
+                    // default materialization as user-supplied values.
+                    let default = normalize_setting_value(module_slug, &key, spec, default)?;
                     normalized.insert(key, default);
                 }
             }
@@ -472,6 +485,18 @@ fn validate_setting_spec(
             }
         }
     }
+    // The declared default must itself be a valid value under the full
+    // spec (range/length bounds, nested required properties, nested item
+    // constraints) — not merely type-shaped. Defaults are materialized
+    // into tenant settings, so an out-of-range default is a broken schema.
+    if let Some(default) = &spec.default {
+        validate_setting_value(module_slug, key, spec, default).map_err(|error| match error {
+            ModuleSettingsValidationError::InvalidValue { key, reason, .. } => {
+                invalid_schema(module_slug, &key, format!("invalid default: {reason}"))
+            }
+            error => error,
+        })?;
+    }
     Ok(())
 }
 
@@ -481,15 +506,30 @@ fn validate_setting_value(
     spec: &ModuleSettingSpec,
     value: &serde_json::Value,
 ) -> Result<(), ModuleSettingsValidationError> {
+    normalize_setting_value(module_slug, key, spec, value.clone()).map(|_| ())
+}
+
+/// Validates one value against its spec and returns the normalized form:
+/// nested object properties are checked for unknown keys, required
+/// properties are enforced at every depth, nested defaults are
+/// materialized, and array items are normalized recursively. Validation
+/// and normalization are the same walk so a default can never bypass a
+/// constraint that user input must satisfy.
+fn normalize_setting_value(
+    module_slug: &str,
+    key: &str,
+    spec: &ModuleSettingSpec,
+    value: serde_json::Value,
+) -> Result<serde_json::Value, ModuleSettingsValidationError> {
     let value_type = spec.value_type.trim();
-    if !setting_value_matches_type(value_type, value) {
+    if !setting_value_matches_type(value_type, &value) {
         return Err(invalid_value(
             module_slug,
             key,
             format!("expected {value_type}"),
         ));
     }
-    if !spec.options.is_empty() && !spec.options.iter().any(|option| option == value) {
+    if !spec.options.is_empty() && !spec.options.iter().any(|option| option == &value) {
         let allowed = spec
             .options
             .iter()
@@ -501,65 +541,6 @@ fn validate_setting_value(
             key,
             format!("must be one of: {allowed}"),
         ));
-    }
-    let allowed_keys = declared_object_keys(spec);
-    if !allowed_keys.is_empty() {
-        let object = value
-            .as_object()
-            .expect("object keys require an object value");
-        let mut unknown_keys = object
-            .keys()
-            .filter(|candidate| !allowed_keys.iter().any(|allowed| allowed == *candidate))
-            .cloned()
-            .collect::<Vec<_>>();
-        unknown_keys.sort();
-        if let Some(unknown_key) = unknown_keys.first() {
-            return Err(invalid_value(
-                module_slug,
-                key,
-                format!(
-                    "unknown object key '{unknown_key}'; allowed keys: {}",
-                    allowed_keys.join(", ")
-                ),
-            ));
-        }
-    }
-    if let Some(item_type) = declared_item_type(spec) {
-        let array = value
-            .as_array()
-            .expect("array item type requires an array value");
-        if let Some((index, _)) = array
-            .iter()
-            .enumerate()
-            .find(|(_, item)| !setting_value_matches_type(item_type, item))
-        {
-            return Err(invalid_value(
-                module_slug,
-                key,
-                format!("array item at index {index} must be {item_type}"),
-            ));
-        }
-    }
-    if !spec.properties.is_empty() {
-        let object = value
-            .as_object()
-            .expect("properties require an object value");
-        for (property_key, property_value) in object {
-            if let Some(property_spec) = spec.properties.get(property_key) {
-                validate_setting_value(
-                    module_slug,
-                    &format!("{key}.{property_key}"),
-                    property_spec,
-                    property_value,
-                )?;
-            }
-        }
-    }
-    if let Some(items) = &spec.items {
-        let array = value.as_array().expect("items require an array value");
-        for (index, item) in array.iter().enumerate() {
-            validate_setting_value(module_slug, &format!("{key}[{index}]"), items, item)?;
-        }
     }
     match value_type {
         "integer" | "number" => {
@@ -594,7 +575,109 @@ fn validate_setting_value(
         )?,
         _ => {}
     }
-    Ok(())
+
+    if value_type == "object" {
+        let mut object = value
+            .as_object()
+            .expect("object type was checked above")
+            .clone();
+        let allowed_keys = declared_object_keys(spec);
+        if !allowed_keys.is_empty() {
+            let mut unknown_keys = object
+                .keys()
+                .filter(|candidate| !allowed_keys.iter().any(|allowed| allowed == *candidate))
+                .cloned()
+                .collect::<Vec<_>>();
+            unknown_keys.sort();
+            if let Some(unknown_key) = unknown_keys.first() {
+                return Err(invalid_value(
+                    module_slug,
+                    key,
+                    format!(
+                        "unknown object key '{unknown_key}'; allowed keys: {}",
+                        allowed_keys.join(", ")
+                    ),
+                ));
+            }
+        }
+        if !spec.properties.is_empty() {
+            let mut property_keys = spec.properties.keys().cloned().collect::<Vec<_>>();
+            property_keys.sort();
+            let mut normalized = serde_json::Map::new();
+            for property_key in property_keys {
+                let property_spec = spec
+                    .properties
+                    .get(&property_key)
+                    .expect("sorted property key must exist in schema");
+                let property_path = format!("{key}.{property_key}");
+                match object.remove(&property_key) {
+                    Some(property_value) => {
+                        let property_value = normalize_setting_value(
+                            module_slug,
+                            &property_path,
+                            property_spec,
+                            property_value,
+                        )?;
+                        normalized.insert(property_key, property_value);
+                    }
+                    None if property_spec.required && property_spec.default.is_none() => {
+                        return Err(invalid_value(
+                            module_slug,
+                            property_path,
+                            "required setting is missing",
+                        ));
+                    }
+                    None => {
+                        if let Some(default) = property_spec.default.clone() {
+                            let default = normalize_setting_value(
+                                module_slug,
+                                &property_path,
+                                property_spec,
+                                default,
+                            )?;
+                            normalized.insert(property_key, default);
+                        }
+                    }
+                }
+            }
+            return Ok(serde_json::Value::Object(normalized));
+        }
+        return Ok(serde_json::Value::Object(object));
+    }
+
+    if value_type == "array" {
+        let array = value
+            .as_array()
+            .expect("array type was checked above")
+            .clone();
+        if let Some(item_type) = declared_item_type(spec)
+            && let Some((index, _)) = array
+                .iter()
+                .enumerate()
+                .find(|(_, item)| !setting_value_matches_type(item_type, item))
+        {
+            return Err(invalid_value(
+                module_slug,
+                key,
+                format!("array item at index {index} must be {item_type}"),
+            ));
+        }
+        if let Some(items) = &spec.items {
+            let mut normalized = Vec::with_capacity(array.len());
+            for (index, item) in array.into_iter().enumerate() {
+                normalized.push(normalize_setting_value(
+                    module_slug,
+                    &format!("{key}[{index}]"),
+                    items,
+                    item,
+                )?);
+            }
+            return Ok(serde_json::Value::Array(normalized));
+        }
+        return Ok(serde_json::Value::Array(array));
+    }
+
+    Ok(value)
 }
 
 fn resolve_setting_spec<'a>(
@@ -773,9 +856,15 @@ fn setting_value_matches_type(value_type: &str, value: &serde_json::Value) -> bo
         "integer" => {
             value.as_i64().is_some()
                 || value.as_u64().is_some()
-                || value
-                    .as_f64()
-                    .is_some_and(|number| number.fract().abs() < f64::EPSILON)
+                || value.as_f64().is_some_and(|number| {
+                    // A float is an integer setting value only when it is
+                    // exactly integral and representable as i64/u64; an
+                    // approximate epsilon test would also accept values
+                    // that later range checks compare imprecisely.
+                    number.fract() == 0.0
+                        && number >= i64::MIN as f64
+                        && number <= u64::MAX as f64
+                })
         }
         "number" => value.is_number(),
         "boolean" => value.is_boolean(),
@@ -1128,5 +1217,87 @@ mod tests {
                 "expected InvalidKey for '{invalid_key}', got: {result:?}"
             );
         }
+    }
+
+    #[test]
+    fn empty_schema_rejects_nonempty_settings() {
+        let schema = HashMap::new();
+        assert!(matches!(
+            normalize_module_settings("test_mod", &schema, serde_json::json!({"free": 1})),
+            Err(ModuleSettingsValidationError::InvalidValue { .. })
+        ));
+        assert_eq!(
+            normalize_module_settings("test_mod", &schema, serde_json::json!({})).unwrap(),
+            serde_json::json!({})
+        );
+    }
+
+    #[test]
+    fn nested_required_properties_and_defaults_are_enforced() {
+        let schema = HashMap::from([(
+            "hero".to_string(),
+            ModuleSettingSpec {
+                value_type: "object".to_string(),
+                properties: HashMap::from([
+                    (
+                        "title".to_string(),
+                        ModuleSettingSpec {
+                            value_type: "string".to_string(),
+                            required: true,
+                            ..Default::default()
+                        },
+                    ),
+                    (
+                        "cta".to_string(),
+                        ModuleSettingSpec {
+                            value_type: "string".to_string(),
+                            default: Some(serde_json::json!("Shop now")),
+                            ..Default::default()
+                        },
+                    ),
+                ]),
+                ..Default::default()
+            },
+        )]);
+
+        // Missing required nested property is rejected.
+        assert!(matches!(
+            normalize_module_settings(
+                "storefront",
+                &schema,
+                serde_json::json!({"hero": {"cta": "Go"}})
+            ),
+            Err(ModuleSettingsValidationError::InvalidValue { .. })
+        ));
+
+        // Nested default is materialized.
+        let normalized = normalize_module_settings(
+            "storefront",
+            &schema,
+            serde_json::json!({"hero": {"title": "Hello"}}),
+        )
+        .unwrap();
+        assert_eq!(
+            normalized,
+            serde_json::json!({"hero": {"title": "Hello", "cta": "Shop now"}})
+        );
+    }
+
+    #[test]
+    fn out_of_range_default_is_an_invalid_schema() {
+        let schema = HashMap::from([(
+            "limit".to_string(),
+            ModuleSettingSpec {
+                value_type: "integer".to_string(),
+                min: Some(1.0),
+                max: Some(10.0),
+                default: Some(serde_json::json!(42)),
+                ..Default::default()
+            },
+        )]);
+        assert!(matches!(
+            validate_module_settings_schema("test_mod", &schema),
+            Err(ModuleSettingsValidationError::InvalidSchema { .. })
+        ));
     }
 }

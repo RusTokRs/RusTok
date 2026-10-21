@@ -12,6 +12,38 @@ use super::traits::*;
 use super::types::*;
 use super::*;
 
+/// Canonical text form of an indexable scalar, used identically when an
+/// index row is written and when it is queried. Numbers are normalized so
+/// that `1`, `1.0`, and `1e2`-style spellings of the same value address the
+/// same index entry (raw `serde_json::to_string` preserves the input
+/// representation and would silently miss).
+pub(crate) fn canonical_index_value(value: &Value) -> Result<String, ArtifactDataError> {
+    let canonical = match value {
+        Value::Number(number) => {
+            if let Some(integer) = number.as_i64() {
+                Value::Number(integer.into())
+            } else if let Some(integer) = number.as_u64() {
+                Value::Number(integer.into())
+            } else if let Some(float) = number.as_f64() {
+                if float.fract() == 0.0 && float >= i64::MIN as f64 && float < 9_007_199_254_740_992.0
+                {
+                    // Exactly-integral floats within the precisely
+                    // representable range index as integers.
+                    Value::Number((float as i64).into())
+                } else {
+                    serde_json::Number::from_f64(float)
+                        .map(Value::Number)
+                        .ok_or(ArtifactDataError::InvalidIndexQuery)?
+                }
+            } else {
+                return Err(ArtifactDataError::InvalidIndexQuery);
+            }
+        }
+        _ => value.clone(),
+    };
+    serde_json::to_string(&canonical).map_err(|error| ArtifactDataError::Storage(error.to_string()))
+}
+
 pub(crate) fn validate_artifact_data_value(value: &Value) -> Result<(), ArtifactDataError> {
     let encoded_bytes = artifact_data_value_size(value)?;
     if encoded_bytes > MAX_ARTIFACT_DATA_VALUE_BYTES as u64 {
@@ -84,8 +116,7 @@ pub(crate) fn validate_artifact_data_index_query(
         return Err(ArtifactDataError::InvalidIndexQuery);
     }
     validate_page_request(&query.page)?;
-    let value = serde_json::to_string(&query.value)
-        .map_err(|error| ArtifactDataError::Storage(error.to_string()))?;
+    let value = canonical_index_value(&query.value)?;
     if value.len() > MAX_ARTIFACT_DATA_INDEX_VALUE_BYTES {
         return Err(ArtifactDataError::InvalidIndexQuery);
     }
@@ -259,5 +290,22 @@ impl ArtifactDataSchemaValidator for SeaOrmArtifactDataSchemaValidator {
                     ArtifactDataError::DataContractSchemaViolation
                 }
             })
+    }
+}
+
+#[cfg(test)]
+mod canonical_index_value_tests {
+    use super::canonical_index_value;
+    use serde_json::json;
+
+    #[test]
+    fn equivalent_number_spellings_share_one_index_value() {
+        assert_eq!(canonical_index_value(&json!(1)).unwrap(), "1");
+        assert_eq!(canonical_index_value(&json!(1.0)).unwrap(), "1");
+        assert_eq!(canonical_index_value(&json!(100.0)).unwrap(), "100");
+        assert_eq!(canonical_index_value(&json!(-3)).unwrap(), "-3");
+        assert_eq!(canonical_index_value(&json!(1.5)).unwrap(), "1.5");
+        assert_eq!(canonical_index_value(&json!("abc")).unwrap(), "\"abc\"");
+        assert_eq!(canonical_index_value(&json!(true)).unwrap(), "true");
     }
 }

@@ -384,8 +384,7 @@ pub(crate) async fn synchronize_artifact_data_indexes(
         if !artifact_data_index_value_matches(value, index.value_type) {
             return Err(ArtifactDataError::InvalidIndexQuery);
         }
-        let index_value = serde_json::to_string(value)
-            .map_err(|error| ArtifactDataError::Storage(error.to_string()))?;
+        let index_value = canonical_index_value(value)?;
         if index_value.len() > MAX_ARTIFACT_DATA_INDEX_VALUE_BYTES {
             return Err(ArtifactDataError::InvalidIndexQuery);
         }
@@ -445,7 +444,18 @@ pub(crate) async fn delete_artifact_data_indexes<C: ConnectionTrait>(
 
 pub(crate) fn index_contract_digest(indexes: &[ArtifactDataIndexField]) -> Option<String> {
     (!indexes.is_empty()).then(|| {
-        let encoded = serde_json::to_vec(indexes)
+        // Canonical (order-independent) contract identity: the same index
+        // set declared in a different order is the same contract.
+        let mut canonical = indexes.to_vec();
+        canonical.sort_by(|left, right| {
+            left.name
+                .cmp(&right.name)
+                .then_with(|| left.json_pointer.cmp(&right.json_pointer))
+                .then_with(|| {
+                    (left.value_type as u8).cmp(&(right.value_type as u8))
+                })
+        });
+        let encoded = serde_json::to_vec(&canonical)
             .expect("artifact data index declarations are always serializable");
         format!("sha256:{}", hex::encode(Sha256::digest(encoded)))
     })
