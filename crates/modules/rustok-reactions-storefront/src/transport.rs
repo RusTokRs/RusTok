@@ -218,4 +218,31 @@ mod tests {
         assert!(value.get("tenantId").is_none());
         assert!(value.get("actorId").is_none());
     }
+
+    #[test]
+    fn apply_input_wire_uses_camel_case_and_screaming_snake_case_action() {
+        let subject =
+            ReactionSubjectUiRef::new("forum", "topic", Uuid::new_v4(), "1").expect("subject");
+        let command_id = Uuid::new_v4();
+        let wire = super::ApplyInputWire {
+            command_id,
+            subject: subject.into(),
+            reaction: "heart".to_string(),
+            action: super::ActionWire::Add,
+        };
+        let value = serde_json::to_value(&wire).expect("serialize");
+        assert_eq!(
+            value.get("commandId").and_then(|v| v.as_str()),
+            Some(command_id.to_string().as_str())
+        );
+        assert_eq!(
+            value.get("reaction").and_then(|v| v.as_str()),
+            Some("heart")
+        );
+        assert_eq!(
+            value.get("action").and_then(|v| v.as_str()),
+            Some("ADD")
+        );
+        assert!(value.get("subject").is_some());
+    }
 }

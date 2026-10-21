@@ -144,13 +144,17 @@ pub struct ReactionWriteResultView {
 
 #[cfg(test)]
 mod tests {
-    use super::{ReactionActorStateView, ReactionSnapshotView, ReactionSubjectUiRef};
+    use super::{
+        ReactionAction, ReactionActorStateView, ReactionAggregateView, ReactionCatalogView,
+        ReactionSelectionMode, ReactionSnapshotView, ReactionSubjectUiRef,
+        ReactionWriteResultView,
+    };
     use uuid::Uuid;
 
     #[test]
     fn subject_ref_requires_exact_neutral_identity_and_revision() {
         assert!(ReactionSubjectUiRef::new("forum", "topic", Uuid::new_v4(), "1").is_ok());
-        for revision in ["0", "-1", "01", " 1 ", "+1"] {
+        for revision in ["0", "-1", "01", " 1 ", "+1", "", "abc", "1.0"] {
             assert!(
                 ReactionSubjectUiRef::new("forum", "topic", Uuid::new_v4(), revision).is_err(),
                 "revision {revision:?} must be rejected",
@@ -162,10 +166,42 @@ mod tests {
     }
 
     #[test]
+    fn subject_ref_validates_segment_boundaries_and_special_characters() {
+        let valid_uuid = Uuid::new_v4();
+        // Valid sources and kinds
+        assert!(ReactionSubjectUiRef::new("forum_source-1", "topic_kind", valid_uuid, "1").is_ok());
+
+        // Leading/trailing delimiters rejected
+        assert!(ReactionSubjectUiRef::new("-forum", "topic", valid_uuid, "1").is_err());
+        assert!(ReactionSubjectUiRef::new("forum-", "topic", valid_uuid, "1").is_err());
+        assert!(ReactionSubjectUiRef::new("_forum", "topic", valid_uuid, "1").is_err());
+        assert!(ReactionSubjectUiRef::new("forum_", "topic", valid_uuid, "1").is_err());
+        assert!(ReactionSubjectUiRef::new("forum", "_topic", valid_uuid, "1").is_err());
+        assert!(ReactionSubjectUiRef::new("forum", "topic_", valid_uuid, "1").is_err());
+
+        // Whitespace rejected
+        assert!(ReactionSubjectUiRef::new(" forum", "topic", valid_uuid, "1").is_err());
+        assert!(ReactionSubjectUiRef::new("forum ", "topic", valid_uuid, "1").is_err());
+        assert!(ReactionSubjectUiRef::new("forum", " topic", valid_uuid, "1").is_err());
+        assert!(ReactionSubjectUiRef::new("forum", "topic ", valid_uuid, "1").is_err());
+
+        // Maximum 64 bytes
+        let slug_64 = "a".repeat(64);
+        assert!(ReactionSubjectUiRef::new(&slug_64, "topic", valid_uuid, "1").is_ok());
+        let slug_65 = "a".repeat(65);
+        assert!(ReactionSubjectUiRef::new(&slug_65, "topic", valid_uuid, "1").is_err());
+        assert!(ReactionSubjectUiRef::new("forum", &slug_65, valid_uuid, "1").is_err());
+
+        // Empty segments rejected
+        assert!(ReactionSubjectUiRef::new("", "topic", valid_uuid, "1").is_err());
+        assert!(ReactionSubjectUiRef::new("forum", "", valid_uuid, "1").is_err());
+    }
+
+    #[test]
     fn actor_state_controls_mutation_availability() {
         let mut snapshot = ReactionSnapshotView {
-            catalog: super::ReactionCatalogView {
-                selection_mode: super::ReactionSelectionMode::Single,
+            catalog: ReactionCatalogView {
+                selection_mode: ReactionSelectionMode::Single,
                 max_selected: 1,
                 keys: vec!["like".to_string()],
             },
@@ -173,11 +209,76 @@ mod tests {
             aggregates: vec![],
         };
         assert!(!snapshot.can_mutate());
+        assert!(!snapshot.is_selected("like"));
         snapshot.actor_state = Some(ReactionActorStateView {
             revision: "1".to_string(),
             selected: vec!["like".to_string()],
         });
         assert!(snapshot.can_mutate());
         assert!(snapshot.is_selected("like"));
+        assert!(!snapshot.is_selected("dislike"));
+    }
+
+    #[test]
+    fn aggregate_count_returns_existing_or_defaults_to_zero() {
+        let snapshot = ReactionSnapshotView {
+            catalog: ReactionCatalogView {
+                selection_mode: ReactionSelectionMode::Multiple,
+                max_selected: 5,
+                keys: vec!["like".to_string(), "rocket".to_string()],
+            },
+            actor_state: None,
+            aggregates: vec![ReactionAggregateView {
+                reaction: "like".to_string(),
+                count: "42".to_string(),
+            }],
+        };
+        assert_eq!(snapshot.aggregate_count("like"), "42");
+        assert_eq!(snapshot.aggregate_count("rocket"), "0");
+        assert_eq!(snapshot.aggregate_count("nonexistent"), "0");
+    }
+
+    #[test]
+    fn serde_roundtrips_for_actions_and_modes() {
+        assert_eq!(
+            serde_json::to_string(&ReactionAction::Add).expect("serialize"),
+            "\"ADD\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ReactionAction::Remove).expect("serialize"),
+            "\"REMOVE\""
+        );
+        assert_eq!(
+            serde_json::from_str::<ReactionAction>("\"ADD\"").expect("deserialize"),
+            ReactionAction::Add
+        );
+        assert_eq!(
+            serde_json::from_str::<ReactionAction>("\"REMOVE\"").expect("deserialize"),
+            ReactionAction::Remove
+        );
+
+        assert_eq!(
+            serde_json::to_string(&ReactionSelectionMode::Single).expect("serialize"),
+            "\"SINGLE\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ReactionSelectionMode::Multiple).expect("serialize"),
+            "\"MULTIPLE\""
+        );
+        assert_eq!(
+            serde_json::from_str::<ReactionSelectionMode>("\"SINGLE\"").expect("deserialize"),
+            ReactionSelectionMode::Single
+        );
+        assert_eq!(
+            serde_json::from_str::<ReactionSelectionMode>("\"MULTIPLE\"").expect("deserialize"),
+            ReactionSelectionMode::Multiple
+        );
+
+        let command_id = Uuid::new_v4();
+        let json = format!(r#"{{"commandId":"{command_id}","changed":true}}"#);
+        let result: ReactionWriteResultView =
+            serde_json::from_str(&json).expect("deserialize ReactionWriteResultView");
+        assert_eq!(result.command_id, command_id);
+        assert!(result.changed);
     }
 }
