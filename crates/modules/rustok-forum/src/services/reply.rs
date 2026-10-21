@@ -23,7 +23,7 @@ use crate::error::{ForumError, ForumResult};
 use crate::richtext::project_stored_discussion;
 use crate::services::rbac::{enforce_owned_scope, enforce_scope};
 use crate::services::engagement_mode::ForumSettingsProviders;
-use crate::services::pending_visibility::reply_pending_condition;
+use crate::services::pending_visibility::reply_owner_read_condition;
 use crate::services::vote::{VoteService, VoteSummary};
 use crate::state_machine::ReplyStatus;
 
@@ -316,7 +316,7 @@ impl ReplyService {
         let mut query = forum_reply::Entity::find()
             .filter(forum_reply::Column::TenantId.eq(tenant_id))
             .filter(forum_reply::Column::TopicId.eq(topic_id))
-            .filter(reply_pending_condition(security));
+            .filter(reply_owner_read_condition(security));
 
         if let Some(statuses) = statuses
             && !statuses.is_empty()
@@ -445,6 +445,11 @@ fn to_reply_response(
         .item
         .ok_or_else(|| ForumError::Validation("Forum reply body is unavailable".to_string()))?;
     let content = project_stored_discussion(&body.body)?;
+    let (content, content_plain_text) = redact_non_public_reply_content(
+        reply.status,
+        content.view,
+        content.plain_text,
+    );
 
     Ok(ReplyResponse {
         id: reply.id,
@@ -454,8 +459,8 @@ fn to_reply_response(
         available_locales: available_locales_from(&bodies, |body| body.locale.as_str()),
         topic_id: reply.topic_id,
         author_id: reply.author_id,
-        content: content.view,
-        content_plain_text: content.plain_text,
+        content,
+        content_plain_text,
         status: reply.status.to_string(),
         is_deleted: reply.status == ReplyStatus::Deleted,
         vote_score: vote_summary.score,
@@ -470,6 +475,29 @@ fn to_reply_response(
 fn normalize_locale(locale: &str) -> ForumResult<String> {
     normalize_locale_code(locale)
         .ok_or_else(|| ForumError::Validation("Invalid locale".to_string()))
+}
+
+/// Library-level redaction for reply content returned outside its visibility
+/// guard: a non-`Approved` reply yields no stored body. Query-level filters
+/// and per-item checks already keep non-public replies away from readers
+/// without moderation scope; this guard additionally protects responses whose
+/// status changed between read and response composition and any future owner
+/// read path that forgets the status gate.
+fn redact_non_public_reply_content(
+    status: ReplyStatus,
+    view: rustok_api::RichTextView,
+    plain_text: String,
+) -> (rustok_api::RichTextView, String) {
+    if status == ReplyStatus::Approved {
+        return (view, plain_text);
+    }
+    (
+        rustok_api::RichTextView {
+            document: rustok_api::RichTextDocument::empty(),
+            html: String::new(),
+        },
+        String::new(),
+    )
 }
 
 fn resolve_reply_body<'a>(

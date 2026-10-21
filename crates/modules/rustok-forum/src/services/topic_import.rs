@@ -220,6 +220,16 @@ impl TopicService {
         active.last_reply_at = Set(last_reply_at.map(Into::into));
         active.updated_at = Set(prepared.created_at.into());
         active.update(txn).await?;
+
+        // The temporary row was inserted as `Open` and counted (+1) so reply
+        // guards could admit historical replies. A topic imported straight into
+        // `Archived` must not keep that contribution to the public aggregates.
+        if prepared.record.status == crate::state_machine::TopicStatus::Archived {
+            CategoryService::adjust_counters_in_tx(txn, tenant_id, prepared.record.category_id, -1, 0)
+                .await?;
+            UserStatsService::adjust_topic_count_in_tx(txn, tenant_id, prepared.author_id(), -1)
+                .await?;
+        }
         Ok(())
     }
 }

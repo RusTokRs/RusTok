@@ -15,7 +15,7 @@ use crate::error::{ForumError, ForumResult};
 use crate::state_machine::TopicStatus;
 
 use super::engagement_mode::ForumSettingsProviders;
-use super::pending_visibility::can_see_pending;
+use super::pending_visibility::can_read_non_public;
 use super::rbac::enforce_scope;
 use super::topic_canonical_resolution::{
     ForumTopicCanonicalResolution, ForumTopicCanonicalResolutionService,
@@ -228,8 +228,11 @@ impl TopicService {
                 fallback_locale,
             )
             .await?;
-        if response.status == TopicStatus::Pending.to_string()
-            && !can_see_pending(&security, Resource::ForumTopics, response.author_id)
+        if matches!(
+            response.status.as_str(),
+            status if status == TopicStatus::Pending.to_string()
+                || status == TopicStatus::Archived.to_string()
+        ) && !can_read_non_public(&security, Resource::ForumTopics, response.author_id)
         {
             return Err(ForumError::TopicNotFound(topic_id));
         }

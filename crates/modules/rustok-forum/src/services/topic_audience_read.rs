@@ -10,11 +10,13 @@ use crate::dto::TopicResponse;
 use crate::error::{ForumError, ForumResult};
 
 use super::engagement_mode::ForumSettingsProviders;
+use super::pending_visibility::can_read_non_public;
 use super::rbac::enforce_scope;
 use super::topic_audience_visibility::{
     ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,
 };
 use super::topic_facade::TopicService;
+use crate::state_machine::TopicStatus;
 
 /// Exact storefront topic read composition over the canonical topic owner and
 /// every persisted category/topic audience layer.
@@ -149,9 +151,19 @@ impl ForumTopicAudienceReadService {
             return Err(ForumError::TopicNotFound(topic_id));
         }
 
-        self.topic_service
-            .get_with_locale_fallback(tenant_id, security, topic_id, &locale, fallback_locale)
-            .await
+        let topic = self
+            .topic_service
+            .get_with_locale_fallback(tenant_id, security.clone(), topic_id, &locale, fallback_locale)
+            .await?;
+        if matches!(
+            topic.status.as_str(),
+            status if status == TopicStatus::Pending.to_string()
+                || status == TopicStatus::Archived.to_string()
+        ) && !can_read_non_public(&security, Resource::ForumTopics, topic.author_id)
+        {
+            return Err(ForumError::TopicNotFound(topic_id));
+        }
+        Ok(topic)
     }
 
     async fn get_visible(

@@ -135,6 +135,7 @@ mod topic_facade {
 mod topic_fork;
 mod topic_merge;
 mod topic_merge_audience_reconciliation;
+mod topic_merge_follow_up_reconciliation;
 mod topic_merge_read_state_reconciliation;
 mod topic_merge_subscription_reconciliation;
 mod topic_merge_tag_reconciliation;
