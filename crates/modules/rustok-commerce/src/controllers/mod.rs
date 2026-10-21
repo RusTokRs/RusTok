@@ -58,7 +58,7 @@ impl CommerceHttpRuntime {
         let fulfillment_lifecycle_read_runtime =
             crate::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime::in_process(db.clone());
         let fulfillment_admin_command_runtime = crate::projecting_fulfillment_admin_command_runtime(
-            rustok_fulfillment::FulfillmentAdminCommandRuntime::in_process(
+            crate::fulfillment_admin_command_runtime(
                 db.clone(),
                 fulfillment_provider_registry.clone(),
             ),
@@ -136,6 +136,26 @@ impl CommerceHttpRuntime {
             #[cfg(feature = "marketplace-financial")]
             marketplace_financial_runtime,
         }
+    }
+
+    /// Replaces the stock owner used by fulfillment ship / cancel / reopen commands.
+    ///
+    /// `in_process` wires the inventory-backed port; deployments that do not track stock and
+    /// fixtures that do not seed reservations pass a [`rustok_fulfillment::NoopShipmentStockPort`].
+    #[must_use]
+    pub fn with_shipment_stock_port(
+        mut self,
+        port: std::sync::Arc<dyn rustok_fulfillment::ShipmentStockPort>,
+    ) -> Self {
+        self.fulfillment_admin_command_runtime = crate::projecting_fulfillment_admin_command_runtime(
+            rustok_fulfillment::FulfillmentAdminCommandRuntime::in_process_with_shipment_stock(
+                self.db.clone(),
+                self.fulfillment_provider_registry.clone(),
+                port,
+            ),
+            crate::OrderShipmentProjector::new(self.db.clone(), self.event_bus.clone()),
+        );
+        self
     }
 
     fn db_clone(&self) -> DatabaseConnection {
@@ -318,7 +338,7 @@ impl CommerceHttpRuntime {
         let fulfillment_admin_command_runtime = runtime
             .shared_get::<rustok_fulfillment::FulfillmentAdminCommandRuntime>()
             .unwrap_or_else(|| {
-                rustok_fulfillment::FulfillmentAdminCommandRuntime::in_process(
+                crate::fulfillment_admin_command_runtime(
                     runtime.db_clone(),
                     fulfillment_provider_registry.clone(),
                 )

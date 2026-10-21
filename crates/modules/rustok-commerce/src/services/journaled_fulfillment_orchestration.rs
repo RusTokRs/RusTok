@@ -66,7 +66,7 @@ impl JournaledFulfillmentOrchestrationService {
         input
             .validate()
             .map_err(|error| FulfillmentOrchestrationError::Validation(error.to_string()))?;
-        let service = FulfillmentService::new(self.db.clone());
+        let service = super::shipment_stock::fulfillment_service(self.db.clone());
         let current = service.get_fulfillment(tenant_id, fulfillment_id).await?;
         if !matches!(current.status.as_str(), "pending" | "shipped") {
             return Err(FulfillmentError::InvalidTransition {
@@ -169,7 +169,7 @@ impl JournaledFulfillmentOrchestrationService {
         input
             .validate()
             .map_err(|error| FulfillmentOrchestrationError::Validation(error.to_string()))?;
-        let service = FulfillmentService::new(self.db.clone());
+        let service = super::shipment_stock::fulfillment_service(self.db.clone());
         let current = service.get_fulfillment(tenant_id, fulfillment_id).await?;
         if current.status != "delivered" {
             return Err(FulfillmentError::InvalidTransition {
@@ -269,7 +269,7 @@ impl JournaledFulfillmentOrchestrationService {
             %fulfillment_id,
             "cancelling fulfillment"
         );
-        let service = FulfillmentService::new(self.db.clone());
+        let service = super::shipment_stock::fulfillment_service(self.db.clone());
         let current = service.get_fulfillment(tenant_id, fulfillment_id).await?;
         if current.status == "cancelled" {
             return Ok(current);

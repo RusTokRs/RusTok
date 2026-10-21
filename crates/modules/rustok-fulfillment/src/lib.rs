@@ -15,6 +15,7 @@ pub mod migrations;
 pub mod ports;
 pub mod providers;
 pub mod services;
+mod shipment_stock;
 mod shipping_option_admin_command;
 mod shipping_option_read;
 pub mod status;
@@ -59,6 +60,10 @@ pub use shipping_option_read::{
     ListAllShippingOptionProjectionsRequest, ListShippingOptionProjectionsRequest,
     ReadShippingOptionProjectionRequest, ShippingOptionAdminReadPort, ShippingOptionReadPort,
     in_process_shipping_option_admin_read_port, in_process_shipping_option_read_port,
+};
+pub use shipment_stock::{
+    NoopShipmentStockPort, ShipmentStockError, ShipmentStockPort, ShipmentStockRequest,
+    UnconfiguredShipmentStockPort,
 };
 pub use status::*;
 pub use translation_changes::{

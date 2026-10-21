@@ -14,7 +14,9 @@ pub mod migrations;
 pub mod ports;
 mod reservation_owner_context;
 mod reservation_port_context;
+pub mod return_restock;
 pub mod services;
+pub mod shipment_stock;
 mod translation_changes;
 mod translation_target;
 

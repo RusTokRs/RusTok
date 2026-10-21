@@ -98,6 +98,9 @@ profile to digital lines. See
   discounts and tax; an explicit amount may only be lower. Physical lines cannot be returned beyond
   their shipped quantity (cumulative over live returns) when fulfillment records exist. See
   `DECISIONS/2026-10-21-return-refund-server-side-valuation.md`.
+- Shipment moves stock in the fulfillment transaction (ship consumes, cancel of a shipped fulfillment
+  restores, reopen of it reconsumes) and the operator can restock returned goods at return
+  completion. See `DECISIONS/2026-10-21-shipment-stock-port-and-return-restock.md`.
 - Order `shipped`/`delivered` follow fulfillment truth (`OrderShipmentProjector`, decorator of
   `FulfillmentAdminCommandPort`); manual order `ship`/`deliver` are refused while live fulfillments
   contradict them. See `DECISIONS/2026-10-21-order-shipment-status-projection.md`.
@@ -108,16 +111,20 @@ profile to digital lines. See
   Run `cargo test -p rustok-commerce` (crate-scoped) before relying on it.
 - Cancellation has no durable journal; it is a stateless re-runnable saga. The cancellation refund
   is created `pending` and is completed by the provider or operator.
-- `complete_return` does not restock inventory. It needs an inventory restock port, a per-item
-  resellable decision, and a new `return_completion_operations` stage; that stage list is
-  enforced by a CHECK constraint and transition triggers (`m20260716_000004`), so it requires a
-  migration verified on PostgreSQL and SQLite.
+- `complete_return` restocks only on operator decision (`metadata.restock = "all"` or
+  `[{return_item_id, quantity}]`) and only through `ReturnCompletionOrchestrationService`; return
+  completion paths that bypass it never touch stock. Restock goes to the item and location of the
+  order line's reservation; lines without a reservation are skipped.
 - Return records can still be created on unpaid orders (a refund needs a captured collection).
 - Shipment projection skips fulfillment changes made outside the admin command port (provider
   reconciliation) and never moves an order status backwards on reopen/reship.
-- Stock consumption on shipment is still the `fulfillment_inventory_consume_on_ship` database
-  trigger (`m20260713_000007`); moving it into an inventory port, and returning stock when a shipped
-  fulfillment is cancelled, remain open (ECOM-INV-01).
+- Stock moves on shipment through the fulfillment-owned `ShipmentStockPort`, composed here as
+  `InventoryShipmentStockPort`; every ship-capable fulfillment service in this crate must be built
+  with `fulfillment_service(db)` / `fulfillment_admin_command_runtime(db, registry)`. A bare
+  `FulfillmentService::new` fails ship / cancel-shipped / reopen-cancelled on purpose. Migration
+  `m20261021_000001` drops the former trigger and must run before the new binary takes traffic. See
+  `DECISIONS/2026-10-21-shipment-stock-port-and-return-restock.md`. Provider reconciliation that
+  applies results outside the fulfillment service does not move stock.
 
 ## Entry points
 

@@ -541,7 +541,16 @@ pub(crate) fn fulfillment_command_runtime_from_context(
                 .data_opt::<CommerceGraphqlRuntimeData>()
                 .map(CommerceGraphqlRuntimeData::fulfillment_provider_registry)
                 .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider);
-            CommerceFulfillmentCommandRuntime::in_process(db.clone(), provider_registry)
+            // A request-scoped stock port replaces the inventory-backed default (deployments
+            // without stock tracking, fixtures without reservations).
+            match ctx.data_opt::<Arc<dyn rustok_fulfillment::ShipmentStockPort>>() {
+                Some(port) => CommerceFulfillmentCommandRuntime::in_process_with_shipment_stock(
+                    db.clone(),
+                    provider_registry,
+                    port.clone(),
+                ),
+                None => CommerceFulfillmentCommandRuntime::in_process(db.clone(), provider_registry),
+            }
         });
     // Order shipment status follows fulfillment truth. Without an event bus in the request scope
     // the projection is skipped and the manual order commands stay the fallback.

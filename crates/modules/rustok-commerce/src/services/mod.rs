@@ -76,6 +76,8 @@ mod return_completion_orchestration;
 mod return_completion_recovery;
 mod return_decision_owner_orchestration;
 mod return_refund_value;
+mod return_restock;
+mod shipment_stock;
 mod shipping_profile;
 mod staged_checkout;
 #[path = "../storefront_staged_checkout_runtime.rs"]
@@ -248,6 +250,10 @@ pub use paid_order_create_label_sweep::{
 pub use order_cancellation::{
     OrchestratedOrderAdminCommandPort, OrderCancellationOrchestrator,
     orchestrated_order_admin_command_runtime,
+};
+pub use shipment_stock::{
+    InventoryShipmentStockPort, fulfillment_admin_command_runtime, fulfillment_service,
+    inventory_shipment_stock_port,
 };
 pub use order_shipment_projection::{
     OrderShipmentProjector, ProjectingFulfillmentAdminCommandPort,

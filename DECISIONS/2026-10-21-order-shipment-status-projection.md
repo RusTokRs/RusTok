@@ -37,7 +37,8 @@ behavioral gap: cancelling a fulfillment that already shipped does not return st
    (`order_shipment.fulfillment_not_shipped`); `deliver` is refused unless they are fully delivered.
    Orders without fulfillment records keep the manual behavior for `ship`. The status never moves
    backwards.
-3. **Inventory.** The shipping stock-consumption trigger stays the owner in this change. Moving it
+3. **Inventory.** *(Superseded for the stock move by
+   [the shipment stock port ADR](./2026-10-21-shipment-stock-port-and-return-restock.md).)* The shipping stock-consumption trigger stays the owner in this change. Moving it
    into an inventory port called in the fulfillment transaction needs a migration that drops the
    trigger and a port contract that can be exercised against PostgreSQL; neither can be validated in
    this change, and a wrong cutover would double-consume or skip stock. The target contract is
