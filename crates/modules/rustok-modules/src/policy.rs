@@ -277,6 +277,8 @@ pub enum ModuleEffectivePolicyError {
     InvalidChannelInput(String),
     #[error("effective module policy maintenance input is invalid: {0}")]
     InvalidMaintenanceInput(String),
+    #[error("effective module policy cache lock is poisoned")]
+    CacheLockPoisoned,
 }
 
 /// One owner transition delivered to a revision-aware outbox consumer. Hashes

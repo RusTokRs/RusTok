@@ -545,7 +545,10 @@ pub use policy::{
     ModulePolicyRevisionGateError, ModulePolicyRevisionTransition, ModuleToggleValidationError,
     SharedModuleEffectivePolicyReader, TenantModuleOverride, validate_module_toggle,
 };
-pub use policy_cache::ModuleEffectivePolicyCache;
+pub use policy_cache::{
+    DEFAULT_POLICY_CACHE_MAX_AGE_SECONDS, DEFAULT_POLICY_CACHE_MAX_ENTRIES,
+    ModuleEffectivePolicyCache,
+};
 pub use policy_revision_consumer::{
     ModulePolicyRevisionConsumerError, SeaOrmModulePolicyRevisionConsumer,
 };
