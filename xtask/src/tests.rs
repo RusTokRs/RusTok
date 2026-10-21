@@ -27,7 +27,7 @@ use super::{
     validate_server_event_runtime_contract, workspace_root, Manifest, ModuleMarketplacePreview,
     ModuleOwnerTransferDryRunPreview, ModulePackageManifest, ModulePackageMetadata,
     ModulePublishDryRunPreview, ModuleSpec, ModuleUiPackagePreview, ModuleUiPackagesPreview,
-    ModuleValidationStageDryRunPreview, ModuleYankDryRunPreview, is_valid_slug, scaffold, ScaffoldOptions, ScaffoldUi,
+    ModuleValidationStageDryRunPreview, ModuleYankDryRunPreview, is_valid_slug, parse_options, scaffold, ScaffoldOptions, ScaffoldUi,
     RegistryGovernanceActionHttpResponse, RegistryPublishStatusHttpResponse, Settings,
     MODULE_AUTH_TOKEN_ENV, REGISTRY_MUTATION_SCHEMA_VERSION, REGISTRY_YANK_REASON_CODES,
     REMOTE_RUNNER_TOKEN_ENV,

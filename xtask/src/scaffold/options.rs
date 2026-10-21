@@ -49,12 +49,14 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
         return Ok(None);
     }
 
-    let slug = args[0].trim().to_ascii_lowercase();
-    if !is_valid_slug(&slug) {
+    let raw_slug = args[0].trim().to_ascii_lowercase();
+    if !is_valid_slug(&raw_slug) {
         bail!(
-            "Invalid module slug '{slug}'. Must contain only lowercase letters, digits, and hyphens (e.g. 'calls', 'party', 'digital-wallet')."
+            "Invalid module slug '{raw_slug}'. Must contain only lowercase letters, digits, hyphens, or underscores (e.g. 'calls', 'page_builder', 'digital-wallet')."
         );
     }
+    // Canonical slug format is snake_case per RusToK Naming Contract (docs/standards/coding.md)
+    let slug = raw_slug.replace('-', "_");
 
     let dry_run = args.iter().any(|arg| arg == "--dry-run");
     let skip_server_wire = args.iter().any(|arg| arg == "--skip-server-wire");
@@ -92,8 +94,6 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
                 "Invalid --ui option '{other}'. Expected: 'dual', 'admin', 'storefront', or 'none'"
             ),
         }
-    } else if args.iter().any(|arg| arg == "--with-ui") {
-        ScaffoldUi::Dual
     } else {
         ScaffoldUi::Dual
     };
@@ -109,6 +109,18 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
         skip_server_wire,
         skip_validate,
     }))
+}
+
+impl ScaffoldOptions {
+    /// Kebab-case name used for Cargo package and directory names (e.g. `rustok-page-builder`).
+    pub fn kebab_name(&self) -> String {
+        self.slug.replace('_', "-")
+    }
+
+    /// Full canonical crate name (e.g. `rustok-page-builder`).
+    pub fn crate_name(&self) -> String {
+        format!("rustok-{}", self.kebab_name())
+    }
 }
 
 pub fn print_scaffold_usage() {
@@ -131,18 +143,22 @@ pub fn print_scaffold_usage() {
     println!("Examples:");
     println!("  cargo xtask scaffold calls --title \"WebRTC Calls & Conferencing\" --category collaboration");
     println!("  cargo xtask scaffold party --title \"Counterparty & Legal Entities\" --category crm");
-    println!("  cargo xtask scaffold billing --title \"B2B Invoices & Settlements\" --category erp");
+    println!("  cargo xtask scaffold page_builder --title \"Visual Page Builder\" --category content");
+    println!("  cargo xtask scaffold digital-wallet --title \"Digital Wallet & Balance\" --category fintech");
 }
 
 pub fn is_valid_slug(slug: &str) -> bool {
     !slug.is_empty()
-        && slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
         && !slug.starts_with('-')
         && !slug.ends_with('-')
+        && !slug.starts_with('_')
+        && !slug.ends_with('_')
 }
 
 pub fn default_title_from_slug(slug: &str) -> String {
-    slug.split('-')
+    slug.split(['-', '_'])
+        .filter(|part| !part.is_empty())
         .map(|part| {
             let mut chars = part.chars();
             match chars.next() {

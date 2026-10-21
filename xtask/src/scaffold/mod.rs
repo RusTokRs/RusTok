@@ -45,8 +45,8 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
     let root = workspace_root();
     let slug = &options.slug;
     let pascal_name = to_pascal_case(slug);
-    let snake_name = slug.replace('-', "_");
-    let crate_name = format!("rustok-{slug}");
+    let snake_name = slug.clone();
+    let crate_name = options.crate_name();
     let module_dir = root.join("crates").join("modules").join(&crate_name);
 
     if module_dir.exists() && !options.dry_run {

@@ -1113,18 +1113,48 @@ fn test_scaffold_slug_validation() {
     assert!(is_valid_slug("valid-slug"));
     assert!(is_valid_slug("calls"));
     assert!(is_valid_slug("digital-wallet-v2"));
+    assert!(is_valid_slug("page_builder"));
+    assert!(is_valid_slug("marketplace_seller"));
 
     assert!(!is_valid_slug(""));
     assert!(!is_valid_slug("-leading"));
     assert!(!is_valid_slug("trailing-"));
+    assert!(!is_valid_slug("_leading"));
+    assert!(!is_valid_slug("trailing_"));
     assert!(!is_valid_slug("Upper_Case"));
-    assert!(!is_valid_slug("has_underscore"));
+    assert!(!is_valid_slug("has space"));
+}
+
+#[test]
+fn test_scaffold_parse_options_normalization() {
+    let args = vec![
+        "digital-wallet".to_string(),
+        "--title".to_string(),
+        "Digital Wallet".to_string(),
+        "--description".to_string(),
+        "Digital wallet capability for RusToK platform".to_string(),
+    ];
+    let opts = parse_options(&args).unwrap().unwrap();
+    assert_eq!(opts.slug, "digital_wallet");
+    assert_eq!(opts.kebab_name(), "digital-wallet");
+    assert_eq!(opts.crate_name(), "rustok-digital-wallet");
+
+    let args2 = vec![
+        "page_builder".to_string(),
+        "--description".to_string(),
+        "Visual page builder capability for RusToK platform".to_string(),
+    ];
+    let opts2 = parse_options(&args2).unwrap().unwrap();
+    assert_eq!(opts2.slug, "page_builder");
+    assert_eq!(opts2.kebab_name(), "page-builder");
+    assert_eq!(opts2.crate_name(), "rustok-page-builder");
+    assert_eq!(opts2.title, "Page Builder");
 }
 
 #[test]
 fn test_scaffold_dry_run_events_and_integrations() {
     let opts = ScaffoldOptions {
-        slug: "video-calls".to_string(),
+        slug: "video_calls".to_string(),
         title: "Video Calls".to_string(),
         description: "Enterprise encrypted video calls capability".to_string(),
         category: "collaboration".to_string(),
@@ -1136,6 +1166,18 @@ fn test_scaffold_dry_run_events_and_integrations() {
     };
 
     assert!(scaffold(&opts).is_ok());
+}
+
+#[test]
+fn test_to_pascal_case_handles_hyphens_and_underscores() {
+    use crate::manifest_validation::to_pascal_case;
+
+    assert_eq!(to_pascal_case("blog"), "Blog");
+    assert_eq!(to_pascal_case("page-builder"), "PageBuilder");
+    assert_eq!(to_pascal_case("page_builder"), "PageBuilder");
+    assert_eq!(to_pascal_case("digital-wallet-v2"), "DigitalWalletV2");
+    assert_eq!(to_pascal_case("digital_wallet_v2"), "DigitalWalletV2");
+    assert_eq!(to_pascal_case("marketplace_seller"), "MarketplaceSeller");
 }
 
 

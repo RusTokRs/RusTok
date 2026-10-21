@@ -108,20 +108,29 @@ fn StorefrontModulePageContent(locale: String, route_segment: String) -> impl In
     let enabled_modules = use_enabled_modules().get_untracked();
     let body = match page_for_route_segment(route_segment.as_str(), Some(&enabled_modules)) {
         StorefrontPageLookup::Found(page) => {
-            view! {
-                <main class="container-app px-4 py-16">
-                    <section class="mx-auto max-w-5xl space-y-6">
-                        <div class="space-y-2">
-                            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                                {page.module_slug}
-                            </p>
-                            <h1 class="text-4xl font-bold text-foreground">{page.title}</h1>
-                        </div>
+            if page.module_slug == "messenger" || route_segment == "messages" {
+                view! {
+                    <main class="w-full px-2 sm:px-6 py-4">
                         {(page.render)()}
-                    </section>
-                </main>
+                    </main>
+                }
+                .into_any()
+            } else {
+                view! {
+                    <main class="container-app px-4 py-16">
+                        <section class="mx-auto max-w-5xl space-y-6">
+                            <div class="space-y-2">
+                                <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                                    {page.module_slug}
+                                </p>
+                                <h1 class="text-4xl font-bold text-foreground">{page.title}</h1>
+                            </div>
+                            {(page.render)()}
+                        </section>
+                    </main>
+                }
+                .into_any()
             }
-            .into_any()
         }
         StorefrontPageLookup::Disabled => view! {
             <main class="container-app px-4 py-16">

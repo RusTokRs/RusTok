@@ -162,11 +162,15 @@ pub fn Header(
     #[prop(optional)] action_views: Vec<AnyView>,
 ) -> impl IntoView {
     let links = build_header_links(locale.as_str());
+    let messages_label = if locale.eq_ignore_ascii_case("ru") { "Сообщения" } else { "Messages" };
+    let messages_href = format!("/{}/messages", locale);
     let navigation = if navigation_views.is_empty() {
+        let m_href = messages_href.clone();
         view! {
             <nav class="hidden md:flex items-center gap-1" aria-label="Primary navigation">
                 <a class="rounded-xl px-3.5 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-all duration-200" href="#home">{nav_home}</a>
                 <a class="rounded-xl px-3.5 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-all duration-200" href="#catalog">{nav_catalog}</a>
+                <a class="rounded-xl px-3.5 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-all duration-200" href=m_href>{messages_label}</a>
                 <a class="rounded-xl px-3.5 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-all duration-200" href="#about">{nav_about}</a>
                 <a class="rounded-xl px-3.5 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-all duration-200" href="#contact">{nav_contact}</a>
             </nav>
@@ -209,6 +213,16 @@ pub fn Header(
                     <div class="contents" data-storefront-header-actions="true">
                         {action_views}
                     </div>
+
+                    <a
+                        href=messages_href
+                        class="hidden sm:inline-flex items-center justify-center h-9 w-9 rounded-xl border border-border/80 bg-secondary/60 text-foreground hover:bg-secondary hover:text-primary hover:border-primary/40 transition-all shadow-xs"
+                        title=if locale.eq_ignore_ascii_case("ru") { "Открыть мессенджер" } else { "Open messenger" }
+                    >
+                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                    </a>
 
                     // Language Selector with Flags
                     <div class="relative">

@@ -10,11 +10,11 @@ pub(crate) fn register_module(
     snake: &str,
 ) -> Result<()> {
     let slug = &opts.slug;
-    let crate_name = format!("rustok-{slug}");
+    let crate_name = opts.crate_name();
 
     register_in_workspace_cargo_toml(root, &crate_name, opts.ui)?;
     register_in_modules_toml(root, slug, &crate_name)?;
-    register_in_registry_md(root, slug, &crate_name, &opts.description)?;
+    register_in_registry_md(root, slug, &crate_name, &opts.description, opts.ui)?;
     register_in_docs_index_md(root, &crate_name, opts.ui.has_admin(), opts.ui.has_storefront())?;
 
     if opts.ui.has_admin() || opts.ui.has_storefront() {
@@ -50,7 +50,10 @@ fn register_in_workspace_cargo_toml(
     if ui.has_admin() {
         let admin_entry = format!("    \"crates/modules/{crate_name}/admin\",");
         if !content.contains(admin_entry.trim()) {
-            if let Some(pos) = lines.iter().position(|l| l.trim() == "tests/e2e-rust\",") {
+            if let Some(pos) = lines.iter().position(|l| {
+                let trimmed = l.trim();
+                trimmed == "\"tests/e2e-rust\"," || trimmed == "tests/e2e-rust\","
+            }) {
                 lines.insert(pos, admin_entry);
                 modified = true;
             } else if let Some(pos) = lines.iter().position(|l| l.trim() == "members = [") {
@@ -63,7 +66,10 @@ fn register_in_workspace_cargo_toml(
     if ui.has_storefront() {
         let sf_entry = format!("    \"crates/modules/{crate_name}/storefront\",");
         if !content.contains(sf_entry.trim()) {
-            if let Some(pos) = lines.iter().position(|l| l.trim() == "tests/e2e-rust\",") {
+            if let Some(pos) = lines.iter().position(|l| {
+                let trimmed = l.trim();
+                trimmed == "\"tests/e2e-rust\"," || trimmed == "tests/e2e-rust\","
+            }) {
                 lines.insert(pos, sf_entry);
                 modified = true;
             } else if let Some(pos) = lines.iter().position(|l| l.trim() == "members = [") {
@@ -127,6 +133,7 @@ fn register_in_registry_md(
     slug: &str,
     crate_name: &str,
     desc: &str,
+    ui: ScaffoldUi,
 ) -> Result<()> {
     let path = root.join("docs").join("modules").join("registry.md");
     let content =
@@ -137,11 +144,41 @@ fn register_in_registry_md(
         return Ok(());
     }
 
-    let row = format!("| `{slug}` | `{crate_name}` | `outbox` | {desc} |");
-
     let mut lines = content.lines().map(String::from).collect::<Vec<_>>();
-    let mut insert_pos = None;
+    let mut modified = false;
 
+    // 1. Insert into Table 1: ## FFA/FBA Readiness Board (Module-owned UI)
+    let (ui_surfaces, ffa_status, shape) = match ui {
+        ScaffoldUi::Dual => ("admin + storefront", "`in_progress`", "`core_transport_ui`"),
+        ScaffoldUi::Admin => ("admin", "`in_progress`", "`core_transport_ui`"),
+        ScaffoldUi::Storefront => ("storefront", "`in_progress`", "`core_transport_ui`"),
+        ScaffoldUi::None => ("none", "`not_started`", "`no_ui_boundary`"),
+    };
+    let board_row = format!(
+        "| `{slug}` | {ui_surfaces} | {ffa_status} | `boundary_ready` | {shape} | [Live plan](../../crates/modules/{crate_name}/docs/implementation-plan.md); {desc} |"
+    );
+
+    let mut board_insert_pos = None;
+    let mut in_board_table = false;
+    for (i, line) in lines.iter().enumerate() {
+        if line.starts_with("| Module slug |") {
+            in_board_table = true;
+            continue;
+        }
+        if in_board_table && !line.trim().starts_with('|') {
+            board_insert_pos = Some(i);
+            break;
+        }
+    }
+
+    if let Some(pos) = board_insert_pos {
+        lines.insert(pos, board_row);
+        modified = true;
+    }
+
+    // 2. Insert into Table 2: ### Optional Modules
+    let optional_row = format!("| `{slug}` | `{crate_name}` | `outbox` | {desc} |");
+    let mut optional_insert_pos = None;
     let mut in_optional = false;
     for (i, line) in lines.iter().enumerate() {
         if line.starts_with("### Optional") {
@@ -149,17 +186,22 @@ fn register_in_registry_md(
             continue;
         }
         if in_optional && (line.starts_with("## ") || line.starts_with("The dependency column above")) {
-            insert_pos = Some(i);
+            optional_insert_pos = Some(i);
             break;
         }
     }
 
-    let pos = insert_pos.unwrap_or(lines.len());
-    lines.insert(pos, row);
+    if let Some(pos) = optional_insert_pos {
+        lines.insert(pos, optional_row);
+        modified = true;
+    }
 
-    fs::write(&path, lines.join("\n") + "\n")
-        .with_context(|| format!("Failed to write {}", path.display()))?;
-    println!("  Updated docs/modules/registry.md table");
+    if modified {
+        fs::write(&path, lines.join("\n") + "\n")
+            .with_context(|| format!("Failed to write {}", path.display()))?;
+        println!("  Updated docs/modules/registry.md readiness board and optional table");
+    }
+
     Ok(())
 }
 

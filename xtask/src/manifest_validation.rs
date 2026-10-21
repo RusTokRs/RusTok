@@ -82,7 +82,8 @@ fn selected_modules<'a>(
 }
 
 pub(crate) fn to_pascal_case(s: &str) -> String {
-    s.split('-')
+    s.split(['-', '_'])
+        .filter(|word| !word.is_empty())
         .map(|word| {
             let mut chars = word.chars();
             match chars.next() {

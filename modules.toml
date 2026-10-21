@@ -97,4 +97,4 @@ ai = { crate = "rustok-ai", source = "path", path = "crates/modules/rustok-ai", 
 iggy_connector = { crate = "rustok-iggy-connector", source = "path", path = "crates/modules/rustok-iggy-connector", runtime = "extension" }
 
 [settings]
-default_enabled = ["content", "cart", "customer", "product", "product_relations", "brand", "product_bundles", "taxonomy", "region", "pricing", "inventory", "order", "payment", "fulfillment", "commerce", "pages", "navigation", "page_builder", "forms"]
+default_enabled = ["content", "cart", "customer", "product", "product_relations", "brand", "product_bundles", "taxonomy", "region", "pricing", "inventory", "order", "payment", "fulfillment", "commerce", "pages", "navigation", "page_builder", "forms", "messenger"]
