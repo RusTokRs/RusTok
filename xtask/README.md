@@ -56,9 +56,9 @@ durable validation detail. It can claim only stages explicitly owned by a
 be completed only by a verified durable platform build result; `module publish`
 does not translate local Cargo execution into that evidence.
 
-## Module Scaffolding (FBA / FFA / i18n / docs.rs)
+## Scaffolding (FBA / FFA / i18n / docs.rs)
 
-`cargo xtask module new <slug>` (or `cargo xtask module scaffold <slug>`) generates a production-grade, canonical platform module conforming to Fluid Backend Architecture (FBA), Fluid Frontend Architecture (FFA), multilinguality (Fluent i18n), and `docs.rs` metadata.
+`cargo xtask scaffold <slug>` (or `cargo xtask module new <slug>`) generates a production-grade, canonical platform module conforming to Fluid Backend Architecture (FBA), Fluid Frontend Architecture (FFA), multilinguality (Fluent i18n), and `docs.rs` metadata.
 
 The command:
 - Generates the backend crate `crates/modules/rustok-<slug>` with normative FBA layout: `src/domain/`, `src/dto/`, `src/services/`, `src/error.rs`, `src/module.rs` (implementing `RusToKModule`), and optional SeaORM `entities/` + `migrations/`.
@@ -78,13 +78,13 @@ The command:
 
 ```powershell
 # Create a collaboration module with dual surface UI and DB migrations:
-cargo xtask module new calls --title "WebRTC Calls & Conferencing" --category collaboration
+cargo xtask scaffold calls --title "WebRTC Calls & Conferencing" --category collaboration
 
 # Create a headless/no-ui ERP module:
-cargo xtask module new finance --title "Operational Finance & Banking" --category erp --no-ui
+cargo xtask scaffold finance --title "Operational Finance & Banking" --category erp --no-ui
 
 # Dry-run preview:
-cargo xtask module new party --dry-run
+cargo xtask scaffold party --dry-run
 ```
 
 ## I18n Public API Inventory

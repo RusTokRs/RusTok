@@ -65,6 +65,11 @@ default = []
 
     // rustok-module.toml
     let ui_classification = opts.ui.classification_str();
+    let recommended_surfaces = if opts.ui.has_admin() {
+        "recommended_admin_surfaces = [\"leptos-admin\"]"
+    } else {
+        "recommended_admin_surfaces = []"
+    };
     let mut module_toml = format!(
         r#"[module]
 slug = "{slug}"
@@ -74,7 +79,7 @@ description = "{desc}"
 ownership = "first_party"
 trust_level = "verified"
 ui_classification = "{ui_classification}"
-recommended_admin_surfaces = ["leptos-admin"]
+{recommended_surfaces}
 
 [marketplace]
 category = "{}"
@@ -188,10 +193,13 @@ The `{slug}` module provides canonical {title} domain functionality for RusToK.
 - Unit tests: `cargo test -p {crate_name} --lib`
 - Module contract verification: `cargo xtask module validate {slug}`
 
-## Related Documentation
+## Related Documents
 - [Implementation Plan](./implementation-plan.md)
 - [Module Platform Overview](../overview.md)
 - [Backend Implementation Guide](../../../backend/module-backend-implementation.md)
+
+## Related Documentation
+- Documentation maps and registry contracts are centralized in `docs/modules/`.
 "#
     );
     write_file_content(
@@ -204,6 +212,9 @@ The `{slug}` module provides canonical {title} domain functionality for RusToK.
     let plan = format!(
         r#"# {title} Module Implementation Plan
 
+## Scope
+Sovereign domain capability and client surfaces for {title}.
+
 ## Current state
 - Status: `in_progress`
 - Architecture: FBA / FFA
@@ -211,7 +222,7 @@ The `{slug}` module provides canonical {title} domain functionality for RusToK.
 - Admin UI crate: `{crate_name}-admin`
 - Storefront UI crate: `{crate_name}-storefront`
 
-## Implementation Phases
+## Local work phases
 - [x] Phase 1: Canonical FBA scaffolding and contract registration
 - [ ] Phase 2: Domain entities and persistence migrations
 - [ ] Phase 3: Application services and transactional use cases
@@ -222,6 +233,10 @@ The `{slug}` module provides canonical {title} domain functionality for RusToK.
 - `cargo check -p {crate_name}`
 - `cargo test -p {crate_name} --lib`
 - `cargo xtask module validate {slug}`
+
+## Change rules
+- Architecture changes must update this plan and relevant ADRs.
+- Keep module contract synchronized with `rustok-module.toml`.
 "#
     );
     write_file_content(

@@ -67,6 +67,13 @@ pub(crate) fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> 
     let description = cli_option_value(args, "--description")
         .unwrap_or_else(|| format!("{title} capability module for RusToK"));
 
+    if description.trim().len() < 20 {
+        bail!(
+            "Module description must be at least 20 characters for publish readiness (got {} characters)",
+            description.trim().len()
+        );
+    }
+
     let category = cli_option_value(args, "--category")
         .unwrap_or_else(|| "collaboration".to_string());
 
@@ -104,7 +111,7 @@ pub(crate) fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> 
     }))
 }
 
-pub(crate) fn print_scaffold_usage() {
+pub fn print_scaffold_usage() {
     println!("Usage:");
     println!("  cargo xtask scaffold <slug> [OPTIONS]");
     println!("  cargo xtask module new <slug> [OPTIONS]");

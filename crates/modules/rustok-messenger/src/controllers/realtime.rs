@@ -41,6 +41,13 @@ pub enum MessengerClientMessage {
     ReadCursor { last_read_message_id: i64 },
     /// Ephemeral typing indicator.
     Typing { is_typing: bool },
+    /// Edit an existing message in this conversation.
+    EditMessage {
+        message_id: i64,
+        content: String,
+    },
+    /// Soft-delete a message in this conversation.
+    DeleteMessage { message_id: i64 },
 }
 
 /// Wire messages sent by the server to connected peers.
@@ -53,6 +60,10 @@ pub enum MessengerServerMessage {
     SyncResponse(FastSyncResponse),
     /// Broadcast of a newly posted message.
     NewMessage(MessageOutput),
+    /// Broadcast of an edited message.
+    MessageEdited(MessageOutput),
+    /// Broadcast of a deleted message.
+    MessageDeleted { message_id: i64 },
     /// Broadcast of member read cursor advancement.
     CursorAdvanced(CursorOutput),
     /// Ephemeral typing notification from a room participant.
@@ -341,6 +352,52 @@ async fn handle_socket(
                                     is_typing,
                                 },
                             );
+                        }
+                        Ok(MessengerClientMessage::EditMessage {
+                            message_id,
+                            content,
+                        }) => {
+                            match service_for_recv
+                                .edit_message(
+                                    tenant_id,
+                                    actor_id,
+                                    message_id,
+                                    crate::dto::EditMessageInput { content },
+                                )
+                                .await
+                            {
+                                Ok(updated) => {
+                                    let _ = room_sender_for_recv
+                                        .send(MessengerServerMessage::MessageEdited(updated));
+                                }
+                                Err(err) => {
+                                    let _ = client_tx
+                                        .send(MessengerServerMessage::Error {
+                                            code: "EDIT_FAILED".to_string(),
+                                            message: err.to_string(),
+                                        })
+                                        .await;
+                                }
+                            }
+                        }
+                        Ok(MessengerClientMessage::DeleteMessage { message_id }) => {
+                            match service_for_recv
+                                .delete_message(tenant_id, actor_id, message_id)
+                                .await
+                            {
+                                Ok(()) => {
+                                    let _ = room_sender_for_recv
+                                        .send(MessengerServerMessage::MessageDeleted { message_id });
+                                }
+                                Err(err) => {
+                                    let _ = client_tx
+                                        .send(MessengerServerMessage::Error {
+                                            code: "DELETE_FAILED".to_string(),
+                                            message: err.to_string(),
+                                        })
+                                        .await;
+                                }
+                            }
                         }
                         Err(parse_err) => {
                             warn!("Invalid messenger client message payload: {parse_err}");

@@ -1075,18 +1075,19 @@ fn auto_approve_argument_detects_flag() {
 }
 
 #[test]
-fn test_module_scaffold_dry_run() {
-    let opts = ModuleScaffoldOptions {
+fn test_scaffold_dry_run() {
+    let opts = ScaffoldOptions {
         slug: "test-scaffold".to_string(),
         title: "Test Scaffold".to_string(),
         description: "Test scaffold capability".to_string(),
         category: "collaboration".to_string(),
         with_db: true,
-        ui: ModuleScaffoldUi::Dual,
+        ui: ScaffoldUi::Dual,
         dry_run: true,
         skip_server_wire: false,
         skip_validate: true,
     };
 
-    assert!(scaffold_module(&opts).is_ok());
+    assert!(scaffold(&opts).is_ok());
 }
+

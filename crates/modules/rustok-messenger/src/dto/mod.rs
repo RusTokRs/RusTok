@@ -1,5 +1,6 @@
 pub mod conversation;
 pub mod cursor;
+pub mod member;
 pub mod message;
 
 pub use conversation::{
@@ -7,4 +8,7 @@ pub use conversation::{
     UpdateChannelTranslationInput,
 };
 pub use cursor::{CursorOutput, FastSyncRequest, FastSyncResponse, UpdateCursorInput};
-pub use message::{ListMessagesQuery, MessageOutput, SearchMessagesQuery, SendMessageInput};
+pub use member::{AddMemberInput, MemberOutput};
+pub use message::{
+    EditMessageInput, ListMessagesQuery, MessageOutput, SearchMessagesQuery, SendMessageInput,
+};

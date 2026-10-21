@@ -15,7 +15,7 @@ pub(crate) fn register_module(
     register_in_workspace_cargo_toml(root, &crate_name, opts.ui)?;
     register_in_modules_toml(root, slug, &crate_name)?;
     register_in_registry_md(root, slug, &crate_name, &opts.description)?;
-    register_in_docs_index_md(root, &crate_name, opts.ui.has_admin())?;
+    register_in_docs_index_md(root, &crate_name, opts.ui.has_admin(), opts.ui.has_storefront())?;
 
     if opts.ui.has_admin() || opts.ui.has_storefront() {
         register_in_ui_packages_index_md(
@@ -163,7 +163,12 @@ fn register_in_registry_md(
     Ok(())
 }
 
-fn register_in_docs_index_md(root: &Path, crate_name: &str, has_admin: bool) -> Result<()> {
+fn register_in_docs_index_md(
+    root: &Path,
+    crate_name: &str,
+    has_admin: bool,
+    has_storefront: bool,
+) -> Result<()> {
     let path = root.join("docs").join("modules").join("_index.md");
     let content =
         fs::read_to_string(&path).with_context(|| format!("Failed to read {}", path.display()))?;
@@ -213,6 +218,28 @@ fn register_in_docs_index_md(root: &Path, crate_name: &str, has_admin: bool) -> 
 
             let pos = insert_pos.unwrap_or(lines.len());
             lines.insert(pos, admin_needle);
+            modified = true;
+        }
+    }
+
+    if has_storefront {
+        let sf_needle = format!("- `{crate_name}`: [README](../../crates/modules/{crate_name}/storefront/README.md)");
+        if !content.contains(&sf_needle) {
+            let mut insert_pos = None;
+            let mut in_sf = false;
+            for (i, line) in lines.iter().enumerate() {
+                if line.starts_with("### Optional/Storefront Surfaces") {
+                    in_sf = true;
+                    continue;
+                }
+                if in_sf && (line.starts_with("### ") || line.starts_with("## ")) {
+                    insert_pos = Some(i);
+                    break;
+                }
+            }
+
+            let pos = insert_pos.unwrap_or(lines.len());
+            lines.insert(pos, sf_needle);
             modified = true;
         }
     }

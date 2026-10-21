@@ -1,5 +1,5 @@
+use crate::manifest_io::workspace_root;
 use crate::manifest_validation::{module_validate_command, to_pascal_case};
-use crate::root_commands::workspace_root;
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
@@ -9,6 +9,7 @@ mod options;
 mod registration;
 mod ui;
 
+#[allow(unused_imports)]
 pub use options::{print_scaffold_usage, ScaffoldOptions, ScaffoldUi};
 
 pub(crate) fn write_file_content(path: &Path, content: &str, dry_run: bool) -> Result<()> {
@@ -50,6 +51,20 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
             "Module crate directory already exists at {}",
             module_dir.display()
         );
+    }
+
+    if !options.dry_run {
+        let modules_toml_path = root.join("modules.toml");
+        if let Ok(content) = fs::read_to_string(&modules_toml_path) {
+            let needle = format!("{slug} =");
+            let needle_sp = format!("{slug} ");
+            if content.lines().any(|l| {
+                let trimmed = l.trim();
+                trimmed.starts_with(&needle) || trimmed.starts_with(&needle_sp)
+            }) {
+                anyhow::bail!("Module '{slug}' is already registered in modules.toml");
+            }
+        }
     }
 
     println!("Scaffolding module '{}' ({})...", slug, crate_name);
