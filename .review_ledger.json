@@ -792,9 +792,9 @@
       "category": "modules",
       "files": 6,
       "loc": 1889,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-21 22:00",
+      "notes": "Audited; verified gRPC envelope framing, deadline timeout propagation, typed PortError detail preservation across gRPC status mappings, and server-side trusted authority enforcement; enforced non-empty validation on authority tenant and actor IDs, enforced tenant match between claimed and trusted authority, trimmed whitespace in UUID parsing with nil/invalid UUID rejection, added fallback status description when gRPC message is empty, safely trimmed trailing slashes in public origin descriptor rebasing, recognized .localhost subdomains under RFC 6761; added comprehensive unit tests for authority, ID, error mapping, and unconfigured provider branches, and expanded integration tests to verify end-to-end descriptor rebasing with GrpcMediaPublicImageConnectionConfig over loopback gRPC; 23/23 unit tests passed, 1/1 integration test passed (24 total), 0 clippy warnings, remediation gate passed."
     },
     "crates/modules/rustok-moderation": {
       "name": "rustok-moderation",

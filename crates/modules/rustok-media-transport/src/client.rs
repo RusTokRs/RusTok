@@ -378,13 +378,18 @@ fn status_to_port_error(status: Status) -> PortError {
         _ => PortErrorKind::InvariantViolation,
     };
     let retryable = matches!(kind, PortErrorKind::Timeout | PortErrorKind::Unavailable);
+    let message = if status.message().trim().is_empty() {
+        status.code().description().to_string()
+    } else {
+        status.message().to_string()
+    };
     PortError::new(
         kind,
         format!(
             "media.grpc.{}",
             status.code().description().replace(' ', "_")
         ),
-        status.message(),
+        message,
         retryable,
     )
 }
@@ -411,5 +416,31 @@ mod tests {
         let error = status_to_port_error(Status::unavailable("down"));
         assert_eq!(error.kind, PortErrorKind::Unavailable);
         assert!(error.retryable);
+    }
+
+    #[test]
+    fn empty_status_message_falls_back_to_status_description() {
+        let error = status_to_port_error(Status::new(Code::DeadlineExceeded, ""));
+        assert_eq!(error.kind, PortErrorKind::Timeout);
+        assert_eq!(
+            error.message,
+            Code::DeadlineExceeded.description()
+        );
+        assert!(error.retryable);
+    }
+
+    #[test]
+    fn permission_denied_maps_to_forbidden() {
+        let error = status_to_port_error(Status::permission_denied("access denied"));
+        assert_eq!(error.kind, PortErrorKind::Forbidden);
+        assert_eq!(
+            error.code,
+            format!(
+                "media.grpc.{}",
+                Code::PermissionDenied.description().replace(' ', "_")
+            )
+        );
+        assert_eq!(error.message, "access denied");
+        assert!(!error.retryable);
     }
 }

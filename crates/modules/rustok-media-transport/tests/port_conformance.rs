@@ -9,8 +9,8 @@ use rustok_media::{
     UploadInput, UpsertTranslationInput, migrations,
 };
 use rustok_media_transport::{
-    GrpcMediaProvider, MediaGrpcOperation, MediaGrpcService, TrustedMediaAuthority,
-    proto::media_service_server::MediaServiceServer,
+    GrpcMediaProvider, GrpcMediaPublicImageConnectionConfig, MediaGrpcOperation, MediaGrpcService,
+    TrustedMediaAuthority, proto::media_service_server::MediaServiceServer,
 };
 use rustok_outbox::SysEventsMigration;
 use rustok_storage::{LocalStorageConfig, StorageRuntime};
@@ -504,6 +504,37 @@ async fn embedded_and_loopback_grpc_providers_pass_the_same_port_suite() {
         .await
         .expect("remote asset should upload through the Media-owned binary path");
     exercise_provider(&remote, &remote, &remote, tenant_id, remote_asset.id).await;
+
+    let rebased_source_asset = service
+        .upload(png_upload(tenant_id, "rebased.png"))
+        .await
+        .expect("rebased asset should upload through the Media-owned binary path");
+
+    let public_remote = GrpcMediaPublicImageConnectionConfig::new(format!("http://{address}"))
+        .allow_insecure_loopback(true)
+        .with_public_origin(Some("https://cdn.example.com".to_string()))
+        .connect()
+        .await
+        .expect("public image client with origin rebase should connect to loopback");
+
+    let rebased_asset = public_remote
+        .get_public_image_asset(
+            read_context(tenant_id),
+            rebased_source_asset.id,
+            Some("Rebased public".to_string()),
+        )
+        .await
+        .expect("rebased public image fetch should succeed over loopback gRPC");
+    let rebased_descriptor = rebased_asset
+        .descriptor
+        .expect("image descriptor should be present");
+    assert!(
+        rebased_descriptor
+            .url
+            .starts_with("https://cdn.example.com/api/media/public/images/"),
+        "URL was not properly rebased to public origin: {}",
+        rebased_descriptor.url
+    );
 
     let _ = shutdown_tx.send(());
     server.await.expect("loopback server task should stop");
