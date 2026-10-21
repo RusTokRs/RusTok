@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use rust_decimal::Decimal;
 use rustok_api::{PortContext, PortError};
+use rustok_fulfillment::FulfillmentService;
 use rustok_order::{
     CompleteOrderReturnInput, CompleteOrderReturnRequest, CreateOrderChangeInput,
     CreateOrderChangeRequest, CreateOrderReturnRequest, OrderPostOrderCommandPort,
-    OrderReturnResponse,
+    OrderReadPort, OrderReturnResponse, ReadOrderProjectionRequest,
 };
 use rustok_payment::{
     ListPaymentCollectionProjectionsRequest, PaymentAdminReadPort,
@@ -21,6 +21,10 @@ use validator::Validate;
 
 use super::{
     PaymentOrchestrationService,
+    return_refund_value::{
+        resolve_return_refund_amount, return_refundable_value,
+        validate_return_quantities_were_shipped,
+    },
     post_order::{
         CreateReturnDecisionInput, PostOrderOrchestrationError, PostOrderOrchestrationResult,
         ReturnDecisionInput, ReturnDecisionResponse, ReturnRefundDecisionInput,
@@ -48,6 +52,7 @@ pub struct ReturnDecisionOwnerOrchestrationService {
     db: DatabaseConnection,
     order_commands: Arc<dyn OrderPostOrderCommandPort>,
     payment_reads: Arc<dyn PaymentAdminReadPort>,
+    order_reads: Option<Arc<dyn OrderReadPort>>,
     payment_provider_registry: PaymentProviderRegistry,
 }
 
@@ -61,8 +66,16 @@ impl ReturnDecisionOwnerOrchestrationService {
             db,
             order_commands,
             payment_reads,
+            order_reads: None,
             payment_provider_registry: PaymentProviderRegistry::with_manual_provider(),
         }
+    }
+
+    /// Order owner read port used to value return refunds from the order's own line snapshot.
+    /// Refund decisions fail closed when it is not configured.
+    pub fn with_order_read_port(mut self, order_reads: Arc<dyn OrderReadPort>) -> Self {
+        self.order_reads = Some(order_reads);
+        self
     }
 
     pub fn with_payment_provider_registry(
@@ -330,16 +343,39 @@ impl ReturnDecisionOwnerOrchestrationService {
             }
         };
 
-        let amount = match input.amount {
-            Some(amount) => amount,
-            None => return_items_amount(order_return)?,
-        };
-        if amount <= Decimal::ZERO {
-            return Err(PostOrderOrchestrationError::Validation(
-                "refund decision requires a positive amount or priced return items".to_string(),
+        let order_reads = self.order_reads.as_ref().ok_or_else(|| {
+            ReturnDecisionOwnerOrchestrationError::OrderCommand(PortError::validation(
+                "commerce.return_decision_order_read_port_missing",
+                "return refund valuation requires an order read port",
+            ))
+        })?;
+        let order = order_reads
+            .read_order_projection(
+                payment_read_context_for(base_context, "read_return_order", order_id),
+                ReadOrderProjectionRequest {
+                    order_id,
+                    tenant_default_locale: None,
+                },
             )
-            .into());
-        }
+            .await
+            .map_err(ReturnDecisionOwnerOrchestrationError::OrderCommand)?;
+        let fulfillments = FulfillmentService::new(self.db.clone())
+            .list_by_order(tenant_id, order_id)
+            .await
+            .map_err(|error| {
+                PostOrderOrchestrationError::OwnerPort {
+                    owner: "fulfillment",
+                    error: PortError::unavailable(
+                        "return_decision.fulfillment_read_failed",
+                        error.to_string(),
+                    ),
+                }
+            })?;
+        validate_return_quantities_were_shipped(&order, order_return, &fulfillments)?;
+        let amount = resolve_return_refund_amount(
+            input.amount,
+            return_refundable_value(&order, order_return)?,
+        )?;
 
         PaymentOrchestrationService::new(self.db.clone())
             .with_provider_registry(self.payment_provider_registry.clone())
@@ -509,45 +545,6 @@ fn normalize_object_or_empty(value: Value, field: &str) -> PostOrderOrchestratio
             "{field} must be a JSON object"
         ))),
     }
-}
-
-fn return_items_amount(
-    order_return: &OrderReturnResponse,
-) -> PostOrderOrchestrationResult<Decimal> {
-    order_return
-        .items
-        .iter()
-        .filter_map(|item| item.metadata.get("refund_amount"))
-        .try_fold(Decimal::ZERO, |total, value| {
-            let amount = decimal_from_json_value(value, "refund_amount")?;
-            if amount < Decimal::ZERO {
-                return Err(PostOrderOrchestrationError::Validation(
-                    "refund_amount must not be negative".to_string(),
-                ));
-            }
-            total.checked_add(amount).ok_or_else(|| {
-                PostOrderOrchestrationError::Validation(
-                    "return item refund amount total overflowed Decimal".to_string(),
-                )
-            })
-        })
-}
-
-fn decimal_from_json_value(value: &Value, field: &str) -> PostOrderOrchestrationResult<Decimal> {
-    let text = match value {
-        Value::String(value) => value.clone(),
-        Value::Number(value) => value.to_string(),
-        _ => {
-            return Err(PostOrderOrchestrationError::Validation(format!(
-                "{field} must be a decimal string or JSON number"
-            )));
-        }
-    };
-    text.parse::<Decimal>().map_err(|error| {
-        PostOrderOrchestrationError::Validation(format!(
-            "{field} contains an invalid decimal value: {error}"
-        ))
-    })
 }
 
 #[cfg(test)]

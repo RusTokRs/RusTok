@@ -62,6 +62,17 @@ impl CommerceFulfillmentCommandRuntime {
         Self::new(lifecycle_commands, create_commands)
     }
 
+    /// Wraps the lifecycle commands so shipped/delivered fulfillments advance the order status.
+    pub fn with_shipment_projection(self, projector: crate::OrderShipmentProjector) -> Self {
+        Self {
+            lifecycle_commands: crate::projecting_fulfillment_admin_command_runtime(
+                self.lifecycle_commands,
+                projector,
+            ),
+            create_commands: self.create_commands,
+        }
+    }
+
     pub fn lifecycle_command_port(&self) -> Arc<dyn FulfillmentAdminCommandPort> {
         self.lifecycle_commands.command_port()
     }

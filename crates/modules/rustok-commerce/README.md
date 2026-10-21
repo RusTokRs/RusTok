@@ -88,6 +88,36 @@ the affected operation boundary. Mixed carts must not assign a synthetic shippin
 profile to digital lines. See
 [`docs/architecture/settings.md`](../../../docs/architecture/settings.md).
 
+## Post-order lifecycle orchestration (2026-10-21, unverified)
+
+- Admin order `cancel` is routed through `OrderCancellationOrchestrator` (decorator of
+  `OrderAdminCommandPort`): it cancels live fulfillments, voids authorized collections, requests a
+  full refund of captured money and only then cancels the order. Orders with shipped items are
+  rejected (use a return). See `DECISIONS/2026-10-21-order-cancellation-orchestration.md`.
+- Return refunds are valued on the server (`return_refund_value.rs`) from the order line price,
+  discounts and tax; an explicit amount may only be lower. Physical lines cannot be returned beyond
+  their shipped quantity when fulfillment records exist. See
+  `DECISIONS/2026-10-21-return-refund-server-side-valuation.md`.
+- Order `shipped`/`delivered` follow fulfillment truth (`OrderShipmentProjector`, decorator of
+  `FulfillmentAdminCommandPort`); manual order `ship`/`deliver` are refused while live fulfillments
+  contradict them. See `DECISIONS/2026-10-21-order-shipment-status-projection.md`.
+
+### Known Limitations / Pending Implementation
+
+- This code was written without a Rust toolchain: it has not been compiled, formatted or tested.
+  Run `cargo test -p rustok-commerce` (crate-scoped) before relying on it.
+- Cancellation has no durable journal; it is a stateless re-runnable saga. The cancellation refund
+  is created `pending` and is completed by the provider or operator.
+- `complete_return` does not restock inventory (needs an inventory restock port with an
+  idempotency ledger and a per-item resellable decision).
+- Return records can still be created on unpaid orders (a refund needs a captured collection);
+  the shipped-quantity cap is per return, not cumulative.
+- Shipment projection skips fulfillment changes made outside the admin command port (provider
+  reconciliation) and never moves an order status backwards on reopen/reship.
+- Stock consumption on shipment is still the `fulfillment_inventory_consume_on_ship` database
+  trigger (`m20260713_000007`); moving it into an inventory port, and returning stock when a shipped
+  fulfillment is cancelled, remain open (ECOM-INV-01).
+
 ## Entry points
 
 - `CommerceModule`

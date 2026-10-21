@@ -57,11 +57,13 @@ impl CommerceHttpRuntime {
             rustok_fulfillment::ShippingOptionAdminCommandRuntime::in_process(db.clone());
         let fulfillment_lifecycle_read_runtime =
             crate::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime::in_process(db.clone());
-        let fulfillment_admin_command_runtime =
+        let fulfillment_admin_command_runtime = crate::projecting_fulfillment_admin_command_runtime(
             rustok_fulfillment::FulfillmentAdminCommandRuntime::in_process(
                 db.clone(),
                 fulfillment_provider_registry.clone(),
-            );
+            ),
+            crate::OrderShipmentProjector::new(db.clone(), event_bus.clone()),
+        );
         let fulfillment_admin_create_command_runtime =
             rustok_fulfillment::FulfillmentAdminCreateCommandRuntime::in_process(
                 db.clone(),
@@ -71,8 +73,12 @@ impl CommerceHttpRuntime {
             db.clone(),
             event_bus.clone(),
         );
-        let order_admin_command_runtime =
-            rustok_order::OrderAdminCommandRuntime::in_process(db.clone(), event_bus.clone());
+        let order_admin_command_runtime = crate::orchestrated_order_admin_command_runtime(
+            rustok_order::OrderAdminCommandRuntime::in_process(db.clone(), event_bus.clone()),
+            crate::OrderCancellationOrchestrator::new(db.clone(), event_bus.clone())
+                .with_payment_provider_registry(payment_provider_registry.clone())
+                .with_fulfillment_provider_registry(fulfillment_provider_registry.clone()),
+        );
         let order_post_order_command_runtime =
             rustok_order::OrderPostOrderCommandRuntime::in_process(db.clone(), event_bus.clone());
         let payment_order_read_runtime =
@@ -317,6 +323,11 @@ impl CommerceHttpRuntime {
                     fulfillment_provider_registry.clone(),
                 )
             });
+        // Order shipment status follows fulfillment truth.
+        let fulfillment_admin_command_runtime = crate::projecting_fulfillment_admin_command_runtime(
+            fulfillment_admin_command_runtime,
+            crate::OrderShipmentProjector::new(runtime.db_clone(), event_bus.clone()),
+        );
         let fulfillment_admin_create_command_runtime = runtime
             .shared_get::<rustok_fulfillment::FulfillmentAdminCreateCommandRuntime>()
             .unwrap_or_else(|| {
@@ -339,6 +350,13 @@ impl CommerceHttpRuntime {
                     "Commerce HTTP routes require OrderAdminCommandRuntime in HostRuntimeContext"
                 )
             })?;
+        // Admin cancellation must unwind fulfillments and payments, not only flip the status.
+        let order_admin_command_runtime = crate::orchestrated_order_admin_command_runtime(
+            order_admin_command_runtime,
+            crate::OrderCancellationOrchestrator::new(runtime.db_clone(), event_bus.clone())
+                .with_payment_provider_registry(payment_provider_registry.clone())
+                .with_fulfillment_provider_registry(fulfillment_provider_registry.clone()),
+        );
         let order_post_order_command_runtime = runtime
             .shared_get::<rustok_order::OrderPostOrderCommandRuntime>()
             .ok_or_else(|| {

@@ -52,6 +52,9 @@ Non-ADR plans and research documents do not belong in this registry.
 ## Index
 
 | ADR | Title | Decision status | Implementation status | Relations |
+| [2026-10-21](./2026-10-21-order-shipment-status-projection.md) | Order shipped/delivered status follows fulfillment truth; stock consumption stays trigger-owned for now | Accepted | In progress | — |
+| [2026-10-21](./2026-10-21-return-refund-server-side-valuation.md) | Return refund amounts are valued on the server from the order line snapshot | Accepted | In progress | — |
+| [2026-10-21](./2026-10-21-order-cancellation-orchestration.md) | Order cancellation is a commerce-owned idempotent saga over fulfillment and payment | Accepted | In progress | Extends [Checkout operation invariants are owned by typed Rust](./2026-10-07-checkout-operation-invariants-owned-by-rust.md) |
 | [2026-10-18](./2026-10-18-seo-canonical-hreflang-route-family.md) | SEO canonical, hreflang, sitemap, and redirect route-family contract | Proposed | Not started | Extends [Multilingual content contract](./2026-03-28-multilingual-content-contract.md), [Blog post URL contract](./2026-10-08-blog-post-url-and-publication-contract.md), [Owner-held routes](./2026-10-08-owner-routes-and-batched-conversion.md) |
 | [2026-10-17](./2026-10-17-forum-topic-feed-selection.md) | Forum owner-backed topic feed selection | Accepted | In progress | Extends [Forum anonymous discovery](./2026-10-15-forum-anonymous-discovery-and-category-counts.md), [Owner cursor pagination](./2026-10-08-owner-routes-and-batched-conversion.md) |
 | [2026-10-17](./2026-10-17-product-image-media-reference-retention.md) | Product image relations use Product-owned IDs and Media durable reference retention | Accepted | In progress | Extends [Forum attachment relations use a Forum-owned CAS set and Media durable reference retention](./2026-09-24-forum-attachment-relations.md) |

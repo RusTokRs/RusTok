@@ -19,7 +19,13 @@ use validator::Validate;
 use rustok_order::OrderService;
 use rustok_payment::PaymentService;
 
+use rustok_fulfillment::FulfillmentService;
+
 use super::payment_orchestration::{PaymentOrchestrationError, PaymentOrchestrationService};
+use super::return_refund_value::{
+    resolve_return_refund_amount, return_refundable_value,
+    validate_return_quantities_were_shipped,
+};
 
 #[derive(Debug, Error)]
 pub enum PostOrderOrchestrationError {
@@ -309,15 +315,24 @@ impl PostOrderOrchestrationService {
             }
         };
 
-        let amount = match input.amount {
-            Some(amount) => amount,
-            None => return_items_amount(order_return)?,
-        };
-        if amount <= Decimal::ZERO {
-            return Err(PostOrderOrchestrationError::Validation(
-                "refund decision requires a positive amount or priced return items".to_string(),
-            ));
-        }
+        let order = OrderService::new(self.db.clone(), self.event_bus.clone())
+            .get_order(tenant_id, order_id)
+            .await?;
+        let fulfillments = FulfillmentService::new(self.db.clone())
+            .list_by_order(tenant_id, order_id)
+            .await
+            .map_err(|error| PostOrderOrchestrationError::OwnerPort {
+                owner: "fulfillment",
+                error: PortError::unavailable(
+                    "post_order.fulfillment_read_failed",
+                    error.to_string(),
+                ),
+            })?;
+        validate_return_quantities_were_shipped(&order, order_return, &fulfillments)?;
+        let amount = resolve_return_refund_amount(
+            input.amount,
+            return_refundable_value(&order, order_return)?,
+        )?;
 
         PaymentOrchestrationService::new(self.db.clone())
             .with_provider_registry(self.payment_provider_registry.clone())
@@ -609,28 +624,6 @@ fn normalize_object_or_empty(value: Value, field: &str) -> PostOrderOrchestratio
             "{field} must be a JSON object"
         ))),
     }
-}
-
-fn return_items_amount(
-    order_return: &OrderReturnResponse,
-) -> PostOrderOrchestrationResult<Decimal> {
-    order_return
-        .items
-        .iter()
-        .filter_map(|item| item.metadata.get("refund_amount"))
-        .try_fold(Decimal::ZERO, |total, value| {
-            let amount = decimal_from_json_value(value, "refund_amount")?;
-            if amount < Decimal::ZERO {
-                return Err(PostOrderOrchestrationError::Validation(
-                    "refund_amount must not be negative".to_string(),
-                ));
-            }
-            total.checked_add(amount).ok_or_else(|| {
-                PostOrderOrchestrationError::Validation(
-                    "return item refund amount total overflowed Decimal".to_string(),
-                )
-            })
-        })
 }
 
 fn difference_refund_from_order_change(
