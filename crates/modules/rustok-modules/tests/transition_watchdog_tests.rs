@@ -141,7 +141,11 @@ async fn test_watchdog_expired_window_fails_closed_and_retains_holds() {
             .iter()
             .any(|hold| hold.hold_id == rollout_hold_id)
     );
-    assert!(active_holds.iter().any(|hold| hold.hold_id == audit_hold_id));
+    assert!(
+        active_holds
+            .iter()
+            .any(|hold| hold.hold_id == audit_hold_id)
+    );
 }
 
 #[tokio::test]

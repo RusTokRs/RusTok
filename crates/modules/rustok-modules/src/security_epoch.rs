@@ -169,9 +169,7 @@ pub struct SeaOrmSecurityEpochStore;
 impl SeaOrmSecurityEpochStore {
     /// Loads the durable current epoch and the reason for its latest
     /// advancement.
-    pub async fn load_record<C>(
-        db: &C,
-    ) -> Result<SecurityEpochRecord, SecurityEpochStoreError>
+    pub async fn load_record<C>(db: &C) -> Result<SecurityEpochRecord, SecurityEpochStoreError>
     where
         C: sea_orm::ConnectionTrait,
     {
@@ -193,8 +191,7 @@ impl SeaOrmSecurityEpochStore {
         let last_reason: String = row.try_get("", "last_reason")?;
         let advanced_at = match db.get_database_backend() {
             sea_orm::DbBackend::Postgres => {
-                let value: chrono::DateTime<chrono::FixedOffset> =
-                    row.try_get("", "updated_at")?;
+                let value: chrono::DateTime<chrono::FixedOffset> = row.try_get("", "updated_at")?;
                 value.with_timezone(&Utc)
             }
             _ => {
@@ -224,9 +221,7 @@ impl SeaOrmSecurityEpochStore {
     }
 
     /// Loads a validation snapshot from the durable epoch.
-    pub async fn load_registry<C>(
-        db: &C,
-    ) -> Result<SecurityEpochRegistry, SecurityEpochStoreError>
+    pub async fn load_registry<C>(db: &C) -> Result<SecurityEpochRegistry, SecurityEpochStoreError>
     where
         C: sea_orm::ConnectionTrait,
     {

@@ -17,8 +17,7 @@ use uuid::Uuid;
 use rustok_events::DomainEvent;
 
 use crate::{
-    ArtifactReleaseRef, ControlPlaneInfrastructure, ModuleCommandContext,
-    SeaOrmSecurityEpochStore,
+    ArtifactReleaseRef, ControlPlaneInfrastructure, ModuleCommandContext, SeaOrmSecurityEpochStore,
     data::{now_expression, placeholder, uuid_value},
     promotion::{digest_json, valid_digest},
 };

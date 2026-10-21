@@ -257,7 +257,7 @@ impl SeaOrmModuleTransitionService {
         // registry pinned at epoch 1 made the check a permanent no-op.)
         let security_registry = SeaOrmSecurityEpochStore::load_registry(&transaction)
             .await
-            .map_err(store_error)?;
+            .map_err(database_error)?;
         let mut coordinator = ModuleTransitionCoordinator::new(checkpoint);
         coordinator.finalize_convergence(&security_registry)?;
         TransitionCheckpointStore::save_checkpoint(&transaction, coordinator.checkpoint())

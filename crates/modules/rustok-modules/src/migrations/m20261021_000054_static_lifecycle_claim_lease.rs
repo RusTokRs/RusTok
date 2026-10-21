@@ -88,7 +88,10 @@ impl MigrationTrait for Migration {
     }
 }
 
-async fn sqlite_table_exists<C: ConnectionTrait>(connection: &C, table: &str) -> Result<bool, DbErr> {
+async fn sqlite_table_exists<C: ConnectionTrait>(
+    connection: &C,
+    table: &str,
+) -> Result<bool, DbErr> {
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
