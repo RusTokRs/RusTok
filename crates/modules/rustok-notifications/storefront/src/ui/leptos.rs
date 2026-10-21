@@ -642,21 +642,11 @@ async fn load_inbox_snapshot(
 }
 
 fn item_state_label(state: NotificationStorefrontItemState) -> &'static str {
-    match state {
-        NotificationStorefrontItemState::Unread => "Unread",
-        NotificationStorefrontItemState::Seen => "Seen",
-        NotificationStorefrontItemState::Read => "Read",
-        NotificationStorefrontItemState::Archived => "Archived",
-    }
+    state.label()
 }
 
 fn priority_label(priority: NotificationStorefrontPriority) -> &'static str {
-    match priority {
-        NotificationStorefrontPriority::Low => "Low priority",
-        NotificationStorefrontPriority::Normal => "Normal priority",
-        NotificationStorefrontPriority::High => "High priority",
-        NotificationStorefrontPriority::Urgent => "Urgent",
-    }
+    priority.label()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
