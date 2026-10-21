@@ -7,7 +7,7 @@
     "write": "rustok_api::RichTextDocument",
     "read": "rustok_api::RichTextView",
     "plain_text": "server-derived",
-    "resolver_conversion": "typed input.into() delegation with direct content mapping"
+    "resolver_conversion": "typed fallible input.try_into() delegation with direct content mapping"
   },
   "scan_scope": "crates/modules/rustok-blog/src/graphql/**/*.rs",
   "legacy_adapter_fields": [],
@@ -15,8 +15,8 @@
   "conversion_owner": {
     "file": "crates/modules/rustok-blog/src/graphql/types.rs",
     "scopes": [
-      "impl From<CreatePostInput> for DomainCreatePostInput",
-      "impl From<UpdatePostInput> for DomainUpdatePostInput"
+      "impl TryFrom<CreatePostInput> for DomainCreatePostInput",
+      "impl TryFrom<UpdatePostInput> for DomainUpdatePostInput"
     ],
     "reason": "target-only typed GraphQL-to-owner conversion"
   },
@@ -26,7 +26,7 @@
       "markers": [
         "create_post_input_conversion_preserves_canonical_content",
         "RichTextDocument::single_paragraph",
-        "let domain: DomainCreatePostInput = input.into();",
+        "input.try_into().expect(\"valid input converts\");",
         "assert_eq!(domain.content, canonical)"
       ]
     },
@@ -35,7 +35,7 @@
       "markers": [
         "update_post_input_conversion_preserves_canonical_content",
         "RichTextDocument::single_paragraph",
-        "let domain: DomainUpdatePostInput = input.into();",
+        "input.try_into().expect(\"valid update input converts\");",
         "assert_eq!(domain.content, Some(canonical))"
       ]
     }

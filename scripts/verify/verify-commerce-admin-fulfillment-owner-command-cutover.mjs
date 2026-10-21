@@ -68,7 +68,7 @@ requireText(legacy, "FulfillmentOrchestrationService::new(runtime.db_clone())", 
 requireText(httpRuntime, "fulfillment_admin_command_runtime: rustok_fulfillment::FulfillmentAdminCommandRuntime", "Commerce Fulfillment command runtime field");
 requireText(httpRuntime, "fn fulfillment_admin_command_port(", "Commerce Fulfillment command accessor");
 requireText(httpRuntime, ".shared_get::<rustok_fulfillment::FulfillmentAdminCommandRuntime>()", "host-selected Fulfillment command runtime preference");
-requireText(httpRuntime, "rustok_fulfillment::FulfillmentAdminCommandRuntime::in_process(", "built-in Fulfillment owner fallback");
+requireText(httpRuntime, "crate::fulfillment_admin_command_runtime(", "built-in Fulfillment owner fallback with the inventory-backed stock port");
 requireText(httpRuntime, "fulfillment_provider_registry.clone()", "host Fulfillment provider registry reuse");
 
 for (const symbol of [

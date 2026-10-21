@@ -37,7 +37,11 @@ pub struct BlogStorefrontFetchRequest {
     pub locale: Option<String>,
     pub tag: Option<String>,
     pub category_id: Option<String>,
+    /// Opaque keyset cursor (`next_cursor` of the previous posts page).
+    pub posts_after: Option<String>,
 }
+
+pub const POSTS_CURSOR_QUERY_KEY: &str = "postsCursor";
 
 pub fn build_storefront_route_state(
     route_slug: Option<String>,
@@ -85,6 +89,7 @@ pub fn build_storefront_fetch_request(
         locale: locale.as_deref().and_then(normalize_ui_text),
         tag: route_state.tag.clone(),
         category_id: route_state.category_id.clone(),
+        posts_after: None,
     }
 }
 

@@ -24,6 +24,7 @@ use crate::services::{
     PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_EXECUTING,
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
 };
+use crate::shipment_stock::ShipmentStockPort;
 use crate::status::FulfillmentStatusKind;
 
 const ADMIN_COMMAND_BOUNDARY: &str = "fulfillment_admin_command_port";
@@ -105,6 +106,13 @@ impl InProcessFulfillmentAdminCommandPort {
             provider_registry,
         }
     }
+
+    /// Wires the stock owner used by ship / cancel / reopen. Without it those commands fail.
+    #[must_use]
+    pub fn with_shipment_stock_port(self, port: Arc<dyn ShipmentStockPort>) -> Self {
+        let service = self.service.with_shipment_stock_port(port);
+        Self { service, ..self }
+    }
 }
 
 pub fn in_process_fulfillment_admin_command_port(
@@ -134,6 +142,18 @@ impl FulfillmentAdminCommandRuntime {
         Self::new(in_process_fulfillment_admin_command_port(
             db,
             provider_registry,
+        ))
+    }
+
+    /// In-process runtime whose lifecycle commands move stock through `shipment_stock`.
+    pub fn in_process_with_shipment_stock(
+        db: DatabaseConnection,
+        provider_registry: FulfillmentProviderRegistry,
+        shipment_stock: Arc<dyn ShipmentStockPort>,
+    ) -> Self {
+        Self::new(Arc::new(
+            InProcessFulfillmentAdminCommandPort::new(db, provider_registry)
+                .with_shipment_stock_port(shipment_stock),
         ))
     }
 

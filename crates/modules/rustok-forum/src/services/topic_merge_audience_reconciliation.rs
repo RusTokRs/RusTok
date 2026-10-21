@@ -96,13 +96,43 @@ impl ForumTopicMergeAudienceReconciliationService {
         let reason = validate_input(tenant_id, merge_operation_id, actor_id, &input)?;
 
         let txn = self.db.begin().await?;
-        lock_reconciliation_tenant_in_tx(&txn, tenant_id).await?;
+        let operation = self
+            .reconcile_in_tx(
+                &txn,
+                tenant_id,
+                merge_operation_id,
+                actor_id,
+                input.operation_id,
+                &reason,
+            )
+            .await?
+            .ok_or_else(|| ForumError::TopicMergeAudienceReconciliationConflict(input.operation_id))?;
+        txn.commit().await?;
+        Ok(operation_to_result(operation))
+    }
+
+    /// Transaction-composed core of [`Self::reconcile_merge_audience`]. The Forum
+    /// topic merge owner calls it inside the merge transaction so source-topic
+    /// audience memberships follow the retained target atomically with every other merge
+    /// effect. Returns the persisted reconciliation row, or `None` when a
+    /// reconciliation for this merge operation already ran — the caller treats
+    /// `None` as an idempotent no-op.
+    pub(crate) async fn reconcile_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        merge_operation_id: Uuid,
+        actor_id: Uuid,
+        operation_id: Uuid,
+        reason: &str,
+    ) -> ForumResult<Option<forum_topic_merge_audience_reconciliation::Model>> {
+        lock_reconciliation_tenant_in_tx(txn, tenant_id).await?;
 
         if let Some(existing) = forum_topic_merge_audience_reconciliation::Entity::find_by_id((
             tenant_id,
-            input.operation_id,
+            operation_id,
         ))
-        .one(&txn)
+        .one(txn)
         .await?
         {
             if existing.merge_operation_id != merge_operation_id
@@ -110,19 +140,18 @@ impl ForumTopicMergeAudienceReconciliationService {
                 || existing.reason != reason
             {
                 return Err(ForumError::TopicMergeAudienceReconciliationConflict(
-                    input.operation_id,
+                    operation_id,
                 ));
             }
-            validate_reconciliation_event_in_tx(&txn, &existing).await?;
+            validate_reconciliation_event_in_tx(txn, &existing).await?;
             lock_topic_audience_scopes_in_tx(
-                &txn,
+                txn,
                 tenant_id,
                 &[existing.source_topic_id, existing.target_topic_id],
             )
             .await?;
-            ensure_source_audience_empty_in_tx(&txn, tenant_id, existing.source_topic_id).await?;
-            txn.commit().await?;
-            return Ok(operation_to_result(existing));
+            ensure_source_audience_empty_in_tx(txn, tenant_id, existing.source_topic_id).await?;
+            return Ok(Some(existing));
         }
 
         if forum_topic_merge_audience_reconciliation::Entity::find()
@@ -131,18 +160,20 @@ impl ForumTopicMergeAudienceReconciliationService {
                 forum_topic_merge_audience_reconciliation::Column::MergeOperationId
                     .eq(merge_operation_id),
             )
-            .one(&txn)
+            .one(txn)
             .await?
             .is_some()
         {
-            return Err(ForumError::TopicMergeAudienceReconciliationConflict(
-                input.operation_id,
-            ));
+            // The reconciliation for this merge already ran (in the merge
+            // transaction itself or through this owner): replaying would
+            // duplicate the audit row, so the caller receives an idempotent
+            // no-op instead.
+            return Ok(None);
         }
 
         let merge =
             forum_topic_merge_operation::Entity::find_by_id((tenant_id, merge_operation_id))
-                .one(&txn)
+                .one(txn)
                 .await?
                 .ok_or_else(|| {
                     ForumError::Validation(
@@ -150,10 +181,10 @@ impl ForumTopicMergeAudienceReconciliationService {
                         .to_string(),
                 )
                 })?;
-        validate_merge_event_in_tx(&txn, &merge).await?;
+        validate_merge_event_in_tx(txn, &merge).await?;
 
         let topics = lock_topic_rows_for_audience_in_tx(
-            &txn,
+            txn,
             tenant_id,
             &[merge.source_topic_id, merge.target_topic_id],
         )
@@ -191,14 +222,14 @@ impl ForumTopicMergeAudienceReconciliationService {
         }
 
         lock_topic_audience_scopes_in_tx(
-            &txn,
+            txn,
             tenant_id,
             &[merge.source_topic_id, merge.target_topic_id],
         )
         .await?;
 
-        let source_layer = load_local_layer(&txn, tenant_id, merge.source_topic_id).await?;
-        let target_layer = load_local_layer(&txn, tenant_id, merge.target_topic_id).await?;
+        let source_layer = load_local_layer(txn, tenant_id, merge.source_topic_id).await?;
+        let target_layer = load_local_layer(txn, tenant_id, merge.target_topic_id).await?;
         let outcome = match (&source_layer, &target_layer) {
             (None, None) => ForumTopicMergeAudienceOutcome::BothUnrestricted,
             (None, Some(_)) => ForumTopicMergeAudienceOutcome::TargetOnlyPreserved,
@@ -207,16 +238,16 @@ impl ForumTopicMergeAudienceReconciliationService {
                     tenant_id,
                     merge.source_topic_id,
                 ))
-                .one(&txn)
+                .one(txn)
                 .await?
                 .ok_or_else(|| {
                     ForumError::Validation(
                         "Forum source topic audience layer is missing its policy row".to_string(),
                     )
                 })?;
-                delete_local_layer_in_tx(&txn, tenant_id, merge.source_topic_id).await?;
+                delete_local_layer_in_tx(txn, tenant_id, merge.source_topic_id).await?;
                 insert_local_layer_in_tx(
-                    &txn,
+                    txn,
                     tenant_id,
                     merge.target_topic_id,
                     source_constraints,
@@ -228,7 +259,7 @@ impl ForumTopicMergeAudienceReconciliationService {
             (Some(source_constraints), Some(target_constraints))
                 if source_constraints == target_constraints =>
             {
-                delete_local_layer_in_tx(&txn, tenant_id, merge.source_topic_id).await?;
+                delete_local_layer_in_tx(txn, tenant_id, merge.source_topic_id).await?;
                 ForumTopicMergeAudienceOutcome::EqualLayersDeduplicated
             }
             (Some(_), Some(_)) => {
@@ -238,11 +269,11 @@ impl ForumTopicMergeAudienceReconciliationService {
             }
         };
 
-        ensure_source_audience_empty_in_tx(&txn, tenant_id, merge.source_topic_id).await?;
+        ensure_source_audience_empty_in_tx(txn, tenant_id, merge.source_topic_id).await?;
         match outcome {
             ForumTopicMergeAudienceOutcome::SourceOnlyMoved
             | ForumTopicMergeAudienceOutcome::EqualLayersDeduplicated => {
-                let target_after = load_local_layer(&txn, tenant_id, merge.target_topic_id).await?;
+                let target_after = load_local_layer(txn, tenant_id, merge.target_topic_id).await?;
                 if target_after != source_layer {
                     return Err(ForumError::Validation(
                         "Forum retained topic audience layer does not match the reconciled source layer"
@@ -251,7 +282,7 @@ impl ForumTopicMergeAudienceReconciliationService {
                 }
             }
             ForumTopicMergeAudienceOutcome::BothUnrestricted => {
-                if load_local_layer(&txn, tenant_id, merge.target_topic_id)
+                if load_local_layer(txn, tenant_id, merge.target_topic_id)
                     .await?
                     .is_some()
                 {
@@ -261,7 +292,7 @@ impl ForumTopicMergeAudienceReconciliationService {
                 }
             }
             ForumTopicMergeAudienceOutcome::TargetOnlyPreserved => {
-                if load_local_layer(&txn, tenant_id, merge.target_topic_id).await? != target_layer {
+                if load_local_layer(txn, tenant_id, merge.target_topic_id).await? != target_layer {
                     return Err(ForumError::Validation(
                         "Forum retained topic audience layer changed during reconciliation"
                             .to_string(),
@@ -272,16 +303,16 @@ impl ForumTopicMergeAudienceReconciliationService {
 
         let now = Utc::now();
         let payload = reconciliation_payload(
-            input.operation_id,
+            operation_id,
             merge_operation_id,
             merge.source_topic_id,
             merge.target_topic_id,
             outcome,
-            &reason,
+            reason,
         );
         forum_domain_event::ActiveModel {
             sequence_no: NotSet,
-            event_id: Set(input.operation_id),
+            event_id: Set(operation_id),
             tenant_id: Set(tenant_id),
             aggregate_type: Set(FORUM_TOPIC_MERGE_AUDIENCE_AGGREGATE_TYPE.to_string()),
             aggregate_id: Set(merge.target_topic_id),
@@ -291,27 +322,27 @@ impl ForumTopicMergeAudienceReconciliationService {
             payload: Set(payload),
             created_at: Set(now.into()),
         }
-        .insert(&txn)
+        .insert(txn)
         .await?;
 
         let operation = forum_topic_merge_audience_reconciliation::ActiveModel {
             tenant_id: Set(tenant_id),
-            operation_id: Set(input.operation_id),
+            operation_id: Set(operation_id),
             merge_operation_id: Set(merge_operation_id),
             source_topic_id: Set(merge.source_topic_id),
             target_topic_id: Set(merge.target_topic_id),
             actor_id: Set(actor_id),
-            reason: Set(reason),
+            reason: Set(reason.to_string()),
             outcome: Set(outcome),
-            event_id: Set(input.operation_id),
+            event_id: Set(operation_id),
             reconciled_at: Set(now.into()),
         }
-        .insert(&txn)
+        .insert(txn)
         .await?;
 
         publish_forum_topic_projection_in_tx(
             &self.event_bus,
-            &txn,
+            txn,
             tenant_id,
             Some(actor_id),
             merge.source_topic_id,
@@ -319,15 +350,15 @@ impl ForumTopicMergeAudienceReconciliationService {
         .await?;
         publish_forum_topic_projection_in_tx(
             &self.event_bus,
-            &txn,
+            txn,
             tenant_id,
             Some(actor_id),
             merge.target_topic_id,
         )
         .await?;
 
-        txn.commit().await?;
-        Ok(operation_to_result(operation))
+
+        Ok(Some(operation))
     }
 }
 

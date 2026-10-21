@@ -32,7 +32,8 @@ use crate::dto::{
     PublishedPostCursor, PublishedPostScanPage, UpdatePostInput,
 };
 use crate::entities::{
-    blog_post, blog_post_channel_visibility, blog_post_tag, blog_post_translation,
+    blog_comment_projection_delivery, blog_post, blog_post_channel_visibility, blog_post_tag,
+    blog_post_translation,
 };
 use crate::error::{BlogError, BlogResult};
 use crate::richtext::{canonical_article_body, normalize_article, project_stored_article};
@@ -258,8 +259,24 @@ fn validate_tags(tags: &[String]) -> BlogResult<()> {
     if tags.len() > 20 {
         return Err(BlogError::validation("Cannot have more than 20 tags"));
     }
+    // The Tag owner contract, enforced here at the post boundary so an invalid
+    // name is a validation error for the caller instead of a Taxonomy or
+    // database failure deep inside the tag sync transaction.
+    for tag in tags {
+        let name = tag.trim();
+        if name.is_empty() {
+            return Err(BlogError::validation("Tag name cannot be empty"));
+        }
+        if name.chars().count() > MAX_TAG_NAME_CHARS {
+            return Err(BlogError::validation(format!(
+                "Tag name cannot exceed {MAX_TAG_NAME_CHARS} characters"
+            )));
+        }
+    }
     Ok(())
 }
+
+pub(crate) const MAX_TAG_NAME_CHARS: usize = 100;
 
 fn validate_post_field_length(
     value: Option<&str>,

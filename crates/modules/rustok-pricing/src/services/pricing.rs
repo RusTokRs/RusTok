@@ -890,6 +890,7 @@ impl PricingService {
                 "Compare at price must be greater than amount".into(),
             ));
         }
+        validate_price_precision(amount, compare_at_amount, &currency_code)?;
 
         let existing = entities::price::Entity::find()
             .filter(entities::price::Column::VariantId.eq(variant_id))
@@ -1025,6 +1026,11 @@ impl PricingService {
                     "Compare at price must be greater than amount".into(),
                 ));
             }
+            validate_price_precision(
+                price_input.amount,
+                price_input.compare_at_amount,
+                &normalized_currency,
+            )?;
 
             let existing = entities::price::Entity::find()
                 .filter(entities::price::Column::VariantId.eq(variant_id))
@@ -2353,6 +2359,27 @@ fn admin_pricing_price_from_model(price: entities::price::Model) -> AdminPricing
         min_quantity: price.min_quantity,
         max_quantity: price.max_quantity,
     }
+}
+
+/// Stored prices must be exactly representable in the currency's minor units. Otherwise the
+/// catalog accepts a price (e.g. 9.995 USD) that events round and payment providers reject only
+/// after an order and inventory reservation already exist.
+#[allow(clippy::result_large_err)]
+fn validate_price_precision(
+    amount: Decimal,
+    compare_at_amount: Option<Decimal>,
+    currency_code: &str,
+) -> CommerceResult<()> {
+    for (label, value) in [("Amount", Some(amount)), ("Compare at price", compare_at_amount)] {
+        if let Some(value) = value {
+            money::to_minor_units_exact(value, currency_code).map_err(|error| {
+                CommerceError::InvalidPrice(format!(
+                    "{label} {value} is not representable in {currency_code} minor units: {error}"
+                ))
+            })?;
+        }
+    }
+    Ok(())
 }
 
 #[allow(clippy::result_large_err)]

@@ -89,11 +89,13 @@ async fn restarted_handler_reuses_delivery_ledger_without_reapplying_counter() -
     let envelope = EventEnvelope::new(
         tenant_id,
         Some(actor_id),
-        DomainEvent::CommentCreated {
+        DomainEvent::CommentStatusChanged {
             comment_id: Uuid::new_v4(),
             target_type: "blog_post".to_string(),
             target_id: post_id,
             author_id: actor_id,
+            old_status: "pending".to_string(),
+            new_status: "approved".to_string(),
         },
     );
     insert_post(&test_db.db, tenant_id, post_id, actor_id).await?;
@@ -131,11 +133,13 @@ async fn restarted_process_reuses_delivery_ledger_without_reapplying_counter() -
     let envelope = EventEnvelope::new(
         tenant_id,
         Some(actor_id),
-        DomainEvent::CommentCreated {
+        DomainEvent::CommentStatusChanged {
             comment_id,
             target_type: "blog_post".to_string(),
             target_id: post_id,
             author_id: actor_id,
+            old_status: "pending".to_string(),
+            new_status: "approved".to_string(),
         },
     );
     insert_post(&test_db.db, tenant_id, post_id, actor_id).await?;
@@ -186,11 +190,13 @@ async fn process_restart_worker_applies_envelope_from_env() -> TestResult<()> {
     let mut envelope = EventEnvelope::new(
         tenant_id,
         Some(actor_id),
-        DomainEvent::CommentCreated {
+        DomainEvent::CommentStatusChanged {
             comment_id,
             target_type: "blog_post".to_string(),
             target_id: post_id,
             author_id: actor_id,
+            old_status: "pending".to_string(),
+            new_status: "approved".to_string(),
         },
     );
     envelope.id = event_id;

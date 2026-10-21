@@ -79,7 +79,10 @@ impl BlogSearchProjectionSource {
 
         let post_ids = posts.iter().map(|p| p.id).collect::<Vec<_>>();
 
-        // 1. Load translations
+        // 1. Load translations. The translation table carries no tenant
+        // column; tenant isolation is inherited from the caller, which only
+        // ever passes posts already filtered by `tenant_id` (see
+        // `list_public_documents`), so these post ids cannot cross tenants.
         let translations = blog_post_translation::Entity::find()
             .filter(blog_post_translation::Column::PostId.is_in(post_ids.clone()))
             .all(&self.db)
@@ -198,6 +201,25 @@ impl BlogSearchProjectionSource {
                 .collect::<Vec<_>>()
                 .join(" ");
 
+                // The searchable body is the article's plain text, not the
+                // excerpt: indexing only the excerpt made full-text search
+                // blind to everything written in the article itself. A stored
+                // body that no longer satisfies the article contract degrades
+                // to the excerpt with a warning instead of aborting the page.
+                let body_text = match crate::richtext::project_stored_article(&translation.body) {
+                    Ok((_, text)) => text,
+                    Err(error) => {
+                        tracing::warn!(
+                            tenant_id = %tenant_id,
+                            post_id = %post.id,
+                            locale = %translation.locale,
+                            %error,
+                            "Blog Search projection could not project a stored article body; indexing the excerpt instead"
+                        );
+                        translation.excerpt.clone().unwrap_or_default()
+                    }
+                };
+
                 documents.push(SearchProjectionDocument {
                     document_key: format!("blog_post:{}:{}", post.id, translation.locale),
                     tenant_id,
@@ -206,12 +228,12 @@ impl BlogSearchProjectionSource {
                     entity_type: BLOG_POST_ENTITY_TYPE.to_string(),
                     locale: translation.locale.clone(),
                     status: post.status.clone(),
-                    is_public: post.status == "published",
+                    is_public: post.status == "published" && post.published_at.is_some(),
                     title: translation.title.clone(),
                     subtitle: category_name.clone(),
                     slug: Some(post.slug.clone()),
                     handle: None,
-                    body: translation.excerpt.clone().unwrap_or_default(),
+                    body: body_text,
                     keywords_text,
                     facets: json!({
                         "has_category": post.category_id.is_some(),
@@ -335,13 +357,18 @@ impl SearchProjectionSource for BlogSearchProjectionSource {
         }
 
         select = order_public_post_list(select);
-        let posts = select
-            .limit(limit as u64)
+        // Fetch one extra row: `posts.len() == limit` alone cannot tell a
+        // full-but-final page from a page with a successor, and used to emit
+        // a spurious cursor that resolved to an empty page.
+        let mut posts = select
+            .limit(limit as u64 + 1)
             .all(&self.db)
             .await
             .map_err(Error::Database)?;
 
-        let next_cursor = if posts.len() == limit {
+        let has_next_page = posts.len() > limit;
+        posts.truncate(limit);
+        let next_cursor = if has_next_page {
             posts
                 .last()
                 .and_then(|p| public_post_cursor(p).ok())

@@ -131,6 +131,15 @@ pub use services::{
     FulfillmentOrchestrationError, FulfillmentOrchestrationService,
     JournaledFulfillmentOrchestrationService,
 };
+pub use services::{
+    InventoryShipmentStockPort, fulfillment_admin_command_runtime, fulfillment_service,
+    inventory_shipment_stock_port,
+};
+pub use services::{
+    OrchestratedOrderAdminCommandPort, OrderCancellationOrchestrator, OrderShipmentProjector,
+    ProjectingFulfillmentAdminCommandPort, orchestrated_order_admin_command_runtime,
+    projecting_fulfillment_admin_command_runtime,
+};
 pub(crate) use storefront_checkout_pricing::StorefrontCheckoutPricingResolver;
 
 pub struct CommerceModule;

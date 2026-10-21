@@ -1,5 +1,5 @@
 use rustok_fulfillment::providers::FulfillmentProviderRegistry;
-use rustok_fulfillment::{FulfillmentService, FulfillmentStatusKind};
+use rustok_fulfillment::FulfillmentStatusKind;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -126,7 +126,7 @@ impl FulfillmentOrchestrationService {
             %fulfillment_id,
             "facade deliver_fulfillment"
         );
-        FulfillmentService::new(self.db.clone())
+        super::shipment_stock::fulfillment_service(self.db.clone())
             .deliver_fulfillment(tenant_id, fulfillment_id, input)
             .await
             .map_err(Into::into)
@@ -154,7 +154,7 @@ impl FulfillmentOrchestrationService {
             %fulfillment_id,
             "facade reopen_fulfillment"
         );
-        FulfillmentService::new(self.db.clone())
+        super::shipment_stock::fulfillment_service(self.db.clone())
             .reopen_fulfillment(tenant_id, fulfillment_id, input)
             .await
             .map_err(Into::into)
@@ -182,7 +182,7 @@ impl FulfillmentOrchestrationService {
             %fulfillment_id,
             "facade reship_fulfillment"
         );
-        let current = FulfillmentService::new(self.db.clone())
+        let current = super::shipment_stock::fulfillment_service(self.db.clone())
             .get_fulfillment(tenant_id, fulfillment_id)
             .await?;
         if current.status_kind() == FulfillmentStatusKind::Shipped

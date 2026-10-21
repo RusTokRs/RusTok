@@ -76,6 +76,14 @@
 - `delivered_note` and `cancellation_reason` belong to fulfillment history and preserve their original operational context. Translation must not retroactively rewrite those facts.
 - Any future mutable Fulfillment presentation surface must be introduced as its own typed owner resource with exact locale storage, CAS/idempotency and change evidence instead of widening the aggregate row or scanning metadata.
 
+## Shipment stock port
+
+`ShipmentStockPort` (`consume_shipped`, `restore_unshipped`, `reconsume_restored`) is declared here
+and implemented by the host composition (`rustok-commerce` wires the inventory-backed adapter).
+`FulfillmentService::new` is fail-closed: ship, cancel of a shipped fulfillment and reopen of a
+cancelled one fail until `with_shipment_stock_port` is called; use `NoopShipmentStockPort` for
+deployments without stock tracking. See `DECISIONS/2026-10-21-shipment-stock-port-and-return-restock.md`.
+
 ## Interactions
 
 - Depends on `rustok-core` for module contracts and fulfillment permission vocabulary.

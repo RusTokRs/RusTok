@@ -6,9 +6,11 @@ use rustok_fulfillment::dto::{
     ShippingOptionTranslationInput, UpdateShippingOptionInput,
 };
 use rustok_fulfillment::error::FulfillmentError;
+use rustok_fulfillment::NoopShipmentStockPort;
 use rustok_fulfillment::services::FulfillmentService;
 use rustok_test_utils::db::setup_test_db;
 use std::str::FromStr;
+use std::sync::Arc;
 use uuid::Uuid;
 
 mod support;
@@ -16,7 +18,8 @@ mod support;
 async fn setup() -> FulfillmentService {
     let db = setup_test_db().await;
     support::ensure_fulfillment_schema(&db).await;
-    FulfillmentService::new(db)
+    // Stock movement is exercised in `rustok-commerce`'s inventory tests.
+    FulfillmentService::new(db).with_shipment_stock_port(Arc::new(NoopShipmentStockPort))
 }
 
 fn create_shipping_option_input() -> CreateShippingOptionInput {

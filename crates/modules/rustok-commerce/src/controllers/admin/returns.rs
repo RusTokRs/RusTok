@@ -510,6 +510,7 @@ pub async fn create_order_return_decision(
         runtime.order_post_order_command_port(),
         runtime.payment_admin_read_port(),
     )
+    .with_order_read_port(runtime.order_read_port())
     .with_payment_provider_registry(runtime.payment_provider_registry());
     let decision = service
         .create_return_decision(context.clone(), tenant.id, id, input)

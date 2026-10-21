@@ -65,6 +65,16 @@
   archives the source as a canonical tombstone, and transfers only the exact
   published-reply aggregate from source category to target category with checked,
   fail-closed arithmetic.
+- A same-category merge additionally runs the five topic-scoped follow-up
+  reconciliations (subscriptions, read states, votes, tags, audience membership)
+  inside the same transaction through each domain owner's idempotent core. The
+  relations follow the retained target atomically with the merge receipt, keyed
+  by deterministic operation ids derived from the merge operation, so an exact
+  merge retry replays them as no-ops. Cross-category merges intentionally skip
+  this stage: the relations are category-local and the owners reject category
+  mismatches, so they stay stranded on the tombstone until a later operator
+  repair (reconciliation entries fail closed instead of rewriting membership
+  semantics silently).
 - `m20260803_000019_allow_cross_category_topic_merge_redirect_edges` permits the
   archived source tombstone to differ from the receipt target category while
   retaining all target-category, active-target and unique-source-edge guards.
@@ -115,7 +125,13 @@
 - Per-user forum stats live in forum-owned services and transport adapters; the
   module tracks `topic_count`, `reply_count`, and `solution_count` through topic/reply
   lifecycle and accepted-solution transitions, and exposes a dedicated read-path for
-  user-level stats.
+  user-level stats. Known counter drift: archiving a topic that contains approved
+  replies or a live accepted solution compensates only the category/topic aggregates;
+  the reply authors' and solution author's per-user `reply_count` / `solution_count`
+  stay inflated until the topic is soft-deleted (delete-time user-stat recompute) or
+  the scheduled FORUM-33 counter reconciliation re-enumerates the user. Archival is
+  reversible, so the drift resolves on restore or delete; permanent correction of the
+  archive edge is tracked FORUM-33 follow-up work.
 - Topic tag write-paths resolve existing global taxonomy tags before creating
   new forum-local terms, while forum responses still expose the same `Vec<String>`
   tag contract.

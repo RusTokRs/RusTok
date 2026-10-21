@@ -88,7 +88,7 @@ fn test_create_and_update_category_input_conversions() {
         settings: Some("{\"featured\": true}".to_string()),
     };
 
-    let domain: rustok_blog::dto::CreateCategoryInput = input.into();
+    let domain: rustok_blog::dto::CreateCategoryInput = input.try_into().expect("valid input converts");
     assert_eq!(domain.locale, "en");
     assert_eq!(domain.name, "Tech");
     assert_eq!(domain.slug, Some("tech".to_string()));
@@ -103,8 +103,35 @@ fn test_create_and_update_category_input_conversions() {
         description: None,
         settings: None,
     };
-    let domain_update: rustok_blog::dto::UpdateCategoryInput = update.into();
+    let domain_update: rustok_blog::dto::UpdateCategoryInput = update.try_into().expect("valid update converts");
     assert_eq!(domain_update.locale, "en");
     assert_eq!(domain_update.name, Some("Technology".to_string()));
     assert_eq!(domain_update.slug, None);
+}
+
+#[test]
+fn category_input_conversion_rejects_invalid_settings_json() {
+    let invalid_create = CreateBlogCategoryInput {
+        locale: "en".to_string(),
+        name: "Tech".to_string(),
+        slug: None,
+        description: None,
+        parent_id: None,
+        position: None,
+        settings: Some("{not json".to_string()),
+    };
+    let create_result =
+        rustok_blog::dto::CreateCategoryInput::try_from(invalid_create);
+    assert!(create_result.is_err());
+
+    let invalid_update = UpdateBlogCategoryInput {
+        locale: "en".to_string(),
+        name: None,
+        slug: None,
+        description: None,
+        settings: Some("[1,".to_string()),
+    };
+    let update_result =
+        rustok_blog::dto::UpdateCategoryInput::try_from(invalid_update);
+    assert!(update_result.is_err());
 }

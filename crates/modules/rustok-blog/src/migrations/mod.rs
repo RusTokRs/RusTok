@@ -28,6 +28,7 @@ mod m20261009_000033_add_blog_post_scheduled_at;
 mod m20261009_000034_create_blog_preview_tokens;
 mod m20261009_000035_add_blog_post_pinned;
 mod m20261017_000036_enforce_blog_comment_projection_delivery_integrity;
+mod m20261021_000037_enforce_blog_post_column_integrity;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -64,6 +65,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261009_000034_create_blog_preview_tokens::Migration),
         Box::new(m20261009_000035_add_blog_post_pinned::Migration),
         Box::new(m20261017_000036_enforce_blog_comment_projection_delivery_integrity::Migration),
+        Box::new(m20261021_000037_enforce_blog_post_column_integrity::Migration),
     ]
 }
 
@@ -157,6 +159,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20261017_000036_enforce_blog_comment_projection_delivery_integrity",
             vec!["m20261009_000035_add_blog_post_pinned"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20261021_000037_enforce_blog_post_column_integrity",
+            vec!["m20261017_000036_enforce_blog_comment_projection_delivery_integrity"],
         ),
     ]
 }

@@ -18,6 +18,7 @@ mod comment_assets;
 pub mod comments;
 pub mod openapi;
 pub mod posts;
+pub mod tags;
 
 #[derive(Clone)]
 pub struct BlogHttpRuntime {
@@ -112,7 +113,7 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
         .route("/api/blog/posts/{id}/restore", post(posts::restore_post))
         .route("/api/blog/posts/{id}/pin", post(posts::pin_post))
         .route("/api/blog/posts/{id}/unpin", post(posts::unpin_post))
-        .route("/api/blog/preview/{token}", get(posts::preview_post))
+        .route("/api/blog/preview", get(posts::preview_post))
         .route(
             "/api/blog/categories",
             get(categories::list_categories).post(categories::create_category),
@@ -130,6 +131,52 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
         .route(
             "/api/blog/comments/{id}/moderate",
             post(comments::moderate_comment),
+        )
+        .route(
+            "/api/blog/posts/{id}/comments",
+            get(comments::list_comments).post(comments::create_comment),
+        )
+        .route(
+            "/api/blog/comments/{id}",
+            get(comments::get_comment)
+                .put(comments::update_comment)
+                .delete(comments::delete_comment),
+        )
+        .route(
+            "/api/blog/tags",
+            get(tags::list_tags).post(tags::create_tag),
+        )
+        .route(
+            "/api/blog/tags/{id}",
+            get(tags::get_tag).put(tags::update_tag).delete(tags::delete_tag),
+        )
+        .route(
+            "/api/blog/posts/bulk/publish",
+            post(posts::bulk_publish_posts),
+        )
+        .route(
+            "/api/blog/posts/bulk/unpublish",
+            post(posts::bulk_unpublish_posts),
+        )
+        .route(
+            "/api/blog/posts/bulk/archive",
+            post(posts::bulk_archive_posts),
+        )
+        .route(
+            "/api/blog/posts/bulk/restore",
+            post(posts::bulk_restore_posts),
+        )
+        .route(
+            "/api/blog/posts/bulk/delete",
+            post(posts::bulk_delete_posts),
+        )
+        .route(
+            "/api/blog/posts/{id}/preview-tokens",
+            get(posts::list_preview_tokens).post(posts::create_preview_token),
+        )
+        .route(
+            "/api/blog/preview-tokens/{id}",
+            axum::routing::delete(posts::revoke_preview_token),
         )
         .with_state(state);
     #[cfg(feature = "comment-assets")]

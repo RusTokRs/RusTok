@@ -87,7 +87,7 @@ sameSet(
      'delete_before_create_stays_non_negative_and_replays_in_order',
     'missing_post_replay_commits_only_after_source_appears',
     'outbox_failure_rolls_back_counter_and_delivery_before_retry',
-    'update_and_status_events_advance_projection_cursor_without_count_change',
+    'approval_counts_once_and_update_events_preserve_the_count',
   ],
   'comments event projection PostgreSQL cases',
 );
@@ -303,7 +303,7 @@ hasAll(projectionPostgresHarness, [
   'async fn delete_before_create_stays_non_negative_and_replays_in_order()',
   'async fn missing_post_replay_commits_only_after_source_appears()',
   'async fn outbox_failure_rolls_back_counter_and_delivery_before_retry()',
-  'async fn update_and_status_events_advance_projection_cursor_without_count_change()',
+  'async fn approval_counts_once_and_update_events_preserve_the_count()',
   'DROP TABLE sys_events',
   'CREATE TABLE blog_comment_projection_deliveries',
   'CREATE TABLE sys_events',

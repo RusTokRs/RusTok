@@ -71,12 +71,14 @@ function fixture({
 ${duplicateTargetType ? 'const BLOG_POST_TARGET_TYPE: &str = "blog_post";\n' : ''}target_type == BLOG_POST_TARGET_TYPE
 target_type == BLOG_POST_TARGET_TYPE
 target_type == BLOG_POST_TARGET_TYPE
+target_type == BLOG_POST_TARGET_TYPE
 struct CommentProjectionChange
 fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionChange>
 DomainEvent::CommentCreated
-delta: 1
+counted: Some(false)
 DomainEvent::CommentUpdated\nDomainEvent::CommentStatusChanged\nDomainEvent::CommentDeleted
-delta: -1
+counted: Some(false)
+counted: Some(new_status == "approved")
 fn projection_applied_delta(previous_delta: Option<i32>, current_delta: i32) -> i32
 fn next_comment_count(comment_count: i32, delta: i32)
 comment_count.saturating_add(delta).max(0)
@@ -87,11 +89,11 @@ async fn project(&self, envelope: &EventEnvelope) {
 let txn = self.db.begin().await?;
 ${missingPostLock ? '' : `let Some(post) = blog_post::Entity::find_by_id(change.post_id)\n${missingTenantScope ? '' : '.filter(blog_post::Column::TenantId.eq(envelope.tenant_id))\n'}.lock_exclusive()`}
 ${missingDeliveryOrdering ? '' : 'order_by_desc(blog_comment_projection_delivery::Column::EventId)\ndelivery.event_id >= envelope.id'}
-${missingStateDelta ? '' : 'let applied_delta = projection_applied_delta(\nlet next_comment_count = next_comment_count(post.comment_count, applied_delta);\n'}
+${missingStateDelta ? '' : 'let (applied_delta, counted) = projection_applied_delta(\nlet next_comment_count = next_comment_count(post.comment_count, applied_delta);\n'}
 let post_updated =
 ${missingTenantScope ? '' : 'Column::TenantId.eq(envelope.tenant_id)'}
 Column::CommentCount.eq(post.comment_count)
-delta: Set(change.delta)
+delta: Set(i32::from(counted))
 OnConflict::column(blog_comment_projection_delivery::Column::EventId)
 .do_nothing()
 .insert(&txn)
@@ -163,7 +165,7 @@ async fn duplicate_delivery_updates_counter_and_outbox_once()
 handler.handle(&envelope).await?;
 ${dispatcherSource}
 ${concurrencySource}
-async fn update_and_status_events_advance_projection_cursor_without_count_change()
+async fn approval_counts_once_and_update_events_preserve_the_count()
 DomainEvent::CommentUpdated
 DomainEvent::CommentStatusChanged
 async fn delete_before_create_stays_non_negative_and_replays_in_order()
@@ -369,7 +371,7 @@ assert!(!handler.handles(&forum_created));
         'delete_before_create_stays_non_negative_and_replays_in_order',
         'missing_post_replay_commits_only_after_source_appears',
         'outbox_failure_rolls_back_counter_and_delivery_before_retry',
-        'update_and_status_events_advance_projection_cursor_without_count_change',
+        'approval_counts_once_and_update_events_preserve_the_count',
       ],
     },
     restart_harness: {

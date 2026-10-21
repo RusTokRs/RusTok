@@ -11,6 +11,11 @@ use std::{collections::HashMap, time::Instant};
 use uuid::Uuid;
 
 use super::{BlogHttpRuntime, ensure_blog_module_enabled};
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
+
+use crate::dto::BulkOperationResult;
+use crate::state_machine::BlogPostStatus;
 use crate::{
     ArchivePostInput, CreatePostInput, PostListQuery, PostResponse, PostService, UpdatePostInput,
 };
@@ -501,12 +506,16 @@ pub async fn restore_post(
 }
 
 /// Get a post by preview token (unauthenticated)
+///
+/// The bearer token travels in the `x-blog-preview-token` header, never in
+/// the URL: URLs are written to proxy/access logs, browser history and
+/// `Referer` headers, all of which would leak a live preview credential.
 #[utoipa::path(
     get,
-    path = "/api/blog/preview/{token}",
+    path = "/api/blog/preview",
     tag = "blog",
     params(
-        ("token" = String, Path, description = "Preview token"),
+        ("x-blog-preview-token" = String, Header, description = "Preview token"),
         ("locale" = Option<String>, Query, description = "Requested locale")
     ),
     responses(
@@ -516,9 +525,14 @@ pub async fn restore_post(
 )]
 pub async fn preview_post(
     State(runtime): State<BlogHttpRuntime>,
-    Path(token): Path<String>,
+    headers: axum::http::HeaderMap,
     Query(params): Query<PreviewQueryParams>,
 ) -> HttpResult<Json<PostResponse>> {
+    let token = headers
+        .get("x-blog-preview-token")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
     tracing::debug!(
         token_len = token.len(),
         "Handling preview_post HTTP request"
@@ -646,4 +660,354 @@ pub async fn unpin_post(
         .await
         .map_err(crate::error::public::to_http_error)?;
     Ok(())
+}
+
+// ─── Bulk operations ────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct BulkPostsInput {
+    pub post_ids: Vec<Uuid>,
+}
+
+async fn bulk_transition(
+    runtime: &BlogHttpRuntime,
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    post_ids: Vec<Uuid>,
+    target: BlogPostStatus,
+) -> HttpResult<Json<BulkOperationResult>> {
+    ensure_blog_module_enabled(runtime, tenant.id).await?;
+    ensure_blog_permission(
+        tenant,
+        auth,
+        &[Permission::BLOG_POSTS_PUBLISH],
+        "Permission denied: blog_posts:publish required",
+    )?;
+    let result = PostService::new(runtime.db_clone(), runtime.event_bus())
+        .bulk_transition_posts(tenant.id, &post_ids, target, security_context(auth))
+        .await
+        .map_err(crate::error::public::to_http_error)?;
+    Ok(Json(result))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/blog/posts/bulk/publish",
+    tag = "blog",
+    request_body = BulkPostsInput,
+    responses(
+        (status = 200, description = "Bulk operation result", body = BulkOperationResult),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn bulk_publish_posts(
+    State(runtime): State<BlogHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Json(input): Json<BulkPostsInput>,
+) -> HttpResult<Json<BulkOperationResult>> {
+    bulk_transition(
+        &runtime,
+        &tenant,
+        &auth,
+        input.post_ids,
+        BlogPostStatus::Published,
+    )
+    .await
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/blog/posts/bulk/unpublish",
+    tag = "blog",
+    request_body = BulkPostsInput,
+    responses(
+        (status = 200, description = "Bulk operation result", body = BulkOperationResult),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn bulk_unpublish_posts(
+    State(runtime): State<BlogHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Json(input): Json<BulkPostsInput>,
+) -> HttpResult<Json<BulkOperationResult>> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
+    ensure_blog_permission(
+        &tenant,
+        &auth,
+        &[Permission::BLOG_POSTS_PUBLISH],
+        "Permission denied: blog_posts:publish required",
+    )?;
+    let result = PostService::new(runtime.db_clone(), runtime.event_bus())
+        .bulk_unpublish_posts(tenant.id, &input.post_ids, security_context(&auth))
+        .await
+        .map_err(crate::error::public::to_http_error)?;
+    Ok(Json(result))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/blog/posts/bulk/restore",
+    tag = "blog",
+    request_body = BulkPostsInput,
+    responses(
+        (status = 200, description = "Bulk operation result", body = BulkOperationResult),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn bulk_restore_posts(
+    State(runtime): State<BlogHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Json(input): Json<BulkPostsInput>,
+) -> HttpResult<Json<BulkOperationResult>> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
+    ensure_blog_permission(
+        &tenant,
+        &auth,
+        &[Permission::BLOG_POSTS_PUBLISH],
+        "Permission denied: blog_posts:publish required",
+    )?;
+    let result = PostService::new(runtime.db_clone(), runtime.event_bus())
+        .bulk_restore_posts(tenant.id, &input.post_ids, security_context(&auth))
+        .await
+        .map_err(crate::error::public::to_http_error)?;
+    Ok(Json(result))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/blog/posts/bulk/archive",
+    tag = "blog",
+    request_body = BulkPostsInput,
+    responses(
+        (status = 200, description = "Bulk operation result", body = BulkOperationResult),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn bulk_archive_posts(
+    State(runtime): State<BlogHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Json(input): Json<BulkPostsInput>,
+) -> HttpResult<Json<BulkOperationResult>> {
+    bulk_transition(
+        &runtime,
+        &tenant,
+        &auth,
+        input.post_ids,
+        BlogPostStatus::Archived,
+    )
+    .await
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/blog/posts/bulk/delete",
+    tag = "blog",
+    request_body = BulkPostsInput,
+    responses(
+        (status = 200, description = "Bulk operation result", body = BulkOperationResult),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn bulk_delete_posts(
+    State(runtime): State<BlogHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Json(input): Json<BulkPostsInput>,
+) -> HttpResult<Json<BulkOperationResult>> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
+    ensure_blog_permission(
+        &tenant,
+        &auth,
+        &[Permission::BLOG_POSTS_DELETE],
+        "Permission denied: blog_posts:delete required",
+    )?;
+    let result = PostService::new(runtime.db_clone(), runtime.event_bus())
+        .bulk_delete_posts(tenant.id, &input.post_ids, security_context(&auth))
+        .await
+        .map_err(crate::error::public::to_http_error)?;
+    Ok(Json(result))
+}
+
+// ─── Preview tokens ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreatePreviewTokenInput {
+    pub ttl_hours: Option<i64>,
+}
+
+/// The create result is the only response that ever carries the plaintext
+/// token, and it does so exactly once.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PreviewTokenCreatedResponse {
+    pub id: Uuid,
+    pub token: String,
+    pub post_id: Uuid,
+    pub expires_at: String,
+    pub created_at: String,
+}
+
+/// A token listing entry: identity and expiry only, never a credential.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PreviewTokenSummaryResponse {
+    pub id: Uuid,
+    pub post_id: Uuid,
+    pub expires_at: String,
+    pub created_at: String,
+}
+
+fn preview_token_service(runtime: &BlogHttpRuntime) -> crate::services::PreviewTokenService {
+    crate::services::PreviewTokenService::new(runtime.db_clone(), runtime.event_bus())
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/blog/posts/{id}/preview-tokens",
+    tag = "blog",
+    params(("id" = Uuid, Path, description = "Post ID")),
+    request_body = CreatePreviewTokenInput,
+    responses(
+        (status = 201, description = "Preview token created (plaintext shown once)", body = PreviewTokenCreatedResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Post not found")
+    )
+)]
+pub async fn create_preview_token(
+    State(runtime): State<BlogHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(post_id): Path<Uuid>,
+    Json(input): Json<CreatePreviewTokenInput>,
+) -> HttpResult<(StatusCode, Json<PreviewTokenCreatedResponse>)> {
+    if post_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_post_id",
+            "Post ID must not be nil",
+        ));
+    }
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
+    ensure_blog_permission(
+        &tenant,
+        &auth,
+        &[Permission::BLOG_POSTS_UPDATE],
+        "Permission denied: blog_posts:update required",
+    )?;
+
+    let token = preview_token_service(&runtime)
+        .create_token(tenant.id, post_id, security_context(&auth), input.ttl_hours)
+        .await
+        .map_err(crate::error::public::to_http_error)?;
+    let plaintext = token.token.ok_or_else(|| {
+        crate::error::public::to_http_error(crate::BlogError::invariant(
+            "preview token create result is missing its one-time plaintext",
+        ))
+    })?;
+    Ok((
+        StatusCode::CREATED,
+        Json(PreviewTokenCreatedResponse {
+            id: token.id,
+            token: plaintext,
+            post_id: token.post_id,
+            expires_at: token.expires_at.to_rfc3339(),
+            created_at: token.created_at.to_rfc3339(),
+        }),
+    ))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/blog/posts/{id}/preview-tokens",
+    tag = "blog",
+    params(("id" = Uuid, Path, description = "Post ID")),
+    responses(
+        (status = 200, description = "Preview tokens of the post (no secrets)", body = Vec<PreviewTokenSummaryResponse>),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Post not found")
+    )
+)]
+pub async fn list_preview_tokens(
+    State(runtime): State<BlogHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(post_id): Path<Uuid>,
+) -> HttpResult<Json<Vec<PreviewTokenSummaryResponse>>> {
+    if post_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_post_id",
+            "Post ID must not be nil",
+        ));
+    }
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
+    ensure_blog_permission(
+        &tenant,
+        &auth,
+        &[Permission::BLOG_POSTS_UPDATE],
+        "Permission denied: blog_posts:update required",
+    )?;
+
+    let tokens = preview_token_service(&runtime)
+        .list_tokens(tenant.id, post_id, security_context(&auth))
+        .await
+        .map_err(crate::error::public::to_http_error)?;
+    Ok(Json(
+        tokens
+            .into_iter()
+            .map(|token| PreviewTokenSummaryResponse {
+                id: token.id,
+                post_id: token.post_id,
+                expires_at: token.expires_at.to_rfc3339(),
+                created_at: token.created_at.to_rfc3339(),
+            })
+            .collect(),
+    ))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/blog/preview-tokens/{id}",
+    tag = "blog",
+    params(("id" = Uuid, Path, description = "Preview token ID")),
+    responses(
+        (status = 204, description = "Preview token revoked"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Preview token not found")
+    )
+)]
+pub async fn revoke_preview_token(
+    State(runtime): State<BlogHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(token_id): Path<Uuid>,
+) -> HttpResult<StatusCode> {
+    if token_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_token_id",
+            "Token ID must not be nil",
+        ));
+    }
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
+    ensure_blog_permission(
+        &tenant,
+        &auth,
+        &[Permission::BLOG_POSTS_UPDATE],
+        "Permission denied: blog_posts:update required",
+    )?;
+
+    preview_token_service(&runtime)
+        .revoke_token(tenant.id, token_id, security_context(&auth))
+        .await
+        .map_err(crate::error::public::to_http_error)?;
+    Ok(StatusCode::NO_CONTENT)
 }

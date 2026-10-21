@@ -193,6 +193,7 @@ impl UserStatsService {
                      WHERE topic.tenant_id = $1 \
                        AND topic.author_id = forum_user_stats.user_id \
                        AND topic.deleted_at IS NULL \
+                       AND topic.status <> 'archived' \
                  )::integer, \
                  reply_count = ( \
                      SELECT COUNT(*) FROM forum_replies AS replies \
@@ -204,6 +205,7 @@ impl UserStatsService {
                        AND replies.status = 'approved' \
                        AND replies.deleted_at IS NULL \
                        AND topic.deleted_at IS NULL \
+                       AND topic.status <> 'archived' \
                  )::integer, \
                  solution_count = ( \
                      SELECT COUNT(*) \
@@ -218,6 +220,7 @@ impl UserStatsService {
                        AND reply.author_id = forum_user_stats.user_id \
                        AND reply.deleted_at IS NULL \
                        AND topic.deleted_at IS NULL \
+                       AND topic.status <> 'archived' \
                  )::integer, \
                  updated_at = CURRENT_TIMESTAMP \
                  WHERE tenant_id = $1 \
@@ -248,6 +251,7 @@ impl UserStatsService {
                      WHERE topic.tenant_id = ?1 \
                        AND topic.author_id = forum_user_stats.user_id \
                        AND topic.deleted_at IS NULL \
+                       AND topic.status <> 'archived' \
                  ), \
                  reply_count = ( \
                      SELECT COUNT(*) FROM forum_replies AS replies \
@@ -259,6 +263,7 @@ impl UserStatsService {
                        AND replies.status = 'approved' \
                        AND replies.deleted_at IS NULL \
                        AND topic.deleted_at IS NULL \
+                       AND topic.status <> 'archived' \
                  ), \
                  solution_count = ( \
                      SELECT COUNT(*) \
@@ -273,6 +278,7 @@ impl UserStatsService {
                        AND reply.author_id = forum_user_stats.user_id \
                        AND reply.deleted_at IS NULL \
                        AND topic.deleted_at IS NULL \
+                       AND topic.status <> 'archived' \
                  ), \
                  updated_at = CURRENT_TIMESTAMP \
                  WHERE tenant_id = ?1 \

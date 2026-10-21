@@ -89,7 +89,7 @@
       "delete_before_create_stays_non_negative_and_replays_in_order",
       "missing_post_replay_commits_only_after_source_appears",
       "outbox_failure_rolls_back_counter_and_delivery_before_retry",
-      "update_and_status_events_advance_projection_cursor_without_count_change"
+      "approval_counts_once_and_update_events_preserve_the_count"
     ]
   },
   "restart_harness": {
@@ -137,7 +137,7 @@
     },
     {
       "name": "non_negative_count",
-      "expected": "the state-based counter transition floors deletes at zero and saturates comment_count without changing the Blog business revision"
+      "expected": "the state-based counter transition counts only approved comments, floors deletes at zero and saturates comment_count without changing the Blog business revision"
     },
     {
       "name": "host_registration_routing_harness",
@@ -157,7 +157,7 @@
     },
     {
       "name": "postgres_out_of_order_delete_create",
-      "expected": "the retained PostgreSQL target delivers delete before create and expects a non-negative count while the Blog business version remains unchanged"
+      "expected": "the retained PostgreSQL target delivers delete before create and expects a non-negative count (a replayed pending create is recorded but not counted) while the Blog business version remains unchanged"
     },
     {
       "name": "postgres_missing_post_recovery",

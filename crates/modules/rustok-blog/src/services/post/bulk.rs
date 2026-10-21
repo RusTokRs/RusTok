@@ -1,9 +1,35 @@
+use std::collections::HashSet;
+
 use super::*;
+
+/// Duplicate ids in one bulk request are processed once: applying the same
+/// lifecycle command twice would record a phantom second failure (or a
+/// double delete attempt) for work that was asked for once.
+fn deduped(post_ids: &[Uuid]) -> Vec<Uuid> {
+    let mut seen = HashSet::new();
+    post_ids
+        .iter()
+        .copied()
+        .filter(|id| seen.insert(*id))
+        .collect()
+}
 
 /// Upper bound of one bulk request. Bulk work is bounded so a single request cannot
 /// amplify into an unbounded number of transactions and lifecycle events; see
 /// `BulkOperationInput` for the transport-level validator that mirrors this bound.
 pub(crate) const MAX_BULK_POST_IDS: usize = 100;
+
+/// One bulk lifecycle command. Commands — not target statuses — are the unit
+/// of bulk semantics: `Draft` is the target of two different commands
+/// (unpublish from Published, restore from Archived), and conflating them
+/// made a bulk *unpublish* silently restore archived posts.
+#[derive(Clone, Copy)]
+enum BulkLifecycleCommand {
+    Publish,
+    Unpublish,
+    Archive,
+    Restore,
+}
 
 impl PostService {
     /// Every bulk command rejects an oversized request before touching the database.
@@ -28,12 +54,53 @@ impl PostService {
         target_status: BlogPostStatus,
         security: SecurityContext,
     ) -> BlogResult<BulkOperationResult> {
+        let command = match target_status {
+            BlogPostStatus::Published => BulkLifecycleCommand::Publish,
+            // A target-status request for Draft means unpublish. Restore is a
+            // distinct command (`bulk_restore_posts`): an unpublish request
+            // must fail for archived posts, never resurrect them.
+            BlogPostStatus::Draft => BulkLifecycleCommand::Unpublish,
+            BlogPostStatus::Archived => BulkLifecycleCommand::Archive,
+        };
+        self.bulk_apply(tenant_id, post_ids, command, security).await
+    }
+
+    /// Bulk unpublish: only Published posts move to Draft; archived posts are
+    /// recorded as failures, exactly as the single unpublish command behaves.
+    pub async fn bulk_unpublish_posts(
+        &self,
+        tenant_id: Uuid,
+        post_ids: &[Uuid],
+        security: SecurityContext,
+    ) -> BlogResult<BulkOperationResult> {
+        self.bulk_apply(tenant_id, post_ids, BulkLifecycleCommand::Unpublish, security)
+            .await
+    }
+
+    /// Bulk restore: only Archived posts move to Draft.
+    pub async fn bulk_restore_posts(
+        &self,
+        tenant_id: Uuid,
+        post_ids: &[Uuid],
+        security: SecurityContext,
+    ) -> BlogResult<BulkOperationResult> {
+        self.bulk_apply(tenant_id, post_ids, BulkLifecycleCommand::Restore, security)
+            .await
+    }
+
+    async fn bulk_apply(
+        &self,
+        tenant_id: Uuid,
+        post_ids: &[Uuid],
+        command: BulkLifecycleCommand,
+        security: SecurityContext,
+    ) -> BlogResult<BulkOperationResult> {
         Self::ensure_bulk_batch_is_bounded(post_ids)?;
         let mut result = BulkOperationResult::new();
 
-        for &post_id in post_ids {
+        for &post_id in &deduped(post_ids) {
             match self
-                .transition_post(tenant_id, post_id, target_status, security.clone())
+                .apply_bulk_command(tenant_id, post_id, command, security.clone())
                 .await
             {
                 Ok(()) => result.record_success(post_id),
@@ -57,7 +124,7 @@ impl PostService {
         Self::ensure_bulk_batch_is_bounded(post_ids)?;
         let mut result = BulkOperationResult::new();
 
-        for &post_id in post_ids {
+        for &post_id in &deduped(post_ids) {
             match self.delete_post(tenant_id, post_id, security.clone()).await {
                 Ok(()) => result.record_success(post_id),
                 Err(error) => result.record_failure(post_id, error),
@@ -67,18 +134,27 @@ impl PostService {
         Ok(result)
     }
 
-    /// Transition a single post to a target status (internal helper for bulk operations).
-    async fn transition_post(
+    /// Apply one lifecycle command to one post (internal helper for bulk operations).
+    async fn apply_bulk_command(
         &self,
         tenant_id: Uuid,
         post_id: Uuid,
-        target_status: BlogPostStatus,
+        command: BulkLifecycleCommand,
         security: SecurityContext,
     ) -> BlogResult<()> {
-        match target_status {
-            BlogPostStatus::Published => self.publish_post(tenant_id, post_id, security).await,
-            BlogPostStatus::Draft => self.unpublish_post(tenant_id, post_id, security).await,
-            BlogPostStatus::Archived => self.archive_post(tenant_id, post_id, security, None).await,
+        match command {
+            BulkLifecycleCommand::Publish => {
+                self.publish_post(tenant_id, post_id, security).await
+            }
+            BulkLifecycleCommand::Unpublish => {
+                self.unpublish_post(tenant_id, post_id, security).await
+            }
+            BulkLifecycleCommand::Archive => {
+                self.archive_post(tenant_id, post_id, security, None).await
+            }
+            BulkLifecycleCommand::Restore => {
+                self.restore_post(tenant_id, post_id, security).await
+            }
         }
     }
 }

@@ -1,4 +1,5 @@
 use super::category_audience::lock_category_tree_in_tx;
+use super::category_owner::CategoryService;
 use super::edit_window::enforce_author_edit_window;
 use super::topic_create_audience_authorization::ForumTopicCreateAudienceAuthorizationService;
 use super::topic_tag_lock::{lock_active_topic_tag_write_in_tx, lock_topic_tag_scopes_in_tx};

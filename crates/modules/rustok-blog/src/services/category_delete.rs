@@ -6,8 +6,8 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult};
 use sea_orm::{
-    ColumnTrait, DatabaseTransaction, EntityTrait, ExprTrait, PaginatorTrait, QueryFilter,
-    QuerySelect,
+    ColumnTrait, Condition, DatabaseTransaction, EntityTrait, ExprTrait, PaginatorTrait,
+    QueryFilter, QuerySelect,
 };
 use uuid::Uuid;
 
@@ -142,6 +142,30 @@ async fn detach_category_from_posts_in_tx(
         .filter(blog_post::Column::CategoryId.eq(category_id))
         .filter(blog_post::Column::Version.gt(0))
         .filter(blog_post::Column::Version.ne(i32::MAX))
+        .exec(txn)
+        .await?;
+
+    // Posts whose revision is already exhausted cannot be bumped — but they
+    // cannot be CAS-edited either, so detaching them without a bump loses no
+    // concurrency protection. Refusing here instead made the whole category
+    // permanently undeletable because of a single exhausted post; the delete
+    // still publishes the reindex event that repairs their search projection.
+    blog_post::Entity::update_many()
+        .col_expr(
+            blog_post::Column::CategoryId,
+            sea_orm::sea_query::Expr::value(Option::<Uuid>::None),
+        )
+        .col_expr(
+            blog_post::Column::UpdatedAt,
+            sea_orm::sea_query::Expr::value(now),
+        )
+        .filter(blog_post::Column::TenantId.eq(tenant_id))
+        .filter(blog_post::Column::CategoryId.eq(category_id))
+        .filter(
+            Condition::any()
+                .add(blog_post::Column::Version.lte(0))
+                .add(blog_post::Column::Version.eq(i32::MAX)),
+        )
         .exec(txn)
         .await?;
 

@@ -62,7 +62,9 @@ mod marketplace_reversal_adaptation_failure;
 mod marketplace_reversal_event_inbox;
 #[cfg(feature = "marketplace-financial")]
 mod marketplace_reversal_operator;
+mod order_cancellation;
 mod order_change_orchestration;
+mod order_shipment_projection;
 mod paid_order_create_label;
 mod paid_order_create_label_sweep;
 mod payment_orchestration;
@@ -73,6 +75,9 @@ mod return_completion_operation;
 mod return_completion_orchestration;
 mod return_completion_recovery;
 mod return_decision_owner_orchestration;
+mod return_refund_value;
+mod return_restock;
+mod shipment_stock;
 mod shipping_profile;
 mod staged_checkout;
 #[path = "../storefront_staged_checkout_runtime.rs"]
@@ -241,6 +246,18 @@ pub use order_change_orchestration::{
 pub(crate) use paid_order_create_label::PaidOrderCreateLabelHandler;
 pub use paid_order_create_label_sweep::{
     PaidOrderCreateLabelSweepReport, PaidOrderCreateLabelSweepService,
+};
+pub use order_cancellation::{
+    OrchestratedOrderAdminCommandPort, OrderCancellationOrchestrator,
+    orchestrated_order_admin_command_runtime,
+};
+pub use shipment_stock::{
+    InventoryShipmentStockPort, fulfillment_admin_command_runtime, fulfillment_service,
+    inventory_shipment_stock_port,
+};
+pub use order_shipment_projection::{
+    OrderShipmentProjector, ProjectingFulfillmentAdminCommandPort,
+    projecting_fulfillment_admin_command_runtime,
 };
 pub use payment_orchestration::{
     PaymentOrchestrationError, PaymentOrchestrationResult, PaymentOrchestrationService,

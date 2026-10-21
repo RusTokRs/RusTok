@@ -35,7 +35,10 @@ impl PostService {
     /// `version` and the search projection are intentionally untouched: the public
     /// ordering reads `is_pinned`/`pinned_at` from the post row, and the Blog Search
     /// document payload does not project pin state. A pin therefore changes listing
-    /// order only, and the module documents that boundary in `README.md`.
+    /// order only, and the module documents that boundary in `README.md`. Pin state
+    /// also survives lifecycle transitions: archiving a pinned post keeps the pin
+    /// until it is explicitly released (`unpin` stays available for every status),
+    /// which the lifecycle regression tests pin down.
     ///
     /// The statement names the three pin columns instead of saving the read entity
     /// back. A whole-entity write would carry every column of `blog_posts` — including

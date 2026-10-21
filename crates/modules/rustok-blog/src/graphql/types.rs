@@ -11,7 +11,7 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    BlogPostStatus, CommentListItem as DomainCommentListItem, CommentResponse,
+    BlogError, BlogPostStatus, CommentListItem as DomainCommentListItem, CommentResponse,
     CreateCommentInput as DomainCreateCommentInput, CreatePostInput as DomainCreatePostInput,
     ListCommentsFilter, ModerateCommentStatus as DomainModerateCommentStatus, PostResponse,
     PostSummary, PublicCommentsAvailability, UpdatePostInput as DomainUpdatePostInput,
@@ -245,6 +245,7 @@ impl GqlPost {
                     per_page: per_page.unwrap_or(50).clamp(1, 100),
                 },
                 Some(request_tenant.default_locale.as_str()),
+                None,
             )
             .await
             .map_err(crate::error::public::to_graphql_error)?;
@@ -569,9 +570,17 @@ impl From<PostSummary> for GqlPostListItem {
     }
 }
 
-impl From<CreatePostInput> for DomainCreatePostInput {
-    fn from(input: CreatePostInput) -> Self {
-        Self {
+/// Invalid input is a validation error, never a silently dropped schedule.
+fn parse_scheduled_at(value: &str) -> Result<DateTime<Utc>, BlogError> {
+    DateTime::parse_from_rfc3339(value)
+        .map(|t| t.with_timezone(&Utc))
+        .map_err(|_| BlogError::validation("scheduled_at must be a valid RFC 3339 timestamp"))
+}
+
+impl TryFrom<CreatePostInput> for DomainCreatePostInput {
+    type Error = BlogError;
+    fn try_from(input: CreatePostInput) -> Result<Self, Self::Error> {
+        Ok(Self {
             locale: input.locale,
             title: input.title,
             content: input.content,
@@ -585,18 +594,19 @@ impl From<CreatePostInput> for DomainCreatePostInput {
             seo_description: input.seo_description,
             channel_slugs: input.channel_slugs,
             metadata: None,
-            scheduled_at: input.scheduled_at.and_then(|value| {
-                chrono::DateTime::parse_from_rfc3339(&value)
-                    .ok()
-                    .map(|value| value.with_timezone(&chrono::Utc))
-            }),
-        }
+            scheduled_at: input
+                .scheduled_at
+                .as_deref()
+                .map(parse_scheduled_at)
+                .transpose()?,
+        })
     }
 }
 
-impl From<UpdatePostInput> for DomainUpdatePostInput {
-    fn from(input: UpdatePostInput) -> Self {
-        Self {
+impl TryFrom<UpdatePostInput> for DomainUpdatePostInput {
+    type Error = BlogError;
+    fn try_from(input: UpdatePostInput) -> Result<Self, Self::Error> {
+        Ok(Self {
             locale: input.locale,
             title: input.title,
             content: input.content,
@@ -610,171 +620,13 @@ impl From<UpdatePostInput> for DomainUpdatePostInput {
             channel_slugs: input.channel_slugs,
             metadata: None,
             version: input.version,
-            scheduled_at: graphql_patch_datetime(input.scheduled_at),
-        }
+            scheduled_at: graphql_patch_datetime(input.scheduled_at)?,
+        })
     }
 }
 
-#[derive(SimpleObject, Clone, Debug)]
-#[graphql(name = "BlogCategory")]
-pub struct GqlBlogCategory {
-    pub id: Uuid,
-    pub locale: String,
-    pub effective_locale: String,
-    pub name: String,
-    pub slug: String,
-    pub description: Option<String>,
-    pub parent_id: Option<Uuid>,
-    pub position: i32,
-    pub settings: String,
-    pub created_at: String,
-    pub updated_at: Option<String>,
-}
-
-#[derive(SimpleObject, Clone, Debug)]
-#[graphql(name = "BlogCategoryList")]
-pub struct GqlBlogCategoryList {
-    pub items: Vec<GqlBlogCategory>,
-    pub total: u64,
-}
-
-#[derive(InputObject, Clone, Debug, Default)]
-pub struct BlogCategoriesFilter {
-    pub locale: Option<String>,
-    pub page: Option<u64>,
-    pub per_page: Option<u64>,
-}
-
-#[derive(SimpleObject, Clone, Debug)]
-#[graphql(name = "BlogTag")]
-pub struct GqlBlogTag {
-    pub id: Uuid,
-    pub locale: String,
-    pub effective_locale: String,
-    pub name: String,
-    pub slug: String,
-    pub use_count: i32,
-    pub created_at: String,
-}
-
-#[derive(SimpleObject, Clone, Debug)]
-#[graphql(name = "BlogTagList")]
-pub struct GqlBlogTagList {
-    pub items: Vec<GqlBlogTag>,
-    pub total: u64,
-}
-
-#[derive(InputObject, Clone, Debug, Default)]
-pub struct BlogTagsFilter {
-    pub locale: Option<String>,
-    pub page: Option<u64>,
-    pub per_page: Option<u64>,
-}
-
-#[derive(InputObject, Clone, Debug)]
-pub struct CreateBlogCategoryInput {
-    pub locale: String,
-    pub name: String,
-    pub slug: Option<String>,
-    pub description: Option<String>,
-    pub parent_id: Option<Uuid>,
-    pub position: Option<i32>,
-    pub settings: Option<String>,
-}
-
-#[derive(InputObject, Clone, Debug)]
-pub struct UpdateBlogCategoryInput {
-    pub locale: String,
-    pub name: Option<String>,
-    pub slug: Option<String>,
-    pub description: Option<String>,
-    pub settings: Option<String>,
-}
-
-impl From<crate::dto::CategoryListItem> for GqlBlogCategory {
-    fn from(item: crate::dto::CategoryListItem) -> Self {
-        Self {
-            id: item.id,
-            locale: item.locale,
-            effective_locale: item.effective_locale,
-            name: item.name,
-            slug: item.slug,
-            description: item.description,
-            parent_id: item.parent_id,
-            position: item.position,
-            settings: item.settings.to_string(),
-            created_at: item.created_at.to_rfc3339(),
-            updated_at: Some(item.updated_at.to_rfc3339()),
-        }
-    }
-}
-
-impl From<crate::dto::CategoryResponse> for GqlBlogCategory {
-    fn from(cat: crate::dto::CategoryResponse) -> Self {
-        Self {
-            id: cat.id,
-            locale: cat.locale,
-            effective_locale: cat.effective_locale,
-            name: cat.name,
-            slug: cat.slug,
-            description: cat.description,
-            parent_id: cat.parent_id,
-            position: cat.position,
-            settings: cat.settings.to_string(),
-            created_at: cat.created_at.to_rfc3339(),
-            updated_at: Some(cat.updated_at.to_rfc3339()),
-        }
-    }
-}
-
-impl From<crate::dto::TagListItem> for GqlBlogTag {
-    fn from(item: crate::dto::TagListItem) -> Self {
-        Self {
-            id: item.id,
-            locale: item.locale,
-            effective_locale: item.effective_locale,
-            name: item.name,
-            slug: item.slug,
-            use_count: item.use_count,
-            created_at: item.created_at.to_rfc3339(),
-        }
-    }
-}
-
-impl From<CreateBlogCategoryInput> for crate::dto::CreateCategoryInput {
-    fn from(input: CreateBlogCategoryInput) -> Self {
-        let settings = input
-            .settings
-            .as_deref()
-            .and_then(|s| serde_json::from_str(s).ok())
-            .unwrap_or_else(|| serde_json::json!({}));
-        Self {
-            locale: input.locale,
-            name: input.name,
-            slug: input.slug,
-            description: input.description,
-            parent_id: input.parent_id,
-            position: input.position,
-            settings,
-        }
-    }
-}
-
-impl From<UpdateBlogCategoryInput> for crate::dto::UpdateCategoryInput {
-    fn from(input: UpdateBlogCategoryInput) -> Self {
-        let settings = input
-            .settings
-            .as_deref()
-            .and_then(|s| serde_json::from_str(s).ok());
-        Self {
-            locale: input.locale,
-            name: input.name,
-            slug: input.slug,
-            description: input.description,
-            settings,
-        }
-    }
-}
+mod taxonomy;
+pub use taxonomy::*;
 
 fn graphql_patch<T>(value: MaybeUndefined<T>) -> Patch<T> {
     match value {
@@ -784,18 +636,14 @@ fn graphql_patch<T>(value: MaybeUndefined<T>) -> Patch<T> {
     }
 }
 
-fn graphql_patch_datetime(value: MaybeUndefined<String>) -> Patch<chrono::DateTime<chrono::Utc>> {
-    match value {
+fn graphql_patch_datetime(
+    value: MaybeUndefined<String>,
+) -> Result<Patch<chrono::DateTime<chrono::Utc>>, BlogError> {
+    Ok(match value {
         MaybeUndefined::Undefined => Patch::Keep,
         MaybeUndefined::Null => Patch::Clear,
-        MaybeUndefined::Value(value) => {
-            if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(&value) {
-                Patch::Set(parsed.with_timezone(&chrono::Utc))
-            } else {
-                Patch::Keep
-            }
-        }
-    }
+        MaybeUndefined::Value(value) => Patch::Set(parse_scheduled_at(&value)?),
+    })
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -891,7 +739,8 @@ mod tests {
             version: 1,
             scheduled_at: MaybeUndefined::Undefined,
         };
-        let domain: DomainUpdatePostInput = input.into();
+        let domain: DomainUpdatePostInput =
+            input.try_into().expect("valid update input converts");
         assert_eq!(domain.content, Some(canonical));
     }
 
@@ -913,7 +762,8 @@ mod tests {
             version: 7,
             scheduled_at: MaybeUndefined::Undefined,
         };
-        let domain: DomainUpdatePostInput = input.into();
+        let domain: DomainUpdatePostInput =
+            input.try_into().expect("valid update input converts");
         assert_eq!(domain.content, Some(canonical));
         assert_eq!(domain.excerpt, Patch::Clear);
         assert_eq!(domain.category_id, Patch::Set(Uuid::nil()));
@@ -921,6 +771,24 @@ mod tests {
         assert_eq!(domain.seo_description, Patch::Clear);
         assert!(domain.metadata.is_none());
         assert_eq!(domain.version, 7);
+    }
+
+    #[test]
+    fn update_post_input_conversion_rejects_invalid_scheduled_at() {
+        let input = UpdatePostInput {
+            locale: None, title: None, content: None,
+            excerpt: MaybeUndefined::Undefined, slug: None, tags: None,
+            category_id: MaybeUndefined::Undefined,
+            featured_image_url: MaybeUndefined::Undefined,
+            seo_title: MaybeUndefined::Undefined,
+            seo_description: MaybeUndefined::Undefined,
+            channel_slugs: None, version: 1,
+            scheduled_at: MaybeUndefined::Value("next friday".to_string()),
+        };
+        assert!(matches!(
+            DomainUpdatePostInput::try_from(input),
+            Err(crate::BlogError::Validation(_))
+        ));
     }
 
     #[test]

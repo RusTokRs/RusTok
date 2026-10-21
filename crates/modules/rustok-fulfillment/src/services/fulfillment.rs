@@ -8,6 +8,7 @@ use sea_orm::{
 };
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::sync::Arc;
 use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
@@ -29,6 +30,9 @@ use crate::dto::{
 };
 use crate::entities;
 use crate::error::{FulfillmentError, FulfillmentResult};
+use crate::shipment_stock::{
+    ShipmentStockError, ShipmentStockPort, ShipmentStockRequest, UnconfiguredShipmentStockPort,
+};
 use crate::providers::{
     validate_durable_provider_payload, validate_provider_id, validate_provider_metadata_safety,
 };
@@ -64,11 +68,25 @@ pub(crate) struct CheckoutFulfillmentRecord {
 
 pub struct FulfillmentService {
     db: DatabaseConnection,
+    shipment_stock: Arc<dyn ShipmentStockPort>,
 }
 
 impl FulfillmentService {
+    /// Creates a service whose stock port is [`UnconfiguredShipmentStockPort`]: creating and
+    /// reading fulfillments works, but ship / cancel-shipped / reopen-cancelled fail until a
+    /// port is wired with [`with_shipment_stock_port`](Self::with_shipment_stock_port).
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            shipment_stock: Arc::new(UnconfiguredShipmentStockPort),
+        }
+    }
+
+    /// Wires the stock owner that moves stock atomically with shipment state.
+    #[must_use]
+    pub fn with_shipment_stock_port(mut self, port: Arc<dyn ShipmentStockPort>) -> Self {
+        self.shipment_stock = port;
+        self
     }
 
     pub(crate) fn database(&self) -> &DatabaseConnection {
@@ -1222,12 +1240,26 @@ impl FulfillmentService {
             active.updated_at = Set(now.into());
             adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
             let updated = active.update(&txn).await?;
+            self.shipment_stock
+                .consume_shipped(
+                    &txn,
+                    ShipmentStockRequest {
+                        tenant_id,
+                        order_line_item_id: item.order_line_item_id,
+                        quantity: adjustment,
+                    },
+                )
+                .await
+                .map_err(map_shipment_stock_error)?;
             adjusted_items.push(updated);
         }
 
         let all_items_delivered = adjusted_items
             .iter()
             .all(|item| item.delivered_quantity >= item.quantity);
+        // Read before the `ActiveModel` conversion: `take()` on an unchanged
+        // `ActiveValue<Option<_>>` yields `Some(None)`, which never reads as "unset".
+        let first_shipment = fulfillment.shipped_at.is_none();
         let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
         let metadata = active.metadata.clone().take().unwrap_or_default();
         // The audit entry records the status this write produces; binding it here
@@ -1252,7 +1284,7 @@ impl FulfillmentService {
                 status_after,
             ),
         )?);
-        if active.shipped_at.clone().take().is_none() {
+        if first_shipment {
             active.shipped_at = Set(Some(now.into()));
         }
         active.updated_at = Set(now.into());
@@ -1401,6 +1433,24 @@ impl FulfillmentService {
                 let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
                 let metadata = active.metadata.clone().take().unwrap_or_default();
                 let status_after = reopened_status_for_cancelled(&items, &active);
+                // Cancelling a shipped fulfillment put its undelivered units back on the
+                // shelf; reopening it takes them off again.
+                for item in &items {
+                    let undelivered = item.shipped_quantity - item.delivered_quantity;
+                    if undelivered > 0 {
+                        self.shipment_stock
+                            .reconsume_restored(
+                                &txn,
+                                ShipmentStockRequest {
+                                    tenant_id,
+                                    order_line_item_id: item.order_line_item_id,
+                                    quantity: undelivered,
+                                },
+                            )
+                            .await
+                            .map_err(map_shipment_stock_error)?;
+                    }
+                }
                 active.status = Set(status_after.to_string());
                 active.cancellation_reason = Set(None);
                 active.cancelled_at = Set(None);
@@ -1754,6 +1804,30 @@ impl FulfillmentService {
                 from: fulfillment.status,
                 to: STATUS_CANCELLED.to_string(),
             });
+        }
+
+        if fulfillment.status == STATUS_SHIPPED {
+            // Shipped-but-undelivered units never reach the customer: return them to stock in
+            // the same transaction as the cancellation.
+            let items = self
+                .load_fulfillment_items(&txn, tenant_id, fulfillment.id)
+                .await?;
+            for item in &items {
+                let undelivered = item.shipped_quantity - item.delivered_quantity;
+                if undelivered > 0 {
+                    self.shipment_stock
+                        .restore_unshipped(
+                            &txn,
+                            ShipmentStockRequest {
+                                tenant_id,
+                                order_line_item_id: item.order_line_item_id,
+                                quantity: undelivered,
+                            },
+                        )
+                        .await
+                        .map_err(map_shipment_stock_error)?;
+                }
+            }
         }
 
         let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
@@ -2782,6 +2856,16 @@ impl FulfillmentItemAction {
             FulfillmentItemAction::Reship => "reship",
             FulfillmentItemAction::Cancel => "cancel",
         }
+    }
+}
+
+fn map_shipment_stock_error(error: ShipmentStockError) -> FulfillmentError {
+    match error {
+        ShipmentStockError::Rejected(message) => FulfillmentError::Validation(message),
+        ShipmentStockError::NotConfigured => FulfillmentError::Validation(
+            "shipment stock port is not configured for this fulfillment runtime".to_string(),
+        ),
+        ShipmentStockError::Database(error) => FulfillmentError::Database(error),
     }
 }
 

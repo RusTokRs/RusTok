@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    TransactionTrait,
+    QueryOrder, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -12,7 +12,7 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::audience::SharedForumAudienceFactsPort;
-use crate::entities::forum_solution;
+use crate::entities::{forum_solution, forum_topic_translation};
 use crate::error::{ForumError, ForumResult};
 use crate::services::moderation_audience_authorization::ForumModerationAudienceAuthorizationService;
 use crate::services::projection_invalidation::{
@@ -252,10 +252,29 @@ impl ModerationService {
         let current = topic.status;
         current.validate_transition(&target)?;
 
+        // Counter invariant: category and author topic totals always count
+        // exactly the topics that are neither archived nor deleted. Leaving
+        // `Archived` (only `Pending` -> `Open` is reachable) re-enters the
+        // topic into the aggregates; entering `Archived` releases it.
+        let enters_public = current == TopicStatus::Archived && target == TopicStatus::Open;
+        let leaves_public = current != TopicStatus::Archived && target == TopicStatus::Archived;
+
         let old_status = current.to_string();
         let new_status = target.to_string();
 
         TopicService::set_status_in_tx(&txn, tenant_id, topic_id, target).await?;
+        if leaves_public {
+            CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, -1, 0)
+                .await?;
+            UserStatsService::adjust_topic_count_in_tx(&txn, tenant_id, topic.author_id, -1)
+                .await?;
+        }
+        if enters_public {
+            CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, 1, 0)
+                .await?;
+            UserStatsService::adjust_topic_count_in_tx(&txn, tenant_id, topic.author_id, 1)
+                .await?;
+        }
         self.event_bus
             .publish_in_tx(
                 &txn,
@@ -264,11 +283,40 @@ impl ModerationService {
                 DomainEvent::ForumTopicStatusChanged {
                     topic_id,
                     old_status,
-                    new_status,
+                    new_status: new_status.clone(),
                     moderator_id: security.user_id,
                 },
             )
             .await?;
+        if enters_public {
+            // A pending topic was created without `ForumTopicCreated` (held
+            // for pre-moderation). Approving it through `Pending` -> `Open`
+            // publishes the exact creation event now, so category watchers
+            // are notified once the topic actually becomes public. The event
+            // locale mirrors topic creation: the primary translation row is
+            // written in the same transaction as the topic, so it exists.
+            let locale = forum_topic_translation::Entity::find()
+                .filter(forum_topic_translation::Column::TenantId.eq(tenant_id))
+                .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
+                .order_by_asc(forum_topic_translation::Column::CreatedAt)
+                .one(&txn)
+                .await?
+                .ok_or(ForumError::TopicNotFound(topic_id))?
+                .locale;
+            self.event_bus
+                .publish_in_tx(
+                    &txn,
+                    tenant_id,
+                    topic.author_id,
+                    DomainEvent::ForumTopicCreated {
+                        topic_id,
+                        category_id: topic.category_id,
+                        author_id: topic.author_id,
+                        locale,
+                    },
+                )
+                .await?;
+        }
         publish_forum_topic_projection_in_tx(
             &self.event_bus,
             &txn,
@@ -561,6 +609,12 @@ impl ModerationService {
                 .require_topic(tenant_id, topic_id, &security, context)
                 .await?;
         }
+        if topic.status == TopicStatus::Archived {
+            // Solutions on archived (including soft-deleted) threads are
+            // invisible to every reader, so marking one would only move the
+            // author's solution counter for unreachable content.
+            return Err(ForumError::TopicArchived);
+        }
 
         let txn = self.db.begin().await?;
         TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
@@ -642,6 +696,9 @@ impl ModerationService {
                 .require_topic(tenant_id, topic_id, &security, context)
                 .await?;
         }
+        if topic.status == TopicStatus::Archived {
+            return Err(ForumError::TopicArchived);
+        }
 
         let txn = self.db.begin().await?;
         TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
@@ -688,8 +745,15 @@ impl ModerationService {
         target: ReplyStatus,
     ) -> ForumResult<()> {
         let txn = self.db.begin().await?;
-        TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
+        let topic = TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
+        if topic.status == TopicStatus::Archived {
+            // An archived topic (including a soft-deleted thread) is terminal:
+            // status changes of its replies would move reply counters for
+            // content that is invisible everywhere but suspended moderation
+            // views.
+            return Err(ForumError::TopicArchived);
+        }
         let reply = ReplyService::find_reply_in_tx(&txn, tenant_id, reply_id).await?;
         if reply.topic_id != topic_id {
             return Err(ForumError::Validation(
@@ -702,6 +766,12 @@ impl ModerationService {
         let became_public = current != ReplyStatus::Approved && target == ReplyStatus::Approved;
         let stopped_being_public =
             current == ReplyStatus::Approved && target != ReplyStatus::Approved;
+        // Topic watchers were already notified when this reply first became
+        // public. Returning from `Hidden`/`Flagged` must not re-notify; only a
+        // first public appearance (from the pre-moderation states `Pending`
+        // and `Rejected`) publishes `ForumTopicReplied`.
+        let first_public_appearance = matches!(current, ReplyStatus::Pending | ReplyStatus::Rejected)
+            && target == ReplyStatus::Approved;
         let old_status = current.to_string();
         let new_status = target.to_string();
 
@@ -761,7 +831,7 @@ impl ModerationService {
             )
             .await?;
 
-        if became_public {
+        if first_public_appearance {
             self.event_bus
                 .publish_in_tx(
                     &txn,

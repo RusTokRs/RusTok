@@ -169,7 +169,7 @@ async fn event_dispatcher_replays_duplicate_envelope_without_double_commit() -> 
     dispatcher.register(observed);
     assert_eq!(dispatcher.handler_count(), 1);
 
-    let envelope = comment_created_envelope(tenant_id, actor_id, comment_id, post_id);
+    let envelope = comment_approved_envelope(tenant_id, actor_id, comment_id, post_id);
     let running = dispatcher.start();
     for _ in 0..DISPATCHER_DUPLICATE_DELIVERIES {
         running.bus().publish_envelope(envelope.clone())?;
@@ -192,7 +192,7 @@ async fn event_dispatcher_replays_duplicate_envelope_without_double_commit() -> 
     test_db.cleanup().await
 }
 
-fn comment_created_envelope(
+fn comment_approved_envelope(
     tenant_id: Uuid,
     actor_id: Uuid,
     comment_id: Uuid,
@@ -201,11 +201,13 @@ fn comment_created_envelope(
     EventEnvelope::new(
         tenant_id,
         Some(actor_id),
-        DomainEvent::CommentCreated {
+        DomainEvent::CommentStatusChanged {
             comment_id,
             target_type: "blog_post".to_string(),
             target_id: post_id,
             author_id: actor_id,
+            old_status: "pending".to_string(),
+            new_status: "approved".to_string(),
         },
     )
 }
