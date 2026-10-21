@@ -238,6 +238,10 @@ hand-populated in-memory sets; `execute_physical_purge` removes from a
 `HashSet`), and a scheduler/caller. Keep; wire only behind a durable
 tombstone store and adapters backed by the real owner stores.
 
+*Executed 2026-10-21* (disposition 2): the module header now states the
+unwired, in-memory status explicitly, so the surface cannot be presented
+as production; no behavior changed.
+
 ### 5.3 `operator.rs` — (b) unfinished planned read model, fabricated fields
 
 Real SQL reads, invented projection values: blast radius hardcodes
@@ -267,6 +271,9 @@ canonical wave/cohort counterpart exists (`distribution_rollout` and
 `artifact_node_reconciliation` have no wave concepts; per-node mechanics
 live in the artifact node agent). Keep; future wiring must drive it
 from durable reconciliation state, not from a disposable struct.
+
+*Executed 2026-10-21* (disposition 2): the same explicit unwired-status
+header was added; no behavior changed.
 
 ### 5.5 Consequence for audit finding H-5 / decision D6
 

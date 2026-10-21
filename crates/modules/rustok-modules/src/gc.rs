@@ -6,6 +6,16 @@
 //! - Independent owner-driven adapters control source CAS, OCI artifacts, build attempts, executable CAS,
 //!   artifact-data objects, snapshot/restore copies, encrypted settings recovery points and roots,
 //!   browser assets, node slots, operations-tool packages/slots, and diagnostics.
+//!
+//! Status (2026-10-21): design-accepted, NOT wired into production
+//! composition. `GcCoordinator` state (tombstones, receipts) and every
+//! bundled `GcAdapter` are in-memory; `execute_physical_purge` removes
+//! entries from process-local sets, not from CAS, registry, or node
+//! storage. Nothing in this module is reachable from a production caller
+//! today. A durable tombstone/receipt store, live inventory and
+//! reference sources, and real per-surface purge adapters are required
+//! before any production claim (see
+//! docs/logic-audit-remediation-2026-10-21.md §5.2).
 
 use std::collections::{HashMap, HashSet};
 
