@@ -221,16 +221,45 @@ pub struct CachedPreparedPayload {
     pub verified_at: DateTime<Utc>,
 }
 
-/// Thread-safe verified payload cache keyed by `(payload_digest, runtime_fingerprint)`.
-#[derive(Debug, Default)]
+/// Default entry bound for [`VerifiedPayloadCache`].
+pub const DEFAULT_VERIFIED_PAYLOAD_CACHE_MAX_ENTRIES: usize = 128;
+/// Default aggregate payload-bytes bound for [`VerifiedPayloadCache`].
+pub const DEFAULT_VERIFIED_PAYLOAD_CACHE_MAX_BYTES: usize = 256 * 1024 * 1024;
+
+/// Thread-safe, bounded verified payload cache keyed by
+/// `(payload_digest, runtime_fingerprint)`.
+///
+/// The cache is an optimization over re-reading verified CAS payloads, never
+/// an authority: a poisoned lock degrades to cache misses/no-ops instead of
+/// panicking, and insertion evicts the oldest-verified entries until both
+/// the entry count and aggregate byte bounds hold. An entry larger than the
+/// byte bound is not retained.
+#[derive(Debug)]
 pub struct VerifiedPayloadCache {
     entries: RwLock<HashMap<(String, String), CachedPreparedPayload>>,
+    max_entries: usize,
+    max_bytes: usize,
+}
+
+impl Default for VerifiedPayloadCache {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl VerifiedPayloadCache {
     pub fn new() -> Self {
+        Self::with_limits(
+            DEFAULT_VERIFIED_PAYLOAD_CACHE_MAX_ENTRIES,
+            DEFAULT_VERIFIED_PAYLOAD_CACHE_MAX_BYTES,
+        )
+    }
+
+    pub fn with_limits(max_entries: usize, max_bytes: usize) -> Self {
         Self {
             entries: RwLock::new(HashMap::new()),
+            max_entries,
+            max_bytes,
         }
     }
 
@@ -241,36 +270,60 @@ impl VerifiedPayloadCache {
     ) -> Option<CachedPreparedPayload> {
         self.entries
             .read()
-            .unwrap()
+            .ok()?
             .get(&(payload_digest.to_string(), fingerprint_digest.to_string()))
             .cloned()
     }
 
     pub fn put(&self, entry: CachedPreparedPayload) {
+        if entry.payload_bytes.len() > self.max_bytes || self.max_entries == 0 {
+            return;
+        }
         let key = (
             entry.payload_digest.clone(),
             entry.runtime_fingerprint.clone(),
         );
-        self.entries.write().unwrap().insert(key, entry);
+        let Ok(mut entries) = self.entries.write() else {
+            return;
+        };
+        entries.insert(key, entry);
+        // Evict oldest-verified entries until both bounds hold.
+        while entries.len() > self.max_entries
+            || entries
+                .values()
+                .map(|cached| cached.payload_bytes.len())
+                .sum::<usize>()
+                > self.max_bytes
+        {
+            let Some(oldest_key) = entries
+                .iter()
+                .min_by_key(|(_, cached)| cached.verified_at)
+                .map(|(key, _)| key.clone())
+            else {
+                break;
+            };
+            entries.remove(&oldest_key);
+        }
     }
 
     pub fn invalidate_fingerprint(&self, fingerprint_digest: &str) {
-        self.entries
-            .write()
-            .unwrap()
-            .retain(|(_, fp), _| fp != fingerprint_digest);
+        if let Ok(mut entries) = self.entries.write() {
+            entries.retain(|(_, fp), _| fp != fingerprint_digest);
+        }
     }
 
     pub fn clear(&self) {
-        self.entries.write().unwrap().clear();
+        if let Ok(mut entries) = self.entries.write() {
+            entries.clear();
+        }
     }
 
     pub fn len(&self) -> usize {
-        self.entries.read().unwrap().len()
+        self.entries.read().map(|entries| entries.len()).unwrap_or(0)
     }
 
     pub fn is_empty(&self) -> bool {
-        self.entries.read().unwrap().is_empty()
+        self.len() == 0
     }
 }
 

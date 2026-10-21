@@ -58,11 +58,11 @@ then records what was changed, in what order, and how it was verified.
 
 | Phase | Scope (audit refs) | Status |
 |---|---|---|
-| A | H-1 Core-kind rejection; H-6 governance identity; M-8 lock invariants; M-1 delivery `payload_digest` | in progress |
-| B | H-2 policy cache TTL/bound/poison + host invalidation completeness | pending |
-| C | H-3 claim lease/reclaim + executor outcome ordering | pending |
-| D | M-4 settings strictness; M-6 materializer honesty; M-9 numeric index canonicalization | pending |
-| E | D5/D6 deletions: `dynamic_lifecycle`, `release_admission_journal`, in-memory `gc`/`wave_rollout`/`operator` fakes | pending |
+| A | H-1 Core-kind rejection; H-6 governance identity; M-8 lock invariants; M-1 delivery `payload_digest` | implemented (commit `b876c15`) |
+| B | H-2 policy cache TTL/bound/poison + host invalidation completeness | implemented (`087acf3`) |
+| C | H-3 claim lease/reclaim + executor outcome ordering | implemented (`052053a`) |
+| D | M-4 settings strictness; M-6 materializer honesty; M-9 numeric index canonicalization | implemented (`9249557`) |
+| E | D5/D6 deletions: `dynamic_lifecycle`, in-memory `gc`/`wave_rollout`/`operator` fakes; journal fixed in place (see §4) | implemented |
 | F | D4 RLS FORCE + GUC coverage (migration; needs PostgreSQL evidence) | pending |
 | G | D9 durable epoch + evidence-based watchdog convergence | pending |
 | H | M-12 schema ownership + backend newtype; typed errors at pub boundary; bounded lists | pending |
@@ -85,4 +85,17 @@ The development sandbox has no `cargo`/`rustc`. Verification therefore is:
 
 ## 4. Change log
 
-_(filled in as phases land)_
+- **E (deletions):** `dynamic_lifecycle.rs`, `operator.rs`, `wave_rollout.rs`,
+  `gc.rs` and their tests/facade methods were deleted after a
+  workspace-wide usage scan showed zero external callers. The surviving
+  owners are: lifecycle = executor + `lifecycle_writer`; rollout =
+  `artifact_node_reconciliation` / `distribution_rollout`; GC of data
+  objects = `data::gc` + `retention`.
+- **E (journal):** `release_admission_journal` was *kept and fixed* rather
+  than deleted: inspection showed it is the pre-staging intent journal the
+  OCI admission layers record before CAS mutation, complementing the
+  installer's in-transaction bind. Fixes: insert-conflict re-read (no
+  fabricated `Staged`), full-identity scoping on bind, bounded stale scan.
+- **E (payload cache):** `VerifiedPayloadCache` is now bounded by entry
+  count and aggregate bytes and degrades to misses on a poisoned lock
+  instead of panicking.

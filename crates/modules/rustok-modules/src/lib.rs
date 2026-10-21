@@ -33,13 +33,11 @@ mod distribution;
 mod distribution_bootstrap;
 mod distribution_release;
 mod distribution_rollout;
-pub mod dynamic_lifecycle;
 mod event_delivery;
 mod execution_audit;
 mod executor;
 pub mod executor_readiness;
 pub mod external_prebuilt_ingress;
-pub mod gc;
 mod governance;
 mod infrastructure;
 mod installation;
@@ -57,7 +55,6 @@ pub mod oci_admission;
 mod oci_transport;
 mod operation_store;
 pub mod operations_tool;
-pub mod operator;
 mod policy;
 mod policy_cache;
 mod policy_revision_consumer;
@@ -93,7 +90,6 @@ mod transition_receipts;
 mod transition_service;
 mod transition_store;
 mod trust;
-pub mod wave_rollout;
 
 pub use source_object::{
     SourceObjectError, SourceObjectRetentionHold, SourceObjectStore, SourceReceipt,
@@ -128,24 +124,11 @@ pub use data_snapshot_readiness::{
 pub use data_upgrade::{
     DataUpgradeDecision, DataUpgradeEvidence, DataUpgradePhase, evaluate_data_upgrade_decision,
 };
-pub use dynamic_lifecycle::{
-    DynamicLifecycleAction, DynamicLifecycleError, DynamicLifecycleService,
-    ExecuteDataPurgeCommand, ExecuteDisableCommand, ExecuteEnableCommand, ExecuteInstallCommand,
-    ExecuteInstallResult, ExecuteSettingsPurgeCommand, ExecuteUninstallCommand,
-    ExecuteUninstallResult, ProductionOperationStatus, ReinstallChoice, WorkGenerationRecord,
-};
 pub use executor_readiness::{
-    CachedPreparedPayload, EvaluateReadinessCommand, ExecutorPoolIdentity, ExecutorReadinessError,
-    ExecutorReadinessService, ExecutorSmokeReceipt, OwnerPlacementPolicy, ReleaseReadinessTarget,
-    RuntimeFingerprint, VerifiedPayloadCache,
-};
-pub use gc::{
-    ArtifactDataObjectGcAdapter, BrowserAssetGcAdapter, BuildAttemptGcAdapter, BuildAttemptStatus,
-    DiagnosticLogGcAdapter, EncryptedSettingsRecoveryPointGcAdapter, GcAdapter,
-    GcCollectionReceipt, GcCoordinator, GcError, GcExecutionToken, GcFinalRecheckDecision,
-    GcTargetKind, GcTombstoneRecord, GcTombstoneStatus, NodeSlotGcAdapter, OciArtifactGcAdapter,
-    OperationsToolGcAdapter, PlatformExecutableCasGcAdapter, SnapshotRestoreCopyGcAdapter,
-    SourceCasGcAdapter,
+    CachedPreparedPayload, DEFAULT_VERIFIED_PAYLOAD_CACHE_MAX_BYTES,
+    DEFAULT_VERIFIED_PAYLOAD_CACHE_MAX_ENTRIES, EvaluateReadinessCommand, ExecutorPoolIdentity,
+    ExecutorReadinessError, ExecutorReadinessService, ExecutorSmokeReceipt, OwnerPlacementPolicy,
+    ReleaseReadinessTarget, RuntimeFingerprint, VerifiedPayloadCache,
 };
 pub use migration_preflight::{
     MigrationPreflightInput, MigrationPreflightReceipt, UpdateMode, evaluate_migration_preflight,
@@ -158,17 +141,13 @@ pub use operations_tool::{
     OperationsToolSupervisorObservationStatus, OperationsToolSupervisorReport,
     StartOperationsToolMaintenanceCommand, VerifiedOperationsToolRelease,
 };
-pub use operator::{
-    CanonicalPresentationState, ContainmentOutcome, ModuleBlastRadius, ModuleOperatorError,
-    ModuleOperatorService, ModuleReleaseCoordinate, ModuleStatusProjection, ModuleSupportBundle,
-    ModuleVersionDiff, TransitionEligibility, TransitionPreviewProjection,
-};
 pub use queue_drain::{
     ArtifactQueueDrainError, ArtifactQueueDrainReceipt, ArtifactQueueDrainRequest,
     ArtifactQueueDrainService,
 };
 pub use release_admission_journal::{
-    ReleaseAdmissionIntentJournal, ReleaseAdmissionIntentRecord, ReleaseAdmissionJournalError,
+    MAX_STALE_UNFINISHED_INTENTS_PER_SCAN, ReleaseAdmissionIntentJournal,
+    ReleaseAdmissionIntentRecord, ReleaseAdmissionJournalError,
 };
 pub use retention::{
     ArtifactObjectState, RetentionError, RetentionHoldKind, RetentionHoldLedger,
@@ -194,10 +173,6 @@ pub use transition_service::{
     evaluate_transition_watchdog,
 };
 pub use transition_store::{RetentionHoldStore, TransitionCheckpointStore, TransitionStoreError};
-pub use wave_rollout::{
-    WaveAssignmentPhase, WaveCohort, WaveNodeAssignment, WaveRollbackReceipt,
-    WaveRolloutCoordinator, WaveRolloutError, WaveRolloutState,
-};
 
 use async_trait::async_trait;
 use rustok_core::{MigrationDependencyDescriptor, MigrationSource, ModuleKind, RusToKModule};
