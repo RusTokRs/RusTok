@@ -191,6 +191,12 @@ impl MarketplaceSellerReadPort for crate::MarketplaceSellerService {
         request: ReadMarketplaceSellerRequest,
     ) -> Result<MarketplaceSellerResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if request.seller_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_seller.seller_id_invalid",
+                "seller_id must not be nil",
+            ));
+        }
         self.get_seller(
             parse_tenant_id(&context)?,
             request.seller_id,
@@ -219,6 +225,12 @@ impl MarketplaceSellerReadPort for crate::MarketplaceSellerService {
         request: ReadMarketplaceSellerMembershipRequest,
     ) -> Result<MarketplaceSellerMemberResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if request.seller_id.is_nil() || request.user_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_seller.membership_id_invalid",
+                "seller_id and user_id must not be nil",
+            ));
+        }
         self.get_membership(
             parse_tenant_id(&context)?,
             request.seller_id,
@@ -234,6 +246,12 @@ impl MarketplaceSellerReadPort for crate::MarketplaceSellerService {
         request: ListMarketplaceSellerMembersRequest,
     ) -> Result<Vec<MarketplaceSellerMemberResponse>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if request.seller_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_seller.seller_id_invalid",
+                "seller_id must not be nil",
+            ));
+        }
         self.list_members(parse_tenant_id(&context)?, request.seller_id)
             .await
             .map_err(map_owner_error)
@@ -245,6 +263,12 @@ impl MarketplaceSellerReadPort for crate::MarketplaceSellerService {
         request: ListMarketplaceSellerEventsRequest,
     ) -> Result<Vec<MarketplaceSellerEventResponse>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if request.seller_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_seller.seller_id_invalid",
+                "seller_id must not be nil",
+            ));
+        }
         self.list_events(parse_tenant_id(&context)?, request.seller_id, request.limit)
             .await
             .map_err(map_owner_error)
@@ -259,6 +283,12 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
         request: CreateMarketplaceSellerInput,
     ) -> Result<MarketplaceSellerResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        if request.owner_user_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_seller.owner_user_id_invalid",
+                "owner_user_id must not be nil",
+            ));
+        }
         self.create_seller_with_receipt(
             parse_tenant_id(&context)?,
             parse_actor_id(&context)?,
@@ -276,6 +306,12 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
         request: UpdateMarketplaceSellerProfileRequest,
     ) -> Result<MarketplaceSellerResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        if request.seller_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_seller.seller_id_invalid",
+                "seller_id must not be nil",
+            ));
+        }
         self.update_profile_with_receipt(
             parse_tenant_id(&context)?,
             parse_actor_id(&context)?,
@@ -294,6 +330,12 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
         request: SubmitMarketplaceSellerOnboardingRequest,
     ) -> Result<MarketplaceSellerResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        if request.seller_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_seller.seller_id_invalid",
+                "seller_id must not be nil",
+            ));
+        }
         self.submit_onboarding_with_receipt(
             parse_tenant_id(&context)?,
             parse_actor_id(&context)?,
@@ -312,6 +354,12 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
         request: ReviewMarketplaceSellerOnboardingRequest,
     ) -> Result<MarketplaceSellerResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        if request.seller_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_seller.seller_id_invalid",
+                "seller_id must not be nil",
+            ));
+        }
         self.review_onboarding_with_receipt(
             parse_tenant_id(&context)?,
             parse_actor_id(&context)?,
@@ -330,6 +378,12 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
         request: SuspendMarketplaceSellerRequest,
     ) -> Result<MarketplaceSellerResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        if request.seller_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_seller.seller_id_invalid",
+                "seller_id must not be nil",
+            ));
+        }
         self.suspend_seller_with_receipt(
             parse_tenant_id(&context)?,
             parse_actor_id(&context)?,
@@ -348,6 +402,12 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
         request: ReactivateMarketplaceSellerRequest,
     ) -> Result<MarketplaceSellerResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        if request.seller_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_seller.seller_id_invalid",
+                "seller_id must not be nil",
+            ));
+        }
         self.reactivate_seller_with_receipt(
             parse_tenant_id(&context)?,
             parse_actor_id(&context)?,
@@ -365,6 +425,12 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
         request: AddMarketplaceSellerMemberRequest,
     ) -> Result<MarketplaceSellerMemberResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        if request.seller_id.is_nil() || request.input.user_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_seller.member_identity_invalid",
+                "seller_id and user_id must not be nil",
+            ));
+        }
         self.add_member_with_receipt(
             parse_tenant_id(&context)?,
             parse_actor_id(&context)?,
@@ -383,6 +449,12 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
         request: UpdateMarketplaceSellerMemberRequest,
     ) -> Result<MarketplaceSellerMemberResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        if request.seller_id.is_nil() || request.member_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_seller.member_identity_invalid",
+                "seller_id and member_id must not be nil",
+            ));
+        }
         self.update_member_with_receipt(
             parse_tenant_id(&context)?,
             parse_actor_id(&context)?,
@@ -400,21 +472,35 @@ impl MarketplaceSellerCommandPort for crate::MarketplaceSellerService {
 }
 
 fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
+    let id = Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
         PortError::validation(
             "marketplace_seller.tenant_id_invalid",
             "PortContext.tenant_id must be a UUID for marketplace seller ports",
         )
-    })
+    })?;
+    if id.is_nil() {
+        return Err(PortError::validation(
+            "marketplace_seller.tenant_id_invalid",
+            "PortContext.tenant_id must not be nil for marketplace seller ports",
+        ));
+    }
+    Ok(id)
 }
 
 fn parse_actor_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.actor.id.as_str()).map_err(|_| {
+    let id = Uuid::parse_str(context.actor.id.as_str()).map_err(|_| {
         PortError::validation(
             "marketplace_seller.actor_id_invalid",
             "write PortContext.actor.id must be a UUID for marketplace seller audit",
         )
-    })
+    })?;
+    if id.is_nil() {
+        return Err(PortError::validation(
+            "marketplace_seller.actor_id_invalid",
+            "write PortContext.actor.id must not be nil for marketplace seller audit",
+        ));
+    }
+    Ok(id)
 }
 
 fn parse_idempotency_key(context: &PortContext) -> Result<String, PortError> {
@@ -521,5 +607,84 @@ mod tests {
                 .require_policy(PortCallPolicy::write())
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn parse_tenant_id_rejects_nil_and_invalid() {
+        let nil_context = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::user(Uuid::new_v4().to_string()),
+            "en",
+            "contract",
+        );
+        let err = parse_tenant_id(&nil_context).unwrap_err();
+        assert_eq!(err.code, "marketplace_seller.tenant_id_invalid");
+
+        let invalid_context = PortContext::new(
+            "not-a-uuid",
+            PortActor::user(Uuid::new_v4().to_string()),
+            "en",
+            "contract",
+        );
+        let err2 = parse_tenant_id(&invalid_context).unwrap_err();
+        assert_eq!(err2.code, "marketplace_seller.tenant_id_invalid");
+
+        let valid_id = Uuid::new_v4();
+        let valid_context = PortContext::new(
+            valid_id.to_string(),
+            PortActor::user(Uuid::new_v4().to_string()),
+            "en",
+            "contract",
+        );
+        assert_eq!(parse_tenant_id(&valid_context).unwrap(), valid_id);
+    }
+
+    #[test]
+    fn parse_actor_id_rejects_nil_and_invalid() {
+        let nil_context = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::user(Uuid::nil().to_string()),
+            "en",
+            "contract",
+        );
+        let err = parse_actor_id(&nil_context).unwrap_err();
+        assert_eq!(err.code, "marketplace_seller.actor_id_invalid");
+
+        let invalid_context = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::user("bad-actor"),
+            "en",
+            "contract",
+        );
+        let err2 = parse_actor_id(&invalid_context).unwrap_err();
+        assert_eq!(err2.code, "marketplace_seller.actor_id_invalid");
+
+        let valid_id = Uuid::new_v4();
+        let valid_context = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::user(valid_id.to_string()),
+            "en",
+            "contract",
+        );
+        assert_eq!(parse_actor_id(&valid_context).unwrap(), valid_id);
+    }
+
+    #[test]
+    fn parse_idempotency_key_requires_non_empty() {
+        let base = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::user(Uuid::new_v4().to_string()),
+            "en",
+            "contract",
+        );
+        let err = parse_idempotency_key(&base).unwrap_err();
+        assert_eq!(err.code, "marketplace_seller.idempotency_key_required");
+
+        let whitespace = base.clone().with_idempotency_key("   ");
+        let err2 = parse_idempotency_key(&whitespace).unwrap_err();
+        assert_eq!(err2.code, "marketplace_seller.idempotency_key_required");
+
+        let valid = base.with_idempotency_key("key-123");
+        assert_eq!(parse_idempotency_key(&valid).unwrap(), "key-123");
     }
 }

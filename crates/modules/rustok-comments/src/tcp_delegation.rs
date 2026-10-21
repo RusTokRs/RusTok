@@ -690,7 +690,7 @@ fn valid_key_id(value: &str) -> bool {
 }
 
 fn is_canonical_uuid(value: &str) -> bool {
-    Uuid::parse_str(value).is_ok_and(|parsed| parsed.to_string() == value)
+    Uuid::parse_str(value).is_ok_and(|parsed| !parsed.is_nil() && parsed.to_string() == value)
 }
 
 fn duration_ms(duration: Duration) -> Option<u64> {
@@ -753,6 +753,12 @@ mod tests {
             .with_deadline(Duration::from_secs(2)),
             comment_id: Uuid::new_v4(),
         }
+    }
+
+    #[test]
+    fn canonical_uuid_rejects_nil() {
+        assert!(!is_canonical_uuid(&Uuid::nil().to_string()));
+        assert!(is_canonical_uuid(&Uuid::new_v4().to_string()));
     }
 
     #[test]

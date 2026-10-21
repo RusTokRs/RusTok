@@ -129,6 +129,7 @@ impl MarketplaceFinancialOrchestrationService {
         context
             .require_policy(PortCallPolicy::write())
             .map_err(map_context_error)?;
+        validate_context(&context)?;
         validate_input(&input)?;
         let root_key = root_idempotency_key(&context)?;
         let commission_key = child_key(root_key, COMMISSION_STAGE_SUFFIX)?;
@@ -175,6 +176,7 @@ impl MarketplaceFinancialOrchestrationService {
         context
             .require_policy(PortCallPolicy::write())
             .map_err(map_context_error)?;
+        validate_context(&context)?;
         validate_reversal_input(&input.reversal)?;
         let ledger_key = child_key(
             root_idempotency_key(&context)?,
@@ -226,6 +228,21 @@ fn root_idempotency_key(context: &PortContext) -> MarketplaceFinancialOrchestrat
         })
 }
 
+fn validate_context(context: &PortContext) -> MarketplaceFinancialOrchestrationResult<()> {
+    let trimmed = context.tenant_id.trim();
+    if trimmed.is_empty() {
+        return Err(MarketplaceFinancialOrchestrationError::Validation(
+            "tenant_id must not be empty".to_string(),
+        ));
+    }
+    if matches!(Uuid::parse_str(trimmed), Ok(uuid) if uuid.is_nil()) {
+        return Err(MarketplaceFinancialOrchestrationError::Validation(
+            "tenant_id must not be nil".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_input(
     input: &ProcessMarketplaceOrderFinancialsInput,
 ) -> MarketplaceFinancialOrchestrationResult<()> {
@@ -260,6 +277,17 @@ fn validate_reversal_input(
         return Err(MarketplaceFinancialOrchestrationError::Validation(
             "reversal requires at least one normalized line".to_string(),
         ));
+    }
+    for line in &input.lines {
+        if line.assessment_id.is_nil()
+            || line.allocation_id.is_nil()
+            || line.order_line_item_id.is_nil()
+            || line.seller_id.is_nil()
+        {
+            return Err(MarketplaceFinancialOrchestrationError::Validation(
+                "reversal line ids must not be nil".to_string(),
+            ));
+        }
     }
     let total = input.lines.iter().try_fold(0_i64, |total, line| {
         if line.commission_amount < 0 || line.seller_amount < 0 {

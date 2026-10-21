@@ -11,8 +11,8 @@ use leptos::prelude::*;
 
 use super::graphql_adapter::ApiError;
 use crate::model::{
-    CreateStorefrontForumReplyDraft, CreateStorefrontForumTopicDraft, StorefrontForumComposerQuote,
-    StorefrontForumCreatedReply, StorefrontForumCreatedTopic,
+    CreateStorefrontForumReplyDraft, CreateStorefrontForumTopicDraft, StorefrontForumCreatedReply,
+    StorefrontForumCreatedTopic,
 };
 
 pub async fn create_storefront_topic_server(

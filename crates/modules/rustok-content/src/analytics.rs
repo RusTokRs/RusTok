@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ContentCountSnapshot {
     pub total_count: i64,
     pub current_count: i64,
@@ -18,6 +18,15 @@ pub async fn load_post_stats_snapshot<C>(
 where
     C: ConnectionTrait,
 {
+    if tenant_id.is_nil() {
+        return Err(sea_orm::DbErr::Custom("tenant_id must not be nil".to_string()));
+    }
+    if current_period_start < previous_period_start {
+        return Err(sea_orm::DbErr::Custom(
+            "current_period_start must be greater than or equal to previous_period_start".to_string(),
+        ));
+    }
+
     let backend = db.get_database_backend();
     let statement = match backend {
         DbBackend::Sqlite => Statement::from_sql_and_values(
@@ -67,4 +76,33 @@ where
         current_count: row.try_get("", "current_count")?,
         previous_count: row.try_get("", "previous_count")?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sea_orm::Database;
+
+    #[tokio::test]
+    async fn rejects_nil_tenant_id() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let now = Utc::now();
+        let err = load_post_stats_snapshot(&db, Uuid::nil(), now, now)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("tenant_id must not be nil"));
+    }
+
+    #[tokio::test]
+    async fn rejects_temporal_skew() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let now = Utc::now();
+        let past = now - chrono::Duration::days(1);
+        let err = load_post_stats_snapshot(&db, Uuid::new_v4(), past, now)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains(
+            "current_period_start must be greater than or equal to previous_period_start"
+        ));
+    }
 }

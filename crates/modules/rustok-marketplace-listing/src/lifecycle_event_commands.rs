@@ -32,6 +32,11 @@ impl MarketplaceListingService {
         input
             .validate()
             .map_err(|error| MarketplaceListingError::Validation(error.to_string()))?;
+        if input.listing_id.is_nil() {
+            return Err(MarketplaceListingError::Validation(
+                "listing_id must not be nil".to_string(),
+            ));
+        }
         let tenant_id = parse_tenant_id(&context)?;
         let actor_id = parse_actor_id(&context)?;
         let locale = normalize_listing_event_locale(context.locale.as_str())?;
@@ -92,6 +97,11 @@ impl MarketplaceListingService {
         context
             .require_write_semantics()
             .map_err(|error| MarketplaceListingError::Validation(error.message))?;
+        if listing_id.is_nil() {
+            return Err(MarketplaceListingError::Validation(
+                "listing_id must not be nil".to_string(),
+            ));
+        }
         let tenant_id = parse_tenant_id(&context)?;
         let actor_id = parse_actor_id(&context)?;
         let locale = normalize_listing_event_locale(context.locale.as_str())?;
@@ -143,6 +153,11 @@ impl MarketplaceListingService {
         context
             .require_write_semantics()
             .map_err(|error| MarketplaceListingError::Validation(error.message))?;
+        if listing_id.is_nil() {
+            return Err(MarketplaceListingError::Validation(
+                "listing_id must not be nil".to_string(),
+            ));
+        }
         let tenant_id = parse_tenant_id(&context)?;
         let actor_id = parse_actor_id(&context)?;
         let locale = normalize_listing_event_locale(context.locale.as_str())?;
@@ -348,19 +363,31 @@ async fn finish(
 }
 
 fn parse_tenant_id(context: &rustok_api::PortContext) -> MarketplaceListingResult<Uuid> {
-    Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
+    let id = Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
         MarketplaceListingError::Validation(
             "PortContext.tenant_id must be a UUID for marketplace listing ports".to_string(),
         )
-    })
+    })?;
+    if id.is_nil() {
+        return Err(MarketplaceListingError::Validation(
+            "PortContext.tenant_id must not be nil for marketplace listing ports".to_string(),
+        ));
+    }
+    Ok(id)
 }
 
 fn parse_actor_id(context: &rustok_api::PortContext) -> MarketplaceListingResult<Uuid> {
-    Uuid::parse_str(context.actor.id.as_str()).map_err(|_| {
+    let id = Uuid::parse_str(context.actor.id.as_str()).map_err(|_| {
         MarketplaceListingError::Validation(
             "write PortContext.actor.id must be a UUID for marketplace listing audit".to_string(),
         )
-    })
+    })?;
+    if id.is_nil() {
+        return Err(MarketplaceListingError::Validation(
+            "write PortContext.actor.id must not be nil for marketplace listing audit".to_string(),
+        ));
+    }
+    Ok(id)
 }
 
 fn required_idempotency_key(context: &rustok_api::PortContext) -> MarketplaceListingResult<String> {

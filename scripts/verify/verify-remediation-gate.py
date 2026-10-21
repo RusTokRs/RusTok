@@ -95,9 +95,9 @@ def run_architecture_guard() -> tuple[bool, str]:
 
 
 def run_crate_checks(changed_files: list[str], target_crate: str | None = None) -> tuple[bool, str]:
-    packages_to_check: set[str] = set()
+    packages_to_check: dict[str, Path | None] = {}
     if target_crate:
-        packages_to_check.add(target_crate)
+        packages_to_check[target_crate] = None
     else:
         for f in changed_files:
             p = ROOT / f
@@ -107,18 +107,16 @@ def run_crate_checks(changed_files: list[str], target_crate: str | None = None) 
                     try:
                         content = cargo_toml.read_text(encoding="utf-8")
                         m = re.search(r'^\s*name\s*=\s*"([^"]+)"', content, re.MULTILINE)
-                        if m:
-                            packages_to_check.add(m.group(1))
-                        else:
-                            packages_to_check.add(parent.name)
+                        pkg_name = m.group(1) if m else parent.name
+                        packages_to_check[pkg_name] = cargo_toml
                     except Exception:
-                        packages_to_check.add(parent.name)
+                        packages_to_check[parent.name] = cargo_toml
                     break
 
     if not packages_to_check:
         return True, "No specific Rust packages affected by diff."
 
-    for pkg in sorted(packages_to_check):
+    for pkg, cargo_toml in sorted(packages_to_check.items()):
         print(f"[Gatekeeper] Running cargo clippy on package: {pkg}", flush=True)
         clippy_res = subprocess.run(
             ["cargo", "clippy", "--package", pkg, "--all-targets", "--", "-D", "warnings"],
@@ -128,10 +126,20 @@ def run_crate_checks(changed_files: list[str], target_crate: str | None = None) 
             encoding="utf-8",
             errors="replace",
         )
+        if clippy_res.returncode != 0 and cargo_toml and "did not match any packages" in (clippy_res.stderr or ""):
+            print(f"[Gatekeeper] Package {pkg} not in workspace members, retrying with --manifest-path {cargo_toml.relative_to(ROOT)}", flush=True)
+            clippy_res = subprocess.run(
+                ["cargo", "clippy", "--manifest-path", str(cargo_toml), "--all-targets", "--", "-D", "warnings"],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
         if clippy_res.returncode != 0:
             return False, f"cargo clippy failed for {pkg}:\n{clippy_res.stderr or clippy_res.stdout}"
 
-    return True, f"Cargo checks passed for packages: {', '.join(packages_to_check)}"
+    return True, f"Cargo checks passed for packages: {', '.join(packages_to_check.keys())}"
 
 
 def main() -> int:

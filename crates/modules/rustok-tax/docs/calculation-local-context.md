@@ -49,9 +49,7 @@ The owner validation and invariant mappers retain only the presence and characte
 length of their internal detail text. Provider validation text is likewise reduced to
 presence and length.
 
-The diagnostic boundary does not write raw currency, provider ids, country codes,
-rates, monetary amounts, line-item or shipping-option UUIDs, tax classes,
-descriptions, policy rows, or provider metadata.
+The diagnostic boundary does not record raw currency, provider ids, country codes, tax rates, monetary amounts, line-item or shipping-option UUIDs, tax classes, descriptions, policy rows, or provider metadata.
 
 ## Preserved behavior
 
@@ -85,10 +83,7 @@ Machine-readable source evidence is retained in:
 
 ## Remaining gaps
 
-Direct construction through `rustok_tax::ports` remains a compatibility path, although
-its owner diagnostics are now safe. Consumer-side transport context, external-provider
-runtime behavior, timeout/retry evidence, remote profiles, compile evidence, and the
-remaining ecommerce mapper cleanup stay open.
+Direct callers that deliberately construct through `rustok_tax::ports` bypass the canonical wrapper, although its owner diagnostics are now safe. Consumer-side transport context, external-provider runtime behavior, timeout/retry evidence, remote profiles, compile evidence, and the remaining ecommerce mapper cleanup stay open.
 
 No architecture status is promoted from source-only evidence.
 

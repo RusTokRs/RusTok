@@ -200,6 +200,11 @@ impl NotificationCandidateWorker {
         work: NotificationCandidateWorkItem,
         reason: NotificationCandidatePolicyDeferral,
     ) -> NotificationResult<()> {
+        if work.item_id.is_nil() || work.tenant_id.is_nil() {
+            return Err(NotificationError::Validation(
+                "candidate item id and tenant id cannot be nil".to_string(),
+            ));
+        }
         let current = candidate_item::Entity::find_by_id(work.item_id)
             .one(&self.db)
             .await?
@@ -238,6 +243,11 @@ impl NotificationCandidateWorker {
         &self,
         item_id: Uuid,
     ) -> NotificationResult<NotificationCandidateProcessResult> {
+        if item_id.is_nil() {
+            return Err(NotificationError::Validation(
+                "candidate item id cannot be nil".to_string(),
+            ));
+        }
         self.service
             .process_candidate(item_id, self.worker_id.as_str())
             .await
@@ -249,6 +259,11 @@ impl NotificationCandidateWorker {
         observed_policy_revision: &str,
         observed_default_enabled_modules: &[String],
     ) -> NotificationResult<NotificationCandidateProcessResult> {
+        if item_id.is_nil() {
+            return Err(NotificationError::Validation(
+                "candidate item id cannot be nil".to_string(),
+            ));
+        }
         self.service
             .process_candidate_with_policy_revision(
                 item_id,
@@ -332,4 +347,43 @@ fn validate_worker_id(worker_id: &str) -> NotificationResult<()> {
 
 fn now() -> DateTime<FixedOffset> {
     Utc::now().fixed_offset()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn worker_id_validation_rejects_empty_whitespace_and_oversized() {
+        assert!(validate_worker_id("").is_err());
+        assert!(validate_worker_id("   ").is_err());
+        assert!(validate_worker_id(&"a".repeat(MAX_WORKER_ID_BYTES + 1)).is_err());
+        assert!(validate_worker_id("valid-worker-1").is_ok());
+        assert!(validate_worker_id(&"w".repeat(MAX_WORKER_ID_BYTES)).is_ok());
+    }
+
+    #[test]
+    fn worker_configuration_validation_enforces_batch_bounds() {
+        assert!(validate_worker_configuration("w1".to_string(), 0).is_err());
+        assert!(validate_worker_configuration("w1".to_string(), MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE + 1).is_err());
+        assert!(validate_worker_configuration("w1".to_string(), 1).is_ok());
+        assert!(validate_worker_configuration("w1".to_string(), MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE).is_ok());
+    }
+
+    #[test]
+    fn policy_deferral_reasons_expose_canonical_backoff_and_codes() {
+        let tenant_disabled = NotificationCandidatePolicyDeferral::TenantDisabled;
+        assert_eq!(tenant_disabled.retry_seconds(), 300);
+        assert_eq!(
+            tenant_disabled.error_code(),
+            "NOTIFICATION_TENANT_CAPABILITY_DISABLED"
+        );
+
+        let policy_unavail = NotificationCandidatePolicyDeferral::PolicyUnavailable;
+        assert_eq!(policy_unavail.retry_seconds(), 30);
+        assert_eq!(
+            policy_unavail.error_code(),
+            "NOTIFICATION_TENANT_POLICY_UNAVAILABLE"
+        );
+    }
 }

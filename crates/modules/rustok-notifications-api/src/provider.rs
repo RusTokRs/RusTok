@@ -53,6 +53,12 @@ impl From<NotificationProviderError> for rustok_core::Error {
 }
 
 
+impl From<crate::model::NotificationContractError> for NotificationProviderError {
+    fn from(_: crate::model::NotificationContractError) -> Self {
+        Self::InvalidEvent
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DescribeNotificationRequest {
     pub event: NotificationSourceEventRef,
@@ -77,6 +83,19 @@ pub struct AuthorizeNotificationTargetRequest {
     pub tenant_id: Uuid,
     pub recipient_id: Uuid,
     pub target: NotificationTargetRef,
+}
+
+impl AuthorizeNotificationTargetRequest {
+    pub fn validate(&self) -> Result<(), crate::model::NotificationContractError> {
+        if self.tenant_id.is_nil() {
+            return Err(crate::model::NotificationContractError::NilTenantId);
+        }
+        if self.recipient_id.is_nil() {
+            return Err(crate::model::NotificationContractError::NilRecipientId);
+        }
+        self.target.validate()?;
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

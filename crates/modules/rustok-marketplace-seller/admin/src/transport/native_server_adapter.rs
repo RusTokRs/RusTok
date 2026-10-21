@@ -462,7 +462,12 @@ fn map_port_error(error: rustok_api::PortError) -> ServerFnError {
 
 #[cfg(feature = "ssr")]
 fn parse_uuid(value: &str, field: &str) -> Result<uuid::Uuid, ServerFnError> {
-    uuid::Uuid::parse_str(value.trim()).map_err(|_| ServerFnError::new(format!("Invalid {field}")))
+    let id = uuid::Uuid::parse_str(value.trim())
+        .map_err(|_| ServerFnError::new(format!("Invalid {field}")))?;
+    if id.is_nil() {
+        return Err(ServerFnError::new(format!("Invalid {field}: cannot be nil")));
+    }
+    Ok(id)
 }
 
 #[cfg(feature = "ssr")]
@@ -592,3 +597,68 @@ fn member_result(
         member: Some(map_member(member)),
     }
 }
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_uuid_validates_non_nil_and_format() {
+        let valid = uuid::Uuid::new_v4();
+        assert_eq!(parse_uuid(&valid.to_string(), "seller_id").unwrap(), valid);
+
+        let nil = uuid::Uuid::nil();
+        let nil_err = parse_uuid(&nil.to_string(), "seller_id").unwrap_err();
+        assert!(nil_err.to_string().contains("cannot be nil"));
+
+        let malformed_err = parse_uuid("not-a-uuid", "seller_id").unwrap_err();
+        assert!(malformed_err.to_string().contains("Invalid seller_id"));
+    }
+
+    #[test]
+    fn parse_statuses_validate_input() {
+        assert_eq!(
+            parse_seller_status(Some("active")).unwrap(),
+            Some(rustok_marketplace_seller::MarketplaceSellerStatus::Active)
+        );
+        assert_eq!(
+            parse_seller_status(Some("  ")).unwrap(),
+            None
+        );
+        assert!(parse_seller_status(Some("invalid_status")).is_err());
+
+        assert_eq!(
+            parse_onboarding_status(Some("approved")).unwrap(),
+            Some(rustok_marketplace_seller::MarketplaceSellerOnboardingStatus::Approved)
+        );
+        assert!(parse_onboarding_status(Some("unknown")).is_err());
+    }
+
+    #[test]
+    fn parse_member_role_and_status_validate_input() {
+        assert_eq!(
+            parse_member_role("admin").unwrap(),
+            rustok_marketplace_seller::MarketplaceSellerMemberRole::Admin
+        );
+        assert!(parse_member_role("superadmin").is_err());
+
+        assert_eq!(
+            parse_member_status("active").unwrap(),
+            rustok_marketplace_seller::MarketplaceSellerMemberStatus::Active
+        );
+        assert!(parse_member_status("banned").is_err());
+    }
+
+    #[test]
+    fn object_or_empty_accepts_object_or_null() {
+        assert_eq!(
+            object_or_empty(serde_json::Value::Null, "metadata").unwrap(),
+            serde_json::json!({})
+        );
+        let obj = serde_json::json!({"key": "value"});
+        assert_eq!(object_or_empty(obj.clone(), "metadata").unwrap(), obj);
+        assert!(object_or_empty(serde_json::json!("string"), "metadata").is_err());
+        assert!(object_or_empty(serde_json::json!([1, 2, 3]), "metadata").is_err());
+    }
+}
+

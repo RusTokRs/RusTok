@@ -178,3 +178,50 @@ pub enum PushSubscriptionStatus {
     #[sea_orm(string_value = "revoked")]
     Revoked,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn notification_state_serde_roundtrips() {
+        for (state, json) in [
+            (NotificationState::Unread, "\"unread\""),
+            (NotificationState::Seen, "\"seen\""),
+            (NotificationState::Read, "\"read\""),
+            (NotificationState::Archived, "\"archived\""),
+        ] {
+            assert_eq!(serde_json::to_string(&state).unwrap(), json);
+            assert_eq!(serde_json::from_str::<NotificationState>(json).unwrap(), state);
+        }
+    }
+
+    #[test]
+    fn notification_priority_serde_roundtrips() {
+        for (priority, json) in [
+            (NotificationPriorityValue::Low, "\"low\""),
+            (NotificationPriorityValue::Normal, "\"normal\""),
+            (NotificationPriorityValue::High, "\"high\""),
+            (NotificationPriorityValue::Urgent, "\"urgent\""),
+        ] {
+            assert_eq!(serde_json::to_string(&priority).unwrap(), json);
+            assert_eq!(serde_json::from_str::<NotificationPriorityValue>(json).unwrap(), priority);
+        }
+    }
+
+    #[test]
+    fn channel_and_delivery_status_serde_roundtrips() {
+        assert_eq!(
+            serde_json::to_string(&NotificationChannel::InApp).unwrap(),
+            "\"in_app\""
+        );
+        assert_eq!(
+            serde_json::to_string(&DeliveryStatus::Pending).unwrap(),
+            "\"pending\""
+        );
+        assert_eq!(
+            serde_json::to_string(&DeliveryStatus::RetryableError).unwrap(),
+            "\"retryable_error\""
+        );
+    }
+}

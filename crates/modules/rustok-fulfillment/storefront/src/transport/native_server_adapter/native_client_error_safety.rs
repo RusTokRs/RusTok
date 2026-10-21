@@ -11,6 +11,7 @@ const FULFILLMENT_STOREFRONT_NATIVE_CLIENT_BOUNDARY: &str =
 const FULFILLMENT_STOREFRONT_NATIVE_CLIENT_PUBLIC_MESSAGE: &str =
     "Shipping selection request could not be completed";
 
+#[derive(Debug)]
 pub(super) struct NativeClientErrorContext {
     correlation_id: String,
     cart_id_length: usize,
@@ -25,9 +26,14 @@ impl NativeClientErrorContext {
     pub(super) fn validate_and_new(
         request: &SelectShippingOptionRequest,
     ) -> Result<Self, ShippingSelectionTransportError> {
-        Uuid::parse_str(request.cart_id.trim()).map_err(|_| {
+        let cart_uuid = Uuid::parse_str(request.cart_id.trim()).map_err(|_| {
             ShippingSelectionTransportError::Validation("cart_id must be a valid UUID".to_string())
         })?;
+        if cart_uuid.is_nil() {
+            return Err(ShippingSelectionTransportError::Validation(
+                "cart_id must not be a nil UUID".to_string(),
+            ));
+        }
 
         let updates = build_shipping_selection_updates(request)?;
         for update in updates {
@@ -36,11 +42,16 @@ impl NativeClientErrorContext {
                 .as_deref()
                 .filter(|value| !value.trim().is_empty())
             {
-                Uuid::parse_str(option_id.trim()).map_err(|_| {
+                let option_uuid = Uuid::parse_str(option_id.trim()).map_err(|_| {
                     ShippingSelectionTransportError::Validation(
                         "selected_shipping_option_id must be a valid UUID".to_string(),
                     )
                 })?;
+                if option_uuid.is_nil() {
+                    return Err(ShippingSelectionTransportError::Validation(
+                        "selected_shipping_option_id must not be a nil UUID".to_string(),
+                    ));
+                }
             }
         }
 
@@ -135,5 +146,43 @@ mod tests {
             )
         );
         assert!(!error.message().contains("database password"));
+    }
+
+    #[test]
+    fn validate_and_new_rejects_nil_cart_id() {
+        let request = crate::transport::SelectShippingOptionRequest {
+            cart_id: uuid::Uuid::nil().to_string(),
+            delivery_groups: vec![],
+            shipping_profile_slug: "default".into(),
+            seller_id: None,
+            shipping_option_id: None,
+        };
+
+        let err = NativeClientErrorContext::validate_and_new(&request).unwrap_err();
+        assert!(matches!(err, ShippingSelectionTransportError::Validation(msg) if msg.contains("cart_id must not be a nil UUID")));
+    }
+
+    #[test]
+    fn validate_and_new_rejects_nil_shipping_option_id() {
+        let opt_id = uuid::Uuid::new_v4().to_string();
+        let request = crate::transport::SelectShippingOptionRequest {
+            cart_id: uuid::Uuid::new_v4().to_string(),
+            delivery_groups: vec![crate::transport::ShippingSelectionDeliveryGroup {
+                shipping_profile_slug: "default".into(),
+                seller_id: None,
+                selected_shipping_option_id: None,
+                available_shipping_option_ids: vec![opt_id.clone()],
+            }],
+            shipping_profile_slug: "default".into(),
+            seller_id: None,
+            shipping_option_id: Some(uuid::Uuid::nil().to_string()),
+        };
+
+        // Note: build_shipping_selection_updates will check availability first if the option is not in available list.
+        // If nil UUID is available or passed, it must fail with nil UUID validation.
+        let mut request_with_nil_available = request;
+        request_with_nil_available.delivery_groups[0].available_shipping_option_ids = vec![uuid::Uuid::nil().to_string()];
+        let err = NativeClientErrorContext::validate_and_new(&request_with_nil_available).unwrap_err();
+        assert!(matches!(err, ShippingSelectionTransportError::Validation(msg) if msg.contains("selected_shipping_option_id must not be a nil UUID")));
     }
 }

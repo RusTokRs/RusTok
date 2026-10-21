@@ -20,21 +20,16 @@ pub fn NotificationsAdmin() -> impl IntoView {
     let delivery_label = t(loc, "notifications.delivery", "Delivery");
 
     let status = load_notifications_admin_status();
-    let source_status = if status.source_registry_ready {
-        t(loc, "notifications.status.ready", "Ready")
-    } else {
-        t(loc, "notifications.status.unavailable", "Unavailable")
-    };
-    let persistence_status = if status.persistence_ready {
-        t(loc, "notifications.status.ready", "Ready")
-    } else {
-        t(loc, "notifications.status.planned", "Planned")
-    };
-    let delivery_status = if status.delivery_ready {
-        t(loc, "notifications.status.ready", "Ready")
-    } else {
-        t(loc, "notifications.status.planned", "Planned")
-    };
+    let source_item = status.source_status();
+    let source_status = t(loc, source_item.i18n_key(), source_item.default_label());
+    let persistence_item = status.persistence_status();
+    let persistence_status = t(
+        loc,
+        persistence_item.i18n_key(),
+        persistence_item.default_label(),
+    );
+    let delivery_item = status.delivery_status();
+    let delivery_status = t(loc, delivery_item.i18n_key(), delivery_item.default_label());
 
     view! {
         <section class="space-y-4" data-module="notifications" data-phase="source_registry">

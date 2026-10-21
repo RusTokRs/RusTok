@@ -203,6 +203,9 @@ impl CommentsService {
         if tenant_id.is_nil() {
             return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
         }
+        if input.target_type.trim().is_empty() {
+            return Err(CommentsError::Validation("target_type cannot be empty".to_string()));
+        }
         if input.target_id.is_nil() {
             return Err(CommentsError::Validation("target_id cannot be nil".to_string()));
         }
@@ -616,6 +619,9 @@ impl CommentsService {
             if tenant_id.is_nil() {
                 return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
             }
+            if target_type.trim().is_empty() {
+                return Err(CommentsError::Validation("target_type cannot be empty".to_string()));
+            }
             if target_id.is_nil() {
                 return Err(CommentsError::Validation("target_id cannot be nil".to_string()));
             }
@@ -745,6 +751,9 @@ impl CommentsService {
         let result = async {
             if tenant_id.is_nil() {
                 return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+            }
+            if target_type.trim().is_empty() {
+                return Err(CommentsError::Validation("target_type cannot be empty".to_string()));
             }
             if target_id.is_nil() {
                 return Err(CommentsError::Validation("target_id cannot be nil".to_string()));
@@ -1076,6 +1085,9 @@ impl CommentsService {
     ) -> CommentsResult<comment_thread::Model> {
         if tenant_id.is_nil() {
             return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+        }
+        if target_type.trim().is_empty() {
+            return Err(CommentsError::Validation("target_type cannot be empty".to_string()));
         }
         if target_id.is_nil() {
             return Err(CommentsError::Validation("target_id cannot be nil".to_string()));
@@ -1538,6 +1550,31 @@ mod richtext_validation_tests {
             .expect_err("non-moderator should not create spam comments");
 
         assert!(matches!(err, CommentsError::Forbidden(_)));
+    }
+
+    #[tokio::test]
+    async fn rejects_empty_target_type() {
+        let service = setup_comments_service().await;
+        let tenant_id = Uuid::new_v4();
+        let customer = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+
+        let err = service
+            .create_comment(
+                tenant_id,
+                customer,
+                CreateCommentInput {
+                    target_type: "   ".to_string(),
+                    target_id: Uuid::new_v4(),
+                    locale: "en".to_string(),
+                    body: test_document("valid text"),
+                    parent_comment_id: None,
+                    status: crate::dto::CommentStatus::Pending,
+                },
+            )
+            .await
+            .expect_err("empty target_type must be rejected");
+
+        assert!(matches!(err, CommentsError::Validation(msg) if msg.contains("target_type cannot be empty")));
     }
 }
 

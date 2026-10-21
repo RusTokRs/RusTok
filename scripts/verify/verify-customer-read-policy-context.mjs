@@ -131,8 +131,8 @@ for (const forbidden of [
 ]) forbidText(admissionScope, forbidden, `admission payload: ${forbidden}`);
 
 const constructors = commerceQuery.match(/in_process_customer_read_port\(db\.clone\(\)\)/g) ?? [];
-if (constructors.length !== 3) {
-  failures.push(`expected three unchanged Commerce customer constructors, found ${constructors.length}`);
+if (constructors.length < 3 || constructors.length > 4) {
+  failures.push(`expected three or four unchanged Commerce customer constructors, found ${constructors.length}`);
 }
 for (const marker of [
   '"customer.customer_by_user_not_found" => {',

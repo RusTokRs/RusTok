@@ -53,6 +53,16 @@ impl MarketplacePayoutService {
         idempotency_key: impl Into<String>,
         input: ScheduleMarketplacePayoutInput,
     ) -> MarketplacePayoutResult<MarketplacePayoutResponse> {
+        if tenant_id.is_nil() {
+            return Err(MarketplacePayoutError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if actor_id.is_nil() {
+            return Err(MarketplacePayoutError::Validation(
+                "actor_id must not be nil".to_string(),
+            ));
+        }
         let input = normalize_schedule_input(input)?;
         let key = normalize_idempotency_key(idempotency_key)?;
         let hash = schedule_request_hash(actor_id, &input)?;
@@ -82,6 +92,16 @@ impl MarketplacePayoutService {
         tenant_id: Uuid,
         payout_id: Uuid,
     ) -> MarketplacePayoutResult<MarketplacePayoutResponse> {
+        if tenant_id.is_nil() {
+            return Err(MarketplacePayoutError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if payout_id.is_nil() {
+            return Err(MarketplacePayoutError::Validation(
+                "payout_id must not be nil".to_string(),
+            ));
+        }
         let payout = payout::Entity::find()
             .filter(payout::Column::TenantId.eq(tenant_id))
             .filter(payout::Column::Id.eq(payout_id))
@@ -105,6 +125,11 @@ impl MarketplacePayoutService {
         tenant_id: Uuid,
         mut request: ListMarketplaceSellerPayoutsRequest,
     ) -> MarketplacePayoutResult<MarketplacePayoutListResponse> {
+        if tenant_id.is_nil() {
+            return Err(MarketplacePayoutError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
         if request.seller_id.is_nil() {
             return Err(MarketplacePayoutError::Validation(
                 "seller_id must not be nil".to_string(),
@@ -173,6 +198,11 @@ impl MarketplacePayoutService {
         tenant_id: Uuid,
         input: &ScheduleMarketplacePayoutInput,
     ) -> MarketplacePayoutResult<Vec<MarketplaceLedgerEntryResponse>> {
+        if tenant_id.is_nil() {
+            return Err(MarketplacePayoutError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
         let wanted = input
             .ledger_entry_ids
             .iter()
@@ -229,6 +259,11 @@ async fn schedule_in_transaction(
     input: ScheduleMarketplacePayoutInput,
     entries: Vec<MarketplaceLedgerEntryResponse>,
 ) -> MarketplacePayoutResult<MarketplacePayoutResponse> {
+    if tenant_id.is_nil() {
+        return Err(MarketplacePayoutError::Validation(
+            "tenant_id must not be nil".to_string(),
+        ));
+    }
     let entry_ids = entries.iter().map(|entry| entry.id).collect::<Vec<_>>();
     if let Some(existing) = item::Entity::find()
         .filter(item::Column::TenantId.eq(tenant_id))
@@ -339,6 +374,11 @@ fn validate_ledger_entry(
     input: &ScheduleMarketplacePayoutInput,
     entry: &MarketplaceLedgerEntryResponse,
 ) -> MarketplacePayoutResult<()> {
+    if tenant_id.is_nil() || entry.id.is_nil() {
+        return Err(MarketplacePayoutError::Validation(
+            "tenant_id and entry.id must not be nil".to_string(),
+        ));
+    }
     if entry.tenant_id != tenant_id {
         return Err(MarketplacePayoutError::Validation(format!(
             "ledger entry {} does not match payout tenant scope",
