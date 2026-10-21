@@ -27,6 +27,7 @@ pub mod data_snapshot_intents;
 pub mod data_snapshot_readiness;
 pub mod data_upgrade;
 mod definition;
+mod delivery_descriptor;
 mod dependency;
 mod dispatcher;
 mod distribution;
@@ -335,7 +336,8 @@ pub use dispatcher::{
     ARTIFACT_BINDING_DISPATCH_ENVELOPE_VERSION, ArtifactBindingDispatch,
     ArtifactBindingDispatchEnvelope, ArtifactBindingDispatchEnvelopeError,
     ArtifactBindingExecutionContext, ArtifactBindingExecutor, ArtifactCommandBindingRequest,
-    ArtifactHttpBindingRequest, ArtifactInstallationTarget, ArtifactLifecycleExecutor,
+    ArtifactEventBindingOutcome, ArtifactHttpBindingRequest, ArtifactInstallationTarget,
+    ArtifactLifecycleExecutor,
     ModuleDispatchError, ModuleExecutionDispatcher, ModuleLifecycleHookPhase,
     dispatch_artifact_command_binding, dispatch_artifact_http_binding,
     find_artifact_command_binding, find_artifact_http_binding, find_artifact_ui_action_binding,

@@ -425,6 +425,31 @@ pub(crate) fn now_expression(backend: DbBackend) -> &'static str {
     }
 }
 
+/// SQL expression of the delivery queues' retry delay for a row's current
+/// `attempt`: exponential backoff
+/// `min(retry_max_seconds, retry_base_seconds * 2^min(attempt - 1, 16))`
+/// seconds from now, evaluated per row. Lease expiry shares this backoff
+/// with ordinary retryable failures: resetting `available_at` to now made
+/// a crash-looping delivery hot-retry with zero delay until `max_attempts`.
+pub(crate) fn retry_available_at_expression(
+    backend: DbBackend,
+    base_parameter: usize,
+    max_parameter: usize,
+) -> String {
+    match backend {
+        DbBackend::Postgres => format!(
+            "NOW() + (LEAST({}, {} * (1 << LEAST(GREATEST(attempt - 1, 0), 16))) * INTERVAL '1 second')",
+            placeholder(backend, max_parameter),
+            placeholder(backend, base_parameter),
+        ),
+        _ => format!(
+            "datetime('now', '+' || MIN({}, {} * (1 << MIN(MAX(attempt - 1, 0), 16))) || ' seconds')",
+            placeholder(backend, max_parameter),
+            placeholder(backend, base_parameter),
+        ),
+    }
+}
+
 pub(crate) fn namespace_lock_clause(backend: DbBackend) -> &'static str {
     match backend {
         DbBackend::Postgres => " FOR UPDATE",

@@ -29,13 +29,19 @@ use crate::{
     ControlPlaneInfrastructure, ModuleArtifactDescriptor, ModuleRuntimeBinding,
     ModuleRuntimeBindingKind, SharedArtifactBindingExecutor, SharedArtifactDeliveryTenantSource,
     artifact::{event_topic_matches, valid_event_topic},
-    data::{configure_tenant_scope, now_expression, placeholder, uuid_from_row, uuid_value},
+    data::{
+        configure_tenant_scope, now_expression, placeholder, retry_available_at_expression,
+        uuid_from_row, uuid_value,
+    },
 };
 
 const MAX_EVENT_TYPE_BYTES: usize = 128;
 const MAX_BINDING_ID_BYTES: usize = 128;
 const MAX_WORKER_ID_BYTES: usize = 128;
 const MAX_ERROR_CODE_BYTES: usize = 96;
+/// Upper bound on poison/lost-race candidates one `claim_next` call will
+/// skip before reporting no work, so a single poll stays time-bounded.
+const MAX_CANDIDATE_SKIPS_PER_CLAIM: usize = 16;
 
 /// Stable generic-scheduler identity for all artifact Event delivery work.
 pub const ARTIFACT_EVENT_DELIVERY_WORKER: &str = "artifact_event_delivery";
@@ -751,82 +757,115 @@ impl SeaOrmArtifactEventDeliveryQueue {
             .await
             .map_err(storage_error)?;
         let backend = transaction.get_database_backend();
-        expire_claims(&transaction, backend, tenant_id, self.config.max_attempts).await?;
+        expire_claims(
+            &transaction,
+            backend,
+            tenant_id,
+            self.config.max_attempts,
+            self.config.retry_base_seconds,
+            self.config.retry_max_seconds,
+        )
+        .await?;
         let lock = if backend == DbBackend::Postgres {
             " FOR UPDATE SKIP LOCKED"
         } else {
             ""
         };
-        let candidate = transaction
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
-                format!(
-                    "SELECT delivery_id, installation_id FROM module_artifact_event_deliveries \
-                     WHERE tenant_id = {} AND status = 'pending' AND available_at <= {} \
-                     ORDER BY available_at, delivery_id LIMIT 1{lock}",
-                    placeholder(backend, 1),
-                    now_expression(backend),
-                ),
-                vec![uuid_value(tenant_id, backend)],
-            ))
-            .await
-            .map_err(storage_error)?;
-        let Some(candidate) = candidate else {
-            transaction.commit().await.map_err(storage_error)?;
-            return Ok(None);
-        };
-        let delivery_id =
-            uuid_from_row(&candidate, "delivery_id", backend).map_err(storage_error)?;
-        let installation_id =
-            uuid_from_row(&candidate, "installation_id", backend).map_err(storage_error)?;
-
-        // Revalidate security, quarantine, revocation, and uninstallation state before claim
-        let validity = transaction
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
-                format!(
-                    "SELECT \
-                        admission.status AS admission_status, \
-                        (EXISTS (SELECT 1 FROM module_artifact_uninstall_operations u WHERE u.installation_id = i.installation_id)) AS is_uninstalled, \
-                        (EXISTS (SELECT 1 FROM module_artifact_security_states s WHERE s.module_slug = i.slug AND s.module_version = i.version AND s.payload_digest = i.payload_digest AND s.status IN ('quarantined', 'revoked'))) AS is_revoked \
-                     FROM module_artifact_installations i \
-                     JOIN module_artifact_admissions admission ON admission.installation_id = i.installation_id \
-                     WHERE i.installation_id = {}",
-                    placeholder(backend, 1),
-                ),
-                vec![uuid_value(installation_id, backend)],
-            ))
-            .await
-            .map_err(storage_error)?;
-
-        if let Some(row) = validity {
-            let is_revoked: bool = row.try_get("", "is_revoked").map_err(storage_error)?;
-            let is_uninstalled: bool = row.try_get("", "is_uninstalled").map_err(storage_error)?;
-            let admission_status: String =
-                row.try_get("", "admission_status").map_err(storage_error)?;
-
-            if is_revoked {
-                transaction
-                    .execute_raw(Statement::from_sql_and_values(
-                        backend,
-                        format!(
-                            "UPDATE module_artifact_event_deliveries \
-                             SET status = 'dead_letter', dead_lettered_at = {}, last_error_code = 'revoked_or_quarantined', \
-                                 claimed_by = NULL, claimed_until = NULL \
-                             WHERE delivery_id = {} AND tenant_id = {}",
-                            now_expression(backend),
-                            placeholder(backend, 1),
-                            placeholder(backend, 2),
-                        ),
-                        vec![uuid_value(delivery_id, backend), uuid_value(tenant_id, backend)],
-                    ))
-                    .await
-                    .map_err(storage_error)?;
+        // A poison candidate (revoked, quarantined, uninstalled, or
+        // inactive) is dead-lettered and the scan moves on within the
+        // same claim call, bounded so one poll cannot spin forever on
+        // a poisoned backlog. (Previously each poison item ended the
+        // claim with `Ok(None)`, draining one item per poll and
+        // starving the valid work queued behind it.)
+        for _skip in 0..MAX_CANDIDATE_SKIPS_PER_CLAIM {
+            let candidate = transaction
+                .query_one_raw(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "SELECT delivery_id, installation_id FROM module_artifact_event_deliveries \
+                         WHERE tenant_id = {} AND status = 'pending' AND available_at <= {} \
+                         ORDER BY available_at, delivery_id LIMIT 1{lock}",
+                        placeholder(backend, 1),
+                        now_expression(backend),
+                    ),
+                    vec![uuid_value(tenant_id, backend)],
+                ))
+                .await
+                .map_err(storage_error)?;
+            let Some(candidate) = candidate else {
                 transaction.commit().await.map_err(storage_error)?;
                 return Ok(None);
-            }
+            };
+            let delivery_id =
+                uuid_from_row(&candidate, "delivery_id", backend).map_err(storage_error)?;
+            let installation_id =
+                uuid_from_row(&candidate, "installation_id", backend).map_err(storage_error)?;
 
-            if is_uninstalled || admission_status != "active" {
+            // Revalidate security, quarantine, revocation, and uninstallation state before claim
+            let validity = transaction
+                .query_one_raw(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "SELECT \
+                            admission.status AS admission_status, \
+                            (EXISTS (SELECT 1 FROM module_artifact_uninstall_operations u WHERE u.installation_id = i.installation_id)) AS is_uninstalled, \
+                            (EXISTS (SELECT 1 FROM module_artifact_security_states s WHERE s.module_slug = i.slug AND s.module_version = i.version AND s.payload_digest = i.payload_digest AND s.status IN ('quarantined', 'revoked'))) AS is_revoked \
+                         FROM module_artifact_installations i \
+                         JOIN module_artifact_admissions admission ON admission.installation_id = i.installation_id \
+                         WHERE i.installation_id = {}",
+                        placeholder(backend, 1),
+                    ),
+                    vec![uuid_value(installation_id, backend)],
+                ))
+                .await
+                .map_err(storage_error)?;
+
+            if let Some(row) = validity {
+                let is_revoked: bool = row.try_get("", "is_revoked").map_err(storage_error)?;
+                let is_uninstalled: bool = row.try_get("", "is_uninstalled").map_err(storage_error)?;
+                let admission_status: String =
+                    row.try_get("", "admission_status").map_err(storage_error)?;
+
+                if is_revoked {
+                    transaction
+                        .execute_raw(Statement::from_sql_and_values(
+                            backend,
+                            format!(
+                                "UPDATE module_artifact_event_deliveries \
+                                 SET status = 'dead_letter', dead_lettered_at = {}, last_error_code = 'revoked_or_quarantined', \
+                                     claimed_by = NULL, claimed_until = NULL \
+                                 WHERE delivery_id = {} AND tenant_id = {}",
+                                now_expression(backend),
+                                placeholder(backend, 1),
+                                placeholder(backend, 2),
+                            ),
+                            vec![uuid_value(delivery_id, backend), uuid_value(tenant_id, backend)],
+                        ))
+                        .await
+                        .map_err(storage_error)?;
+                    continue;
+                }
+
+                if is_uninstalled || admission_status != "active" {
+                    transaction
+                        .execute_raw(Statement::from_sql_and_values(
+                            backend,
+                            format!(
+                                "UPDATE module_artifact_event_deliveries \
+                                 SET status = 'dead_letter', dead_lettered_at = {}, last_error_code = 'installation_unavailable', \
+                                     claimed_by = NULL, claimed_until = NULL \
+                                 WHERE delivery_id = {} AND tenant_id = {}",
+                                now_expression(backend),
+                                placeholder(backend, 1),
+                                placeholder(backend, 2),
+                            ),
+                            vec![uuid_value(delivery_id, backend), uuid_value(tenant_id, backend)],
+                        ))
+                        .await
+                        .map_err(storage_error)?;
+                    continue;
+                }
+            } else {
                 transaction
                     .execute_raw(Statement::from_sql_and_values(
                         backend,
@@ -843,86 +882,68 @@ impl SeaOrmArtifactEventDeliveryQueue {
                     ))
                     .await
                     .map_err(storage_error)?;
-                transaction.commit().await.map_err(storage_error)?;
-                return Ok(None);
+                continue;
             }
-        } else {
-            transaction
+
+            let lease_until = lease_expression(backend, 2);
+            let claimed = transaction
                 .execute_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "UPDATE module_artifact_event_deliveries \
-                         SET status = 'dead_letter', dead_lettered_at = {}, last_error_code = 'installation_unavailable', \
-                             claimed_by = NULL, claimed_until = NULL \
-                         WHERE delivery_id = {} AND tenant_id = {}",
-                        now_expression(backend),
+                         SET status = 'running', attempt = attempt + 1, claimed_by = {}, \
+                             claimed_until = {lease_until}, last_error_code = NULL \
+                         WHERE delivery_id = {} AND tenant_id = {} AND status = 'pending' \
+                           AND available_at <= {}",
                         placeholder(backend, 1),
-                        placeholder(backend, 2),
+                        placeholder(backend, 3),
+                        placeholder(backend, 4),
+                        now_expression(backend),
                     ),
-                    vec![uuid_value(delivery_id, backend), uuid_value(tenant_id, backend)],
+                    vec![
+                        worker_id.to_owned().into(),
+                        i64::from(self.config.lease_seconds).into(),
+                        uuid_value(delivery_id, backend),
+                        uuid_value(tenant_id, backend),
+                    ],
                 ))
                 .await
                 .map_err(storage_error)?;
+            if claimed.rows_affected() != 1 {
+                // Lost the claim race for this candidate; try the next one.
+                continue;
+            }
+            let row = transaction
+                .query_one_raw(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "SELECT delivery.delivery_id, delivery.tenant_id, delivery.installation_id, \
+                                delivery.binding_id, delivery.source_event_id, delivery.event_type, delivery.schema_version, \
+                                delivery.payload, delivery.attempt, CAST(installation.descriptor AS TEXT) AS descriptor \
+                         FROM module_artifact_event_deliveries delivery \
+                         JOIN module_artifact_installations installation \
+                           ON installation.installation_id = delivery.installation_id \
+                         WHERE delivery.delivery_id = {} AND delivery.tenant_id = {} \
+                           AND delivery.status = 'running' AND delivery.claimed_by = {}",
+                        placeholder(backend, 1),
+                        placeholder(backend, 2),
+                        placeholder(backend, 3),
+                    ),
+                    vec![
+                        uuid_value(delivery_id, backend),
+                        uuid_value(tenant_id, backend),
+                        worker_id.to_owned().into(),
+                    ],
+                ))
+                .await
+                .map_err(storage_error)?
+                .ok_or(ArtifactEventDeliveryError::ClaimLost)?;
+            let item = work_item_from_row(&row, backend)?;
             transaction.commit().await.map_err(storage_error)?;
-            return Ok(None);
+            return Ok(Some(item));
         }
-
-        let lease_until = lease_expression(backend, 2);
-        let claimed = transaction
-            .execute_raw(Statement::from_sql_and_values(
-                backend,
-                format!(
-                    "UPDATE module_artifact_event_deliveries \
-                     SET status = 'running', attempt = attempt + 1, claimed_by = {}, \
-                         claimed_until = {lease_until}, last_error_code = NULL \
-                     WHERE delivery_id = {} AND tenant_id = {} AND status = 'pending' \
-                       AND available_at <= {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    now_expression(backend),
-                ),
-                vec![
-                    worker_id.to_owned().into(),
-                    i64::from(self.config.lease_seconds).into(),
-                    uuid_value(delivery_id, backend),
-                    uuid_value(tenant_id, backend),
-                ],
-            ))
-            .await
-            .map_err(storage_error)?;
-        if claimed.rows_affected() != 1 {
-            transaction.commit().await.map_err(storage_error)?;
-            return Ok(None);
-        }
-        let row = transaction
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
-                format!(
-                    "SELECT delivery.delivery_id, delivery.tenant_id, delivery.installation_id, \
-                            delivery.binding_id, delivery.source_event_id, delivery.event_type, delivery.schema_version, \
-                            delivery.payload, delivery.attempt, CAST(installation.descriptor AS TEXT) AS descriptor \
-                     FROM module_artifact_event_deliveries delivery \
-                     JOIN module_artifact_installations installation \
-                       ON installation.installation_id = delivery.installation_id \
-                     WHERE delivery.delivery_id = {} AND delivery.tenant_id = {} \
-                       AND delivery.status = 'running' AND delivery.claimed_by = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                ),
-                vec![
-                    uuid_value(delivery_id, backend),
-                    uuid_value(tenant_id, backend),
-                    worker_id.to_owned().into(),
-                ],
-            ))
-            .await
-            .map_err(storage_error)?
-            .ok_or(ArtifactEventDeliveryError::ClaimLost)?;
-        let item = work_item_from_row(&row, backend)?;
         transaction.commit().await.map_err(storage_error)?;
-        Ok(Some(item))
+        Ok(None)
     }
 
     /// Completes a claim. Retryable results use deterministic queue-owned
@@ -1015,49 +1036,25 @@ async fn load_admitted_descriptor<C: ConnectionTrait>(
     tenant_id: Uuid,
     installation_id: Uuid,
 ) -> Result<ModuleArtifactDescriptor, ArtifactEventDeliveryError> {
-    let enabled = match backend {
-        DbBackend::Postgres => "COALESCE(lifecycle.enabled, TRUE) = TRUE",
-        _ => "COALESCE(lifecycle.enabled, 1) = 1",
-    };
-    let row = connection
-        .query_one_raw(Statement::from_sql_and_values(
-            backend,
-            format!(
-                "SELECT CAST(installation.descriptor AS TEXT) AS descriptor \
-                 FROM module_artifact_installations installation \
-                 JOIN module_artifact_admissions admission \
-                   ON admission.installation_id = installation.installation_id \
-                 LEFT JOIN module_artifact_tenant_lifecycle lifecycle \
-                   ON lifecycle.installation_id = installation.installation_id \
-                  AND lifecycle.tenant_id = {} \
-                 WHERE installation.installation_id = {} AND admission.status = 'active' \
-                   AND NOT EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall \
-                                   WHERE uninstall.installation_id = installation.installation_id) \
-                   AND {enabled} \
-                   AND ((installation.scope_kind = 'tenant' AND installation.tenant_id = {}) \
-                        OR (installation.scope_kind = 'platform' AND installation.tenant_id IS NULL))",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-            ),
-            vec![
-                uuid_value(tenant_id, backend),
-                uuid_value(installation_id, backend),
-                uuid_value(tenant_id, backend),
-            ],
-        ))
-        .await
-        .map_err(storage_error)?
-        .ok_or(ArtifactEventDeliveryError::InstallationUnavailable)?;
-    let descriptor: ModuleArtifactDescriptor = serde_json::from_str(
-        &row.try_get::<String>("", "descriptor")
-            .map_err(storage_error)?,
+    // Single canonical implementation shared with the schedule queue; see
+    // `delivery_descriptor` for the admissibility contract. (This queue's
+    // former copy lacked the retired-work-generation and
+    // quarantine/revocation checks.)
+    crate::delivery_descriptor::load_admitted_descriptor(
+        connection,
+        backend,
+        tenant_id,
+        installation_id,
     )
-    .map_err(|_| ArtifactEventDeliveryError::InstallationUnavailable)?;
-    descriptor
-        .validate()
-        .map_err(|_| ArtifactEventDeliveryError::InstallationUnavailable)?;
-    Ok(descriptor)
+    .await
+    .map_err(|error| match error {
+        crate::delivery_descriptor::LoadAdmittedDescriptorError::Unavailable => {
+            ArtifactEventDeliveryError::InstallationUnavailable
+        }
+        crate::delivery_descriptor::LoadAdmittedDescriptorError::Storage(message) => {
+            ArtifactEventDeliveryError::Storage(message)
+        }
+    })
 }
 
 async fn expire_claims<C: ConnectionTrait>(
@@ -1065,6 +1062,8 @@ async fn expire_claims<C: ConnectionTrait>(
     backend: DbBackend,
     tenant_id: Uuid,
     max_attempts: u32,
+    retry_base_seconds: u32,
+    retry_max_seconds: u32,
 ) -> Result<(), ArtifactEventDeliveryError> {
     connection
         .execute_raw(Statement::from_sql_and_values(
@@ -1077,7 +1076,7 @@ async fn expire_claims<C: ConnectionTrait>(
                      dead_lettered_at = CASE WHEN attempt >= {} THEN {} ELSE NULL END \
                  WHERE tenant_id = {} AND status = 'running' AND claimed_until < {}",
                 placeholder(backend, 1),
-                now_expression(backend),
+                retry_available_at_expression(backend, 4, 5),
                 placeholder(backend, 2),
                 now_expression(backend),
                 placeholder(backend, 3),
@@ -1091,6 +1090,8 @@ async fn expire_claims<C: ConnectionTrait>(
                     .map_err(|_| ArtifactEventDeliveryError::InvalidConfiguration)?
                     .into(),
                 uuid_value(tenant_id, backend),
+                i64::from(retry_base_seconds).into(),
+                i64::from(retry_max_seconds).into(),
             ],
         ))
         .await

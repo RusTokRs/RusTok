@@ -708,6 +708,21 @@ impl ModuleArtifactDescriptor {
             {
                 return Err(ModuleArtifactError::InvalidBinding(binding.id.clone()));
             }
+            // Lifecycle kinds are resolved by kind alone, so at most one
+            // binding may declare each: a second would be silently shadowed
+            // by the first at dispatch time and never execute.
+            if matches!(
+                binding.kind,
+                ModuleRuntimeBindingKind::PreEnable
+                    | ModuleRuntimeBindingKind::PostEnable
+                    | ModuleRuntimeBindingKind::PreDisable
+                    | ModuleRuntimeBindingKind::PostDisable
+            ) && self.bindings[..index]
+                .iter()
+                .any(|previous| previous.kind == binding.kind)
+            {
+                return Err(ModuleArtifactError::InvalidBinding(binding.id.clone()));
+            }
         }
         for (index, dependency) in self.dependencies.iter().enumerate() {
             if !is_valid_module_slug(&dependency.slug) || dependency.slug == self.slug {
@@ -2368,6 +2383,44 @@ mod tests {
             .as_mut()
             .expect("HTTP contract")
             .path = "/outside-the-platform-route".to_string();
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::InvalidBinding(_))
+        ));
+    }
+
+    #[test]
+    fn duplicate_lifecycle_kind_bindings_are_rejected() {
+        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        descriptor.permissions = vec![ArtifactPermissionDescriptor {
+            key: "sample_module.lifecycle.manage".to_string(),
+            localizations: vec![permission_localization("Manage lifecycle")],
+        }];
+        let input_schema = schema_document("lifecycle_input");
+        let output_schema = schema_document("lifecycle_output");
+        let lifecycle_binding = |id: &str| ModuleRuntimeBinding {
+            id: id.to_string(),
+            kind: ModuleRuntimeBindingKind::PreEnable,
+            entrypoint: "lifecycle.pre_enable".to_string(),
+            input_schema_digest: input_schema.digest.clone(),
+            output_schema_digest: output_schema.digest.clone(),
+            permission: "sample_module.lifecycle.manage".to_string(),
+            idempotency: ModuleBindingIdempotency::Required,
+            limit_profile: "lifecycle".to_string(),
+            capabilities: Vec::new(),
+            event_topics: Vec::new(),
+            schedule: None,
+            http: None,
+        };
+        descriptor.schema_documents = vec![input_schema, output_schema];
+        descriptor.bindings.push(lifecycle_binding("pre_enable"));
+        assert!(descriptor.validate().is_ok());
+
+        // A second binding for the same lifecycle kind would be resolved by
+        // kind alone at dispatch time and silently never run.
+        descriptor
+            .bindings
+            .push(lifecycle_binding("pre_enable_shadow"));
         assert!(matches!(
             descriptor.validate(),
             Err(ModuleArtifactError::InvalidBinding(_))
