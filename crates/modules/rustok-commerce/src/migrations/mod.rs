@@ -44,6 +44,7 @@ mod m20261007_000012_add_checkout_operation_admission;
 mod m20261007_000013_drop_provider_execution_checkout_guard;
 mod m20261007_000014_add_checkout_operation_admin_list_index;
 mod m20261007_000015_drop_payment_collection_binding_trigger;
+mod m20261021_000001_drop_fulfillment_shipping_stock_trigger;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -112,6 +113,9 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     ));
     migrations.push(Box::new(
         m20261007_000015_drop_payment_collection_binding_trigger::Migration,
+    ));
+    migrations.push(Box::new(
+        m20261021_000001_drop_fulfillment_shipping_stock_trigger::Migration,
     ));
     migrations
 }
@@ -317,6 +321,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
             "m20261007_000014_add_checkout_operation_admin_list_index",
             "m20260713_000015_bind_checkout_payment_collections",
         ],
+    ));
+    dependencies.push(MigrationDependencyDescriptor::new(
+        "m20261021_000001_drop_fulfillment_shipping_stock_trigger",
+        vec!["m20260713_000007_consume_inventory_on_fulfillment_shipping"],
     ));
     dependencies
 }

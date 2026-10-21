@@ -17,7 +17,7 @@ use crate::error::{CartError, CartResult};
 use super::CartService;
 use super::helpers::{
     apply_shipping_selection_patch, load_cart_in_tx, normalize_country_code, normalize_locale_code,
-    recalculate_totals, replace_pricing_adjustments,
+    recalculate_totals, replace_pricing_adjustments, update_line_item_marketplace_snapshot_in_tx,
 };
 
 const CHECKOUT_PRICING_CHANGED_PREFIX: &str = "checkout pricing snapshot changed:";
@@ -329,6 +329,19 @@ async fn apply_checkout_pricing_plan(
         active.total_price = Set(update.unit_price * Decimal::from(line_item.quantity));
         active.updated_at = Set(Utc::now().into());
         active.update(txn).await?;
+        // Marketplace lines carry an amount snapshot that checkout planning verifies against
+        // `quantity * unit_price`; keep it aligned with the price just applied.
+        update_line_item_marketplace_snapshot_in_tx(
+            txn,
+            line_item.id,
+            line_item.quantity,
+            update.unit_price,
+            update
+                .pricing_adjustment
+                .as_ref()
+                .map(|adjustment| adjustment.amount),
+        )
+        .await?;
         pricing_adjustments.push((line_item.id, update.pricing_adjustment));
     }
 

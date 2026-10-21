@@ -460,7 +460,12 @@ fn build_schema(
     .data(db.clone())
     .data(event_bus)
     .data(tenant)
-    .data(request_context);
+    .data(request_context)
+    // Fixtures use random variant ids without inventory reservations; stock movement is covered
+    // by `order_inventory_reservation_test`.
+    .data::<std::sync::Arc<dyn rustok_fulfillment::ShipmentStockPort>>(std::sync::Arc::new(
+        rustok_fulfillment::NoopShipmentStockPort,
+    ));
 
     if let Some(auth) = auth {
         builder = builder.data(auth);

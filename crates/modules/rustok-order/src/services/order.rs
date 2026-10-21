@@ -88,6 +88,21 @@ fn order_line_item_fulfillment_requirement(
     OrderLineFulfillmentRequirement::parse(value).map_err(OrderError::Validation)
 }
 
+/// Returns and order changes are post-order work; a cancelled order has nothing left to return or
+/// change, and accepting them would create refund/exchange paths for a voided order.
+fn ensure_order_accepts_post_order_work(
+    order: &entities::order::Model,
+    operation: &str,
+) -> OrderResult<()> {
+    if order.status == STATUS_CANCELLED {
+        return Err(OrderError::InvalidTransition {
+            from: order.status.clone(),
+            to: operation.to_string(),
+        });
+    }
+    Ok(())
+}
+
 async fn find_order_for_update_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -341,12 +356,22 @@ impl OrderService {
                 .and_then(serde_json::Value::as_bool)
                 .unwrap_or(false)
         });
-        if adjustment_total > subtotal_amount {
+        // Shipping-scoped adjustments discount the shipping charge, not the goods subtotal; the cart
+        // clamps both bases independently, so the order must validate them the same way.
+        let shipping_adjustment_total = Self::shipping_adjustment_total(&input.adjustments);
+        let goods_adjustment_total = adjustment_total - shipping_adjustment_total;
+        if goods_adjustment_total > subtotal_amount {
             return Err(OrderError::Validation(
                 "adjustment total cannot exceed order subtotal".to_string(),
             ));
         }
-        let base_total = subtotal_amount - adjustment_total + input.shipping_total;
+        if shipping_adjustment_total > input.shipping_total {
+            return Err(OrderError::Validation(
+                "shipping adjustment total cannot exceed order shipping total".to_string(),
+            ));
+        }
+        let base_total = subtotal_amount - goods_adjustment_total + input.shipping_total
+            - shipping_adjustment_total;
         let total_amount = if tax_included {
             base_total
         } else {
@@ -1168,6 +1193,21 @@ impl OrderService {
         Ok(adjustment_total)
     }
 
+    /// Sum of order-level adjustments scoped to shipping (`metadata.scope == "shipping"`).
+    fn shipping_adjustment_total(adjustments: &[CreateOrderAdjustmentInput]) -> Decimal {
+        adjustments
+            .iter()
+            .filter(|adjustment| {
+                adjustment.line_item_index.is_none()
+                    && adjustment
+                        .metadata
+                        .get("scope")
+                        .and_then(serde_json::Value::as_str)
+                        == Some("shipping")
+            })
+            .fold(Decimal::ZERO, |acc, adjustment| acc + adjustment.amount)
+    }
+
     fn validate_tax_lines(
         tax_lines: &[CreateOrderTaxLineInput],
         line_item_count: usize,
@@ -1828,7 +1868,10 @@ impl OrderService {
             ),
             CommandReceiptAdmission::New(receipt) => {
                 let result = async {
-                    find_order_for_update_in_tx(&receipt.transaction, tenant_id, order_id).await?;
+                    let existing_order =
+                        find_order_for_update_in_tx(&receipt.transaction, tenant_id, order_id)
+                            .await?;
+                    ensure_order_accepts_post_order_work(&existing_order, "create_order_change")?;
 
                     let now = Utc::now();
                     let row = entities::order_change::ActiveModel {
@@ -2163,7 +2206,8 @@ impl OrderService {
         order_id: Uuid,
         input: CreateOrderReturnInput,
     ) -> OrderResult<OrderReturnResponse> {
-        find_order_for_update_in_tx(txn, tenant_id, order_id).await?;
+        let existing_order = find_order_for_update_in_tx(txn, tenant_id, order_id).await?;
+        ensure_order_accepts_post_order_work(&existing_order, "create_return")?;
 
         let order_items = entities::order_line_item::Entity::find()
             .filter(entities::order_line_item::Column::OrderId.eq(order_id))

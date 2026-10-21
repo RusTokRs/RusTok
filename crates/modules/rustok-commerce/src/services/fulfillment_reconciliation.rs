@@ -2,7 +2,7 @@ use rustok_fulfillment::providers::{
     FulfillmentProviderOperationRequest, FulfillmentProviderOperationResult,
 };
 use rustok_fulfillment::{
-    FulfillmentProviderOperationJournal, FulfillmentService, PROVIDER_OPERATION_COMMITTED,
+    FulfillmentProviderOperationJournal, PROVIDER_OPERATION_COMMITTED,
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
 };
 use sea_orm::DatabaseConnection;
@@ -73,7 +73,7 @@ impl FulfillmentReconciliationService {
             )));
         }
 
-        let service = FulfillmentService::new(self.db.clone());
+        let service = super::shipment_stock::fulfillment_service(self.db.clone());
         let current = service
             .get_fulfillment(tenant_id, operation.fulfillment_id)
             .await?;

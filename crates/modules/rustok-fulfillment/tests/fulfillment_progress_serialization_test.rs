@@ -25,7 +25,11 @@ async fn setup() -> (sea_orm::DatabaseConnection, FulfillmentService) {
         .await
         .expect("fulfillment progress serialization migration should install on SQLite");
 
-    (db.clone(), FulfillmentService::new(db))
+    (
+        db.clone(),
+        FulfillmentService::new(db)
+            .with_shipment_stock_port(std::sync::Arc::new(rustok_fulfillment::NoopShipmentStockPort)),
+    )
 }
 
 #[tokio::test]

@@ -1,8 +1,8 @@
 use rust_decimal::Decimal;
 use rustok_commerce::migrations as commerce_migrations;
 use rustok_fulfillment::dto::{
-    CreateFulfillmentInput, CreateFulfillmentItemInput, DeliverFulfillmentInput,
-    FulfillmentItemQuantityInput, ShipFulfillmentInput,
+    CancelFulfillmentInput, CreateFulfillmentInput, CreateFulfillmentItemInput, DeliverFulfillmentInput,
+    FulfillmentItemQuantityInput, ReopenFulfillmentInput, ShipFulfillmentInput,
 };
 use rustok_fulfillment::{FulfillmentService, migrations as fulfillment_migrations};
 use rustok_inventory::InventoryService;
@@ -43,8 +43,6 @@ async fn setup() -> (
     };
     let delivery_guard =
         find_migration("m20260713_000008_require_fulfillment_before_order_delivery");
-    let fulfillment_shipping =
-        find_migration("m20260713_000007_consume_inventory_on_fulfillment_shipping");
     let order_delivery = find_migration("m20260713_000006_consume_inventory_on_order_delivery");
     let reservation = find_migration("m20260713_000005_reserve_inventory_on_order_confirmation");
     reservation
@@ -56,6 +54,11 @@ async fn setup() -> (
         .await
         .expect("order inventory delivery consumption should install on SQLite");
 
+    commerce_inventory_migration("m20261021_000024_create_inventory_return_restocks")
+        .up(&manager)
+        .await
+        .expect("inventory return restock ledger should install on SQLite");
+
     let fulfillment_progress = fulfillment_migrations::migrations()
         .into_iter()
         .find(|m| m.name() == "m20260713_000110_serialize_fulfillment_progress")
@@ -64,10 +67,6 @@ async fn setup() -> (
         .up(&manager)
         .await
         .expect("fulfillment progress serialization should install on SQLite");
-    fulfillment_shipping
-        .up(&manager)
-        .await
-        .expect("fulfillment shipping consumption should install on SQLite");
     delivery_guard
         .up(&manager)
         .await
@@ -80,6 +79,13 @@ async fn setup() -> (
         InventoryService::new(db.clone(), event_bus.clone()),
         OrderService::new(db, event_bus),
     )
+}
+
+fn commerce_inventory_migration(name: &str) -> Box<dyn sea_orm_migration::MigrationTrait> {
+    rustok_inventory::migrations::migrations()
+        .into_iter()
+        .find(|m| m.name() == name)
+        .unwrap_or_else(|| panic!("inventory migration {name} should exist"))
 }
 
 async fn create_product_and_variant(catalog: &CatalogService, tenant_id: Uuid) -> (Uuid, Uuid) {
@@ -318,7 +324,9 @@ async fn fulfillment_shipping_consumes_reservation_and_gates_order_delivery() {
         .expect("confirmed order should become paid");
     assert_eq!(inventory_quantities(&db, variant_id).await, (5, 3));
 
-    let fulfillment_service = FulfillmentService::new(db.clone());
+    // Stock moves in the owner's transaction through the inventory-backed port; the former
+    // `fulfillment_inventory_consume_on_ship` trigger is gone.
+    let fulfillment_service = rustok_commerce::fulfillment_service(db.clone());
     let fulfillment = fulfillment_service
         .create_fulfillment(
             tenant_id,
@@ -625,3 +633,212 @@ async fn checkout_order_inventory_lifecycle_guard_rejects_inventory_reserved_and
             "order confirmation MUST succeed once stage is order_created and inventory is adopted",
         );
 }
+
+/// Orders, stocks and pays a 3-unit order, then creates (but does not ship) a fulfillment.
+async fn paid_order_with_pending_fulfillment(
+    db: &DatabaseConnection,
+    catalog: &CatalogService,
+    inventory: &InventoryService,
+    orders: &OrderService,
+    fulfillment_service: &FulfillmentService,
+) -> (Uuid, Uuid, rustok_fulfillment::dto::FulfillmentResponse) {
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (product_id, variant_id) = create_product_and_variant(catalog, tenant_id).await;
+    inventory
+        .set_inventory(tenant_id, actor_id, variant_id, 5)
+        .await
+        .expect("inventory should be stocked");
+    let order = create_order(orders, tenant_id, actor_id, product_id, variant_id, 3).await;
+    orders
+        .confirm_order(tenant_id, actor_id, order.id)
+        .await
+        .expect("order should reserve inventory");
+    orders
+        .mark_paid(
+            tenant_id,
+            actor_id,
+            order.id,
+            "stock-port-payment".to_string(),
+            "manual".to_string(),
+        )
+        .await
+        .expect("confirmed order should become paid");
+    assert_eq!(inventory_quantities(db, variant_id).await, (5, 3));
+    let fulfillment = fulfillment_service
+        .create_fulfillment(
+            tenant_id,
+            CreateFulfillmentInput {
+                order_id: order.id,
+                shipping_option_id: None,
+                customer_id: None,
+                carrier: None,
+                tracking_number: None,
+                items: Some(vec![CreateFulfillmentItemInput {
+                    order_line_item_id: order.line_items[0].id,
+                    quantity: 3,
+                    metadata: serde_json::json!({}),
+                }]),
+                metadata: serde_json::json!({"source":"stock-port-test"}),
+            },
+        )
+        .await
+        .expect("fulfillment should be created");
+    (tenant_id, variant_id, fulfillment)
+}
+
+fn ship_all_input(fulfillment_item_id: Uuid) -> ShipFulfillmentInput {
+    ShipFulfillmentInput {
+        carrier: "manual".to_string(),
+        tracking_number: "STOCK-PORT-SHIP".to_string(),
+        items: Some(vec![FulfillmentItemQuantityInput {
+            fulfillment_item_id,
+            quantity: 3,
+        }]),
+        metadata: serde_json::json!({}),
+    }
+}
+
+#[tokio::test]
+async fn cancelling_a_shipped_fulfillment_returns_stock_and_reopening_takes_it_again() {
+    let (db, catalog, inventory, orders) = setup().await;
+    let service = rustok_commerce::fulfillment_service(db.clone());
+    let (tenant_id, variant_id, fulfillment) =
+        paid_order_with_pending_fulfillment(&db, &catalog, &inventory, &orders, &service).await;
+    let item_id = fulfillment.items[0].id;
+
+    service
+        .ship_fulfillment(tenant_id, fulfillment.id, ship_all_input(item_id))
+        .await
+        .expect("shipping should consume the reservation");
+    assert_eq!(inventory_quantities(&db, variant_id).await, (2, 0));
+
+    service
+        .cancel_fulfillment(
+            tenant_id,
+            fulfillment.id,
+            CancelFulfillmentInput {
+                reason: Some("lost in transit".to_string()),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .expect("a shipped fulfillment can be cancelled");
+    assert_eq!(
+        inventory_quantities(&db, variant_id).await,
+        (5, 0),
+        "undelivered shipped units go back on the shelf"
+    );
+
+    let reopened = service
+        .reopen_fulfillment(
+            tenant_id,
+            fulfillment.id,
+            ReopenFulfillmentInput {
+                items: None,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .expect("a cancelled shipped fulfillment can be reopened");
+    assert_eq!(reopened.status, "shipped");
+    assert_eq!(
+        inventory_quantities(&db, variant_id).await,
+        (2, 0),
+        "reopening takes the units off the shelf again"
+    );
+}
+
+#[tokio::test]
+async fn shipping_through_an_unwired_fulfillment_service_fails_closed() {
+    let (db, catalog, inventory, orders) = setup().await;
+    let wired = rustok_commerce::fulfillment_service(db.clone());
+    let (tenant_id, variant_id, fulfillment) =
+        paid_order_with_pending_fulfillment(&db, &catalog, &inventory, &orders, &wired).await;
+
+    let unwired = FulfillmentService::new(db.clone());
+    let error = unwired
+        .ship_fulfillment(
+            tenant_id,
+            fulfillment.id,
+            ship_all_input(fulfillment.items[0].id),
+        )
+        .await
+        .expect_err("a service without a stock port must refuse to ship");
+    assert!(
+        error.to_string().contains("stock port is not configured"),
+        "unexpected error: {error}"
+    );
+    assert_eq!(
+        inventory_quantities(&db, variant_id).await,
+        (5, 3),
+        "the failed shipment must roll back completely"
+    );
+}
+
+#[tokio::test]
+async fn return_restock_adds_stock_once_and_skips_untracked_lines() {
+    use rustok_inventory::return_restock::{ReturnRestockLine, restock_returned_items};
+
+    let (db, catalog, inventory, orders) = setup().await;
+    let service = rustok_commerce::fulfillment_service(db.clone());
+    let (tenant_id, variant_id, fulfillment) =
+        paid_order_with_pending_fulfillment(&db, &catalog, &inventory, &orders, &service).await;
+    service
+        .ship_fulfillment(
+            tenant_id,
+            fulfillment.id,
+            ship_all_input(fulfillment.items[0].id),
+        )
+        .await
+        .expect("shipping should consume the reservation");
+    assert_eq!(inventory_quantities(&db, variant_id).await, (2, 0));
+
+    let line = ReturnRestockLine {
+        return_item_id: Uuid::new_v4(),
+        return_id: Uuid::new_v4(),
+        order_line_item_id: fulfillment.items[0].order_line_item_id,
+        quantity: 2,
+    };
+    let untracked = ReturnRestockLine {
+        return_item_id: Uuid::new_v4(),
+        return_id: line.return_id,
+        order_line_item_id: Uuid::new_v4(),
+        quantity: 1,
+    };
+
+    let first = restock_returned_items(&db, tenant_id, &[line, untracked])
+        .await
+        .expect("restock should succeed");
+    assert_eq!(first.restocked, vec![(line.return_item_id, 2)]);
+    assert_eq!(first.untracked, vec![untracked.return_item_id]);
+    assert_eq!(
+        inventory_quantities(&db, variant_id).await,
+        (4, 0),
+        "returned units are available again"
+    );
+
+    let replay = restock_returned_items(&db, tenant_id, &[line])
+        .await
+        .expect("replay should succeed");
+    assert!(replay.restocked.is_empty());
+    assert_eq!(replay.already_restocked, vec![line.return_item_id]);
+    assert_eq!(
+        inventory_quantities(&db, variant_id).await,
+        (4, 0),
+        "the ledger makes restock idempotent"
+    );
+
+    let invalid = ReturnRestockLine {
+        quantity: 0,
+        return_item_id: Uuid::new_v4(),
+        ..line
+    };
+    assert!(
+        restock_returned_items(&db, tenant_id, &[invalid])
+            .await
+            .is_err(),
+        "non-positive restock quantities are rejected"
+    );
+}
+

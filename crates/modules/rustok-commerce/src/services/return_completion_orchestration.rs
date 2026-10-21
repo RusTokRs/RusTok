@@ -25,6 +25,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use super::post_order::{PostOrderOrchestrationError, PostOrderOrchestrationResult};
+use super::return_restock::{RestockDecision, apply_restock_decision, parse_restock_decision};
 use super::return_completion_operation::{
     BeginReturnCompletionOperation, DEFAULT_RETURN_COMPLETION_LEASE_SECONDS,
     ReturnCompletionOperationCheckpoint, ReturnCompletionOperationError,
@@ -219,8 +220,15 @@ impl ReturnCompletionOrchestrationService {
         lease_owner: &str,
         input: CompleteReturnResolutionInput,
     ) -> PostOrderOrchestrationResult<OrderReturnResponse> {
+        // Parsed before anything else: shape errors were already rejected at admission, so a
+        // failure here would only mean a hash collision with different metadata.
+        let restock = parse_restock_decision(&input.metadata)?;
         let mut current_return = self.read_return(tenant_id, actor_id, return_id).await?;
         if current_return.status == "completed" {
+            // Owner completion may have landed before a crash; the restock decision still has
+            // to be applied (inventory's ledger makes that idempotent).
+            self.restock_returned_goods(tenant_id, &current_return, &restock)
+                .await?;
             return Ok(current_return);
         }
 
@@ -337,6 +345,11 @@ impl ReturnCompletionOrchestrationService {
             }
         };
 
+        // After owner completion, before the journal reaches `return_completed`: a retry of a
+        // failed restock re-enters here with the return already completed.
+        self.restock_returned_goods(tenant_id, &completed, &restock)
+            .await?;
+
         if stage != ReturnCompletionOperationStage::ReturnCompleted {
             journal
                 .checkpoint(ReturnCompletionOperationCheckpoint {
@@ -354,6 +367,18 @@ impl ReturnCompletionOrchestrationService {
         }
 
         Ok(completed)
+    }
+
+    /// Applies the operator's `metadata.restock` decision to the completed return.
+    async fn restock_returned_goods(
+        &self,
+        tenant_id: Uuid,
+        completed: &OrderReturnResponse,
+        decision: &RestockDecision,
+    ) -> PostOrderOrchestrationResult<()> {
+        apply_restock_decision(&self.db, tenant_id, completed, decision)
+            .await
+            .map(|_| ())
     }
 
     async fn validate_explicit_resolution_links(
@@ -941,6 +966,7 @@ fn validate_completion_shape(
             }
         }
     }
+    parse_restock_decision(&input.metadata)?;
     let helpers = usize::from(input.refund.is_some())
         + usize::from(input.exchange.is_some())
         + usize::from(input.claim.is_some());

@@ -28,6 +28,14 @@
   available-quantity reads stay in the inventory module even when the caller owns the
   surrounding transaction.
 
+## Shipment and return stock movements
+
+`shipment_stock` consumes shipped units from the order line's reservation and restores or
+reconsumes them when a shipped fulfillment is cancelled or reopened, on the caller's transaction
+(replaces the former `fulfillment_inventory_consume_on_ship` trigger). `return_restock` puts
+operator-selected returned units back on the shelf and owns the idempotency ledger
+`inventory_return_restocks`. See `DECISIONS/2026-10-21-shipment-stock-port-and-return-restock.md`.
+
 ## Interactions
 
 - Depends on `rustok-commerce-foundation` for shared commerce DTOs, entities, and errors.

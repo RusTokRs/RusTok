@@ -148,7 +148,7 @@ for (const marker of [
   'pub(crate) fn from_graphql_inputs(',
   '.shared_get::<FulfillmentAdminCommandRuntime>()',
   '.shared_get::<FulfillmentAdminCreateCommandRuntime>()',
-  'FulfillmentAdminCommandRuntime::in_process(',
+  'FulfillmentAdminCommandRuntime::in_process_with_shipment_stock(',
   'FulfillmentAdminCreateCommandRuntime::in_process(',
   '.shared_get::<FulfillmentProviderRegistry>()',
   'pub fn lifecycle_command_port(&self) -> Arc<dyn FulfillmentAdminCommandPort>',

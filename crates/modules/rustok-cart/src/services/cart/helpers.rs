@@ -199,6 +199,72 @@ pub fn net_total(subtotal_amount: Decimal, adjustment_total: Decimal) -> Decimal
     }
 }
 
+/// A shipping-scoped adjustment discounts the shipping charge and never the goods subtotal.
+pub fn is_shipping_adjustment(adjustment: &entities::cart_adjustment::Model) -> bool {
+    adjustment.cart_line_item_id.is_none()
+        && adjustment_scope(adjustment) == Some(SHIPPING_PROMOTION_SCOPE)
+}
+
+/// Splits adjustment amounts into `(goods, shipping)` totals.
+///
+/// Goods adjustments are line-level and cart-level discounts; shipping adjustments are the
+/// shipping-scoped promotions. They have different bases and must be clamped independently.
+pub fn split_adjustment_totals(
+    adjustments: &[entities::cart_adjustment::Model],
+) -> (Decimal, Decimal) {
+    adjustments.iter().fold(
+        (Decimal::ZERO, Decimal::ZERO),
+        |(goods, shipping), adjustment| {
+            if is_shipping_adjustment(adjustment) {
+                (goods, shipping + adjustment.amount)
+            } else {
+                (goods + adjustment.amount, shipping)
+            }
+        },
+    )
+}
+
+/// Amount payable before tax. Goods and shipping are clamped independently, so a fully discounted
+/// goods subtotal can neither swallow a shipping discount nor be charged for it.
+pub fn payable_before_tax(
+    subtotal_amount: Decimal,
+    goods_adjustment_total: Decimal,
+    shipping_total: Decimal,
+    shipping_adjustment_total: Decimal,
+) -> Decimal {
+    net_total(subtotal_amount, goods_adjustment_total)
+        + net_total(shipping_total, shipping_adjustment_total)
+}
+
+/// Spreads `discount` over `nets` so the taxable base shrinks together with the discount.
+///
+/// Each share is proportional to the remaining base, rounded at the currency precision, so the
+/// last non-zero entry absorbs the rounding remainder and the shares never exceed their entry or
+/// the discount.
+pub fn allocate_discount_over_nets(
+    nets: &[Decimal],
+    discount: Decimal,
+    currency_code: &str,
+) -> CartResult<Vec<Decimal>> {
+    let total = nets.iter().fold(Decimal::ZERO, |acc, net| acc + *net);
+    let mut discount_left = discount.max(Decimal::ZERO).min(total);
+    let mut net_left = total;
+    let mut shares = Vec::with_capacity(nets.len());
+    for net in nets {
+        let share = if net_left <= Decimal::ZERO || discount_left <= Decimal::ZERO {
+            Decimal::ZERO
+        } else {
+            round_to_currency(discount_left * *net / net_left, currency_code)?
+                .min(*net)
+                .min(discount_left)
+        };
+        discount_left -= share;
+        net_left -= *net;
+        shares.push(share);
+    }
+    Ok(shares)
+}
+
 pub fn channel_tax_provider_id(metadata: &Value, channel_id: Option<Uuid>) -> Option<String> {
     let channel_id = channel_id?;
     let channel_key = channel_id.to_string();
@@ -470,8 +536,10 @@ pub fn resolve_promotion_base_amount(
         }
         None => {
             let subtotal_amount = subtotal_amount(line_items);
+            // Shipping-scoped adjustments discount the shipping charge, not the goods subtotal.
             let existing_adjustments = adjustments
                 .iter()
+                .filter(|adjustment| !is_shipping_adjustment(adjustment))
                 .filter(|adjustment| !matches_promotion_adjustment(adjustment, None, source_id))
                 .fold(Decimal::ZERO, |acc, adjustment| acc + adjustment.amount);
             Ok((subtotal_amount - existing_adjustments).max(Decimal::ZERO))
@@ -974,6 +1042,24 @@ where
     let tax_rate = region.tax_rate;
     let now = Utc::now();
     let mut taxable_amounts = Vec::new();
+
+    // Cart-level discounts reduce the goods tax base together with the order total, and shipping
+    // discounts reduce the shipping tax base; each discount is spread once over its own base
+    // instead of being repeated for every line or shipping option.
+    let mut cart_level_discount = Decimal::ZERO;
+    let mut shipping_discount = Decimal::ZERO;
+    for adjustment in adjustments
+        .iter()
+        .filter(|adjustment| adjustment.cart_line_item_id.is_none())
+    {
+        if is_shipping_adjustment(adjustment) {
+            shipping_discount += adjustment.amount;
+        } else {
+            cart_level_discount += adjustment.amount;
+        }
+    }
+
+    let mut priced_lines = Vec::new();
     for item in line_items {
         let line_adjustments = adjustments
             .iter()
@@ -983,28 +1069,42 @@ where
         if net_item_price <= Decimal::ZERO {
             continue;
         }
+        priced_lines.push((item, net_item_price));
+    }
+    priced_lines.sort_by_key(|(item, _)| item.id);
+    let line_nets = priced_lines
+        .iter()
+        .map(|(_, net)| *net)
+        .collect::<Vec<_>>();
+    let line_discount_shares =
+        allocate_discount_over_nets(&line_nets, cart_level_discount, &cart.currency_code)?;
+    for ((item, net_item_price), discount_share) in priced_lines.iter().zip(line_discount_shares) {
+        let taxable_amount = *net_item_price - discount_share;
+        if taxable_amount <= Decimal::ZERO {
+            continue;
+        }
         taxable_amounts.push(TaxableAmount {
             line_item_id: Some(item.id),
             shipping_option_id: None,
             item_tax_class: line_item_tax_class(&item.metadata),
             shipping_tax_class: None,
             description: Some("line_item".to_string()),
-            amount: net_item_price,
+            amount: taxable_amount,
         });
     }
 
-    for option in shipping_options {
-        if option.currency_code != cart.currency_code {
-            continue;
-        }
-        let shipping_adjustments = adjustments
-            .iter()
-            .filter(|adjustment| {
-                adjustment.cart_line_item_id.is_none()
-                    && adjustment_scope(adjustment) == Some(SHIPPING_PROMOTION_SCOPE)
-            })
-            .fold(Decimal::ZERO, |acc, adjustment| acc + adjustment.amount);
-        let net_shipping_amount = (option.amount - shipping_adjustments).max(Decimal::ZERO);
+    let taxable_options = shipping_options
+        .iter()
+        .filter(|option| option.currency_code == cart.currency_code)
+        .collect::<Vec<_>>();
+    let option_amounts = taxable_options
+        .iter()
+        .map(|option| option.amount)
+        .collect::<Vec<_>>();
+    let shipping_discount_shares =
+        allocate_discount_over_nets(&option_amounts, shipping_discount, &cart.currency_code)?;
+    for (option, discount_share) in taxable_options.iter().zip(shipping_discount_shares) {
+        let net_shipping_amount = (option.amount - discount_share).max(Decimal::ZERO);
         if net_shipping_amount <= Decimal::ZERO {
             continue;
         }
@@ -1128,11 +1228,17 @@ where
     )
     .await?;
     let subtotal = subtotal_amount(&line_items);
-    let adjusted_total = net_total(subtotal, adjustment_total(&adjustments));
+    let (goods_adjustments, shipping_adjustments) = split_adjustment_totals(&adjustments);
+    let payable = payable_before_tax(
+        subtotal,
+        goods_adjustments,
+        shipping_total,
+        shipping_adjustments,
+    );
     let total_amount = if tax_included {
-        adjusted_total + shipping_total
+        payable
     } else {
-        adjusted_total + shipping_total + tax_total
+        payable + tax_total
     };
 
     let mut active: entities::cart::ActiveModel = cart.into();
@@ -1597,5 +1703,68 @@ mod tests {
     fn digital_lines_do_not_create_delivery_groups() {
         let groups = collect_delivery_group_snapshots(&[]).expect("empty cart has no groups");
         assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn payable_before_tax_clamps_goods_and_shipping_independently() {
+        // Goods fully discounted and shipping fully discounted: nothing is payable.
+        assert_eq!(
+            payable_before_tax(
+                Decimal::from(10),
+                Decimal::from(10),
+                Decimal::from(5),
+                Decimal::from(5),
+            ),
+            Decimal::ZERO
+        );
+        // A goods discount larger than the subtotal must not eat the shipping charge.
+        assert_eq!(
+            payable_before_tax(
+                Decimal::from(10),
+                Decimal::from(15),
+                Decimal::from(5),
+                Decimal::ZERO,
+            ),
+            Decimal::from(5)
+        );
+        // A shipping discount larger than shipping must not reduce the goods.
+        assert_eq!(
+            payable_before_tax(
+                Decimal::from(10),
+                Decimal::ZERO,
+                Decimal::from(5),
+                Decimal::from(8),
+            ),
+            Decimal::from(10)
+        );
+    }
+
+    #[test]
+    fn allocate_discount_over_nets_spreads_discount_and_absorbs_rounding() {
+        let nets = [Decimal::from(10), Decimal::from(10), Decimal::from(10)];
+        let shares = allocate_discount_over_nets(&nets, Decimal::ONE, "USD")
+            .expect("allocation must succeed");
+        assert_eq!(shares.len(), 3);
+        assert_eq!(
+            shares.iter().fold(Decimal::ZERO, |acc, share| acc + *share),
+            Decimal::ONE
+        );
+        assert!(shares.iter().all(|share| *share <= Decimal::from(10)));
+    }
+
+    #[test]
+    fn allocate_discount_over_nets_never_exceeds_base_or_discount() {
+        let nets = [Decimal::from(4), Decimal::from(6)];
+        let shares = allocate_discount_over_nets(&nets, Decimal::from(100), "USD")
+            .expect("allocation must succeed");
+        assert_eq!(shares, vec![Decimal::from(4), Decimal::from(6)]);
+
+        let none = allocate_discount_over_nets(&nets, Decimal::ZERO, "USD")
+            .expect("allocation must succeed");
+        assert_eq!(none, vec![Decimal::ZERO, Decimal::ZERO]);
+
+        let empty = allocate_discount_over_nets(&[], Decimal::ONE, "USD")
+            .expect("allocation must succeed");
+        assert!(empty.is_empty());
     }
 }

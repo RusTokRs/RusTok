@@ -137,6 +137,10 @@ name = "order_inventory_reservation_test"
 path = "tests/order_inventory_reservation_test.rs"
 
 [[test]]
+name = "order_cancellation_test"
+path = "tests/order_cancellation_test.rs"
+
+[[test]]
 name = "order_returns_bridge_test"
 path = "tests/order_returns_bridge_test.rs"
 

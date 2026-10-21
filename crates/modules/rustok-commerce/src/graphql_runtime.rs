@@ -533,15 +533,34 @@ pub(crate) fn fulfillment_command_runtime_from_context(
     ctx: &Context<'_>,
     db: DatabaseConnection,
 ) -> CommerceFulfillmentCommandRuntime {
-    ctx.data_opt::<CommerceGraphqlRuntimeData>()
+    let runtime = ctx
+        .data_opt::<CommerceGraphqlRuntimeData>()
         .map(CommerceGraphqlRuntimeData::fulfillment_command_runtime)
         .unwrap_or_else(|| {
             let provider_registry = ctx
                 .data_opt::<CommerceGraphqlRuntimeData>()
                 .map(CommerceGraphqlRuntimeData::fulfillment_provider_registry)
                 .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider);
-            CommerceFulfillmentCommandRuntime::in_process(db, provider_registry)
-        })
+            // A request-scoped stock port replaces the inventory-backed default (deployments
+            // without stock tracking, fixtures without reservations).
+            match ctx.data_opt::<Arc<dyn rustok_fulfillment::ShipmentStockPort>>() {
+                Some(port) => CommerceFulfillmentCommandRuntime::in_process_with_shipment_stock(
+                    db.clone(),
+                    provider_registry,
+                    port.clone(),
+                ),
+                None => CommerceFulfillmentCommandRuntime::in_process(db.clone(), provider_registry),
+            }
+        });
+    // Order shipment status follows fulfillment truth. Without an event bus in the request scope
+    // the projection is skipped and the manual order commands stay the fallback.
+    match ctx.data_opt::<rustok_outbox::TransactionalEventBus>() {
+        Some(event_bus) => runtime.with_shipment_projection(crate::OrderShipmentProjector::new(
+            db,
+            event_bus.clone(),
+        )),
+        None => runtime,
+    }
 }
 
 pub(crate) fn shipping_option_admin_command_runtime_from_context(
@@ -558,9 +577,21 @@ pub(crate) fn order_admin_command_runtime_from_context(
     db: DatabaseConnection,
     event_bus: rustok_outbox::TransactionalEventBus,
 ) -> OrderAdminCommandRuntime {
-    ctx.data_opt::<CommerceGraphqlRuntimeData>()
+    let inner = ctx
+        .data_opt::<CommerceGraphqlRuntimeData>()
         .map(CommerceGraphqlRuntimeData::order_admin_command_runtime)
-        .unwrap_or_else(|| OrderAdminCommandRuntime::in_process(db, event_bus))
+        .unwrap_or_else(|| OrderAdminCommandRuntime::in_process(db.clone(), event_bus.clone()));
+    let fulfillment_provider_registry = ctx
+        .data_opt::<CommerceGraphqlRuntimeData>()
+        .map(CommerceGraphqlRuntimeData::fulfillment_provider_registry)
+        .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider);
+    // Admin cancellation must unwind fulfillments and payments, not only flip the status.
+    crate::orchestrated_order_admin_command_runtime(
+        inner,
+        crate::OrderCancellationOrchestrator::new(db, event_bus)
+            .with_payment_provider_registry(payment_provider_registry_from_context(ctx))
+            .with_fulfillment_provider_registry(fulfillment_provider_registry),
+    )
 }
 
 pub(crate) fn order_post_order_command_runtime_from_context(
@@ -619,15 +650,18 @@ pub(crate) fn return_decision_owner_orchestration_from_context(
             db,
             runtime.order_post_order_command_runtime().command_port(),
             runtime.payment_read_runtime().admin_read_port(),
-        ),
+        )
+        .with_order_read_port(runtime.order_read_runtime().order_read_port()),
         None => {
-            let order_runtime = OrderPostOrderCommandRuntime::in_process(db.clone(), event_bus);
+            let order_runtime =
+                OrderPostOrderCommandRuntime::in_process(db.clone(), event_bus.clone());
             let payment_runtime = CommercePaymentReadRuntime::in_process(db.clone());
             crate::ReturnDecisionOwnerOrchestrationService::new(
-                db,
+                db.clone(),
                 order_runtime.command_port(),
                 payment_runtime.admin_read_port(),
             )
+            .with_order_read_port(in_process_order_read_port(db, event_bus))
         }
     };
     service.with_payment_provider_registry(payment_provider_registry_from_context(ctx))

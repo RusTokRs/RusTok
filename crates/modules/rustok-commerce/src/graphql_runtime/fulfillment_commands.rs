@@ -33,8 +33,25 @@ impl CommerceFulfillmentCommandRuntime {
         db: DatabaseConnection,
         provider_registry: FulfillmentProviderRegistry,
     ) -> Self {
+        Self::in_process_with_shipment_stock(
+            db,
+            provider_registry,
+            crate::inventory_shipment_stock_port(),
+        )
+    }
+
+    /// In-process runtime whose lifecycle commands move stock through `shipment_stock`.
+    pub fn in_process_with_shipment_stock(
+        db: DatabaseConnection,
+        provider_registry: FulfillmentProviderRegistry,
+        shipment_stock: Arc<dyn rustok_fulfillment::ShipmentStockPort>,
+    ) -> Self {
         Self::new(
-            FulfillmentAdminCommandRuntime::in_process(db.clone(), provider_registry.clone()),
+            FulfillmentAdminCommandRuntime::in_process_with_shipment_stock(
+                db.clone(),
+                provider_registry.clone(),
+                shipment_stock,
+            ),
             FulfillmentAdminCreateCommandRuntime::in_process(db, provider_registry),
         )
     }
@@ -46,7 +63,7 @@ impl CommerceFulfillmentCommandRuntime {
         let lifecycle_commands = inputs
             .shared_get::<FulfillmentAdminCommandRuntime>()
             .unwrap_or_else(|| {
-                FulfillmentAdminCommandRuntime::in_process(
+                crate::fulfillment_admin_command_runtime(
                     inputs.db_clone(),
                     provider_registry.clone(),
                 )
@@ -60,6 +77,17 @@ impl CommerceFulfillmentCommandRuntime {
                 )
             });
         Self::new(lifecycle_commands, create_commands)
+    }
+
+    /// Wraps the lifecycle commands so shipped/delivered fulfillments advance the order status.
+    pub fn with_shipment_projection(self, projector: crate::OrderShipmentProjector) -> Self {
+        Self {
+            lifecycle_commands: crate::projecting_fulfillment_admin_command_runtime(
+                self.lifecycle_commands,
+                projector,
+            ),
+            create_commands: self.create_commands,
+        }
     }
 
     pub fn lifecycle_command_port(&self) -> Arc<dyn FulfillmentAdminCommandPort> {

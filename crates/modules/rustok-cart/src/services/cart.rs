@@ -383,6 +383,18 @@ impl CartService {
         active.update(&txn).await?;
         apply_shipping_selection_patch(&txn, &cart, &shipping_patch_input).await?;
 
+        // Region, country and shipping selections feed tax and shipping totals; recalculate against
+        // the freshly written context so persisted totals never describe the previous context.
+        let updated_cart = load_cart_for_update_in_tx(&txn, tenant_id, cart_id).await?;
+        recalculate_totals(
+            &txn,
+            self.tax_calculation_port.as_ref(),
+            self.shipping_option_read_port.as_ref(),
+            updated_cart,
+        )
+        .await?;
+        reconcile_cart_shipping_state(&txn, cart_id).await?;
+
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await
     }
@@ -546,6 +558,11 @@ impl CartService {
                 "quantity must be at least 1".to_string(),
             ));
         }
+        if unit_price < Decimal::ZERO {
+            return Err(CartError::Validation(
+                "unit_price cannot be negative".to_string(),
+            ));
+        }
 
         let txn = self.db.begin().await?;
         let cart = load_cart_for_update_in_tx(&txn, tenant_id, cart_id).await?;
@@ -606,6 +623,11 @@ impl CartService {
             if update.line_item_id.is_nil() {
                 return Err(CartError::Validation(
                     "line_item_id must not be a nil UUID".to_string(),
+                ));
+            }
+            if update.unit_price < Decimal::ZERO {
+                return Err(CartError::Validation(
+                    "unit_price cannot be negative".to_string(),
                 ));
             }
         }
