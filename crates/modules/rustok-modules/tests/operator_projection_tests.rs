@@ -2,7 +2,7 @@
 //! - Canonical status mapping and friendly labels
 //! - Version coordinate immutability and multi-publisher rejection
 //! - Blast radius and preview projection calculation
-//! - Authorized diagnostic support bundle retrieval
+//! - Diagnostic support bundle aggregation over canonical state
 
 use sea_orm::{ConnectionTrait, Database};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
@@ -410,7 +410,7 @@ async fn test_transition_preview_projection_and_blast_radius() {
 
     // Generate preview with candidate coordinate
     let candidate = ModuleReleaseCoordinate::Dynamic {
-        publisher_identity: "billing-corp".to_string(),
+        publisher_identity: Some("billing-corp".to_string()),
         module_slug: "billing_engine".to_string(),
         version: "2.1.0".to_string(),
         release_digest: release_digest.clone(),
@@ -475,7 +475,7 @@ async fn test_preview_denies_automatic_mode_for_schema_migrations() {
 
     assert!(!preview_auto.eligibility.eligible);
     assert!(preview_auto.blast_radius.has_schema_migration);
-    assert!(preview_auto.irreversible_checkpoint.is_some());
+    assert!(preview_auto.point_of_no_return.is_some());
     assert!(
         preview_auto
             .eligibility
@@ -499,7 +499,7 @@ async fn test_preview_denies_automatic_mode_for_schema_migrations() {
 
     assert!(preview_manual.eligibility.eligible);
     assert!(preview_manual.blast_radius.has_schema_migration);
-    assert!(preview_manual.irreversible_checkpoint.is_some());
+    assert!(preview_manual.point_of_no_return.is_some());
 }
 
 #[tokio::test]
@@ -527,7 +527,8 @@ async fn test_operator_status_reads_and_support_bundle_generation() {
     assert!(!status_initial.retired);
 
     // 2. Arrange an inactive installation at work generation 1
-    insert_inactive_installation(&db, &release_digest, &scope).await;
+    let installation_id = insert_inactive_installation(&db, &release_digest, &scope).await;
+    assert_eq!(status_initial.installation_id, None);
 
     // 3. Status after install: Inactive -> Ready with instructions to enable
     let status_installed = operator
@@ -538,6 +539,7 @@ async fn test_operator_status_reads_and_support_bundle_generation() {
         status_installed.presentation_state,
         CanonicalPresentationState::Ready
     );
+    assert_eq!(status_installed.installation_id, Some(installation_id));
     assert_eq!(status_installed.work_generation, 1);
     assert!(!status_installed.retired);
 
@@ -548,6 +550,7 @@ async fn test_operator_status_reads_and_support_bundle_generation() {
         .expect("generate support bundle succeeds");
 
     assert_eq!(bundle.module_slug, "inventory_sync");
+    assert_eq!(bundle.installation_id, Some(installation_id));
     assert_eq!(bundle.presentation_state, CanonicalPresentationState::Ready);
     assert_eq!(bundle.work_generation, 1);
     assert!(!bundle.retired);

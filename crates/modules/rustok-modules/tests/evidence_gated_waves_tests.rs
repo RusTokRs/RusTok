@@ -543,7 +543,7 @@ async fn test_wave_4_exact_transition_evaluation_automatic_mode_policy() {
 
     // Case A: Stateless dynamic transition without schema changes
     let dynamic_candidate = ModuleReleaseCoordinate::Dynamic {
-        publisher_identity: "formatter-inc".to_string(),
+        publisher_identity: Some("formatter-inc".to_string()),
         module_slug: "formatter_pilot".to_string(),
         version: "1.0.0".to_string(),
         release_digest: release_digest.clone(),
@@ -565,7 +565,7 @@ async fn test_wave_4_exact_transition_evaluation_automatic_mode_policy() {
     // Proves Automatic mode is allowed for exact transition with 0 schema impact
     assert!(preview_stateless.eligibility.eligible);
     assert!(!preview_stateless.blast_radius.has_schema_migration);
-    assert!(preview_stateless.irreversible_checkpoint.is_none());
+    assert!(preview_stateless.point_of_no_return.is_none());
 
     // Case B: Static distribution composition transition with additive schema migration
     let static_candidate = ModuleReleaseCoordinate::Static {
@@ -597,7 +597,7 @@ async fn test_wave_4_exact_transition_evaluation_automatic_mode_policy() {
     // Proves Automatic mode is strictly denied per exact transition when schema migrations exist!
     assert!(!preview_schema_auto.eligibility.eligible);
     assert!(preview_schema_auto.blast_radius.has_schema_migration);
-    assert!(preview_schema_auto.irreversible_checkpoint.is_some());
+    assert!(preview_schema_auto.point_of_no_return.is_some());
     assert!(preview_schema_auto.eligibility.denial_reasons[0].contains("Automatic mode denied"));
 
     // Case C: Transition rescheduled under Maintenance mode
@@ -617,7 +617,7 @@ async fn test_wave_4_exact_transition_evaluation_automatic_mode_policy() {
     assert!(preview_schema_maint.eligibility.eligible);
     assert!(preview_schema_maint.blast_radius.has_schema_migration);
     assert_eq!(
-        preview_schema_maint.irreversible_checkpoint,
-        Some("PointOfNoReturn: additive native schema migration will be committed".to_string())
+        preview_schema_maint.point_of_no_return,
+        Some("PointOfNoReturn: static distribution updates may commit native schema migrations that cannot be introspected from admitted descriptors; manual approval is required".to_string())
     );
 }

@@ -259,8 +259,30 @@ by the canonical path are invisible ("No installation found"). No
 canonical equivalent of this operator surface exists (transition
 receipts/preflight overlap only partially). Keep restored but unwired;
 a rewrite against canonical sources (predecessor chain, dependency
-graph, retention ledger, production-operation journal) is required
+graph, retention ledger, transition checkpoints) is required
 before any transport exposes it.
+
+*Executed 2026-10-21* (disposition 3): rewritten on canonical sources.
+Publisher resolves from `module_external_prebuilt_ingress` (`None` for
+internally built releases; the hardcoded `"platform"` is gone); the
+predecessor is the previous installation in the scope's installation
+chain, not a clone of current; blast-radius tenants, nodes, and
+dependents derive from installations, node-reconciliation assignments,
+and admitted-descriptor dependency declarations (`affected_roles` was
+really topology nodes and is renamed `affected_nodes`);
+schema-migration derives from admitted-descriptor data-schema
+fingerprints (static candidates remain flagged by documented policy —
+native migrations are not introspectable here — and an unadmitted
+candidate against a live data schema fails closed in automatic mode);
+`is_irreversible` is removed because irreversibility is an operation
+property owned by `data_upgrade`, not a descriptor fact; malformed
+stored UUIDs are typed errors instead of random substitutes, and
+owner/settings are `Option`; `get_status` reads work generations with
+absent-row semantics (generation 1, not retired) and counts real durable
+holds via `RetentionHoldStore`; the support bundle carries the real
+installation id, the latest transition-checkpoint operation id, and the
+actual hold records, and no longer claims to perform authorization.
+Still unwired into any transport by design.
 
 ### 5.4 `wave_rollout.rs` — (b) unfinished planned policy state machine
 
