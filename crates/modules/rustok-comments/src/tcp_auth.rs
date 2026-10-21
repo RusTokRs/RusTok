@@ -298,7 +298,7 @@ fn valid_token_text(secret: &str) -> bool {
 }
 
 fn is_canonical_uuid(value: &str) -> bool {
-    Uuid::parse_str(value).is_ok_and(|parsed| parsed.to_string() == value)
+    Uuid::parse_str(value).is_ok_and(|parsed| !parsed.is_nil() && parsed.to_string() == value)
 }
 
 fn bearer_authorization_digest(secret: &[u8]) -> [u8; SHA256_DIGEST_BYTES] {
@@ -343,6 +343,7 @@ mod tests {
     fn tenant_authority_requires_canonical_uuid_text() {
         let tenant_id = Uuid::new_v4();
         assert!(is_canonical_uuid(&tenant_id.to_string()));
+        assert!(!is_canonical_uuid(&Uuid::nil().to_string()));
         assert!(!is_canonical_uuid(
             &tenant_id.to_string().to_ascii_uppercase()
         ));

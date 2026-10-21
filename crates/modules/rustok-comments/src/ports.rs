@@ -166,6 +166,12 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         request: ApiCreateCommentInput,
     ) -> Result<ApiCommentRecord, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        if request.target_type.trim().is_empty() {
+            return Err(PortError::validation(
+                "comments.invalid_target_type",
+                "target_type cannot be empty",
+            ));
+        }
         if request.target_id.is_nil() {
             return Err(PortError::validation(
                 "comments.invalid_target_id",
@@ -301,6 +307,12 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         fallback_locale: Option<String>,
     ) -> Result<(Vec<ApiCommentListItem>, u64), PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if target_type.trim().is_empty() {
+            return Err(PortError::validation(
+                "comments.invalid_target_type",
+                "target_type cannot be empty",
+            ));
+        }
         if target_id.is_nil() {
             return Err(PortError::validation(
                 "comments.invalid_target_id",
@@ -332,6 +344,12 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         fallback_locale: Option<String>,
     ) -> Result<(Vec<ApiCommentListItem>, u64), PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if target_type.trim().is_empty() {
+            return Err(PortError::validation(
+                "comments.invalid_target_type",
+                "target_type cannot be empty",
+            ));
+        }
         if target_id.is_nil() {
             return Err(PortError::validation(
                 "comments.invalid_target_id",
