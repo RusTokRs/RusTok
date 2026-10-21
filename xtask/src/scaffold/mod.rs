@@ -6,7 +6,7 @@ use std::path::Path;
 
 mod backend;
 mod options;
-mod registration;
+pub(crate) mod registration;
 mod ui;
 
 #[allow(unused_imports)]

@@ -15836,6 +15836,8 @@ dependencies = [
  "rustok-core",
  "rustok-events",
  "rustok-iggy",
+ "rustok-notifications-api",
+ "rustok-outbox",
  "rustok-web",
  "sea-orm",
  "sea-orm-migration",

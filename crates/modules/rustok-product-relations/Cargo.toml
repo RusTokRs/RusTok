@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Product relations, cross-sells, up-sells, accessories, and merchandising associations for RusToK"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true

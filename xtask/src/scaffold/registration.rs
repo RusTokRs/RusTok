@@ -30,6 +30,12 @@ pub(crate) fn register_module(
         register_in_server_cargo_toml(root, slug, &crate_name)?;
         register_in_distribution_cargo_toml(root, slug, &crate_name)?;
         register_in_distribution_lib_rs(root, slug, pascal, snake)?;
+        if opts.ui.has_admin() {
+            register_in_admin_cargo_toml(root, &crate_name)?;
+        }
+        if opts.ui.has_storefront() {
+            register_in_storefront_cargo_toml(root, &crate_name)?;
+        }
     }
 
     Ok(())
@@ -497,3 +503,162 @@ fn register_in_distribution_lib_rs(
 
     Ok(())
 }
+
+pub(crate) fn register_in_admin_cargo_toml(root: &Path, crate_name: &str) -> Result<()> {
+    let path = root.join("apps").join("admin").join("Cargo.toml");
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let content =
+        fs::read_to_string(&path).with_context(|| format!("Failed to read {}", path.display()))?;
+
+    let admin_crate = format!("{crate_name}-admin");
+    let mut lines = content.lines().map(String::from).collect::<Vec<_>>();
+    let mut modified = false;
+
+    // 1. features.csr
+    let csr_entry = format!("  \"{admin_crate}/csr\",");
+    if !content.contains(csr_entry.trim()) {
+        if let Some(pos) = find_closing_bracket_after(&lines, "csr = [") {
+            lines.insert(pos, csr_entry);
+            modified = true;
+        }
+    }
+
+    // 2. features.hydrate
+    let hydrate_entry = format!("  \"{admin_crate}/hydrate\",");
+    if !content.contains(hydrate_entry.trim()) {
+        if let Some(pos) = find_closing_bracket_after(&lines, "hydrate = [") {
+            lines.insert(pos, hydrate_entry);
+            modified = true;
+        }
+    }
+
+    // 3. features.ssr
+    let ssr_entry = format!("  \"{admin_crate}/ssr\",");
+    if !content.contains(ssr_entry.trim()) {
+        if let Some(pos) = find_closing_bracket_after(&lines, "ssr = [") {
+            lines.insert(pos, ssr_entry);
+            modified = true;
+        }
+    }
+
+    // 4. [dependencies]
+    let dep_entry = format!("{admin_crate} = {{ path = \"../../crates/modules/{crate_name}/admin\", default-features = false }}");
+    let dep_needle = format!("{admin_crate} =");
+    if !content.contains(&dep_needle) {
+        if let Some(pos) = lines.iter().position(|l| l.trim().starts_with("rustok-blog-admin =")) {
+            lines.insert(pos + 1, dep_entry);
+            modified = true;
+        } else if let Some(pos) = lines.iter().position(|l| l.trim() == "[dependencies]") {
+            lines.insert(pos + 1, dep_entry);
+            modified = true;
+        }
+    }
+
+    // 5. [package.metadata.cargo-udeps.ignore] normal
+    let udeps_entry = format!("  \"{admin_crate}\",");
+    if !content.contains(udeps_entry.trim()) {
+        if let Some(pos) = find_closing_bracket_after(&lines, "normal = [") {
+            lines.insert(pos, udeps_entry);
+            modified = true;
+        }
+    }
+
+    // 6. [package.metadata.cargo-machete] ignored
+    let machete_entry = format!("  \"{admin_crate}\",");
+    if !content.contains(machete_entry.trim()) {
+        if let Some(pos) = find_closing_bracket_after(&lines, "ignored = [") {
+            lines.insert(pos, machete_entry);
+            modified = true;
+        }
+    }
+
+    if modified {
+        fs::write(&path, lines.join("\n") + "\n")
+            .with_context(|| format!("Failed to write {}", path.display()))?;
+        println!("  Updated apps/admin/Cargo.toml with admin UI dependencies and features");
+    }
+
+    Ok(())
+}
+
+pub(crate) fn register_in_storefront_cargo_toml(root: &Path, crate_name: &str) -> Result<()> {
+    let path = root.join("apps").join("storefront").join("Cargo.toml");
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let content =
+        fs::read_to_string(&path).with_context(|| format!("Failed to read {}", path.display()))?;
+
+    let sf_crate = format!("{crate_name}-storefront");
+    let mut lines = content.lines().map(String::from).collect::<Vec<_>>();
+    let mut modified = false;
+
+    // 1. features.ssr
+    let dep_ssr = format!("  \"dep:{sf_crate}\",");
+    let ssr_entry = format!("  \"{sf_crate}/ssr\",");
+    if !content.contains(dep_ssr.trim()) {
+        if let Some(pos) = find_closing_bracket_after(&lines, "ssr = [") {
+            lines.insert(pos, ssr_entry);
+            lines.insert(pos, dep_ssr);
+            modified = true;
+        }
+    }
+
+    // 2. [dependencies]
+    let dep_entry = format!("{sf_crate} = {{ path = \"../../crates/modules/{crate_name}/storefront\", default-features = false, optional = true }}");
+    let dep_needle = format!("{sf_crate} =");
+    if !content.contains(&dep_needle) {
+        if let Some(pos) = lines.iter().position(|l| l.trim().starts_with("rustok-seo-storefront =")) {
+            lines.insert(pos + 1, dep_entry);
+            modified = true;
+        } else if let Some(pos) = lines.iter().position(|l| l.trim() == "[dependencies]") {
+            lines.insert(pos + 1, dep_entry);
+            modified = true;
+        }
+    }
+
+    // 3. [package.metadata.cargo-udeps.ignore] normal
+    let udeps_entry = format!("  \"{sf_crate}\",");
+    if !content.contains(udeps_entry.trim()) {
+        if let Some(pos) = find_closing_bracket_after(&lines, "normal = [") {
+            lines.insert(pos, udeps_entry);
+            modified = true;
+        }
+    }
+
+    // 4. [package.metadata.cargo-machete] ignored
+    let machete_entry = format!("  \"{sf_crate}\",");
+    if !content.contains(machete_entry.trim()) {
+        if let Some(pos) = find_closing_bracket_after(&lines, "ignored = [") {
+            lines.insert(pos, machete_entry);
+            modified = true;
+        }
+    }
+
+    if modified {
+        fs::write(&path, lines.join("\n") + "\n")
+            .with_context(|| format!("Failed to write {}", path.display()))?;
+        println!("  Updated apps/storefront/Cargo.toml with storefront UI dependencies and features");
+    }
+
+    Ok(())
+}
+
+pub(crate) fn find_closing_bracket_after(lines: &[String], section_prefix: &str) -> Option<usize> {
+    let mut in_section = false;
+    for (i, line) in lines.iter().enumerate() {
+        if line.trim().starts_with(section_prefix) {
+            in_section = true;
+            continue;
+        }
+        if in_section && line.trim().starts_with(']') {
+            return Some(i);
+        }
+    }
+    None
+}
+

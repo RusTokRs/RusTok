@@ -490,6 +490,20 @@ impl MessengerService {
         // Monotonically advance sender's cursor automatically within the same transaction
         Self::update_cursor_in_tx(&txn, input.conversation_id, actor_id, message_id).await?;
 
+        // Emit transactional outbox event for notifications & streaming fanout
+        rustok_outbox::TransactionalEventBus::publish_root_in_tx(
+            &txn,
+            tenant_id,
+            Some(actor_id),
+            rustok_events::DomainEvent::MessengerMessageDispatched {
+                conversation_id: input.conversation_id,
+                message_id,
+                sender_id: actor_id,
+            },
+        )
+        .await
+        .map_err(|e| MessengerError::Internal(format!("Failed to emit outbox event: {e}")))?;
+
         txn.commit().await?;
 
         let res_type = MessageType::try_from(msg_type).unwrap_or(MessageType::Text);

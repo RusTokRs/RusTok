@@ -12,9 +12,14 @@ pub mod error;
 pub mod federation;
 pub mod migrations;
 pub mod module;
+pub mod notification_source;
 pub mod ports;
 pub mod services;
 pub mod streaming;
+
+pub use notification_source::{
+    MessengerNotificationSourceProvider, MessengerNotificationSourceProviderFactory,
+};
 
 pub use federation::{
     InboundMatrixMessagePayload, MatrixEventBridge, MatrixGatewayAdapter, MatrixRoomBridge,

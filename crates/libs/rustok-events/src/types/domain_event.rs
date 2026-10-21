@@ -920,6 +920,15 @@ pub enum DomainEvent {
         schema_id: Uuid,
         entry_id: Uuid,
     },
+
+    // ════════════════════════════════════════════════════════════════
+    // MESSENGER EVENTS
+    // ════════════════════════════════════════════════════════════════
+    MessengerMessageDispatched {
+        conversation_id: Uuid,
+        message_id: i64,
+        sender_id: Uuid,
+    },
 }
 
 impl DomainEvent {
@@ -1189,6 +1198,9 @@ impl DomainEvent {
             Self::FlexEntryCreated { .. } => "flex.entry.created",
             Self::FlexEntryUpdated { .. } => "flex.entry.updated",
             Self::FlexEntryDeleted { .. } => "flex.entry.deleted",
+
+            // Messenger events
+            Self::MessengerMessageDispatched { .. } => "messenger.message.dispatched",
         }
     }
 
@@ -1381,6 +1393,9 @@ impl DomainEvent {
             Self::FlexEntryCreated { .. } => 1,
             Self::FlexEntryUpdated { .. } => 1,
             Self::FlexEntryDeleted { .. } => 1,
+
+            // Messenger events (v1)
+            Self::MessengerMessageDispatched { .. } => 1,
         }
     }
 

@@ -165,30 +165,6 @@ Provides sovereign {title} domain capability for RusToK.
     );
     write_file_content(&module_dir.join("README.md"), &readme, opts.dry_run)?;
 
-    // CRATE_API.md
-    let crate_api = format!(
-        r#"# {crate_name} API Specification
-
-## Public Types and Re-exports
-- `{pascal}Module`: platform lifecycle descriptor implementing `RusToKModule`.
-- `{pascal}Status`: pure domain lifecycle state machine.
-- `{pascal}Error`: domain error catalog for {slug}.
-- `{pascal}Result<T>`: standard result type alias.
-- Domain events: `{pascal}CreatedEvent`, `{pascal}UpdatedEvent`, `{pascal}DeletedEvent`, `{pascal}DomainEvent`.
-- Topic constant: `{pascal_upper}_EVENT_TOPIC`.
-
-## Services
-- `{pascal}Service`: domain and application use cases exported from `services`.
-
-## Integrations
-- Cache key and prefix helpers in `integrations::cache`.
-- Search projection source in `integrations::search`.
-- Media attachment invariants in `integrations::media`.
-- Translation provider blueprint in `integrations::translation`.
-"#
-    );
-    write_file_content(&module_dir.join("CRATE_API.md"), &crate_api, opts.dry_run)?;
-
     // docs/README.md
     let docs_readme = format!(
         r#"# {title} Module Architecture Contract
@@ -260,6 +236,48 @@ Sovereign domain capability and client surfaces for {title}.
     write_file_content(
         &module_dir.join("docs").join("implementation-plan.md"),
         &plan,
+        opts.dry_run,
+    )?;
+
+    // CRATE_API.md
+    let crate_api = format!(
+        r#"# {crate_name} / CRATE_API
+
+## Role
+
+`{crate_name}` owns the sovereign domain capability for {title} in RusToK.
+
+Persistence entities are **crate-private**. Consumers interact exclusively through owner DTOs,
+services, or explicit ports. Direct cross-crate SeaORM table access is forbidden.
+
+## Public surface
+
+Deliberate public modules and exports:
+
+- `domain` — `{pascal}Status` lifecycle state;
+- `dto` — owner command, input, and response data contracts;
+- `error` — `{pascal}Error`, `{pascal}Result`;
+- `events` — domain event descriptors;
+- `integrations` — capability bridges for search, cache, media, translation;
+- `module` — `{pascal}Module` lifecycle and migration provider;
+- `services` — `{pascal}Service` and transaction orchestration.
+
+`entities` and `migrations` are crate-private.
+
+## Primary entry points
+
+- [`{pascal}Module`](src/module.rs): Platform module registration and migration descriptor.
+- [`{pascal}Service`](src/services/mod.rs): Domain application service.
+
+## Invariants
+
+- Tenant isolation: All queries and commands strictly enforce `tenant_id` scoping.
+- Concurrency: Write operations execute within explicit transaction boundaries.
+"#
+    );
+    write_file_content(
+        &module_dir.join("CRATE_API.md"),
+        &crate_api,
         opts.dry_run,
     )?;
 

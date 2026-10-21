@@ -1,9 +1,11 @@
 use async_trait::async_trait;
 use rustok_api::Permission;
-use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
+use rustok_core::{MigrationDependencyDescriptor, MigrationSource, ModuleRuntimeExtensions, RusToKModule};
+use rustok_notifications_api::register_notification_source_provider_factory;
 use sea_orm_migration::MigrationTrait;
 
 use crate::migrations;
+use crate::notification_source::MessengerNotificationSourceProviderFactory;
 
 pub struct MessengerModule;
 
@@ -42,6 +44,22 @@ impl RusToKModule for MessengerModule {
             Permission::MESSAGES_DELETE,
             Permission::MESSAGES_LIST,
         ]
+    }
+
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
+        register_notification_source_provider_factory(
+            extensions,
+            MessengerNotificationSourceProviderFactory,
+        )
+        .map_err(|error| {
+            rustok_core::Error::Validation(format!(
+                "messenger notification source factory registration failed: {error}"
+            ))
+        })?;
+        Ok(())
     }
 }
 
