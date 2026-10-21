@@ -59,6 +59,11 @@ impl MarketplaceCommissionService {
         idempotency_key: impl Into<String>,
         input: CreateMarketplaceCommissionRuleVersionInput,
     ) -> MarketplaceCommissionResult<MarketplaceCommissionRuleResponse> {
+        if tenant_id.is_nil() || actor_id.is_nil() {
+            return Err(MarketplaceCommissionError::Validation(
+                "tenant_id and actor_id must not be nil".to_string(),
+            ));
+        }
         let input = normalize_rule_input(input)?;
         let key = normalize_idempotency_key(idempotency_key)?;
         let hash = command_request_hash("create_commission_rule_version", actor_id, &input)?;
@@ -96,9 +101,9 @@ impl MarketplaceCommissionService {
         idempotency_key: impl Into<String>,
         input: AssessMarketplaceOrderCommissionsInput,
     ) -> MarketplaceCommissionResult<AssessMarketplaceOrderCommissionsResponse> {
-        if input.order_id.is_nil() {
+        if tenant_id.is_nil() || actor_id.is_nil() || input.order_id.is_nil() {
             return Err(MarketplaceCommissionError::Validation(
-                "order_id must not be nil".to_string(),
+                "tenant_id, actor_id, and order_id must not be nil".to_string(),
             ));
         }
         let key = normalize_idempotency_key(idempotency_key)?;
@@ -169,6 +174,11 @@ impl MarketplaceCommissionService {
         tenant_id: Uuid,
         allocation_id: Uuid,
     ) -> MarketplaceCommissionResult<MarketplaceCommissionAssessmentResponse> {
+        if tenant_id.is_nil() || allocation_id.is_nil() {
+            return Err(MarketplaceCommissionError::Validation(
+                "tenant_id and allocation_id must not be nil".to_string(),
+            ));
+        }
         assessment::Entity::find()
             .filter(assessment::Column::TenantId.eq(tenant_id))
             .filter(assessment::Column::AllocationId.eq(allocation_id))
@@ -185,6 +195,11 @@ impl MarketplaceCommissionService {
         tenant_id: Uuid,
         order_id: Uuid,
     ) -> MarketplaceCommissionResult<Vec<MarketplaceCommissionAssessmentResponse>> {
+        if tenant_id.is_nil() || order_id.is_nil() {
+            return Err(MarketplaceCommissionError::Validation(
+                "tenant_id and order_id must not be nil".to_string(),
+            ));
+        }
         assessment::Entity::find()
             .filter(assessment::Column::TenantId.eq(tenant_id))
             .filter(assessment::Column::OrderId.eq(order_id))
@@ -202,6 +217,11 @@ impl MarketplaceCommissionService {
         tenant_id: Uuid,
         request: ListMarketplaceCommissionAssessmentsBySellerRequest,
     ) -> MarketplaceCommissionResult<MarketplaceCommissionAssessmentListResponse> {
+        if tenant_id.is_nil() || request.seller_id.is_nil() {
+            return Err(MarketplaceCommissionError::Validation(
+                "tenant_id and seller_id must not be nil".to_string(),
+            ));
+        }
         let page = request.page.max(1);
         let per_page = request
             .per_page
@@ -236,6 +256,19 @@ impl MarketplaceCommissionService {
         tenant_id: Uuid,
         request: ListMarketplaceCommissionRulesRequest,
     ) -> MarketplaceCommissionResult<MarketplaceCommissionRuleListResponse> {
+        if tenant_id.is_nil() {
+            return Err(MarketplaceCommissionError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if request.rule_key.is_some_and(|id| id.is_nil())
+            || request.seller_id.is_some_and(|id| id.is_nil())
+            || request.listing_id.is_some_and(|id| id.is_nil())
+        {
+            return Err(MarketplaceCommissionError::Validation(
+                "filter rule_key, seller_id, and listing_id must not be nil when present".to_string(),
+            ));
+        }
         let page = request.page.max(1);
         let per_page = request.per_page.clamp(1, MAX_COMMISSION_RULES_PER_PAGE);
         let mut query = rule::Entity::find().filter(rule::Column::TenantId.eq(tenant_id));
