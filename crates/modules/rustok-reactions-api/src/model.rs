@@ -494,6 +494,12 @@ pub struct ReactionAggregate {
     pub count: u64,
 }
 
+impl ReactionAggregate {
+    pub fn new(reaction: ReactionKey, count: u64) -> Self {
+        Self { reaction, count }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ReactionSnapshot {
     subject: ReactionSubjectRef,
@@ -649,8 +655,28 @@ impl ReactionWriteReceipt {
         self.command_id
     }
 
+    pub const fn actor_id(&self) -> Uuid {
+        self.actor_id
+    }
+
+    pub fn subject(&self) -> &ReactionSubjectRef {
+        &self.subject
+    }
+
+    pub fn reaction(&self) -> &ReactionKey {
+        &self.reaction
+    }
+
+    pub const fn action(&self) -> ReactionAction {
+        self.action
+    }
+
     pub const fn changed(&self) -> bool {
         self.changed
+    }
+
+    pub const fn actor_state_revision(&self) -> u64 {
+        self.actor_state_revision
     }
 }
 
