@@ -91,7 +91,8 @@ impl SeaOrmArtifactBindingIdempotencyStore {
     ) -> Result<ArtifactBindingIdempotencyClaim, ArtifactBindingIdempotencyError> {
         let tenant_id = validate_request(request)?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
@@ -198,7 +199,8 @@ impl SeaOrmArtifactBindingIdempotencyStore {
             return Err(ArtifactBindingIdempotencyError::InvalidRequest);
         }
         let transaction = self.db.begin().await.map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
@@ -240,7 +242,8 @@ impl SeaOrmArtifactBindingIdempotencyStore {
             return Err(ArtifactBindingIdempotencyError::InvalidRequest);
         }
         let transaction = self.db.begin().await.map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;

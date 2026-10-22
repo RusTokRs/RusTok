@@ -202,7 +202,6 @@ pub(crate) async fn protect_artifact_data_namespace_writes(
 
 #[cfg(test)]
 mod tests {
-    use sea_orm_migration::prelude::MigrationTrait;
     use std::collections::BTreeSet;
 
     /// Registration order is the apply order on fresh databases, and the
