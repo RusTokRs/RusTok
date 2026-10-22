@@ -60,6 +60,8 @@ pub enum ModulePlatformPublicationEvidenceError {
     Registry(#[source] ModulePublicationRegistryError),
     #[error("platform publication OCI artifact fetch failed: {0}")]
     RegistryFetch(#[source] crate::ModuleInstallationError),
+    #[error("platform publication OCI artifact package verification failed: {0}")]
+    PackageVerification(#[source] crate::ModuleInstallationError),
     #[error("published OCI artifact does not match the owner-selected build")]
     ArtifactIdentityMismatch,
     #[error("isolated platform publication verification failed: {0}")]
@@ -114,6 +116,8 @@ pub enum ModuleAlloyPublicationEvidenceError {
     Registry(#[source] ModulePublicationRegistryError),
     #[error("Alloy publication OCI artifact fetch failed: {0}")]
     RegistryFetch(#[source] crate::ModuleInstallationError),
+    #[error("Alloy publication OCI artifact package verification failed: {0}")]
+    PackageVerification(#[source] crate::ModuleInstallationError),
     #[error("Alloy publication verification failed: {0}")]
     Verification(#[source] TrustVerificationError),
     #[error("published Alloy OCI artifact does not match the immutable owner receipt")]
@@ -232,6 +236,7 @@ pub trait ModulePublicationArtifactRegistryProvider: Send + Sync {
 enum PublishedArtifactVerificationError {
     RegistryProvider(ModulePublicationRegistryError),
     RegistryFetch(crate::ModuleInstallationError),
+    PackageVerification(crate::ModuleInstallationError),
     IdentityMismatch,
     Verification(TrustVerificationError),
     Rejected,
@@ -297,7 +302,7 @@ async fn verify_fetched_published_artifact(
     package
         .verify(limits)
         .await
-        .map_err(|error| PublishedArtifactVerificationError::Registry(error.to_string()))?;
+        .map_err(PublishedArtifactVerificationError::PackageVerification)?;
     if package.reference != *input.reference
         || package.descriptor.slug != input.expected_slug
         || package.descriptor.version != input.expected_version
@@ -464,6 +469,9 @@ fn map_platform_publication_verification_error(
         PublishedArtifactVerificationError::RegistryFetch(error) => {
             ModulePlatformPublicationEvidenceError::RegistryFetch(error)
         }
+        PublishedArtifactVerificationError::PackageVerification(error) => {
+            ModulePlatformPublicationEvidenceError::PackageVerification(error)
+        }
         PublishedArtifactVerificationError::IdentityMismatch => {
             ModulePlatformPublicationEvidenceError::ArtifactIdentityMismatch
         }
@@ -571,6 +579,9 @@ fn map_alloy_publication_verification_error(
         }
         PublishedArtifactVerificationError::RegistryFetch(error) => {
             ModuleAlloyPublicationEvidenceError::RegistryFetch(error)
+        }
+        PublishedArtifactVerificationError::PackageVerification(error) => {
+            ModuleAlloyPublicationEvidenceError::PackageVerification(error)
         }
         PublishedArtifactVerificationError::Verification(error) => {
             ModuleAlloyPublicationEvidenceError::Verification(error)

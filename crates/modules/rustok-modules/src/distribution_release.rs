@@ -104,10 +104,7 @@ pub trait ModuleStaticDistributionReleaseVerifier: Send + Sync {
     async fn verify(
         &self,
         request: ModuleStaticDistributionReleaseVerificationRequest,
-    ) -> Result<
-        ModuleStaticDistributionReleaseAdmission,
-        ModuleStaticDistributionReleaseVerifyError,
-    >;
+    ) -> Result<ModuleStaticDistributionReleaseAdmission, ModuleStaticDistributionReleaseVerifyError>;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

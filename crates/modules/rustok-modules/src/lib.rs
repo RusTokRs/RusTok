@@ -235,9 +235,9 @@ pub use artifact_node_reconciliation::{
     ModuleArtifactNodeReconciliationReceipt, ModuleArtifactNodeReconciliationRequest,
     ModuleArtifactNodeReconciliationStatus, ModuleArtifactNodeReconciliationWorkIdentity,
     ModuleArtifactNodeTopologyResolveError, ModuleArtifactNodeTopologyResolver,
-    ModuleArtifactNodeTopologySnapshot,
-    SeaOrmArtifactNodeReadiness, SeaOrmModuleArtifactNodeAgentService,
-    SeaOrmModuleArtifactNodeReconciliationService, module_artifact_node_topology_digest,
+    ModuleArtifactNodeTopologySnapshot, SeaOrmArtifactNodeReadiness,
+    SeaOrmModuleArtifactNodeAgentService, SeaOrmModuleArtifactNodeReconciliationService,
+    module_artifact_node_topology_digest,
 };
 pub use artifact_settings_recovery::{
     ArtifactSettingsPurgePreview, ArtifactSettingsPurgePreviewService,
@@ -298,10 +298,9 @@ pub use capability_http::{
 pub use composition::{
     ACTIVE_MODULE_COMPOSITION_ID, ModuleCompositionBuildAdmission,
     ModuleCompositionBuildEnqueueError, ModuleCompositionBuildEnqueueResult,
-    ModuleCompositionBuildEnqueuer,
-    ModuleCompositionBuildLease, ModuleCompositionBuildReceipt, ModuleCompositionError,
-    ModuleCompositionOperation, ModuleCompositionSnapshot, ModuleCompositionUpdate,
-    STATIC_MODULE_REGISTRY_MAX_LIMIT, SeaOrmModuleCompositionService,
+    ModuleCompositionBuildEnqueuer, ModuleCompositionBuildLease, ModuleCompositionBuildReceipt,
+    ModuleCompositionError, ModuleCompositionOperation, ModuleCompositionSnapshot,
+    ModuleCompositionUpdate, STATIC_MODULE_REGISTRY_MAX_LIMIT, SeaOrmModuleCompositionService,
     SharedStaticInstalledModuleReader, SharedStaticModuleRegistryReader,
     StaticInstalledModuleReader, StaticInstalledModuleReaderError, StaticModuleRegistryQuery,
     StaticModuleRegistryReader, StaticModuleRegistryReaderError,
@@ -398,9 +397,8 @@ pub use distribution_release::{
     ModuleStaticDistributionReleaseError, ModuleStaticDistributionReleaseState,
     ModuleStaticDistributionReleaseStatus, ModuleStaticDistributionReleaseVerificationRequest,
     ModuleStaticDistributionReleaseVerifier, ModuleStaticDistributionReleaseVerifyError,
-    ModuleStaticDistributionRevocationCommand,
-    ModuleStaticDistributionRevocationReceipt, SeaOrmModuleStaticDistributionReleaseService,
-    resolve_static_distribution_install_binding,
+    ModuleStaticDistributionRevocationCommand, ModuleStaticDistributionRevocationReceipt,
+    SeaOrmModuleStaticDistributionReleaseService, resolve_static_distribution_install_binding,
 };
 pub use distribution_rollout::{
     ModuleStaticDistributionAssignment, ModuleStaticDistributionAssignmentClaimCommand,
@@ -411,10 +409,10 @@ pub use distribution_rollout::{
     ModuleStaticDistributionRolloutAssignment, ModuleStaticDistributionRolloutAuthorizer,
     ModuleStaticDistributionRolloutError, ModuleStaticDistributionRolloutReceipt,
     ModuleStaticDistributionRolloutRequest, ModuleStaticDistributionRolloutStatus,
-    ModuleStaticDistributionRolloutWorkIdentity,
-    ModuleStaticDistributionTopologyResolveError, ModuleStaticDistributionTopologyResolver,
-    ModuleStaticDistributionTopologySnapshot, ModuleStaticDistributionTransitionKind,
-    SeaOrmModuleStaticDistributionRolloutService, module_static_distribution_topology_digest,
+    ModuleStaticDistributionRolloutWorkIdentity, ModuleStaticDistributionTopologyResolveError,
+    ModuleStaticDistributionTopologyResolver, ModuleStaticDistributionTopologySnapshot,
+    ModuleStaticDistributionTransitionKind, SeaOrmModuleStaticDistributionRolloutService,
+    module_static_distribution_topology_digest,
 };
 pub use event_delivery::{
     ARTIFACT_EVENT_DELIVERY_WORKER, ArtifactEventDeliveryCompletion, ArtifactEventDeliveryConfig,
@@ -600,8 +598,8 @@ pub use runtime::{
     ArtifactSandboxPolicyResolver, VerifiedArtifactNodeCache,
 };
 pub use runtime_handles::{
-    ArtifactDeliveryTenantSource, ArtifactDeliveryTenantSourceError,
-    SharedArtifactBindingExecutor, SharedArtifactDeliveryTenantSource,
+    ArtifactDeliveryTenantSource, ArtifactDeliveryTenantSourceError, SharedArtifactBindingExecutor,
+    SharedArtifactDeliveryTenantSource,
 };
 pub use rustok_build_source::SourceTreeFile;
 pub use schedule_delivery::{

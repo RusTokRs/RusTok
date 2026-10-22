@@ -2924,7 +2924,8 @@ mod tests {
         async fn resolve(
             &self,
             _policy_revision: &str,
-        ) -> Result<ModuleArtifactNodeTopologySnapshot, ModuleArtifactNodeTopologyResolveError> {
+        ) -> Result<ModuleArtifactNodeTopologySnapshot, ModuleArtifactNodeTopologyResolveError>
+        {
             Ok(self.0.clone())
         }
     }
