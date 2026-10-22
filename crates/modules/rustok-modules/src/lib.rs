@@ -524,6 +524,8 @@ pub use oci::{
     OciDistributionArtifactPublisher, OciDistributionArtifactRegistry, OciRegistryProxyMode,
     OciRegistryTransportPolicy, OciRhaiWorkspacePublicationProvenance,
 };
+#[cfg(feature = "oci-distribution")]
+pub use oci_transport::OciTransportError;
 pub use oci_admission::{
     OciAdmissionReceipt, OciReleaseAdmissionCommand, OciReleaseAdmissionError,
     OciReleaseAdmissionService,

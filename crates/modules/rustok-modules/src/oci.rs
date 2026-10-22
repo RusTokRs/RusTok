@@ -20,7 +20,7 @@ use crate::{
     ArtifactRegistry, ControlPlaneInfrastructure, ModuleArtifactDescriptor, ModuleArtifactPackage,
     ModuleBuildOutcome, ModuleBuildRequest, ModuleBuildResult, ModuleInstallationError,
     OciArtifactReference,
-    oci_transport::{Blob, OciRegistryTransport, RegistryReference},
+    oci_transport::{Blob, OciRegistryTransport, OciTransportError, RegistryReference},
 };
 
 /// Stable OCI config media type for a serialized immutable module descriptor.
@@ -81,7 +81,7 @@ impl OciRegistryTransportPolicy {
         }
     }
 
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), OciTransportError> {
         if self.allow_redirects
             || self.allow_cross_host_auth
             || !self.verify_tls
@@ -94,7 +94,7 @@ impl OciRegistryTransportPolicy {
             || self.max_concurrent_requests == 0
             || self.max_concurrent_requests > 4
         {
-            return Err("OCI registry transport policy is not fail-closed".to_string());
+            return Err(OciTransportError::InvalidPolicy);
         }
         Ok(())
     }
@@ -137,7 +137,7 @@ impl Drop for ArtifactStagingFile {
 /// Constructs the only OCI registry transport used by module artifact
 /// publication and admission. Its policy is enforced by the client rather than
 /// delegated to process environment or network defaults.
-fn strict_oci_registry_transport() -> Result<OciRegistryTransport, String> {
+fn strict_oci_registry_transport() -> Result<OciRegistryTransport, OciTransportError> {
     OciRegistryTransport::with_policy(OciRegistryTransportPolicy::strict())
 }
 
@@ -447,8 +447,9 @@ impl OciDistributionArtifactPublisher {
     /// Creates a publisher with the mandatory client-enforced registry policy.
     pub fn strict(auth: RegistryAuth) -> Result<Self, OciArtifactPublicationError> {
         Ok(Self {
-            client: strict_oci_registry_transport()
-                .map_err(OciArtifactPublicationError::Registry)?,
+            client: strict_oci_registry_transport().map_err(|error| {
+                OciArtifactPublicationError::Registry(error.to_string())
+            })?,
             auth,
         })
     }
@@ -660,7 +661,7 @@ impl OciDistributionArtifactPublisher {
             reference.repository.clone(),
             reference.digest.clone(),
         )
-        .map_err(OciArtifactPublicationError::Registry)?;
+        .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
         let (body, digest) = self
             .client
             .pull_manifest(&image, &self.auth)
