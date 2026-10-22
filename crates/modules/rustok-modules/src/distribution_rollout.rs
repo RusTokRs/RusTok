@@ -1651,7 +1651,7 @@ async fn insert_rollout(
             ),
             vec![
                 backend.uuid_value(insert.rollout_id),
-                optional_uuid_value(insert.predecessor_rollout_id, backend),
+                backend.optional_uuid_value(insert.predecessor_rollout_id),
                 backend.uuid_value(insert.release.distribution_release_id),
                 insert.transition_kind.as_str().into(),
                 revision_value(insert.rollout_revision)?,
@@ -1808,7 +1808,7 @@ async fn update_rollout_assignment(
                 backend.uuid_value(command.rollout_id),
                 command.node_id.clone().into(),
                 role_name(command.role).to_string().into(),
-                revision_value_allow_zero(command.expected_observation_revision)?,
+                revision_value(command.expected_observation_revision)?,
                 backend.uuid_value(command.claim_id),
                 command.agent_id.clone().into(),
                 now.to_owned().into(),
@@ -2063,10 +2063,10 @@ async fn advance_rollout_state(
             ),
             vec![
                 revision_value(next_revision)?,
-                optional_uuid_value(desired_rollout_id, backend),
-                optional_uuid_value(observed_rollout_id, backend),
+                backend.optional_uuid_value(desired_rollout_id),
+                backend.optional_uuid_value(observed_rollout_id),
                 ROLLOUT_STATE_ID.into(),
-                revision_value_allow_zero(expected_revision)?,
+                revision_value(expected_revision)?,
             ],
         ))
         .await
@@ -2338,7 +2338,7 @@ async fn claim_rollout_assignment(
                 backend.uuid_value(rollout_id),
                 assignment.node_id.clone().into(),
                 role_name(assignment.role).to_string().into(),
-                revision_value_allow_zero(assignment.observation_revision)?,
+                revision_value(assignment.observation_revision)?,
                 now.to_owned().into(),
             ],
         ))
@@ -2478,7 +2478,7 @@ async fn reserve_operation(
                 request_digest.to_owned().into(),
                 principal_id.to_owned().into(),
                 context.map(|value| value.trace_id.clone()).into(),
-                optional_uuid_value(context.map(|value| value.correlation_id), backend),
+                backend.optional_uuid_value(context.map(|value| value.correlation_id)),
             ],
         ))
         .await
@@ -2744,14 +2744,6 @@ fn valid_text(value: &str, maximum_bytes: usize) -> bool {
         && !value.chars().any(char::is_control)
 }
 
-fn optional_uuid_value(value: Option<Uuid>, backend: SupportedBackend) -> sea_orm::Value {
-    match (backend, value) {
-        (SupportedBackend::Postgres, value) => sea_orm::Value::Uuid(value),
-        (SupportedBackend::Sqlite, Some(value)) => value.to_string().into(),
-        (SupportedBackend::Sqlite, None) => sea_orm::Value::String(None),
-    }
-}
-
 fn optional_uuid_from_row(
     row: &QueryResult,
     column: &str,
@@ -2771,12 +2763,6 @@ fn revision_value(value: u64) -> Result<sea_orm::Value, ModuleStaticDistribution
     i64::try_from(value)
         .map(Into::into)
         .map_err(|_| ModuleStaticDistributionRolloutError::RevisionOverflow)
-}
-
-fn revision_value_allow_zero(
-    value: u64,
-) -> Result<sea_orm::Value, ModuleStaticDistributionRolloutError> {
-    revision_value(value)
 }
 
 fn optional_revision_value(

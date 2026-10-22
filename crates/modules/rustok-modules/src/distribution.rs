@@ -1550,7 +1550,7 @@ pub(crate) async fn insert_build(
             ),
             vec![
                 backend.uuid_value(distribution_build_id),
-                optional_uuid_value(predecessor_build_id, backend),
+                backend.optional_uuid_value(predecessor_build_id),
                 revision_value(composition_revision)?,
                 composition_digest.to_owned().into(),
                 platform_source_reference.to_owned().into(),
@@ -1674,7 +1674,7 @@ pub(crate) async fn advance_distribution_state(
                 revision_value(next_revision)?,
                 backend.uuid_value(distribution_build_id),
                 DISTRIBUTION_STATE_ID.into(),
-                revision_value_allow_zero(expected_revision)?,
+                revision_value(expected_revision)?,
             ],
         ))
         .await
@@ -2136,14 +2136,6 @@ fn validate_completion_command(
     Ok(())
 }
 
-fn optional_uuid_value(value: Option<Uuid>, backend: SupportedBackend) -> sea_orm::Value {
-    match (backend, value) {
-        (SupportedBackend::Postgres, value) => sea_orm::Value::Uuid(value),
-        (SupportedBackend::Sqlite, Some(value)) => value.to_string().into(),
-        (SupportedBackend::Sqlite, None) => sea_orm::Value::String(None),
-    }
-}
-
 fn optional_uuid_from_row(
     row: &QueryResult,
     column: &str,
@@ -2163,10 +2155,6 @@ fn revision_value(value: u64) -> Result<sea_orm::Value, ModuleStaticDistribution
     i64::try_from(value)
         .map(Into::into)
         .map_err(|_| ModuleStaticDistributionError::RevisionOverflow)
-}
-
-fn revision_value_allow_zero(value: u64) -> Result<sea_orm::Value, ModuleStaticDistributionError> {
-    revision_value(value)
 }
 
 fn positive_revision(

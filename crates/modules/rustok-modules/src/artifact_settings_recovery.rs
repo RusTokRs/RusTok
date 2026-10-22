@@ -1135,7 +1135,7 @@ where
                     backend.placeholder(3), backend.placeholder(4),
                 ),
                 vec![
-                    optional_uuid_value(request.target_installation_id, backend),
+                    backend.optional_uuid_value(request.target_installation_id),
                     backend.uuid_value(settings_instance_id),
                     backend.uuid_value(request.recovery_point_id),
                     backend.uuid_value(request.tenant_id),
@@ -1165,7 +1165,7 @@ where
                     backend.uuid_value(restore_operation_id),
                     backend.uuid_value(request.tenant_id),
                     backend.uuid_value(request.recovery_point_id),
-                    optional_uuid_value(request.target_installation_id, backend),
+                    backend.optional_uuid_value(request.target_installation_id),
                     optional_revision_value(request.expected_target_installation_revision)?,
                     backend.uuid_value(settings_instance_id),
                     backend.uuid_value(request.context.actor_id),
@@ -3418,15 +3418,6 @@ fn lock_clause(backend: SupportedBackend, lock: bool) -> &'static str {
     match (backend, lock) {
         (SupportedBackend::Postgres, true) => " FOR UPDATE",
         _ => "",
-    }
-}
-
-fn optional_uuid_value(value: Option<Uuid>, backend: SupportedBackend) -> SqlValue {
-    match (backend, value) {
-        (SupportedBackend::Postgres, Some(value)) => SqlValue::Uuid(Some(value)),
-        (SupportedBackend::Postgres, None) => SqlValue::Uuid(None),
-        (SupportedBackend::Sqlite, Some(value)) => value.to_string().into(),
-        (SupportedBackend::Sqlite, None) => SqlValue::String(None),
     }
 }
 

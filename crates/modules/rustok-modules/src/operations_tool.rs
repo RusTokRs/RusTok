@@ -528,7 +528,7 @@ impl OperationsToolService {
                 vec![
                     backend.uuid_value(command.operation_id),
                     backend.uuid_value(command.target_release_id),
-                    optional_uuid_value(command.predecessor_release_id, backend),
+                    backend.optional_uuid_value(command.predecessor_release_id),
                     "in_progress".into(),
                     0i32.into(),
                     request_digest.clone().into(),
@@ -1606,9 +1606,3 @@ fn valid_assignment_observation(
     }
 }
 
-fn optional_uuid_value(value: Option<Uuid>, backend: SupportedBackend) -> Value {
-    match backend {
-        SupportedBackend::Postgres => Value::Uuid(value),
-        SupportedBackend::Sqlite => Value::String(value.map(|value| value.to_string())),
-    }
-}

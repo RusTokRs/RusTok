@@ -946,7 +946,7 @@ pub(crate) async fn insert_release(
             vec![
                 backend.uuid_value(distribution_release_id),
                 backend.uuid_value(distribution_build_id),
-                optional_uuid_value(predecessor_release_id, backend),
+                backend.optional_uuid_value(predecessor_release_id),
                 revision_value(release_revision)?,
                 revision_value(composition_revision)?,
                 composition_digest.to_owned().into(),
@@ -1241,9 +1241,9 @@ pub(crate) async fn advance_release_state_optional(
             ),
             vec![
                 revision_value(next_revision)?,
-                optional_uuid_value(distribution_release_id, backend),
+                backend.optional_uuid_value(distribution_release_id),
                 DISTRIBUTION_RELEASE_STATE_ID.into(),
-                revision_value_allow_zero(expected_revision)?,
+                revision_value(expected_revision)?,
             ],
         ))
         .await
@@ -1791,14 +1791,6 @@ pub(crate) async fn load_release_record<C: ConnectionTrait>(
     Ok(release)
 }
 
-fn optional_uuid_value(value: Option<Uuid>, backend: SupportedBackend) -> sea_orm::Value {
-    match (backend, value) {
-        (SupportedBackend::Postgres, value) => sea_orm::Value::Uuid(value),
-        (SupportedBackend::Sqlite, Some(value)) => value.to_string().into(),
-        (SupportedBackend::Sqlite, None) => sea_orm::Value::String(None),
-    }
-}
-
 fn datetime_from_row(
     row: &QueryResult,
     column: &str,
@@ -1880,12 +1872,6 @@ fn revision_value(value: u64) -> Result<sea_orm::Value, ModuleStaticDistribution
     i64::try_from(value)
         .map(Into::into)
         .map_err(|_| ModuleStaticDistributionReleaseError::RevisionOverflow)
-}
-
-fn revision_value_allow_zero(
-    value: u64,
-) -> Result<sea_orm::Value, ModuleStaticDistributionReleaseError> {
-    revision_value(value)
 }
 
 fn revision_from_row(

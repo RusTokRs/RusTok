@@ -1338,7 +1338,7 @@ impl SeaOrmArtifactInstallationStore {
                     backend.uuid_value(request.installation_id),
                     backend.uuid_value(request.context.idempotency_key),
                     scope_kind.into(),
-                    optional_uuid_value(tenant_id, backend),
+                    backend.optional_uuid_value(tenant_id),
                 ],
             ))
             .await
@@ -1376,7 +1376,7 @@ impl SeaOrmArtifactInstallationStore {
                 vec![
                     backend.uuid_value(request.installation_id),
                     scope_kind.into(),
-                    optional_uuid_value(tenant_id, backend),
+                    backend.optional_uuid_value(tenant_id),
                 ],
             ))
             .await
@@ -1461,7 +1461,7 @@ impl SeaOrmArtifactInstallationStore {
                         backend.uuid_value(request.installation_id),
                         backend.uuid_value(request.context.idempotency_key),
                         scope_kind.into(),
-                        optional_uuid_value(tenant_id, backend),
+                        backend.optional_uuid_value(tenant_id),
                     ],
                 ))
                 .await
@@ -1614,7 +1614,7 @@ impl SeaOrmArtifactInstallationStore {
                 vec![
                     backend.uuid_value(request.context.idempotency_key),
                     scope_kind.into(),
-                    optional_uuid_value(tenant_id, backend),
+                    backend.optional_uuid_value(tenant_id),
                 ],
             ))
             .await
@@ -1683,7 +1683,7 @@ impl SeaOrmArtifactInstallationStore {
                 vec![
                     backend.uuid_value(request.installation_id),
                     scope_kind.into(),
-                    optional_uuid_value(tenant_id, backend),
+                    backend.optional_uuid_value(tenant_id),
                 ],
             ))
             .await
@@ -1953,11 +1953,11 @@ impl SeaOrmArtifactInstallationStore {
                     },
                 ),
                 vec![
-                    optional_uuid_value(predecessor_installation_id, backend),
+                    backend.optional_uuid_value(predecessor_installation_id),
                     backend.uuid_value(data_owner_id),
                     backend.uuid_value(settings_instance_id),
-                    optional_uuid_value(namespace_instance_id, backend),
-                    optional_uuid_value(secret_instance_id, backend),
+                    backend.optional_uuid_value(namespace_instance_id),
+                    backend.optional_uuid_value(secret_instance_id),
                     backend.uuid_value(request.installation_id),
                 ],
             ))
@@ -1999,7 +1999,7 @@ impl SeaOrmArtifactInstallationStore {
                 vec![
                     backend.uuid_value(operation_id),
                     backend.uuid_value(request.installation_id),
-                    optional_uuid_value(predecessor_installation_id, backend),
+                    backend.optional_uuid_value(predecessor_installation_id),
                     candidate_revision.into(),
                     installation_revision.into(),
                     predecessor_revision.into(),
@@ -2137,7 +2137,7 @@ impl SeaOrmArtifactInstallationStore {
                 vec![
                     backend.uuid_value(request.context.idempotency_key),
                     scope_kind.into(),
-                    optional_uuid_value(tenant_id, backend),
+                    backend.optional_uuid_value(tenant_id),
                 ],
             ))
             .await
@@ -2187,7 +2187,7 @@ impl SeaOrmArtifactInstallationStore {
                 vec![
                     backend.uuid_value(request.installation_id),
                     scope_kind.into(),
-                    optional_uuid_value(tenant_id, backend),
+                    backend.optional_uuid_value(tenant_id),
                 ],
             ))
             .await
@@ -2224,7 +2224,7 @@ impl SeaOrmArtifactInstallationStore {
                 vec![
                     backend.uuid_value(request.installation_id),
                     scope_kind.into(),
-                    optional_uuid_value(tenant_id, backend),
+                    backend.optional_uuid_value(tenant_id),
                 ],
             ))
             .await
@@ -2782,7 +2782,7 @@ impl SeaOrmArtifactInstallationStore {
                 vec![
                     backend.uuid_value(request.context.idempotency_key),
                     scope_kind.into(),
-                    optional_uuid_value(tenant_id, backend),
+                    backend.optional_uuid_value(tenant_id),
                 ],
             ))
             .await
@@ -2840,7 +2840,7 @@ impl SeaOrmArtifactInstallationStore {
                 vec![
                     backend.uuid_value(request.installation_id),
                     scope_kind.into(),
-                    optional_uuid_value(tenant_id, backend),
+                    backend.optional_uuid_value(tenant_id),
                 ],
             ))
             .await
@@ -2877,7 +2877,7 @@ impl SeaOrmArtifactInstallationStore {
                 vec![
                     backend.uuid_value(request.installation_id),
                     scope_kind.into(),
-                    optional_uuid_value(tenant_id, backend),
+                    backend.optional_uuid_value(tenant_id),
                 ],
             ))
             .await
@@ -3036,7 +3036,7 @@ impl SeaOrmArtifactInstallationStore {
                 vec![
                     backend.uuid_value(request.context.idempotency_key),
                     scope_kind.into(),
-                    optional_uuid_value(tenant_id, backend),
+                    backend.optional_uuid_value(tenant_id),
                 ],
             ))
             .await
@@ -3123,7 +3123,7 @@ impl SeaOrmArtifactInstallationStore {
                 vec![
                     backend.uuid_value(request.installation_id),
                     scope_kind.into(),
-                    optional_uuid_value(tenant_id, backend),
+                    backend.optional_uuid_value(tenant_id),
                 ],
             ))
             .await
@@ -3193,7 +3193,7 @@ impl SeaOrmArtifactInstallationStore {
                 vec![
                     backend.uuid_value(target_installation_id),
                     scope_kind.into(),
-                    optional_uuid_value(tenant_id, backend),
+                    backend.optional_uuid_value(tenant_id),
                 ],
             ))
             .await
@@ -4648,7 +4648,7 @@ fn sandbox_policy_values(
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     Ok(vec![
         backend.uuid_value(artifact.installation_id),
-        optional_uuid_value(tenant_id, backend),
+        backend.optional_uuid_value(tenant_id),
         revision.into(),
         SqlValue::Json(Some(Box::new(policy))),
         backend.datetime_value(*committed_at),
@@ -4728,7 +4728,7 @@ fn installation_values(
             )
         })?;
     let installation_id = backend.uuid_value(artifact.installation_id);
-    let tenant_id = optional_uuid_value(tenant_id, backend);
+    let tenant_id = backend.optional_uuid_value(tenant_id);
     let installed_at = match backend {
         SupportedBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(artifact.installed_at)),
         SupportedBackend::Sqlite => artifact.installed_at.to_rfc3339().into(),
@@ -4753,10 +4753,10 @@ fn installation_values(
         artifact.dependency_lock.graph_digest.clone().into(),
         SqlValue::Json(Some(Box::new(dependency_lock))),
         installed_at,
-        optional_uuid_value(previous_installation_id, backend),
+        backend.optional_uuid_value(previous_installation_id),
         capability_grant_revision.into(),
-        optional_uuid_value(artifact.namespace_instance_id, backend),
-        optional_uuid_value(artifact.secret_instance_id, backend),
+        backend.optional_uuid_value(artifact.namespace_instance_id),
+        backend.optional_uuid_value(artifact.secret_instance_id),
     ])
 }
 
@@ -4793,8 +4793,8 @@ async fn active_predecessor_installation<C: ConnectionTrait>(
     );
     let values = vec![
         scope_kind.into(),
-        optional_uuid_value(tenant_id, backend),
-        optional_uuid_value(tenant_id, backend),
+        backend.optional_uuid_value(tenant_id),
+        backend.optional_uuid_value(tenant_id),
         slug.into(),
     ];
     let rows = connection
@@ -5058,13 +5058,6 @@ fn admission_values(
         1_i64.into(),
         backend.datetime_value(*committed_at),
     ])
-}
-
-fn optional_uuid_value(value: Option<Uuid>, backend: SupportedBackend) -> SqlValue {
-    match backend {
-        SupportedBackend::Postgres => SqlValue::Uuid(value),
-        SupportedBackend::Sqlite => value.map(|value| value.to_string()).into(),
-    }
 }
 
 /// Coordinates immutable OCI resolution and durable admission. The concrete OCI

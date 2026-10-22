@@ -1578,7 +1578,7 @@ async fn insert_reconciliation(
             ),
             vec![
                 backend.uuid_value(reconciliation_id),
-                optional_uuid_value(predecessor_reconciliation_id, backend),
+                backend.optional_uuid_value(predecessor_reconciliation_id),
                 revision_value(reconciliation_revision)?,
                 topology.topology_reference.clone().into(),
                 topology.topology_digest.clone().into(),
@@ -1787,7 +1787,7 @@ async fn update_assignment(
                 backend.uuid_value(command.reconciliation_id),
                 backend.uuid_value(command.node_id),
                 backend.uuid_value(command.installation_id),
-                revision_value_allow_zero(command.expected_observation_revision)?,
+                revision_value(command.expected_observation_revision)?,
                 backend.uuid_value(command.claim_id),
                 command.agent_id.clone().into(),
                 now.to_owned().into(),
@@ -1994,10 +1994,10 @@ async fn advance_state(
             ),
             vec![
                 revision_value(next_revision)?,
-                optional_uuid_value(desired_reconciliation_id, backend),
-                optional_uuid_value(observed_reconciliation_id, backend),
+                backend.optional_uuid_value(desired_reconciliation_id),
+                backend.optional_uuid_value(observed_reconciliation_id),
                 RECONCILIATION_STATE_ID.into(),
-                revision_value_allow_zero(expected_revision)?,
+                revision_value(expected_revision)?,
             ],
         ))
         .await
@@ -2247,7 +2247,7 @@ async fn claim_assignment(
                 backend.uuid_value(reconciliation_id),
                 backend.uuid_value(assignment.node_id),
                 backend.uuid_value(assignment.installation_id),
-                revision_value_allow_zero(assignment.observation_revision)?,
+                revision_value(assignment.observation_revision)?,
                 now.to_owned().into(),
             ],
         ))
@@ -2537,7 +2537,7 @@ async fn reserve_operation(
                 request_digest.to_owned().into(),
                 principal_id.to_owned().into(),
                 context.map(|value| value.trace_id.clone()).into(),
-                optional_uuid_value(context.map(|value| value.correlation_id), backend),
+                backend.optional_uuid_value(context.map(|value| value.correlation_id)),
             ],
         ))
         .await
@@ -2700,8 +2700,8 @@ async fn complete_operation(
                 revision_value(completion.reconciliation_revision)?,
                 revision_value(completion.reconciliation_state_revision)?,
                 completion.reconciliation_status.as_str().into(),
-                optional_uuid_value(completion.node_id, backend),
-                optional_uuid_value(completion.installation_id, backend),
+                backend.optional_uuid_value(completion.node_id),
+                backend.optional_uuid_value(completion.installation_id),
                 optional_revision_value(completion.observation_revision)?,
                 completion
                     .assignment_phase
@@ -2789,14 +2789,6 @@ fn valid_text(value: &str, maximum_bytes: usize) -> bool {
         && !value.chars().any(char::is_control)
 }
 
-fn optional_uuid_value(value: Option<Uuid>, backend: SupportedBackend) -> sea_orm::Value {
-    match (backend, value) {
-        (SupportedBackend::Postgres, value) => sea_orm::Value::Uuid(value),
-        (SupportedBackend::Sqlite, Some(value)) => value.to_string().into(),
-        (SupportedBackend::Sqlite, None) => sea_orm::Value::String(None),
-    }
-}
-
 fn optional_uuid_from_row(
     row: &QueryResult,
     column: &str,
@@ -2816,12 +2808,6 @@ fn revision_value(value: u64) -> Result<sea_orm::Value, ModuleArtifactNodeReconc
     i64::try_from(value)
         .map(Into::into)
         .map_err(|_| ModuleArtifactNodeReconciliationError::RevisionOverflow)
-}
-
-fn revision_value_allow_zero(
-    value: u64,
-) -> Result<sea_orm::Value, ModuleArtifactNodeReconciliationError> {
-    revision_value(value)
 }
 
 fn optional_revision_value(

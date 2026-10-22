@@ -163,7 +163,7 @@ impl SeaOrmArtifactExecutionObserver {
                         ),
                         vec![
                             backend.uuid_value(record.execution_id),
-                            optional_uuid_value(record.context.tenant_id, backend),
+                            backend.optional_uuid_value(record.context.tenant_id),
                             backend.uuid_value(*installation_id),
                             slug.clone().into(),
                             version.clone().into(),
@@ -308,16 +308,6 @@ fn status_name(record: &ExecutionRecord) -> &'static str {
         ExecutionStatus::Started => "started",
         ExecutionStatus::Succeeded => "succeeded",
         ExecutionStatus::Failed => "failed",
-    }
-}
-
-fn optional_uuid_value(value: Option<uuid::Uuid>, backend: SupportedBackend) -> SqlValue {
-    match value {
-        Some(value) => backend.uuid_value(value),
-        None => match backend {
-            SupportedBackend::Postgres => SqlValue::Uuid(None),
-            SupportedBackend::Sqlite => SqlValue::String(None),
-        },
     }
 }
 

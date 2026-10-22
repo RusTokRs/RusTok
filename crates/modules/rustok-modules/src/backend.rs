@@ -113,6 +113,15 @@ impl SupportedBackend {
             Self::Sqlite => value.to_string().into(),
         }
     }
+
+    /// [`Self::uuid_value`] for nullable UUID columns.
+    pub(crate) fn optional_uuid_value(self, value: Option<Uuid>) -> Value {
+        match (self, value) {
+            (Self::Postgres, value) => Value::Uuid(value),
+            (Self::Sqlite, Some(value)) => value.to_string().into(),
+            (Self::Sqlite, None) => Value::String(None),
+        }
+    }
 }
 
 /// Set the transaction-local tenant RLS scope (`rustok.tenant_id`) on

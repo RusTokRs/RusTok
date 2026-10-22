@@ -247,16 +247,6 @@ fn database_error(error: impl std::fmt::Display) -> ModuleOperatorError {
     ModuleOperatorError::Database(error.to_string())
 }
 
-fn optional_uuid_value(value: Option<Uuid>, backend: SupportedBackend) -> sea_orm::Value {
-    match backend {
-        SupportedBackend::Postgres => sea_orm::Value::Uuid(value),
-        SupportedBackend::Sqlite => match value {
-            Some(value) => value.to_string().into(),
-            None => sea_orm::Value::String(None),
-        },
-    }
-}
-
 fn scope_parts(scope: &ModuleInstallationScope) -> (&'static str, Option<Uuid>) {
     match scope {
         ModuleInstallationScope::Platform => ("platform", None),
@@ -715,7 +705,7 @@ impl ModuleOperatorService {
                 vec![
                     slug.to_string().into(),
                     scope_kind.into(),
-                    optional_uuid_value(tenant_id, backend),
+                    backend.optional_uuid_value(tenant_id),
                 ],
             ))
             .await
@@ -824,7 +814,7 @@ impl ModuleOperatorService {
                 ),
                 vec![
                     scope_kind.into(),
-                    optional_uuid_value(tenant_id, backend),
+                    backend.optional_uuid_value(tenant_id),
                     slug.to_string().into(),
                 ],
             ))
@@ -1006,7 +996,7 @@ impl ModuleOperatorService {
                 ),
                 vec![
                     slug.to_string().into(),
-                    optional_uuid_value(tenant_id, backend),
+                    backend.optional_uuid_value(tenant_id),
                 ],
             ))
             .await
