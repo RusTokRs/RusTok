@@ -8,12 +8,13 @@
 
 use rustok_api::{PortError, TenantLocale};
 use rustok_outbox::idempotency::{self, Admission};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::ModuleCommandContext;
+use crate::backend::SupportedBackend;
 use crate::data::configure_tenant_scope;
 use crate::operation_store::{StaticTenantLifecycleStore, StaticTenantLifecycleStoreError};
 use crate::static_settings_localization::{
@@ -355,16 +356,17 @@ async fn load_source_locale<C: ConnectionTrait>(
     tenant_id: Uuid,
     module_slug: &str,
 ) -> Result<Option<StaticSettingsSourceLocaleRecord>, StaticSettingsSourceLocaleError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(database_error)?;
     connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             match backend {
-                DbBackend::Postgres => {
+                SupportedBackend::Postgres => {
                     "SELECT locale, base_projection_revision FROM module_static_settings_source_locales \
                      WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
                 }
-                _ => {
+                SupportedBackend::Sqlite => {
                     "SELECT locale, base_projection_revision FROM module_static_settings_source_locales \
                      WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
                 }
@@ -389,17 +391,18 @@ async fn load_latest_base_projection_revision<C: ConnectionTrait>(
     tenant_id: Uuid,
     module_slug: &str,
 ) -> Result<Option<u64>, StaticSettingsSourceLocaleError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(database_error)?;
     connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             match backend {
-                DbBackend::Postgres => {
+                SupportedBackend::Postgres => {
                     "SELECT owner_revision FROM module_static_settings_changes \
                      WHERE tenant_id = $1 AND module_slug = $2 AND change_kind = 'base_projection' \
                      ORDER BY change_seq DESC LIMIT 1"
                 }
-                _ => {
+                SupportedBackend::Sqlite => {
                     "SELECT owner_revision FROM module_static_settings_changes \
                      WHERE tenant_id = ?1 AND module_slug = ?2 AND change_kind = 'base_projection' \
                      ORDER BY change_seq DESC LIMIT 1"
@@ -420,19 +423,20 @@ async fn persist_source_locale<C: ConnectionTrait>(
     locale: &str,
     base_projection_revision: u64,
 ) -> Result<(), StaticSettingsSourceLocaleError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(database_error)?;
     connection
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             match backend {
-                DbBackend::Postgres => {
+                SupportedBackend::Postgres => {
                     "INSERT INTO module_static_settings_source_locales \
                      (tenant_id, module_slug, locale, base_projection_revision, created_at, updated_at) \
                      VALUES ($1, $2, $3, $4, NOW(), NOW()) \
                      ON CONFLICT (tenant_id, module_slug) DO UPDATE SET \
                      locale = EXCLUDED.locale, base_projection_revision = EXCLUDED.base_projection_revision, updated_at = NOW()"
                 }
-                _ => {
+                SupportedBackend::Sqlite => {
                     "INSERT INTO module_static_settings_source_locales \
                      (tenant_id, module_slug, locale, base_projection_revision, created_at, updated_at) \
                      VALUES (?1, ?2, ?3, ?4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) \
@@ -458,17 +462,18 @@ async fn persist_source_projection_change<C: ConnectionTrait>(
     module_slug: &str,
     owner_revision: u64,
 ) -> Result<(), StaticSettingsSourceLocaleError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(database_error)?;
     connection
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             match backend {
-                DbBackend::Postgres => {
+                SupportedBackend::Postgres => {
                     "INSERT INTO module_static_settings_changes \
                      (tenant_id, module_slug, change_kind, field_id, locale, owner_revision, target_revision, created_at) \
                      VALUES ($1, $2, 'base_projection', NULL, NULL, $3, NULL, NOW())"
                 }
-                _ => {
+                SupportedBackend::Sqlite => {
                     "INSERT INTO module_static_settings_changes \
                      (tenant_id, module_slug, change_kind, field_id, locale, owner_revision, target_revision, created_at) \
                      VALUES (?1, ?2, 'base_projection', NULL, NULL, ?3, NULL, CURRENT_TIMESTAMP)"

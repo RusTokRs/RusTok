@@ -12,11 +12,12 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ArtifactAdmissionLimits, ArtifactPayloadKind, ArtifactPayloadSource, ArtifactRegistry,
     ControlPlaneInfrastructure, DurableArtifactBlobStore,
@@ -414,20 +415,6 @@ pub struct ExternalPrebuiltIngressService {
     infrastructure: ControlPlaneInfrastructure,
 }
 
-fn placeholder(backend: DbBackend, idx: usize) -> String {
-    match backend {
-        DbBackend::Postgres => format!("${idx}"),
-        _ => format!("?{idx}"),
-    }
-}
-
-fn uuid_value(value: Uuid, backend: DbBackend) -> sea_orm::Value {
-    match backend {
-        DbBackend::Postgres => sea_orm::Value::Uuid(Some(value)),
-        _ => value.to_string().into(),
-    }
-}
-
 fn valid_sha256_digest(digest: &str) -> bool {
     if !digest.starts_with("sha256:") {
         return false;
@@ -504,7 +491,8 @@ impl ExternalPrebuiltIngressService {
         // Note: failure here rejects admission immediately without mutating quarantine state.
         command.evidence.validate()?;
 
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
         let (scope_kind, scope_tenant_key) = match &command.scope {
             ModuleInstallationScope::Platform => ("platform", "platform".to_string()),
             ModuleInstallationScope::Tenant { tenant_id } => ("tenant", tenant_id.to_string()),
@@ -520,21 +508,21 @@ impl ExternalPrebuiltIngressService {
         let existing_by_key = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT release_digest, request_digest FROM module_admitted_oci_releases \
                      WHERE scope_kind = {} AND scope_tenant_key = {} \
                        AND actor_id = {} AND idempotency_key = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
                 ),
                 vec![
                     scope_kind.into(),
                     scope_tenant_key.clone().into(),
-                    uuid_value(command.context.actor_id, backend),
-                    uuid_value(command.context.idempotency_key, backend),
+                    backend.uuid_value(command.context.actor_id),
+                    backend.uuid_value(command.context.idempotency_key),
                 ],
             ))
             .await
@@ -561,7 +549,7 @@ impl ExternalPrebuiltIngressService {
         let existing_by_digest = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT r.release_digest, r.registry, r.repository, r.slug, r.version, \
                             r.payload_digest, r.payload_size_bytes, r.descriptor_json, \
@@ -570,7 +558,7 @@ impl ExternalPrebuiltIngressService {
                      JOIN module_external_prebuilt_ingress AS e \
                        ON e.release_digest = r.release_digest \
                      WHERE r.release_digest = {}",
-                    placeholder(backend, 1)
+                    backend.placeholder(1)
                 ),
                 vec![command.reference.digest.clone().into()],
             ))
@@ -590,10 +578,10 @@ impl ExternalPrebuiltIngressService {
                 .try_get("", "artifact_origin")
                 .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
             let ingress_at: DateTime<Utc> = match backend {
-                DbBackend::Postgres => row
+                SupportedBackend::Postgres => row
                     .try_get("", "ingress_at")
                     .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?,
-                _ => {
+                SupportedBackend::Sqlite => {
                     let ts_str: String = row
                         .try_get("", "ingress_at")
                         .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
@@ -765,7 +753,7 @@ impl ExternalPrebuiltIngressService {
             .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
 
         tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_admitted_oci_releases (\
                     release_digest, scope_kind, scope_tenant_key, registry, repository, \
@@ -774,23 +762,23 @@ impl ExternalPrebuiltIngressService {
                     request_digest, admitted_at\
                 ) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'external_prebuilt', {}, {}, {}, {}, {}, {}) \
                 ON CONFLICT (release_digest) DO NOTHING",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                placeholder(backend, 9),
-                placeholder(backend, 10),
-                placeholder(backend, 11),
-                placeholder(backend, 12),
-                placeholder(backend, 13),
-                placeholder(backend, 14),
-                placeholder(backend, 15),
-                placeholder(backend, 16),
-                placeholder(backend, 17),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.placeholder(9),
+                backend.placeholder(10),
+                backend.placeholder(11),
+                backend.placeholder(12),
+                backend.placeholder(13),
+                backend.placeholder(14),
+                backend.placeholder(15),
+                backend.placeholder(16),
+                backend.placeholder(17),
             ),
             vec![
                 command.reference.digest.clone().into(),
@@ -804,14 +792,14 @@ impl ExternalPrebuiltIngressService {
                 package.media_type.clone().into(),
                 (payload_size as i64).into(),
                 descriptor_json.into(),
-                uuid_value(command.context.actor_id, backend),
-                uuid_value(command.context.idempotency_key, backend),
+                backend.uuid_value(command.context.actor_id),
+                backend.uuid_value(command.context.idempotency_key),
                 command.context.trace_id.into(),
-                uuid_value(command.context.correlation_id, backend),
+                backend.uuid_value(command.context.correlation_id),
                 request_digest.into(),
                 match backend {
-                    DbBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(now)),
-                    _ => now.to_rfc3339().into(),
+                    SupportedBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(now)),
+                    SupportedBackend::Sqlite => now.to_rfc3339().into(),
                 },
             ],
         ))
@@ -819,7 +807,7 @@ impl ExternalPrebuiltIngressService {
         .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
 
         tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_external_prebuilt_ingress (\
                     release_digest, publisher_identity, lineage_reference, lineage_digest, \
@@ -829,23 +817,23 @@ impl ExternalPrebuiltIngressService {
                     capability_verified, native_promotion_denied, ingress_at\
                 ) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) \
                 ON CONFLICT (release_digest) DO NOTHING",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                placeholder(backend, 9),
-                placeholder(backend, 10),
-                placeholder(backend, 11),
-                placeholder(backend, 12),
-                placeholder(backend, 13),
-                placeholder(backend, 14),
-                placeholder(backend, 15),
-                placeholder(backend, 16),
-                placeholder(backend, 17),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.placeholder(9),
+                backend.placeholder(10),
+                backend.placeholder(11),
+                backend.placeholder(12),
+                backend.placeholder(13),
+                backend.placeholder(14),
+                backend.placeholder(15),
+                backend.placeholder(16),
+                backend.placeholder(17),
             ),
             vec![
                 command.reference.digest.clone().into(),
@@ -860,28 +848,28 @@ impl ExternalPrebuiltIngressService {
                 command.evidence.provenance.provenance_digest.into(),
                 (command.evidence.policy.policy_revision as i64).into(),
                 match backend {
-                    DbBackend::Postgres => sea_orm::Value::Bool(Some(true)),
-                    _ => 1i32.into(),
+                    SupportedBackend::Postgres => sea_orm::Value::Bool(Some(true)),
+                    SupportedBackend::Sqlite => 1i32.into(),
                 },
                 match backend {
-                    DbBackend::Postgres => sea_orm::Value::Bool(Some(true)),
-                    _ => 1i32.into(),
+                    SupportedBackend::Postgres => sea_orm::Value::Bool(Some(true)),
+                    SupportedBackend::Sqlite => 1i32.into(),
                 },
                 match backend {
-                    DbBackend::Postgres => sea_orm::Value::Bool(Some(true)),
-                    _ => 1i32.into(),
+                    SupportedBackend::Postgres => sea_orm::Value::Bool(Some(true)),
+                    SupportedBackend::Sqlite => 1i32.into(),
                 },
                 match backend {
-                    DbBackend::Postgres => sea_orm::Value::Bool(Some(true)),
-                    _ => 1i32.into(),
+                    SupportedBackend::Postgres => sea_orm::Value::Bool(Some(true)),
+                    SupportedBackend::Sqlite => 1i32.into(),
                 },
                 match backend {
-                    DbBackend::Postgres => sea_orm::Value::Bool(Some(true)),
-                    _ => 1i32.into(),
+                    SupportedBackend::Postgres => sea_orm::Value::Bool(Some(true)),
+                    SupportedBackend::Sqlite => 1i32.into(),
                 },
                 match backend {
-                    DbBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(now)),
-                    _ => now.to_rfc3339().into(),
+                    SupportedBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(now)),
+                    SupportedBackend::Sqlite => now.to_rfc3339().into(),
                 },
             ],
         ))
@@ -910,11 +898,12 @@ impl ExternalPrebuiltIngressService {
         &self,
         release_digest: &str,
     ) -> Result<Option<ExternalPrebuiltIngressReceipt>, ExternalPrebuiltIngressError> {
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
         let row = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT r.release_digest, r.registry, r.repository, r.payload_digest, \
                             r.payload_size_bytes, r.descriptor_json, r.artifact_origin, \
@@ -923,7 +912,7 @@ impl ExternalPrebuiltIngressService {
                      JOIN module_external_prebuilt_ingress AS e \
                        ON e.release_digest = r.release_digest \
                      WHERE r.release_digest = {}",
-                    placeholder(backend, 1)
+                    backend.placeholder(1)
                 ),
                 vec![release_digest.into()],
             ))
@@ -956,10 +945,10 @@ impl ExternalPrebuiltIngressService {
             .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
 
         let ingress_at: DateTime<Utc> = match backend {
-            DbBackend::Postgres => row
+            SupportedBackend::Postgres => row
                 .try_get("", "ingress_at")
                 .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?,
-            _ => {
+            SupportedBackend::Sqlite => {
                 let ts_str: String = row
                     .try_get("", "ingress_at")
                     .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;

@@ -5,11 +5,12 @@
 //! cleanup operate idempotently without orphaned staging residue.
 
 use chrono::{DateTime, Duration, Utc};
-use sea_orm::{ConnectionTrait, DbBackend, Statement, Value as SqlValue};
+use sea_orm::{ConnectionTrait, Statement, Value as SqlValue};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::{ArtifactAdmissionStage, ModuleCommandContext, ModuleInstallationScope};
 
 /// Maximum number of stale unfinished intents returned by one scan;
@@ -44,30 +45,23 @@ pub struct ReleaseAdmissionIntentRecord {
 #[derive(Debug, Clone, Default)]
 pub struct ReleaseAdmissionIntentJournal;
 
-fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
+fn datetime_value(backend: SupportedBackend, value: &DateTime<Utc>) -> SqlValue {
     match backend {
-        DbBackend::Postgres => SqlValue::Uuid(Some(value)),
-        _ => value.to_string().into(),
-    }
-}
-
-fn datetime_value(backend: DbBackend, value: &DateTime<Utc>) -> SqlValue {
-    match backend {
-        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(value.to_owned())),
-        _ => value.to_rfc3339().into(),
+        SupportedBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(value.to_owned())),
+        SupportedBackend::Sqlite => value.to_rfc3339().into(),
     }
 }
 
 fn parse_uuid_column(
     row: &sea_orm::QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Uuid, ReleaseAdmissionJournalError> {
     match backend {
-        DbBackend::Postgres => row
+        SupportedBackend::Postgres => row
             .try_get::<Uuid>("", column)
             .map_err(|e| ReleaseAdmissionJournalError::Store(e.to_string())),
-        _ => row
+        SupportedBackend::Sqlite => row
             .try_get::<String>("", column)
             .map_err(|e| ReleaseAdmissionJournalError::Store(e.to_string()))?
             .parse()
@@ -78,13 +72,13 @@ fn parse_uuid_column(
 fn parse_datetime_column(
     row: &sea_orm::QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<DateTime<Utc>, ReleaseAdmissionJournalError> {
     match backend {
-        DbBackend::Postgres => row
+        SupportedBackend::Postgres => row
             .try_get::<DateTime<Utc>>("", column)
             .map_err(|e| ReleaseAdmissionJournalError::Store(e.to_string())),
-        _ => DateTime::parse_from_rfc3339(
+        SupportedBackend::Sqlite => DateTime::parse_from_rfc3339(
             &row.try_get::<String>("", column)
                 .map_err(|e| ReleaseAdmissionJournalError::Store(e.to_string()))?,
         )
@@ -105,7 +99,8 @@ impl ReleaseAdmissionIntentJournal {
         context: &ModuleCommandContext,
         request_digest: &str,
     ) -> Result<ReleaseAdmissionIntentRecord, ReleaseAdmissionJournalError> {
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(|e| ReleaseAdmissionJournalError::Store(e.to_string()))?;
         let (scope_kind, scope_tenant_key) = match scope {
             ModuleInstallationScope::Platform => ("platform", "platform".to_string()),
             ModuleInstallationScope::Tenant { tenant_id } => ("tenant", tenant_id.to_string()),
@@ -114,12 +109,12 @@ impl ReleaseAdmissionIntentJournal {
 
         // 1. Check existing reservation
         let placeholders = match backend {
-            DbBackend::Postgres => ("$1", "$2", "$3", "$4"),
-            _ => ("?1", "?2", "?3", "?4"),
+            SupportedBackend::Postgres => ("$1", "$2", "$3", "$4"),
+            SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4"),
         };
         let existing = db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT request_digest, installation_id, committed_at \
                      FROM module_artifact_admission_commands \
@@ -130,8 +125,8 @@ impl ReleaseAdmissionIntentJournal {
                 vec![
                     scope_kind.into(),
                     scope_tenant_key.clone().into(),
-                    uuid_value(context.actor_id, backend),
-                    uuid_value(context.idempotency_key, backend),
+                    backend.uuid_value(context.actor_id),
+                    backend.uuid_value(context.idempotency_key),
                 ],
             ))
             .await
@@ -142,10 +137,10 @@ impl ReleaseAdmissionIntentJournal {
                 .try_get("", "request_digest")
                 .map_err(|e| ReleaseAdmissionJournalError::Store(e.to_string()))?;
             let installation_id: Option<Uuid> = match backend {
-                DbBackend::Postgres => row
+                SupportedBackend::Postgres => row
                     .try_get("", "installation_id")
                     .map_err(|e| ReleaseAdmissionJournalError::Store(e.to_string()))?,
-                _ => row
+                SupportedBackend::Sqlite => row
                     .try_get::<Option<String>>("", "installation_id")
                     .map_err(|e| ReleaseAdmissionJournalError::Store(e.to_string()))?
                     .map(|s| {
@@ -187,18 +182,18 @@ impl ReleaseAdmissionIntentJournal {
 
         // 2. Insert new reservation
         let insert_placeholders = match backend {
-            DbBackend::Postgres => (1..=8)
+            SupportedBackend::Postgres => (1..=8)
                 .map(|i| format!("${i}"))
                 .collect::<Vec<_>>()
                 .join(", "),
-            _ => (1..=8)
+            SupportedBackend::Sqlite => (1..=8)
                 .map(|i| format!("?{i}"))
                 .collect::<Vec<_>>()
                 .join(", "),
         };
         let inserted = db
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_admission_commands (\
                     scope_kind, scope_tenant_key, actor_id, idempotency_key, trace_id, correlation_id, request_digest, committed_at\
@@ -207,10 +202,10 @@ impl ReleaseAdmissionIntentJournal {
                 vec![
                     scope_kind.into(),
                     scope_tenant_key.clone().into(),
-                    uuid_value(context.actor_id, backend),
-                    uuid_value(context.idempotency_key, backend),
+                    backend.uuid_value(context.actor_id),
+                    backend.uuid_value(context.idempotency_key),
                     context.trace_id.clone().into(),
-                    uuid_value(context.correlation_id, backend),
+                    backend.uuid_value(context.correlation_id),
                     request_digest.into(),
                     datetime_value(backend, &now),
                 ],
@@ -225,7 +220,7 @@ impl ReleaseAdmissionIntentJournal {
             // `Staged` record for a reservation we did not create.
             let row = db
                 .query_one_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "SELECT request_digest, installation_id, committed_at \
                          FROM module_artifact_admission_commands \
@@ -236,8 +231,8 @@ impl ReleaseAdmissionIntentJournal {
                     vec![
                         scope_kind.into(),
                         scope_tenant_key.clone().into(),
-                        uuid_value(context.actor_id, backend),
-                        uuid_value(context.idempotency_key, backend),
+                        backend.uuid_value(context.actor_id),
+                        backend.uuid_value(context.idempotency_key),
                     ],
                 ))
                 .await
@@ -258,10 +253,10 @@ impl ReleaseAdmissionIntentJournal {
                 ));
             }
             let installation_id: Option<Uuid> = match backend {
-                DbBackend::Postgres => row
+                SupportedBackend::Postgres => row
                     .try_get("", "installation_id")
                     .map_err(|e| ReleaseAdmissionJournalError::Store(e.to_string()))?,
-                _ => row
+                SupportedBackend::Sqlite => row
                     .try_get::<Option<String>>("", "installation_id")
                     .map_err(|e| ReleaseAdmissionJournalError::Store(e.to_string()))?
                     .map(|s| {
@@ -315,18 +310,19 @@ impl ReleaseAdmissionIntentJournal {
         context: &ModuleCommandContext,
         installation_id: Uuid,
     ) -> Result<bool, ReleaseAdmissionJournalError> {
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(|e| ReleaseAdmissionJournalError::Store(e.to_string()))?;
         let (scope_kind, scope_tenant_key) = match scope {
             ModuleInstallationScope::Platform => ("platform", "platform".to_string()),
             ModuleInstallationScope::Tenant { tenant_id } => ("tenant", tenant_id.to_string()),
         };
         let placeholders = match backend {
-            DbBackend::Postgres => ("$1", "$2", "$3", "$4", "$5"),
-            _ => ("?1", "?2", "?3", "?4", "?5"),
+            SupportedBackend::Postgres => ("$1", "$2", "$3", "$4", "$5"),
+            SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4", "?5"),
         };
         let result = db
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_admission_commands \
                      SET installation_id = {} \
@@ -336,11 +332,11 @@ impl ReleaseAdmissionIntentJournal {
                     placeholders.0, placeholders.1, placeholders.2, placeholders.3, placeholders.4
                 ),
                 vec![
-                    uuid_value(installation_id, backend),
+                    backend.uuid_value(installation_id),
                     scope_kind.into(),
                     scope_tenant_key.into(),
-                    uuid_value(context.actor_id, backend),
-                    uuid_value(context.idempotency_key, backend),
+                    backend.uuid_value(context.actor_id),
+                    backend.uuid_value(context.idempotency_key),
                 ],
             ))
             .await
@@ -356,18 +352,19 @@ impl ReleaseAdmissionIntentJournal {
         db: &C,
         grace_period: Duration,
     ) -> Result<Vec<ReleaseAdmissionIntentRecord>, ReleaseAdmissionJournalError> {
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(|e| ReleaseAdmissionJournalError::Store(e.to_string()))?;
         let threshold = Utc::now() - grace_period;
         let rows = db
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT scope_kind, scope_tenant_key, actor_id, idempotency_key, \
                             trace_id, correlation_id, request_digest, committed_at \
                      FROM module_artifact_admission_commands \
                      WHERE installation_id IS NULL AND committed_at <= {} \
                      ORDER BY committed_at ASC LIMIT {}",
-                    if backend == DbBackend::Postgres {
+                    if backend == SupportedBackend::Postgres {
                         "$1"
                     } else {
                         "?1"

@@ -10,11 +10,12 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use rustok_api::{PortError, TenantLocale};
 use rustok_outbox::idempotency::{self, Admission};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::data::configure_tenant_scope;
 use crate::{
     ModuleCommandContext, ModuleSettingSpec, ModuleSettingsValidationError,
@@ -462,15 +463,16 @@ async fn load_base_settings<C: ConnectionTrait>(
     tenant_id: Uuid,
     module_slug: &str,
 ) -> Result<serde_json::Value, StaticSettingsLocalizationError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(database_error)?;
     connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             match backend {
-                DbBackend::Postgres => {
+                SupportedBackend::Postgres => {
                     "SELECT settings FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
                 }
-                _ => {
+                SupportedBackend::Sqlite => {
                     "SELECT settings FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
                 }
             },
@@ -490,16 +492,17 @@ async fn load_exact_row<C: ConnectionTrait>(
     field_id: &str,
     locale: &str,
 ) -> Result<Option<StaticLocalizedSettingRecord>, StaticSettingsLocalizationError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(database_error)?;
     connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             match backend {
-                DbBackend::Postgres => {
+                SupportedBackend::Postgres => {
                     "SELECT value, revision, owner_revision FROM module_static_localized_settings \
                      WHERE tenant_id = $1 AND module_slug = $2 AND field_id = $3 AND locale = $4"
                 }
-                _ => {
+                SupportedBackend::Sqlite => {
                     "SELECT value, revision, owner_revision FROM module_static_localized_settings \
                      WHERE tenant_id = ?1 AND module_slug = ?2 AND field_id = ?3 AND locale = ?4"
                 }
@@ -544,18 +547,19 @@ async fn persist_exact_row<C: ConnectionTrait>(
     connection: &C,
     params: PersistExactSettingRowParams<'_>,
 ) -> Result<(), StaticSettingsLocalizationError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(database_error)?;
     if params.expected_target_revision == 0 {
         connection
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 match backend {
-                    DbBackend::Postgres => {
+                    SupportedBackend::Postgres => {
                         "INSERT INTO module_static_localized_settings \
                          (tenant_id, module_slug, field_id, locale, value, revision, owner_revision, created_at, updated_at) \
                          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())"
                     }
-                    _ => {
+                    SupportedBackend::Sqlite => {
                         "INSERT INTO module_static_localized_settings \
                          (tenant_id, module_slug, field_id, locale, value, revision, owner_revision, created_at, updated_at) \
                          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
@@ -578,14 +582,14 @@ async fn persist_exact_row<C: ConnectionTrait>(
 
     let result = connection
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             match backend {
-                DbBackend::Postgres => {
+                SupportedBackend::Postgres => {
                     "UPDATE module_static_localized_settings \
                      SET value = $1, revision = $2, owner_revision = $3, updated_at = NOW() \
                      WHERE tenant_id = $4 AND module_slug = $5 AND field_id = $6 AND locale = $7 AND revision = $8"
                 }
-                _ => {
+                SupportedBackend::Sqlite => {
                     "UPDATE module_static_localized_settings \
                      SET value = ?1, revision = ?2, owner_revision = ?3, updated_at = CURRENT_TIMESTAMP \
                      WHERE tenant_id = ?4 AND module_slug = ?5 AND field_id = ?6 AND locale = ?7 AND revision = ?8"

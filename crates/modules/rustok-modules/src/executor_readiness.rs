@@ -14,13 +14,14 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use rustok_sandbox::SandboxExecutorPlacement;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ArtifactBlobStore, ControlPlaneInfrastructure, InstalledModuleArtifact,
     ModuleArtifactDescriptor, ModuleInstallationError,
@@ -524,15 +525,16 @@ impl ExecutorReadinessService {
         &self,
         receipt: &ExecutorSmokeReceipt,
     ) -> Result<(), ExecutorReadinessError> {
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
         let placement_str = match receipt.placement {
             SandboxExecutorPlacement::InProcess => "in_process",
             SandboxExecutorPlacement::IsolatedWorker => "isolated_worker",
         };
 
         let statement = match backend {
-            DbBackend::Postgres => Statement::from_sql_and_values(
-                DbBackend::Postgres,
+            SupportedBackend::Postgres => Statement::from_sql_and_values(
+                SupportedBackend::Postgres,
                 "INSERT INTO module_executor_readiness_receipts (\
                     id, operation_id, installation_id, release_digest, payload_digest,\
                     runtime_fingerprint, pool_id, pool_generation, placement,\
@@ -555,8 +557,8 @@ impl ExecutorReadinessService {
                     receipt.evaluated_at.into(),
                 ],
             ),
-            DbBackend::Sqlite => Statement::from_sql_and_values(
-                DbBackend::Sqlite,
+            SupportedBackend::Sqlite => Statement::from_sql_and_values(
+                SupportedBackend::Sqlite,
                 "INSERT INTO module_executor_readiness_receipts (\
                     id, operation_id, installation_id, release_digest, payload_digest,\
                     runtime_fingerprint, pool_id, pool_generation, placement,\
@@ -584,7 +586,7 @@ impl ExecutorReadinessService {
                     receipt.evaluated_at.to_rfc3339().into(),
                 ],
             ),
-            _ => {
+            SupportedBackend::Sqlite => {
                 return Err(ExecutorReadinessError::Store(
                     "Unsupported database backend".to_string(),
                 ));
@@ -607,10 +609,11 @@ impl ExecutorReadinessService {
         pool_generation: u64,
         runtime_fingerprint: &str,
     ) -> Result<Option<ExecutorSmokeReceipt>, ExecutorReadinessError> {
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
         let statement = match backend {
-            DbBackend::Postgres => Statement::from_sql_and_values(
-                DbBackend::Postgres,
+            SupportedBackend::Postgres => Statement::from_sql_and_values(
+                SupportedBackend::Postgres,
                 "SELECT id, operation_id, installation_id, release_digest, payload_digest,\
                         runtime_fingerprint, pool_id, pool_generation, placement,\
                         placement_policy_revision, capability_routes_verified, smoke_passed,\
@@ -626,8 +629,8 @@ impl ExecutorReadinessService {
                     runtime_fingerprint.to_owned().into(),
                 ],
             ),
-            DbBackend::Sqlite => Statement::from_sql_and_values(
-                DbBackend::Sqlite,
+            SupportedBackend::Sqlite => Statement::from_sql_and_values(
+                SupportedBackend::Sqlite,
                 "SELECT id, operation_id, installation_id, release_digest, payload_digest,\
                         runtime_fingerprint, pool_id, pool_generation, placement,\
                         placement_policy_revision, capability_routes_verified, smoke_passed,\
@@ -643,7 +646,7 @@ impl ExecutorReadinessService {
                     runtime_fingerprint.to_owned().into(),
                 ],
             ),
-            _ => {
+            SupportedBackend::Sqlite => {
                 return Err(ExecutorReadinessError::Store(
                     "Unsupported database backend".to_string(),
                 ));
@@ -680,30 +683,30 @@ impl ExecutorReadinessService {
             .try_get("", "placement_policy_revision")
             .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
         let routes_verified = match backend {
-            DbBackend::Postgres => row
+            SupportedBackend::Postgres => row
                 .try_get::<bool>("", "capability_routes_verified")
                 .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
-            _ => {
+            SupportedBackend::Sqlite => {
                 row.try_get::<i32>("", "capability_routes_verified")
                     .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?
                     != 0
             }
         };
         let smoke_passed = match backend {
-            DbBackend::Postgres => row
+            SupportedBackend::Postgres => row
                 .try_get::<bool>("", "smoke_passed")
                 .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
-            _ => {
+            SupportedBackend::Sqlite => {
                 row.try_get::<i32>("", "smoke_passed")
                     .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?
                     != 0
             }
         };
         let evaluated_at = match backend {
-            DbBackend::Postgres => row
+            SupportedBackend::Postgres => row
                 .try_get::<DateTime<Utc>>("", "evaluated_at")
                 .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
-            _ => {
+            SupportedBackend::Sqlite => {
                 let s: String = row
                     .try_get("", "evaluated_at")
                     .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;

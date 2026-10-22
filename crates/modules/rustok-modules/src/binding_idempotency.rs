@@ -4,7 +4,7 @@ use crate::backend::SupportedBackend;
 use crate::data::configure_tenant_scope;
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, Statement, TransactionTrait, Value as SqlValue,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -137,15 +137,15 @@ impl SeaOrmArtifactBindingIdempotencyStore {
                     backend.db_backend(),
                     recover_operation_sql(backend),
                     vec![
-                        uuid_value(operation_id, backend),
+                        backend.uuid_value(operation_id),
                         lease_value(self.infrastructure.now(), backend),
-                        uuid_value(tenant_id, backend),
-                        uuid_value(request.context.actor_id, backend),
-                        uuid_value(request.installation_id, backend),
+                        backend.uuid_value(tenant_id),
+                        backend.uuid_value(request.context.actor_id),
+                        backend.uuid_value(request.installation_id),
                         request.binding_id.clone().into(),
-                        uuid_value(request.context.idempotency_key, backend),
+                        backend.uuid_value(request.context.idempotency_key),
                         request.context.trace_id.clone().into(),
-                        uuid_value(request.context.correlation_id, backend),
+                        backend.uuid_value(request.context.correlation_id),
                     ],
                 ))
                 .await
@@ -164,15 +164,15 @@ impl SeaOrmArtifactBindingIdempotencyStore {
                 backend.db_backend(),
                 insert_operation_sql(backend),
                 vec![
-                    uuid_value(operation_id, backend),
-                    uuid_value(tenant_id, backend),
-                    uuid_value(request.context.actor_id, backend),
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(operation_id),
+                    backend.uuid_value(tenant_id),
+                    backend.uuid_value(request.context.actor_id),
+                    backend.uuid_value(request.installation_id),
                     request.binding_id.clone().into(),
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.context.idempotency_key),
                     request.request_digest.clone().into(),
                     request.context.trace_id.clone().into(),
-                    uuid_value(request.context.correlation_id, backend),
+                    backend.uuid_value(request.context.correlation_id),
                     lease_value(self.infrastructure.now(), backend),
                 ],
             ))
@@ -210,15 +210,15 @@ impl SeaOrmArtifactBindingIdempotencyStore {
                 complete_operation_sql(backend),
                 vec![
                     SqlValue::Json(Some(Box::new(response.clone()))),
-                    uuid_value(operation_id, backend),
-                    uuid_value(tenant_id, backend),
-                    uuid_value(request.context.actor_id, backend),
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(operation_id),
+                    backend.uuid_value(tenant_id),
+                    backend.uuid_value(request.context.actor_id),
+                    backend.uuid_value(request.installation_id),
                     request.binding_id.clone().into(),
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.context.idempotency_key),
                     request.request_digest.clone().into(),
                     request.context.trace_id.clone().into(),
-                    uuid_value(request.context.correlation_id, backend),
+                    backend.uuid_value(request.context.correlation_id),
                 ],
             ))
             .await
@@ -252,15 +252,15 @@ impl SeaOrmArtifactBindingIdempotencyStore {
                 backend.db_backend(),
                 abandon_operation_sql(backend),
                 vec![
-                    uuid_value(operation_id, backend),
-                    uuid_value(tenant_id, backend),
-                    uuid_value(request.context.actor_id, backend),
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(operation_id),
+                    backend.uuid_value(tenant_id),
+                    backend.uuid_value(request.context.actor_id),
+                    backend.uuid_value(request.installation_id),
                     request.binding_id.clone().into(),
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.context.idempotency_key),
                     request.request_digest.clone().into(),
                     request.context.trace_id.clone().into(),
-                    uuid_value(request.context.correlation_id, backend),
+                    backend.uuid_value(request.context.correlation_id),
                 ],
             ))
             .await
@@ -303,11 +303,11 @@ fn request_values(
     backend: SupportedBackend,
 ) -> Vec<sea_orm::Value> {
     vec![
-        uuid_value(tenant_id, backend),
-        uuid_value(request.context.actor_id, backend),
-        uuid_value(request.installation_id, backend),
+        backend.uuid_value(tenant_id),
+        backend.uuid_value(request.context.actor_id),
+        backend.uuid_value(request.installation_id),
         request.binding_id.clone().into(),
-        uuid_value(request.context.idempotency_key, backend),
+        backend.uuid_value(request.context.idempotency_key),
     ]
 }
 
@@ -317,10 +317,6 @@ fn lease_value(now: DateTime<Utc>, backend: SupportedBackend) -> sea_orm::Value 
         SupportedBackend::Postgres => lease.into(),
         SupportedBackend::Sqlite => lease.to_rfc3339().into(),
     }
-}
-
-fn uuid_value(value: Uuid, backend: SupportedBackend) -> sea_orm::Value {
-    backend.uuid_value(value)
 }
 
 fn select_operation_sql(backend: SupportedBackend) -> String {
@@ -369,7 +365,7 @@ fn storage_error(error: impl std::fmt::Display) -> ArtifactBindingIdempotencyErr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sea_orm::Database;
+    use sea_orm::{Database, DbBackend};
 
     async fn store() -> SeaOrmArtifactBindingIdempotencyStore {
         let db = Database::connect("sqlite::memory:")

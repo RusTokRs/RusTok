@@ -19,12 +19,13 @@
 //! pre-authorized.
 
 use chrono::{DateTime, Utc};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, QueryResult, Statement};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::transition_store::RetentionHoldStore;
 use crate::{
     ConflictFenceSet, ModuleArtifactDescriptor, ModuleInstallationScope, RetentionHoldRecord,
@@ -250,24 +251,10 @@ fn database_error(error: impl std::fmt::Display) -> ModuleOperatorError {
     ModuleOperatorError::Database(error.to_string())
 }
 
-fn placeholder(backend: DbBackend, index: usize) -> String {
+fn optional_uuid_value(value: Option<Uuid>, backend: SupportedBackend) -> sea_orm::Value {
     match backend {
-        DbBackend::Postgres => format!("${index}"),
-        _ => format!("?{index}"),
-    }
-}
-
-fn uuid_value(value: Uuid, backend: DbBackend) -> sea_orm::Value {
-    match backend {
-        DbBackend::Postgres => value.into(),
-        _ => value.to_string().into(),
-    }
-}
-
-fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> sea_orm::Value {
-    match backend {
-        DbBackend::Postgres => sea_orm::Value::Uuid(value),
-        _ => match value {
+        SupportedBackend::Postgres => sea_orm::Value::Uuid(value),
+        SupportedBackend::Sqlite => match value {
             Some(value) => value.to_string().into(),
             None => sea_orm::Value::String(None),
         },
@@ -283,10 +270,10 @@ fn scope_parts(scope: &ModuleInstallationScope) -> (&'static str, Option<Uuid>) 
 
 /// SQL fragment matching the nullable tenant column against an optional
 /// tenant value, for `tenant_id` columns expressed without a table alias.
-fn tenant_clause(backend: DbBackend, column: &str, index: usize) -> String {
+fn tenant_clause(backend: SupportedBackend, column: &str, index: usize) -> String {
     match backend {
-        DbBackend::Postgres => format!("{column} IS NOT DISTINCT FROM ${index}"),
-        _ => format!("{column} IS ?{index}"),
+        SupportedBackend::Postgres => format!("{column} IS NOT DISTINCT FROM ${index}"),
+        SupportedBackend::Sqlite => format!("{column} IS ?{index}"),
     }
 }
 
@@ -294,12 +281,12 @@ fn tenant_clause(backend: DbBackend, column: &str, index: usize) -> String {
 /// database error; projections never substitute a fabricated identifier.
 fn uuid_column(
     row: &QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
     column: &str,
 ) -> Result<Uuid, ModuleOperatorError> {
     match backend {
-        DbBackend::Postgres => row.try_get::<Uuid>("", column).map_err(database_error),
-        _ => {
+        SupportedBackend::Postgres => row.try_get::<Uuid>("", column).map_err(database_error),
+        SupportedBackend::Sqlite => {
             let raw: String = row.try_get("", column).map_err(database_error)?;
             Uuid::parse_str(&raw).map_err(|e| {
                 ModuleOperatorError::Database(format!(
@@ -355,7 +342,7 @@ struct InstallationRow {
 }
 
 impl InstallationRow {
-    fn from_row(row: &QueryResult, backend: DbBackend) -> Result<Self, ModuleOperatorError> {
+    fn from_row(row: &QueryResult, backend: SupportedBackend) -> Result<Self, ModuleOperatorError> {
         let descriptor_json: String = row.try_get("", "descriptor_json").map_err(database_error)?;
         let manifest_digest: String = row.try_get("", "manifest_digest").map_err(database_error)?;
         Ok(Self {
@@ -399,20 +386,21 @@ impl ModuleOperatorService {
         version: &str,
         candidate_release_digest: &str,
     ) -> Result<(), ModuleOperatorError> {
-        let backend = self.db.get_database_backend();
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
         let row = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT r.release_digest, e.publisher_identity \
                      FROM module_admitted_oci_releases r \
                      LEFT JOIN module_external_prebuilt_ingress e ON e.release_digest = r.release_digest \
                      WHERE r.slug = {} AND r.version = {} AND r.release_digest <> {} \
                      LIMIT 1",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
                 vec![
                     slug.to_string().into(),
@@ -708,12 +696,13 @@ impl ModuleOperatorService {
         slug: &str,
         scope: &ModuleInstallationScope,
     ) -> Result<Vec<InstallationRow>, ModuleOperatorError> {
-        let backend = self.db.get_database_backend();
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
         let (scope_kind, tenant_id) = scope_parts(scope);
         let rows = self
             .db
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT i.installation_id, i.version, i.manifest_digest, i.payload_digest, \
                             i.data_owner_id, i.settings_instance_id, \
@@ -723,8 +712,8 @@ impl ModuleOperatorService {
                      JOIN module_artifact_admissions a ON a.installation_id = i.installation_id \
                      WHERE i.slug = {} AND i.scope_kind = {} AND {} \
                      ORDER BY i.installed_at DESC",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
                     tenant_clause(backend, "i.tenant_id", 3),
                 ),
                 vec![
@@ -747,15 +736,16 @@ impl ModuleOperatorService {
         &self,
         release_digest: &str,
     ) -> Result<Option<String>, ModuleOperatorError> {
-        let backend = self.db.get_database_backend();
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
         let row = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT publisher_identity FROM module_external_prebuilt_ingress \
                      WHERE release_digest = {}",
-                    placeholder(backend, 1),
+                    backend.placeholder(1),
                 ),
                 vec![release_digest.to_string().into()],
             ))
@@ -789,15 +779,16 @@ impl ModuleOperatorService {
         &self,
         release_digest: &str,
     ) -> Result<Option<ModuleArtifactDescriptor>, ModuleOperatorError> {
-        let backend = self.db.get_database_backend();
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
         let row = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT CAST(descriptor_json AS TEXT) AS descriptor_json \
                      FROM module_admitted_oci_releases WHERE release_digest = {}",
-                    placeholder(backend, 1),
+                    backend.placeholder(1),
                 ),
                 vec![release_digest.to_string().into()],
             ))
@@ -820,19 +811,20 @@ impl ModuleOperatorService {
         slug: &str,
         scope: &ModuleInstallationScope,
     ) -> Result<Vec<String>, ModuleOperatorError> {
-        let backend = self.db.get_database_backend();
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
         let (scope_kind, tenant_id) = scope_parts(scope);
         let rows = self
             .db
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT slug, CAST(descriptor AS TEXT) AS descriptor_json \
                      FROM module_artifact_installations \
                      WHERE scope_kind = {} AND {} AND slug <> {}",
-                    placeholder(backend, 1),
+                    backend.placeholder(1),
                     tenant_clause(backend, "tenant_id", 2),
-                    placeholder(backend, 3),
+                    backend.placeholder(3),
                 ),
                 vec![
                     scope_kind.into(),
@@ -869,18 +861,19 @@ impl ModuleOperatorService {
         let Some(installation_id) = installation_id else {
             return Ok(Vec::new());
         };
-        let backend = self.db.get_database_backend();
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
         let rows = self
             .db
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT DISTINCT node_id \
                      FROM module_artifact_node_reconciliation_assignments \
                      WHERE installation_id = {}",
-                    placeholder(backend, 1),
+                    backend.placeholder(1),
                 ),
-                vec![uuid_value(installation_id, backend)],
+                vec![backend.uuid_value(installation_id)],
             ))
             .await
             .map_err(database_error)?;
@@ -902,16 +895,17 @@ impl ModuleOperatorService {
             // A tenant-scoped transition targets exactly one tenant.
             ModuleInstallationScope::Tenant { .. } => Ok(1),
             ModuleInstallationScope::Platform => {
-                let backend = self.db.get_database_backend();
+                let backend = SupportedBackend::new(self.db.get_database_backend())
+                    .map_err(database_error)?;
                 let row = self
                     .db
                     .query_one_raw(Statement::from_sql_and_values(
-                        backend,
+                        backend.db_backend(),
                         format!(
                             "SELECT COUNT(DISTINCT tenant_id) AS affected \
                              FROM module_artifact_installations \
                              WHERE slug = {} AND scope_kind = 'tenant'",
-                            placeholder(backend, 1),
+                            backend.placeholder(1),
                         ),
                         vec![slug.to_string().into()],
                     ))
@@ -935,17 +929,18 @@ impl ModuleOperatorService {
         &self,
         installation_id: Uuid,
     ) -> Result<(u64, bool), ModuleOperatorError> {
-        let backend = self.db.get_database_backend();
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
         let row = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT work_generation, retired FROM module_artifact_work_generations \
                      WHERE installation_id = {}",
-                    placeholder(backend, 1),
+                    backend.placeholder(1),
                 ),
-                vec![uuid_value(installation_id, backend)],
+                vec![backend.uuid_value(installation_id)],
             ))
             .await
             .map_err(database_error)?;
@@ -954,15 +949,21 @@ impl ModuleOperatorService {
             return Ok((1, false));
         };
         let generation: i64 = match backend {
-            DbBackend::Postgres => row.try_get("", "work_generation").map_err(database_error)?,
-            _ => {
+            SupportedBackend::Postgres => {
+                row.try_get("", "work_generation").map_err(database_error)?
+            }
+            SupportedBackend::Sqlite => {
                 let value: i32 = row.try_get("", "work_generation").map_err(database_error)?;
                 i64::from(value)
             }
         };
         let retired = match backend {
-            DbBackend::Postgres => row.try_get::<bool>("", "retired").map_err(database_error)?,
-            _ => row.try_get::<i32>("", "retired").map_err(database_error)? != 0,
+            SupportedBackend::Postgres => {
+                row.try_get::<bool>("", "retired").map_err(database_error)?
+            }
+            SupportedBackend::Sqlite => {
+                row.try_get::<i32>("", "retired").map_err(database_error)? != 0
+            }
         };
         Ok((u64::try_from(generation).map_err(database_error)?, retired))
     }
@@ -993,17 +994,18 @@ impl ModuleOperatorService {
         slug: &str,
         scope: &ModuleInstallationScope,
     ) -> Result<Option<Uuid>, ModuleOperatorError> {
-        let backend = self.db.get_database_backend();
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
         let (_, tenant_id) = scope_parts(scope);
         let row = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT operation_id FROM module_transition_checkpoints \
                      WHERE module_slug = {} AND {} \
                      ORDER BY created_at DESC LIMIT 1",
-                    placeholder(backend, 1),
+                    backend.placeholder(1),
                     tenant_clause(backend, "tenant_id", 2),
                 ),
                 vec![

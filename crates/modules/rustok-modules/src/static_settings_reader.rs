@@ -6,6 +6,7 @@ use rustok_api::{
     PortError, SharedStaticModuleSettingsReader, StaticModuleSettingsReader,
     StaticModuleSettingsSnapshot, StaticModuleSettingsTransactionReader,
 };
+use crate::backend::SupportedBackend;
 
 /// Database-backed owner implementation for static/native tenant-module settings.
 ///
@@ -33,32 +34,28 @@ impl StaticModuleSettingsReader for DatabaseStaticModuleSettingsReader {
         tenant_id: Uuid,
         module_slug: &str,
     ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(|_| {
+            PortError::unavailable(
+                "modules.static_settings_unavailable",
+                "Static module settings are temporarily unavailable",
+            )
+        })?;
         let query = match backend {
-            sea_orm::DbBackend::Sqlite => {
+            SupportedBackend::Sqlite => {
                 "SELECT enabled, CAST(settings AS TEXT) AS settings_json                  FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
             }
-            sea_orm::DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "SELECT enabled, settings::text AS settings_json                  FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
-            }
-            sea_orm::DbBackend::MySql => {
-                "SELECT enabled, CAST(settings AS CHAR) AS settings_json                  FROM tenant_modules WHERE tenant_id = ? AND module_slug = ? LIMIT 1"
-            }
-            _ => {
-                return Err(PortError::unavailable(
-                    "modules.static_settings_unavailable",
-                    "Static module settings are unavailable for this database backend",
-                ));
             }
         };
 
         let row = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 query,
                 vec![
-                    tenant_id_query_value(backend, tenant_id),
+                    backend.uuid_value(tenant_id),
                     module_slug.into(),
                 ],
             ))
@@ -111,34 +108,29 @@ impl StaticModuleSettingsTransactionReader for DatabaseStaticModuleSettingsReade
         tenant_id: Uuid,
         module_slug: &str,
     ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
-        let backend = txn.get_database_backend();
+        let backend = SupportedBackend::new(txn.get_database_backend()).map_err(|_| {
+            PortError::unavailable(
+                "modules.static_settings_unavailable",
+                "Static module settings are temporarily unavailable",
+            )
+        })?;
         let query = match backend {
-            sea_orm::DbBackend::Sqlite => {
+            SupportedBackend::Sqlite => {
                 "SELECT enabled, CAST(settings AS TEXT) AS settings_json \
                  FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
             }
-            sea_orm::DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "SELECT enabled, settings::text AS settings_json \
                  FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1 FOR SHARE"
-            }
-            sea_orm::DbBackend::MySql => {
-                "SELECT enabled, CAST(settings AS CHAR) AS settings_json \
-                 FROM tenant_modules WHERE tenant_id = ? AND module_slug = ? LIMIT 1 FOR SHARE"
-            }
-            _ => {
-                return Err(PortError::unavailable(
-                    "modules.static_settings_unavailable",
-                    "Static module settings are unavailable for this database backend",
-                ));
             }
         };
 
         let row = txn
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 query,
                 vec![
-                    tenant_id_query_value(backend, tenant_id),
+                    backend.uuid_value(tenant_id),
                     module_slug.into(),
                 ],
             ))
@@ -180,14 +172,6 @@ impl StaticModuleSettingsTransactionReader for DatabaseStaticModuleSettingsReade
         }
 
         Ok(Some(StaticModuleSettingsSnapshot { enabled, settings }))
-    }
-}
-
-fn tenant_id_query_value(backend: sea_orm::DbBackend, tenant_id: Uuid) -> sea_orm::Value {
-    if backend == sea_orm::DbBackend::Sqlite {
-        tenant_id.to_string().into()
-    } else {
-        tenant_id.into()
     }
 }
 
