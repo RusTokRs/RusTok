@@ -642,3 +642,66 @@ Open follow-ups recorded during execution (not audit findings):
    nullable `enabled` included). Migrating fixtures to run the real
    migration set is worthwhile future hygiene; it was not required to
    close M-12's ownership finding.
+
+## 8. Post-merge re-verification findings (2026-10-22)
+
+After `main` advanced past the branch point, the PR went conflicting
+(single content conflict: `Cargo.lock`); merging `origin/main`
+(d69e768) in restored the full CI round, and each subsequent failure
+was attributed from job logs against `main` itself (push run
+39640355254 on the same commit is red for Formatting, Clippy, Cargo
+Check ×2, and Documentation, so job color alone proves nothing).
+Regressions attributable to this branch, all fixed:
+
+7. **`Cargo.lock` missing workspace edge** (`01e8c6c`). Adding the
+   optional `rustok-modules` dependency to `apps/storefront` (the
+   branch's only manifest change) had not been reflected in the
+   lockfile; `--locked` jobs failed. The lock later took `main`'s
+   version wholesale in the merge, with the single sorted edge
+   re-inserted (`6ccc81fc`).
+8. **H-5 test doubles in `tests/` trees** (`d4217c2f`). The H-5
+   struct-literal census had not covered `tests/` directories: three
+   `StaticModuleSettingsReader` doubles (server support module, forum
+   and search integration tests) still built
+   `StaticModuleSettingsSnapshot { enabled: true }`. They model an
+   explicitly-enabled module, so `Some(true)` is the faithful
+   tri-state form.
+9. **H-5 entity reads in server lifecycle tests** (`4b8056b1`).
+   `apps/server/tests/module_lifecycle.rs` read the raw
+   `tenant_modules` entity `enabled` as `bool` in four
+   committed-state assertions; explicit toggles commit
+   `Some(true)`/`Some(false)`, so the assertions now check the exact
+   tri-state value. (The `ModuleLifecycleStateSnapshot.enabled`
+   effective-bool reads in the same file are unchanged and correct.)
+10. **dda8c2e import gap** (`5a8dfd71`). The regression-#2 fix added
+    `toggle_err_incompatible_dependencies` and its `ToggleCase`, but
+    the `mutations.rs` test module imports helpers explicitly; the
+    helper was added to that `use super::{...}` list.
+
+Differential compile verdict at `5a8dfd71`: `Cargo Check (stable)`
+fails with exactly the three errors `main` itself has (E0425
+messenger constants in `notification_outbox_intake_worker.rs` test
+code) and nothing else — `rustok-server` lib + integration tests,
+`rustok-migrations`, storefront adapter, and the crate all compile.
+The `Embedded admin and storefront` job additionally applied the full
+composed migration plan to PostgreSQL 16 (step green, including crate
+migrations `000075`/`000076` and the tri-state DDL) before failing on
+an upstream missing `Arc` import in `commerce_provider_runtime.rs`.
+
+Two red gates need maintainer attention; neither is a code defect in
+this remediation:
+
+- **Append-only migration plan** fails by design: its strict
+  positional comparator reports the sanctioned §13 ordinal renames
+  and the H-3 schema-ownership move as a shifted sequence. The gate
+  has no exception mechanism; accepting the diff is a maintainer
+  decision at merge.
+- **OpenAPI and GraphQL Compatibility** fails in "Export head API
+  contracts": the workflow builds `base/` and `head/` checkouts into
+  one shared `CARGO_TARGET_DIR`, and cargo reuses the base build's
+  `rustok-api` unit for the head build (head sources are older than
+  the base artifacts), so head consumers type-check against base's
+  `rustok-api` metadata. Any PR that changes a widely-depended
+  crate's public types trips this. Suggested fix (infrastructure,
+  needs the workflow's own approval step): per-checkout target
+  directories.
