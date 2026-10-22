@@ -76,8 +76,11 @@ async fn groups_admin_membership_applications_native(
         if auth.tenant_id != tenant.id {
             return Err(ServerFnError::new("groups tenant mismatch"));
         }
-        let group_id = Uuid::parse_str(&query.group_id)
+        let group_id = Uuid::parse_str(query.group_id.trim())
             .map_err(|_| ServerFnError::new("group_id must be a UUID"))?;
+        if group_id.is_nil() {
+            return Err(ServerFnError::new("group_id must not be nil"));
+        }
         let status = query
             .status
             .as_deref()
@@ -153,8 +156,11 @@ async fn groups_admin_review_membership_application_native(
         if auth.tenant_id != tenant.id {
             return Err(ServerFnError::new("groups tenant mismatch"));
         }
-        let application_id = Uuid::parse_str(&command.application_id)
+        let application_id = Uuid::parse_str(command.application_id.trim())
             .map_err(|_| ServerFnError::new("application_id must be a UUID"))?;
+        if application_id.is_nil() {
+            return Err(ServerFnError::new("application_id must not be nil"));
+        }
         let decision = match command.decision {
             crate::application_model::GroupsAdminApplicationReviewDecision::Approve => {
                 GroupApplicationReviewDecision::Approve

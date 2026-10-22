@@ -552,9 +552,9 @@
       "category": "modules",
       "files": 34,
       "loc": 8525,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-22 07:10",
+      "notes": "Audited and verified FFA invariants across all 34 source files; enforced nil UUID rejection and trimmed whitespace across core command preparation and all native server function transport adapters; added comprehensive unit tests for core, application_core, and application_bulk_core; 12/12 unit tests passed across default and SSR features, 0 clippy warnings, gatekeeper passed."
     },
     "crates/modules/rustok-groups/storefront": {
       "name": "storefront",

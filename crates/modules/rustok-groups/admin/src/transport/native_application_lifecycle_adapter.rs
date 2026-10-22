@@ -66,8 +66,11 @@ async fn groups_admin_reopen_membership_application_native(
         if auth.tenant_id != tenant.id {
             return Err(ServerFnError::new("groups tenant mismatch"));
         }
-        let application_id = Uuid::parse_str(&command.application_id)
+        let application_id = Uuid::parse_str(command.application_id.trim())
             .map_err(|_| ServerFnError::new("application_id must be a UUID"))?;
+        if application_id.is_nil() {
+            return Err(ServerFnError::new("application_id must not be nil"));
+        }
         let mut context = PortContext::new(
             tenant.id.to_string(),
             PortActor::user(auth.user_id.to_string()),

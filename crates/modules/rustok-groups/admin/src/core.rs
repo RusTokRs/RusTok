@@ -252,8 +252,12 @@ pub fn prepare_revoke_group_invitation(
     })
 }
 
-fn normalize_uuid(value: &str) -> Result<String, uuid::Error> {
-    Uuid::parse_str(value.trim()).map(|value| value.to_string())
+fn normalize_uuid(value: &str) -> Result<String, ()> {
+    let parsed = Uuid::parse_str(value.trim()).map_err(|_| ())?;
+    if parsed.is_nil() {
+        return Err(());
+    }
+    Ok(parsed.to_string())
 }
 
 fn normalize_optional_text(value: Option<String>) -> Option<String> {
@@ -311,5 +315,57 @@ mod tests {
             ),
             Err(GroupsAdminInvitationInputError::TargetedInviteMustBeSingleUse)
         ));
+    }
+
+    #[test]
+    fn governance_and_invitation_preparation_rejects_nil_and_invalid_uuids() {
+        let nil_uuid = Uuid::nil().to_string();
+        let valid_group = "550e8400-e29b-41d4-a716-446655440000";
+        let valid_user = "550e8400-e29b-41d4-a716-446655440001";
+
+        assert_eq!(
+            prepare_change_group_role(&nil_uuid, valid_user, GroupsAdminAssignableRole::Admin),
+            Err(GroupsAdminGovernanceInputError::InvalidGroupId)
+        );
+        assert_eq!(
+            prepare_change_group_role(valid_group, &nil_uuid, GroupsAdminAssignableRole::Admin),
+            Err(GroupsAdminGovernanceInputError::InvalidTargetUserId)
+        );
+        assert_eq!(
+            prepare_transfer_group_ownership(&nil_uuid, valid_user),
+            Err(GroupsAdminGovernanceInputError::InvalidGroupId)
+        );
+        assert_eq!(
+            prepare_transfer_group_ownership(valid_group, &nil_uuid),
+            Err(GroupsAdminGovernanceInputError::InvalidNewOwnerUserId)
+        );
+        assert_eq!(
+            prepare_group_translation_query(&nil_uuid),
+            Err(GroupsAdminLocalizationInputError::InvalidGroupId)
+        );
+        assert_eq!(
+            prepare_upsert_group_translation(&nil_uuid, "en", "Title", None, None),
+            Err(GroupsAdminLocalizationInputError::InvalidGroupId)
+        );
+        assert_eq!(
+            prepare_delete_group_translation(&nil_uuid, "en"),
+            Err(GroupsAdminLocalizationInputError::InvalidGroupId)
+        );
+        assert_eq!(
+            prepare_group_invitation_query(&nil_uuid, false),
+            Err(GroupsAdminInvitationInputError::InvalidGroupId)
+        );
+        assert_eq!(
+            prepare_create_group_invitation(&nil_uuid, None, 3600, 1),
+            Err(GroupsAdminInvitationInputError::InvalidGroupId)
+        );
+        assert_eq!(
+            prepare_create_group_invitation(valid_group, Some(&nil_uuid), 3600, 1),
+            Err(GroupsAdminInvitationInputError::InvalidTargetUserId)
+        );
+        assert_eq!(
+            prepare_revoke_group_invitation(&nil_uuid),
+            Err(GroupsAdminInvitationInputError::InvalidInvitationId)
+        );
     }
 }

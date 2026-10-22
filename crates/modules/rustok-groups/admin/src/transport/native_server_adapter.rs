@@ -168,10 +168,16 @@ async fn groups_admin_change_role_native(
         if auth.tenant_id != tenant.id {
             return Err(ServerFnError::new("groups tenant mismatch"));
         }
-        let group_id = Uuid::parse_str(&command.group_id)
+        let group_id = Uuid::parse_str(command.group_id.trim())
             .map_err(|_| ServerFnError::new("group_id must be a UUID"))?;
-        let target_user_id = Uuid::parse_str(&command.target_user_id)
+        if group_id.is_nil() {
+            return Err(ServerFnError::new("group_id must not be nil"));
+        }
+        let target_user_id = Uuid::parse_str(command.target_user_id.trim())
             .map_err(|_| ServerFnError::new("target_user_id must be a UUID"))?;
+        if target_user_id.is_nil() {
+            return Err(ServerFnError::new("target_user_id must not be nil"));
+        }
         let role = match command.role {
             crate::model::GroupsAdminAssignableRole::Admin => GroupRole::Admin,
             crate::model::GroupsAdminAssignableRole::Moderator => GroupRole::Moderator,
@@ -253,10 +259,16 @@ async fn groups_admin_transfer_ownership_native(
         if auth.tenant_id != tenant.id {
             return Err(ServerFnError::new("groups tenant mismatch"));
         }
-        let group_id = Uuid::parse_str(&command.group_id)
+        let group_id = Uuid::parse_str(command.group_id.trim())
             .map_err(|_| ServerFnError::new("group_id must be a UUID"))?;
-        let new_owner_user_id = Uuid::parse_str(&command.new_owner_user_id)
+        if group_id.is_nil() {
+            return Err(ServerFnError::new("group_id must not be nil"));
+        }
+        let new_owner_user_id = Uuid::parse_str(command.new_owner_user_id.trim())
             .map_err(|_| ServerFnError::new("new_owner_user_id must be a UUID"))?;
+        if new_owner_user_id.is_nil() {
+            return Err(ServerFnError::new("new_owner_user_id must not be nil"));
+        }
 
         let mut context = PortContext::new(
             tenant.id.to_string(),
