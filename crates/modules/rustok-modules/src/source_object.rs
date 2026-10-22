@@ -343,7 +343,9 @@ impl SourceObjectStore {
             .try_get("", "refs")
             .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
         if refs == 0 {
-            tokio::fs::remove_file(destination).await.map_err(io_error)?;
+            tokio::fs::remove_file(destination)
+                .await
+                .map_err(io_error)?;
         }
         Ok(())
     }
@@ -361,7 +363,9 @@ impl SourceObjectStore {
         let shard_dir = destination.parent().ok_or_else(|| {
             SourceObjectError::Io("CAS destination has no parent directory".to_string())
         })?;
-        tokio::fs::create_dir_all(shard_dir).await.map_err(io_error)?;
+        tokio::fs::create_dir_all(shard_dir)
+            .await
+            .map_err(io_error)?;
 
         if tokio::fs::try_exists(destination).await.map_err(io_error)? {
             Self::verify_blob(destination, expected_digest).await?;
@@ -382,10 +386,7 @@ impl SourceObjectStore {
                 hasher.update(chunk);
             }
             file.sync_all().await.map_err(io_error)?;
-            Ok::<String, SourceObjectError>(format!(
-                "sha256:{}",
-                hex::encode(hasher.finalize())
-            ))
+            Ok::<String, SourceObjectError>(format!("sha256:{}", hex::encode(hasher.finalize())))
         }
         .await;
 
@@ -420,7 +421,9 @@ impl SourceObjectStore {
         let shard_dir = destination.parent().ok_or_else(|| {
             SourceObjectError::Io("CAS destination has no parent directory".to_string())
         })?;
-        tokio::fs::create_dir_all(shard_dir).await.map_err(io_error)?;
+        tokio::fs::create_dir_all(shard_dir)
+            .await
+            .map_err(io_error)?;
 
         if tokio::fs::try_exists(destination).await.map_err(io_error)? {
             let byte_length = Self::verify_blob(destination, expected_digest).await?;
@@ -556,10 +559,7 @@ impl SourceObjectStore {
     }
 
     /// Verifies that the blob at `path` hashes to `expected_digest`.
-    async fn verify_blob(
-        path: &Path,
-        expected_digest: &str,
-    ) -> Result<u64, SourceObjectError> {
+    async fn verify_blob(path: &Path, expected_digest: &str) -> Result<u64, SourceObjectError> {
         let (actual_digest, byte_length) = Self::hash_file(path).await?;
         if actual_digest != expected_digest {
             return Err(SourceObjectError::DigestMismatch {
@@ -684,10 +684,7 @@ impl SourceObjectStore {
     /// verification of the blob on disk. Callers that merely need the
     /// canonical location without integrity guarantees can use
     /// [`Self::destination_path`].
-    pub async fn get_source_path(
-        &self,
-        source_digest: &str,
-    ) -> Result<PathBuf, SourceObjectError> {
+    pub async fn get_source_path(&self, source_digest: &str) -> Result<PathBuf, SourceObjectError> {
         let path = self.destination_path(source_digest)?;
         if !tokio::fs::try_exists(&path).await.map_err(io_error)? {
             return Err(SourceObjectError::NotFound(source_digest.to_string()));

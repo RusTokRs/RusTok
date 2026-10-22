@@ -160,12 +160,7 @@ async fn test_source_blob_digest_mismatch_fails_closed() {
     }
 
     // Verify no file or receipt was committed
-    assert!(
-        !store
-            .destination_path(fake_digest)
-            .expect("path")
-            .exists()
-    );
+    assert!(!store.destination_path(fake_digest).expect("path").exists());
 }
 
 #[tokio::test]
