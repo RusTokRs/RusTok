@@ -161,6 +161,18 @@ struct ModuleCompositionOperationReceiptRequest<'a, R> {
 /// Host adapter that enqueues a build using the composition owner's open
 /// transaction. The owner controls the transaction boundary; the host only
 /// adapts its build persistence contract.
+/// Failure of a [`ModuleCompositionBuildEnqueuer`] port. The composition
+/// owner holds the transaction open, so `Unavailable` (the build queue
+/// cannot accept work) aborts the operation while `Store` reports the
+/// adapter's persistence failure.
+#[derive(Debug, Error)]
+pub enum ModuleCompositionBuildEnqueueError {
+    #[error("{0}")]
+    Unavailable(String),
+    #[error("{0}")]
+    Store(String),
+}
+
 #[async_trait]
 pub trait ModuleCompositionBuildEnqueuer: Send + Sync {
     type Output: Send + Serialize + DeserializeOwned;
@@ -169,7 +181,7 @@ pub trait ModuleCompositionBuildEnqueuer: Send + Sync {
         &self,
         transaction: &DatabaseTransaction,
         snapshot: &ModuleCompositionSnapshot,
-    ) -> Result<Self::Output, String>;
+    ) -> Result<Self::Output, ModuleCompositionBuildEnqueueError>;
 }
 
 /// Owner-side database adapter for module-composition state.
@@ -481,7 +493,7 @@ pub enum ModuleCompositionError {
     #[error("module composition store error: {0}")]
     Store(String),
     #[error("module composition build enqueue failed: {0}")]
-    BuildEnqueue(String),
+    BuildEnqueue(#[from] ModuleCompositionBuildEnqueueError),
     #[error("failed to serialize module composition: {0}")]
     Serialize(String),
     #[error("failed to deserialize module composition: {0}")]
@@ -554,7 +566,7 @@ mod tests {
             &self,
             _transaction: &DatabaseTransaction,
             snapshot: &ModuleCompositionSnapshot,
-        ) -> Result<Self::Output, String> {
+        ) -> Result<Self::Output, ModuleCompositionBuildEnqueueError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(snapshot.revision)
         }
@@ -570,8 +582,10 @@ mod tests {
             &self,
             _transaction: &DatabaseTransaction,
             _snapshot: &ModuleCompositionSnapshot,
-        ) -> Result<Self::Output, String> {
-            Err("build queue unavailable".to_string())
+        ) -> Result<Self::Output, ModuleCompositionBuildEnqueueError> {
+            Err(ModuleCompositionBuildEnqueueError::Unavailable(
+                "build queue unavailable".to_string(),
+            ))
         }
     }
 

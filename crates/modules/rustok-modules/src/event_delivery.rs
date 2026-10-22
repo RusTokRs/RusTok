@@ -483,7 +483,7 @@ impl ModuleWorkSource for ArtifactEventDeliveryWorkAdapter {
             .tenants
             .tenant_ids()
             .await
-            .map_err(ModuleWorkError::Source)?;
+            .map_err(|error| ModuleWorkError::Source(error.to_string()))?;
         for tenant_id in tenant_ids {
             if tenant_id.is_nil() {
                 return Err(ModuleWorkError::Source(

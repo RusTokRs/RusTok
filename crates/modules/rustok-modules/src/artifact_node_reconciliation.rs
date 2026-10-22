@@ -143,12 +143,23 @@ pub struct ModuleArtifactNodeTopologySnapshot {
 /// Trusted owner seam for topology selection. The resolver may use deployment
 /// metadata, but it cannot inject artifact identity because the owner reloads
 /// every installation under its own transaction and locks it before writing.
+/// Failure of a [`ModuleArtifactNodeTopologyResolver`] port.
+#[derive(Debug, Error)]
+pub enum ModuleArtifactNodeTopologyResolveError {
+    #[error("deployment topology resolution is not supported by this port")]
+    Unsupported,
+    #[error("policy revision changed during topology resolution")]
+    PolicyRevisionChanged,
+    #[error("{0}")]
+    Store(String),
+}
+
 #[async_trait]
 pub trait ModuleArtifactNodeTopologyResolver: Send + Sync {
     async fn resolve(
         &self,
         policy_revision: &str,
-    ) -> Result<ModuleArtifactNodeTopologySnapshot, String>;
+    ) -> Result<ModuleArtifactNodeTopologySnapshot, ModuleArtifactNodeTopologyResolveError>;
 }
 
 /// Requests a fresh desired set after a policy, topology, or admitted artifact
@@ -425,8 +436,8 @@ impl ModuleArtifactNodeTopologyResolver for AgentPortOnlyTopologyResolver {
     async fn resolve(
         &self,
         _policy_revision: &str,
-    ) -> Result<ModuleArtifactNodeTopologySnapshot, String> {
-        Err("the artifact node agent port cannot resolve deployment topology".to_string())
+    ) -> Result<ModuleArtifactNodeTopologySnapshot, ModuleArtifactNodeTopologyResolveError> {
+        Err(ModuleArtifactNodeTopologyResolveError::Unsupported)
     }
 }
 
@@ -1282,7 +1293,7 @@ pub enum ModuleArtifactNodeReconciliationError {
     #[error("artifact node reconciliation topology does not match the requested digest")]
     TopologyDigestMismatch,
     #[error("artifact node topology resolution failed: {0}")]
-    TopologyResolution(String),
+    TopologyResolution(#[from] ModuleArtifactNodeTopologyResolveError),
     #[error(
         "artifact node reconciliation state revision conflict: expected {expected}, current {current}"
     )]
@@ -2913,7 +2924,7 @@ mod tests {
         async fn resolve(
             &self,
             _policy_revision: &str,
-        ) -> Result<ModuleArtifactNodeTopologySnapshot, String> {
+        ) -> Result<ModuleArtifactNodeTopologySnapshot, ModuleArtifactNodeTopologyResolveError> {
             Ok(self.0.clone())
         }
     }

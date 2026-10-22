@@ -120,13 +120,25 @@ pub struct ModuleStaticDistributionAssignment {
     pub candidate_artifact_digest: String,
 }
 
+/// Failure of a [`ModuleStaticDistributionTopologyResolver`] port.
+#[derive(Debug, Error)]
+pub enum ModuleStaticDistributionTopologyResolveError {
+    #[error("{0}")]
+    Unavailable(String),
+    #[error("{0}")]
+    Store(String),
+}
+
 #[async_trait]
 pub trait ModuleStaticDistributionTopologyResolver: Send + Sync {
     async fn resolve(
         &self,
         release: &ModuleStaticDistributionRelease,
         policy_revision: &str,
-    ) -> Result<ModuleStaticDistributionTopologySnapshot, String>;
+    ) -> Result<
+        ModuleStaticDistributionTopologySnapshot,
+        ModuleStaticDistributionTopologyResolveError,
+    >;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1290,7 +1302,7 @@ pub enum ModuleStaticDistributionRolloutError {
     #[error("static distribution topology is invalid")]
     InvalidTopology,
     #[error("static distribution topology resolution failed: {0}")]
-    TopologyResolution(String),
+    TopologyResolution(#[from] ModuleStaticDistributionTopologyResolveError),
     #[error("static distribution release is not the exact active release revision")]
     ReleaseRevisionConflict,
     #[error("static distribution release changed during rollout request")]

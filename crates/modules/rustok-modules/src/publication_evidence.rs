@@ -57,7 +57,9 @@ pub enum ModulePlatformPublicationEvidenceError {
     #[error("platform publication source is unavailable: {0}")]
     Source(#[source] ModuleGovernanceError),
     #[error("platform publication OCI registry is unavailable: {0}")]
-    Registry(String),
+    Registry(#[source] ModulePublicationRegistryError),
+    #[error("platform publication OCI artifact fetch failed: {0}")]
+    RegistryFetch(#[source] crate::ModuleInstallationError),
     #[error("published OCI artifact does not match the owner-selected build")]
     ArtifactIdentityMismatch,
     #[error("isolated platform publication verification failed: {0}")]
@@ -109,7 +111,9 @@ pub enum ModuleAlloyPublicationEvidenceError {
     #[error("Alloy publication evidence could not be recorded: {0}")]
     Record(#[source] ModuleGovernanceError),
     #[error("Alloy publication OCI registry is unavailable: {0}")]
-    Registry(String),
+    Registry(#[source] ModulePublicationRegistryError),
+    #[error("Alloy publication OCI artifact fetch failed: {0}")]
+    RegistryFetch(#[source] crate::ModuleInstallationError),
     #[error("Alloy publication verification failed: {0}")]
     Verification(#[source] TrustVerificationError),
     #[error("published Alloy OCI artifact does not match the immutable owner receipt")]
@@ -200,17 +204,34 @@ impl ModuleAlloyPublicationEvidenceOwner for SeaOrmModuleGovernanceService {
 /// Credential-owning adapter that creates an exact digest-pinned registry
 /// reader. Production implementations acquire only a short-lived lease for
 /// the registry/repository carried by `reference`.
+/// Failure of a [`ModulePublicationArtifactRegistryProvider`] port.
+/// `Denied` means the credential broker refused the lease; `InvalidResponse`
+/// means the broker answered outside its contract (for example an expired
+/// credential). Both are distinct from transient `Unavailable` failures.
+#[derive(Debug, Error)]
+pub enum ModulePublicationRegistryError {
+    #[error("{0}")]
+    InvalidRequest(String),
+    #[error("{0}")]
+    Denied(String),
+    #[error("{0}")]
+    InvalidResponse(String),
+    #[error("{0}")]
+    Unavailable(String),
+}
+
 #[async_trait]
 pub trait ModulePublicationArtifactRegistryProvider: Send + Sync {
     async fn registry_for(
         &self,
         reference: &OciArtifactReference,
-    ) -> Result<Arc<dyn crate::ArtifactRegistry>, String>;
+    ) -> Result<Arc<dyn crate::ArtifactRegistry>, ModulePublicationRegistryError>;
 }
 
 #[derive(Debug)]
 enum PublishedArtifactVerificationError {
-    Registry(String),
+    RegistryProvider(ModulePublicationRegistryError),
+    RegistryFetch(crate::ModuleInstallationError),
     IdentityMismatch,
     Verification(TrustVerificationError),
     Rejected,
@@ -249,11 +270,11 @@ async fn verify_published_artifact(
     let registry = registries
         .registry_for(input.reference)
         .await
-        .map_err(PublishedArtifactVerificationError::Registry)?;
+        .map_err(PublishedArtifactVerificationError::RegistryProvider)?;
     let package = registry
         .fetch(input.reference, limits)
         .await
-        .map_err(|error| PublishedArtifactVerificationError::Registry(error.to_string()))?;
+        .map_err(PublishedArtifactVerificationError::RegistryFetch)?;
     let temporary_payload = match &package.payload {
         ArtifactPayloadSource::TemporaryFile(path) => Some(path.clone()),
         ArtifactPayloadSource::Bytes(_) => None,
@@ -437,8 +458,11 @@ fn map_platform_publication_verification_error(
     error: PublishedArtifactVerificationError,
 ) -> ModulePlatformPublicationEvidenceError {
     match error {
-        PublishedArtifactVerificationError::Registry(error) => {
+        PublishedArtifactVerificationError::RegistryProvider(error) => {
             ModulePlatformPublicationEvidenceError::Registry(error)
+        }
+        PublishedArtifactVerificationError::RegistryFetch(error) => {
+            ModulePlatformPublicationEvidenceError::RegistryFetch(error)
         }
         PublishedArtifactVerificationError::IdentityMismatch => {
             ModulePlatformPublicationEvidenceError::ArtifactIdentityMismatch
@@ -542,8 +566,11 @@ fn map_alloy_publication_verification_error(
     error: PublishedArtifactVerificationError,
 ) -> ModuleAlloyPublicationEvidenceError {
     match error {
-        PublishedArtifactVerificationError::Registry(error) => {
+        PublishedArtifactVerificationError::RegistryProvider(error) => {
             ModuleAlloyPublicationEvidenceError::Registry(error)
+        }
+        PublishedArtifactVerificationError::RegistryFetch(error) => {
+            ModuleAlloyPublicationEvidenceError::RegistryFetch(error)
         }
         PublishedArtifactVerificationError::Verification(error) => {
             ModuleAlloyPublicationEvidenceError::Verification(error)
@@ -734,7 +761,7 @@ mod tests {
         async fn registry_for(
             &self,
             _reference: &OciArtifactReference,
-        ) -> Result<Arc<dyn ArtifactRegistry>, String> {
+        ) -> Result<Arc<dyn ArtifactRegistry>, ModulePublicationRegistryError> {
             Ok(Arc::new(Registry {
                 package: self.package.clone(),
             }))

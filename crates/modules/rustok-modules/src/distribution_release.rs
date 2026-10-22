@@ -87,12 +87,27 @@ pub struct ModuleStaticDistributionReleaseVerificationRequest {
     pub policy_revision: String,
 }
 
+/// Failure of a [`ModuleStaticDistributionReleaseVerifier`] port. A
+/// completed verification reports its verdict inside
+/// [`ModuleStaticDistributionReleaseAdmission`]; this error means the
+/// verification could not be performed.
+#[derive(Debug, Error)]
+pub enum ModuleStaticDistributionReleaseVerifyError {
+    #[error("{0}")]
+    Unavailable(String),
+    #[error("{0}")]
+    Store(String),
+}
+
 #[async_trait]
 pub trait ModuleStaticDistributionReleaseVerifier: Send + Sync {
     async fn verify(
         &self,
         request: ModuleStaticDistributionReleaseVerificationRequest,
-    ) -> Result<ModuleStaticDistributionReleaseAdmission, String>;
+    ) -> Result<
+        ModuleStaticDistributionReleaseAdmission,
+        ModuleStaticDistributionReleaseVerifyError,
+    >;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -531,7 +546,7 @@ pub enum ModuleStaticDistributionReleaseError {
     #[error("static distribution release command was not authorized")]
     AuthorizationDenied,
     #[error("static distribution release verification failed: {0}")]
-    VerificationFailed(String),
+    VerificationFailed(#[from] ModuleStaticDistributionReleaseVerifyError),
     #[error("static distribution release verification decision was not admitted")]
     VerificationDenied,
     #[error("static distribution build is not successfully completed")]

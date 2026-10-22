@@ -234,7 +234,8 @@ pub use artifact_node_reconciliation::{
     ModuleArtifactNodeReconciliationAuthorizer, ModuleArtifactNodeReconciliationError,
     ModuleArtifactNodeReconciliationReceipt, ModuleArtifactNodeReconciliationRequest,
     ModuleArtifactNodeReconciliationStatus, ModuleArtifactNodeReconciliationWorkIdentity,
-    ModuleArtifactNodeTopologyResolver, ModuleArtifactNodeTopologySnapshot,
+    ModuleArtifactNodeTopologyResolveError, ModuleArtifactNodeTopologyResolver,
+    ModuleArtifactNodeTopologySnapshot,
     SeaOrmArtifactNodeReadiness, SeaOrmModuleArtifactNodeAgentService,
     SeaOrmModuleArtifactNodeReconciliationService, module_artifact_node_topology_digest,
 };
@@ -296,7 +297,8 @@ pub use capability_http::{
 };
 pub use composition::{
     ACTIVE_MODULE_COMPOSITION_ID, ModuleCompositionBuildAdmission,
-    ModuleCompositionBuildEnqueueResult, ModuleCompositionBuildEnqueuer,
+    ModuleCompositionBuildEnqueueError, ModuleCompositionBuildEnqueueResult,
+    ModuleCompositionBuildEnqueuer,
     ModuleCompositionBuildLease, ModuleCompositionBuildReceipt, ModuleCompositionError,
     ModuleCompositionOperation, ModuleCompositionSnapshot, ModuleCompositionUpdate,
     STATIC_MODULE_REGISTRY_MAX_LIMIT, SeaOrmModuleCompositionService,
@@ -395,7 +397,8 @@ pub use distribution_release::{
     ModuleStaticDistributionReleaseAdmission, ModuleStaticDistributionReleaseAuthorizer,
     ModuleStaticDistributionReleaseError, ModuleStaticDistributionReleaseState,
     ModuleStaticDistributionReleaseStatus, ModuleStaticDistributionReleaseVerificationRequest,
-    ModuleStaticDistributionReleaseVerifier, ModuleStaticDistributionRevocationCommand,
+    ModuleStaticDistributionReleaseVerifier, ModuleStaticDistributionReleaseVerifyError,
+    ModuleStaticDistributionRevocationCommand,
     ModuleStaticDistributionRevocationReceipt, SeaOrmModuleStaticDistributionReleaseService,
     resolve_static_distribution_install_binding,
 };
@@ -408,7 +411,8 @@ pub use distribution_rollout::{
     ModuleStaticDistributionRolloutAssignment, ModuleStaticDistributionRolloutAuthorizer,
     ModuleStaticDistributionRolloutError, ModuleStaticDistributionRolloutReceipt,
     ModuleStaticDistributionRolloutRequest, ModuleStaticDistributionRolloutStatus,
-    ModuleStaticDistributionRolloutWorkIdentity, ModuleStaticDistributionTopologyResolver,
+    ModuleStaticDistributionRolloutWorkIdentity,
+    ModuleStaticDistributionTopologyResolveError, ModuleStaticDistributionTopologyResolver,
     ModuleStaticDistributionTopologySnapshot, ModuleStaticDistributionTransitionKind,
     SeaOrmModuleStaticDistributionRolloutService, module_static_distribution_topology_digest,
 };
@@ -567,6 +571,7 @@ pub use publication_evidence::{
     ModulePlatformPublicationEvidenceCommand, ModulePlatformPublicationEvidenceError,
     ModulePlatformPublicationEvidenceOwner, ModulePlatformPublicationEvidenceProducer,
     ModulePlatformPublicationEvidenceResult, ModulePublicationArtifactRegistryProvider,
+    ModulePublicationRegistryError,
 };
 pub use publish_validation::{
     MODULE_PUBLISH_ALLOY_WORKSPACE_MAX_BYTES, MODULE_PUBLISH_ARTIFACT_MANIFEST_MAX_BYTES,
@@ -595,7 +600,8 @@ pub use runtime::{
     ArtifactSandboxPolicyResolver, VerifiedArtifactNodeCache,
 };
 pub use runtime_handles::{
-    ArtifactDeliveryTenantSource, SharedArtifactBindingExecutor, SharedArtifactDeliveryTenantSource,
+    ArtifactDeliveryTenantSource, ArtifactDeliveryTenantSourceError,
+    SharedArtifactBindingExecutor, SharedArtifactDeliveryTenantSource,
 };
 pub use rustok_build_source::SourceTreeFile;
 pub use schedule_delivery::{
