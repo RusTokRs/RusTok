@@ -103,16 +103,16 @@ impl TrustAlloyWorkspaceProvenance {
             && !self.alloy_tenant_id.is_nil()
             && !self.alloy_script_id.is_nil()
             && self.source_revision > 0
-            && sha256_digest(&self.source_digest)
-            && sha256_digest(&self.review_digest)
-            && sha256_digest(&self.descriptor_digest)
+            && is_sha256_digest(&self.source_digest)
+            && is_sha256_digest(&self.review_digest)
+            && is_sha256_digest(&self.descriptor_digest)
             && !self.workspace_entrypoint.trim().is_empty()
             && self.workspace_entrypoint.len() <= 160
             && !self.workspace_entrypoint.chars().any(char::is_control)
     }
 }
 
-fn sha256_digest(value: &str) -> bool {
+fn is_sha256_digest(value: &str) -> bool {
     value.strip_prefix("sha256:").is_some_and(|digest| {
         digest.len() == 64
             && digest

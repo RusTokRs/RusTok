@@ -3496,7 +3496,9 @@ impl SeaOrmArtifactInstallationStore {
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
 
         let target_capability_grant_revision = if let Some(row) = grant_row {
-            let rev: i64 = row.try_get("", "capability_grant_revision").unwrap_or(1);
+            let rev: i64 = row
+                .try_get("", "capability_grant_revision")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
             u64::try_from(rev.max(1)).unwrap_or(1)
         } else {
             1

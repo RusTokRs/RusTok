@@ -21,11 +21,11 @@
 use chrono::{DateTime, Utc};
 use sea_orm::{ConnectionTrait, DatabaseConnection, QueryResult, Statement};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::backend::SupportedBackend;
+use crate::installation::sha256_digest;
 use crate::transition_store::RetentionHoldStore;
 use crate::{
     ConflictFenceSet, ModuleArtifactDescriptor, ModuleInstallationScope, RetentionHoldRecord,
@@ -241,10 +241,6 @@ pub enum ModuleOperatorError {
     TransitionIneligible(Vec<String>),
     #[error("Database error: {0}")]
     Database(String),
-}
-
-fn sha256_digest(bytes: &[u8]) -> String {
-    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
 
 fn database_error(error: impl std::fmt::Display) -> ModuleOperatorError {

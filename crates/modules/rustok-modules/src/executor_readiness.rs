@@ -22,14 +22,11 @@ use uuid::Uuid;
 use rustok_sandbox::SandboxExecutorPlacement;
 
 use crate::backend::SupportedBackend;
+use crate::installation::sha256_digest;
 use crate::{
     ArtifactBlobStore, ControlPlaneInfrastructure, InstalledModuleArtifact,
     ModuleArtifactDescriptor, ModuleInstallationError,
 };
-
-fn sha256_digest(bytes: &[u8]) -> String {
-    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
-}
 
 fn valid_digest(digest: &str) -> bool {
     digest.starts_with("sha256:")

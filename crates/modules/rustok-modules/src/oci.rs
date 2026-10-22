@@ -13,6 +13,7 @@ use thiserror::Error;
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
+use crate::installation::sha256_digest;
 use crate::{
     ALLOY_WORKSPACE_PUBLICATION_BUILD_TYPE, ALLOY_WORKSPACE_PUBLICATION_BUILDER_ID,
     ALLOY_WORKSPACE_PUBLICATION_SOURCE_REF, ALLOY_WORKSPACE_PUBLICATION_SOURCE_URI,
@@ -922,10 +923,6 @@ fn validate_build_blob(
         )));
     }
     validate_publication_bytes(kind, &blob.bytes, &blob.digest, maximum_bytes)
-}
-
-fn sha256_digest(bytes: &[u8]) -> String {
-    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
 
 fn derived_tag(kind: &str, fields: &[&str]) -> String {

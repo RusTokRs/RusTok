@@ -8,11 +8,11 @@ use sea_orm::{
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::backend::SupportedBackend;
+use crate::installation::sha256_digest;
 use crate::{
     ControlPlaneInfrastructure, ModuleCommandContext, ModuleStaticDistributionBuildEvidence,
     ModuleStaticDistributionExecutorMode, ModuleStaticDistributionItem,
@@ -671,12 +671,6 @@ fn valid_hex_digest(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-}
-
-fn sha256_digest(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    format!("sha256:{}", hex::encode(hasher.finalize()))
 }
 
 #[cfg(test)]
