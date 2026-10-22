@@ -402,15 +402,14 @@ pub(crate) async fn read_tenant_override_enabled<C: ConnectionTrait>(
         SupportedBackend::Postgres => {
             "SELECT enabled FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
         }
-        SupportedBackend::Sqlite => "SELECT enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1",
+        SupportedBackend::Sqlite => {
+            "SELECT enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
+        }
     };
     db.query_one_raw(Statement::from_sql_and_values(
         backend.db_backend(),
         sql,
-        vec![
-            backend.uuid_value(tenant_id),
-            module_slug.into(),
-        ],
+        vec![backend.uuid_value(tenant_id), module_slug.into()],
     ))
     .await
     .map_err(store_database_error)?
@@ -431,15 +430,14 @@ pub(crate) async fn apply_tenant_override_enabled<C: ConnectionTrait>(
             SupportedBackend::Postgres => {
                 "DELETE FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2"
             }
-            SupportedBackend::Sqlite => "DELETE FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2",
+            SupportedBackend::Sqlite => {
+                "DELETE FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2"
+            }
         };
         db.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             sql,
-            vec![
-                backend.uuid_value(tenant_id),
-                module_slug.into(),
-            ],
+            vec![backend.uuid_value(tenant_id), module_slug.into()],
         ))
         .await
         .map_err(store_database_error)?;

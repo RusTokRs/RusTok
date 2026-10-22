@@ -245,8 +245,8 @@ impl ModuleOperationJournal {
         .await
         .map_err(database_error)?
         .into_iter()
-            .map(operation_snapshot)
-            .collect()
+        .map(operation_snapshot)
+        .collect()
     }
 
     pub async fn record_idempotent<C: ConnectionTrait>(
