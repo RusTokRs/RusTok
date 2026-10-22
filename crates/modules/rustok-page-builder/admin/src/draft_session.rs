@@ -916,7 +916,29 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         page_id: &str,
     ) -> Result<Option<SsrDraftSessionSnapshot>, SsrDraftSessionError> {
         if let Some(snapshot) = self.memory.load(token, page_id)? {
-            return Ok(Some(snapshot));
+            if let Some(record) = self.backend.load_record(token)? {
+                if record.controller.page_id() != page_id {
+                    let _ = self.memory.remove(token);
+                    return Err(SsrDraftSessionError::PageMismatch {
+                        expected: record.controller.page_id().to_string(),
+                        actual: page_id.to_string(),
+                    });
+                }
+                if record.generation > snapshot.generation {
+                    let fresh_snapshot = SsrDraftSessionSnapshot {
+                        token: record.token,
+                        generation: record.generation,
+                        controller: record.controller,
+                        runtime_context: record.runtime_context,
+                    };
+                    self.memory.insert_snapshot(fresh_snapshot.clone())?;
+                    return Ok(Some(fresh_snapshot));
+                }
+                return Ok(Some(snapshot));
+            } else {
+                let _ = self.memory.remove(token);
+                return Ok(None);
+            }
         }
         // Fallback to persistent backend (cross-process / cross-pod restart)
         if let Some(record) = self.backend.load_record(token)? {
@@ -960,16 +982,33 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         runtime_context: Value,
     ) -> Result<SsrDraftSessionSnapshot, SsrDraftSessionError> {
         if let Some(tok) = token.map(str::trim).filter(|t| !t.is_empty()) {
-            if self.memory.load(tok, controller.page_id())?.is_none() {
-                if let Some(record) = self.backend.load_record(tok)? {
-                    if record.controller.page_id() == controller.page_id() {
-                        self.memory.insert_snapshot(SsrDraftSessionSnapshot {
-                            token: record.token,
-                            generation: record.generation,
-                            controller: record.controller,
-                            runtime_context: record.runtime_context,
-                        })?;
-                    }
+            if let Some(persistent_record) = self.backend.load_record(tok)? {
+                if persistent_record.controller.page_id() != controller.page_id() {
+                    return Err(SsrDraftSessionError::PageMismatch {
+                        expected: persistent_record.controller.page_id().to_string(),
+                        actual: controller.page_id().to_string(),
+                    });
+                }
+                if expected_generation
+                    .is_some_and(|expected| expected != persistent_record.generation)
+                {
+                    return Err(SsrDraftSessionError::GenerationConflict {
+                        expected: persistent_record.generation,
+                        actual: expected_generation.unwrap_or_default(),
+                    });
+                }
+                let is_stale = self
+                    .memory
+                    .load(tok, controller.page_id())?
+                    .map(|s| s.generation < persistent_record.generation)
+                    .unwrap_or(true);
+                if is_stale {
+                    self.memory.insert_snapshot(SsrDraftSessionSnapshot {
+                        token: persistent_record.token,
+                        generation: persistent_record.generation,
+                        controller: persistent_record.controller,
+                        runtime_context: persistent_record.runtime_context,
+                    })?;
                 }
             }
         }

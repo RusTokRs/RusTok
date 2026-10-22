@@ -99,6 +99,7 @@ It does not yet provide:
 
 ## Docs
 
+- [CRATE_API.md](CRATE_API.md)
 - [Module docs](./docs/README.md)
 - [Implementation plan](./docs/implementation-plan.md)
 - [M7 SalesChannel Index source contract](../rustok-index/docs/m7-sales-channel-source.md)
