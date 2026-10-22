@@ -82,6 +82,13 @@ impl CapabilityBroker for ArtifactEventCapabilityBroker {
                 message: format!("failed to begin event transaction: {err}"),
             })?;
 
+        crate::backend::set_tenant_scope(&transaction, tenant_id)
+            .await
+            .map_err(|err| SandboxError::HostCapability {
+                capability: call.capability.clone(),
+                message: format!("failed to scope event transaction: {err}"),
+            })?;
+
         self.infrastructure
             .write_event(&transaction, envelope)
             .await

@@ -679,6 +679,7 @@ where
             return Err(ModuleArtifactNodeReconciliationError::TopologyDigestMismatch);
         }
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction).await.map_err(store_error)?;
         if let Some(operation) = reserve_operation(
             &transaction,
             command.context.idempotency_key,
@@ -811,6 +812,7 @@ where
         validate_assignment_claim(&command)?;
         self.authorizer.authorize_assignment_claim(&command).await?;
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction).await.map_err(store_error)?;
         let state = load_state(&transaction, true).await?;
         let Some(reconciliation_id) = state.desired_id else {
             transaction.commit().await.map_err(store_error)?;
@@ -893,6 +895,7 @@ where
             ))
             .ok_or(ModuleArtifactNodeReconciliationError::LeaseOverflow)?;
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction).await.map_err(store_error)?;
         heartbeat_assignment(&transaction, &command, &lease_expires_at, &now).await?;
         transaction.commit().await.map_err(store_error)?;
         Ok(ModuleArtifactNodeAssignmentHeartbeatReceipt {
@@ -925,6 +928,7 @@ where
             return replay_report(&operation);
         }
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction).await.map_err(store_error)?;
         if let Some(operation) = reserve_operation(
             &transaction,
             command.idempotency_key,

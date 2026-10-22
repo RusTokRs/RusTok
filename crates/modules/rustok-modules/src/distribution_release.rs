@@ -193,6 +193,7 @@ pub async fn resolve_static_distribution_install_binding(
         return Err(ModuleStaticDistributionReleaseError::InvalidCommand);
     }
     let transaction = db.begin().await.map_err(store_error)?;
+    crate::backend::set_platform_scope(&transaction).await.map_err(store_error)?;
     let state = lock_release_state(&transaction).await?;
     let release = load_release_record(&transaction, distribution_release_id, true).await?;
     let selectable = (release.status == ModuleStaticDistributionReleaseStatus::Admitted
@@ -307,6 +308,7 @@ where
         validate_admission(&admission, &command.verification_policy_revision)?;
 
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction).await.map_err(store_error)?;
         if let Some(receipt) =
             reserve_admission_operation(&transaction, &command.context, &request_digest).await?
         {
@@ -432,6 +434,7 @@ where
             return Ok(receipt);
         }
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction).await.map_err(store_error)?;
         if let Some(receipt) =
             reserve_revocation_operation(&transaction, &command.context, &request_digest).await?
         {

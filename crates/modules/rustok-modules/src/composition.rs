@@ -292,6 +292,9 @@ impl SeaOrmModuleCompositionService {
             .begin()
             .await
             .map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
+        crate::backend::set_platform_scope(&transaction)
+            .await
+            .map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
         let result = async {
             let snapshot = Self::replace_active_snapshot_on(&transaction, update).await?;
             let output = enqueuer

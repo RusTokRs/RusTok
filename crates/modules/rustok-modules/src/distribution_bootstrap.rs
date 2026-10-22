@@ -310,6 +310,7 @@ impl SeaOrmModuleStaticDistributionBootstrapService {
 
         let payload = &command.receipt.payload;
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction).await.map_err(store_error)?;
         reserve_bootstrap_import_operation(&transaction, &command.context, &request_digest).await?;
         let distribution_state = load_distribution_state(&transaction, true)
             .await

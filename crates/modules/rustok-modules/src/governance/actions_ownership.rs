@@ -14,6 +14,7 @@ impl SeaOrmModuleGovernanceService {
     ) -> Result<ModuleReleaseYankResult, ModuleGovernanceError> {
         command.validate()?;
         let tx = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&tx).await.map_err(store_error)?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
         let mark = |n| backend.placeholder(n);
         let now = backend.now_sql();
@@ -145,6 +146,9 @@ impl SeaOrmModuleGovernanceService {
         let tx = self
             .db
             .begin()
+            .await
+            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        crate::backend::set_platform_scope(&tx)
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;

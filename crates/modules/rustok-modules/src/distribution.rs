@@ -516,6 +516,7 @@ where
         self.authorizer.authorize_build(&command).await?;
         let request_digest = digest_json(&command).map_err(promotion_error)?;
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction).await.map_err(store_error)?;
         if let Some(receipt) = reserve_operation(
             &transaction,
             command.context.idempotency_key,
@@ -714,6 +715,7 @@ where
         validate_runner_id(&command.runner_id)?;
         self.authorizer.authorize_claim(&command).await?;
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction).await.map_err(store_error)?;
         let Some(candidate) = lock_next_build_candidate(&transaction).await? else {
             transaction.commit().await.map_err(store_error)?;
             return Ok(None);
@@ -785,6 +787,7 @@ where
             .checked_add_signed(Duration::seconds(DISTRIBUTION_LEASE_SECONDS))
             .ok_or(ModuleStaticDistributionError::LeaseOverflow)?;
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction).await.map_err(store_error)?;
         heartbeat_claim(&transaction, &command, &lease_expires_at).await?;
         transaction.commit().await.map_err(store_error)?;
         Ok(ModuleStaticDistributionHeartbeatReceipt {
@@ -801,6 +804,7 @@ where
         self.authorizer.authorize_completion(&command).await?;
         let completion_digest = digest_json(&command).map_err(promotion_error)?;
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction).await.map_err(store_error)?;
         let build = lock_claimed_build(&transaction, command.distribution_build_id).await?;
         if build.active_claim_id != Some(command.claim_id)
             || build.claimed_by.as_deref() != Some(command.runner_id.as_str())

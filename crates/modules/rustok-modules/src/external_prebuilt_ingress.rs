@@ -752,6 +752,9 @@ impl ExternalPrebuiltIngressService {
             .begin()
             .await
             .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
+        crate::backend::set_platform_scope(&tx)
+            .await
+            .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
 
         tx.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),

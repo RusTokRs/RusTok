@@ -459,6 +459,9 @@ impl OperationsToolService {
             .begin()
             .await
             .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        crate::backend::set_platform_scope(&transaction)
+            .await
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
         if let Some(replay) = self
             .load_start_replay(&transaction, &command, &request_digest)
             .await?
@@ -647,6 +650,9 @@ impl OperationsToolService {
             .begin()
             .await
             .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        crate::backend::set_platform_scope(&transaction)
+            .await
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
         let operation = self
             .find_operation_by_id_for_update(&transaction, report.operation_id)
             .await?
@@ -779,6 +785,9 @@ impl OperationsToolService {
         let transaction = self
             .db
             .begin()
+            .await
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        crate::backend::set_platform_scope(&transaction)
             .await
             .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
         if let Some(replay) = self

@@ -404,6 +404,7 @@ where
         validate_topology(&topology, &release)?;
 
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction).await.map_err(store_error)?;
         if let Some(operation) = reserve_operation(
             &transaction,
             command.context.idempotency_key,
@@ -560,6 +561,7 @@ where
         }
 
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction).await.map_err(store_error)?;
         if let Some(operation) = reserve_operation(
             &transaction,
             command.context.idempotency_key,
@@ -733,6 +735,7 @@ where
         validate_assignment_claim(&command)?;
         self.authorizer.authorize_assignment_claim(&command).await?;
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction).await.map_err(store_error)?;
         let state = load_rollout_state(&transaction, true).await?;
         let Some(rollout_id) = state.desired_id else {
             transaction.commit().await.map_err(store_error)?;
@@ -821,6 +824,7 @@ where
             .checked_add_signed(Duration::seconds(ASSIGNMENT_LEASE_SECONDS))
             .ok_or(ModuleStaticDistributionRolloutError::LeaseOverflow)?;
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction).await.map_err(store_error)?;
         heartbeat_rollout_assignment(&transaction, &command, &now, &lease_expires_at).await?;
         transaction.commit().await.map_err(store_error)?;
         Ok(ModuleStaticDistributionAssignmentHeartbeatReceipt {
@@ -851,6 +855,7 @@ where
         }
 
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction).await.map_err(store_error)?;
         if let Some(operation) = reserve_operation(
             &transaction,
             command.idempotency_key,

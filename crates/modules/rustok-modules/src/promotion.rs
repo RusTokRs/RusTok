@@ -154,6 +154,7 @@ where
         self.authorizer.authorize_request(&command).await?;
         let request_digest = digest_json(&command)?;
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction).await.map_err(store_error)?;
         if let Some(receipt) =
             reserve_operation(&transaction, "request", &command.context, &request_digest).await?
         {
@@ -255,6 +256,7 @@ where
         let request_digest = digest_json(&command)?;
         let review_digest = digest_json(&command.evidence)?;
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction).await.map_err(store_error)?;
         if let Some(receipt) =
             reserve_operation(&transaction, "approve", &command.context, &request_digest).await?
         {

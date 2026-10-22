@@ -21,6 +21,9 @@ impl SeaOrmModuleGovernanceService {
             .begin()
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        crate::backend::set_platform_scope(&tx)
+            .await
+            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
         let mark = |n| {
             if backend == SupportedBackend::Postgres {
@@ -200,6 +203,9 @@ impl SeaOrmModuleGovernanceService {
             .begin()
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        crate::backend::set_platform_scope(&tx)
+            .await
+            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
         let mark = |n| {
             if backend == SupportedBackend::Postgres {
@@ -359,6 +365,9 @@ impl SeaOrmModuleGovernanceService {
         let tx = self
             .db
             .begin()
+            .await
+            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        crate::backend::set_platform_scope(&tx)
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
@@ -524,6 +533,9 @@ impl SeaOrmModuleGovernanceService {
         let tx = self
             .db
             .begin()
+            .await
+            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        crate::backend::set_platform_scope(&tx)
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
