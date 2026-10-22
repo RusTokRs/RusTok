@@ -1,6 +1,8 @@
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
+use crate::backend::SupportedBackend;
+
 /// Records content-free, transaction-local invalidation evidence for static
 /// Settings source projections and exact localized targets. The monotonic
 /// sequence is the durable repair cursor; translated/source text never enters
@@ -11,8 +13,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 r#"CREATE TABLE module_static_settings_changes (
                     change_seq BIGSERIAL PRIMARY KEY,
                     tenant_id UUID NOT NULL,
@@ -103,7 +106,7 @@ impl MigrationTrait for Migration {
                     AFTER UPDATE OF value, revision, owner_revision ON module_static_localized_settings
                     FOR EACH ROW EXECUTE FUNCTION rustok_log_static_settings_localized_target()"#,
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 r#"CREATE TABLE module_static_settings_changes (
                     change_seq INTEGER PRIMARY KEY AUTOINCREMENT,
                     tenant_id TEXT NOT NULL,
@@ -213,14 +216,13 @@ impl MigrationTrait for Migration {
                         );
                     END"#,
             ],
-            _ => return Err(DbErr::Custom("Unsupported database backend".to_string())),
         };
 
         for sql in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*sql).to_string(),
                 ))
                 .await?;
@@ -230,8 +232,9 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "DROP TRIGGER IF EXISTS trg_static_settings_localized_target_update ON module_static_localized_settings",
                 "DROP TRIGGER IF EXISTS trg_static_settings_localized_target_insert ON module_static_localized_settings",
                 "DROP FUNCTION IF EXISTS rustok_log_static_settings_localized_target()",
@@ -240,21 +243,20 @@ impl MigrationTrait for Migration {
                 "DROP FUNCTION IF EXISTS rustok_log_static_settings_base_projection()",
                 "DROP TABLE IF EXISTS module_static_settings_changes",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "DROP TRIGGER IF EXISTS trg_static_settings_localized_target_update",
                 "DROP TRIGGER IF EXISTS trg_static_settings_localized_target_insert",
                 "DROP TRIGGER IF EXISTS trg_static_settings_base_projection_update",
                 "DROP TRIGGER IF EXISTS trg_static_settings_base_projection_insert",
                 "DROP TABLE IF EXISTS module_static_settings_changes",
             ],
-            _ => return Err(DbErr::Custom("Unsupported database backend".to_string())),
         };
 
         for sql in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*sql).to_string(),
                 ))
                 .await?;

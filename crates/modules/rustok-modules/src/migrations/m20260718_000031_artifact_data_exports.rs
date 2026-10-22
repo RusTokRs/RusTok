@@ -1,6 +1,8 @@
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
+use crate::backend::SupportedBackend;
+
 /// Durable, redacted audit facts for bounded owner-only structured-data export
 /// pages. Exported values remain outside the audit record and outbox payload.
 #[derive(DeriveMigrationName)]
@@ -9,8 +11,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE module_artifact_data_exports (\
                     export_id UUID PRIMARY KEY,\
                     tenant_id UUID NOT NULL,\
@@ -36,7 +39,7 @@ impl MigrationTrait for Migration {
                  USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
                  WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "CREATE TABLE module_artifact_data_exports (\
                     export_id TEXT PRIMARY KEY,\
                     tenant_id TEXT NOT NULL,\
@@ -58,17 +61,12 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX module_artifact_data_exports_scope_idx \
                  ON module_artifact_data_exports (tenant_id, data_owner_id, namespace_instance_id, policy_revision, completed_at, export_id)",
             ],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "artifact data export migration does not support database backend {backend:?}"
-                )));
-            }
         };
         for statement in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;

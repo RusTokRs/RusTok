@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
+
+use crate::backend::SupportedBackend;
 
 /// Records when the active static-lifecycle aggregate claim was taken so an
 /// expired claim (crashed or never-released owner) can be CAS-reclaimed
@@ -23,12 +25,13 @@ const COLUMN: &str = "active_claimed_at";
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
         let connection = manager.get_connection();
-        match manager.get_database_backend() {
-            DbBackend::Postgres => {
+        match backend {
+            SupportedBackend::Postgres => {
                 connection
                     .execute_raw(Statement::from_string(
-                        DbBackend::Postgres,
+                        backend.db_backend(),
                         format!(
                             "ALTER TABLE IF EXISTS {TABLE} \
                              ADD COLUMN IF NOT EXISTS {COLUMN} TIMESTAMPTZ NULL"
@@ -36,52 +39,43 @@ impl MigrationTrait for Migration {
                     ))
                     .await?;
             }
-            DbBackend::Sqlite => {
+            SupportedBackend::Sqlite => {
                 if !sqlite_column_exists(connection, TABLE, COLUMN).await?
                     && sqlite_table_exists(connection, TABLE).await?
                 {
                     connection
                         .execute_raw(Statement::from_string(
-                            DbBackend::Sqlite,
+                            backend.db_backend(),
                             format!("ALTER TABLE {TABLE} ADD COLUMN {COLUMN} TEXT NULL"),
                         ))
                         .await?;
                 }
-            }
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "static lifecycle claim lease migration does not support database backend {backend:?}"
-                )));
             }
         }
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
         let connection = manager.get_connection();
-        match manager.get_database_backend() {
-            DbBackend::Postgres => {
+        match backend {
+            SupportedBackend::Postgres => {
                 connection
                     .execute_raw(Statement::from_string(
-                        DbBackend::Postgres,
+                        backend.db_backend(),
                         format!("ALTER TABLE IF EXISTS {TABLE} DROP COLUMN IF EXISTS {COLUMN}"),
                     ))
                     .await?;
             }
-            DbBackend::Sqlite => {
+            SupportedBackend::Sqlite => {
                 if sqlite_column_exists(connection, TABLE, COLUMN).await? {
                     connection
                         .execute_raw(Statement::from_string(
-                            DbBackend::Sqlite,
+                            backend.db_backend(),
                             format!("ALTER TABLE {TABLE} DROP COLUMN {COLUMN}"),
                         ))
                         .await?;
                 }
-            }
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "static lifecycle claim lease migration does not support database backend {backend:?}"
-                )));
             }
         }
         Ok(())
@@ -94,7 +88,7 @@ async fn sqlite_table_exists<C: ConnectionTrait>(
 ) -> Result<bool, DbErr> {
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            DbBackend::Sqlite,
+            backend.db_backend(),
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?1",
             [table.into()],
         ))
@@ -111,7 +105,7 @@ async fn sqlite_column_exists<C: ConnectionTrait>(
     // PRAGMA does not accept bound parameters for the table name.
     let rows = connection
         .query_all_raw(Statement::from_string(
-            DbBackend::Sqlite,
+            backend.db_backend(),
             format!("PRAGMA table_info({table})"),
         ))
         .await?;

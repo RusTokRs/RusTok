@@ -1,6 +1,8 @@
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
+use crate::backend::SupportedBackend;
+
 /// Adds the durable desired/observed native-distribution rollout aggregate.
 /// Deployment agents report evidence; the control plane never loads or starts
 /// the native artifact itself.
@@ -10,8 +12,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE module_static_distribution_rollouts (\
                     rollout_id UUID PRIMARY KEY,\
                     predecessor_rollout_id UUID NULL REFERENCES module_static_distribution_rollouts(rollout_id) ON DELETE RESTRICT,\
@@ -109,7 +112,7 @@ impl MigrationTrait for Migration {
                            (completed_at IS NOT NULL AND operation_kind = 'report' AND rollout_id IS NOT NULL AND rollout_revision IS NOT NULL AND rollout_state_revision IS NOT NULL AND rollout_status IS NOT NULL AND node_id IS NOT NULL AND role IS NOT NULL AND observation_revision IS NOT NULL AND assignment_phase IS NOT NULL))\
                 )",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "CREATE TABLE module_static_distribution_rollouts (\
                     rollout_id TEXT PRIMARY KEY, predecessor_rollout_id TEXT NULL REFERENCES module_static_distribution_rollouts(rollout_id) ON DELETE RESTRICT, distribution_release_id TEXT NOT NULL REFERENCES module_static_distribution_releases(distribution_release_id) ON DELETE RESTRICT, transition_kind TEXT NOT NULL CHECK (transition_kind IN ('update','recovery')),\
                     rollout_revision INTEGER NOT NULL UNIQUE CHECK (rollout_revision > 0), distribution_release_revision INTEGER NOT NULL CHECK (distribution_release_revision > 0), release_state_revision_at_request INTEGER NOT NULL CHECK (release_state_revision_at_request > 0), composition_revision INTEGER NOT NULL CHECK (composition_revision > 0),\
@@ -133,17 +136,12 @@ impl MigrationTrait for Migration {
                     CHECK ((completed_at IS NULL AND rollout_id IS NULL AND rollout_revision IS NULL AND rollout_state_revision IS NULL AND rollout_status IS NULL AND node_id IS NULL AND role IS NULL AND observation_revision IS NULL AND assignment_phase IS NULL) OR (completed_at IS NOT NULL AND operation_kind IN ('request','recovery') AND rollout_id IS NOT NULL AND rollout_revision IS NOT NULL AND rollout_state_revision IS NOT NULL AND rollout_status = 'preparing' AND node_id IS NULL AND role IS NULL AND observation_revision IS NULL AND assignment_phase IS NULL) OR (completed_at IS NOT NULL AND operation_kind = 'report' AND rollout_id IS NOT NULL AND rollout_revision IS NOT NULL AND rollout_state_revision IS NOT NULL AND rollout_status IS NOT NULL AND node_id IS NOT NULL AND role IS NOT NULL AND observation_revision IS NOT NULL AND assignment_phase IS NOT NULL))\
                 )",
             ],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "static distribution rollout migration does not support database backend {backend:?}"
-                )));
-            }
         };
         for statement in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;

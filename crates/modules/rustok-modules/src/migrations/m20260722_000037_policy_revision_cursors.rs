@@ -1,6 +1,8 @@
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
+use crate::backend::SupportedBackend;
+
 /// Persists one predecessor-bound policy cursor per tenant and outbox
 /// consumer. This is consumer state, not a second event journal.
 #[derive(DeriveMigrationName)]
@@ -9,8 +11,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE module_policy_revision_cursors (\
                     tenant_id UUID NOT NULL,\
                     consumer_key TEXT NOT NULL CHECK (length(trim(consumer_key)) BETWEEN 1 AND 128),\
@@ -23,24 +26,19 @@ impl MigrationTrait for Migration {
                  ON module_policy_revision_cursors USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
                  WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
             ],
-            DbBackend::Sqlite => &["CREATE TABLE module_policy_revision_cursors (\
+            SupportedBackend::Sqlite => &["CREATE TABLE module_policy_revision_cursors (\
                     tenant_id TEXT NOT NULL,\
                     consumer_key TEXT NOT NULL CHECK (length(trim(consumer_key)) BETWEEN 1 AND 128),\
                     current_revision TEXT NULL CHECK (current_revision IS NULL OR length(current_revision) = 71),\
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\
                     PRIMARY KEY (tenant_id, consumer_key)\
                 )"],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "policy revision cursor migration does not support database backend {backend:?}"
-                )));
-            }
         };
         for statement in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;

@@ -1,6 +1,8 @@
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
+use crate::backend::SupportedBackend;
+
 /// Adds immutable source lineage for every publication origin, including
 /// reviewed Alloy forks, and stores the exact installable artifact contract
 /// beside each published registry release.
@@ -10,8 +12,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "ALTER TABLE registry_publish_build_staging \
                  ADD COLUMN source_reference TEXT NULL \
                  CHECK (source_reference IS NULL OR length(trim(source_reference)) BETWEEN 1 AND 512)",
@@ -61,7 +64,7 @@ impl MigrationTrait for Migration {
                     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP\
                 )",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "ALTER TABLE registry_publish_build_staging \
                  ADD COLUMN source_reference TEXT NULL \
                  CHECK (source_reference IS NULL OR length(trim(source_reference)) BETWEEN 1 AND 512)",
@@ -111,17 +114,12 @@ impl MigrationTrait for Migration {
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
                 )",
             ],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "registry release artifact contracts do not support database backend {backend:?}"
-                )));
-            }
         };
         for statement in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;

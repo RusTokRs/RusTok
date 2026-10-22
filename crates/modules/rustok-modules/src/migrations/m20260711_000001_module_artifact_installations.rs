@@ -1,6 +1,8 @@
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
+use crate::backend::SupportedBackend;
+
 /// Creates the control-plane-owned, digest-pinned installation record.
 ///
 /// Artifact bytes remain in the platform CAS; this table stores the immutable
@@ -13,8 +15,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE module_artifact_installations (\
                     installation_id UUID PRIMARY KEY,\
                     scope_kind TEXT NOT NULL CHECK (scope_kind IN ('platform', 'tenant')),\
@@ -52,7 +55,7 @@ impl MigrationTrait for Migration {
                         OR scope_kind = 'platform' \
                         OR tenant_id::text = current_setting('rustok.tenant_id', true))",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "CREATE TABLE module_artifact_installations (\
                     installation_id TEXT PRIMARY KEY NOT NULL,\
                     scope_kind TEXT NOT NULL CHECK (scope_kind IN ('platform', 'tenant')),\
@@ -82,18 +85,13 @@ impl MigrationTrait for Migration {
                 "CREATE UNIQUE INDEX module_artifact_installations_platform_identity ON module_artifact_installations (slug, version, manifest_digest) WHERE scope_kind = 'platform'",
                 "CREATE UNIQUE INDEX module_artifact_installations_tenant_identity ON module_artifact_installations (tenant_id, slug, version, manifest_digest) WHERE scope_kind = 'tenant'",
             ],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "module artifact installation migration does not support database backend {backend:?}"
-                )));
-            }
         };
 
         for statement in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;

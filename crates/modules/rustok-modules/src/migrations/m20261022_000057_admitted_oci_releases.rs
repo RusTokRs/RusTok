@@ -1,6 +1,8 @@
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
+use crate::backend::SupportedBackend;
+
 /// Persists immutable admitted OCI releases, binding digest-pinned OCI identity,
 /// verified descriptor metadata, streamed platform-CAS payload receipts, and
 /// independently verified external prebuilt ingress evidence.
@@ -10,8 +12,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE module_admitted_oci_releases (\
                     release_digest TEXT PRIMARY KEY CHECK (release_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     scope_kind TEXT NOT NULL CHECK (scope_kind IN ('platform', 'tenant')),\
@@ -166,7 +169,7 @@ impl MigrationTrait for Migration {
                  USING (scope_kind = 'platform' OR tenant_id::text = current_setting('rustok.tenant_id', true)) \
                  WITH CHECK (scope_kind = 'platform' OR tenant_id::text = current_setting('rustok.tenant_id', true))",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "CREATE TABLE module_admitted_oci_releases (\
                     release_digest TEXT PRIMARY KEY NOT NULL CHECK (length(release_digest) = 71),\
                     scope_kind TEXT NOT NULL CHECK (scope_kind IN ('platform', 'tenant')),\
@@ -260,14 +263,13 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX idx_production_operations_slug \
                  ON module_production_operations (module_slug, tenant_id, work_generation)",
             ],
-            _ => return Err(DbErr::Custom("Unsupported database backend".to_string())),
         };
 
         for sql in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*sql).to_string(),
                 ))
                 .await?;
@@ -277,6 +279,7 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
         let statements = &[
             "DROP TABLE IF EXISTS module_production_operations",
             "DROP TABLE IF EXISTS module_artifact_work_generations",
@@ -289,7 +292,7 @@ impl MigrationTrait for Migration {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*sql).to_string(),
                 ))
                 .await?;

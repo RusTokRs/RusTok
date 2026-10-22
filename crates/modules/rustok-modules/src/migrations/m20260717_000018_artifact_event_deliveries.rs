@@ -1,6 +1,8 @@
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
+use crate::backend::SupportedBackend;
+
 /// Materializes owner-owned delivery state for an already durable platform
 /// event. This is not a second event journal: source identity remains in
 /// `sys_events`; the unique key records one binding-specific at-least-once
@@ -11,8 +13,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE module_artifact_event_deliveries (\
                     delivery_id UUID PRIMARY KEY,\
                     tenant_id UUID NOT NULL,\
@@ -44,7 +47,7 @@ impl MigrationTrait for Migration {
                  ON module_artifact_event_deliveries USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
                  WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "CREATE TABLE module_artifact_event_deliveries (\
                     delivery_id TEXT PRIMARY KEY NOT NULL,\
                     tenant_id TEXT NOT NULL,\
@@ -72,17 +75,12 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX module_artifact_event_deliveries_claim_idx \
                  ON module_artifact_event_deliveries (tenant_id, status, available_at, delivery_id)",
             ],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "artifact event-delivery migration does not support database backend {backend:?}"
-                )));
-            }
         };
         for statement in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;

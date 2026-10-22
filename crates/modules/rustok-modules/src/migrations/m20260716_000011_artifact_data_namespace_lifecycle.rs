@@ -1,6 +1,8 @@
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
+use crate::backend::SupportedBackend;
+
 /// Adds host-owned lifecycle and destructive-operation history around the
 /// structured-value namespace. Data writes cannot recreate a purged namespace.
 #[derive(DeriveMigrationName)]
@@ -9,8 +11,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE module_artifact_data_purge_operations (\
                     tenant_id UUID NOT NULL,\
                     installation_id UUID NOT NULL REFERENCES module_artifact_installations(installation_id),\
@@ -33,7 +36,7 @@ impl MigrationTrait for Migration {
                  USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
                  WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
             ],
-            DbBackend::Sqlite => &["CREATE TABLE module_artifact_data_purge_operations (\
+            SupportedBackend::Sqlite => &["CREATE TABLE module_artifact_data_purge_operations (\
                     tenant_id TEXT NOT NULL,\
                     installation_id TEXT NOT NULL REFERENCES module_artifact_installations(installation_id),\
                     data_owner_id TEXT NOT NULL,\
@@ -50,17 +53,12 @@ impl MigrationTrait for Migration {
                     completed_at TEXT NOT NULL,\
                     PRIMARY KEY (tenant_id, installation_id, idempotency_key)\
                 )"],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "artifact data namespace lifecycle migration does not support database backend {backend:?}"
-                )));
-            }
         };
         for statement in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;

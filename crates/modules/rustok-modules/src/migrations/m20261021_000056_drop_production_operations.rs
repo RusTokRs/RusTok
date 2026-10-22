@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
+
+use crate::backend::SupportedBackend;
 
 /// Drops `module_production_operations` (audit remediation, Phase E
 /// follow-up).
@@ -17,18 +19,14 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        match manager.get_database_backend() {
-            DbBackend::Postgres | DbBackend::Sqlite => {}
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "drop production operations migration does not support database backend {backend:?}"
-                )));
-            }
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        match backend {
+            SupportedBackend::Postgres | SupportedBackend::Sqlite => {}
         }
         manager
             .get_connection()
             .execute_raw(Statement::from_string(
-                manager.get_database_backend(),
+                backend.db_backend(),
                 "DROP TABLE IF EXISTS module_production_operations",
             ))
             .await?;
@@ -36,8 +34,9 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[_] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[_] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE module_production_operations (\
                     operation_id UUID PRIMARY KEY,\
                     installation_id UUID NOT NULL REFERENCES module_artifact_installations(installation_id) ON DELETE RESTRICT,\
@@ -66,7 +65,7 @@ impl MigrationTrait for Migration {
                  USING (scope_kind = 'platform' OR tenant_id::text = current_setting('rustok.tenant_id', true)) \
                  WITH CHECK (scope_kind = 'platform' OR tenant_id::text = current_setting('rustok.tenant_id', true))",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "CREATE TABLE module_production_operations (\
                     operation_id TEXT PRIMARY KEY NOT NULL,\
                     installation_id TEXT NOT NULL REFERENCES module_artifact_installations(installation_id) ON DELETE RESTRICT,\
@@ -90,17 +89,12 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX idx_production_operations_slug \
                  ON module_production_operations (module_slug, tenant_id, work_generation)",
             ],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "drop production operations migration does not support database backend {backend:?}"
-                )));
-            }
         };
         for statement in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;

@@ -1,6 +1,8 @@
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
+use crate::backend::SupportedBackend;
+
 /// Serializes activation of declarative UI resources. Rows are durable global
 /// lock identities, not UI state; the activation transaction retains each row
 /// lock while it verifies that no active artifact owns the same route or
@@ -11,29 +13,25 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &["CREATE TABLE module_artifact_ui_contribution_locks (\
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &["CREATE TABLE module_artifact_ui_contribution_locks (\
                     resource_kind TEXT NOT NULL CHECK (resource_kind IN ('navigation_route', 'storefront_slot')),\
                     resource_key TEXT NOT NULL CHECK (length(trim(resource_key)) BETWEEN 1 AND 128),\
                     PRIMARY KEY (resource_kind, resource_key)\
                 )"],
-            DbBackend::Sqlite => &["CREATE TABLE module_artifact_ui_contribution_locks (\
+            SupportedBackend::Sqlite => &["CREATE TABLE module_artifact_ui_contribution_locks (\
                 resource_kind TEXT NOT NULL CHECK (resource_kind IN ('navigation_route', 'storefront_slot')),\
                 resource_key TEXT NOT NULL CHECK (length(trim(resource_key)) BETWEEN 1 AND 128),\
                 PRIMARY KEY (resource_kind, resource_key)\
             )"],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "artifact UI contribution lock migration does not support database backend {backend:?}"
-                )));
-            }
         };
 
         for statement in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;

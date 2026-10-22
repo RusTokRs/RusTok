@@ -1,6 +1,8 @@
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
+use crate::backend::SupportedBackend;
+
 /// Adds exact-locale storage for owner-declared localized leaves of static
 /// module settings. Language-neutral settings remain in `tenant_modules`.
 #[derive(DeriveMigrationName)]
@@ -9,8 +11,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE module_static_localized_settings (\
                     tenant_id UUID NOT NULL,\
                     module_slug TEXT NOT NULL CHECK (length(trim(module_slug)) BETWEEN 1 AND 191),\
@@ -31,7 +34,7 @@ impl MigrationTrait for Migration {
                  USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
                  WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "CREATE TABLE module_static_localized_settings (\
                     tenant_id TEXT NOT NULL,\
                     module_slug TEXT NOT NULL CHECK (length(trim(module_slug)) BETWEEN 1 AND 191),\
@@ -47,14 +50,13 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX idx_module_static_localized_settings_locale \
                  ON module_static_localized_settings (tenant_id, module_slug, locale, field_id)",
             ],
-            _ => return Err(DbErr::Custom("Unsupported database backend".to_string())),
         };
 
         for sql in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*sql).to_string(),
                 ))
                 .await?;
@@ -63,10 +65,11 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
         manager
             .get_connection()
             .execute_raw(Statement::from_string(
-                manager.get_database_backend(),
+                backend.db_backend(),
                 "DROP TABLE IF EXISTS module_static_localized_settings".to_string(),
             ))
             .await?;

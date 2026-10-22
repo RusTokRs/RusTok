@@ -1,6 +1,8 @@
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
+use crate::backend::SupportedBackend;
+
 /// Persists separately signed operations-tool releases, operations-tool maintenance operations,
 /// and host component desired/observed assignments.
 #[derive(DeriveMigrationName)]
@@ -9,8 +11,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE module_operations_tool_releases (\
                     release_id UUID PRIMARY KEY,\
                     version TEXT NOT NULL UNIQUE CHECK (length(trim(version)) > 0),\
@@ -60,7 +63,7 @@ impl MigrationTrait for Migration {
                 )",
                 "CREATE INDEX idx_operations_tool_assignments_op ON module_operations_tool_assignments (operation_id)",
             ],
-            _ => &[
+            SupportedBackend::Sqlite => &[
                 "CREATE TABLE module_operations_tool_releases (\
                     release_id TEXT PRIMARY KEY,\
                     version TEXT NOT NULL UNIQUE CHECK (length(trim(version)) > 0),\
@@ -116,7 +119,7 @@ impl MigrationTrait for Migration {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;
@@ -126,6 +129,7 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
         let statements: &[&str] = &[
             "DROP TABLE IF EXISTS module_operations_tool_assignments",
             "DROP TABLE IF EXISTS module_operations_tool_maintenance_operations",
@@ -136,7 +140,7 @@ impl MigrationTrait for Migration {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;

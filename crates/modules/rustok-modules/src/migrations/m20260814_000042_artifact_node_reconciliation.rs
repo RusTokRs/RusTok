@@ -3,6 +3,8 @@
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
+use crate::backend::SupportedBackend;
+
 /// Creates the revisioned desired/observed aggregate for dynamic artifact
 /// materialization. Node agents only report the owner-selected identity; they
 /// cannot choose installations or mutate aggregate heads.
@@ -12,8 +14,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE module_artifact_node_reconciliations (\
                     reconciliation_id UUID PRIMARY KEY,\
                     predecessor_reconciliation_id UUID NULL REFERENCES module_artifact_node_reconciliations(reconciliation_id) ON DELETE RESTRICT,\
@@ -115,7 +118,7 @@ impl MigrationTrait for Migration {
                            (completed_at IS NOT NULL AND operation_kind = 'report' AND reconciliation_id IS NOT NULL AND reconciliation_revision IS NOT NULL AND reconciliation_state_revision IS NOT NULL AND reconciliation_status IS NOT NULL AND node_id IS NOT NULL AND installation_id IS NOT NULL AND observation_revision IS NOT NULL AND assignment_phase IS NOT NULL))\
                 )",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "CREATE TABLE module_artifact_node_reconciliations (\
                     reconciliation_id TEXT PRIMARY KEY, predecessor_reconciliation_id TEXT NULL REFERENCES module_artifact_node_reconciliations(reconciliation_id) ON DELETE RESTRICT, reconciliation_revision INTEGER NOT NULL UNIQUE CHECK (reconciliation_revision > 0),\
                     topology_reference TEXT NOT NULL CHECK (length(trim(topology_reference)) BETWEEN 1 AND 512), topology_digest TEXT NOT NULL CHECK (length(topology_digest) = 71 AND substr(topology_digest, 1, 7) = 'sha256:' AND substr(topology_digest, 8) NOT GLOB '*[^0-9a-f]*'), policy_revision TEXT NOT NULL CHECK (length(policy_revision) = 71 AND substr(policy_revision, 1, 7) = 'sha256:' AND substr(policy_revision, 8) NOT GLOB '*[^0-9a-f]*'), target_assignment_count INTEGER NOT NULL CHECK (target_assignment_count BETWEEN 1 AND 1024),\
@@ -167,18 +170,13 @@ impl MigrationTrait for Migration {
                     CHECK ((completed_at IS NULL AND reconciliation_id IS NULL AND reconciliation_revision IS NULL AND reconciliation_state_revision IS NULL AND reconciliation_status IS NULL AND node_id IS NULL AND installation_id IS NULL AND observation_revision IS NULL AND assignment_phase IS NULL) OR (completed_at IS NOT NULL AND operation_kind = 'request' AND reconciliation_id IS NOT NULL AND reconciliation_revision IS NOT NULL AND reconciliation_state_revision IS NOT NULL AND reconciliation_status = 'preparing' AND node_id IS NULL AND installation_id IS NULL AND observation_revision IS NULL AND assignment_phase IS NULL) OR (completed_at IS NOT NULL AND operation_kind = 'report' AND reconciliation_id IS NOT NULL AND reconciliation_revision IS NOT NULL AND reconciliation_state_revision IS NOT NULL AND reconciliation_status IS NOT NULL AND node_id IS NOT NULL AND installation_id IS NOT NULL AND observation_revision IS NOT NULL AND assignment_phase IS NOT NULL))\
                 )",
             ],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "artifact node reconciliation migration does not support {backend:?}"
-                )));
-            }
         };
 
         for statement in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;

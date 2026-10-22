@@ -1,6 +1,8 @@
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
+use crate::backend::SupportedBackend;
+
 /// Durable, tenant-scoped references to private object bytes that are no
 /// longer reachable from artifact data metadata. A retention-policy snapshot
 /// must approve a candidate before the owner GC service deletes its bytes.
@@ -10,8 +12,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE module_artifact_data_object_gc_candidates (\
                     candidate_id UUID PRIMARY KEY,\
                     tenant_id UUID NOT NULL,\
@@ -29,7 +32,7 @@ impl MigrationTrait for Migration {
                  USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
                  WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "CREATE TABLE module_artifact_data_object_gc_candidates (\
                     candidate_id TEXT PRIMARY KEY,\
                     tenant_id TEXT NOT NULL,\
@@ -42,17 +45,12 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX module_artifact_data_object_gc_candidates_tenant_idx \
                  ON module_artifact_data_object_gc_candidates (tenant_id, queued_at, candidate_id)",
             ],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "artifact data object GC candidate migration does not support database backend {backend:?}"
-                )));
-            }
         };
         for statement in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;
