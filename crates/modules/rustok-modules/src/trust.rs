@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{ModuleArtifactDescriptor, OciArtifactReference};
@@ -170,13 +171,26 @@ impl TrustVerificationDecision {
     }
 }
 
+/// Failure of a [`TrustVerifier`] port. A verifier that could evaluate the
+/// request reports its verdict inside [`TrustVerificationDecision`]; this
+/// error is reserved for requests the verifier could not evaluate at all.
+/// `InvalidRequest` is terminal for the submitted evidence, while
+/// `Unavailable` covers verifier, transport, and evidence-fetch outages.
+#[derive(Debug, Error)]
+pub enum TrustVerificationError {
+    #[error("{0}")]
+    InvalidRequest(String),
+    #[error("{0}")]
+    Unavailable(String),
+}
+
 /// Owner port implemented by the isolated verification worker adapter.
 #[async_trait]
 pub trait TrustVerifier: Send + Sync {
     async fn verify(
         &self,
         request: TrustVerificationRequest,
-    ) -> Result<TrustVerificationDecision, String>;
+    ) -> Result<TrustVerificationDecision, TrustVerificationError>;
 }
 
 #[cfg(test)]

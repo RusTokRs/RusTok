@@ -48,7 +48,10 @@ pub enum OciReleaseAdmissionError {
     InvalidLayer(String),
 
     #[error("Trust verification failed: {0}")]
-    TrustVerification(String),
+    TrustVerification(#[from] crate::TrustVerificationError),
+
+    #[error("Trust verification decision rejected artifact admission")]
+    VerificationRejected,
 
     #[error("Platform CAS storage error: {0}")]
     CasStorage(String),
@@ -346,12 +349,10 @@ impl OciReleaseAdmissionService {
             let decision = verifier
                 .verify(req)
                 .await
-                .map_err(|e| OciReleaseAdmissionError::TrustVerification(e.to_string()))?;
+                .map_err(OciReleaseAdmissionError::TrustVerification)?;
 
             if !decision.admitted() {
-                return Err(OciReleaseAdmissionError::TrustVerification(
-                    "trust verification decision rejected artifact admission".to_string(),
-                ));
+                return Err(OciReleaseAdmissionError::VerificationRejected);
             }
         }
 

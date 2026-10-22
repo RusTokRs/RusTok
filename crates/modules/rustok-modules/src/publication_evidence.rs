@@ -10,7 +10,8 @@ use crate::{
     ModuleArtifactPackage, ModuleBuildServiceAttestationCommand, ModuleGovernanceError,
     ModulePlatformAdmissionCommand, ModulePlatformPublicationSource,
     ModulePublicationEvidenceResult, OciArtifactReference, SeaOrmModuleGovernanceService,
-    TrustVerificationRequest, TrustVerifier, normalize_module_registry_id,
+    TrustVerificationError, TrustVerificationRequest, TrustVerifier,
+    normalize_module_registry_id,
 };
 
 /// Deployment policy selected for one platform-built publication verification.
@@ -61,7 +62,7 @@ pub enum ModulePlatformPublicationEvidenceError {
     #[error("published OCI artifact does not match the owner-selected build")]
     ArtifactIdentityMismatch,
     #[error("isolated platform publication verification failed: {0}")]
-    Verification(String),
+    Verification(TrustVerificationError),
     #[error("isolated platform publication verification did not admit the selected artifact")]
     VerificationRejected,
     #[error("platform publication evidence could not be recorded: {0}")]
@@ -773,7 +774,7 @@ mod tests {
         async fn verify(
             &self,
             request: TrustVerificationRequest,
-        ) -> Result<TrustVerificationDecision, String> {
+        ) -> Result<TrustVerificationDecision, TrustVerificationError> {
             Ok(admitted_decision(&request))
         }
     }
@@ -787,7 +788,7 @@ mod tests {
         async fn verify(
             &self,
             request: TrustVerificationRequest,
-        ) -> Result<TrustVerificationDecision, String> {
+        ) -> Result<TrustVerificationDecision, TrustVerificationError> {
             let decision = admitted_decision(&request);
             self.requests
                 .lock()

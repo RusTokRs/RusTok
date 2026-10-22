@@ -51,7 +51,7 @@ where
             .verifier
             .verify(request)
             .await
-            .map_err(Status::failed_precondition)?;
+            .map_err(|error| Status::failed_precondition(error.to_string()))?;
         let payload =
             serde_json::to_vec(&decision).map_err(|error| Status::internal(error.to_string()))?;
         Ok(Response::new(VerifyResponse {
@@ -65,7 +65,8 @@ mod tests {
     use super::*;
     use rustok_modules::{
         ModuleArtifactDescriptor, OciArtifactReference, TrustEvidenceKind, TrustEvidenceReference,
-        TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
+        TrustVerificationDecision, TrustVerificationError, TrustVerificationRequest,
+        TrustVerifier,
     };
 
     struct MockVerifier {
@@ -77,7 +78,7 @@ mod tests {
         async fn verify(
             &self,
             request: TrustVerificationRequest,
-        ) -> std::result::Result<TrustVerificationDecision, String> {
+        ) -> std::result::Result<TrustVerificationDecision, TrustVerificationError> {
             if self.admitted {
                 Ok(TrustVerificationDecision {
                     signer_identity: "test-signer".to_string(),
@@ -96,7 +97,9 @@ mod tests {
                     }],
                 })
             } else {
-                Err("trust verification failed".to_string())
+                Err(TrustVerificationError::Unavailable(
+                    "trust verification failed".to_string(),
+                ))
             }
         }
     }

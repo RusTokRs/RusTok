@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use rustok_modules::{
     TrustAlloyWorkspaceProvenance, TrustEvidenceKind, TrustEvidenceReference,
-    TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
+    TrustVerificationDecision, TrustVerificationError, TrustVerificationRequest, TrustVerifier,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -425,9 +425,14 @@ impl TrustVerifier for CosignTrustVerifier {
     async fn verify(
         &self,
         request: TrustVerificationRequest,
-    ) -> Result<TrustVerificationDecision, String> {
-        self.policy.validate()?;
-        let (signer_identity, verified_evidence) = self.find_verified_trust_root(&request).await?;
+    ) -> Result<TrustVerificationDecision, TrustVerificationError> {
+        self.policy
+            .validate()
+            .map_err(TrustVerificationError::InvalidRequest)?;
+        let (signer_identity, verified_evidence) = self
+            .find_verified_trust_root(&request)
+            .await
+            .map_err(TrustVerificationError::Unavailable)?;
         let evidence =
             build_evidence_references(&request.reference.canonical(), &verified_evidence);
         Ok(TrustVerificationDecision {

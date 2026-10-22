@@ -356,7 +356,10 @@ pub enum ExternalPrebuiltIngressError {
     InvalidLayer(String),
 
     #[error("Trust verification failed: {0}")]
-    TrustVerification(String),
+    TrustVerification(#[from] crate::TrustVerificationError),
+
+    #[error("Trust verification decision rejected external prebuilt admission")]
+    VerificationRejected,
 
     #[error("Platform CAS storage error: {0}")]
     CasStorage(String),
@@ -683,12 +686,10 @@ impl ExternalPrebuiltIngressService {
             let decision = verifier
                 .verify(req)
                 .await
-                .map_err(|e| ExternalPrebuiltIngressError::TrustVerification(e.to_string()))?;
+                .map_err(ExternalPrebuiltIngressError::TrustVerification)?;
 
             if !decision.admitted() {
-                return Err(ExternalPrebuiltIngressError::TrustVerification(
-                    "trust verification decision rejected external prebuilt admission".to_string(),
-                ));
+                return Err(ExternalPrebuiltIngressError::VerificationRejected);
             }
         }
 

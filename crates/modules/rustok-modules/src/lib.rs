@@ -657,7 +657,7 @@ pub use trust::{
     ALLOY_WORKSPACE_PUBLICATION_BUILD_TYPE, ALLOY_WORKSPACE_PUBLICATION_BUILDER_ID,
     ALLOY_WORKSPACE_PUBLICATION_SOURCE_REF, ALLOY_WORKSPACE_PUBLICATION_SOURCE_URI,
     TrustAlloyWorkspaceProvenance, TrustEvidenceKind, TrustEvidenceReference, TrustPolicyRevision,
-    TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
+    TrustVerificationDecision, TrustVerificationError, TrustVerificationRequest, TrustVerifier,
 };
 
 /// Mandatory Core entry point for module and marketplace control-plane ownership.

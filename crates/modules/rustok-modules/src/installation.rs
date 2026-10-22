@@ -31,7 +31,8 @@ use crate::{
     ModuleCommandContext, ModuleDependencyLockGraph, ModuleTransitionCheckpoint,
     ModuleTransitionState, RetentionHoldKind, RetentionHoldRecord, RetentionHoldStore,
     RetentionTarget, SeaOrmSecurityEpochStore, TransitionCheckpointStore, TrustEvidenceReference,
-    TrustPolicyRevision, TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
+    TrustPolicyRevision, TrustVerificationDecision, TrustVerificationError,
+    TrustVerificationRequest, TrustVerifier,
 };
 
 const MAX_ARTIFACT_MIGRATION_CHECKPOINT_BYTES: usize = 16 * 1024;
@@ -5068,7 +5069,7 @@ fn admission_values(
         || evidence.payload_digest != staged.digest
         || evidence.media_type != staged.media_type
     {
-        return Err(ModuleInstallationError::TrustVerification(
+        return Err(ModuleInstallationError::VerificationMismatch(
             "verification evidence does not match the admitted artifact".into(),
         ));
     }
@@ -5266,7 +5267,7 @@ where
                 != verification_request.capability_policy_revision
             || !decision.admitted()
         {
-            return Err(ModuleInstallationError::TrustVerification(
+            return Err(ModuleInstallationError::VerificationMismatch(
                 "verification decision is not admitted for the requested policy revisions".into(),
             ));
         }
@@ -5434,7 +5435,9 @@ pub enum ModuleInstallationError {
     #[error("artifact dependency lock is invalid: {0}")]
     DependencyLock(String),
     #[error("artifact trust verification failed: {0}")]
-    TrustVerification(String),
+    TrustVerification(#[from] TrustVerificationError),
+    #[error("artifact trust verification did not admit the artifact: {0}")]
+    VerificationMismatch(String),
     #[error("artifact permission registration failed: {0}")]
     PermissionRegistration(String),
 }
@@ -6074,7 +6077,7 @@ mod tests {
         async fn verify(
             &self,
             request: TrustVerificationRequest,
-        ) -> Result<TrustVerificationDecision, String> {
+        ) -> Result<TrustVerificationDecision, TrustVerificationError> {
             Ok(TrustVerificationDecision {
                 signer_identity: "test.signer.example".to_string(),
                 trust_policy_revision: request.trust_policy_revision,
