@@ -43,7 +43,7 @@ impl SeaOrmModuleGovernanceService {
             ""
         };
         let request = tx
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT slug, revision, status, artifact_origin, artifact_checksum_sha256 \
@@ -73,7 +73,7 @@ impl SeaOrmModuleGovernanceService {
 
         let staging_id = self.infrastructure.prefixed_id("rpes");
         let inserted = tx
-.execute_raw(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "INSERT INTO registry_publish_external_staging \
@@ -134,7 +134,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
         if inserted.rows_affected() == 0 {
             let existing = tx
-.query_one_raw(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend.db_backend(),
                     format!(
                         "SELECT id, expected_revision, artifact_digest, source_evidence_kind, source_reference, source_digest, \
@@ -251,7 +251,7 @@ impl SeaOrmModuleGovernanceService {
             });
         }
         let request_updated = tx
-.execute_raw(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
@@ -275,7 +275,7 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?);
         }
-tx.execute_raw(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
@@ -337,7 +337,7 @@ pub(crate) async fn external_prebuilt_supply_chain_evidence(
 ) -> Result<Option<(String, String)>, ModuleGovernanceError> {
     let mark = |n| backend.placeholder(n);
     let Some(row) = tx
-.query_one_raw(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "SELECT request.slug, request.version, request.status, request.artifact_origin, \

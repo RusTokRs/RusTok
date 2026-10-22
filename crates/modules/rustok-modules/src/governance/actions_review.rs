@@ -49,7 +49,7 @@ impl SeaOrmModuleGovernanceService {
             return Ok(());
         }
         let request = tx
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT slug, version, revision, status, CAST(validation_errors AS TEXT) AS validation_errors \
@@ -111,7 +111,7 @@ impl SeaOrmModuleGovernanceService {
         }
         let validation_errors = serde_json::json!(deduplicated);
         let update = tx
-.execute_raw(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "UPDATE registry_publish_requests \
@@ -143,7 +143,7 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?);
         }
-tx.execute_raw(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
@@ -228,7 +228,7 @@ tx.execute_raw(Statement::from_sql_and_values(
             return Ok(());
         }
         let request = tx
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT slug, version, revision, status, CAST(publisher_principal AS TEXT) AS publisher_principal \
@@ -270,7 +270,7 @@ tx.execute_raw(Statement::from_sql_and_values(
             .transpose()
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let update = tx
-.execute_raw(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "UPDATE registry_publish_requests \
@@ -303,7 +303,7 @@ tx.execute_raw(Statement::from_sql_and_values(
             )
             .await?);
         }
-tx.execute_raw(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
@@ -389,7 +389,7 @@ tx.execute_raw(Statement::from_sql_and_values(
             return Ok(());
         }
         let request = tx
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT slug, version, revision, status, CAST(publisher_principal AS TEXT) AS publisher_principal \
@@ -434,7 +434,7 @@ tx.execute_raw(Statement::from_sql_and_values(
             .transpose()
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let update = tx
-.execute_raw(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "UPDATE registry_publish_requests \
@@ -469,7 +469,7 @@ tx.execute_raw(Statement::from_sql_and_values(
             )
             .await?);
         }
-tx.execute_raw(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \

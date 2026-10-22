@@ -76,7 +76,7 @@ impl SeaOrmModuleGovernanceService {
             ""
         };
         let request = tx
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT slug, version, revision, status, artifact_origin, artifact_checksum_sha256, \
@@ -134,7 +134,7 @@ impl SeaOrmModuleGovernanceService {
 
         let staging_id = self.infrastructure.prefixed_id("rpbs");
         let inserted = tx
-.execute_raw(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "INSERT INTO registry_publish_build_staging \
@@ -175,7 +175,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
         if inserted.rows_affected() == 0 {
             let existing = tx
-.query_one_raw(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend.db_backend(),
                     format!(
                         "SELECT id, expected_revision, CAST(tenant_id AS TEXT) AS tenant_id, \
@@ -277,7 +277,7 @@ impl SeaOrmModuleGovernanceService {
             });
         }
         let request_updated = tx
-.execute_raw(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
@@ -321,7 +321,7 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?;
         }
-tx.execute_raw(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
@@ -382,7 +382,7 @@ tx.execute_raw(Statement::from_sql_and_values(
         let mark = |position| backend.placeholder(position);
         let row = self
             .db
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT request.slug, request.version, request.revision, request.status, request.artifact_origin, \
@@ -486,7 +486,7 @@ tx.execute_raw(Statement::from_sql_and_values(
         let mark = |position| backend.placeholder(position);
         let row = self
             .db
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT request.slug, request.version, request.revision, request.status, \

@@ -18,7 +18,7 @@ pub(crate) async fn alloy_descriptor_for_validation_work_item(
 ) -> Result<crate::ModuleArtifactDescriptor, ModuleGovernanceError> {
     let mark = |position| backend.placeholder(position);
     let stage = transaction
-.query_one_raw(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "SELECT CAST(descriptor AS TEXT) AS descriptor, descriptor_digest \
@@ -103,7 +103,7 @@ pub(crate) async fn terminalize_invalid_validation_work_item(
     };
     let errors = serde_json::json!([VALIDATION_WORK_ITEM_INVALID_ERROR]);
     let request_updated = tx
-.execute_raw(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "UPDATE registry_publish_requests \
@@ -138,7 +138,7 @@ pub(crate) async fn terminalize_invalid_validation_work_item(
         .await?);
     }
     let job_updated = tx
-.execute_raw(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "UPDATE registry_validation_jobs \
@@ -185,7 +185,7 @@ pub(crate) async fn terminalize_invalid_validation_work_item(
         ),
     ];
     for (event_type, details) in events {
-tx.execute_raw(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \

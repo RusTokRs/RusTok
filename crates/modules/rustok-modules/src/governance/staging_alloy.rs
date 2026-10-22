@@ -27,7 +27,7 @@ impl SeaOrmModuleGovernanceService {
             ""
         };
         let request = tx
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT slug, version, revision, status, artifact_origin, artifact_checksum_sha256, \
@@ -95,7 +95,7 @@ impl SeaOrmModuleGovernanceService {
         let descriptor_digest = crate::canonical_artifact_descriptor_digest(&command.descriptor);
         let descriptor = serde_json::to_value(&command.descriptor).map_err(store_error)?;
         let inserted = tx
-.execute_raw(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "INSERT INTO registry_publish_alloy_staging \
@@ -185,7 +185,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
         if inserted.rows_affected() == 0 {
             let existing = tx
-.query_one_raw(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend.db_backend(),
                     format!(
                         "SELECT id, expected_revision, CAST(alloy_tenant_id AS TEXT) AS alloy_tenant_id, \
@@ -337,7 +337,7 @@ impl SeaOrmModuleGovernanceService {
             });
         }
         let request_updated = tx
-.execute_raw(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
@@ -361,7 +361,7 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?);
         }
-tx.execute_raw(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
@@ -433,7 +433,7 @@ pub(crate) async fn alloy_authored_supply_chain_evidence(
 ) -> Result<Option<(String, String)>, ModuleGovernanceError> {
     let mark = |n| backend.placeholder(n);
     let Some(row) = tx
-.query_one_raw(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "SELECT request.slug, request.version, request.status, request.artifact_origin, \
@@ -540,7 +540,7 @@ pub(crate) async fn active_published_rhai_parent_exists(
     let checksum = receipt_digest_sha256(&parent.digest)
         .map_err(|_| ModuleGovernanceError::InvalidAlloyAuthoredStageCommand)?;
     let mark = |position| backend.placeholder(position);
-tx.query_one_raw(Statement::from_sql_and_values(
+    tx.query_one_raw(Statement::from_sql_and_values(
         backend.db_backend(),
         format!(
             "SELECT 1 FROM registry_module_releases AS release \

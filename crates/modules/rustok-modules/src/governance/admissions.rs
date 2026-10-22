@@ -26,7 +26,7 @@ pub(crate) async fn canonical_marketplace_artifact_contract(
 > {
     let mark = |position| backend.placeholder(position);
     let admitted = transaction
-.query_one_raw(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "SELECT registry_id, repository, manifest_digest, payload_digest, \
@@ -83,7 +83,7 @@ pub(crate) async fn canonical_marketplace_artifact_contract(
     let (source_reference, source_digest, parent_release) = match artifact_origin {
         ModulePublicationArtifactOrigin::PlatformBuilt => {
             let source = transaction
-.query_one_raw(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend.db_backend(),
                     format!(
                         "SELECT source_reference, source_digest, \
@@ -123,7 +123,7 @@ pub(crate) async fn canonical_marketplace_artifact_contract(
         }
         ModulePublicationArtifactOrigin::ExternalPrebuilt => {
             let source = transaction
-.query_one_raw(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend.db_backend(),
                     format!(
                         "SELECT source_reference, source_digest \
@@ -154,7 +154,7 @@ pub(crate) async fn canonical_marketplace_artifact_contract(
         }
         ModulePublicationArtifactOrigin::AlloyAuthored => {
             let source = transaction
-.query_one_raw(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend.db_backend(),
                     format!(
                         "SELECT CAST(alloy_tenant_id AS TEXT) AS alloy_tenant_id, \
@@ -353,7 +353,7 @@ pub(crate) async fn persist_published_artifact_contract(
     let descriptor_json = serde_json::to_value(descriptor).map_err(store_error)?;
     let lineage_json = serde_json::to_value(lineage).map_err(store_error)?;
     transaction
-.execute_raw(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "INSERT INTO registry_module_release_artifacts \
@@ -377,7 +377,7 @@ pub(crate) async fn persist_published_artifact_contract(
         .await
         .map_err(store_error)?;
     let stored = transaction
-.query_one_raw(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "SELECT request_id, CAST(artifact AS TEXT) AS artifact, \
@@ -452,7 +452,7 @@ pub(crate) async fn persist_platform_admission_contract(
     let mark = |position| backend.placeholder(position);
     let now = backend.now_sql();
     transaction
-.execute_raw(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "INSERT INTO registry_publish_platform_admissions \
@@ -507,7 +507,7 @@ pub(crate) async fn persist_platform_admission_contract(
         .map_err(store_error)?;
 
     let stored = transaction
-.query_one_raw(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "SELECT registry_id, registry, repository, manifest_digest, payload_digest, \

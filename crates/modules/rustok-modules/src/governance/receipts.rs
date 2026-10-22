@@ -22,7 +22,7 @@ pub(crate) async fn release_yank_replay(
 ) -> Result<bool, ModuleGovernanceError> {
     let mark = |n| backend.placeholder(n);
     let existing = tx
-.query_one_raw(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "SELECT CAST(actor_id AS TEXT) AS actor_id, trace_id, \
@@ -88,7 +88,7 @@ pub(crate) async fn record_release_yank_receipt(
     receipt: &ReleaseYankReceipt<'_>,
 ) -> Result<(), ModuleGovernanceError> {
     let mark = |n| backend.placeholder(n);
-tx.execute_raw(Statement::from_sql_and_values(
+    tx.execute_raw(Statement::from_sql_and_values(
         backend.db_backend(),
         format!(
             "INSERT INTO registry_release_yank_operations \
@@ -142,7 +142,7 @@ pub(crate) async fn owner_transfer_replay(
     receipt: &OwnerTransferReceipt<'_>,
 ) -> Result<bool, ModuleGovernanceError> {
     let mark = |n| backend.placeholder(n);
-let existing = tx.query_one_raw(Statement::from_sql_and_values(
+    let existing = tx.query_one_raw(Statement::from_sql_and_values(
         backend.db_backend(),
         format!("SELECT CAST(actor_id AS TEXT) AS actor_id, trace_id, CAST(correlation_id AS TEXT) AS correlation_id, CAST(previous_owner_principal AS TEXT) AS previous_owner_principal, CAST(new_owner_principal AS TEXT) AS new_owner_principal, CAST(actor_principal AS TEXT) AS actor_principal, actor_can_manage_modules, reason, reason_code FROM registry_owner_transfer_operations WHERE slug = {} AND idempotency_key = {}", mark(1), mark(2)),
         vec![receipt.slug.to_string().into(), backend.uuid_value(receipt.context.idempotency_key)],
@@ -210,7 +210,7 @@ pub(crate) async fn author_signature_evidence_replay(
 ) -> Result<Option<ModulePublicationEvidenceResult>, ModuleGovernanceError> {
     let mark = |n| backend.placeholder(n);
     let existing = tx
-.query_one_raw(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "SELECT expected_revision, CAST(actor_id AS TEXT) AS actor_id, trace_id, \
@@ -298,7 +298,7 @@ pub(crate) async fn record_author_signature_evidence_receipt(
     result: &ModulePublicationEvidenceResult,
 ) -> Result<(), ModuleGovernanceError> {
     let mark = |n| backend.placeholder(n);
-tx.execute_raw(Statement::from_sql_and_values(
+    tx.execute_raw(Statement::from_sql_and_values(
         backend.db_backend(),
         format!(
             "INSERT INTO registry_author_signature_evidence_operations \
@@ -359,7 +359,7 @@ pub(crate) async fn publish_artifact_replay(
 ) -> Result<Option<ModulePublishArtifactAttachResult>, ModuleGovernanceError> {
     let mark = |n| backend.placeholder(n);
     let existing = tx
-.query_one_raw(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "SELECT expected_revision, CAST(actor_id AS TEXT) AS actor_id, trace_id, \
@@ -448,7 +448,7 @@ pub(crate) async fn record_publish_artifact_receipt(
 ) -> Result<(), ModuleGovernanceError> {
     let mark = |n| backend.placeholder(n);
     let command = receipt.command;
-tx.execute_raw(Statement::from_sql_and_values(
+    tx.execute_raw(Statement::from_sql_and_values(
         backend.db_backend(),
         format!(
             "INSERT INTO registry_publish_artifact_operations \
@@ -502,7 +502,7 @@ pub(crate) async fn validation_job_enqueue_replay(
     command: &ModuleValidationJobEnqueueCommand,
 ) -> Result<Option<ModuleValidationJobEnqueueResult>, ModuleGovernanceError> {
     let mark = |n| backend.placeholder(n);
-let Some(row) = tx.query_one_raw(Statement::from_sql_and_values(
+    let Some(row) = tx.query_one_raw(Statement::from_sql_and_values(
         backend.db_backend(),
         format!("SELECT expected_revision, CAST(actor_id AS TEXT) AS actor_id, trace_id, CAST(correlation_id AS TEXT) AS correlation_id, CAST(actor_principal AS TEXT) AS actor_principal, allow_rejected_retry, request_status, queued, validation_job_id FROM registry_validation_job_enqueue_operations WHERE request_id = {} AND idempotency_key = {}", mark(1), mark(2)),
         vec![command.request_id.clone().into(), backend.uuid_value(command.context.idempotency_key)],
@@ -548,7 +548,7 @@ pub(crate) async fn record_validation_job_enqueue_receipt(
     result: &ModuleValidationJobEnqueueResult,
 ) -> Result<(), ModuleGovernanceError> {
     let mark = |n| backend.placeholder(n);
-tx.execute_raw(Statement::from_sql_and_values(
+    tx.execute_raw(Statement::from_sql_and_values(
         backend.db_backend(),
         format!("INSERT INTO registry_validation_job_enqueue_operations (operation_id, request_id, idempotency_key, expected_revision, actor_id, trace_id, correlation_id, actor_principal, allow_rejected_retry, request_status, queued, validation_job_id, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8), mark(9), mark(10), mark(11), mark(12)),
         vec![backend.uuid_value(infrastructure.new_id()), command.request_id.clone().into(), backend.uuid_value(command.context.idempotency_key), command.expected_revision.into(), backend.uuid_value(command.context.actor_id), command.context.trace_id.clone().into(), backend.uuid_value(command.context.correlation_id), Value::Json(Some(Box::new(command.actor_principal.clone()))), command.allow_rejected_retry.into(), result.request_status.clone().into(), result.queued.into(), result.validation_job_id.clone().into()],
@@ -574,7 +574,7 @@ pub(crate) async fn validation_stage_report_replay(
 ) -> Result<bool, ModuleGovernanceError> {
     let mark = |n| backend.placeholder(n);
     let existing = tx
-.query_one_raw(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "SELECT expected_revision, CAST(actor_id AS TEXT) AS actor_id, trace_id, \\
@@ -649,7 +649,7 @@ pub(crate) async fn record_validation_stage_report_receipt(
     resulting_request_revision: i64,
 ) -> Result<(), ModuleGovernanceError> {
     let mark = |n| backend.placeholder(n);
-tx.execute_raw(Statement::from_sql_and_values(
+    tx.execute_raw(Statement::from_sql_and_values(
         backend.db_backend(),
         format!(
             "INSERT INTO registry_validation_stage_report_operations \\

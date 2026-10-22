@@ -157,7 +157,7 @@ impl SeaOrmModuleGovernanceService {
         let mark = |position| backend.placeholder(position);
         let owner_row = self
             .db
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT CAST(owner_principal AS TEXT) AS owner_principal, \
@@ -172,7 +172,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
         let request_row = self
             .db
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT id, revision, slug, version, status, artifact_origin, \
@@ -199,7 +199,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
         let release_row = self
             .db
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT version, status, \
@@ -216,7 +216,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
         let event_rows = self
             .db
-.query_all_raw(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT id, event_type, \
@@ -251,7 +251,7 @@ impl SeaOrmModuleGovernanceService {
 
         let stage_rows = if let Some(request) = latest_request.as_ref() {
             self.db
-.query_all_raw(Statement::from_sql_and_values(
+                .query_all_raw(Statement::from_sql_and_values(
                     backend.db_backend(),
                     format!(
                         "SELECT stage_key, status, detail, attempt_number, updated_at, \
@@ -330,7 +330,7 @@ impl SeaOrmModuleGovernanceService {
         let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
         let row = self
             .db
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT CAST(owner_principal AS TEXT) AS owner_principal, \
@@ -361,7 +361,7 @@ impl SeaOrmModuleGovernanceService {
         let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
         let row = self
             .db
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT artifact_storage_key, artifact_content_type \
@@ -406,7 +406,7 @@ impl SeaOrmModuleGovernanceService {
         let mark = |position| backend.placeholder(position);
         let request_row = self
             .db
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT slug, id, revision, version, status, artifact_origin, \
@@ -438,7 +438,7 @@ impl SeaOrmModuleGovernanceService {
 
         let owner_row = self
             .db
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT CAST(owner_principal AS TEXT) AS owner_principal, \
@@ -457,7 +457,7 @@ impl SeaOrmModuleGovernanceService {
             .transpose()?;
         let stage_rows = self
             .db
-.query_all_raw(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT stage_key, status, detail, attempt_number, updated_at, \
@@ -504,7 +504,7 @@ impl SeaOrmModuleGovernanceService {
         let rejected_retry_allowed = if request.snapshot.status == "rejected" {
             let latest_event_type = self
                 .db
-.query_one_raw(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend.db_backend(),
                     format!(
                         "SELECT event_type FROM registry_governance_events \

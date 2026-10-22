@@ -42,7 +42,7 @@ impl SeaOrmModuleGovernanceService {
         } else {
             ""
         };
-tx.query_one_raw(Statement::from_sql_and_values(
+        tx.query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "SELECT id FROM registry_publish_requests WHERE id = {}{request_lock}",
@@ -60,7 +60,7 @@ tx.query_one_raw(Statement::from_sql_and_values(
             .transpose()
             .map_err(store_error)?;
         let existing_operation = tx
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT CAST(actor_principal AS TEXT) AS actor_principal, \
@@ -135,7 +135,7 @@ tx.query_one_raw(Statement::from_sql_and_values(
             }
             let release_id: String = operation.try_get("", "release_id").map_err(store_error)?;
             let release_exists = tx
-.query_one_raw(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend.db_backend(),
                     format!(
                         "SELECT release.id FROM registry_module_releases AS release \
@@ -196,7 +196,7 @@ tx.query_one_raw(Statement::from_sql_and_values(
         let marketplace_approval_digest = publication_evidence_digest_sha256(&marketplace_approval);
         let marketplace_approval_id = self.infrastructure.prefixed_id("rpe");
         let marketplace_approval_inserted = tx
-.execute_raw(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "INSERT INTO registry_publication_evidence \
@@ -228,7 +228,7 @@ tx.query_one_raw(Statement::from_sql_and_values(
             .await
             .map_err(store_error)?;
         if marketplace_approval_inserted.rows_affected() == 1 {
-tx.execute_raw(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "INSERT INTO registry_governance_events \
@@ -253,7 +253,7 @@ tx.execute_raw(Statement::from_sql_and_values(
         }
 
         if let Some(override_evidence) = &command.approval_override {
-tx.execute_raw(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "INSERT INTO registry_governance_events \
@@ -298,7 +298,7 @@ tx.execute_raw(Statement::from_sql_and_values(
             .await?;
 
         let release_id = tx
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT id FROM registry_module_releases WHERE slug = {} AND version = {}",
@@ -316,7 +316,7 @@ tx.execute_raw(Statement::from_sql_and_values(
             .transpose()?
             .unwrap_or_else(|| self.infrastructure.prefixed_id("rrel"));
         let release_exists = tx
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT id FROM registry_module_releases WHERE id = {}",
@@ -328,7 +328,7 @@ tx.execute_raw(Statement::from_sql_and_values(
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?
             .is_some();
         if release_exists {
-tx.execute_raw(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "UPDATE registry_module_releases SET request_id = {}, crate_name = {}, \
@@ -374,7 +374,7 @@ tx.execute_raw(Statement::from_sql_and_values(
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         } else {
-tx.execute_raw(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "INSERT INTO registry_module_releases \
@@ -411,7 +411,7 @@ tx.execute_raw(Statement::from_sql_and_values(
         )
         .await?;
 
-tx.execute_raw(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "DELETE FROM registry_module_release_translations WHERE release_id = {}",
@@ -422,7 +422,7 @@ tx.execute_raw(Statement::from_sql_and_values(
         .await
         .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         for (locale, name, description) in translations {
-tx.execute_raw(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "INSERT INTO registry_module_release_translations \
@@ -445,7 +445,7 @@ tx.execute_raw(Statement::from_sql_and_values(
         }
 
         let existing_owner = tx
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT CAST(owner_principal AS TEXT) AS owner_principal \
@@ -464,7 +464,7 @@ tx.execute_raw(Statement::from_sql_and_values(
             )
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
             if previous_owner == command.publisher_principal {
-tx.execute_raw(Statement::from_sql_and_values(
+                tx.execute_raw(Statement::from_sql_and_values(
                     backend.db_backend(),
                     format!(
                         "UPDATE registry_module_owners SET bound_by_principal = {}, updated_at = {now} \
@@ -483,7 +483,7 @@ tx.execute_raw(Statement::from_sql_and_values(
                 if !command.allow_owner_rebind {
                     return Err(ModuleGovernanceError::OwnerAlreadyBound);
                 }
-tx.execute_raw(Statement::from_sql_and_values(
+                tx.execute_raw(Statement::from_sql_and_values(
                     backend.db_backend(),
                     format!(
                         "UPDATE registry_module_owners SET owner_principal = {}, bound_by_principal = {}, \
@@ -501,7 +501,7 @@ tx.execute_raw(Statement::from_sql_and_values(
                 Some(("rebind", Some(previous_owner)))
             }
         } else {
-tx.execute_raw(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "INSERT INTO registry_module_owners \
@@ -522,7 +522,7 @@ tx.execute_raw(Statement::from_sql_and_values(
             Some(("initial", None))
         };
         if let Some((mode, previous_owner)) = owner_transition {
-tx.execute_raw(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "INSERT INTO registry_governance_events \
@@ -558,7 +558,7 @@ tx.execute_raw(Statement::from_sql_and_values(
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         }
 
-tx.execute_raw(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "INSERT INTO registry_publication_operations \
@@ -595,7 +595,7 @@ tx.execute_raw(Statement::from_sql_and_values(
         .await
         .map_err(store_error)?;
 
-let request_updated = tx.execute_raw(Statement::from_sql_and_values(
+        let request_updated = tx.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "UPDATE registry_publish_requests SET status = 'published', approved_by_principal = {}, \
@@ -620,7 +620,7 @@ let request_updated = tx.execute_raw(Statement::from_sql_and_values(
             )
             .await?);
         }
-tx.execute_raw(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \

@@ -62,7 +62,7 @@ impl SeaOrmModuleGovernanceService {
         let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
         let row = self
             .db
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT artifact_storage_key, artifact_checksum_sha256, artifact_size, artifact_content_type \
@@ -127,7 +127,7 @@ impl SeaOrmModuleGovernanceService {
             return Err(ModuleGovernanceError::PublishRequestCreationUnauthorized);
         }
         let existing = tx
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT command_digest, CAST(actor_id AS TEXT) AS actor_id, trace_id, \
@@ -175,7 +175,7 @@ impl SeaOrmModuleGovernanceService {
             return Ok(request_id);
         }
         let already_created = tx
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT id FROM registry_publish_requests WHERE id = {}",
@@ -189,7 +189,7 @@ impl SeaOrmModuleGovernanceService {
             return Err(ModuleGovernanceError::PublishRequestCreationConflict);
         }
         let active_release = tx
-.query_one_raw(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT id FROM registry_module_releases WHERE slug = {} AND version = {} AND status = 'active' LIMIT 1",
@@ -206,17 +206,17 @@ impl SeaOrmModuleGovernanceService {
             });
         }
         let warnings = dedupe_validation_messages(warnings);
-tx.execute_raw(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!("INSERT INTO registry_publish_requests (id, slug, version, crate_name, default_locale, ownership, trust_level, license, entry_type, artifact_origin, marketplace, ui_packages, status, requested_by_principal, publisher_principal, approved_by_principal, rejected_by_principal, rejection_reason, changes_requested_by_principal, changes_requested_reason, changes_requested_reason_code, changes_requested_at, held_by_principal, held_reason, held_reason_code, held_at, held_from_status, validation_warnings, validation_errors, artifact_storage_key, artifact_checksum_sha256, artifact_size, artifact_content_type, submitted_at, validated_at, approved_at, published_at, created_at, updated_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'draft', {}, {}, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, {}, {}, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, {now}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8), mark(9), mark(10), mark(11), mark(12), mark(13), mark(14), mark(15), mark(16)),
             vec![request_id.clone().into(), command.slug.clone().into(), command.version.clone().into(), command.crate_name.into(), default_locale.clone().into(), command.ownership.into(), command.trust_level.into(), command.license.into(), command.entry_type.into(), command.artifact_origin.as_str().into(), Value::Json(Some(Box::new(command.marketplace))), Value::Json(Some(Box::new(command.ui_packages))), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!([]))))],
         )).await.map_err(store_error)?;
-tx.execute_raw(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!("INSERT INTO registry_publish_request_create_operations (operation_id, request_id, idempotency_key, command_digest, actor_id, trace_id, correlation_id, actor_principal, actor_can_manage_modules, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8), mark(9)),
             vec![backend.uuid_value(self.infrastructure.new_id()), request_id.clone().into(), backend.uuid_value(command.context.idempotency_key), command_digest.clone().into(), backend.uuid_value(command.context.actor_id), command.context.trace_id.clone().into(), backend.uuid_value(command.context.correlation_id), Value::Json(Some(Box::new(command.actor_principal.clone()))), command.actor_can_manage_modules.into()],
         )).await.map_err(store_error)?;
-tx.execute_raw(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!("INSERT INTO registry_publish_request_translations (request_id, locale, name, description, created_at, updated_at) VALUES ({}, {}, {}, {}, {now}, {now})", mark(1), mark(2), mark(3), mark(4)),
             vec![request_id.clone().into(), default_locale.into(), marketplace_content.name.into(), marketplace_content.description.into()],
@@ -228,7 +228,7 @@ tx.execute_raw(Statement::from_sql_and_values(
             "command_digest": command_digest,
             "warnings": warnings,
         });
-tx.execute_raw(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, 'request_created', {}, {}, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)),
             vec![self.infrastructure.prefixed_id("rge").into(), command.slug.into(), request_id.clone().into(), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(command.actor_principal))), Value::Json(Some(Box::new(details)))],
@@ -256,7 +256,7 @@ tx.execute_raw(Statement::from_sql_and_values(
             ""
         };
         let receipt = PublishArtifactReceipt { command: &command };
-let request = tx.query_one_raw(Statement::from_sql_and_values(
+        let request = tx.query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!("SELECT slug, version, revision, status, artifact_storage_key, artifact_checksum_sha256, artifact_size, artifact_content_type, CAST(validation_warnings AS TEXT) AS validation_warnings, CAST(requested_by_principal AS TEXT) AS requested_by_principal FROM registry_publish_requests WHERE id = {}{request_lock}", mark(1)),
             vec![command.request_id.clone().into()],
@@ -338,7 +338,7 @@ let request = tx.query_one_raw(Statement::from_sql_and_values(
             warnings.push(format!("Artifact was uploaded by '{actor}' for publish request originally created by '{requested_by_label}'."));
         }
         let warnings = dedupe_validation_messages(warnings);
-let request_updated = tx.execute_raw(Statement::from_sql_and_values(
+        let request_updated = tx.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!("UPDATE registry_publish_requests SET status = 'submitted', artifact_storage_key = {}, artifact_checksum_sha256 = {}, artifact_size = {}, artifact_content_type = {}, submitted_at = {now}, validation_warnings = {}, validation_errors = {}, approved_by_principal = NULL, rejected_by_principal = NULL, rejection_reason = NULL, validated_at = NULL, approved_at = NULL, published_at = NULL, revision = revision + 1, updated_at = {now} WHERE id = {} AND status IN ('draft', 'changes_requested') AND revision = {}", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8)),
             vec![artifact_storage_key.clone().into(), command.checksum_sha256.clone().into(), command.artifact_size.into(), command.content_type.clone().into(), Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!([])))), command.request_id.clone().into(), command.expected_revision.into()],
@@ -354,7 +354,7 @@ let request_updated = tx.execute_raw(Statement::from_sql_and_values(
         }
         if reuploaded {
             for table in ["registry_validation_stages", "registry_validation_jobs"] {
-tx.execute_raw(Statement::from_sql_and_values(
+                tx.execute_raw(Statement::from_sql_and_values(
                     backend.db_backend(),
                     format!("DELETE FROM {table} WHERE request_id = {}", mark(1)),
                     vec![command.request_id.clone().into()],

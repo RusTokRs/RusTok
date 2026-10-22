@@ -40,7 +40,7 @@ pub(crate) async fn governance_owner_principal_for_slug(
         ""
     };
     let row = transaction
-.query_one_raw(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "SELECT CAST(owner_principal AS TEXT) AS owner_principal \
@@ -88,7 +88,7 @@ pub(crate) async fn current_publish_request_revision(
     request_id: &str,
 ) -> Result<i64, ModuleGovernanceError> {
     transaction
-.query_one_raw(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "SELECT revision FROM registry_publish_requests WHERE id = {}",

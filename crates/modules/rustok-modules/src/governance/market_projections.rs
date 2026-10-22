@@ -14,7 +14,7 @@ impl SeaOrmModuleGovernanceService {
         let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
         let rows = self
             .db
-.query_all_raw(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 backend.db_backend(),
                 "SELECT artifact.release_id, CAST(artifact.artifact AS TEXT) AS artifact, \
                  CAST(artifact.descriptor AS TEXT) AS descriptor, CAST(artifact.lineage AS TEXT) AS lineage, \
@@ -147,7 +147,7 @@ impl SeaOrmModuleGovernanceService {
         let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
         let rows = self
             .db
-.query_all_raw(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 backend.db_backend(),
                 "SELECT id, slug, version, status, \
                         CAST(publisher_principal AS TEXT) AS publisher_principal, \
@@ -190,7 +190,7 @@ impl SeaOrmModuleGovernanceService {
         let mark = |position| backend.placeholder(position);
         let rows = self
             .db
-.query_all_raw(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT locale, name, description \
