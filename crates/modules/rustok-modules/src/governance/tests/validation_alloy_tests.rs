@@ -7,8 +7,8 @@ use uuid::Uuid;
 
 use super::fixtures::*;
 use super::*;
-use crate::build::{
 use crate::backend::SupportedBackend;
+use crate::build::{
     ModuleBuildAuthoring, ModuleBuildComponentInterface, ModuleBuildDependencyPolicy,
     ModuleBuildEvidence, ModuleBuildLimits, ModuleBuildMetrics, ModuleBuildNetworkPolicy,
     ModuleBuildNextAction, ModuleBuildOutcome, ModuleBuildPublicationReceipt, ModuleBuildRequest,
