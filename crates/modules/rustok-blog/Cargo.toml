@@ -25,7 +25,7 @@ rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
 rustok-profiles-api.workspace = true
-rustok-reactions-api = { path = "../rustok-reactions-api" }
+rustok-reactions = { workspace = true, default-features = false }
 rustok-runtime = { workspace = true, optional = true }
 rustok-seo-targets.workspace = true
 rustok-taxonomy.workspace = true

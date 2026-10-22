@@ -9,9 +9,9 @@
 //! ## Entry points
 //!
 //! - [`ModulesModule`]: Platform module lifecycle and migration descriptor.
-//! - [`ArtifactPackageDescriptor`]: Content-addressed module artifact envelope.
-//! - [`ModuleLifecycle`]: Dynamic and static module lifecycle state machine.
-//! - [`ModuleRegistryService`]: Marketplace catalog and module discovery.
+//! - [`ModuleArtifactDescriptor`]: Content-addressed module artifact envelope.
+//! - [`ResolvingArtifactCapabilityBroker`]: Dynamic and static capability broker.
+//! - [`StorageArtifactBlobStore`]: Content-addressed artifact storage.
 
 pub mod module;
 

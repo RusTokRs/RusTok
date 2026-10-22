@@ -339,8 +339,8 @@ rustok-fulfillment = { path = "crates/modules/rustok-fulfillment" }
 rustok-fulfillment-storefront = { path = "crates/modules/rustok-fulfillment/storefront" }
 rustok-blog = { path = "crates/modules/rustok-blog" }
 rustok-content = { path = "crates/modules/rustok-content" }
-rustok-content-portability-api = { path = "crates/libs/rustok-content-portability-api" }
 rustok-content-portability = { path = "crates/libs/rustok-content-portability" }
+rustok-reactions = { path = "crates/modules/rustok-reactions", default-features = false }
 rustok-content-orchestration = { path = "crates/modules/rustok-content-orchestration" }
 rustok-pages = { path = "crates/modules/rustok-pages" }
 rustok-docs = { path = "crates/modules/rustok-docs" }

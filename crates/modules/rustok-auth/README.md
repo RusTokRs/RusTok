@@ -76,5 +76,6 @@ OAuth application presentation copy is owner-localized in `oauth_app_translation
 
 ## Docs
 
+- [CRATE_API.md](CRATE_API.md)
 - [Module docs](./docs/README.md)
 - [Platform docs index](../../../docs/index.md)

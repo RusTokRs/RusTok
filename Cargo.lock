@@ -14009,7 +14009,7 @@ dependencies = [
  "rustok-events",
  "rustok-outbox",
  "rustok-profiles-api",
- "rustok-reactions-api",
+ "rustok-reactions",
  "rustok-runtime",
  "rustok-seo-targets",
  "rustok-taxonomy",
@@ -14625,25 +14625,12 @@ dependencies = [
  "async-trait",
  "chrono",
  "csv",
- "rustok-content-portability-api",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
- "uuid",
-]
-
-[[package]]
-name = "rustok-content-portability-api"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
  "uuid",
 ]
 
@@ -17067,11 +17054,11 @@ dependencies = [
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
- "rustok-reactions-api",
  "sea-orm",
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "uuid",

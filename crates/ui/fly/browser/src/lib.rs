@@ -681,6 +681,50 @@ impl BrowserIntentEnvelope {
         Self::new(instance_id, BrowserIntentKind::Redo, serde_json::json!({}))
     }
 
+    pub fn remove_selected(instance_id: impl Into<String>) -> Self {
+        Self::new(
+            instance_id,
+            BrowserIntentKind::RemoveSelected,
+            serde_json::json!({}),
+        )
+    }
+
+    pub fn duplicate(instance_id: impl Into<String>) -> Self {
+        Self::new(
+            instance_id,
+            BrowserIntentKind::Duplicate,
+            serde_json::json!({}),
+        )
+    }
+
+    pub fn copy(instance_id: impl Into<String>) -> Self {
+        Self::new(instance_id, BrowserIntentKind::Copy, serde_json::json!({}))
+    }
+
+    pub fn cut(instance_id: impl Into<String>) -> Self {
+        Self::new(instance_id, BrowserIntentKind::Cut, serde_json::json!({}))
+    }
+
+    pub fn paste(instance_id: impl Into<String>) -> Self {
+        Self::new(instance_id, BrowserIntentKind::Paste, serde_json::json!({}))
+    }
+
+    pub fn move_selected_up(instance_id: impl Into<String>) -> Self {
+        Self::new(
+            instance_id,
+            BrowserIntentKind::MoveSelectedUp,
+            serde_json::json!({}),
+        )
+    }
+
+    pub fn move_selected_down(instance_id: impl Into<String>) -> Self {
+        Self::new(
+            instance_id,
+            BrowserIntentKind::MoveSelectedDown,
+            serde_json::json!({}),
+        )
+    }
+
     /// Attaches the page/revision context the server uses for revision checks
     /// (lost-update protection) on mutating intents.
     pub fn with_page_context(

@@ -1,34 +1,53 @@
+pub mod model;
+pub mod provider;
+
+pub use model::*;
+pub use provider::*;
+
+pub mod api {
+    pub use crate::model::*;
+    pub use crate::provider::*;
+}
+
+#[cfg(feature = "server")]
 pub mod entities;
-#[cfg(feature = "graphql")]
+#[cfg(all(feature = "server", feature = "graphql"))]
 pub mod graphql;
+#[cfg(feature = "server")]
 pub mod migrations;
+#[cfg(feature = "server")]
 mod reconciliation;
+#[cfg(feature = "server")]
 mod service;
+#[cfg(feature = "server")]
 mod target_lifecycle;
 
+#[cfg(feature = "server")]
 use async_trait::async_trait;
+#[cfg(feature = "server")]
 use rustok_core::{
     MigrationDependencyDescriptor, MigrationSource, ModuleEventListenerContext,
     ModuleEventListenerRegistry, ModuleRuntimeExtensions, RusToKModule,
 };
-use rustok_reactions_api::{
-    ReactionSubjectRegistry, ensure_reaction_subject_factory_registry,
-    ensure_reaction_subject_registry, reaction_subject_registry_from_extensions,
-};
+#[cfg(feature = "server")]
 use sea_orm_migration::MigrationTrait;
+#[cfg(feature = "server")]
 use std::sync::Arc;
 
+#[cfg(feature = "server")]
 pub use reconciliation::{
     MAX_REACTION_RECONCILIATION_ACTOR_STATES, MAX_REACTION_RECONCILIATION_ISSUES,
     ReactionAggregateComparison, ReactionReconciliationIssue, ReactionReconciliationReceipt,
     ReactionReconciliationReport, ReactionReconciliationRequest, ReactionReconciliationStatus,
     RepairReactionSubjectCommand,
 };
-pub use rustok_reactions_api as api;
+#[cfg(feature = "server")]
 pub use service::ReactionsService;
 
+#[cfg(feature = "server")]
 pub struct ReactionsModule;
 
+#[cfg(feature = "server")]
 #[async_trait]
 impl RusToKModule for ReactionsModule {
     fn slug(&self) -> &'static str {
@@ -74,6 +93,7 @@ impl RusToKModule for ReactionsModule {
     }
 }
 
+#[cfg(feature = "server")]
 impl MigrationSource for ReactionsModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
         migrations::migrations()
@@ -84,15 +104,11 @@ impl MigrationSource for ReactionsModule {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "server"))]
 mod tests {
     use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
-    use rustok_reactions_api::{
-        reaction_subject_factory_registry_from_extensions,
-        reaction_subject_registry_from_extensions,
-    };
 
-    use super::ReactionsModule;
+    use super::*;
 
     #[test]
     fn module_registers_target_deletion_listener() {

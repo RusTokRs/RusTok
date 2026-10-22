@@ -4,7 +4,7 @@ use chrono::Utc;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
 use rustok_events::{MAX_REACTIONS_EVENT_KEYS, ReactionsEvent};
 use rustok_outbox::{ContractEventWriteOnceError, TransactionalEventBus, idempotency};
-use rustok_reactions_api::{ReactionCatalog, ReactionKey, ReactionSubjectRef};
+use crate::{ReactionCatalog, ReactionKey, ReactionSubjectRef};
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, EntityTrait,
@@ -819,7 +819,7 @@ fn decode_replay<T: DeserializeOwned>(value: serde_json::Value) -> Result<T, Por
 #[cfg(test)]
 mod tests {
     use rustok_api::{PortActor, PortContext};
-    use rustok_reactions_api::{ReactionKey, ReactionSourceSlug, ReactionSubjectKind, ReactionSubjectRef};
+    use crate::{ReactionKey, ReactionSourceSlug, ReactionSubjectKind, ReactionSubjectRef};
     use uuid::Uuid;
 
     use super::*;

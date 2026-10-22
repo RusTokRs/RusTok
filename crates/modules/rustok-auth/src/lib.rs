@@ -8,6 +8,13 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # RusToK Auth Module
+//!
+//! Authentication and token lifecycle module for the RusToK platform.
+//!
+//! Provides JWT signing/decoding, credential hashing (Argon2), password reset,
+//! user bootstrap/backfill, OAuth application authorization, and user administration.
+
 pub mod admin_mutations;
 pub mod backfill;
 pub mod bootstrap;
@@ -19,10 +26,16 @@ pub mod graphql;
 pub mod jwt;
 pub mod lifecycle;
 pub mod migrations;
+pub mod module;
 pub mod oauth_app_translation;
 pub mod rest;
 
+#[cfg(test)]
+mod contract_tests;
+
 // Re-exports for convenience
+pub use module::AuthModule;
+
 pub use admin_mutations::{
     AuthAdminMutationContext, AuthAdminMutationError, AuthorizedOAuthAppRecord,
     CreateOAuthAppCommand, CreateUserCommand, OAuthAdminPort, OAuthAdminRuntime,
@@ -62,10 +75,7 @@ pub use rest::{
     UserResponse, UsersListParams, UsersResponse, VerificationRequestResponse,
 };
 
-use async_trait::async_trait;
 use rustok_api::Permission;
-use rustok_core::MigrationDependencyDescriptor;
-use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
 
 /// Canonical auth-owned RBAC surface published by the module.
 ///
@@ -79,61 +89,7 @@ pub const AUTH_USER_PERMISSIONS: [Permission; 6] = [
     Permission::USERS_LIST,
     Permission::USERS_MANAGE,
 ];
-use sea_orm_migration::MigrationTrait;
 
-/// Core auth module — JWT lifecycle, credential hashing, token management.
-///
-/// Pure logic module with no framework dependencies. The server constructs
-/// `AuthConfig` from its config source and passes it to the auth functions.
-pub struct AuthModule;
-
-impl MigrationSource for AuthModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-
-    fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
-        migrations::migration_dependencies()
-    }
-}
-
-#[async_trait]
-impl RusToKModule for AuthModule {
-    fn slug(&self) -> &'static str {
-        "auth"
-    }
-
-    fn name(&self) -> &'static str {
-        "Auth"
-    }
-
-    fn description(&self) -> &'static str {
-        "JWT lifecycle, credential hashing, token management."
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn kind(&self) -> ModuleKind {
-        ModuleKind::Core
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::USERS_CREATE,
-            Permission::USERS_READ,
-            Permission::USERS_UPDATE,
-            Permission::USERS_DELETE,
-            Permission::USERS_LIST,
-            Permission::USERS_MANAGE,
-        ]
-    }
-
-    async fn health(&self) -> HealthStatus {
-        HealthStatus::Healthy
-    }
-}
 
 #[cfg(test)]
 mod tests {

@@ -2344,9 +2344,100 @@ pub fn FlyEditorWorkspace(
     let undo_editor = editor;
     let redo_editor = editor;
     let undo_instance = intent_instance.clone();
-    let redo_instance = intent_instance;
+    let redo_instance = intent_instance.clone();
+    let shortcut_editor = editor;
+    let shortcut_instance = intent_instance;
+
+    let on_workspace_keydown = move |event: leptos::ev::KeyboardEvent| {
+        #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+        {
+            use fly_web::{prevent_editor_shortcut_default, shortcut_from_event};
+            if let Some(shortcut) = shortcut_from_event(&event) {
+                prevent_editor_shortcut_default(&event, shortcut);
+                match shortcut {
+                    fly_ui::EditorShortcut::Undo => {
+                        if let Some(on_intent) = on_intent {
+                            on_intent.run(BrowserIntentEnvelope::undo(&shortcut_instance));
+                        } else {
+                            shortcut_editor.update(|e| {
+                                let _ = e.undo();
+                            });
+                            if let Some(on_change) = on_change {
+                                shortcut_editor.with(|e| on_change.run(e.document().clone()));
+                            }
+                        }
+                    }
+                    fly_ui::EditorShortcut::Redo => {
+                        if let Some(on_intent) = on_intent {
+                            on_intent.run(BrowserIntentEnvelope::redo(&shortcut_instance));
+                        } else {
+                            shortcut_editor.update(|e| {
+                                let _ = e.redo();
+                            });
+                            if let Some(on_change) = on_change {
+                                shortcut_editor.with(|e| on_change.run(e.document().clone()));
+                            }
+                        }
+                    }
+                    fly_ui::EditorShortcut::DeleteSelection => {
+                        if let Some(component_id) =
+                            shortcut_editor.with(|e| e.selection().map(ToString::to_string))
+                        {
+                            if let Some(on_intent) = on_intent {
+                                on_intent.run(BrowserIntentEnvelope::remove_selected(&shortcut_instance));
+                            } else {
+                                let apply_result = shortcut_editor.try_update(|e| {
+                                    e.apply(fly::EditorCommand::Remove { component_id })
+                                });
+                                if let Some(Err(error)) = &apply_result {
+                                    report_workspace_error(on_error, "Delete component failed", error);
+                                }
+                                if let Some(on_change) = on_change {
+                                    shortcut_editor.with(|e| on_change.run(e.document().clone()));
+                                }
+                            }
+                        }
+                    }
+                    fly_ui::EditorShortcut::Cancel => {
+                        on_select.run(None);
+                    }
+                    fly_ui::EditorShortcut::Duplicate => {
+                        if let Some(component_id) =
+                            shortcut_editor.with(|e| e.selection().map(ToString::to_string))
+                        {
+                            if let Some(on_intent) = on_intent {
+                                on_intent.run(BrowserIntentEnvelope::duplicate(&shortcut_instance));
+                            } else {
+                                let apply_result = shortcut_editor.try_update(|e| {
+                                    e.apply(fly::EditorCommand::Duplicate { component_id })
+                                });
+                                if let Some(Err(error)) = &apply_result {
+                                    report_workspace_error(on_error, "Duplicate component failed", error);
+                                }
+                                if let Some(on_change) = on_change {
+                                    shortcut_editor.with(|e| on_change.run(e.document().clone()));
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        #[cfg(not(all(target_arch = "wasm32", feature = "wasm-client")))]
+        {
+            let _ = (&event, &shortcut_editor, &shortcut_instance);
+        }
+    };
+
     view! {
-        <section class="fly-editor fly-editor--full" role="application" aria-label=workspace_title>
+        <section
+            class="fly-editor fly-editor--full"
+            role="application"
+            aria-label=workspace_title
+            tabindex="0"
+            on:keydown=on_workspace_keydown
+        >
             <div class="fly-editor__toolbar" role="toolbar" aria-label=toolbar_label>
                 <button
                     type="button"
