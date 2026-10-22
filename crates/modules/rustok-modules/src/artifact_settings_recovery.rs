@@ -9,7 +9,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement, TransactionTrait,
+    ConnectionTrait, DatabaseConnection, QueryResult, Statement, TransactionTrait,
     Value as SqlValue,
 };
 use serde::{Deserialize, Serialize};
@@ -23,6 +23,7 @@ use rustok_api::manifest_hash::{
 };
 use rustok_events::DomainEvent;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ControlPlaneInfrastructure, ModuleArtifactDescriptor, ModuleCommandContext,
     artifact_schema::{ArtifactSchemaValidationError, ArtifactSchemaValidatorCache},
@@ -714,7 +715,7 @@ where
             .await
             .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
         if let Some(existing) =
-            find_recovery_operation_in(&transaction, &request, transaction.get_database_backend())
+            find_recovery_operation_in(&transaction, &request)
                 .await?
         {
             transaction.commit().await.map_err(storage_error)?;
@@ -736,25 +737,26 @@ where
             return Err(ArtifactSettingsRecoveryError::RecoveryPrecondition);
         }
 
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_settings_recovery_points (recovery_point_id, tenant_id, installation_id, data_owner_id, settings_instance_id, settings_revision, schema_digest, descriptor_digest, value_digest, key_version, ciphertext, retention_revision, policy_snapshot_id, secret_handle_digest, retain_until, legal_hold, audit_hold, incident_hold, state, created_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 1, {}, {}, {}, {}, {}, {}, 'ready', {})",
-                    placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3),
-                    placeholder(backend, 4), placeholder(backend, 5), placeholder(backend, 6),
-                    placeholder(backend, 7), placeholder(backend, 8), placeholder(backend, 9),
-                    placeholder(backend, 10), placeholder(backend, 11), placeholder(backend, 12),
-                    placeholder(backend, 13), placeholder(backend, 14), placeholder(backend, 15),
-                    placeholder(backend, 16), placeholder(backend, 17), now_expression(backend),
+                    backend.placeholder(1), backend.placeholder(2), backend.placeholder(3),
+                    backend.placeholder(4), backend.placeholder(5), backend.placeholder(6),
+                    backend.placeholder(7), backend.placeholder(8), backend.placeholder(9),
+                    backend.placeholder(10), backend.placeholder(11), backend.placeholder(12),
+                    backend.placeholder(13), backend.placeholder(14), backend.placeholder(15),
+                    backend.placeholder(16), backend.placeholder(17), now_expression(backend),
                 ),
                 vec![
-                    uuid_value(recovery_point_id, backend),
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(source.installation_id, backend),
-                    uuid_value(source.data_owner_id, backend),
-                    uuid_value(source.settings_instance_id, backend),
+                    backend.uuid_value(recovery_point_id),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(source.installation_id),
+                    backend.uuid_value(source.data_owner_id),
+                    backend.uuid_value(source.settings_instance_id),
                     revision_value(source.settings_revision)?,
                     source.schema_digest.clone().into(),
                     source.descriptor_digest.clone().into(),
@@ -773,26 +775,26 @@ where
             .map_err(storage_error)?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_settings_recovery_operations (operation_id, tenant_id, installation_id, expected_installation_revision, expected_settings_revision, recovery_point_id, actor_id, trace_id, correlation_id, reason, idempotency_key, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
-                    placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3),
-                    placeholder(backend, 4), placeholder(backend, 5), placeholder(backend, 6),
-                    placeholder(backend, 7), placeholder(backend, 8), placeholder(backend, 9),
-                    placeholder(backend, 10), placeholder(backend, 11), now_expression(backend),
+                    backend.placeholder(1), backend.placeholder(2), backend.placeholder(3),
+                    backend.placeholder(4), backend.placeholder(5), backend.placeholder(6),
+                    backend.placeholder(7), backend.placeholder(8), backend.placeholder(9),
+                    backend.placeholder(10), backend.placeholder(11), now_expression(backend),
                 ),
                 vec![
-                    uuid_value(self.infrastructure.new_id(), backend),
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(self.infrastructure.new_id()),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(request.installation_id),
                     revision_value(request.expected_installation_revision)?,
                     revision_value(request.expected_settings_revision)?,
-                    uuid_value(recovery_point_id, backend),
-                    uuid_value(request.context.actor_id, backend),
+                    backend.uuid_value(recovery_point_id),
+                    backend.uuid_value(request.context.actor_id),
                     request.context.trace_id.clone().into(),
-                    uuid_value(request.context.correlation_id, backend),
+                    backend.uuid_value(request.context.correlation_id),
                     request.reason.clone().into(),
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.context.idempotency_key),
                 ],
             ))
             .await
@@ -855,8 +857,9 @@ where
         configure_tenant_scope(&transaction, request.tenant_id)
             .await
             .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
-        let backend = transaction.get_database_backend();
-        if let Some(existing) = find_purge_operation_in(&transaction, &request, backend).await? {
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        if let Some(existing) = find_purge_operation_in(&transaction, &request).await? {
             transaction.commit().await.map_err(storage_error)?;
             return Ok(existing);
         }
@@ -902,15 +905,18 @@ where
         .await?;
         let deleted = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "DELETE FROM module_artifact_settings_instances WHERE tenant_id = {} AND data_owner_id = {} AND settings_instance_id = {} AND revision = {}",
-                    placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3), placeholder(backend, 4),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
                 ),
                 vec![
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(source.data_owner_id, backend),
-                    uuid_value(source.settings_instance_id, backend),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(source.data_owner_id),
+                    backend.uuid_value(source.settings_instance_id),
                     revision_value(request.expected_settings_revision)?,
                 ],
             ))
@@ -922,46 +928,52 @@ where
         let purge_operation_id = self.infrastructure.new_id();
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_settings_purge_operations (operation_id, tenant_id, installation_id, recovery_point_id, expected_installation_revision, expected_settings_revision, tombstone_revision, actor_id, trace_id, correlation_id, reason, idempotency_key, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
-                    placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3), placeholder(backend, 4),
-                    placeholder(backend, 5), placeholder(backend, 6), placeholder(backend, 7), placeholder(backend, 8),
-                    placeholder(backend, 9), placeholder(backend, 10), placeholder(backend, 11),
-                    placeholder(backend, 12), now_expression(backend),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
+                    backend.placeholder(8),
+                    backend.placeholder(9), backend.placeholder(10), backend.placeholder(11),
+                    backend.placeholder(12), now_expression(backend),
                 ),
                 vec![
-                    uuid_value(purge_operation_id, backend),
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.installation_id, backend),
-                    uuid_value(request.recovery_point_id, backend),
+                    backend.uuid_value(purge_operation_id),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(request.installation_id),
+                    backend.uuid_value(request.recovery_point_id),
                     revision_value(request.expected_installation_revision)?,
                     revision_value(request.expected_settings_revision)?,
                     revision_value(tombstone_revision)?,
-                    uuid_value(request.context.actor_id, backend),
+                    backend.uuid_value(request.context.actor_id),
                     request.context.trace_id.clone().into(),
-                    uuid_value(request.context.correlation_id, backend),
+                    backend.uuid_value(request.context.correlation_id),
                     request.reason.clone().into(),
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.context.idempotency_key),
                 ],
             ))
             .await
             .map_err(storage_error)?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_settings_tombstones (tenant_id, data_owner_id, settings_instance_id, tombstone_revision, recovery_point_id, purge_operation_id, purged_at) VALUES ({}, {}, {}, {}, {}, {}, {})",
-                    placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3),
-                    placeholder(backend, 4), placeholder(backend, 5), placeholder(backend, 6), now_expression(backend),
+                    backend.placeholder(1), backend.placeholder(2), backend.placeholder(3),
+                    backend.placeholder(4), backend.placeholder(5), backend.placeholder(6), now_expression(backend),
                 ),
                 vec![
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(source.data_owner_id, backend),
-                    uuid_value(source.settings_instance_id, backend),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(source.data_owner_id),
+                    backend.uuid_value(source.settings_instance_id),
                     revision_value(tombstone_revision)?,
-                    uuid_value(request.recovery_point_id, backend),
-                    uuid_value(purge_operation_id, backend),
+                    backend.uuid_value(request.recovery_point_id),
+                    backend.uuid_value(purge_operation_id),
                 ],
             ))
             .await
@@ -1018,8 +1030,9 @@ where
         configure_tenant_scope(&transaction, request.tenant_id)
             .await
             .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
-        let backend = transaction.get_database_backend();
-        if let Some(existing) = find_restore_operation_in(&transaction, &request, backend).await? {
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        if let Some(existing) = find_restore_operation_in(&transaction, &request).await? {
             transaction.commit().await.map_err(storage_error)?;
             return Ok(existing);
         }
@@ -1073,16 +1086,19 @@ where
             }
             let updated = transaction
                 .execute_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "UPDATE module_artifact_installations SET settings_instance_id = {} WHERE installation_id = {} AND data_owner_id = {} AND settings_instance_id = {}",
-                        placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3), placeholder(backend, 4),
+                        backend.placeholder(1),
+                        backend.placeholder(2),
+                        backend.placeholder(3),
+                        backend.placeholder(4),
                     ),
                     vec![
-                        uuid_value(settings_instance_id, backend),
-                        uuid_value(target_installation_id, backend),
-                        uuid_value(locked_recovery.data_owner_id, backend),
-                        uuid_value(target.settings_instance_id, backend),
+                        backend.uuid_value(settings_instance_id),
+                        backend.uuid_value(target_installation_id),
+                        backend.uuid_value(locked_recovery.data_owner_id),
+                        backend.uuid_value(target.settings_instance_id),
                     ],
                 ))
                 .await
@@ -1093,16 +1109,19 @@ where
         }
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_settings_instances (tenant_id, data_owner_id, settings_instance_id, schema_digest, settings, revision, created_at, updated_at) VALUES ({}, {}, {}, {}, {}, 1, {}, {})",
-                    placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3), placeholder(backend, 4),
-                    placeholder(backend, 5), now_expression(backend), now_expression(backend),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5), now_expression(backend), now_expression(backend),
                 ),
                 vec![
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(locked_recovery.data_owner_id, backend),
-                    uuid_value(settings_instance_id, backend),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(locked_recovery.data_owner_id),
+                    backend.uuid_value(settings_instance_id),
                     locked_recovery.schema_digest.clone().into(),
                     SqlValue::Json(Some(Box::new(recovered_settings))),
                 ],
@@ -1112,17 +1131,17 @@ where
         let restore_operation_id = self.infrastructure.new_id();
         let recovery_marked_restored = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_settings_recovery_points SET restored_at = {}, restored_installation_id = {}, restored_settings_instance_id = {} WHERE recovery_point_id = {} AND tenant_id = {} AND restored_at IS NULL",
-                    now_expression(backend), placeholder(backend, 1), placeholder(backend, 2),
-                    placeholder(backend, 3), placeholder(backend, 4),
+                    now_expression(backend), backend.placeholder(1), backend.placeholder(2),
+                    backend.placeholder(3), backend.placeholder(4),
                 ),
                 vec![
                     optional_uuid_value(request.target_installation_id, backend),
-                    uuid_value(settings_instance_id, backend),
-                    uuid_value(request.recovery_point_id, backend),
-                    uuid_value(request.tenant_id, backend),
+                    backend.uuid_value(settings_instance_id),
+                    backend.uuid_value(request.recovery_point_id),
+                    backend.uuid_value(request.tenant_id),
                 ],
             ))
             .await
@@ -1132,25 +1151,31 @@ where
         }
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_settings_restore_operations (operation_id, tenant_id, recovery_point_id, target_installation_id, expected_target_installation_revision, settings_instance_id, actor_id, trace_id, correlation_id, reason, idempotency_key, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
-                    placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3), placeholder(backend, 4),
-                    placeholder(backend, 5), placeholder(backend, 6), placeholder(backend, 7), placeholder(backend, 8),
-                    placeholder(backend, 9), placeholder(backend, 10), placeholder(backend, 11), now_expression(backend),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
+                    backend.placeholder(8),
+                    backend.placeholder(9), backend.placeholder(10), backend.placeholder(11), now_expression(backend),
                 ),
                 vec![
-                    uuid_value(restore_operation_id, backend),
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.recovery_point_id, backend),
+                    backend.uuid_value(restore_operation_id),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(request.recovery_point_id),
                     optional_uuid_value(request.target_installation_id, backend),
                     optional_revision_value(request.expected_target_installation_revision)?,
-                    uuid_value(settings_instance_id, backend),
-                    uuid_value(request.context.actor_id, backend),
+                    backend.uuid_value(settings_instance_id),
+                    backend.uuid_value(request.context.actor_id),
                     request.context.trace_id.clone().into(),
-                    uuid_value(request.context.correlation_id, backend),
+                    backend.uuid_value(request.context.correlation_id),
                     request.reason.clone().into(),
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.context.idempotency_key),
                 ],
             ))
             .await
@@ -1198,7 +1223,8 @@ where
         configure_tenant_scope(&transaction, request.tenant_id)
             .await
             .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         if let Some(existing) =
             find_retention_operation_in(&transaction, &request, &request_digest, backend).await?
         {
@@ -1233,18 +1259,18 @@ where
             .ok_or(ArtifactSettingsRecoveryError::RetentionPrecondition)?;
         let updated = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_settings_recovery_points SET retention_revision = {}, policy_snapshot_id = {}, retain_until = {}, legal_hold = {}, audit_hold = {}, incident_hold = {} WHERE tenant_id = {} AND recovery_point_id = {} AND retention_revision = {} AND state = 'ready'",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
-                    placeholder(backend, 8),
-                    placeholder(backend, 9),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
+                    backend.placeholder(8),
+                    backend.placeholder(9),
                 ),
                 vec![
                     revision_value(retention_revision)?,
@@ -1253,8 +1279,8 @@ where
                     bool_value(retention.legal_hold, backend),
                     bool_value(retention.audit_hold, backend),
                     bool_value(retention.incident_hold, backend),
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.recovery_point_id, backend),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(request.recovery_point_id),
                     revision_value(request.expected_retention_revision)?,
                 ],
             ))
@@ -1265,32 +1291,32 @@ where
         }
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_settings_recovery_retention_operations (operation_id, tenant_id, recovery_point_id, idempotency_key, request_digest, expected_retention_revision, retention_revision, retain_until, legal_hold, audit_hold, incident_hold, policy_snapshot_id, actor_id, trace_id, correlation_id, reason, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
-                    placeholder(backend, 8),
-                    placeholder(backend, 9),
-                    placeholder(backend, 10),
-                    placeholder(backend, 11),
-                    placeholder(backend, 12),
-                    placeholder(backend, 13),
-                    placeholder(backend, 14),
-                    placeholder(backend, 15),
-                    placeholder(backend, 16),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
+                    backend.placeholder(8),
+                    backend.placeholder(9),
+                    backend.placeholder(10),
+                    backend.placeholder(11),
+                    backend.placeholder(12),
+                    backend.placeholder(13),
+                    backend.placeholder(14),
+                    backend.placeholder(15),
+                    backend.placeholder(16),
                     now_expression(backend),
                 ),
                 vec![
-                    uuid_value(self.infrastructure.new_id(), backend),
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.recovery_point_id, backend),
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(self.infrastructure.new_id()),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(request.recovery_point_id),
+                    backend.uuid_value(request.context.idempotency_key),
                     request_digest.into(),
                     revision_value(request.expected_retention_revision)?,
                     revision_value(retention_revision)?,
@@ -1299,9 +1325,9 @@ where
                     bool_value(retention.audit_hold, backend),
                     bool_value(retention.incident_hold, backend),
                     retention.policy_snapshot_id.clone().into(),
-                    uuid_value(request.context.actor_id, backend),
+                    backend.uuid_value(request.context.actor_id),
                     request.context.trace_id.clone().into(),
-                    uuid_value(request.context.correlation_id, backend),
+                    backend.uuid_value(request.context.correlation_id),
                     request.reason.clone().into(),
                 ],
             ))
@@ -1362,8 +1388,9 @@ where
         configure_tenant_scope(&transaction, request.tenant_id)
             .await
             .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
-        let backend = transaction.get_database_backend();
-        if let Some(existing) = find_rewrap_operation_in(&transaction, &request, backend).await? {
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        if let Some(existing) = find_rewrap_operation_in(&transaction, &request).await? {
             transaction.commit().await.map_err(storage_error)?;
             return Ok(existing);
         }
@@ -1379,21 +1406,21 @@ where
         }
         let updated = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_settings_recovery_points SET key_version = {}, ciphertext = {} WHERE tenant_id = {} AND recovery_point_id = {} AND key_version = {} AND ciphertext = {} AND state = 'ready'",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
                 ),
                 vec![
                     rewrapped.key_version.clone().into(),
                     bytes_value(rewrapped.bytes.clone()),
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.recovery_point_id, backend),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(request.recovery_point_id),
                     recovery.key_version.clone().into(),
                     bytes_value(ciphertext.bytes),
                 ],
@@ -1406,31 +1433,31 @@ where
         let rewrap_operation_id = self.infrastructure.new_id();
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_settings_recovery_rewrap_operations (operation_id, tenant_id, recovery_point_id, idempotency_key, previous_key_version, key_version, actor_id, trace_id, correlation_id, reason, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
-                    placeholder(backend, 8),
-                    placeholder(backend, 9),
-                    placeholder(backend, 10),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
+                    backend.placeholder(8),
+                    backend.placeholder(9),
+                    backend.placeholder(10),
                     now_expression(backend),
                 ),
                 vec![
-                    uuid_value(rewrap_operation_id, backend),
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.recovery_point_id, backend),
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(rewrap_operation_id),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(request.recovery_point_id),
+                    backend.uuid_value(request.context.idempotency_key),
                     recovery.key_version.clone().into(),
                     rewrapped.key_version.clone().into(),
-                    uuid_value(request.context.actor_id, backend),
+                    backend.uuid_value(request.context.actor_id),
                     request.context.trace_id.clone().into(),
-                    uuid_value(request.context.correlation_id, backend),
+                    backend.uuid_value(request.context.correlation_id),
                     request.reason.clone().into(),
                 ],
             ))
@@ -1532,8 +1559,9 @@ where
         configure_tenant_scope(&transaction, request.tenant_id)
             .await
             .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
-        let backend = transaction.get_database_backend();
-        if let Some(existing) = find_bind_operation_in(&transaction, &request, backend).await? {
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        if let Some(existing) = find_bind_operation_in(&transaction, &request).await? {
             transaction.commit().await.map_err(storage_error)?;
             return Ok(existing);
         }
@@ -1584,19 +1612,19 @@ where
         }
         let updated = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_installations SET settings_instance_id = {} WHERE installation_id = {} AND data_owner_id = {} AND settings_instance_id = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
                 ),
                 vec![
-                    uuid_value(settings_instance_id, backend),
-                    uuid_value(request.target_installation_id, backend),
-                    uuid_value(locked.data_owner_id, backend),
-                    uuid_value(target.settings_instance_id, backend),
+                    backend.uuid_value(settings_instance_id),
+                    backend.uuid_value(request.target_installation_id),
+                    backend.uuid_value(locked.data_owner_id),
+                    backend.uuid_value(target.settings_instance_id),
                 ],
             ))
             .await
@@ -1606,19 +1634,19 @@ where
         }
         let bound = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_settings_recovery_points SET restored_installation_id = {} WHERE tenant_id = {} AND recovery_point_id = {} AND restored_at IS NOT NULL AND restored_installation_id IS NULL AND restored_settings_instance_id = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
                 ),
                 vec![
-                    uuid_value(request.target_installation_id, backend),
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.recovery_point_id, backend),
-                    uuid_value(settings_instance_id, backend),
+                    backend.uuid_value(request.target_installation_id),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(request.recovery_point_id),
+                    backend.uuid_value(settings_instance_id),
                 ],
             ))
             .await
@@ -1629,34 +1657,34 @@ where
         let bind_operation_id = self.infrastructure.new_id();
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_settings_recovery_bind_operations (operation_id, tenant_id, recovery_point_id, target_installation_id, expected_target_installation_revision, settings_instance_id, actor_id, trace_id, correlation_id, reason, idempotency_key, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
-                    placeholder(backend, 8),
-                    placeholder(backend, 9),
-                    placeholder(backend, 10),
-                    placeholder(backend, 11),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
+                    backend.placeholder(8),
+                    backend.placeholder(9),
+                    backend.placeholder(10),
+                    backend.placeholder(11),
                     now_expression(backend),
                 ),
                 vec![
-                    uuid_value(bind_operation_id, backend),
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.recovery_point_id, backend),
-                    uuid_value(request.target_installation_id, backend),
+                    backend.uuid_value(bind_operation_id),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(request.recovery_point_id),
+                    backend.uuid_value(request.target_installation_id),
                     revision_value(request.expected_target_installation_revision)?,
-                    uuid_value(settings_instance_id, backend),
-                    uuid_value(request.context.actor_id, backend),
+                    backend.uuid_value(settings_instance_id),
+                    backend.uuid_value(request.context.actor_id),
                     request.context.trace_id.clone().into(),
-                    uuid_value(request.context.correlation_id, backend),
+                    backend.uuid_value(request.context.correlation_id),
                     request.reason.clone().into(),
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.context.idempotency_key),
                 ],
             ))
             .await
@@ -1693,17 +1721,18 @@ where
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let rows = transaction
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT recovery_point_id, tenant_id, data_owner_id, settings_instance_id, retention_revision, retain_until, legal_hold, audit_hold, incident_hold, state FROM module_artifact_settings_recovery_points WHERE tenant_id = {} AND state IN ('ready', 'collecting') ORDER BY CASE WHEN state = 'collecting' THEN 0 ELSE 1 END, created_at ASC, recovery_point_id ASC LIMIT {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
                 ),
                 vec![
-                    uuid_value(tenant_id, backend),
+                    backend.uuid_value(tenant_id),
                     i64::from(MAX_COLLECTION_SCAN).into(),
                 ],
             ))
@@ -1727,7 +1756,8 @@ where
         configure_tenant_scope(&transaction, request.tenant_id)
             .await
             .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let locked = load_recovery_material_in(
             &transaction,
             request.tenant_id,
@@ -1757,29 +1787,29 @@ where
         let collection_id = self.infrastructure.new_id();
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_settings_recovery_collections (collection_id, tenant_id, recovery_point_id, policy_snapshot_id, actor_id, trace_id, correlation_id, idempotency_key, reason, collecting_at, completed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, NULL)",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
-                    placeholder(backend, 8),
-                    placeholder(backend, 9),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
+                    backend.placeholder(8),
+                    backend.placeholder(9),
                     now_expression(backend),
                 ),
                 vec![
-                    uuid_value(collection_id, backend),
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(candidate.recovery_point_id, backend),
+                    backend.uuid_value(collection_id),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(candidate.recovery_point_id),
                     request.policy_snapshot_id.clone().into(),
-                    uuid_value(request.context.actor_id, backend),
+                    backend.uuid_value(request.context.actor_id),
                     request.context.trace_id.clone().into(),
-                    uuid_value(request.context.correlation_id, backend),
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.context.correlation_id),
+                    backend.uuid_value(request.context.idempotency_key),
                     request.reason.clone().into(),
                 ],
             ))
@@ -1787,16 +1817,16 @@ where
             .map_err(storage_error)?;
         let updated = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_settings_recovery_points SET state = 'collecting' WHERE tenant_id = {} AND recovery_point_id = {} AND state = 'ready' AND retention_revision = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
                 vec![
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(candidate.recovery_point_id, backend),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(candidate.recovery_point_id),
                     revision_value(candidate.retention_revision)?,
                 ],
             ))
@@ -1822,7 +1852,8 @@ where
         configure_tenant_scope(&transaction, work.tenant_id)
             .await
             .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let locked =
             load_recovery_material_in(&transaction, work.tenant_id, work.recovery_point_id, true)
                 .await?;
@@ -1839,18 +1870,18 @@ where
         }
         let completed = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_settings_recovery_collections SET completed_at = {} WHERE tenant_id = {} AND recovery_point_id = {} AND collection_id = {} AND completed_at IS NULL",
                     now_expression(backend),
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
                 vec![
-                    uuid_value(work.tenant_id, backend),
-                    uuid_value(work.recovery_point_id, backend),
-                    uuid_value(work.collection_id, backend),
+                    backend.uuid_value(work.tenant_id),
+                    backend.uuid_value(work.recovery_point_id),
+                    backend.uuid_value(work.collection_id),
                 ],
             ))
             .await
@@ -1860,17 +1891,17 @@ where
         }
         let collected = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_settings_recovery_points SET state = 'collected', ciphertext = {}, collected_at = {} WHERE tenant_id = {} AND recovery_point_id = {} AND state = 'collecting'",
                     null_bytes_value(),
                     now_expression(backend),
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
                 ),
                 vec![
-                    uuid_value(work.tenant_id, backend),
-                    uuid_value(work.recovery_point_id, backend),
+                    backend.uuid_value(work.tenant_id),
+                    backend.uuid_value(work.recovery_point_id),
                 ],
             ))
             .await
@@ -1904,7 +1935,7 @@ where
             .await
             .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
         let result =
-            find_recovery_operation_in(&transaction, request, transaction.get_database_backend())
+            find_recovery_operation_in(&transaction, request)
                 .await?;
         transaction.commit().await.map_err(storage_error)?;
         Ok(result)
@@ -1919,7 +1950,7 @@ where
             .await
             .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
         let result =
-            find_purge_operation_in(&transaction, request, transaction.get_database_backend())
+            find_purge_operation_in(&transaction, request)
                 .await?;
         transaction.commit().await.map_err(storage_error)?;
         Ok(result)
@@ -1934,7 +1965,7 @@ where
             .await
             .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
         let result =
-            find_restore_operation_in(&transaction, request, transaction.get_database_backend())
+            find_restore_operation_in(&transaction, request)
                 .await?;
         transaction.commit().await.map_err(storage_error)?;
         Ok(result)
@@ -1949,7 +1980,7 @@ where
             .await
             .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
         let result =
-            find_rewrap_operation_in(&transaction, request, transaction.get_database_backend())
+            find_rewrap_operation_in(&transaction, request)
                 .await?;
         transaction.commit().await.map_err(storage_error)?;
         Ok(result)
@@ -1964,7 +1995,7 @@ where
             .await
             .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
         let result =
-            find_bind_operation_in(&transaction, request, transaction.get_database_backend())
+            find_bind_operation_in(&transaction, request)
                 .await?;
         transaction.commit().await.map_err(storage_error)?;
         Ok(result)
@@ -2340,15 +2371,16 @@ async fn load_installation<C: ConnectionTrait>(
     installation_id: Uuid,
     lock: bool,
 ) -> Result<InstallationRow, ArtifactSettingsRecoveryError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT installation.scope_kind, installation.tenant_id, installation.slug, installation.registry, installation.repository, installation.data_owner_id, installation.settings_instance_id, admission.revision AS admission_revision, admission.status, CAST(installation.descriptor AS TEXT) AS descriptor, CASE WHEN uninstall.operation_id IS NULL THEN 0 ELSE 1 END AS uninstalled FROM module_artifact_installations installation JOIN module_artifact_admissions admission ON admission.installation_id = installation.installation_id LEFT JOIN module_artifact_uninstall_operations uninstall ON uninstall.installation_id = installation.installation_id WHERE installation.installation_id = {} AND ((installation.scope_kind = 'platform' AND installation.tenant_id IS NULL) OR (installation.scope_kind = 'tenant' AND installation.tenant_id = {})){}",
-                placeholder(backend, 1), placeholder(backend, 2), lock_clause(backend, lock),
+                backend.placeholder(1), backend.placeholder(2), lock_clause(backend, lock),
             ),
-            vec![uuid_value(installation_id, backend), uuid_value(tenant_id, backend)],
+            vec![backend.uuid_value(installation_id), backend.uuid_value(tenant_id)],
         ))
         .await
         .map_err(storage_error)?
@@ -2410,21 +2442,22 @@ async fn load_settings_instance<C: ConnectionTrait>(
     settings_instance_id: Uuid,
     lock: bool,
 ) -> Result<SettingsInstanceRow, ArtifactSettingsRecoveryError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT schema_digest, settings, revision FROM module_artifact_settings_instances WHERE tenant_id = {} AND data_owner_id = {} AND settings_instance_id = {}{}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
                 lock_clause(backend, lock),
             ),
             vec![
-                uuid_value(tenant_id, backend),
-                uuid_value(data_owner_id, backend),
-                uuid_value(settings_instance_id, backend),
+                backend.uuid_value(tenant_id),
+                backend.uuid_value(data_owner_id),
+                backend.uuid_value(settings_instance_id),
             ],
         ))
         .await
@@ -2511,15 +2544,16 @@ async fn ensure_no_active_owner_binding<C: ConnectionTrait>(
     tenant_id: Uuid,
     data_owner_id: Uuid,
 ) -> Result<(), ArtifactSettingsRecoveryError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let active = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT 1 FROM module_artifact_installations installation JOIN module_artifact_admissions admission ON admission.installation_id = installation.installation_id LEFT JOIN module_artifact_uninstall_operations uninstall ON uninstall.installation_id = installation.installation_id WHERE installation.data_owner_id = {} AND admission.status = 'active' AND uninstall.operation_id IS NULL AND ((installation.scope_kind = 'platform' AND installation.tenant_id IS NULL) OR (installation.scope_kind = 'tenant' AND installation.tenant_id = {})) LIMIT 1",
-                placeholder(backend, 1), placeholder(backend, 2),
+                backend.placeholder(1), backend.placeholder(2),
             ),
-            vec![uuid_value(data_owner_id, backend), uuid_value(tenant_id, backend)],
+            vec![backend.uuid_value(data_owner_id), backend.uuid_value(tenant_id)],
         ))
         .await
         .map_err(storage_error)?;
@@ -2547,10 +2581,11 @@ async fn find_settings_purge_preview_recovery<C: ConnectionTrait>(
     schema_digest: &str,
     descriptor_digest: &str,
 ) -> Result<Option<SettingsPurgePreviewRecovery>, ArtifactSettingsRecoveryError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT recovery_point_id, state, restored_at, retain_until \
                  FROM module_artifact_settings_recovery_points \
@@ -2558,19 +2593,19 @@ async fn find_settings_purge_preview_recovery<C: ConnectionTrait>(
                    AND settings_instance_id = {} AND settings_revision = {} \
                    AND schema_digest = {} AND descriptor_digest = {} \
                  ORDER BY retention_revision DESC, created_at DESC LIMIT 1",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
             ),
             vec![
-                uuid_value(tenant_id, backend),
-                uuid_value(installation_id, backend),
-                uuid_value(data_owner_id, backend),
-                uuid_value(settings_instance_id, backend),
+                backend.uuid_value(tenant_id),
+                backend.uuid_value(installation_id),
+                backend.uuid_value(data_owner_id),
+                backend.uuid_value(settings_instance_id),
                 revision_value(settings_revision)?,
                 schema_digest.to_string().into(),
                 descriptor_digest.to_string().into(),
@@ -2595,21 +2630,22 @@ async fn settings_purge_tombstone_exists<C: ConnectionTrait>(
     data_owner_id: Uuid,
     settings_instance_id: Uuid,
 ) -> Result<bool, ArtifactSettingsRecoveryError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT 1 FROM module_artifact_settings_tombstones \
                  WHERE tenant_id = {} AND data_owner_id = {} AND settings_instance_id = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
             ),
             vec![
-                uuid_value(tenant_id, backend),
-                uuid_value(data_owner_id, backend),
-                uuid_value(settings_instance_id, backend),
+                backend.uuid_value(tenant_id),
+                backend.uuid_value(data_owner_id),
+                backend.uuid_value(settings_instance_id),
             ],
         ))
         .await
@@ -2623,21 +2659,22 @@ async fn next_tombstone_revision<C: ConnectionTrait>(
     data_owner_id: Uuid,
     settings_instance_id: Uuid,
 ) -> Result<u64, ArtifactSettingsRecoveryError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let prior = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT tombstone_revision FROM module_artifact_settings_tombstones WHERE tenant_id = {} AND data_owner_id = {} AND settings_instance_id = {}{}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
                 lock_clause(backend, true),
             ),
             vec![
-                uuid_value(tenant_id, backend),
-                uuid_value(data_owner_id, backend),
-                uuid_value(settings_instance_id, backend),
+                backend.uuid_value(tenant_id),
+                backend.uuid_value(data_owner_id),
+                backend.uuid_value(settings_instance_id),
             ],
         ))
         .await
@@ -2655,19 +2692,20 @@ async fn ensure_tombstone<C: ConnectionTrait>(
     settings_instance_id: Uuid,
     recovery_point_id: Uuid,
 ) -> Result<(), ArtifactSettingsRecoveryError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT 1 FROM module_artifact_settings_tombstones WHERE tenant_id = {} AND data_owner_id = {} AND settings_instance_id = {} AND recovery_point_id = {}{}",
-                placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3), placeholder(backend, 4), lock_clause(backend, true),
+                backend.placeholder(1), backend.placeholder(2), backend.placeholder(3), backend.placeholder(4), lock_clause(backend, true),
             ),
             vec![
-                uuid_value(tenant_id, backend),
-                uuid_value(data_owner_id, backend),
-                uuid_value(settings_instance_id, backend),
-                uuid_value(recovery_point_id, backend),
+                backend.uuid_value(tenant_id),
+                backend.uuid_value(data_owner_id),
+                backend.uuid_value(settings_instance_id),
+                backend.uuid_value(recovery_point_id),
             ],
         ))
         .await
@@ -2680,18 +2718,19 @@ async fn ensure_tombstone<C: ConnectionTrait>(
 async fn find_recovery_operation_in<C: ConnectionTrait>(
     connection: &C,
     request: &ArtifactSettingsRecoveryPointCreateRequest,
-    backend: DbBackend,
 ) -> Result<Option<ArtifactSettingsRecoveryPoint>, ArtifactSettingsRecoveryError> {
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT operation.installation_id, operation.expected_installation_revision, operation.expected_settings_revision, operation.actor_id, operation.trace_id, operation.correlation_id, operation.idempotency_key, operation.reason, point.* FROM module_artifact_settings_recovery_operations operation JOIN module_artifact_settings_recovery_points point ON point.recovery_point_id = operation.recovery_point_id WHERE operation.tenant_id = {} AND operation.idempotency_key = {}",
-                placeholder(backend, 1), placeholder(backend, 2),
+                backend.placeholder(1), backend.placeholder(2),
             ),
             vec![
-                uuid_value(request.tenant_id, backend),
-                uuid_value(request.context.idempotency_key, backend),
+                backend.uuid_value(request.tenant_id),
+                backend.uuid_value(request.context.idempotency_key),
             ],
         ))
         .await
@@ -2719,7 +2758,7 @@ async fn find_recovery_operation_in<C: ConnectionTrait>(
 fn command_context_from_receipt_row(
     row: &QueryResult,
     tenant_id: Uuid,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<ModuleCommandContext, ArtifactSettingsRecoveryError> {
     let context = ModuleCommandContext {
         actor_id: uuid_from_row(row, "actor_id", backend)?,
@@ -2737,18 +2776,19 @@ fn command_context_from_receipt_row(
 async fn find_purge_operation_in<C: ConnectionTrait>(
     connection: &C,
     request: &ArtifactSettingsPurgeRequest,
-    backend: DbBackend,
 ) -> Result<Option<ArtifactSettingsPurgeResult>, ArtifactSettingsRecoveryError> {
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT operation_id, installation_id, recovery_point_id, expected_installation_revision, expected_settings_revision, tombstone_revision, actor_id, trace_id, correlation_id, idempotency_key, reason FROM module_artifact_settings_purge_operations WHERE tenant_id = {} AND idempotency_key = {}",
-                placeholder(backend, 1), placeholder(backend, 2),
+                backend.placeholder(1), backend.placeholder(2),
             ),
             vec![
-                uuid_value(request.tenant_id, backend),
-                uuid_value(request.context.idempotency_key, backend),
+                backend.uuid_value(request.tenant_id),
+                backend.uuid_value(request.context.idempotency_key),
             ],
         ))
         .await
@@ -2786,18 +2826,19 @@ async fn find_purge_operation_in<C: ConnectionTrait>(
 async fn find_restore_operation_in<C: ConnectionTrait>(
     connection: &C,
     request: &ArtifactSettingsRestoreRequest,
-    backend: DbBackend,
 ) -> Result<Option<ArtifactSettingsRestoreResult>, ArtifactSettingsRecoveryError> {
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT operation_id, recovery_point_id, target_installation_id, expected_target_installation_revision, settings_instance_id, actor_id, trace_id, correlation_id, idempotency_key, reason FROM module_artifact_settings_restore_operations WHERE tenant_id = {} AND idempotency_key = {}",
-                placeholder(backend, 1), placeholder(backend, 2),
+                backend.placeholder(1), backend.placeholder(2),
             ),
             vec![
-                uuid_value(request.tenant_id, backend),
-                uuid_value(request.context.idempotency_key, backend),
+                backend.uuid_value(request.tenant_id),
+                backend.uuid_value(request.context.idempotency_key),
             ],
         ))
         .await
@@ -2828,19 +2869,19 @@ async fn find_retention_operation_in<C: ConnectionTrait>(
     connection: &C,
     request: &ArtifactSettingsRecoveryRetentionUpdateRequest,
     request_digest: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Option<ArtifactSettingsRecoveryRetentionUpdateResult>, ArtifactSettingsRecoveryError> {
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT recovery_point_id, request_digest, retention_revision, retain_until, legal_hold, audit_hold, incident_hold, policy_snapshot_id, actor_id, trace_id, correlation_id, idempotency_key FROM module_artifact_settings_recovery_retention_operations WHERE tenant_id = {} AND idempotency_key = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
+                backend.placeholder(1),
+                backend.placeholder(2),
             ),
             vec![
-                uuid_value(request.tenant_id, backend),
-                uuid_value(request.context.idempotency_key, backend),
+                backend.uuid_value(request.tenant_id),
+                backend.uuid_value(request.context.idempotency_key),
             ],
         ))
         .await
@@ -2875,19 +2916,20 @@ async fn find_retention_operation_in<C: ConnectionTrait>(
 async fn find_rewrap_operation_in<C: ConnectionTrait>(
     connection: &C,
     request: &ArtifactSettingsRecoveryRewrapRequest,
-    backend: DbBackend,
 ) -> Result<Option<ArtifactSettingsRecoveryRewrapResult>, ArtifactSettingsRecoveryError> {
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT operation_id, recovery_point_id, previous_key_version, key_version, actor_id, trace_id, correlation_id, idempotency_key, reason FROM module_artifact_settings_recovery_rewrap_operations WHERE tenant_id = {} AND idempotency_key = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
+                backend.placeholder(1),
+                backend.placeholder(2),
             ),
             vec![
-                uuid_value(request.tenant_id, backend),
-                uuid_value(request.context.idempotency_key, backend),
+                backend.uuid_value(request.tenant_id),
+                backend.uuid_value(request.context.idempotency_key),
             ],
         ))
         .await
@@ -2916,19 +2958,20 @@ async fn find_rewrap_operation_in<C: ConnectionTrait>(
 async fn find_bind_operation_in<C: ConnectionTrait>(
     connection: &C,
     request: &ArtifactSettingsRecoveryBindRequest,
-    backend: DbBackend,
 ) -> Result<Option<ArtifactSettingsRecoveryBindResult>, ArtifactSettingsRecoveryError> {
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT operation_id, recovery_point_id, target_installation_id, expected_target_installation_revision, settings_instance_id, actor_id, trace_id, correlation_id, idempotency_key, reason FROM module_artifact_settings_recovery_bind_operations WHERE tenant_id = {} AND idempotency_key = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
+                backend.placeholder(1),
+                backend.placeholder(2),
             ),
             vec![
-                uuid_value(request.tenant_id, backend),
-                uuid_value(request.context.idempotency_key, backend),
+                backend.uuid_value(request.tenant_id),
+                backend.uuid_value(request.context.idempotency_key),
             ],
         ))
         .await
@@ -2961,7 +3004,7 @@ async fn find_bind_operation_in<C: ConnectionTrait>(
 
 fn settings_recovery_collection_candidate_from_row(
     row: QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<SettingsRecoveryCollectionCandidate, ArtifactSettingsRecoveryError> {
     Ok(SettingsRecoveryCollectionCandidate {
         candidate: ArtifactSettingsRecoveryCollectionCandidate {
@@ -2987,18 +3030,19 @@ async fn settings_recovery_collection_work_in<C: ConnectionTrait>(
     tenant_id: Uuid,
     recovery_point_id: Uuid,
 ) -> Result<SettingsRecoveryCollectionWork, ArtifactSettingsRecoveryError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT collection_id, tenant_id, recovery_point_id, actor_id, trace_id, correlation_id, idempotency_key FROM module_artifact_settings_recovery_collections WHERE tenant_id = {} AND recovery_point_id = {} AND completed_at IS NULL",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
+                backend.placeholder(1),
+                backend.placeholder(2),
             ),
             vec![
-                uuid_value(tenant_id, backend),
-                uuid_value(recovery_point_id, backend),
+                backend.uuid_value(tenant_id),
+                backend.uuid_value(recovery_point_id),
             ],
         ))
         .await
@@ -3029,15 +3073,16 @@ async fn load_recovery_material_in<C: ConnectionTrait>(
     recovery_point_id: Uuid,
     lock: bool,
 ) -> Result<RecoveryMaterial, ArtifactSettingsRecoveryError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT tenant_id, recovery_point_id, installation_id, data_owner_id, settings_instance_id, settings_revision, schema_digest, descriptor_digest, value_digest, key_version, ciphertext, retention_revision, policy_snapshot_id, secret_handle_digest, retain_until, legal_hold, audit_hold, incident_hold, state, restored_at, restored_installation_id, restored_settings_instance_id FROM module_artifact_settings_recovery_points WHERE tenant_id = {} AND recovery_point_id = {}{}",
-                placeholder(backend, 1), placeholder(backend, 2), lock_clause(backend, lock),
+                backend.placeholder(1), backend.placeholder(2), lock_clause(backend, lock),
             ),
-            vec![uuid_value(tenant_id, backend), uuid_value(recovery_point_id, backend)],
+            vec![backend.uuid_value(tenant_id), backend.uuid_value(recovery_point_id)],
         ))
         .await
         .map_err(storage_error)?
@@ -3047,7 +3092,7 @@ async fn load_recovery_material_in<C: ConnectionTrait>(
 
 fn recovery_point_from_row(
     row: &QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<ArtifactSettingsRecoveryPoint, ArtifactSettingsRecoveryError> {
     let settings_revision: i64 = row
         .try_get("", "settings_revision")
@@ -3084,7 +3129,7 @@ fn recovery_point_from_row(
 
 fn recovery_material_from_row(
     row: &QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<RecoveryMaterial, ArtifactSettingsRecoveryError> {
     let settings_revision: i64 = row
         .try_get("", "settings_revision")
@@ -3382,40 +3427,26 @@ fn optional_positive_u64_from_row(
         .transpose()
 }
 
-fn placeholder(backend: DbBackend, index: usize) -> String {
-    match backend {
-        DbBackend::Postgres => format!("${index}"),
-        _ => format!("?{index}"),
-    }
-}
-
-fn lock_clause(backend: DbBackend, lock: bool) -> &'static str {
+fn lock_clause(backend: SupportedBackend, lock: bool) -> &'static str {
     match (backend, lock) {
-        (DbBackend::Postgres, true) => " FOR UPDATE",
+        (SupportedBackend::Postgres, true) => " FOR UPDATE",
         _ => "",
     }
 }
 
-fn now_expression(backend: DbBackend) -> &'static str {
+fn now_expression(backend: SupportedBackend) -> &'static str {
     match backend {
-        DbBackend::Postgres => "NOW()",
-        _ => "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        SupportedBackend::Postgres => "NOW()",
+        SupportedBackend::Sqlite => "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
     }
 }
 
-fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
-    match backend {
-        DbBackend::Postgres => SqlValue::Uuid(Some(value)),
-        _ => value.to_string().into(),
-    }
-}
-
-fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> SqlValue {
+fn optional_uuid_value(value: Option<Uuid>, backend: SupportedBackend) -> SqlValue {
     match (backend, value) {
-        (DbBackend::Postgres, Some(value)) => SqlValue::Uuid(Some(value)),
-        (DbBackend::Postgres, None) => SqlValue::Uuid(None),
-        (_, Some(value)) => value.to_string().into(),
-        (_, None) => SqlValue::String(None),
+        (SupportedBackend::Postgres, Some(value)) => SqlValue::Uuid(Some(value)),
+        (SupportedBackend::Postgres, None) => SqlValue::Uuid(None),
+        (SupportedBackend::Sqlite, Some(value)) => value.to_string().into(),
+        (SupportedBackend::Sqlite, None) => SqlValue::String(None),
     }
 }
 
@@ -3427,28 +3458,28 @@ fn null_bytes_value() -> SqlValue {
     SqlValue::Bytes(None)
 }
 
-fn bool_value(value: bool, backend: DbBackend) -> SqlValue {
+fn bool_value(value: bool, backend: SupportedBackend) -> SqlValue {
     match backend {
-        DbBackend::Postgres => value.into(),
-        _ => i64::from(value).into(),
+        SupportedBackend::Postgres => value.into(),
+        SupportedBackend::Sqlite => i64::from(value).into(),
     }
 }
 
-fn datetime_value(value: DateTime<Utc>, backend: DbBackend) -> SqlValue {
+fn datetime_value(value: DateTime<Utc>, backend: SupportedBackend) -> SqlValue {
     match backend {
-        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(value)),
-        _ => value.to_rfc3339().into(),
+        SupportedBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(value)),
+        SupportedBackend::Sqlite => value.to_rfc3339().into(),
     }
 }
 
 fn uuid_from_row(
     row: &QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Uuid, ArtifactSettingsRecoveryError> {
     match backend {
-        DbBackend::Postgres => row.try_get("", column).map_err(storage_error),
-        _ => row
+        SupportedBackend::Postgres => row.try_get("", column).map_err(storage_error),
+        SupportedBackend::Sqlite => row
             .try_get::<String>("", column)
             .map_err(storage_error)?
             .parse()
@@ -3461,11 +3492,11 @@ fn uuid_from_row(
 fn optional_uuid_from_row(
     row: &QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Option<Uuid>, ArtifactSettingsRecoveryError> {
     match backend {
-        DbBackend::Postgres => row.try_get("", column).map_err(storage_error),
-        _ => row
+        SupportedBackend::Postgres => row.try_get("", column).map_err(storage_error),
+        SupportedBackend::Sqlite => row
             .try_get::<Option<String>>("", column)
             .map_err(storage_error)?
             .map(|value| {
@@ -3480,22 +3511,22 @@ fn optional_uuid_from_row(
 fn bool_from_row(
     row: &QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<bool, ArtifactSettingsRecoveryError> {
     match backend {
-        DbBackend::Postgres => row.try_get("", column).map_err(storage_error),
-        _ => Ok(row.try_get::<i64>("", column).map_err(storage_error)? != 0),
+        SupportedBackend::Postgres => row.try_get("", column).map_err(storage_error),
+        SupportedBackend::Sqlite => Ok(row.try_get::<i64>("", column).map_err(storage_error)? != 0),
     }
 }
 
 fn datetime_from_row(
     row: &QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<DateTime<Utc>, ArtifactSettingsRecoveryError> {
     match backend {
-        DbBackend::Postgres => row.try_get("", column).map_err(storage_error),
-        _ => row
+        SupportedBackend::Postgres => row.try_get("", column).map_err(storage_error),
+        SupportedBackend::Sqlite => row
             .try_get::<String>("", column)
             .map_err(storage_error)
             .and_then(|value| {
@@ -3509,11 +3540,11 @@ fn datetime_from_row(
 fn optional_datetime_from_row(
     row: &QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Option<DateTime<Utc>>, ArtifactSettingsRecoveryError> {
     match backend {
-        DbBackend::Postgres => row.try_get("", column).map_err(storage_error),
-        _ => row
+        SupportedBackend::Postgres => row.try_get("", column).map_err(storage_error),
+        SupportedBackend::Sqlite => row
             .try_get::<Option<String>>("", column)
             .map_err(storage_error)?
             .map(|value| {

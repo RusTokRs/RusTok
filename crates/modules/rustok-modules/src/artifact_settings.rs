@@ -6,12 +6,13 @@
 //! owner and exact settings-instance binding.
 
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, Statement, TransactionTrait, Value as SqlValue,
 };
 use serde_json::Value;
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ModuleArtifactDescriptor, ModuleInstallationScope, TenantModuleSettingsRecord,
     artifact_schema::{ArtifactSchemaValidationError, ArtifactSchemaValidatorCache},
@@ -114,21 +115,22 @@ pub(crate) async fn load(
         transaction.commit().await.map_err(database_error)?;
         return Ok(serde_json::json!({}));
     };
-    let backend = transaction.get_database_backend();
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(database_error)?;
     let row = transaction
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT settings, schema_digest FROM module_artifact_settings_instances \
                  WHERE tenant_id = {} AND data_owner_id = {} AND settings_instance_id = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
             ),
             vec![
-                uuid_value(tenant_id, backend),
-                uuid_value(installation.data_owner_id, backend),
-                uuid_value(installation.settings_instance_id, backend),
+                backend.uuid_value(tenant_id),
+                backend.uuid_value(installation.data_owner_id),
+                backend.uuid_value(installation.settings_instance_id),
             ],
         ))
         .await
@@ -164,10 +166,11 @@ async fn resolve_active_installation<C: ConnectionTrait>(
     .await
     .map_err(|error| ArtifactSettingsStoreError::Database(error.to_string()))?;
 
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(database_error)?;
     let rows = connection
         .query_all_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT installation.scope_kind, installation.data_owner_id, \
                  installation.settings_instance_id, CAST(installation.descriptor AS TEXT) AS descriptor \
@@ -181,10 +184,10 @@ async fn resolve_active_installation<C: ConnectionTrait>(
                         OR (installation.scope_kind = 'platform' AND installation.tenant_id IS NULL)) \
                  ORDER BY CASE WHEN installation.scope_kind = 'tenant' THEN 0 ELSE 1 END \
                  LIMIT 3",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
+                backend.placeholder(1),
+                backend.placeholder(2),
             ),
-            vec![module_slug.to_string().into(), uuid_value(tenant_id, backend)],
+            vec![module_slug.to_string().into(), backend.uuid_value(tenant_id)],
         ))
         .await
         .map_err(database_error)?;
@@ -239,21 +242,22 @@ async fn persist_settings_instance<C: ConnectionTrait>(
     installation: &ActiveSettingsInstallation,
     settings: Value,
 ) -> Result<(), ArtifactSettingsStoreError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(database_error)?;
     let existing = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT schema_digest FROM module_artifact_settings_instances \
                  WHERE tenant_id = {} AND data_owner_id = {} AND settings_instance_id = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
             ),
             vec![
-                uuid_value(tenant_id, backend),
-                uuid_value(installation.data_owner_id, backend),
-                uuid_value(installation.settings_instance_id, backend),
+                backend.uuid_value(tenant_id),
+                backend.uuid_value(installation.data_owner_id),
+                backend.uuid_value(installation.settings_instance_id),
             ],
         ))
         .await
@@ -267,22 +271,22 @@ async fn persist_settings_instance<C: ConnectionTrait>(
         }
         connection
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_settings_instances \
                      SET settings = {}, revision = revision + 1, updated_at = {} \
                      WHERE tenant_id = {} AND data_owner_id = {} AND settings_instance_id = {}",
-                    placeholder(backend, 1),
+                    backend.placeholder(1),
                     now_expression(backend),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
                 ),
                 vec![
                     SqlValue::Json(Some(Box::new(settings))),
-                    uuid_value(tenant_id, backend),
-                    uuid_value(installation.data_owner_id, backend),
-                    uuid_value(installation.settings_instance_id, backend),
+                    backend.uuid_value(tenant_id),
+                    backend.uuid_value(installation.data_owner_id),
+                    backend.uuid_value(installation.settings_instance_id),
                 ],
             ))
             .await
@@ -292,23 +296,23 @@ async fn persist_settings_instance<C: ConnectionTrait>(
 
     connection
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_artifact_settings_instances \
                  (tenant_id, data_owner_id, settings_instance_id, schema_digest, settings, revision, created_at, updated_at) \
                  VALUES ({}, {}, {}, {}, {}, 1, {}, {})",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
                 now_expression(backend),
                 now_expression(backend),
             ),
             vec![
-                uuid_value(tenant_id, backend),
-                uuid_value(installation.data_owner_id, backend),
-                uuid_value(installation.settings_instance_id, backend),
+                backend.uuid_value(tenant_id),
+                backend.uuid_value(installation.data_owner_id),
+                backend.uuid_value(installation.settings_instance_id),
                 installation
                     .schema_digest
                     .clone()
@@ -327,20 +331,21 @@ async fn ensure_not_tombstoned<C: ConnectionTrait>(
     tenant_id: Uuid,
     installation: &ActiveSettingsInstallation,
 ) -> Result<(), ArtifactSettingsStoreError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(database_error)?;
     let tombstone = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT 1 FROM module_artifact_settings_tombstones WHERE tenant_id = {} AND data_owner_id = {} AND settings_instance_id = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
             ),
             vec![
-                uuid_value(tenant_id, backend),
-                uuid_value(installation.data_owner_id, backend),
-                uuid_value(installation.settings_instance_id, backend),
+                backend.uuid_value(tenant_id),
+                backend.uuid_value(installation.data_owner_id),
+                backend.uuid_value(installation.settings_instance_id),
             ],
         ))
         .await
@@ -363,35 +368,21 @@ fn map_validation_error(error: ArtifactSchemaValidationError) -> ArtifactSetting
     }
 }
 
-fn placeholder(backend: DbBackend, index: usize) -> String {
+fn now_expression(backend: SupportedBackend) -> &'static str {
     match backend {
-        DbBackend::Postgres => format!("${index}"),
-        _ => format!("?{index}"),
-    }
-}
-
-fn now_expression(backend: DbBackend) -> &'static str {
-    match backend {
-        DbBackend::Postgres => "NOW()",
-        _ => "CURRENT_TIMESTAMP",
-    }
-}
-
-fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
-    match backend {
-        DbBackend::Postgres => SqlValue::Uuid(Some(value)),
-        _ => value.to_string().into(),
+        SupportedBackend::Postgres => "NOW()",
+        SupportedBackend::Sqlite => "CURRENT_TIMESTAMP",
     }
 }
 
 fn uuid_from_row(
     row: &sea_orm::QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Uuid, ArtifactSettingsStoreError> {
     match backend {
-        DbBackend::Postgres => row.try_get("", column).map_err(database_error),
-        _ => row
+        SupportedBackend::Postgres => row.try_get("", column).map_err(database_error),
+        SupportedBackend::Sqlite => row
             .try_get::<String>("", column)
             .map_err(database_error)?
             .parse()

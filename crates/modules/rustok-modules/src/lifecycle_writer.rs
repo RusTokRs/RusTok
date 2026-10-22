@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet},
@@ -8,6 +8,7 @@ use std::{
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::policy::{
     ModuleEffectivePolicyChannelInput, ModuleEffectivePolicyCoRequisite,
     ModuleEffectivePolicyInstallationFact, ModuleEffectivePolicyMaintenanceInput,
@@ -955,20 +956,21 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         if tenant_id.is_nil() || limit == 0 || limit > MAX_TENANT_MODULE_OVERRIDES {
             return Err(ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery);
         }
-        let backend = self.db.get_database_backend();
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
         let sql = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "SELECT module_slug, enabled, settings FROM tenant_modules \
                  WHERE tenant_id = $1 ORDER BY module_slug ASC LIMIT $2"
             }
-            _ => {
+            SupportedBackend::Sqlite => {
                 "SELECT module_slug, enabled, settings FROM tenant_modules \
                  WHERE tenant_id = ?1 ORDER BY module_slug ASC LIMIT ?2"
             }
         };
         self.db
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 sql,
                 vec![tenant_id.into(), i64::from(limit).into()],
             ))
@@ -1339,17 +1341,20 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         &self,
         tenant_id: Uuid,
     ) -> Result<Vec<TenantModuleOverride>, ModuleLifecycleDbWriterError> {
-        let backend = self.db.get_database_backend();
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
         let sql = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = $1 LIMIT 1001"
             }
-            _ => "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = ?1 LIMIT 1001",
+            SupportedBackend::Sqlite => {
+                "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = ?1 LIMIT 1001"
+            }
         };
         let overrides = self
             .db
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 sql,
                 vec![tenant_id.into()],
             ))
@@ -1383,18 +1388,19 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 .await
                 .map_err(|error| map_artifact_settings_error(module_slug, error));
         }
-        let backend = self.db.get_database_backend();
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
         let sql = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "SELECT settings FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
             }
-            _ => {
+            SupportedBackend::Sqlite => {
                 "SELECT settings FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
             }
         };
         self.db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 sql,
                 vec![tenant_id.into(), module_slug.into()],
             ))

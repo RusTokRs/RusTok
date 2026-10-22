@@ -1,10 +1,11 @@
 use chrono::{DateTime, Utc};
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::ModuleOperationStatus;
+use crate::backend::SupportedBackend;
 
 /// Maximum number of attention-needed operations returned per tenant query.
 pub const MAX_FAILED_OPERATIONS_FOR_TENANT: u32 = 200;
@@ -171,13 +172,13 @@ impl ModuleOperationJournal {
         db: &C,
         operation_id: Uuid,
     ) -> Result<Option<ModuleOperationSnapshot>, ModuleOperationStoreError> {
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         let sql = match backend {
-            DbBackend::Postgres => format!("{} WHERE id = $1", operation_select_sql()),
-            _ => format!("{} WHERE id = ?1", operation_select_sql()),
+            SupportedBackend::Postgres => format!("{} WHERE id = $1", operation_select_sql()),
+            SupportedBackend::Sqlite => format!("{} WHERE id = ?1", operation_select_sql()),
         };
         db.query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             sql,
             vec![operation_id.into()],
         ))
@@ -196,14 +197,14 @@ impl ModuleOperationJournal {
         tenant_id: Uuid,
         module_slug: Option<&str>,
     ) -> Result<Vec<ModuleOperationSnapshot>, ModuleOperationStoreError> {
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         let statuses = format!(
             "status IN ('{}', '{}')",
             ModuleOperationStatus::Failed.as_str(),
             ModuleOperationStatus::CommittedHookFailed.as_str()
         );
         let (sql, values) = match (backend, module_slug) {
-            (DbBackend::Postgres, Some(module_slug)) => (
+            (SupportedBackend::Postgres, Some(module_slug)) => (
                 format!(
                     "{} WHERE tenant_id = $1 AND {statuses} AND module_slug = $2 ORDER BY created_at DESC LIMIT {}",
                     operation_select_sql(),
@@ -211,7 +212,7 @@ impl ModuleOperationJournal {
                 ),
                 vec![tenant_id.into(), module_slug.into()],
             ),
-            (DbBackend::Postgres, None) => (
+            (SupportedBackend::Postgres, None) => (
                 format!(
                     "{} WHERE tenant_id = $1 AND {statuses} ORDER BY created_at DESC LIMIT {}",
                     operation_select_sql(),
@@ -219,7 +220,7 @@ impl ModuleOperationJournal {
                 ),
                 vec![tenant_id.into()],
             ),
-            (_, Some(module_slug)) => (
+            (SupportedBackend::Sqlite, Some(module_slug)) => (
                 format!(
                     "{} WHERE tenant_id = ?1 AND {statuses} AND module_slug = ?2 ORDER BY created_at DESC LIMIT {}",
                     operation_select_sql(),
@@ -227,7 +228,7 @@ impl ModuleOperationJournal {
                 ),
                 vec![tenant_id.into(), module_slug.into()],
             ),
-            (_, None) => (
+            (SupportedBackend::Sqlite, None) => (
                 format!(
                     "{} WHERE tenant_id = ?1 AND {statuses} ORDER BY created_at DESC LIMIT {}",
                     operation_select_sql(),
@@ -236,7 +237,7 @@ impl ModuleOperationJournal {
                 vec![tenant_id.into()],
             ),
         };
-        db.query_all_raw(Statement::from_sql_and_values(backend, sql, values))
+        db.query_all_raw(Statement::from_sql_and_values(backend.db_backend(), sql, values))
             .await
             .map_err(database_error)?
             .into_iter()
@@ -357,19 +358,19 @@ impl ModuleOperationJournal {
         tenant_id: Uuid,
         idempotency_key: Uuid,
     ) -> Result<Option<ModuleOperationSnapshot>, ModuleOperationStoreError> {
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         let sql = match backend {
-            DbBackend::Postgres => format!(
+            SupportedBackend::Postgres => format!(
                 "{} WHERE tenant_id = $1 AND idempotency_key = $2 LIMIT 1",
                 operation_select_sql()
             ),
-            _ => format!(
+            SupportedBackend::Sqlite => format!(
                 "{} WHERE tenant_id = ?1 AND idempotency_key = ?2 LIMIT 1",
                 operation_select_sql()
             ),
         };
         db.query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             sql,
             vec![tenant_id.into(), idempotency_key.into()],
         ))
@@ -484,10 +485,10 @@ impl ModuleOperationJournal {
                 vec![status.as_str().into(), operation_id.into()],
             ),
         };
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         let result = db
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 render_parameters(&sql_template, backend),
                 values,
             ))
@@ -529,19 +530,19 @@ impl StaticTenantLifecycleStore {
         tenant_id: Uuid,
         module_slug: &str,
     ) -> Result<Option<StaticTenantLifecycleSnapshot>, StaticTenantLifecycleStoreError> {
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         let sql = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "SELECT revision, active_idempotency_key FROM module_static_tenant_lifecycle \
                  WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
             }
-            _ => {
+            SupportedBackend::Sqlite => {
                 "SELECT revision, active_idempotency_key FROM module_static_tenant_lifecycle \
                  WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
             }
         };
         db.query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             sql,
             vec![uuid_query_value(backend, tenant_id), module_slug.into()],
         ))
@@ -564,7 +565,7 @@ impl StaticTenantLifecycleStore {
         if module_slugs.is_empty() {
             return Ok(BTreeMap::new());
         }
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         let mut values = vec![uuid_query_value(backend, tenant_id)];
         let placeholders = module_slugs
             .iter()
@@ -572,18 +573,18 @@ impl StaticTenantLifecycleStore {
             .map(|(index, module_slug)| {
                 values.push(module_slug.clone().into());
                 match backend {
-                    DbBackend::Postgres => format!("${}", index + 2),
-                    _ => format!("?{}", index + 2),
+                    SupportedBackend::Postgres => format!("${}", index + 2),
+                    SupportedBackend::Sqlite => format!("?{}", index + 2),
                 }
             })
             .collect::<Vec<_>>();
         let tenant_placeholder = match backend {
-            DbBackend::Postgres => "$1",
-            _ => "?1",
+            SupportedBackend::Postgres => "$1",
+            SupportedBackend::Sqlite => "?1",
         };
         let rows = db
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT module_slug, revision, active_idempotency_key \
                      FROM module_static_tenant_lifecycle WHERE tenant_id = {tenant_placeholder} \
@@ -678,18 +679,18 @@ impl StaticTenantLifecycleStore {
             });
         }
 
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         if persisted.is_none() {
             let insert = db
                 .execute_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     match backend {
-                        DbBackend::Postgres => {
+                        SupportedBackend::Postgres => {
                             "INSERT INTO module_static_tenant_lifecycle \
                              (tenant_id, module_slug, revision, active_idempotency_key, active_claimed_at) \
                              VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)"
                         }
-                        _ => {
+                        SupportedBackend::Sqlite => {
                             "INSERT INTO module_static_tenant_lifecycle \
                              (tenant_id, module_slug, revision, active_idempotency_key, active_claimed_at) \
                              VALUES (?1, ?2, ?3, ?4, CURRENT_TIMESTAMP)"
@@ -748,7 +749,7 @@ impl StaticTenantLifecycleStore {
 
         let result = db
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 render_parameters(
                     "UPDATE module_static_tenant_lifecycle \
                      SET active_idempotency_key = {1}, active_claimed_at = CURRENT_TIMESTAMP, \
@@ -811,18 +812,18 @@ impl StaticTenantLifecycleStore {
         expired_idempotency_key: Uuid,
         idempotency_key: Uuid,
     ) -> Result<bool, StaticTenantLifecycleStoreError> {
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         let claim_expired = match backend {
-            DbBackend::Postgres => format!(
+            SupportedBackend::Postgres => format!(
                 "(active_claimed_at IS NULL OR active_claimed_at <= CURRENT_TIMESTAMP - INTERVAL '{STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS} seconds')"
             ),
-            _ => format!(
+            SupportedBackend::Sqlite => format!(
                 "(active_claimed_at IS NULL OR datetime(active_claimed_at) <= datetime('now', '-{STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS} seconds'))"
             ),
         };
         let result = db
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 render_parameters(
                     &format!(
                         "UPDATE module_static_tenant_lifecycle \
@@ -866,10 +867,10 @@ impl StaticTenantLifecycleStore {
         let next_revision = expected_revision.checked_add(1).ok_or_else(|| {
             StaticTenantLifecycleStoreError::RevisionOverflow(module_slug.to_string())
         })?;
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         let result = db
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 render_parameters(
                     "UPDATE module_static_tenant_lifecycle \
                      SET revision = {1}, updated_at = CURRENT_TIMESTAMP \
@@ -915,10 +916,10 @@ impl StaticTenantLifecycleStore {
         module_slug: &str,
         idempotency_key: Uuid,
     ) -> Result<(), StaticTenantLifecycleStoreError> {
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         let result = db
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 render_parameters(
                     "UPDATE module_static_tenant_lifecycle \
                      SET active_idempotency_key = NULL, active_claimed_at = NULL, \
@@ -1048,17 +1049,17 @@ impl TenantModuleStateStore {
         tenant_id: Uuid,
         module_slug: &str,
     ) -> Result<Option<TenantModuleStateRecord>, ModuleOperationStoreError> {
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         let sql = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "SELECT id, enabled FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
             }
-            _ => {
+            SupportedBackend::Sqlite => {
                 "SELECT id, enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
             }
         };
         db.query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             sql,
             vec![uuid_query_value(backend, tenant_id), module_slug.into()],
         ))
@@ -1080,18 +1081,18 @@ impl TenantModuleStateStore {
         db: &C,
         request: TenantModuleStateRequest,
     ) -> Result<TenantModuleStateRecord, ModuleOperationStoreError> {
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         let select = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "SELECT id, enabled FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
             }
-            _ => {
+            SupportedBackend::Sqlite => {
                 "SELECT id, enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
             }
         };
         if let Some(row) = db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 select,
                 vec![
                     uuid_query_value(backend, request.tenant_id),
@@ -1161,18 +1162,18 @@ impl TenantModuleStateStore {
     ) -> Result<TenantModuleSettingsRecord, ModuleOperationStoreError> {
         let module_slug = request.module_slug.clone();
         let settings = request.settings.clone();
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         let select = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "SELECT id, enabled FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
             }
-            _ => {
+            SupportedBackend::Sqlite => {
                 "SELECT id, enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
             }
         };
         let existing = db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 select,
                 vec![
                     uuid_query_value(backend, request.tenant_id),
@@ -1233,8 +1234,8 @@ fn json_value(value: serde_json::Value) -> sea_orm::Value {
     sea_orm::Value::Json(Some(Box::new(value)))
 }
 
-pub(crate) fn uuid_query_value(backend: DbBackend, value: Uuid) -> sea_orm::Value {
-    if backend == DbBackend::Sqlite {
+pub(crate) fn uuid_query_value(backend: SupportedBackend, value: Uuid) -> sea_orm::Value {
+    if backend == SupportedBackend::Sqlite {
         value.to_string().into()
     } else {
         value.into()
@@ -1246,9 +1247,9 @@ async fn execute<C: ConnectionTrait>(
     sql_template: &str,
     values: Vec<sea_orm::Value>,
 ) -> Result<(), ModuleOperationStoreError> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
     db.execute_raw(Statement::from_sql_and_values(
-        backend,
+        backend.db_backend(),
         render_parameters(sql_template, backend),
         values,
     ))
@@ -1257,12 +1258,9 @@ async fn execute<C: ConnectionTrait>(
     Ok(())
 }
 
-fn render_parameters(sql_template: &str, backend: DbBackend) -> String {
+fn render_parameters(sql_template: &str, backend: SupportedBackend) -> String {
     (1..=11).fold(sql_template.to_string(), |sql, index| {
-        let parameter = match backend {
-            DbBackend::Postgres => format!("${index}"),
-            _ => format!("?{index}"),
-        };
+        let parameter = backend.placeholder(index);
         sql.replace(format!("{{{index}}}").as_str(), parameter.as_str())
     })
 }
@@ -1270,7 +1268,7 @@ fn render_parameters(sql_template: &str, backend: DbBackend) -> String {
 #[cfg(test)]
 mod tests {
     use rustok_api::StaticModuleSettingsReader;
-    use sea_orm::{Database, Statement};
+    use sea_orm::{Database, DbBackend, Statement};
     use serde_json::json;
 
     use super::*;

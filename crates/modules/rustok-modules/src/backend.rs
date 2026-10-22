@@ -8,7 +8,7 @@
 //! against a different engine and fail — or worse, misbehave — far from
 //! the boundary where the configuration mistake was made.
 
-use sea_orm::{ConnectionTrait, DbBackend, DbErr, Value};
+use sea_orm::{DbBackend, DbErr, Value};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -42,12 +42,6 @@ impl SupportedBackend {
             DbBackend::Sqlite => Ok(Self::Sqlite),
             other => Err(UnsupportedBackend(other)),
         }
-    }
-
-    pub(crate) fn from_connection<C: ConnectionTrait>(
-        connection: &C,
-    ) -> Result<Self, UnsupportedBackend> {
-        Self::new(connection.get_database_backend())
     }
 
     pub(crate) fn db_backend(self) -> DbBackend {
