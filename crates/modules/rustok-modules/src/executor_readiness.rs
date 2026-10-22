@@ -22,17 +22,11 @@ use uuid::Uuid;
 use rustok_sandbox::SandboxExecutorPlacement;
 
 use crate::backend::SupportedBackend;
-use crate::installation::sha256_digest;
+use crate::installation::{sha256_digest, valid_digest};
 use crate::{
     ArtifactBlobStore, ControlPlaneInfrastructure, InstalledModuleArtifact,
     ModuleArtifactDescriptor, ModuleInstallationError,
 };
-
-fn valid_digest(digest: &str) -> bool {
-    digest.starts_with("sha256:")
-        && digest.len() == 71
-        && digest[7..].chars().all(|c| c.is_ascii_hexdigit())
-}
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExecutorReadinessError {

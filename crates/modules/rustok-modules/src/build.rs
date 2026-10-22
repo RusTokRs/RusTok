@@ -17,6 +17,7 @@ use uuid::Uuid;
 use rustok_events::DomainEvent;
 
 use crate::backend::SupportedBackend;
+use crate::installation::valid_digest;
 use crate::{ArtifactReleaseRef, OciArtifactReference};
 
 use crate::{
@@ -1294,14 +1295,6 @@ fn validate_text(value: &str) -> Result<(), ModuleBuildProtocolError> {
         return Err(ModuleBuildProtocolError::InvalidRequest);
     }
     Ok(())
-}
-
-fn valid_digest(value: &str) -> bool {
-    value.len() == 71
-        && value.starts_with("sha256:")
-        && value[7..]
-            .chars()
-            .all(|character| character.is_ascii_hexdigit())
 }
 
 /// Produces a domain-separated SHA-256 digest over bounded protocol strings.

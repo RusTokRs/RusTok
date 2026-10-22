@@ -27,6 +27,7 @@ use thiserror::Error;
 use tokio::sync::{OwnedSemaphorePermit, RwLock, Semaphore};
 
 use crate::oci::OciRegistryTransportPolicy;
+use crate::trust::is_sha256_digest;
 
 const OCI_MANIFEST_ACCEPT: &str = "application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json";
 const OCI_BLOB_MEDIA_TYPE: &str = "application/octet-stream";
@@ -125,7 +126,7 @@ impl RegistryReference {
     }
 
     fn blob_url(&self, digest: &str) -> Result<Url, OciTransportError> {
-        if !valid_digest(digest) {
+        if !is_sha256_digest(digest) {
             return Err(OciTransportError::InvalidRequest(
                 "OCI blob digest is invalid".to_string(),
             ));
@@ -948,7 +949,7 @@ fn descriptor(blob: Blob<'_>) -> Result<OciDescriptor, OciTransportError> {
 
 fn validate_blob(blob: Blob<'_>) -> Result<(), OciTransportError> {
     if blob.bytes.is_empty()
-        || !valid_digest(blob.digest)
+        || !is_sha256_digest(blob.digest)
         || !valid_media_type(blob.media_type)
         || crate::installation::sha256_digest(blob.bytes) != blob.digest
     {
@@ -975,7 +976,7 @@ fn valid_path_segment(value: &str) -> bool {
 }
 
 fn valid_reference(value: &str) -> bool {
-    valid_digest(value)
+    is_sha256_digest(value)
         || (!value.is_empty()
             && value.len() <= 128
             && value.bytes().all(|byte| {
@@ -984,14 +985,6 @@ fn valid_reference(value: &str) -> bool {
                     || byte.is_ascii_digit()
                     || matches!(byte, b'.' | b'_' | b'-')
             }))
-}
-
-fn valid_digest(value: &str) -> bool {
-    value.len() == 71
-        && value.starts_with("sha256:")
-        && value[7..]
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 

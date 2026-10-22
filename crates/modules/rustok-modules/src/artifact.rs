@@ -17,6 +17,7 @@ use rustok_api::{
 };
 use rustok_sandbox::{CapabilityName, RHAI_SOURCE_MEDIA_TYPE, SandboxExecutorKind};
 
+use crate::installation::valid_digest;
 use crate::{artifact_schema::validates_ui_contribution, build::ModuleBuildRequest};
 
 /// The current immutable descriptor contract. Schema documents are bundled in
@@ -1421,14 +1422,6 @@ pub enum ModuleArtifactError {
     ForkVersionNotIncremented { parent: String, received: String },
     #[error("forked artifact source and payload digests must both change")]
     ForkDigestNotChanged,
-}
-
-fn valid_digest(value: &str) -> bool {
-    value.len() == 71
-        && value.starts_with("sha256:")
-        && value[7..]
-            .chars()
-            .all(|character| character.is_ascii_hexdigit())
 }
 
 /// Validates an admitted event subscription. A terminal wildcard is permitted

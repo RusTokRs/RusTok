@@ -12,6 +12,7 @@ use rustok_sandbox::{
 };
 
 use crate::backend::SupportedBackend;
+use crate::installation::valid_digest;
 use crate::data::configure_tenant_scope;
 
 /// Durable, redacted execution audit adapter for installed module artifacts.
@@ -278,14 +279,6 @@ impl ExecutionObserver for SeaOrmArtifactExecutionObserver {
             )
         })
     }
-}
-
-fn valid_digest(value: &str) -> bool {
-    value.len() == 71
-        && value.starts_with("sha256:")
-        && value[7..]
-            .chars()
-            .all(|character| character.is_ascii_hexdigit())
 }
 
 fn executor_name(record: &ExecutionRecord) -> &'static str {

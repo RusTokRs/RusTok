@@ -17,6 +17,7 @@ use uuid::Uuid;
 use rustok_events::DomainEvent;
 
 use crate::backend::SupportedBackend;
+use crate::installation::valid_digest;
 use crate::{
     ControlPlaneInfrastructure, ModuleBuildOutcome, ModuleBuildRequest, ModuleBuildResult,
     ModuleCommandContext,
@@ -1090,14 +1091,6 @@ fn is_rust_keyword(value: &str) -> bool {
             | "while"
             | "yield"
     )
-}
-
-pub(crate) fn valid_digest(value: &str) -> bool {
-    value.len() == 71
-        && value.starts_with("sha256:")
-        && value[7..]
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 fn valid_sha256_hex(value: &str) -> bool {
