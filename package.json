@@ -5,6 +5,7 @@
     "verify:product:variant-patches": "node scripts/verify/verify-product-variant-patches.mjs",
     "verify:product:shipping-admission": "node scripts/verify/verify-product-shipping-admission.mjs",
     "verify:docs": "node scripts/verify/verify-docs.mjs",
+    "verify:docs-rs": "node scripts/verify/verify-docs-rs.mjs",
     "verify:manifest": "cargo run -p xtask -- validate-manifest",
     "generate:docs-topology": "node scripts/generate/generate-docs-topology.mjs",
     "verify:adrs": "node scripts/verify/verify-adrs.mjs",

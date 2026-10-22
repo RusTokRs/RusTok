@@ -65,3 +65,26 @@ Deliberate public modules and exports:
 2. The owner completes a durable receipt in the outbox ledger inside the same database transaction.
 3. Subsequent requests with the same key replay the stored result, rejecting mismatched payloads
    as conflicts.
+
+## Minimum Contract Set
+
+### Input DTOs/Commands
+- `CreateProductRelationInput` specifies target product ID, relation type, optional metadata, and position.
+- `UpdateProductRelationInput` specifies updated metadata and optional position.
+- `ReorderProductRelationsInput` provides the full ordered slice of relation UUIDs for the group.
+
+### Domain Invariants
+- Self-relations (`product_id == related_product_id`) are rejected.
+- Relation positions within a `(tenant_id, product_id, relation_type)` group remain zero-based contiguous integers (`0..N`).
+- Concurrent multi-product mutations acquire pessimistic locks on catalog products ordered by UUID to eliminate deadlocks.
+- Target products must exist within the caller tenant scope; cross-tenant references are strictly forbidden.
+
+### Events / Outbox Side Effects
+- Mutating commands record durable idempotency receipts in the transactional outbox ledger.
+- Relations mutations do not emit external streaming events directly; state updates commit atomically with receipts.
+
+### Errors / Failure Codes
+- `ProductRelationError::SelfRelation` indicates forbidden self-referencing links.
+- `ProductRelationError::IncompleteReorder` and `DuplicateRelationInReorder` enforce complete group permutation.
+- `ProductRelationError::Conflict` signals concurrent race or duplicate association violation.
+- `ProductRelationError::NotFound` identifies missing relation records.

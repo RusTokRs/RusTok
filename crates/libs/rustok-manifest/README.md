@@ -31,4 +31,8 @@ It provides one canonical source of truth for both build-time tooling (`apps/ser
 - **`xtask`**: Consumes `rustok-manifest` for `cargo xtask validate-manifest`, `cargo xtask module validate`, and `cargo xtask generate-registry`.
 - **`apps/server`**: Verifies running composition against the immutable manifest contract.
 
-For detailed runtime contracts, invariants, and implementation plans, see the [local documentation](./docs/README.md).
+## Docs
+
+- [Public Contract Reference (CRATE_API.md)](./CRATE_API.md)
+- [Module docs](./docs/README.md)
+- [Platform docs index](../../../docs/index.md)

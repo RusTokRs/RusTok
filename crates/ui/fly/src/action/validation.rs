@@ -270,6 +270,17 @@ pub(super) fn validate_action_contract(
         ComponentAction::SwitchTab { panel_id } => {
             validate_identifier(panel_id, "target panel id")
         }
+        ComponentAction::SwitchSlide {
+            slider_id,
+            target_slide,
+            ..
+        } => validate_identifier(slider_id, "slider id").and_then(|_| {
+            if let Some(target) = target_slide {
+                validate_identifier(target, "target slide id")
+            } else {
+                Ok(())
+            }
+        }),
         ComponentAction::Animate {
             target_id,
             duration_ms,
