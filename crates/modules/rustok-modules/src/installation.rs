@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, Statement, TransactionTrait, Value as SqlValue,
 };
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
@@ -22,6 +22,7 @@ use rustok_sandbox::{
     RhaiBindingInput, SandboxContext, SandboxPayload, SandboxPolicy, SandboxRequest, SandboxSubject,
 };
 
+use crate::backend::SupportedBackend;
 use crate::{
     ArtifactDataError, ArtifactDataMigrationCheckpointStore, ArtifactModuleKind,
     ArtifactPayloadKind, ArtifactReleaseRef, ArtifactSandboxPolicyResolver,
@@ -1226,19 +1227,20 @@ impl SeaOrmArtifactInstallationStore {
         configure_rls_scope(&transaction, &ModuleInstallationScope::Tenant { tenant_id })
             .await
             .map_err(|error| error.to_string())?;
-        let backend = transaction.get_database_backend();
-        let placeholder = if backend == DbBackend::Postgres {
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|error| error.to_string())?;
+        let placeholder = if backend == SupportedBackend::Postgres {
             "$1"
         } else {
             "?1"
         };
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT slug, version, payload_digest FROM module_artifact_installations WHERE installation_id = {placeholder} LIMIT 1"
                 ),
-                vec![uuid_value(installation_id, backend)],
+                vec![backend.uuid_value(installation_id)],
             ))
             .await
             .map_err(|error| error.to_string())?;
@@ -1280,26 +1282,31 @@ impl SeaOrmArtifactInstallationStore {
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &request.scope).await?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let (scope_kind, tenant_id) = match request.scope {
             ModuleInstallationScope::Platform => ("platform", None),
             ModuleInstallationScope::Tenant { tenant_id } => ("tenant", Some(tenant_id)),
         };
         let scope = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "installation.scope_kind = $2 AND installation.tenant_id IS NOT DISTINCT FROM $3"
             }
-            _ => "installation.scope_kind = ?2 AND installation.tenant_id IS ?3",
+            SupportedBackend::Sqlite => {
+                "installation.scope_kind = ?2 AND installation.tenant_id IS ?3"
+            }
         };
         let operation_scope = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "installation.scope_kind = $3 AND installation.tenant_id IS NOT DISTINCT FROM $4"
             }
-            _ => "installation.scope_kind = ?3 AND installation.tenant_id IS ?4",
+            SupportedBackend::Sqlite => {
+                "installation.scope_kind = ?3 AND installation.tenant_id IS ?4"
+            }
         };
         let existing = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT operation.expected_revision, operation.revision, operation.request_digest \
                      FROM module_artifact_migration_checkpoint_operations operation \
@@ -1307,12 +1314,12 @@ impl SeaOrmArtifactInstallationStore {
                        ON installation.installation_id = operation.installation_id \
                      WHERE operation.installation_id = {} AND operation.idempotency_key = {} \
                        AND {operation_scope}",
-                    if backend == DbBackend::Postgres { "$1" } else { "?1" },
-                    if backend == DbBackend::Postgres { "$2" } else { "?2" },
+                    if backend == SupportedBackend::Postgres { "$1" } else { "?1" },
+                    if backend == SupportedBackend::Postgres { "$2" } else { "?2" },
                 ),
                 vec![
-                    uuid_value(request.installation_id, backend),
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.installation_id),
+                    backend.uuid_value(request.context.idempotency_key),
                     scope_kind.into(),
                     optional_uuid_value(tenant_id, backend),
                 ],
@@ -1339,7 +1346,7 @@ impl SeaOrmArtifactInstallationStore {
         }
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT admission.revision, admission.status, installation.has_irreversible_migration \
                      FROM module_artifact_installations installation \
@@ -1347,10 +1354,10 @@ impl SeaOrmArtifactInstallationStore {
                      WHERE installation.installation_id = {} AND {scope} \
                      AND NOT EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall \
                      WHERE uninstall.installation_id = installation.installation_id)",
-                    if backend == DbBackend::Postgres { "$1" } else { "?1" }
+                    if backend == SupportedBackend::Postgres { "$1" } else { "?1" }
                 ),
                 vec![
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(request.installation_id),
                     scope_kind.into(),
                     optional_uuid_value(tenant_id, backend),
                 ],
@@ -1365,10 +1372,10 @@ impl SeaOrmArtifactInstallationStore {
             .try_get("", "status")
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let has_irreversible_migration = match backend {
-            DbBackend::Postgres => row
+            SupportedBackend::Postgres => row
                 .try_get::<bool>("", "has_irreversible_migration")
                 .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
-            _ => {
+            SupportedBackend::Sqlite => {
                 row.try_get::<i64>("", "has_irreversible_migration")
                     .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
                     != 0
@@ -1392,12 +1399,12 @@ impl SeaOrmArtifactInstallationStore {
         )?;
         let operation_id = self.infrastructure.new_id();
         let operation_placeholders = match backend {
-            DbBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW()",
-            _ => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,datetime('now')",
+            SupportedBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW()",
+            SupportedBackend::Sqlite => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,datetime('now')",
         };
         let claimed = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_migration_checkpoint_operations \
                      (operation_id, installation_id, expected_revision, revision, request_digest, actor_id, trace_id, correlation_id, reason, idempotency_key, committed_at) \
@@ -1405,16 +1412,16 @@ impl SeaOrmArtifactInstallationStore {
                      ON CONFLICT (installation_id, idempotency_key) DO NOTHING"
                 ),
                 vec![
-                    uuid_value(operation_id, backend),
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(operation_id),
+                    backend.uuid_value(request.installation_id),
                     revision.into(),
                     (next_revision as i64).into(),
                     request_digest.clone().into(),
-                    uuid_value(request.context.actor_id, backend),
+                    backend.uuid_value(request.context.actor_id),
                     request.context.trace_id.clone().into(),
-                    uuid_value(request.context.correlation_id, backend),
+                    backend.uuid_value(request.context.correlation_id),
                     request.reason.clone().into(),
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.context.idempotency_key),
                 ],
             ))
             .await
@@ -1422,7 +1429,7 @@ impl SeaOrmArtifactInstallationStore {
         if claimed.rows_affected() != 1 {
             let existing = transaction
                 .query_one_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "SELECT operation.expected_revision, operation.revision, operation.request_digest \
                          FROM module_artifact_migration_checkpoint_operations operation \
@@ -1430,12 +1437,12 @@ impl SeaOrmArtifactInstallationStore {
                            ON installation.installation_id = operation.installation_id \
                          WHERE operation.installation_id = {} AND operation.idempotency_key = {} \
                            AND {operation_scope}",
-                        if backend == DbBackend::Postgres { "$1" } else { "?1" },
-                        if backend == DbBackend::Postgres { "$2" } else { "?2" },
+                        if backend == SupportedBackend::Postgres { "$1" } else { "?1" },
+                        if backend == SupportedBackend::Postgres { "$2" } else { "?2" },
                     ),
                     vec![
-                        uuid_value(request.installation_id, backend),
-                        uuid_value(request.context.idempotency_key, backend),
+                        backend.uuid_value(request.installation_id),
+                        backend.uuid_value(request.context.idempotency_key),
                         scope_kind.into(),
                         optional_uuid_value(tenant_id, backend),
                     ],
@@ -1467,33 +1474,33 @@ impl SeaOrmArtifactInstallationStore {
         let checkpoint = serde_json::to_value(&request.checkpoint)
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let update_installation = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "UPDATE module_artifact_installations SET migration_checkpoint = $1, has_irreversible_migration = has_irreversible_migration OR $2 WHERE installation_id = $3"
             }
-            _ => {
+            SupportedBackend::Sqlite => {
                 "UPDATE module_artifact_installations SET migration_checkpoint = ?1, has_irreversible_migration = MAX(has_irreversible_migration, ?2) WHERE installation_id = ?3"
             }
         };
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 update_installation.to_string(),
                 vec![
                     SqlValue::Json(Some(Box::new(checkpoint))),
                     request.has_irreversible_migration.into(),
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(request.installation_id),
                 ],
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let update_admission = format!(
             "UPDATE module_artifact_admissions SET revision = revision + 1 WHERE installation_id = {} AND revision = {}",
-            if backend == DbBackend::Postgres {
+            if backend == SupportedBackend::Postgres {
                 "$1"
             } else {
                 "?1"
             },
-            if backend == DbBackend::Postgres {
+            if backend == SupportedBackend::Postgres {
                 "$2"
             } else {
                 "?2"
@@ -1501,10 +1508,10 @@ impl SeaOrmArtifactInstallationStore {
         );
         if transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 update_admission,
                 vec![
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(request.installation_id),
                     revision.into(),
                 ],
             ))
@@ -1558,20 +1565,23 @@ impl SeaOrmArtifactInstallationStore {
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &request.scope).await?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let (scope_kind, tenant_id) = match request.scope {
             ModuleInstallationScope::Platform => ("platform", None),
             ModuleInstallationScope::Tenant { tenant_id } => ("tenant", Some(tenant_id)),
         };
         let scope = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "installation.scope_kind = $2 AND installation.tenant_id IS NOT DISTINCT FROM $3"
             }
-            _ => "installation.scope_kind = ?2 AND installation.tenant_id IS ?3",
+            SupportedBackend::Sqlite => {
+                "installation.scope_kind = ?2 AND installation.tenant_id IS ?3"
+            }
         };
         let existing = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT operation.operation_id, operation.installation_id, \
                      operation.predecessor_installation_id, operation.expected_revision, \
@@ -1581,14 +1591,14 @@ impl SeaOrmArtifactInstallationStore {
                      JOIN module_artifact_installations installation \
                        ON installation.installation_id = operation.installation_id \
                      WHERE operation.idempotency_key = {} AND {scope}",
-                    if backend == DbBackend::Postgres {
+                    if backend == SupportedBackend::Postgres {
                         "$1"
                     } else {
                         "?1"
                     }
                 ),
                 vec![
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.context.idempotency_key),
                     scope_kind.into(),
                     optional_uuid_value(tenant_id, backend),
                 ],
@@ -1641,7 +1651,7 @@ impl SeaOrmArtifactInstallationStore {
 
         let candidate = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT installation.slug, installation.registry, installation.repository, \
                      installation.data_owner_id, installation.settings_instance_id, \
@@ -1654,10 +1664,10 @@ impl SeaOrmArtifactInstallationStore {
                      WHERE installation.installation_id = {} AND {scope} \
                        AND NOT EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall \
                                        WHERE uninstall.installation_id = installation.installation_id)",
-                    if backend == DbBackend::Postgres { "$1" } else { "?1" }
+                    if backend == SupportedBackend::Postgres { "$1" } else { "?1" }
                 ),
                 vec![
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(request.installation_id),
                     scope_kind.into(),
                     optional_uuid_value(tenant_id, backend),
                 ],
@@ -1728,7 +1738,7 @@ impl SeaOrmArtifactInstallationStore {
         {
             let predecessor = transaction
                 .query_one_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                             "SELECT admission.revision, installation.registry, installation.repository, \
                              installation.data_owner_id, installation.settings_instance_id, \
@@ -1738,13 +1748,13 @@ impl SeaOrmArtifactInstallationStore {
                          JOIN module_artifact_installations installation \
                            ON installation.installation_id = admission.installation_id \
                          WHERE admission.installation_id = {} AND admission.status = 'active'",
-                        if backend == DbBackend::Postgres {
+                        if backend == SupportedBackend::Postgres {
                             "$1"
                         } else {
                             "?1"
                         }
                     ),
-                    vec![uuid_value(predecessor_installation_id, backend)],
+                    vec![backend.uuid_value(predecessor_installation_id)],
                 ))
                 .await
                 .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
@@ -1809,24 +1819,24 @@ impl SeaOrmArtifactInstallationStore {
             };
             let deactivated = transaction
                 .execute_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "UPDATE module_artifact_admissions \
                          SET status = 'inactive', revision = revision + 1 \
                          WHERE installation_id = {} AND revision = {} AND status = 'active'",
-                        if backend == DbBackend::Postgres {
+                        if backend == SupportedBackend::Postgres {
                             "$1"
                         } else {
                             "?1"
                         },
-                        if backend == DbBackend::Postgres {
+                        if backend == SupportedBackend::Postgres {
                             "$2"
                         } else {
                             "?2"
                         },
                     ),
                     vec![
-                        uuid_value(predecessor_installation_id, backend),
+                        backend.uuid_value(predecessor_installation_id),
                         predecessor_revision.into(),
                     ],
                 ))
@@ -1891,38 +1901,38 @@ impl SeaOrmArtifactInstallationStore {
         })?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_installations SET previous_installation_id = {}, \
                      data_owner_id = {}, settings_instance_id = {}, \
                      namespace_instance_id = {}, secret_instance_id = {} \
                      WHERE installation_id = {}",
-                    if backend == DbBackend::Postgres {
+                    if backend == SupportedBackend::Postgres {
                         "$1"
                     } else {
                         "?1"
                     },
-                    if backend == DbBackend::Postgres {
+                    if backend == SupportedBackend::Postgres {
                         "$2"
                     } else {
                         "?2"
                     },
-                    if backend == DbBackend::Postgres {
+                    if backend == SupportedBackend::Postgres {
                         "$3"
                     } else {
                         "?3"
                     },
-                    if backend == DbBackend::Postgres {
+                    if backend == SupportedBackend::Postgres {
                         "$4"
                     } else {
                         "?4"
                     },
-                    if backend == DbBackend::Postgres {
+                    if backend == SupportedBackend::Postgres {
                         "$5"
                     } else {
                         "?5"
                     },
-                    if backend == DbBackend::Postgres {
+                    if backend == SupportedBackend::Postgres {
                         "$6"
                     } else {
                         "?6"
@@ -1930,27 +1940,27 @@ impl SeaOrmArtifactInstallationStore {
                 ),
                 vec![
                     optional_uuid_value(predecessor_installation_id, backend),
-                    uuid_value(data_owner_id, backend),
-                    uuid_value(settings_instance_id, backend),
+                    backend.uuid_value(data_owner_id),
+                    backend.uuid_value(settings_instance_id),
                     optional_uuid_value(namespace_instance_id, backend),
                     optional_uuid_value(secret_instance_id, backend),
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(request.installation_id),
                 ],
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let activated = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_admissions SET status = 'active', revision = revision + 1 \
                      WHERE installation_id = {} AND revision = {} \
                        AND status IN ('admitted', 'installed', 'inactive')",
-                    if backend == DbBackend::Postgres { "$1" } else { "?1" },
-                    if backend == DbBackend::Postgres { "$2" } else { "?2" },
+                    if backend == SupportedBackend::Postgres { "$1" } else { "?1" },
+                    if backend == SupportedBackend::Postgres { "$2" } else { "?2" },
                 ),
                 vec![
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(request.installation_id),
                     candidate_revision.into(),
                 ],
             ))
@@ -1963,12 +1973,12 @@ impl SeaOrmArtifactInstallationStore {
         }
         let operation_id = self.infrastructure.new_id();
         let values = match backend {
-            DbBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW()",
-            _ => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,datetime('now')",
+            SupportedBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW()",
+            SupportedBackend::Sqlite => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,datetime('now')",
         };
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_activation_operations \
                      (operation_id, installation_id, predecessor_installation_id, expected_revision, \
@@ -1976,17 +1986,17 @@ impl SeaOrmArtifactInstallationStore {
                      VALUES ({values})"
                 ),
                 vec![
-                    uuid_value(operation_id, backend),
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(operation_id),
+                    backend.uuid_value(request.installation_id),
                     optional_uuid_value(predecessor_installation_id, backend),
                     candidate_revision.into(),
                     installation_revision.into(),
                     predecessor_revision.into(),
-                    uuid_value(request.context.actor_id, backend),
+                    backend.uuid_value(request.context.actor_id),
                     request.context.trace_id.clone().into(),
-                    uuid_value(request.context.correlation_id, backend),
+                    backend.uuid_value(request.context.correlation_id),
                     request.reason.clone().into(),
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.context.idempotency_key),
                 ],
             ))
             .await
@@ -2087,20 +2097,23 @@ impl SeaOrmArtifactInstallationStore {
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &request.scope).await?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let (scope_kind, tenant_id) = match request.scope {
             ModuleInstallationScope::Platform => ("platform", None),
             ModuleInstallationScope::Tenant { tenant_id } => ("tenant", Some(tenant_id)),
         };
         let scope = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "installation.scope_kind = $2 AND installation.tenant_id IS NOT DISTINCT FROM $3"
             }
-            _ => "installation.scope_kind = ?2 AND installation.tenant_id IS ?3",
+            SupportedBackend::Sqlite => {
+                "installation.scope_kind = ?2 AND installation.tenant_id IS ?3"
+            }
         };
         let existing = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT operation.operation_id, operation.installation_id, \
                      operation.expected_revision, operation.actor_id, operation.trace_id, \
@@ -2108,10 +2121,10 @@ impl SeaOrmArtifactInstallationStore {
                      FROM module_artifact_deactivation_operations operation \
                      JOIN module_artifact_installations installation ON installation.installation_id = operation.installation_id \
                      WHERE operation.idempotency_key = {} AND {scope}",
-                    if backend == DbBackend::Postgres { "$1" } else { "?1" }
+                    if backend == SupportedBackend::Postgres { "$1" } else { "?1" }
                 ),
                 vec![
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.context.idempotency_key),
                     scope_kind.into(),
                     optional_uuid_value(tenant_id, backend),
                 ],
@@ -2150,7 +2163,7 @@ impl SeaOrmArtifactInstallationStore {
         }
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT installation.slug, admission.status, admission.revision \
                      FROM module_artifact_installations installation \
@@ -2158,10 +2171,10 @@ impl SeaOrmArtifactInstallationStore {
                      WHERE installation.installation_id = {} AND {scope} \
                      AND NOT EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall \
                      WHERE uninstall.installation_id = installation.installation_id)",
-                    if backend == DbBackend::Postgres { "$1" } else { "?1" }
+                    if backend == SupportedBackend::Postgres { "$1" } else { "?1" }
                 ),
                 vec![
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(request.installation_id),
                     scope_kind.into(),
                     optional_uuid_value(tenant_id, backend),
                 ],
@@ -2189,16 +2202,16 @@ impl SeaOrmArtifactInstallationStore {
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let dependents = transaction
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT CAST(installation.descriptor AS TEXT) AS descriptor \
                      FROM module_artifact_installations installation \
                      JOIN module_artifact_admissions admission ON admission.installation_id = installation.installation_id \
                      WHERE installation.installation_id <> {} AND {scope} AND admission.status = 'active'",
-                    if backend == DbBackend::Postgres { "$1" } else { "?1" }
+                    if backend == SupportedBackend::Postgres { "$1" } else { "?1" }
                 ),
                 vec![
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(request.installation_id),
                     scope_kind.into(),
                     optional_uuid_value(tenant_id, backend),
                 ],
@@ -2224,40 +2237,40 @@ impl SeaOrmArtifactInstallationStore {
         }
         let operation_id = self.infrastructure.new_id();
         let placeholders = match backend {
-            DbBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,NOW()",
-            _ => "?1,?2,?3,?4,?5,?6,?7,?8,datetime('now')",
+            SupportedBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,NOW()",
+            SupportedBackend::Sqlite => "?1,?2,?3,?4,?5,?6,?7,?8,datetime('now')",
         };
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_deactivation_operations \
                      (operation_id, installation_id, expected_revision, actor_id, trace_id, correlation_id, reason, idempotency_key, committed_at) \
                      VALUES ({placeholders})"
                 ),
                 vec![
-                    uuid_value(operation_id, backend),
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(operation_id),
+                    backend.uuid_value(request.installation_id),
                     revision.into(),
-                    uuid_value(request.context.actor_id, backend),
+                    backend.uuid_value(request.context.actor_id),
                     request.context.trace_id.clone().into(),
-                    uuid_value(request.context.correlation_id, backend),
+                    backend.uuid_value(request.context.correlation_id),
                     request.reason.into(),
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.context.idempotency_key),
                 ],
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let updated = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_admissions SET status = 'inactive', revision = revision + 1 \
                      WHERE installation_id = {} AND revision = {} AND status = 'active'",
-                    if backend == DbBackend::Postgres { "$1" } else { "?1" },
-                    if backend == DbBackend::Postgres { "$2" } else { "?2" },
+                    if backend == SupportedBackend::Postgres { "$1" } else { "?1" },
+                    if backend == SupportedBackend::Postgres { "$2" } else { "?2" },
                 ),
-                vec![uuid_value(request.installation_id, backend), revision.into()],
+                vec![backend.uuid_value(request.installation_id), revision.into()],
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
@@ -2320,24 +2333,25 @@ impl SeaOrmArtifactInstallationStore {
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &scope).await?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let placeholders = match backend {
-            DbBackend::Postgres => ("$1", "$2"),
-            _ => ("?1", "?2"),
+            SupportedBackend::Postgres => ("$1", "$2"),
+            SupportedBackend::Sqlite => ("?1", "?2"),
         };
         let tenant_scope = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "installation.scope_kind = 'platform' OR \
                  (installation.scope_kind = 'tenant' AND installation.tenant_id = $2)"
             }
-            _ => {
+            SupportedBackend::Sqlite => {
                 "installation.scope_kind = 'platform' OR \
                  (installation.scope_kind = 'tenant' AND installation.tenant_id = ?2)"
             }
         };
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT CAST(installation.descriptor AS TEXT) AS descriptor, \
                             lifecycle.enabled, lifecycle.revision \
@@ -2358,8 +2372,8 @@ impl SeaOrmArtifactInstallationStore {
                     placeholders.1, placeholders.0,
                 ),
                 vec![
-                    uuid_value(installation_id, backend),
-                    uuid_value(tenant_id, backend),
+                    backend.uuid_value(installation_id),
+                    backend.uuid_value(tenant_id),
                 ],
             ))
             .await
@@ -2449,7 +2463,8 @@ impl SeaOrmArtifactInstallationStore {
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &scope).await?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         if let Some(revision) =
             replay_artifact_tenant_lifecycle_operation(&transaction, &request).await?
         {
@@ -2459,24 +2474,24 @@ impl SeaOrmArtifactInstallationStore {
                 .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
             return Ok(revision);
         }
-        let installation_placeholder = if backend == DbBackend::Postgres {
+        let installation_placeholder = if backend == SupportedBackend::Postgres {
             "$1"
         } else {
             "?1"
         };
         let tenant_scope = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "installation.scope_kind = 'platform' OR \
                  (installation.scope_kind = 'tenant' AND installation.tenant_id = $2)"
             }
-            _ => {
+            SupportedBackend::Sqlite => {
                 "installation.scope_kind = 'platform' OR \
                  (installation.scope_kind = 'tenant' AND installation.tenant_id = ?2)"
             }
         };
         let artifact = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT CAST(installation.descriptor AS TEXT) AS descriptor \
                      FROM module_artifact_installations installation \
@@ -2492,8 +2507,8 @@ impl SeaOrmArtifactInstallationStore {
                        )",
                 ),
                 vec![
-                    uuid_value(request.installation_id, backend),
-                    uuid_value(request.tenant_id, backend),
+                    backend.uuid_value(request.installation_id),
+                    backend.uuid_value(request.tenant_id),
                 ],
             ))
             .await
@@ -2530,27 +2545,27 @@ impl SeaOrmArtifactInstallationStore {
                 active_cp.state.name(),
             )));
         }
-        let placeholder = if backend == DbBackend::Postgres {
+        let placeholder = if backend == SupportedBackend::Postgres {
             "$1"
         } else {
             "?1"
         };
-        let tenant_placeholder = if backend == DbBackend::Postgres {
+        let tenant_placeholder = if backend == SupportedBackend::Postgres {
             "$2"
         } else {
             "?2"
         };
         let existing = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT revision \
                      FROM module_artifact_tenant_lifecycle \
                      WHERE installation_id = {placeholder} AND tenant_id = {tenant_placeholder}"
                 ),
                 vec![
-                    uuid_value(request.installation_id, backend),
-                    uuid_value(request.tenant_id, backend),
+                    backend.uuid_value(request.installation_id),
+                    backend.uuid_value(request.tenant_id),
                 ],
             ))
             .await
@@ -2573,13 +2588,13 @@ impl SeaOrmArtifactInstallationStore {
                     )
                 })?;
             let placeholders = match backend {
-                DbBackend::Postgres => ("$1", "$2", "$3", "$4", "$5", "$6", "$7", "$8"),
-                _ => ("?1", "?2", "?3", "?4", "?5", "?6", "?7", "?8"),
+                SupportedBackend::Postgres => ("$1", "$2", "$3", "$4", "$5", "$6", "$7", "$8"),
+                SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4", "?5", "?6", "?7", "?8"),
             };
             let enabled = if request.enabled { "TRUE" } else { "FALSE" };
             let updated = transaction
                 .execute_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "UPDATE module_artifact_tenant_lifecycle \
                          SET enabled = {enabled}, revision = revision + 1, expected_revision = {}, \
@@ -2596,12 +2611,12 @@ impl SeaOrmArtifactInstallationStore {
                     ),
                     vec![
                         (request.expected_revision as i64).into(),
-                        uuid_value(request.context.actor_id, backend),
+                        backend.uuid_value(request.context.actor_id),
                         request.context.trace_id.clone().into(),
-                        uuid_value(request.context.correlation_id, backend),
+                        backend.uuid_value(request.context.correlation_id),
                         request.reason.clone().into(),
-                        uuid_value(request.installation_id, backend),
-                        uuid_value(request.tenant_id, backend),
+                        backend.uuid_value(request.installation_id),
+                        backend.uuid_value(request.tenant_id),
                         current.into(),
                     ],
                 ))
@@ -2630,13 +2645,13 @@ impl SeaOrmArtifactInstallationStore {
             }
             let enabled = if request.enabled { "TRUE" } else { "FALSE" };
             let insert_sql = match backend {
-                DbBackend::Postgres => format!(
+                SupportedBackend::Postgres => format!(
                     "INSERT INTO module_artifact_tenant_lifecycle \
                      (installation_id, tenant_id, enabled, revision, expected_revision, actor_id, trace_id, correlation_id, reason, updated_at) \
                      VALUES ($1, $2, {enabled}, 1, $3, $4, $5, $6, $7, NOW()) \
                      ON CONFLICT (installation_id, tenant_id) DO NOTHING"
                 ),
-                _ => format!(
+                SupportedBackend::Sqlite => format!(
                     "INSERT INTO module_artifact_tenant_lifecycle \
                      (installation_id, tenant_id, enabled, revision, expected_revision, actor_id, trace_id, correlation_id, reason, updated_at) \
                      VALUES (?1, ?2, {enabled}, 1, ?3, ?4, ?5, ?6, ?7, datetime('now')) \
@@ -2645,15 +2660,15 @@ impl SeaOrmArtifactInstallationStore {
             };
             let inserted = transaction
                 .execute_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     insert_sql,
                     vec![
-                        uuid_value(request.installation_id, backend),
-                        uuid_value(request.tenant_id, backend),
+                        backend.uuid_value(request.installation_id),
+                        backend.uuid_value(request.tenant_id),
                         (request.expected_revision as i64).into(),
-                        uuid_value(request.context.actor_id, backend),
+                        backend.uuid_value(request.context.actor_id),
                         request.context.trace_id.clone().into(),
-                        uuid_value(request.context.correlation_id, backend),
+                        backend.uuid_value(request.context.correlation_id),
                         request.reason.clone().into(),
                     ],
                 ))
@@ -2730,20 +2745,23 @@ impl SeaOrmArtifactInstallationStore {
             .await
             .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
         configure_rls_scope(&transaction, &request.scope).await?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let (scope_kind, tenant_id) = match request.scope {
             ModuleInstallationScope::Platform => ("platform", None),
             ModuleInstallationScope::Tenant { tenant_id } => ("tenant", Some(tenant_id)),
         };
         let scope = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "installation.scope_kind = $2 AND installation.tenant_id IS NOT DISTINCT FROM $3"
             }
-            _ => "installation.scope_kind = ?2 AND installation.tenant_id IS ?3",
+            SupportedBackend::Sqlite => {
+                "installation.scope_kind = ?2 AND installation.tenant_id IS ?3"
+            }
         };
         let existing = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT uninstall.operation_id, uninstall.installation_id, \
                      uninstall.expected_revision, uninstall.actor_id, uninstall.trace_id, \
@@ -2751,10 +2769,10 @@ impl SeaOrmArtifactInstallationStore {
                      FROM module_artifact_uninstall_operations uninstall \
                      JOIN module_artifact_installations installation ON installation.installation_id = uninstall.installation_id \
                      WHERE uninstall.idempotency_key = {} AND {scope}",
-                    if backend == DbBackend::Postgres { "$1" } else { "?1" }
+                    if backend == SupportedBackend::Postgres { "$1" } else { "?1" }
                 ),
                 vec![
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.context.idempotency_key),
                     scope_kind.into(),
                     optional_uuid_value(tenant_id, backend),
                 ],
@@ -2793,7 +2811,7 @@ impl SeaOrmArtifactInstallationStore {
         }
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT installation.slug, admission.status, admission.revision \
              FROM module_artifact_installations installation \
@@ -2805,14 +2823,14 @@ impl SeaOrmArtifactInstallationStore {
                    FROM module_artifact_uninstall_operations uninstall \
                    WHERE uninstall.installation_id = installation.installation_id \
                )",
-                    if backend == DbBackend::Postgres {
+                    if backend == SupportedBackend::Postgres {
                         "$1"
                     } else {
                         "?1"
                     }
                 ),
                 vec![
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(request.installation_id),
                     scope_kind.into(),
                     optional_uuid_value(tenant_id, backend),
                 ],
@@ -2840,16 +2858,16 @@ impl SeaOrmArtifactInstallationStore {
             .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
         let dependents = transaction
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT installation.slug, CAST(installation.descriptor AS TEXT) AS descriptor \
                      FROM module_artifact_installations installation \
                      JOIN module_artifact_admissions admission ON admission.installation_id = installation.installation_id \
                      WHERE installation.installation_id <> {} AND {scope} AND admission.status = 'active'",
-                    if backend == DbBackend::Postgres { "$1" } else { "?1" }
+                    if backend == SupportedBackend::Postgres { "$1" } else { "?1" }
                 ),
                 vec![
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(request.installation_id),
                     scope_kind.into(),
                     optional_uuid_value(tenant_id, backend),
                 ],
@@ -2874,13 +2892,13 @@ impl SeaOrmArtifactInstallationStore {
             }
         }
         let operation_id = self.infrastructure.new_id();
-        let p = if backend == DbBackend::Postgres {
+        let p = if backend == SupportedBackend::Postgres {
             "$1,$2,$3,$4,$5,$6,$7,$8,NOW()"
         } else {
             "?1,?2,?3,?4,?5,?6,?7,?8,datetime('now')"
         };
-        transaction.execute_raw(Statement::from_sql_and_values(backend, format!("INSERT INTO module_artifact_uninstall_operations (operation_id, installation_id, expected_revision, actor_id, trace_id, correlation_id, reason, idempotency_key, committed_at) VALUES ({p})"), vec![uuid_value(operation_id, backend), uuid_value(request.installation_id, backend), revision.into(), uuid_value(request.context.actor_id, backend), request.context.trace_id.clone().into(), uuid_value(request.context.correlation_id, backend), request.reason.into(), uuid_value(request.context.idempotency_key, backend)])).await.map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
-        let updated = transaction.execute_raw(Statement::from_sql_and_values(backend, format!("UPDATE module_artifact_admissions SET revision = revision + 1 WHERE installation_id = {} AND revision = {} AND status = 'inactive'", if backend == DbBackend::Postgres { "$1" } else { "?1" }, if backend == DbBackend::Postgres { "$2" } else { "?2" }), vec![uuid_value(request.installation_id, backend), revision.into()])).await.map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
+        transaction.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!("INSERT INTO module_artifact_uninstall_operations (operation_id, installation_id, expected_revision, actor_id, trace_id, correlation_id, reason, idempotency_key, committed_at) VALUES ({p})"), vec![backend.uuid_value(operation_id), backend.uuid_value(request.installation_id), revision.into(), backend.uuid_value(request.context.actor_id), request.context.trace_id.clone().into(), backend.uuid_value(request.context.correlation_id), request.reason.into(), backend.uuid_value(request.context.idempotency_key)])).await.map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
+        let updated = transaction.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!("UPDATE module_artifact_admissions SET revision = revision + 1 WHERE installation_id = {} AND revision = {} AND status = 'inactive'", if backend == SupportedBackend::Postgres { "$1" } else { "?1" }, if backend == SupportedBackend::Postgres { "$2" } else { "?2" }), vec![backend.uuid_value(request.installation_id), revision.into()])).await.map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
         if updated.rows_affected() != 1 {
             return Err(ModuleInstallationError::AdmissionRevisionConflict(
                 "installation became stale during uninstall".into(),
@@ -2894,24 +2912,24 @@ impl SeaOrmArtifactInstallationStore {
         // time (they retire from implicit generation 1 to 2).
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 work_generation_retire_sql(backend),
-                vec![uuid_value(request.installation_id, backend)],
+                vec![backend.uuid_value(request.installation_id)],
             ))
             .await
             .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "DELETE FROM module_artifact_tenant_lifecycle WHERE installation_id = {}",
-                    if backend == DbBackend::Postgres {
+                    if backend == SupportedBackend::Postgres {
                         "$1"
                     } else {
                         "?1"
                     }
                 ),
-                vec![uuid_value(request.installation_id, backend)],
+                vec![backend.uuid_value(request.installation_id)],
             ))
             .await
             .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
@@ -2973,20 +2991,23 @@ impl SeaOrmArtifactInstallationStore {
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &request.scope).await?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let (scope_kind, tenant_id) = match &request.scope {
             ModuleInstallationScope::Platform => ("platform", None),
             ModuleInstallationScope::Tenant { tenant_id } => ("tenant", Some(*tenant_id)),
         };
         let scope = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "installation.scope_kind = $2 AND installation.tenant_id IS NOT DISTINCT FROM $3"
             }
-            _ => "installation.scope_kind = ?2 AND installation.tenant_id IS ?3",
+            SupportedBackend::Sqlite => {
+                "installation.scope_kind = ?2 AND installation.tenant_id IS ?3"
+            }
         };
         let existing = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT operation.operation_id, operation.installation_id, \
                      operation.target_installation_id, operation.expected_revision, \
@@ -2998,14 +3019,14 @@ impl SeaOrmArtifactInstallationStore {
                      JOIN module_artifact_installations installation \
                        ON installation.installation_id = operation.installation_id \
                      WHERE operation.idempotency_key = {} AND {scope}",
-                    if backend == DbBackend::Postgres {
+                    if backend == SupportedBackend::Postgres {
                         "$1"
                     } else {
                         "?1"
                     }
                 ),
                 vec![
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.context.idempotency_key),
                     scope_kind.into(),
                     optional_uuid_value(tenant_id, backend),
                 ],
@@ -3075,12 +3096,12 @@ impl SeaOrmArtifactInstallationStore {
             });
         }
         let placeholders = match backend {
-            DbBackend::Postgres => ("$1", "$2"),
-            _ => ("?1", "?2"),
+            SupportedBackend::Postgres => ("$1", "$2"),
+            SupportedBackend::Sqlite => ("?1", "?2"),
         };
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT installation.previous_installation_id, \
                  installation.has_irreversible_migration, installation.slug, \
@@ -3092,7 +3113,7 @@ impl SeaOrmArtifactInstallationStore {
                     placeholders.0
                 ),
                 vec![
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(request.installation_id),
                     scope_kind.into(),
                     optional_uuid_value(tenant_id, backend),
                 ],
@@ -3128,10 +3149,10 @@ impl SeaOrmArtifactInstallationStore {
                 },
             )?;
         let has_irreversible_migration = match backend {
-            DbBackend::Postgres => row
+            SupportedBackend::Postgres => row
                 .try_get::<bool>("", "has_irreversible_migration")
                 .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
-            _ => {
+            SupportedBackend::Sqlite => {
                 row.try_get::<i64>("", "has_irreversible_migration")
                     .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
                     != 0
@@ -3149,7 +3170,7 @@ impl SeaOrmArtifactInstallationStore {
         }
         let target_revision_row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT admission.revision, admission.status, installation.slug, \
                      CAST(installation.descriptor AS TEXT) AS descriptor \
@@ -3162,7 +3183,7 @@ impl SeaOrmArtifactInstallationStore {
                     placeholders.0,
                 ),
                 vec![
-                    uuid_value(target_installation_id, backend),
+                    backend.uuid_value(target_installation_id),
                     scope_kind.into(),
                     optional_uuid_value(tenant_id, backend),
                 ],
@@ -3227,14 +3248,14 @@ impl SeaOrmArtifactInstallationStore {
         })?;
         let transition_row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT operation_id, predecessor_installation_id \
                      FROM module_artifact_activation_operations \
                      WHERE installation_id = {} ORDER BY committed_at DESC, installation_revision DESC LIMIT 1",
                     placeholders.0,
                 ),
-                vec![uuid_value(request.installation_id, backend)],
+                vec![backend.uuid_value(request.installation_id)],
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
@@ -3277,21 +3298,21 @@ impl SeaOrmArtifactInstallationStore {
             })?;
         let operation_id = self.infrastructure.new_id();
         transaction.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             match backend {
-                DbBackend::Postgres => "INSERT INTO module_artifact_rollback_operations (operation_id, installation_id, target_installation_id, expected_revision, actor_id, trace_id, correlation_id, reason, idempotency_key, target_capability_grant_revision, migration_rollback_mode, source_revision, target_revision, committed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())",
-                _ => "INSERT INTO module_artifact_rollback_operations (operation_id, installation_id, target_installation_id, expected_revision, actor_id, trace_id, correlation_id, reason, idempotency_key, target_capability_grant_revision, migration_rollback_mode, source_revision, target_revision, committed_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,datetime('now'))",
+                SupportedBackend::Postgres => "INSERT INTO module_artifact_rollback_operations (operation_id, installation_id, target_installation_id, expected_revision, actor_id, trace_id, correlation_id, reason, idempotency_key, target_capability_grant_revision, migration_rollback_mode, source_revision, target_revision, committed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())",
+                SupportedBackend::Sqlite => "INSERT INTO module_artifact_rollback_operations (operation_id, installation_id, target_installation_id, expected_revision, actor_id, trace_id, correlation_id, reason, idempotency_key, target_capability_grant_revision, migration_rollback_mode, source_revision, target_revision, committed_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,datetime('now'))",
             }.to_string(),
             vec![
-                uuid_value(operation_id, backend),
-                uuid_value(request.installation_id, backend),
-                uuid_value(target_installation_id, backend),
+                backend.uuid_value(operation_id),
+                backend.uuid_value(request.installation_id),
+                backend.uuid_value(target_installation_id),
                 expected_revision.into(),
-                uuid_value(request.context.actor_id, backend),
+                backend.uuid_value(request.context.actor_id),
                 request.context.trace_id.clone().into(),
-                uuid_value(request.context.correlation_id, backend),
+                backend.uuid_value(request.context.correlation_id),
                 request.reason.clone().into(),
-                uuid_value(request.context.idempotency_key, backend),
+                backend.uuid_value(request.context.idempotency_key),
                 target_capability_grant_revision.into(),
                 effective_migration_rollback_mode.as_str().into(),
                 source_revision.into(),
@@ -3299,9 +3320,9 @@ impl SeaOrmArtifactInstallationStore {
             ],
         )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let source = transaction.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!("UPDATE module_artifact_admissions SET status = 'rolled_back', revision = revision + 1 WHERE installation_id = {} AND revision = {}", placeholders.0, placeholders.1),
-            vec![uuid_value(request.installation_id, backend), expected_revision.into()],
+            vec![backend.uuid_value(request.installation_id), expected_revision.into()],
         )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         if source.rows_affected() != 1 {
             return Err(ModuleInstallationError::AdmissionRevisionConflict(
@@ -3309,9 +3330,9 @@ impl SeaOrmArtifactInstallationStore {
             ));
         }
         let target = transaction.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!("UPDATE module_artifact_admissions SET status = 'active', revision = revision + 1 WHERE installation_id = {} AND revision = {} AND status IN ('admitted', 'installed', 'inactive', 'rolled_back')", placeholders.0, placeholders.1),
-            vec![uuid_value(target_installation_id, backend), target_expected_revision.into()],
+            vec![backend.uuid_value(target_installation_id), target_expected_revision.into()],
         )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         if target.rows_affected() != 1 {
             return Err(ModuleInstallationError::AdmissionRevisionConflict(
@@ -3319,9 +3340,9 @@ impl SeaOrmArtifactInstallationStore {
             ));
         }
         transaction.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!("UPDATE module_artifact_installations SET capability_grant_revision = {} WHERE installation_id = {}", placeholders.0, placeholders.1),
-            vec![target_capability_grant_revision.into(), uuid_value(target_installation_id, backend)],
+            vec![target_capability_grant_revision.into(), backend.uuid_value(target_installation_id)],
         )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         TransitionCheckpointStore::save_checkpoint(&transaction, transition.checkpoint())
             .await
@@ -3380,23 +3401,24 @@ impl SeaOrmArtifactInstallationStore {
             ));
         }
 
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let placeholders = match backend {
-            DbBackend::Postgres => ("$1", "$2"),
-            _ => ("?1", "?2"),
+            SupportedBackend::Postgres => ("$1", "$2"),
+            SupportedBackend::Sqlite => ("?1", "?2"),
         };
 
         let op_row = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT installation_id, predecessor_installation_id \
                      FROM module_artifact_activation_operations \
                      WHERE operation_id = {}",
                     placeholders.0
                 ),
-                vec![uuid_value(request.operation_id, backend)],
+                vec![backend.uuid_value(request.operation_id)],
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
@@ -3419,12 +3441,12 @@ impl SeaOrmArtifactInstallationStore {
         let adm_row = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT revision, status FROM module_artifact_admissions WHERE installation_id = {}",
                     placeholders.0
                 ),
-                vec![uuid_value(installation_id, backend)],
+                vec![backend.uuid_value(installation_id)],
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
@@ -3455,12 +3477,12 @@ impl SeaOrmArtifactInstallationStore {
         let grant_row = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT capability_grant_revision FROM module_artifact_installations WHERE installation_id = {}",
                     placeholders.0
                 ),
-                vec![uuid_value(predecessor_installation_id, backend)],
+                vec![backend.uuid_value(predecessor_installation_id)],
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
@@ -3513,7 +3535,8 @@ impl SeaOrmArtifactInstallationStore {
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &request.scope).await?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let (scope_kind, scope_tenant_key) = admission_reverification_scope(&request.scope)?;
         if let Some(existing) = find_admission_reverification_receipt(
             &transaction,
@@ -3534,17 +3557,17 @@ impl SeaOrmArtifactInstallationStore {
         }
         let receipt_inserted = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 admission_reverification_receipt_insert_sql(backend),
                 vec![
                     scope_kind.into(),
                     scope_tenant_key.clone().into(),
-                    uuid_value(request.context.actor_id, backend),
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.context.actor_id),
+                    backend.uuid_value(request.context.idempotency_key),
                     request.context.trace_id.clone().into(),
-                    uuid_value(request.context.correlation_id, backend),
+                    backend.uuid_value(request.context.correlation_id),
                     request_digest.clone().into(),
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(request.installation_id),
                     expected_revision.into(),
                     resulting_revision_i64.into(),
                     datetime_value(backend, &self.infrastructure.now()),
@@ -3583,8 +3606,8 @@ impl SeaOrmArtifactInstallationStore {
             ArtifactAdmissionStatus::Failed
         };
         let placeholders = match backend {
-            DbBackend::Postgres => ("$1", "$2", "$3", "$4", "$5", "$6"),
-            _ => ("?1", "?2", "?3", "?4", "?5", "?6"),
+            SupportedBackend::Postgres => ("$1", "$2", "$3", "$4", "$5", "$6"),
+            SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4", "?5", "?6"),
         };
         let (scope_predicate, scope_values) = admission_scope_predicate(&request.scope, backend);
         let sql = format!(
@@ -3602,14 +3625,14 @@ impl SeaOrmArtifactInstallationStore {
         let mut values = vec![
             SqlValue::Json(Some(Box::new(evidence))),
             status.as_str().into(),
-            uuid_value(request.installation_id, backend),
+            backend.uuid_value(request.installation_id),
             expected_revision.into(),
             request.evidence.payload_digest.into(),
             request.evidence.media_type.into(),
         ];
         values.extend(scope_values);
         let updated = transaction
-            .execute_raw(Statement::from_sql_and_values(backend, sql, values))
+            .execute_raw(Statement::from_sql_and_values(backend.db_backend(), sql, values))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         if updated.rows_affected() != 1 {
@@ -3655,18 +3678,19 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
         configure_rls_scope(&transaction, &ModuleInstallationScope::Tenant { tenant_id })
             .await
             .map_err(|error| error.to_string())?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|error| error.to_string())?;
         let placeholders = match backend {
-            DbBackend::Postgres => ("$1", "$2", "$3", "$4"),
-            _ => ("?1", "?2", "?3", "?4"),
+            SupportedBackend::Postgres => ("$1", "$2", "$3", "$4"),
+            SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4"),
         };
         let platform_enabled = match backend {
-            DbBackend::Postgres => "COALESCE(tenant_lifecycle.enabled, TRUE) = TRUE",
-            _ => "COALESCE(tenant_lifecycle.enabled, 1) = 1",
+            SupportedBackend::Postgres => "COALESCE(tenant_lifecycle.enabled, TRUE) = TRUE",
+            SupportedBackend::Sqlite => "COALESCE(tenant_lifecycle.enabled, 1) = 1",
         };
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT installation.installation_id, installation.data_owner_id, \
                      installation.namespace_instance_id, installation.secret_instance_id, \
@@ -3706,7 +3730,7 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
                     release.slug.clone().into(),
                     release.version.clone().into(),
                     release.digest.clone().into(),
-                    uuid_value(tenant_id, backend),
+                    backend.uuid_value(tenant_id),
                 ],
             ))
             .await
@@ -3784,10 +3808,10 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
             .try_get("", "capability_grant_revision")
             .map_err(|error| error.to_string())?;
         let installed_at = match backend {
-            DbBackend::Postgres => row
+            SupportedBackend::Postgres => row
                 .try_get::<DateTime<Utc>>("", "installed_at")
                 .map_err(|error| error.to_string())?,
-            _ => DateTime::parse_from_rfc3339(
+            SupportedBackend::Sqlite => DateTime::parse_from_rfc3339(
                 &row.try_get::<String>("", "installed_at")
                     .map_err(|error| error.to_string())?,
             )
@@ -3857,10 +3881,11 @@ impl ArtifactSandboxPolicyResolver for SeaOrmArtifactSandboxPolicyResolver {
         configure_rls_scope(&transaction, &ModuleInstallationScope::Tenant { tenant_id })
             .await
             .map_err(|error| error.to_string())?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|error| error.to_string())?;
         let placeholders = match backend {
-            DbBackend::Postgres => ("$1", "$2", "$3", "$4", "$5"),
-            _ => ("?1", "?2", "?3", "?4", "?5"),
+            SupportedBackend::Postgres => ("$1", "$2", "$3", "$4", "$5"),
+            SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4", "?5"),
         };
         let policy_scope = match &artifact.scope {
             ModuleInstallationScope::Platform => format!(
@@ -3872,12 +3897,12 @@ impl ArtifactSandboxPolicyResolver for SeaOrmArtifactSandboxPolicyResolver {
             }
         };
         let lifecycle_enabled = match backend {
-            DbBackend::Postgres => "COALESCE(lifecycle.enabled, TRUE) = TRUE",
-            _ => "COALESCE(lifecycle.enabled, 1) = 1",
+            SupportedBackend::Postgres => "COALESCE(lifecycle.enabled, TRUE) = TRUE",
+            SupportedBackend::Sqlite => "COALESCE(lifecycle.enabled, 1) = 1",
         };
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT policy.capability_grant_revision, CAST(policy.policy AS TEXT) AS policy \
                      FROM module_artifact_sandbox_policies policy \
@@ -3907,8 +3932,8 @@ impl ArtifactSandboxPolicyResolver for SeaOrmArtifactSandboxPolicyResolver {
                     digest = placeholders.4,
                 ),
                 vec![
-                    uuid_value(artifact.installation_id, backend),
-                    uuid_value(tenant_id, backend),
+                    backend.uuid_value(artifact.installation_id),
+                    backend.uuid_value(tenant_id),
                     artifact.release.slug.clone().into(),
                     artifact.release.version.clone().into(),
                     artifact.release.digest.clone().into(),
@@ -3957,11 +3982,11 @@ impl ArtifactDataMigrationCheckpointStore for SeaOrmArtifactInstallationStore {
 
 fn admission_scope_predicate(
     scope: &ModuleInstallationScope,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> (String, Vec<SqlValue>) {
     let (scope_kind_placeholder, tenant_placeholder) = match backend {
-        DbBackend::Postgres => ("$7", "$8"),
-        _ => ("?7", "?8"),
+        SupportedBackend::Postgres => ("$7", "$8"),
+        SupportedBackend::Sqlite => ("?7", "?8"),
     };
     match scope {
         ModuleInstallationScope::Platform => (
@@ -3980,7 +4005,7 @@ fn admission_scope_predicate(
                  AND installation.scope_kind = {scope_kind_placeholder} \
                  AND installation.tenant_id = {tenant_placeholder})"
             ),
-            vec!["tenant".into(), uuid_value(*tenant_id, backend)],
+            vec!["tenant".into(), backend.uuid_value(*tenant_id)],
         ),
     }
 }
@@ -3998,15 +4023,16 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &command.scope).await?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let (scope_kind, scope_tenant_key) = admission_command_scope(command);
         let placeholders = match backend {
-            DbBackend::Postgres => ("$1", "$2", "$3", "$4"),
-            _ => ("?1", "?2", "?3", "?4"),
+            SupportedBackend::Postgres => ("$1", "$2", "$3", "$4"),
+            SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4"),
         };
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT request_digest, installation_id \
                      FROM module_artifact_admission_commands \
@@ -4017,8 +4043,8 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
                 vec![
                     scope_kind.into(),
                     scope_tenant_key.into(),
-                    uuid_value(command.context.actor_id, backend),
-                    uuid_value(command.context.idempotency_key, backend),
+                    backend.uuid_value(command.context.actor_id),
+                    backend.uuid_value(command.context.idempotency_key),
                 ],
             ))
             .await
@@ -4067,20 +4093,21 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &artifact.scope).await?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let committed_at = self.infrastructure.now();
         let (scope_kind, scope_tenant_key) = admission_command_scope(command);
         let reservation = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 admission_command_insert_sql(backend),
                 vec![
                     scope_kind.into(),
                     scope_tenant_key.clone().into(),
-                    uuid_value(command.context.actor_id, backend),
-                    uuid_value(command.context.idempotency_key, backend),
+                    backend.uuid_value(command.context.actor_id),
+                    backend.uuid_value(command.context.idempotency_key),
                     command.context.trace_id.clone().into(),
-                    uuid_value(command.context.correlation_id, backend),
+                    backend.uuid_value(command.context.correlation_id),
                     request_digest.into(),
                     datetime_value(backend, &committed_at),
                 ],
@@ -4123,7 +4150,7 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
         }
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 installation_insert_sql(backend),
                 installation_values(artifact, None, backend)?,
             ))
@@ -4135,10 +4162,10 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
         // the installation is never admitted again.
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 work_generation_insert_sql(backend),
                 vec![
-                    uuid_value(artifact.installation_id, backend),
+                    backend.uuid_value(artifact.installation_id),
                     datetime_value(backend, &committed_at),
                 ],
             ))
@@ -4146,7 +4173,7 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 sandbox_policy_insert_sql(backend),
                 sandbox_policy_values(artifact, &command.sandbox_policy, backend, &committed_at)?,
             ))
@@ -4154,14 +4181,14 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let bound = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 admission_command_bind_sql(backend),
                 vec![
-                    uuid_value(artifact.installation_id, backend),
+                    backend.uuid_value(artifact.installation_id),
                     scope_kind.into(),
                     scope_tenant_key.into(),
-                    uuid_value(command.context.actor_id, backend),
-                    uuid_value(command.context.idempotency_key, backend),
+                    backend.uuid_value(command.context.actor_id),
+                    backend.uuid_value(command.context.idempotency_key),
                     request_digest.into(),
                 ],
             ))
@@ -4175,7 +4202,7 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
         }
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 admission_insert_sql(backend),
                 admission_values(artifact, staged, evidence, backend, &committed_at)?,
             ))
@@ -4207,11 +4234,12 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
     }
 
     async fn referenced_blob_digests(&self) -> Result<BTreeSet<String>, ModuleInstallationError> {
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let rows = self
             .db
             .query_all_raw(Statement::from_string(
-                backend,
+                backend.db_backend(),
                 "SELECT admission.payload_digest FROM module_artifact_admissions admission \
                  WHERE NOT EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall \
                  WHERE uninstall.installation_id = admission.installation_id)"
@@ -4235,17 +4263,17 @@ fn admission_command_scope(command: &ArtifactAdmissionCommand) -> (&'static str,
     }
 }
 
-fn datetime_value(backend: DbBackend, value: &DateTime<Utc>) -> SqlValue {
+fn datetime_value(backend: SupportedBackend, value: &DateTime<Utc>) -> SqlValue {
     match backend {
-        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(value.to_owned())),
-        _ => value.to_rfc3339().into(),
+        SupportedBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(value.to_owned())),
+        SupportedBackend::Sqlite => value.to_rfc3339().into(),
     }
 }
 
-fn admission_command_insert_sql(backend: DbBackend) -> String {
+fn admission_command_insert_sql(backend: SupportedBackend) -> String {
     let placeholders = match backend {
-        DbBackend::Postgres => (1..=8).map(|index| format!("${index}")).collect::<Vec<_>>(),
-        _ => (1..=8).map(|index| format!("?{index}")).collect::<Vec<_>>(),
+        SupportedBackend::Postgres => (1..=8).map(|index| format!("${index}")).collect::<Vec<_>>(),
+        SupportedBackend::Sqlite => (1..=8).map(|index| format!("?{index}")).collect::<Vec<_>>(),
     };
     format!(
         "INSERT INTO module_artifact_admission_commands (\
@@ -4255,10 +4283,10 @@ fn admission_command_insert_sql(backend: DbBackend) -> String {
     )
 }
 
-fn admission_command_bind_sql(backend: DbBackend) -> String {
+fn admission_command_bind_sql(backend: SupportedBackend) -> String {
     let placeholders = match backend {
-        DbBackend::Postgres => ("$1", "$2", "$3", "$4", "$5", "$6"),
-        _ => ("?1", "?2", "?3", "?4", "?5", "?6"),
+        SupportedBackend::Postgres => ("$1", "$2", "$3", "$4", "$5", "$6"),
+        SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4", "?5", "?6"),
     };
     format!(
         "UPDATE module_artifact_admission_commands SET installation_id = {} \
@@ -4275,19 +4303,19 @@ fn admission_command_bind_sql(backend: DbBackend) -> String {
 
 async fn existing_admission_command<C: ConnectionTrait>(
     connection: &C,
-    backend: DbBackend,
+    backend: SupportedBackend,
     scope_kind: &str,
     scope_tenant_key: &str,
     actor_id: Uuid,
     idempotency_key: Uuid,
 ) -> Result<Option<(String, Option<Uuid>)>, ModuleInstallationError> {
     let placeholders = match backend {
-        DbBackend::Postgres => ("$1", "$2", "$3", "$4"),
-        _ => ("?1", "?2", "?3", "?4"),
+        SupportedBackend::Postgres => ("$1", "$2", "$3", "$4"),
+        SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4"),
     };
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT request_digest, installation_id \
                  FROM module_artifact_admission_commands \
@@ -4298,8 +4326,8 @@ async fn existing_admission_command<C: ConnectionTrait>(
             vec![
                 scope_kind.into(),
                 scope_tenant_key.into(),
-                uuid_value(actor_id, backend),
-                uuid_value(idempotency_key, backend),
+                backend.uuid_value(actor_id),
+                backend.uuid_value(idempotency_key),
             ],
         ))
         .await
@@ -4315,7 +4343,7 @@ async fn existing_admission_command<C: ConnectionTrait>(
 
 fn command_installation_id(
     row: &sea_orm::QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Option<Uuid>, ModuleInstallationError> {
     optional_uuid_from_row(row, "installation_id", backend)
 }
@@ -4323,13 +4351,13 @@ fn command_installation_id(
 fn optional_uuid_from_row(
     row: &sea_orm::QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Option<Uuid>, ModuleInstallationError> {
     match backend {
-        DbBackend::Postgres => row
+        SupportedBackend::Postgres => row
             .try_get::<Option<Uuid>>("", column)
             .map_err(|error| ModuleInstallationError::Store(error.to_string())),
-        _ => row
+        SupportedBackend::Sqlite => row
             .try_get::<Option<String>>("", column)
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
             .map(|value| {
@@ -4344,13 +4372,13 @@ fn optional_uuid_from_row(
 fn required_uuid_from_row(
     row: &sea_orm::QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Uuid, ModuleInstallationError> {
     match backend {
-        DbBackend::Postgres => row
+        SupportedBackend::Postgres => row
             .try_get::<Uuid>("", column)
             .map_err(|error| ModuleInstallationError::Store(error.to_string())),
-        _ => row
+        SupportedBackend::Sqlite => row
             .try_get::<String>("", column)
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
             .parse::<Uuid>()
@@ -4367,14 +4395,15 @@ async fn replay_artifact_tenant_lifecycle_operation<C: ConnectionTrait>(
     connection: &C,
     request: &ArtifactTenantLifecycleCommand,
 ) -> Result<Option<u64>, ModuleInstallationError> {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend())
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     let placeholders = match backend {
-        DbBackend::Postgres => ("$1", "$2"),
-        _ => ("?1", "?2"),
+        SupportedBackend::Postgres => ("$1", "$2"),
+        SupportedBackend::Sqlite => ("?1", "?2"),
     };
     let Some(row) = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT installation_id, requested_enabled, expected_revision, \
                         committed_revision, actor_id, trace_id, correlation_id, reason \
@@ -4383,8 +4412,8 @@ async fn replay_artifact_tenant_lifecycle_operation<C: ConnectionTrait>(
                 placeholders.0, placeholders.1,
             ),
             vec![
-                uuid_value(request.tenant_id, backend),
-                uuid_value(request.context.idempotency_key, backend),
+                backend.uuid_value(request.tenant_id),
+                backend.uuid_value(request.context.idempotency_key),
             ],
         ))
         .await
@@ -4395,10 +4424,10 @@ async fn replay_artifact_tenant_lifecycle_operation<C: ConnectionTrait>(
 
     let installation_id = required_uuid_from_row(&row, "installation_id", backend)?;
     let requested_enabled = match backend {
-        DbBackend::Postgres => row
+        SupportedBackend::Postgres => row
             .try_get::<bool>("", "requested_enabled")
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
-        _ => {
+        SupportedBackend::Sqlite => {
             row.try_get::<i64>("", "requested_enabled")
                 .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
                 != 0
@@ -4450,14 +4479,15 @@ async fn record_artifact_tenant_lifecycle_operation<C: ConnectionTrait>(
     request: &ArtifactTenantLifecycleCommand,
     committed_revision: u64,
 ) -> Result<(), ModuleInstallationError> {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend())
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     let values = match backend {
-        DbBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW()",
-        _ => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,datetime('now')",
+        SupportedBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW()",
+        SupportedBackend::Sqlite => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,datetime('now')",
     };
     let recorded = connection
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_artifact_tenant_lifecycle_operations \
                  (operation_id, installation_id, tenant_id, requested_enabled, expected_revision, \
@@ -4465,17 +4495,17 @@ async fn record_artifact_tenant_lifecycle_operation<C: ConnectionTrait>(
                  VALUES ({values})"
             ),
             vec![
-                uuid_value(operation_id, backend),
-                uuid_value(request.installation_id, backend),
-                uuid_value(request.tenant_id, backend),
+                backend.uuid_value(operation_id),
+                backend.uuid_value(request.installation_id),
+                backend.uuid_value(request.tenant_id),
                 request.enabled.into(),
                 (request.expected_revision as i64).into(),
                 (committed_revision as i64).into(),
-                uuid_value(request.context.actor_id, backend),
+                backend.uuid_value(request.context.actor_id),
                 request.context.trace_id.clone().into(),
-                uuid_value(request.context.correlation_id, backend),
+                backend.uuid_value(request.context.correlation_id),
                 request.reason.clone().into(),
-                uuid_value(request.context.idempotency_key, backend),
+                backend.uuid_value(request.context.idempotency_key),
             ],
         ))
         .await
@@ -4492,7 +4522,9 @@ async fn configure_rls_scope<C: ConnectionTrait>(
     connection: &C,
     scope: &ModuleInstallationScope,
 ) -> Result<(), ModuleInstallationError> {
-    if connection.get_database_backend() == DbBackend::Postgres {
+    let backend = SupportedBackend::new(connection.get_database_backend())
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+    if backend == SupportedBackend::Postgres {
         match scope {
             // A platform-owned lifecycle transaction must examine every tenant
             // overlay before it can activate a platform contribution. This
@@ -4501,7 +4533,7 @@ async fn configure_rls_scope<C: ConnectionTrait>(
             ModuleInstallationScope::Platform => {
                 connection
                     .execute_raw(Statement::from_sql_and_values(
-                        DbBackend::Postgres,
+                        SupportedBackend::Postgres.db_backend(),
                         "SELECT set_config('rustok.module_control_plane_owner', $1, true)",
                         vec!["platform".into()],
                     ))
@@ -4511,7 +4543,7 @@ async fn configure_rls_scope<C: ConnectionTrait>(
             ModuleInstallationScope::Tenant { tenant_id } => {
                 connection
                     .execute_raw(Statement::from_sql_and_values(
-                        DbBackend::Postgres,
+                        SupportedBackend::Postgres.db_backend(),
                         "SELECT set_config('rustok.tenant_id', $1, true)",
                         vec![tenant_id.to_string().into()],
                     ))
@@ -4523,12 +4555,12 @@ async fn configure_rls_scope<C: ConnectionTrait>(
     Ok(())
 }
 
-fn installation_insert_sql(backend: DbBackend) -> String {
+fn installation_insert_sql(backend: SupportedBackend) -> String {
     let placeholders = match backend {
-        DbBackend::Postgres => (1..=23)
+        SupportedBackend::Postgres => (1..=23)
             .map(|index| format!("${index}"))
             .collect::<Vec<_>>(),
-        _ => (1..=23)
+        SupportedBackend::Sqlite => (1..=23)
             .map(|index| format!("?{index}"))
             .collect::<Vec<_>>(),
     };
@@ -4543,10 +4575,10 @@ fn installation_insert_sql(backend: DbBackend) -> String {
     )
 }
 
-fn work_generation_insert_sql(backend: DbBackend) -> String {
+fn work_generation_insert_sql(backend: SupportedBackend) -> String {
     let (installation_id, updated_at, not_retired) = match backend {
-        DbBackend::Postgres => ("$1", "$2", "FALSE"),
-        _ => ("?1", "?2", "0"),
+        SupportedBackend::Postgres => ("$1", "$2", "FALSE"),
+        SupportedBackend::Sqlite => ("?1", "?2", "0"),
     };
     format!(
         "INSERT INTO module_artifact_work_generations (\
@@ -4555,17 +4587,17 @@ fn work_generation_insert_sql(backend: DbBackend) -> String {
     )
 }
 
-fn work_generation_retire_sql(backend: DbBackend) -> String {
+fn work_generation_retire_sql(backend: SupportedBackend) -> String {
     match backend {
-        DbBackend::Postgres => "INSERT INTO module_artifact_work_generations (installation_id, work_generation, retired, retired_at, updated_at) VALUES ($1, 2, TRUE, NOW(), NOW()) ON CONFLICT (installation_id) DO UPDATE SET work_generation = module_artifact_work_generations.work_generation + 1, retired = TRUE, retired_at = NOW(), updated_at = NOW()".to_string(),
-        _ => "INSERT INTO module_artifact_work_generations (installation_id, work_generation, retired, retired_at, updated_at) VALUES (?1, 2, 1, datetime('now'), datetime('now')) ON CONFLICT (installation_id) DO UPDATE SET work_generation = work_generation + 1, retired = 1, retired_at = datetime('now'), updated_at = datetime('now')".to_string(),
+        SupportedBackend::Postgres => "INSERT INTO module_artifact_work_generations (installation_id, work_generation, retired, retired_at, updated_at) VALUES ($1, 2, TRUE, NOW(), NOW()) ON CONFLICT (installation_id) DO UPDATE SET work_generation = module_artifact_work_generations.work_generation + 1, retired = TRUE, retired_at = NOW(), updated_at = NOW()".to_string(),
+        SupportedBackend::Sqlite => "INSERT INTO module_artifact_work_generations (installation_id, work_generation, retired, retired_at, updated_at) VALUES (?1, 2, 1, datetime('now'), datetime('now')) ON CONFLICT (installation_id) DO UPDATE SET work_generation = work_generation + 1, retired = 1, retired_at = datetime('now'), updated_at = datetime('now')".to_string(),
     }
 }
 
-fn sandbox_policy_insert_sql(backend: DbBackend) -> String {
+fn sandbox_policy_insert_sql(backend: SupportedBackend) -> String {
     let placeholders = match backend {
-        DbBackend::Postgres => (1..=5).map(|index| format!("${index}")).collect::<Vec<_>>(),
-        _ => (1..=5).map(|index| format!("?{index}")).collect::<Vec<_>>(),
+        SupportedBackend::Postgres => (1..=5).map(|index| format!("${index}")).collect::<Vec<_>>(),
+        SupportedBackend::Sqlite => (1..=5).map(|index| format!("?{index}")).collect::<Vec<_>>(),
     };
     format!(
         "INSERT INTO module_artifact_sandbox_policies \
@@ -4578,7 +4610,7 @@ fn sandbox_policy_insert_sql(backend: DbBackend) -> String {
 fn sandbox_policy_values(
     artifact: &InstalledModuleArtifact,
     policy: &SandboxPolicy,
-    backend: DbBackend,
+    backend: SupportedBackend,
     committed_at: &DateTime<Utc>,
 ) -> Result<Vec<SqlValue>, ModuleInstallationError> {
     let tenant_id = match &artifact.scope {
@@ -4593,7 +4625,7 @@ fn sandbox_policy_values(
     let policy = serde_json::to_value(policy)
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     Ok(vec![
-        uuid_value(artifact.installation_id, backend),
+        backend.uuid_value(artifact.installation_id),
         optional_uuid_value(tenant_id, backend),
         revision.into(),
         SqlValue::Json(Some(Box::new(policy))),
@@ -4651,7 +4683,7 @@ fn validate_sandbox_policy_for_admission(
 fn installation_values(
     artifact: &InstalledModuleArtifact,
     previous_installation_id: Option<Uuid>,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Vec<SqlValue>, ModuleInstallationError> {
     let (scope_kind, tenant_id) = match &artifact.scope {
         ModuleInstallationScope::Platform => ("platform", None),
@@ -4673,11 +4705,11 @@ fn installation_values(
                 "capability grant revision exceeds database integer range".into(),
             )
         })?;
-    let installation_id = uuid_value(artifact.installation_id, backend);
+    let installation_id = backend.uuid_value(artifact.installation_id);
     let tenant_id = optional_uuid_value(tenant_id, backend);
     let installed_at = match backend {
-        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(artifact.installed_at)),
-        _ => artifact.installed_at.to_rfc3339().into(),
+        SupportedBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(artifact.installed_at)),
+        SupportedBackend::Sqlite => artifact.installed_at.to_rfc3339().into(),
     };
     Ok(vec![
         installation_id,
@@ -4693,8 +4725,8 @@ fn installation_values(
         artifact.descriptor.artifact_digest.clone().into(),
         artifact.descriptor.entrypoint.clone().into(),
         SqlValue::Json(Some(Box::new(descriptor))),
-        uuid_value(artifact.data_owner_id, backend),
-        uuid_value(artifact.settings_instance_id, backend),
+        backend.uuid_value(artifact.data_owner_id),
+        backend.uuid_value(artifact.settings_instance_id),
         dependency_graph_revision.into(),
         artifact.dependency_lock.graph_digest.clone().into(),
         SqlValue::Json(Some(Box::new(dependency_lock))),
@@ -4710,15 +4742,15 @@ async fn active_predecessor_installation<C: ConnectionTrait>(
     connection: &C,
     scope: &ModuleInstallationScope,
     slug: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Option<Uuid>, ModuleInstallationError> {
     let (scope_kind, tenant_id) = match scope {
         ModuleInstallationScope::Platform => ("platform", None),
         ModuleInstallationScope::Tenant { tenant_id } => ("tenant", Some(*tenant_id)),
     };
     let placeholders = match backend {
-        DbBackend::Postgres => ("$1", "$2", "$3", "$4"),
-        _ => ("?1", "?2", "?3", "?4"),
+        SupportedBackend::Postgres => ("$1", "$2", "$3", "$4"),
+        SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4"),
     };
     let sql = format!(
         "SELECT installation.installation_id \
@@ -4744,17 +4776,17 @@ async fn active_predecessor_installation<C: ConnectionTrait>(
         slug.into(),
     ];
     let rows = connection
-        .query_all_raw(Statement::from_sql_and_values(backend, sql, values))
+        .query_all_raw(Statement::from_sql_and_values(backend.db_backend(), sql, values))
         .await
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     match rows.as_slice() {
         [] => Ok(None),
         [row] => match backend {
-            DbBackend::Postgres => row
+            SupportedBackend::Postgres => row
                 .try_get("", "installation_id")
                 .map(Some)
                 .map_err(|error| ModuleInstallationError::Store(error.to_string())),
-            _ => row
+            SupportedBackend::Sqlite => row
                 .try_get::<String>("", "installation_id")
                 .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
                 .parse::<Uuid>()
@@ -4773,18 +4805,19 @@ pub(crate) async fn acquire_artifact_activation_lock<C: ConnectionTrait>(
     scope: &ModuleInstallationScope,
     slug: &str,
 ) -> Result<(), ModuleInstallationError> {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend())
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     let (scope_kind, scope_tenant_key) = match scope {
         ModuleInstallationScope::Platform => ("platform", "platform".to_string()),
         ModuleInstallationScope::Tenant { tenant_id } => ("tenant", tenant_id.to_string()),
     };
     let values = match backend {
-        DbBackend::Postgres => "$1,$2,$3",
-        _ => "?1,?2,?3",
+        SupportedBackend::Postgres => "$1,$2,$3",
+        SupportedBackend::Sqlite => "?1,?2,?3",
     };
     connection
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_artifact_activation_locks \
                  (scope_kind, scope_tenant_key, slug) VALUES ({values}) \
@@ -4825,15 +4858,16 @@ async fn acquire_artifact_ui_resource_locks<C: ConnectionTrait>(
     connection: &C,
     resources: &BTreeSet<ArtifactUiResource>,
 ) -> Result<(), ModuleInstallationError> {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend())
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     let values = match backend {
-        DbBackend::Postgres => "$1,$2",
-        _ => "?1,?2",
+        SupportedBackend::Postgres => "$1,$2",
+        SupportedBackend::Sqlite => "?1,?2",
     };
     for resource in resources {
         connection
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_ui_contribution_locks \
                      (resource_kind, resource_key) \
@@ -4865,7 +4899,8 @@ async fn assert_artifact_ui_contributions_available<C: ConnectionTrait>(
     }
     acquire_artifact_ui_resource_locks(connection, &resources).await?;
 
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend())
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     let (sql, values) = match scope {
         ModuleInstallationScope::Platform => (
             format!(
@@ -4879,7 +4914,7 @@ async fn assert_artifact_ui_contributions_available<C: ConnectionTrait>(
                      SELECT 1 FROM module_artifact_uninstall_operations uninstall \
                      WHERE uninstall.installation_id = installation.installation_id \
                    )",
-                if backend == DbBackend::Postgres {
+                if backend == SupportedBackend::Postgres {
                     "$1"
                 } else {
                     "?1"
@@ -4902,12 +4937,12 @@ async fn assert_artifact_ui_contributions_available<C: ConnectionTrait>(
                      SELECT 1 FROM module_artifact_uninstall_operations uninstall \
                      WHERE uninstall.installation_id = installation.installation_id \
                    )",
-                if backend == DbBackend::Postgres {
+                if backend == SupportedBackend::Postgres {
                     "$1"
                 } else {
                     "?1"
                 },
-                if backend == DbBackend::Postgres {
+                if backend == SupportedBackend::Postgres {
                     "$2"
                 } else {
                     "?2"
@@ -4915,12 +4950,12 @@ async fn assert_artifact_ui_contributions_available<C: ConnectionTrait>(
             ),
             vec![
                 candidate_slug.to_string().into(),
-                uuid_value(*tenant_id, backend),
+                backend.uuid_value(*tenant_id),
             ],
         ),
     };
     let rows = connection
-        .query_all_raw(Statement::from_sql_and_values(backend, sql, values))
+        .query_all_raw(Statement::from_sql_and_values(backend.db_backend(), sql, values))
         .await
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     for row in rows {
@@ -4952,10 +4987,10 @@ fn positive_revision(revision: i64, operation: &str) -> Result<u64, ModuleInstal
         .map_err(|_| ModuleInstallationError::Store(format!("{operation} revision is negative")))
 }
 
-fn admission_insert_sql(backend: DbBackend) -> String {
+fn admission_insert_sql(backend: SupportedBackend) -> String {
     let placeholders = match backend {
-        DbBackend::Postgres => (1..=9).map(|index| format!("${index}")).collect::<Vec<_>>(),
-        _ => (1..=9).map(|index| format!("?{index}")).collect::<Vec<_>>(),
+        SupportedBackend::Postgres => (1..=9).map(|index| format!("${index}")).collect::<Vec<_>>(),
+        SupportedBackend::Sqlite => (1..=9).map(|index| format!("?{index}")).collect::<Vec<_>>(),
     };
     format!(
         "INSERT INTO module_artifact_admissions (\
@@ -4969,7 +5004,7 @@ fn admission_values(
     artifact: &InstalledModuleArtifact,
     staged: &StagedArtifactBlob,
     evidence: &ArtifactVerificationEvidence,
-    backend: DbBackend,
+    backend: SupportedBackend,
     committed_at: &DateTime<Utc>,
 ) -> Result<Vec<SqlValue>, ModuleInstallationError> {
     if evidence.manifest_digest != artifact.reference.digest
@@ -4986,8 +5021,8 @@ fn admission_values(
         ModuleInstallationError::Blob("artifact payload exceeds database size range".into())
     })?;
     Ok(vec![
-        uuid_value(staged.stage_id, backend),
-        uuid_value(artifact.installation_id, backend),
+        backend.uuid_value(staged.stage_id),
+        backend.uuid_value(artifact.installation_id),
         staged.digest.clone().into(),
         staged.media_type.clone().into(),
         size_bytes.into(),
@@ -4998,17 +5033,10 @@ fn admission_values(
     ])
 }
 
-fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
+fn optional_uuid_value(value: Option<Uuid>, backend: SupportedBackend) -> SqlValue {
     match backend {
-        DbBackend::Postgres => SqlValue::Uuid(Some(value)),
-        _ => value.to_string().into(),
-    }
-}
-
-fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> SqlValue {
-    match backend {
-        DbBackend::Postgres => SqlValue::Uuid(value),
-        _ => value.map(|value| value.to_string()).into(),
+        SupportedBackend::Postgres => SqlValue::Uuid(value),
+        SupportedBackend::Sqlite => value.map(|value| value.to_string()).into(),
     }
 }
 
@@ -5496,19 +5524,19 @@ struct AdmissionReverificationReceipt {
 
 async fn find_admission_reverification_receipt<C: ConnectionTrait>(
     connection: &C,
-    backend: DbBackend,
+    backend: SupportedBackend,
     scope_kind: &str,
     scope_tenant_key: &str,
     actor_id: Uuid,
     idempotency_key: Uuid,
 ) -> Result<Option<AdmissionReverificationReceipt>, ModuleInstallationError> {
     let placeholders = match backend {
-        DbBackend::Postgres => ("$1", "$2", "$3", "$4"),
-        _ => ("?1", "?2", "?3", "?4"),
+        SupportedBackend::Postgres => ("$1", "$2", "$3", "$4"),
+        SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4"),
     };
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT trace_id, correlation_id, request_digest, installation_id, expected_revision, resulting_revision \
                  FROM module_artifact_admission_reverification_operations \
@@ -5518,8 +5546,8 @@ async fn find_admission_reverification_receipt<C: ConnectionTrait>(
             vec![
                 scope_kind.into(),
                 scope_tenant_key.to_owned().into(),
-                uuid_value(actor_id, backend),
-                uuid_value(idempotency_key, backend),
+                backend.uuid_value(actor_id),
+                backend.uuid_value(idempotency_key),
             ],
         ))
         .await
@@ -5576,12 +5604,12 @@ fn replay_admission_reverification(
     Ok(receipt.resulting_revision)
 }
 
-fn admission_reverification_receipt_insert_sql(backend: DbBackend) -> String {
+fn admission_reverification_receipt_insert_sql(backend: SupportedBackend) -> String {
     let placeholders = match backend {
-        DbBackend::Postgres => (1..=11)
+        SupportedBackend::Postgres => (1..=11)
             .map(|index| format!("${index}"))
             .collect::<Vec<_>>(),
-        _ => (1..=11)
+        SupportedBackend::Sqlite => (1..=11)
             .map(|index| format!("?{index}"))
             .collect::<Vec<_>>(),
     };
