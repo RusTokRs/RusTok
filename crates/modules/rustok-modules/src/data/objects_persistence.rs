@@ -25,7 +25,8 @@ pub(crate) async fn find_artifact_data_object<C: ConnectionTrait>(
     scope: &ArtifactDataScope,
     name: &str,
 ) -> Result<Option<StoredArtifactDataObject>, ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -51,7 +52,8 @@ pub(crate) async fn find_artifact_data_object_delete_operation<C: ConnectionTrai
     scope: &ArtifactDataScope,
     request: &ArtifactDataObjectDeleteRequest,
 ) -> Result<Option<ArtifactDataObjectDeleteResult>, ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -105,7 +107,8 @@ pub(crate) async fn persist_artifact_data_object_delete_operation<C: ConnectionT
     scope: &ArtifactDataScope,
     request: &ArtifactDataObjectDeleteRequest,
 ) -> Result<(), ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     connection
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -146,7 +149,8 @@ pub(crate) async fn queue_artifact_data_object_gc_candidate<C: ConnectionTrait>(
     scope: &ArtifactDataScope,
     storage_key: &str,
 ) -> Result<(), ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     connection
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -186,7 +190,8 @@ pub(crate) async fn persist_artifact_data_object(
     quota: ArtifactDataQuota,
 ) -> Result<StoredArtifactDataObject, ArtifactDataError> {
     let quota = quota.validate()?;
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
     ensure_active_namespace(transaction, scope, backend).await?;
     if let Some((existing, expected_revision)) =
         find_artifact_data_object_operation(transaction, scope, upload.idempotency_key).await?
@@ -323,7 +328,8 @@ pub(crate) async fn enforce_object_data_quota<C: ConnectionTrait>(
     current_size_bytes: Option<u64>,
     requested_size_bytes: u64,
 ) -> Result<(), ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -360,7 +366,8 @@ pub(crate) async fn find_artifact_data_object_operation<C: ConnectionTrait>(
     scope: &ArtifactDataScope,
     idempotency_key: Uuid,
 ) -> Result<Option<(StoredArtifactDataObject, Option<u64>)>, ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),

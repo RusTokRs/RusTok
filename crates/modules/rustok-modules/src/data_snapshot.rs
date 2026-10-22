@@ -2069,7 +2069,8 @@ async fn reserve_restore_snapshot_hold_on<C: ConnectionTrait>(
     request: &ArtifactDataRestoreRequest,
     request_digest: &str,
 ) -> Result<(), ArtifactDataError> {
-    let backend = SupportedBackend::new(db.get_database_backend()).map_err(snapshot_storage_error)?;
+    let backend =
+        SupportedBackend::new(db.get_database_backend()).map_err(snapshot_storage_error)?;
     db.execute_raw(Statement::from_sql_and_values(
         backend.db_backend(),
         format!(
@@ -2118,7 +2119,8 @@ async fn release_restore_snapshot_hold_on<C: ConnectionTrait>(
     request: &ArtifactDataRestoreRequest,
     request_digest: &str,
 ) -> Result<(), ArtifactDataError> {
-    let backend = SupportedBackend::new(db.get_database_backend()).map_err(snapshot_storage_error)?;
+    let backend =
+        SupportedBackend::new(db.get_database_backend()).map_err(snapshot_storage_error)?;
     let released = db.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
         "UPDATE module_artifact_data_snapshot_holds SET released_at = {}
          WHERE tenant_id = {} AND snapshot_id = {} AND holder_kind = 'restore' AND holder_id = {}
@@ -2140,7 +2142,8 @@ async fn ensure_snapshot_has_no_active_holds<C: ConnectionTrait>(
     tenant_id: Uuid,
     snapshot_id: Uuid,
 ) -> Result<(), ArtifactDataError> {
-    let backend = SupportedBackend::new(db.get_database_backend()).map_err(snapshot_storage_error)?;
+    let backend =
+        SupportedBackend::new(db.get_database_backend()).map_err(snapshot_storage_error)?;
     let held = db
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),

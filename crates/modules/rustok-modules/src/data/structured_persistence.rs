@@ -20,7 +20,8 @@ pub(crate) async fn find_artifact_data_delete_operation<C: ConnectionTrait>(
     scope: &ArtifactDataScope,
     request: &ArtifactDataDeleteRequest,
 ) -> Result<Option<ArtifactDataDeleteResult>, ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -74,7 +75,8 @@ pub(crate) async fn persist_artifact_data_delete_operation<C: ConnectionTrait>(
     scope: &ArtifactDataScope,
     request: &ArtifactDataDeleteRequest,
 ) -> Result<(), ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     connection
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -118,7 +120,8 @@ pub(crate) async fn persist_artifact_data_write(
     quota: ArtifactDataQuota,
 ) -> Result<ArtifactDataRecord, ArtifactDataError> {
     let quota = quota.validate()?;
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
     ensure_active_namespace(transaction, scope, backend).await?;
     if let Some(index_contract_digest) = index_contract_digest {
         validate_artifact_data_index_contract(
@@ -329,7 +332,8 @@ pub(crate) async fn enforce_structured_data_quota<C: ConnectionTrait>(
     current_size_bytes: Option<u64>,
     requested_size_bytes: u64,
 ) -> Result<(), ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -376,7 +380,8 @@ pub(crate) async fn synchronize_artifact_data_indexes(
     indexes: &[ArtifactDataIndexField],
 ) -> Result<(), ArtifactDataError> {
     delete_artifact_data_indexes(transaction, scope, &record.key).await?;
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
     for index in indexes {
         let Some(value) = record.value.pointer(&index.json_pointer) else {
             continue;
@@ -422,7 +427,8 @@ pub(crate) async fn delete_artifact_data_indexes<C: ConnectionTrait>(
     scope: &ArtifactDataScope,
     key: &str,
 ) -> Result<(), ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     connection
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),

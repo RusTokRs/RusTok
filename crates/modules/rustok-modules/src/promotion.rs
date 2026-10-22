@@ -451,7 +451,8 @@ pub(crate) async fn load_platform_build_evidence<C: ConnectionTrait>(
     connection: &C,
     release_id: &str,
 ) -> Result<PinnedBuildEvidence, ModuleStaticPromotionError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let lock = if backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
@@ -620,7 +621,8 @@ async fn reserve_operation(
     context: &ModuleCommandContext,
     request_digest: &str,
 ) -> Result<Option<ModuleStaticPromotionReceipt>, ModuleStaticPromotionError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -692,7 +694,8 @@ async fn complete_operation(
     revision: u64,
     status: ModuleStaticPromotionStatus,
 ) -> Result<(), ModuleStaticPromotionError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -763,7 +766,8 @@ async fn lock_promotion<C: ConnectionTrait>(
     connection: &C,
     promotion_id: Uuid,
 ) -> Result<ModuleStaticPromotion, ModuleStaticPromotionError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let lock = if backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
@@ -791,7 +795,8 @@ pub(crate) async fn load_promotion<C: ConnectionTrait>(
     connection: &C,
     promotion_id: Uuid,
 ) -> Result<ModuleStaticPromotion, ModuleStaticPromotionError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -817,7 +822,8 @@ pub(crate) async fn validate_promotion_review<C: ConnectionTrait>(
     if promotion.status != ModuleStaticPromotionStatus::Approved {
         return Err(ModuleStaticPromotionError::InvalidEvidence);
     }
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),

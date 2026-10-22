@@ -48,7 +48,8 @@ pub(crate) async fn lock_artifact_data_installation_on<C: ConnectionTrait>(
     tenant_id: Uuid,
     installation_id: Uuid,
 ) -> Result<(), ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -81,7 +82,8 @@ pub(crate) async fn query_artifact_data_purge_target<C: ConnectionTrait>(
     installation_id: Uuid,
     lock: bool,
 ) -> Result<ArtifactDataPurgeTarget, ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -210,7 +212,8 @@ pub(crate) async fn ensure_no_active_artifact_data_scope_collision<C: Connection
     connection: &C,
     target: &ArtifactDataPurgeTarget,
 ) -> Result<(), ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let scope = &target.authorization.scope;
     let active = connection
         .query_one_raw(Statement::from_sql_and_values(

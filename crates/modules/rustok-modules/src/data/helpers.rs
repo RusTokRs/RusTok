@@ -77,7 +77,8 @@ pub(crate) async fn resolve_serving_artifact_data_scope(
     )
     .await
     .map_err(|error| ArtifactDataError::Storage(error.to_string()))?;
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
     let values = vec![
         backend.uuid_value(scope.tenant_id),
         backend.uuid_value(scope.data_owner_id),

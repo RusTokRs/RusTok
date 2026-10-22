@@ -384,7 +384,8 @@ async fn insert_bootstrap_preparation(
     let preparation = &payload.preparation;
     let role_artifacts_json = serde_json::to_string(&preparation.evidence.roles)
         .map_err(|error| ModuleStaticDistributionReleaseError::Store(error.to_string()))?;
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -466,7 +467,8 @@ async fn insert_bootstrap_item(
     ordinal: usize,
     item: &ModuleStaticDistributionItem,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -534,7 +536,8 @@ async fn load_bootstrap_import_operation<C: ConnectionTrait>(
     Option<ModuleStaticDistributionBootstrapImportReceipt>,
     ModuleStaticDistributionReleaseError,
 > {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -603,7 +606,8 @@ async fn reserve_bootstrap_import_operation(
     context: &ModuleCommandContext,
     request_digest: &str,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),

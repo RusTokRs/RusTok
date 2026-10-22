@@ -687,7 +687,8 @@ async fn write_records(
     authority: &ArtifactDataCopyAuthorization,
     records: &[ArtifactDataRecord],
 ) -> Result<(), ArtifactDataCopyError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
     let contract = authority
         .target_descriptor
         .persistence_contract

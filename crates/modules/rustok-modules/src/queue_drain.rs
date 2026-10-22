@@ -10,10 +10,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::backend::SupportedBackend;
-use crate::{
-    ModuleCommandContext,
-    data::{configure_tenant_scope},
-};
+use crate::{ModuleCommandContext, data::configure_tenant_scope};
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ArtifactQueueDrainError {

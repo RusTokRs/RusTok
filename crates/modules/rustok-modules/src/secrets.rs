@@ -5,9 +5,7 @@ use rustok_sandbox::{
     ExecutionPhase, SandboxError, SandboxResult, SandboxSubject,
 };
 use rustok_secrets::{SecretRef, SecretResolverRegistry, SecretString};
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, QueryResult, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, QueryResult, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use thiserror::Error;
@@ -15,7 +13,9 @@ use uuid::Uuid;
 
 use crate::backend::SupportedBackend;
 use crate::data::{
-    configure_tenant_scope, namespace_lock_clause, optional_revision_value, revision_value, uuid_from_row, };
+    configure_tenant_scope, namespace_lock_clause, optional_revision_value, revision_value,
+    uuid_from_row,
+};
 use crate::{
     ArtifactCapabilityBrokerResolver, ArtifactCapabilityExecution, ArtifactCapabilityScope,
     ControlPlaneInfrastructure, InstalledModuleArtifact, ModuleCommandContext,

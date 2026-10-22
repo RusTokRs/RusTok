@@ -384,7 +384,8 @@ async fn persist_state(
     revision: u64,
     command: &ModuleArtifactSecurityCommand,
 ) -> Result<(), ModuleArtifactSecurityError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let checksum = command.release.digest.trim_start_matches("sha256:");
     let result = if command.expected_revision == 0 {
         transaction
@@ -474,7 +475,8 @@ async fn load_snapshot<C: ConnectionTrait>(
     release: &ArtifactReleaseRef,
     lock_row: bool,
 ) -> Result<ModuleArtifactSecuritySnapshot, ModuleArtifactSecurityError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
@@ -518,7 +520,8 @@ async fn load_registry_status<C: ConnectionTrait>(
     connection: &C,
     release: &ArtifactReleaseRef,
 ) -> Result<ModuleArtifactRegistryReleaseStatus, ModuleArtifactSecurityError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -579,7 +582,8 @@ async fn reserve_operation(
     action: SecurityAction,
     request_digest: &str,
 ) -> Result<Option<ModuleArtifactSecurityReceipt>, ModuleArtifactSecurityError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -617,7 +621,8 @@ async fn load_operation<C: ConnectionTrait>(
     action: SecurityAction,
     request_digest: &str,
 ) -> Result<Option<ModuleArtifactSecurityReceipt>, ModuleArtifactSecurityError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -673,7 +678,8 @@ async fn complete_operation(
     idempotency_key: Uuid,
     receipt: &ModuleArtifactSecurityReceipt,
 ) -> Result<(), ModuleArtifactSecurityError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let receipt_json = serde_json::to_string(receipt)
         .map_err(|error| ModuleArtifactSecurityError::Store(error.to_string()))?;
     let updated = transaction

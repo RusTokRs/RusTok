@@ -1598,7 +1598,8 @@ async fn insert_rollout(
     transaction: &DatabaseTransaction,
     insert: RolloutInsert<'_>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1665,7 +1666,8 @@ async fn insert_rollout_assignments(
     assignments: &[ModuleStaticDistributionAssignment],
     predecessor: Option<&ModuleStaticDistributionRollout>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     for (ordinal, assignment) in assignments.iter().enumerate() {
         let predecessor_artifact_digest = predecessor
             .and_then(|rollout| {
@@ -1713,7 +1715,8 @@ async fn update_rollout_assignment(
     report_digest: &str,
     now: &DateTime<Utc>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let health_reference = command
         .health_evidence
         .as_ref()
@@ -1881,7 +1884,8 @@ async fn update_rollout_status(
     next_status: ModuleStaticDistributionRolloutStatus,
     failure: Option<&ModuleReconciliationFailure>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let (converged_at, failed_at) = match next_status {
         ModuleStaticDistributionRolloutStatus::Converged => {
             (backend.now_sql().to_string(), "NULL".to_string())
@@ -1927,7 +1931,8 @@ async fn supersede_rollout(
     transaction: &DatabaseTransaction,
     rollout_id: Uuid,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1952,7 +1957,8 @@ async fn load_phase_counts(
     connection: &impl ConnectionTrait,
     rollout_id: Uuid,
 ) -> Result<PhaseCounts, ModuleStaticDistributionRolloutError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let rows = connection
         .query_all_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1990,7 +1996,8 @@ async fn load_rollout_state<C: ConnectionTrait>(
     connection: &C,
     lock_row: bool,
 ) -> Result<ModuleDesiredObservedState, ModuleStaticDistributionRolloutError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
@@ -2028,7 +2035,8 @@ async fn advance_rollout_state(
     desired_rollout_id: Option<Uuid>,
     observed_rollout_id: Option<Uuid>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -2069,7 +2077,8 @@ async fn load_rollout<C: ConnectionTrait>(
     rollout_id: Uuid,
     lock_row: bool,
 ) -> Result<ModuleStaticDistributionRollout, ModuleStaticDistributionRolloutError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
@@ -2191,7 +2200,8 @@ async fn load_rollout_assignment<C: ConnectionTrait>(
     role: ModuleStaticDistributionRole,
     lock_row: bool,
 ) -> Result<ModuleStaticDistributionRolloutAssignment, ModuleStaticDistributionRolloutError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
@@ -2235,7 +2245,8 @@ async fn load_next_assignment_for_node(
     now: &DateTime<Utc>,
 ) -> Result<Option<ModuleStaticDistributionRolloutAssignment>, ModuleStaticDistributionRolloutError>
 {
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let lock = if backend == SupportedBackend::Postgres {
         " FOR UPDATE SKIP LOCKED"
     } else {
@@ -2291,7 +2302,8 @@ async fn claim_rollout_assignment(
     now: &DateTime<Utc>,
     lease_expires_at: &DateTime<Utc>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -2339,7 +2351,8 @@ async fn heartbeat_rollout_assignment(
     now: &DateTime<Utc>,
     lease_expires_at: &DateTime<Utc>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -2439,7 +2452,8 @@ async fn reserve_operation(
     principal_id: &str,
     context: Option<&ModuleCommandContext>,
 ) -> Result<Option<OperationRecord>, ModuleStaticDistributionRolloutError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -2488,7 +2502,8 @@ async fn load_operation<C: ConnectionTrait>(
     principal_id: &str,
     context: Option<&ModuleCommandContext>,
 ) -> Result<Option<OperationRecord>, ModuleStaticDistributionRolloutError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let Some(row) = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -2610,7 +2625,8 @@ async fn complete_operation(
     transaction: &DatabaseTransaction,
     params: CompleteRolloutOperationParams<'_>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),

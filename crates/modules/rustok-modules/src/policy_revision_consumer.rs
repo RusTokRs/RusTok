@@ -7,7 +7,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::backend::SupportedBackend;
-use crate::data::{configure_tenant_scope};
+use crate::data::configure_tenant_scope;
 use crate::policy::ModuleEffectivePolicyQuery;
 use crate::{
     ModuleDefinitionCatalog, ModuleDefinitionSource, ModuleEffectivePolicy,
@@ -260,7 +260,9 @@ async fn load_tenant_overrides<C: ConnectionTrait>(
         SupportedBackend::Postgres => {
             "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = $1"
         }
-        SupportedBackend::Sqlite => "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = ?1",
+        SupportedBackend::Sqlite => {
+            "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = ?1"
+        }
     };
     connection
         .query_all_raw(Statement::from_sql_and_values(

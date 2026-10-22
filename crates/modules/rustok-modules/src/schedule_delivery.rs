@@ -29,9 +29,7 @@ use crate::{
     ArtifactScheduleMaterializationConfig, ArtifactScheduleMaterializer,
     ControlPlaneInfrastructure, ModuleArtifactDescriptor, ModuleRuntimeBinding,
     ModuleRuntimeBindingKind, SharedArtifactBindingExecutor, SharedArtifactDeliveryTenantSource,
-    data::{
-        configure_tenant_scope, retry_available_at_expression, uuid_from_row,
-    },
+    data::{configure_tenant_scope, retry_available_at_expression, uuid_from_row},
     schedule_binding_digest,
 };
 
@@ -918,7 +916,9 @@ fn attempt_from_row(
     backend: SupportedBackend,
 ) -> Result<u32, ArtifactScheduleDeliveryError> {
     let attempt = match backend {
-        SupportedBackend::Postgres => i64::from(row.try_get::<i32>("", "attempt").map_err(storage_error)?),
+        SupportedBackend::Postgres => {
+            i64::from(row.try_get::<i32>("", "attempt").map_err(storage_error)?)
+        }
         SupportedBackend::Sqlite => row.try_get::<i64>("", "attempt").map_err(storage_error)?,
     };
     u32::try_from(attempt).map_err(|_| ArtifactScheduleDeliveryError::ClaimLost)

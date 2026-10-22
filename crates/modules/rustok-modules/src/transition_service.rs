@@ -468,7 +468,8 @@ async fn load_operation<C: ConnectionTrait>(
     command: &ModuleTransitionFinalizeCommand,
     request_digest: &str,
 ) -> Result<Option<ModuleTransitionFinalizeReceipt>, ModuleTransitionServiceError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(database_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(database_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),

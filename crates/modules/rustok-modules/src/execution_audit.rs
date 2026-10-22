@@ -1,7 +1,5 @@
 use async_trait::async_trait;
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, Statement, TransactionTrait, Value as SqlValue,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait, Value as SqlValue};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -12,7 +10,7 @@ use rustok_sandbox::{
 };
 
 use crate::backend::SupportedBackend;
-use crate::data::{configure_tenant_scope};
+use crate::data::configure_tenant_scope;
 
 /// Durable, redacted execution audit adapter for installed module artifacts.
 ///
@@ -145,7 +143,8 @@ impl SeaOrmArtifactExecutionObserver {
                 .await
                 .map_err(|_| ())?;
         }
-        let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(|_| ())?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(|_| ())?;
         match record.status {
             ExecutionStatus::Started => {
                 let columns = "execution_id, tenant_id, installation_id, module_slug, module_version, artifact_digest, executor, phase, actor_id, trace_id, binding_id, status, started_at";

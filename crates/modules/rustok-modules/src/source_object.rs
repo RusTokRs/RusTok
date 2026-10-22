@@ -40,10 +40,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use uuid::Uuid;
 
 use crate::backend::SupportedBackend;
-use crate::{
-    ModuleInstallationScope,
-    installation::valid_digest,
-};
+use crate::{ModuleInstallationScope, installation::valid_digest};
 
 static SOURCE_UPLOAD_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 

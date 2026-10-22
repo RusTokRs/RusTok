@@ -525,7 +525,8 @@ async fn find_artifact_data_purge_operation<C: ConnectionTrait>(
     installation_id: Uuid,
     request: &ArtifactDataPurgeRequest,
 ) -> Result<Option<ArtifactDataPurgeResult>, ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
