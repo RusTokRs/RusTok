@@ -1,6 +1,3 @@
-use async_trait::async_trait;
-use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
-use sea_orm_migration::MigrationTrait;
 
 pub mod entities;
 pub mod error;
@@ -25,6 +22,7 @@ pub mod index_source;
 pub mod maintenance;
 pub mod migrations;
 pub mod model;
+pub mod module;
 pub mod observability;
 pub mod ports;
 mod receipts;
@@ -58,78 +56,11 @@ pub use ports::{
 };
 pub use service::SocialGraphService;
 
-pub struct SocialGraphModule;
+pub use module::SocialGraphModule;
 
-#[async_trait]
-impl RusToKModule for SocialGraphModule {
-    fn slug(&self) -> &'static str {
-        "social_graph"
-    }
+#[cfg(test)]
+mod contract_tests;
 
-    fn name(&self) -> &'static str {
-        "Social Graph"
-    }
-
-    fn description(&self) -> &'static str {
-        "Tenant-scoped social relation owner for blocks, mutes, follows, and friendship policy"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn dependencies(&self) -> &[&'static str] {
-        #[cfg(feature = "index")]
-        {
-            &["index", "outbox"]
-        }
-        #[cfg(not(feature = "index"))]
-        {
-            &["outbox"]
-        }
-    }
-
-    fn register_runtime_extensions(
-        &self,
-        extensions: &mut ModuleRuntimeExtensions,
-    ) -> rustok_core::Result<()> {
-        #[cfg(feature = "index")]
-        {
-            let schema = index::social_graph_relation_index_schema().map_err(|error| {
-                rustok_core::Error::Validation(format!(
-                    "Social Graph Index schema construction failed: {error}"
-                ))
-            })?;
-            rustok_index::register_index_schema_source(extensions, self.slug(), schema).map_err(
-                |error| {
-                    rustok_core::Error::Validation(format!(
-                        "Social Graph Index schema source registration failed: {error}"
-                    ))
-                },
-            )?;
-            index_source::register_social_graph_index_source_contracts(extensions).map_err(
-                |error| {
-                    rustok_core::Error::Validation(format!(
-                        "Social Graph Index source contract registration failed: {error}"
-                    ))
-                },
-            )?;
-        }
-        #[cfg(not(feature = "index"))]
-        let _ = extensions;
-        Ok(())
-    }
-}
-
-impl MigrationSource for SocialGraphModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-
-    fn migration_dependencies(&self) -> Vec<rustok_core::MigrationDependencyDescriptor> {
-        migrations::migration_dependencies()
-    }
-}
 
 #[cfg(test)]
 mod tests {

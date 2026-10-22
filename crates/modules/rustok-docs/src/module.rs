@@ -1,11 +1,20 @@
 use async_trait::async_trait;
 use rustok_api::Permission;
-use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
+use rustok_core::MigrationDependencyDescriptor;
+use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 use crate::migrations;
 
+/// Sovereign collaborative documents, wiki, and knowledge base module powered by Loro CRDT.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct DocsModule;
+
+impl DocsModule {
+    pub fn new() -> Self {
+        Self
+    }
+}
 
 #[async_trait]
 impl RusToKModule for DocsModule {
@@ -23,6 +32,14 @@ impl RusToKModule for DocsModule {
 
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
+    }
+
+    fn kind(&self) -> ModuleKind {
+        ModuleKind::Optional
+    }
+
+    async fn health(&self) -> HealthStatus {
+        HealthStatus::Healthy
     }
 
     fn dependencies(&self) -> &[&'static str] {
@@ -71,18 +88,20 @@ mod tests {
     use super::*;
     use rustok_api::{Action, Resource};
 
-    #[test]
-    fn module_metadata() {
-        let module = DocsModule;
+    #[tokio::test]
+    async fn module_metadata() {
+        let module = DocsModule::new();
         assert_eq!(module.slug(), "docs");
         assert_eq!(module.name(), "Collaborative Documents & Wiki");
         assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
+        assert_eq!(module.kind(), ModuleKind::Optional);
+        assert_eq!(module.health().await, HealthStatus::Healthy);
         assert_eq!(module.dependencies(), &["outbox", "flex"]);
     }
 
     #[test]
     fn module_permissions() {
-        let module = DocsModule;
+        let module = DocsModule::new();
         let perms = module.permissions();
         assert!(perms.contains(&Permission::new(Resource::Pages, Action::Create)));
         assert!(perms.contains(&Permission::new(Resource::Pages, Action::Read)));
@@ -94,7 +113,7 @@ mod tests {
 
     #[test]
     fn module_has_owned_migrations() {
-        let module = DocsModule;
+        let module = DocsModule::new();
         assert!(!module.migrations().is_empty());
     }
 }

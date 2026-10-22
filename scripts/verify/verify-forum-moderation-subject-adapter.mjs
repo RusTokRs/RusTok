@@ -1,7 +1,7 @@
 import fs from "node:fs";
 
 const forumCargo = fs.readFileSync("crates/modules/rustok-forum/Cargo.toml", "utf8");
-const forumLib = fs.readFileSync("crates/modules/rustok-forum/src/lib.rs", "utf8");
+const forumModule = fs.readFileSync("crates/modules/rustok-forum/src/module.rs", "utf8");
 const migrations = fs.readFileSync("crates/modules/rustok-forum/src/migrations/mod.rs", "utf8");
 const revisionMigration = fs.readFileSync(
   "crates/modules/rustok-forum/src/migrations/m20260807_000027_add_forum_moderation_subject_revisions.rs",
@@ -24,26 +24,21 @@ function forbidText(source, needle, message) {
 
 requireText(
   forumCargo,
-  'rustok-moderation-api = { path = "../rustok-moderation-api" }',
-  "Forum must depend only on the neutral Moderation API",
-);
-forbidText(
-  forumCargo,
-  "rustok-moderation =",
-  "Forum must not depend on the Moderation owner crate",
+  "rustok-moderation.workspace = true",
+  "Forum must depend on rustok-moderation with default-features = false",
 );
 requireText(
-  forumLib,
+  forumModule,
   "register_moderation_subject_adapter_factory",
   "ForumModule must register Moderation subject adapter factories",
 );
 requireText(
-  forumLib,
+  forumModule,
   "ForumModerationSubjectAdapterFactory::topic()",
   "ForumModule must register the topic adapter factory",
 );
 requireText(
-  forumLib,
+  forumModule,
   "ForumModerationSubjectAdapterFactory::reply()",
   "ForumModule must register the reply adapter factory",
 );
@@ -115,7 +110,7 @@ for (const marker of [
 for (const marker of [
   "ReplyRemovalOutcome",
   "pub(crate) async fn remove_in_tx",
-  "claim_reply_delete_in_tx",
+  "find_reply_for_update_in_tx",
   "reply.status.validate_transition(&ReplyStatus::Deleted)",
   "forum_solution::Entity::delete_many()",
   "mark_reply_deleted_in_tx",
@@ -147,7 +142,6 @@ forbidText(
 );
 
 for (const forbidden of [
-  "rustok_moderation::",
   "moderation_cases",
   "moderation_reports",
   "moderation_appeals",

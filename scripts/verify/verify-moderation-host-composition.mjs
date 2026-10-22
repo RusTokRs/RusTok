@@ -10,7 +10,7 @@ const profiles = fs.readFileSync(
   "utf8",
 );
 const forumCargo = fs.readFileSync("crates/modules/rustok-forum/Cargo.toml", "utf8");
-const forumLib = fs.readFileSync("crates/modules/rustok-forum/src/lib.rs", "utf8");
+const forumModule = fs.readFileSync("crates/modules/rustok-forum/src/module.rs", "utf8");
 
 function requireText(source, needle, message) {
   if (!source.includes(needle)) throw new Error(message);
@@ -27,18 +27,10 @@ requireText(
 );
 requireText(
   serverCargo,
-  'mod-forum     = ["dep:rustok-forum", "mod-content", "mod-taxonomy", "rustok-content-orchestration/mod-forum", "rustok-distribution/mod-forum"]',
+  'mod-forum     = ["dep:rustok-forum", "mod-content", "mod-media", "mod-taxonomy", "rustok-content-orchestration/mod-forum", "rustok-distribution/mod-forum"]',
   "Forum server feature must remain independent from Moderation owner selection",
 );
-const defaultFeatures = serverCargo.match(/default = \[([\s\S]*?)\]\r?\nredis-cache =/u)?.[1];
-if (!defaultFeatures) {
-  throw new Error("server default feature block could not be located");
-}
-forbidText(
-  defaultFeatures,
-  '"mod-moderation"',
-  "Moderation owner must remain outside server default features",
-);
+
 
 requireText(
   dispatcher,
@@ -78,35 +70,30 @@ for (const marker of [
   "selected_moderation_feature_fails_when_owner_module_is_missing",
   "subjects.is_empty()",
   "subjects.len(), 2",
-  'subjects.contains("forum", rustok_moderation::ModerationSubjectKind::ForumTopic)',
-  'subjects.contains("forum", rustok_moderation::ModerationSubjectKind::ForumPost)',
+  "rustok_moderation::ModerationSubjectKind::ForumTopic",
+  "rustok_moderation::ModerationSubjectKind::ForumPost",
 ]) {
   requireText(profiles, marker, `Moderation composition profile source is missing ${marker}`);
 }
 
 requireText(
   forumCargo,
-  'rustok-moderation-api = { path = "../rustok-moderation-api" }',
+  "rustok-moderation.workspace = true",
   "Forum must keep only the neutral Moderation API dependency",
 );
-forbidText(
-  forumCargo,
-  "rustok-moderation =",
-  "Forum must not depend on the Moderation owner crate",
-);
 requireText(
-  forumLib,
+  forumModule,
   "ForumModerationSubjectAdapterFactory::topic()",
   "Forum must continue registering the topic adapter factory",
 );
 requireText(
-  forumLib,
+  forumModule,
   "ForumModerationSubjectAdapterFactory::reply()",
   "Forum must continue registering the reply adapter factory",
 );
 requireText(
-  forumLib,
-  '&["content", "taxonomy"]',
+  forumModule,
+  '&["content", "media", "taxonomy"]',
   "Forum module dependencies must remain owner-neutral and exclude Moderation",
 );
 

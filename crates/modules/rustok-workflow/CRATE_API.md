@@ -1,91 +1,65 @@
-# rustok-workflow — API overview
+# rustok-workflow / CRATE_API
 
-> This document is a **curated overview**, not a manual snapshot of signatures.
-> The canonical reference comes from code and generated artifacts.
+## Public Modules
 
-## Source of truth
+`controllers`, `dto`, `entities`, `error`, `graphql`, `migration`, `migrations`, `ports`, `services`, `steps`, `templates`, `module`.
 
-- Crate source: `crates/modules/rustok-workflow/src/**`
-- Rustdoc (locally):
-  - `cargo doc -p rustok-workflow --no-deps`
-- Server runtime wiring:
-  - `apps/server/src/modules/workflow.rs`
+## Platform Capability Bindings
 
-## Module registration contract
+- **Core Module Registration**: Exposes `WorkflowModule` implementing `RusToKModule` (slug `"workflow"`) and `MigrationSource`.
+- **Workflow Services and Engines**:
+  - `WorkflowService`: CRUD and orchestration use-cases for visual workflows and execution runs.
+  - `WorkflowEngine`: Linear step execution engine and step registry runtime dispatch.
+  - `WorkflowTriggerHandler`: Event-driven trigger listener subscribing to domain events.
+  - `WorkflowCronScheduler`: Schedule-driven trigger runner.
+- **Workflow Steps and Integrations**:
+  - `AlloyScriptStep` / `ScriptRunner`: Sandboxed scripting step runner.
+  - `NotifyStep` / `NotificationSender`: Notification dispatch step.
+  - `BUILTIN_TEMPLATES`: Curated reusable workflow templates.
 
-`WorkflowModule` registers as an optional module in the module registry and publishes:
+## Domain Collaborations
 
-- module slug/name/kind;
-- workflow bounded context migrations;
-- permissions for workflow authoring/execution read paths.
+- **`rustok-events` / `rustok-outbox`**: Trigger source for event-driven workflows and destination for emitted events.
+- **`rustok-notifications`**: Target domain for notification steps.
 
-For exact values (slug, permissions, migration list), use the code,
-not duplication in markdown.
+## Minimum Contract Set
 
-## Public surface map
+### Input DTOs/Commands
 
-The crate's public API is divided into the following areas:
+- `CreateWorkflowInput`, `UpdateWorkflowInput`, `WorkflowFilter`: Workflow authoring and query inputs.
+- `CreateWorkflowStepInput`, `UpdateWorkflowStepInput`: Step configuration inputs.
+- `ExecuteWorkflowInput`: Manual and webhook workflow trigger payloads.
 
-- `controllers` — REST endpoints and route wiring;
-- `graphql` — query/mutation surface for workflow authoring and reads;
-- `services` — domain orchestration layer (`WorkflowService`, execution/use-case logic);
-- `steps` — runtime step contracts and registries;
-- `templates` — builtin workflow templates and metadata;
-- `dto`/`entities`/`error` — transport contracts, storage model and domain errors.
-
-## Domain invariants (must-hold)
+### Domain Invariants
 
 - All write/read operations are tenant-scoped.
-- Workflow execution path is separated from the authoring path.
+- Workflow execution path is strictly separated from the authoring path.
 - Step execution goes through a typed step runtime (`WorkflowStep` contract).
 - Trigger paths (manual/webhook/event/cron) converge into a single execution orchestration.
-- Execution and configuration errors must be returned as typed domain errors,
-  without silent fallback.
+- Execution and configuration errors must be returned as typed domain errors without silent fallback.
 
-## Execution model
+### Events / Outbox Side Effects
+
+- Workflows may emit domain events through `emit_event` steps via `TransactionalEventBus`.
+- Workflow lifecycle events (started, completed, failed) publish execution telemetry.
+
+### Errors / Failure Codes
+
+- `WorkflowError` variants: `Validation`, `NotFound`, `Execution`, `Database`, `StepFailed`, `Internal`.
+- All errors preserve structured context and map cleanly to GraphQL/REST error representations.
+
+## Execution Model
 
 - `WorkflowService` is responsible for CRUD and orchestration use-cases.
 - `WorkflowEngine` executes steps and manages step registry/runtime dispatch.
 - `WorkflowTriggerHandler` integrates the event-driven trigger path.
 - `WorkflowCronScheduler` covers the schedule-driven trigger path.
 
-Important: for actual methods/signatures, refer to the source code and rustdoc.
-This document captures roles and boundaries, not hand-written API.
+## Extensibility Contract
 
-## Extensibility contract
-
-Custom steps are connected via the `WorkflowStep` trait and registration
-in the engine runtime (`with_step(...)`).
-
+Custom steps are connected via the `WorkflowStep` trait and registration in the engine runtime (`with_step(...)`).
 Requirements for steps:
-
-- deterministic behavior given the same input context;
-- correct error handling via `WorkflowResult`;
-- no tenant-boundary bypass;
-- no hidden side effects outside the step contract.
-
-## Transport entry points
-
-- GraphQL: workflow query/mutation roots.
-- REST: workflow controllers/routes, including webhook trigger path.
-
-For exact route/query names and payload contracts, see source + generated schema.
-
-## Documentation maintenance rule
-
-When changing workflow transport contract, execution semantics, or error model:
-
-1. Update this overview (roles, invariants, boundaries).
-2. Do not duplicate hand-written signatures in markdown.
-3. Add/update links to generated reference in relevant docs.
-
-## Hotspot contract (DOC-12 / H4)
-
-- Hotspot: `H4` (Workflow/Public API contracts).
-- Doc contracts updated: `crates/modules/rustok-workflow/CRATE_API.md`.
-- Owner scope: workflow module owner.
-- Residual drift risk:
-  - until DOC-09 (B12 CI artifacts) is closed, there may be a gap between curated overview
-    and actual exported reference artifacts in a PR;
-  - when changing transport payload shapes without updating generated references,
-    risk remains high.
+- Deterministic behavior given the same input context;
+- Correct error handling via `WorkflowResult`;
+- No tenant-boundary bypass;
+- No hidden side effects outside the step contract.

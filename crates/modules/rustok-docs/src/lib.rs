@@ -35,6 +35,9 @@ pub use search_projection::{
 pub use services::{COMPACTION_THRESHOLD, DocumentService};
 
 #[cfg(test)]
+mod contract_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use uuid::Uuid;

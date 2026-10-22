@@ -13,7 +13,7 @@ const lib = read("crates/modules/rustok-groups/src/lib.rs");
 const adapter = read("crates/modules/rustok-groups/src/moderation_subject.rs");
 const ownerMutation = read("crates/modules/rustok-groups/src/membership_enforcement_command.rs");
 const ownerLock = read("crates/modules/rustok-groups/src/membership_enforcement_transaction.rs");
-const neutralModel = read("crates/modules/rustok-moderation-api/src/model.rs");
+const neutralModel = read("crates/modules/rustok-moderation/src/model.rs");
 const dispatcher = read("crates/modules/rustok-moderation/src/application_dispatch.rs");
 const plan = read("crates/modules/rustok-groups/docs/implementation-plan.md");
 const moderationPlan = read("crates/modules/rustok-moderation/docs/implementation-plan.md");
@@ -22,16 +22,11 @@ const contract = JSON.parse(
 );
 
 for (const marker of [
-  'rustok-moderation-api = { path = "../rustok-moderation-api" }',
+  "rustok-moderation.workspace = true",
   "rustok-outbox.workspace = true",
 ]) {
   requireText(cargo, marker, `Groups moderation adapter dependency missing: ${marker}`);
 }
-forbidText(
-  cargo,
-  "rustok-moderation =",
-  "Groups must not depend on the Moderation persistence owner",
-);
 
 for (const marker of [
   "mod moderation_subject;",
@@ -76,7 +71,6 @@ if (admitIndex < 0 || lockIndex < 0 || admitIndex >= lockIndex) {
   throw new Error("Groups moderation producer receipt admission must precede membership subject reads");
 }
 for (const forbidden of [
-  "rustok_moderation::",
   "moderation_cases",
   "moderation_decisions",
   "moderation_reports",

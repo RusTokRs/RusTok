@@ -4,6 +4,31 @@
 
 `controllers`, `dto`, `entities`, `error`, `graphql`, `services`, `state_machine`.
 
+## Platform Capability Bindings
+
+- **Core Module Registration**: Exposes `CommerceModule` implementing `RusToKModule` (slug `"commerce"`, dependencies `["tenant", "cart", "customer", "product", "region", "pricing", "inventory", "order", "payment", "fulfillment"]`) and `MigrationSource`.
+- **Commerce Orchestration Services**:
+  - `StoreContextService`: Resolves store locale, default region, and currency context across channel and tenant boundaries.
+  - `ShippingProfileService`: Shipping methods, rates, delivery profiles, and zone mapping.
+  - `CheckoutService` / `StagedCheckoutService`: Multi-stage checkout pipeline, inventory reservation, order creation, and payment staging.
+  - `PaymentOrchestrationService` & `PostOrderOrchestrationService`: Order payment settlement, post-order actions, and return/refund orchestration.
+  - `OrderCancellationOrchestrator`: Compensating inventory releases and payment voids upon order cancellation.
+  - `CheckoutCompensationSweepService`: Background sweeping of dangling checkout reservations and timed-out payment holds.
+- **Event Listeners**:
+  - `PaidOrderCreateLabelHandler`: Automatic fulfillment shipping label creation upon paid order events.
+  - (Feature `marketplace-financial`) `MarketplacePaidOrderFinancialHandler`: Ingests paid order events into marketplace ledger allocation.
+
+## Domain Collaborations
+
+- **`rustok-cart`**: Active shopping carts, line items, and cart validation for checkout conversion.
+- **`rustok-product` & `rustok-pricing`**: Product catalog data, variant pricing, discounts, and tax calculation.
+- **`rustok-inventory`**: Inventory reservation during checkout and stock decrement on order placement.
+- **`rustok-order`**: Order lifecycle state machine, order persistence, and line item tracking.
+- **`rustok-payment`**: Payment transaction capture, authorization, and refund orchestration.
+- **`rustok-fulfillment`**: Shipping provider integrations, fulfillment label generation, and tracking.
+- **`rustok-customer`**: Customer profiles, saved addresses, and guest checkout resolution.
+- **`rustok-outbox`**: Transactional outbox event publishing for order and checkout domain events.
+
 ## Primary public types and functions
 
 - `pub struct CommerceModule`

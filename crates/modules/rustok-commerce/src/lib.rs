@@ -7,18 +7,16 @@
  *
  * You may not remove or alter this copyright notice or license header.
  */
+//! # RusToK Commerce
+//!
+//! Umbrella and orchestration module for the RusToK commerce domain.
+//!
+//! Coordinates cart, checkout, orders, inventory reservations, payments,
+//! fulfillments, and marketplace financial transactions across domain services.
 
 #![allow(clippy::collapsible_if)]
 
-use async_trait::async_trait;
-use rustok_core::{
-    MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry, RusToKModule,
-};
-use rustok_fulfillment::providers::FulfillmentProviderRegistry;
-#[cfg(feature = "marketplace-financial")]
-use rustok_outbox::TransactionalEventBus;
-use sea_orm_migration::MigrationTrait;
-
+pub mod module;
 mod collection_translation_changes;
 mod collection_translation_progress;
 mod collection_translation_progress_target;
@@ -143,86 +141,4 @@ pub use services::{
 };
 pub(crate) use storefront_checkout_pricing::StorefrontCheckoutPricingResolver;
 
-pub struct CommerceModule;
-
-#[async_trait]
-impl RusToKModule for CommerceModule {
-    fn slug(&self) -> &'static str {
-        "commerce"
-    }
-
-    fn name(&self) -> &'static str {
-        "Ecommerce"
-    }
-
-    fn description(&self) -> &'static str {
-        "Ecommerce umbrella/root module for the commerce family and orchestration surface"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn dependencies(&self) -> &[&'static str] {
-        &[
-            "tenant",
-            "cart",
-            "customer",
-            "product",
-            "region",
-            "pricing",
-            "inventory",
-            "order",
-            "payment",
-            "fulfillment",
-        ]
-    }
-
-    fn register_event_listeners(
-        &self,
-        registry: &mut ModuleEventListenerRegistry,
-        ctx: &ModuleEventListenerContext<'_>,
-    ) {
-        if let Some(fulfillment_registry) =
-            ctx.extensions.get::<FulfillmentProviderRegistry>().cloned()
-        {
-            registry.register(services::PaidOrderCreateLabelHandler::new(
-                ctx.db.clone(),
-                fulfillment_registry,
-            ));
-        }
-
-        #[cfg(feature = "marketplace-financial")]
-        {
-            let financial_runtime = ctx
-                .extensions
-                .get::<MarketplaceFinancialRuntime>()
-                .cloned()
-                .expect(
-                    "commerce marketplace-financial capability requires MarketplaceFinancialRuntime in ModuleRuntimeExtensions",
-                );
-            let event_bus = ctx
-                .extensions
-                .get::<TransactionalEventBus>()
-                .cloned()
-                .expect(
-                    "commerce marketplace-financial capability requires TransactionalEventBus in ModuleRuntimeExtensions",
-                );
-            registry.register(services::MarketplacePaidOrderFinancialHandler::new(
-                ctx.db.clone(),
-                event_bus,
-                financial_runtime.ledger_port(),
-            ));
-        }
-    }
-}
-
-impl MigrationSource for CommerceModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-
-    fn migration_dependencies(&self) -> Vec<rustok_core::MigrationDependencyDescriptor> {
-        migrations::migration_dependencies()
-    }
-}
+pub use module::CommerceModule;

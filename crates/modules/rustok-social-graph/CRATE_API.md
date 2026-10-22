@@ -14,6 +14,28 @@
 - `observability`
 - `ports`
 - `service`
+- `module`
+
+## Platform Capability Bindings
+
+- **Core Module Registration**: Exposes `SocialGraphModule` implementing `RusToKModule` (slug `"social_graph"`) and `MigrationSource`.
+- **Social Graph Services and Ports**:
+  - `SocialGraphService`: Authoritative owner service managing user relations (follows, blocks, mutes).
+  - `SocialGraphCommandPort`: Command port for idempotent relation mutations.
+  - `SocialGraphPrivacyReadPort`: Authoritative reader for privacy boundaries (blocks, mutes, follow policy).
+  - `SocialGraphFollowReadPort`: Authoritative reader for revision-bearing follow states.
+  - `SocialGraphReceiptMaintenancePort`: Bounded idempotency receipt cleanup.
+  - `SocialGraphRelationEventMaintenancePort`: Bounded replay of relation state change events.
+- **Index Projection Integration** (feature `index`):
+  - `IndexSocialGraphPrivacyReadPort`: Projected reader for search/index cluster.
+  - `IndexShadowSocialGraphPrivacyReadPort`: Comparison shadow verifying index projection correctness against authoritative owner port.
+
+## Domain Collaborations
+
+- **`rustok-profiles` / `rustok-users`**: Consumers of relation and privacy states.
+- **`rustok-outbox` / `rustok-events`**: Emits `social_graph.relation.state_changed` events via transactional outbox.
+- **`rustok-index`**: Index projection and schema registration target.
+- **`rustok-iggy`**: Durable event relay and consumer positioning.
 
 ## Owner services and ports
 
@@ -282,22 +304,45 @@ receipt, broker, or lag state.
 - Publishing lag from an incomplete snapshot.
 - Authorizing Profiles visibility from projection or poison state.
 
-## Errors / stable failure families
+## Minimum Contract Set
 
-- `social_graph.idempotency_key_invalid`
-- `social_graph.idempotency_conflict`
-- `social_graph.command_receipt_corrupt`
-- `social_graph.event_publication_unavailable`
-- `social_graph.receipt_cleanup_forbidden`
-- `social_graph.receipt_cleanup_limit_invalid`
-- `social_graph.receipt_cleanup_cutoff_invalid`
-- `social_graph.receipt_cleanup_cutoff_future`
-- `social_graph.relation_event_replay_forbidden`
-- `social_graph.relation_event_replay_limit_invalid`
-- `social_graph.storage_unavailable`
-- `social_graph.index_privacy_unavailable`
-- `social_graph.index_privacy_contract_invalid`
-- bounded `social_graph.index.*` projection and DLQ families
-- bounded `iggy.connector.poison_*` raw poison families
-- bounded `iggy.contract.decode_invalid` and `iggy.contract.schema_invalid`
-- bounded `iggy.consumer_position.*` observation families
+### Input DTOs/Commands
+
+- `SetSocialRelationCommand`: Idempotent mutation command specifying source/target user, relation kind (`Block`, `Mute`, `Follow`), and active state.
+- `SocialGraphPairRequest`, `SocialGraphFollowBatchRequest`: Query specifications for relation checks.
+- `SocialGraphReceiptCleanupCommand`, `SocialGraphRelationEventReplayCommand`: Maintenance commands for receipt lifecycle and event drift repair.
+
+### Domain Invariants
+
+- Tenant isolation is strictly enforced across all relation reads and mutations.
+- Self-relations (source == target) are invalid and fail closed.
+- Atomic mutation and receipt commit ensures idempotency and zero duplicate side effects.
+- Authoritative persistence remains the single source of truth; index shadows only observe parity.
+
+### Events / Outbox Side Effects
+
+- Emits `social_graph.relation.state_changed` v1 via transactional outbox.
+- Payloads contain relation ID, source/target IDs, kind, active status, and monotonic revision.
+
+### Errors / Failure Codes
+
+- `SocialGraphError` variants: `Validation`, `IdempotencyConflict`, `NotFound`, `Database`, `StorageUnavailable`, `EventPublicationUnavailable`.
+- Stable failure codes:
+  - `social_graph.idempotency_key_invalid`
+  - `social_graph.idempotency_conflict`
+  - `social_graph.command_receipt_corrupt`
+  - `social_graph.event_publication_unavailable`
+  - `social_graph.receipt_cleanup_forbidden`
+  - `social_graph.receipt_cleanup_limit_invalid`
+  - `social_graph.receipt_cleanup_cutoff_invalid`
+  - `social_graph.receipt_cleanup_cutoff_future`
+  - `social_graph.relation_event_replay_forbidden`
+  - `social_graph.relation_event_replay_limit_invalid`
+  - `social_graph.storage_unavailable`
+  - `social_graph.index_privacy_unavailable`
+  - `social_graph.index_privacy_contract_invalid`
+  - bounded `social_graph.index.*` projection and DLQ families
+  - bounded `iggy.connector.poison_*` raw poison families
+  - bounded `iggy.contract.decode_invalid` and `iggy.contract.schema_invalid`
+  - bounded `iggy.consumer_position.*` observation families
+

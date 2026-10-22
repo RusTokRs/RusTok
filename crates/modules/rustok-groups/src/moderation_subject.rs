@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::{HostRuntimeContext, PortActorKind, PortCallPolicy, PortContext, PortError};
-use rustok_moderation_api::{
+use rustok_moderation::{
     ApplyModerationDecisionCommand, ModerationDecisionApplication, ModerationDecisionEffectAction,
     ModerationScopeKind, ModerationScopeRef, ModerationSubjectAdapterBuildError,
     ModerationSubjectAdapterFactory, ModerationSubjectAdapterKey, ModerationSubjectCommandPort,
@@ -375,7 +375,7 @@ fn subject_mismatch() -> PortError {
 mod tests {
     use super::*;
     use rustok_api::PortActor;
-    use rustok_moderation_api::{
+    use rustok_moderation::{
         ModerationDecisionEffect, ModerationDecisionKind, ModerationReasonCode,
         ModerationSubjectRef,
     };
