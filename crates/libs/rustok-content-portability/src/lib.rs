@@ -1,4 +1,6 @@
-//! Content Portability — implementation of import/export services.
+//! # RusToK Content Portability
+//!
+//! Content import and export implementation services for the RusToK platform.
 //!
 //! This crate provides concrete implementations for importing and exporting
 //! content in various formats (JSON, CSV, etc.).
@@ -31,6 +33,9 @@ mod formats;
 mod io;
 mod services;
 
-pub use formats::*;
-pub use io::*;
-pub use services::*;
+#[cfg(test)]
+mod contract_tests;
+
+pub use formats::{CsvFormatHandler, JsonFormatHandler};
+pub use io::{file_exists, file_size, read_file, write_file};
+pub use services::{ExportService, ImportService};

@@ -2,7 +2,7 @@ use anyhow::Context;
 use axum::routing::{get, post};
 use axum::{Router, http::StatusCode};
 use rustok_api::{HostRuntimeContext, SharedStaticModuleSettingsReader};
-use rustok_comments_api::CommentsThreadPort;
+use rustok_comments::CommentsThreadPort;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort;
 use rustok_web::{HttpError, HttpResult};

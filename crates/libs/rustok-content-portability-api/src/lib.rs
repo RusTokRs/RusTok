@@ -1,5 +1,6 @@
-//! Content Portability API — unified import/export contracts for RusTok platform.
+//! # RusToK Content Portability API
 //!
+//! Unified content import/export contracts for the RusTok platform.
 //! This crate provides domain-agnostic contracts for importing and exporting
 //! business entities (posts, products, subscribers, etc.) across different
 //! formats (JSON, CSV, WordPress XML, Markdown).
@@ -53,8 +54,14 @@ mod formats;
 mod progress;
 mod validation;
 
-pub use contracts::*;
-pub use errors::*;
-pub use formats::*;
-pub use progress::*;
-pub use validation::*;
+#[cfg(test)]
+mod contract_tests;
+
+pub use contracts::{
+    BatchImportResult, ContentExporter, ContentImporter, ExportContext, ExportFilters,
+    ExportResult, ImportContext, ImportResult,
+};
+pub use errors::PortabilityError;
+pub use formats::{Format, FormatOptions};
+pub use progress::{ProgressCallback, ProgressReporter};
+pub use validation::{FieldValidation, Validatable, ValidationResult};

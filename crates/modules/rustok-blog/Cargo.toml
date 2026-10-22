@@ -19,7 +19,7 @@ base64.workspace = true
 rand.workspace = true
 rustok-api = { workspace = true, features = ["server"] }
 rustok-channel.workspace = true
-rustok-comments-api.workspace = true
+rustok-comments = { workspace = true, default-features = false, features = ["ports"] }
 rustok-content.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true

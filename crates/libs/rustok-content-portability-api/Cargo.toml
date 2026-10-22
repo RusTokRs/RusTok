@@ -5,6 +5,10 @@ edition.workspace = true
 description = "Unified content import/export contracts for RusTok platform"
 license.workspace = true
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true

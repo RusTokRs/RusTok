@@ -81,6 +81,18 @@ pub struct EditorMessages {
     pub workspace_title: String,
     pub toolbar: String,
     pub preview_failed: String,
+    #[serde(default = "default_edit_label")]
+    pub edit: String,
+    #[serde(default = "default_preview_label")]
+    pub preview: String,
+}
+
+fn default_edit_label() -> String {
+    "Edit".to_string()
+}
+
+fn default_preview_label() -> String {
+    "Preview".to_string()
 }
 
 impl EditorMessages {
@@ -145,6 +157,8 @@ impl EditorMessages {
             workspace_title: "Fly full editor".to_string(),
             toolbar: "Editor toolbar".to_string(),
             preview_failed: "Preview failed".to_string(),
+            edit: default_edit_label(),
+            preview: default_preview_label(),
         }
     }
 }
@@ -170,6 +184,8 @@ mod tests {
         assert_eq!(messages.slug, "Slug");
         assert!(messages.contributions_summary.contains("{registered}"));
         assert_eq!(messages.workspace_title, "Fly full editor");
+        assert_eq!(messages.edit, "Edit");
+        assert_eq!(messages.preview, "Preview");
     }
 
     #[test]

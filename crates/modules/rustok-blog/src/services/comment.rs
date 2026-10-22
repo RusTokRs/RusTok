@@ -7,7 +7,7 @@ use rustok_api::{
     PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind,
     SharedStaticModuleSettingsReader,
 };
-use rustok_comments_api::{
+use rustok_comments::{
     CommentListItem as ApiCommentListItem, CommentRecord as ApiCommentRecord,
     CommentStatus as ApiCommentStatus, CommentsThreadPort,
     CreateCommentInput as ApiCreateCommentInput, ListCommentsFilter as ApiListCommentsFilter,

@@ -99,7 +99,7 @@ mod-blog      = ["dep:rustok-blog", "dep:rustok-content", "dep:rustok-translatio
 mod-forum     = ["dep:rustok-forum", "mod-content", "mod-media", "mod-taxonomy", "rustok-content-orchestration/mod-forum", "rustok-distribution/mod-forum"]
 mod-reactions = ["dep:rustok-reactions", "rustok-reactions/graphql", "rustok-distribution/mod-reactions"]
 mod-notifications = ["dep:rustok-notifications", "rustok-notifications/server", "rustok-distribution/mod-notifications"]
-mod-comments  = ["dep:rustok-comments", "dep:rustok-comments-api", "rustok-comments/server", "rustok-content-orchestration/mod-comments", "rustok-distribution/mod-comments"]
+mod-comments  = ["dep:rustok-comments", "rustok-comments/server", "rustok-content-orchestration/mod-comments", "rustok-distribution/mod-comments"]
 mod-pages     = ["dep:rustok-pages", "dep:rustok-translation-targets", "mod-content", "mod-page_builder", "rustok-distribution/mod-pages"]
 mod-navigation = ["dep:rustok-navigation", "dep:rustok-translation-targets", "rustok-distribution/mod-navigation"]
 mod-forms     = ["dep:rustok-forms-module", "rustok-distribution/mod-forms"]
@@ -174,7 +174,6 @@ rustok-accounting = { workspace = true, optional = true }
 rustok-moderation = { workspace = true, optional = true }
 rustok-blog      = { workspace = true, optional = true }
 rustok-comments  = { workspace = true, optional = true }
-rustok-comments-api = { workspace = true, optional = true }
 rustok-content   = { workspace = true, optional = true }
 rustok-content-orchestration = { workspace = true }
 rustok-forum     = { workspace = true, optional = true }

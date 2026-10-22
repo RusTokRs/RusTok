@@ -47,7 +47,7 @@ pub use integrations::reaction_subject::{
 };
 pub use module::BlogModule;
 pub use ports::{blog_category, blog_post, blog_post_tag, blog_post_translation};
-pub use rustok_comments_api::CommentsThreadPort;
+pub use rustok_comments::CommentsThreadPort;
 pub use services::{
     BLOG_ROUTE_PREFIX, BlogPostRedirect, BlogPostRouteOwner, CANONICAL_POST_ROUTE_LOCALE,
     CategoryService, CommentService, PostService, PreviewToken, PreviewTokenService, TagService,

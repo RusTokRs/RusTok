@@ -19,7 +19,7 @@ use rustok_comments::{
     TcpJsonCommentsServerAdapter, TcpJsonCommentsTransport, in_process_comments_thread_port,
     remote_comments_thread_port,
 };
-use rustok_comments_api::CommentsThreadPort;
+use rustok_comments::CommentsThreadPort;
 use rustok_core::ModuleRuntimeExtensions;
 use tokio::{
     net::TcpListener,
