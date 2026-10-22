@@ -3627,7 +3627,7 @@ impl SeaOrmArtifactInstallationStore {
                 backend.db_backend(),
                 sql,
                 values,
-            )))
+            ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         if updated.rows_affected() != 1 {
@@ -4775,7 +4775,7 @@ async fn active_predecessor_installation<C: ConnectionTrait>(
             backend.db_backend(),
             sql,
             values,
-        )))
+        ))
         .await
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     match rows.as_slice() {
@@ -4958,7 +4958,7 @@ async fn assert_artifact_ui_contributions_available<C: ConnectionTrait>(
             backend.db_backend(),
             sql,
             values,
-        )))
+        ))
         .await
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     for row in rows {
