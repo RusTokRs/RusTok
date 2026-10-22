@@ -37,6 +37,7 @@ ssr = [
   "dep:leptos_axum",
   "dep:rustok-content",
   "dep:rustok-core",
+  "dep:rustok-modules",
   "dep:rustok-outbox",
   "dep:rustok-seo",
   "dep:rustok-seo-render",
@@ -116,6 +117,7 @@ rustok-seo = { workspace = true, optional = true }
 rustok-seo-render = { workspace = true, optional = true }
 rustok-seo-storefront = { path = "../../crates/modules/rustok-seo/storefront", default-features = false, optional = true }
 rustok-tenant = { workspace = true, optional = true }
+rustok-modules = { workspace = true, optional = true }
 rustok-web = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
 rustok-blog-storefront = { path = "../../crates/modules/rustok-blog/storefront", default-features = false, optional = true }
