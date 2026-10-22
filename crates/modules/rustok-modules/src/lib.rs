@@ -96,7 +96,8 @@ mod trust;
 pub mod wave_rollout;
 
 pub use source_object::{
-    SourceObjectError, SourceObjectRetentionHold, SourceObjectStore, SourceReceipt,
+    MAX_SOURCE_OBJECT_BYTES, SourceObjectError, SourceObjectRetentionHold, SourceObjectStore,
+    SourceReceipt,
 };
 
 pub use conflict_fences::{ConflictFenceSet, ConflictKey, ConflictKeyKind};

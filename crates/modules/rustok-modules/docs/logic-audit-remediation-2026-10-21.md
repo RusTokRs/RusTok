@@ -148,6 +148,25 @@ The development sandbox has no `cargo`/`rustc`. Verification therefore is:
   spots; all reformatted in the Phase G commit. Workspace-level
   `Cargo Check` failure on the same PR is in `rustok-forum`
   (E0061/E0252/E0382/E0425) — pre-existing on the red `main` baseline.
+- **M-10 (source-object store):** `source_object.rs` hardened end to end.
+  All async-path file I/O is `tokio::fs` streamed in 64 KiB chunks (no
+  blocking `std::fs`, no whole-file loads); a defensive
+  `MAX_SOURCE_OBJECT_BYTES` (64 MiB) ceiling rejects oversize publishes
+  and reads with typed `TooLarge`. CAS layout is two-level fan-out
+  (`<2>/<2>/<hex>`); per §13 the flat layout is not migrated — old CAS
+  directories are discarded and republished. Existing blobs are
+  content-verified by streamed SHA-256 on publish (corruption is a typed
+  `DigestMismatch`, never silently trusted or overwritten), and
+  `get_source_path` is now async and really verifies before returning a
+  path. Receipt reads take a mandatory `&ModuleInstallationScope` — the
+  `None` escape that skipped the tenant boundary is gone. Blob→receipt
+  ordering is kept (a receipt must never point at a missing blob); a
+  failed receipt insert removes a freshly created, still-unreferenced
+  blob with combined-error reporting instead of `let _ =` suppression,
+  and crash-orphaned blobs remain owned by retention GC (§5.2,
+  accepted-unfinished). New tests cover streamed file publish, verified
+  path/blob reads, corrupt-blob fail-closed on republish and read,
+  oversize rejection on both publish paths, and NotFound reads.
 
 ## 5. Appendix: classification of the four restored modules (2026-10-21)
 
