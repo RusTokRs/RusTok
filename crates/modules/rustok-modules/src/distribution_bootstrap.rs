@@ -4,8 +4,7 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::{DateTime, Utc};
 use ed25519_dalek::{Signature, VerifyingKey};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement,
-    TransactionTrait,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -18,7 +17,7 @@ use crate::{
     ControlPlaneInfrastructure, ModuleCommandContext, ModuleStaticDistributionBuildEvidence,
     ModuleStaticDistributionExecutorMode, ModuleStaticDistributionItem,
     ModuleStaticDistributionReleaseAdmission,
-    data::{uuid_from_row},
+    data::uuid_from_row,
     distribution::{
         advance_distribution_state, load_distribution_state,
         module_static_distribution_composition_digest,

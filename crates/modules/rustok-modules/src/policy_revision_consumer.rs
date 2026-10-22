@@ -1,7 +1,7 @@
 use rustok_core::ModuleRegistry;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement,
-    TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
+    Value as SqlValue,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -58,8 +58,8 @@ impl SeaOrmModulePolicyRevisionConsumer {
         configure_tenant_scope(transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         ensure_cursor_row(transaction, backend, tenant_id, consumer_key).await?;
         load_cursor_revision(transaction, backend, tenant_id, consumer_key).await
     }
@@ -128,8 +128,8 @@ impl SeaOrmModulePolicyRevisionConsumer {
             ModulePolicyRevisionApplyOutcome::Applied
                 | ModulePolicyRevisionApplyOutcome::ResyncRequired
         ) {
-            let backend = SupportedBackend::new(transaction.get_database_backend())
-                .map_err(storage_error)?;
+            let backend =
+                SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
             let updated = transaction
                 .execute_raw(Statement::from_sql_and_values(
                     backend.db_backend(),
@@ -166,8 +166,8 @@ impl SeaOrmModulePolicyRevisionConsumer {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         ensure_cursor_row(&transaction, backend, tenant_id, consumer_key).await?;
         let revision = load_cursor_revision(&transaction, backend, tenant_id, consumer_key).await?;
         transaction.commit().await.map_err(storage_error)?;
@@ -254,7 +254,8 @@ async fn load_tenant_overrides<C: ConnectionTrait>(
     connection: &C,
     tenant_id: Uuid,
 ) -> Result<Vec<TenantModuleOverride>, ModuleLifecycleDbWriterError> {
-    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(|error| ModuleLifecycleDbWriterError::Database(error.to_string()))?;
     let sql = match backend {
         SupportedBackend::Postgres => {
             "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = $1"

@@ -164,8 +164,8 @@ impl ArtifactScheduleMaterializer {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let enabled = match backend {
             SupportedBackend::Postgres => "COALESCE(lifecycle.enabled, TRUE) = TRUE",
             SupportedBackend::Sqlite => "COALESCE(lifecycle.enabled, 1) = 1",
@@ -251,8 +251,8 @@ impl ArtifactScheduleMaterializer {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -300,8 +300,8 @@ impl ArtifactScheduleMaterializer {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -348,8 +348,8 @@ impl ArtifactScheduleMaterializer {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),

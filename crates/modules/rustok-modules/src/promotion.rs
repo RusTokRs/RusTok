@@ -169,8 +169,8 @@ where
             return Err(ModuleStaticPromotionError::BuildEvidenceMismatch);
         }
         let promotion_id = self.infrastructure.new_id();
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(store_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
         let inserted = transaction
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -287,8 +287,8 @@ where
             .checked_add(1)
             .ok_or(ModuleStaticPromotionError::RevisionConflict)?;
         let review_id = self.infrastructure.new_id();
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(store_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),

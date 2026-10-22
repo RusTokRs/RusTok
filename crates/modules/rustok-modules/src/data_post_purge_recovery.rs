@@ -6,8 +6,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rustok_storage::StorageRuntime;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement,
-    TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
+    Value as SqlValue,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -278,8 +278,8 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
         {
             return Err(PostPurgeRecoveryError::Integrity);
         }
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let updated = transaction
             .execute_raw(statement(
                 backend,
@@ -506,8 +506,8 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
             .expected_target_namespace_revision
             .checked_add(1)
             .ok_or(PostPurgeRecoveryError::InvalidCommand)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let updated = transaction.execute_raw(statement(backend,
             "UPDATE module_artifact_data_owner_references SET namespace_instance_id={1}, reference_revision={2}
              WHERE tenant_id={3} AND data_owner_id={4} AND namespace_instance_id={5} AND reference_revision={6}",

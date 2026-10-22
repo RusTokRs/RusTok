@@ -2,8 +2,8 @@
 
 use rustok_events::DomainEvent;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement,
-    TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
+    Value as SqlValue,
 };
 use uuid::Uuid;
 
@@ -53,8 +53,8 @@ where
         self.authorizer.authorize_export(&request).await?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, request.scope.tenant_id).await?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let namespace_revision = require_active_namespace(
             &transaction,
             &request.scope,

@@ -232,8 +232,8 @@ impl SeaOrmArtifactEventSubscriptionProjector {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let enabled = match backend {
             SupportedBackend::Postgres => "COALESCE(lifecycle.enabled, TRUE) = TRUE",
             SupportedBackend::Sqlite => "COALESCE(lifecycle.enabled, 1) = 1",
@@ -640,8 +640,8 @@ impl SeaOrmArtifactEventDeliveryQueue {
         configure_tenant_scope(&transaction, request.tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let descriptor = load_admitted_descriptor(
             &transaction,
             backend,
@@ -758,8 +758,8 @@ impl SeaOrmArtifactEventDeliveryQueue {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         expire_claims(
             &transaction,
             backend,
@@ -972,8 +972,8 @@ impl SeaOrmArtifactEventDeliveryQueue {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let affected = match completion.outcome {
             ArtifactEventDeliveryOutcome::Succeeded => {
                 complete_succeeded(

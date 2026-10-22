@@ -2,8 +2,8 @@
 
 use rustok_events::DomainEvent;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement,
-    TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
+    Value as SqlValue,
 };
 use uuid::Uuid;
 
@@ -62,8 +62,8 @@ where
         // still purge-eligible.
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, tenant_id).await?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         if let Some(existing) = find_artifact_data_purge_operation(
             &transaction,
             tenant_id,
@@ -441,8 +441,8 @@ impl ArtifactDataPurgePreviewService {
             return Err(error);
         }
 
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let scope = &target.authorization.scope;
         let namespace = transaction
             .query_one_raw(Statement::from_sql_and_values(

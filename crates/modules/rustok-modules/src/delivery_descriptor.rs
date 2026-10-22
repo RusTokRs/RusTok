@@ -23,7 +23,6 @@ use uuid::Uuid;
 use crate::backend::SupportedBackend;
 use crate::{
     ModuleArtifactDescriptor,
-    data::{uuid_value},
 };
 
 #[derive(Debug, Error)]

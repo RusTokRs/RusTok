@@ -484,8 +484,8 @@ pub(crate) async fn setup_test_serving_namespace<C: ConnectionTrait>(
     connection: &C,
     scope: &ArtifactDataScope,
 ) {
-    let backend = SupportedBackend::new(connection.get_database_backend())
-        .expect("supported test backend");
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).expect("supported test backend");
     connection
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),

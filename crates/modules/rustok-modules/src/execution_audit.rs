@@ -65,8 +65,8 @@ impl SeaOrmArtifactBindingExecutionAuditReader {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let rows = transaction
             .query_all_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -145,8 +145,7 @@ impl SeaOrmArtifactExecutionObserver {
                 .await
                 .map_err(|_| ())?;
         }
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(|_| ())?;
         match record.status {
             ExecutionStatus::Started => {
                 let columns = "execution_id, tenant_id, installation_id, module_slug, module_version, artifact_digest, executor, phase, actor_id, trace_id, binding_id, status, started_at";
@@ -163,7 +162,7 @@ impl SeaOrmArtifactExecutionObserver {
                         ),
                         vec![
                             backend.uuid_value(record.execution_id),
-                            optional_backend.uuid_value(record.context.tenant_id),
+                            optional_uuid_value(record.context.tenant_id, backend),
                             backend.uuid_value(*installation_id),
                             slug.clone().into(),
                             version.clone().into(),

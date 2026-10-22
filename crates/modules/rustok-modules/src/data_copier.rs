@@ -218,8 +218,8 @@ impl<A: ArtifactDataCopyAuthorizer> ArtifactDataCopier<A> {
             transaction.commit().await.map_err(storage_error)?;
             return Ok(operation.reservation());
         }
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let mut values = vec![
             backend.uuid_value(request.tenant_id),
             backend.uuid_value(request.data_owner_id),
@@ -356,8 +356,8 @@ impl<A: ArtifactDataCopyAuthorizer> ArtifactDataCopier<A> {
             authority.quota,
         )
         .await?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let committing=transaction.execute_raw(statement(backend,
             "UPDATE module_artifact_data_copy_operations SET status='committing'
              WHERE operation_id={1} AND request_digest={2} AND frozen_page_digest={3} AND status='preparing'",
@@ -441,8 +441,8 @@ impl<A: ArtifactDataCopyAuthorizer> ArtifactDataCopier<A> {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let rows=transaction.query_all_raw(statement(backend,&format!(
             "SELECT {OPERATION_COLUMNS} FROM module_artifact_data_copy_operations WHERE tenant_id={{1}} AND data_owner_id={{2}}
              AND status='preparing' ORDER BY created_at,operation_id LIMIT 100"),

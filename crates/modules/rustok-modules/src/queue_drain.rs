@@ -77,8 +77,8 @@ impl ArtifactQueueDrainService {
             .await
             .map_err(storage_error)?;
 
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
 
         // 1. Drain pending event deliveries
         let drained_events_result = transaction

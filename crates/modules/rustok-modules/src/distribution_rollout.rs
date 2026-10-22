@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, QueryResult, Statement,
     TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
@@ -20,7 +20,7 @@ use crate::{
     ControlPlaneInfrastructure, ModuleCommandContext, ModuleStaticDistributionExecutorMode,
     ModuleStaticDistributionRelease, ModuleStaticDistributionReleaseStatus,
     ModuleStaticDistributionRole,
-    data::{uuid_from_row},
+    data::uuid_from_row,
     distribution_release::{commit_recovery_release, load_release_record, load_release_state},
     promotion::{digest_json, valid_digest, valid_reference},
     reconciliation::{
@@ -1634,7 +1634,7 @@ async fn insert_rollout(
             ),
             vec![
                 backend.uuid_value(insert.rollout_id),
-                optional_backend.uuid_value(insert.predecessor_rollout_id),
+                optional_uuid_value(insert.predecessor_rollout_id, backend),
                 backend.uuid_value(insert.release.distribution_release_id),
                 insert.transition_kind.as_str().into(),
                 revision_value(insert.rollout_revision)?,
@@ -2046,8 +2046,8 @@ async fn advance_rollout_state(
             ),
             vec![
                 revision_value(next_revision)?,
-                optional_backend.uuid_value(desired_rollout_id),
-                optional_backend.uuid_value(observed_rollout_id),
+                optional_uuid_value(desired_rollout_id, backend),
+                optional_uuid_value(observed_rollout_id, backend),
                 ROLLOUT_STATE_ID.into(),
                 revision_value_allow_zero(expected_revision)?,
             ],

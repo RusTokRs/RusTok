@@ -6,7 +6,7 @@
 
 use async_trait::async_trait;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, QueryResult, Statement,
     TransactionTrait, Value,
 };
 use semver::Version;
@@ -19,7 +19,6 @@ use rustok_events::DomainEvent;
 use crate::backend::SupportedBackend;
 use crate::{
     ArtifactReleaseRef, ControlPlaneInfrastructure, ModuleCommandContext, SeaOrmSecurityEpochStore,
-    data::{now_expression},
     promotion::{digest_json, valid_digest},
 };
 

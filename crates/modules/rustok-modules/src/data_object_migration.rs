@@ -7,8 +7,7 @@ use chrono::Utc;
 use object_store::{ObjectStoreExt, PutMode, path::Path};
 use rustok_storage::{ObjectKey, ObjectScope, ObjectZone, StorageRuntime};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement,
-    TransactionTrait,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -276,8 +275,8 @@ impl<A: ArtifactDataObjectMigrationAuthorizer> ArtifactDataObjectMigrationServic
             }
             _ => ArtifactDataObjectMigrationError::NamespacePrecondition,
         })?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         if transaction
             .query_one_raw(statement(
                 backend,
@@ -330,8 +329,8 @@ impl<A: ArtifactDataObjectMigrationAuthorizer> ArtifactDataObjectMigrationServic
             inventory,
             committed: false,
         };
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         transaction.execute_raw(statement(backend,
             "INSERT INTO module_artifact_data_object_migration_operations
              (operation_id,tenant_id,data_owner_id,source_namespace_instance_id,target_namespace_instance_id,
@@ -450,8 +449,8 @@ impl<A: ArtifactDataObjectMigrationAuthorizer> ArtifactDataObjectMigrationServic
         if !load_objects(&transaction, &locked.target).await?.is_empty() {
             return Err(ArtifactDataObjectMigrationError::Integrity);
         }
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         // This transient state is visible only in this write transaction. Other
         // writers still see preparing; a crash rolls back to that held state.
         let committing = transaction
@@ -515,8 +514,8 @@ impl<A: ArtifactDataObjectMigrationAuthorizer> ArtifactDataObjectMigrationServic
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let rows = transaction.query_all_raw(statement(backend,
             "SELECT request_json FROM module_artifact_data_object_migration_operations
              WHERE tenant_id={1} AND data_owner_id={2} AND status='preparing' ORDER BY created_at,operation_id LIMIT 100",
@@ -551,8 +550,8 @@ impl<A: ArtifactDataObjectMigrationAuthorizer> ArtifactDataObjectMigrationServic
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let row = transaction.query_one_raw(statement(backend,
             "SELECT COUNT(*) AS count FROM module_artifact_data_objects source
              WHERE source.tenant_id={1} AND source.data_owner_id={2} AND source.namespace_instance_id={3}

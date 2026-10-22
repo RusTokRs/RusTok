@@ -6,7 +6,7 @@ use rustok_sandbox::{
 };
 use rustok_secrets::{SecretRef, SecretResolverRegistry, SecretString};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement, TransactionTrait,
+    ConnectionTrait, DatabaseConnection, QueryResult, Statement, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -386,8 +386,8 @@ where
         configure_tenant_scope(&transaction, request.scope.capability.tenant_id)
             .await
             .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
 
         if let Some(row) = transaction
             .query_one_raw(Statement::from_sql_and_values(
@@ -481,7 +481,7 @@ where
                         backend.placeholder(3),
                         backend.placeholder(4),
                         backend.placeholder(5),
-                        crate::data::backend.now_sql(),
+                        backend.now_sql(),
                         backend.placeholder(6),
                         backend.placeholder(7),
                         backend.placeholder(8),
@@ -529,8 +529,8 @@ where
                         backend.placeholder(6),
                         backend.placeholder(7),
                         backend.placeholder(8),
-                        crate::data::backend.now_sql(),
-                        crate::data::backend.now_sql(),
+                        backend.now_sql(),
+                        backend.now_sql(),
                     ),
                     vec![
                         backend.uuid_value(request.scope.capability.tenant_id),
@@ -570,7 +570,7 @@ where
                     backend.placeholder(12),
                     backend.placeholder(13),
                     backend.placeholder(14),
-                    crate::data::backend.now_sql(),
+                    backend.now_sql(),
                 ),
                 vec![
                     backend.uuid_value(request.scope.capability.tenant_id),
@@ -647,8 +647,8 @@ where
         configure_tenant_scope(&transaction, request.scope.capability.tenant_id)
             .await
             .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -721,8 +721,8 @@ where
         configure_tenant_scope(&transaction, request.scope.capability.tenant_id)
             .await
             .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),

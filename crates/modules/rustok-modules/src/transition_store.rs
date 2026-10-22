@@ -166,8 +166,8 @@ impl TransitionCheckpointStore {
                     });
                 }
 
-                let backend = SupportedBackend::new(db.get_database_backend())
-                    .map_err(sea_orm::DbErr::from)?;
+                let backend =
+                    SupportedBackend::new(db.get_database_backend()).map_err(sea_orm::DbErr::from)?;
                 let result = db
                     .execute_raw(Statement::from_sql_and_values(
                         backend.db_backend(),

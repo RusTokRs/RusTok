@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use object_store::{ObjectStoreExt, PutMode, path::Path};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement,
-    TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
+    Value as SqlValue,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -284,8 +284,8 @@ where
         let row =
             lock_snapshot(&transaction, request.target.tenant_id, request.snapshot_id).await?;
         let status: String = row.try_get("", "status").map_err(snapshot_storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(snapshot_storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(snapshot_storage_error)?;
         let current = snapshot_from_row(&row, backend)?;
         if status != "ready" || current != snapshot {
             return Err(ArtifactDataError::SnapshotIntegrity);
@@ -315,8 +315,8 @@ where
     ) -> Result<Uuid, ArtifactDataError> {
         let transaction = self.db.begin().await.map_err(snapshot_storage_error)?;
         configure_tenant_scope(&transaction, request.scope.tenant_id).await?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(snapshot_storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(snapshot_storage_error)?;
         if let Some(row) = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -484,8 +484,8 @@ where
         let transaction = self.db.begin().await.map_err(snapshot_storage_error)?;
         configure_tenant_scope(&transaction, tenant_id).await?;
         let row = lock_snapshot(&transaction, tenant_id, snapshot_id).await?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(snapshot_storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(snapshot_storage_error)?;
         let scope = snapshot_scope_from_row(&row, backend)?;
         let request_digest: String = row
             .try_get("", "request_digest")
@@ -526,8 +526,8 @@ where
                 .await?;
             let transaction = self.db.begin().await.map_err(snapshot_storage_error)?;
             configure_tenant_scope(&transaction, tenant_id).await?;
-            let backend = SupportedBackend::new(transaction.get_database_backend())
-                .map_err(snapshot_storage_error)?;
+            let backend =
+                SupportedBackend::new(transaction.get_database_backend()).map_err(snapshot_storage_error)?;
             let row = lock_snapshot(&transaction, tenant_id, snapshot_id).await?;
             let status: String = row.try_get("", "status").map_err(snapshot_storage_error)?;
             if !matches!(status.as_str(), "staging" | "ready") {
@@ -633,8 +633,8 @@ where
     ) -> Result<ArtifactDataSnapshot, ArtifactDataError> {
         let transaction = self.db.begin().await.map_err(snapshot_storage_error)?;
         configure_tenant_scope(&transaction, tenant_id).await?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(snapshot_storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(snapshot_storage_error)?;
         let row = lock_snapshot(&transaction, tenant_id, snapshot_id).await?;
         let status: String = row.try_get("", "status").map_err(snapshot_storage_error)?;
         if status == "ready" {
@@ -719,8 +719,8 @@ where
     ) -> Result<ArtifactDataSnapshot, ArtifactDataError> {
         let transaction = self.db.begin().await.map_err(snapshot_storage_error)?;
         configure_tenant_scope(&transaction, tenant_id).await?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(snapshot_storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(snapshot_storage_error)?;
         let row = lock_snapshot(&transaction, tenant_id, snapshot_id).await?;
         let snapshot = snapshot_from_row(&row, backend)?;
         let status: String = row.try_get("", "status").map_err(snapshot_storage_error)?;
@@ -808,8 +808,8 @@ where
     ) -> Result<ArtifactDataRestoreResult, ArtifactDataError> {
         let transaction = self.db.begin().await.map_err(snapshot_storage_error)?;
         configure_tenant_scope(&transaction, request.target.tenant_id).await?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(snapshot_storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(snapshot_storage_error)?;
         if let Some(result) =
             find_restore_operation_in(&transaction, request, request_digest).await?
         {
@@ -1052,8 +1052,8 @@ where
         let request_digest = digest_json(&request)?;
         let transaction = self.db.begin().await.map_err(snapshot_storage_error)?;
         configure_tenant_scope(&transaction, request.tenant_id).await?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(snapshot_storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(snapshot_storage_error)?;
         if let Some(result) =
             find_retention_operation(&transaction, &request, &request_digest).await?
         {
@@ -1281,8 +1281,8 @@ where
     ) -> Result<Vec<CollectionCandidate>, ArtifactDataError> {
         let transaction = self.db.begin().await.map_err(snapshot_storage_error)?;
         configure_tenant_scope(&transaction, request.tenant_id).await?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(snapshot_storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(snapshot_storage_error)?;
         let rows = transaction
             .query_all_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -1324,8 +1324,8 @@ where
     ) -> Result<CollectionWork, ArtifactDataError> {
         let transaction = self.db.begin().await.map_err(snapshot_storage_error)?;
         configure_tenant_scope(&transaction, request.tenant_id).await?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(snapshot_storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(snapshot_storage_error)?;
         let row = lock_snapshot(&transaction, request.tenant_id, candidate.snapshot_id).await?;
         ensure_snapshot_has_no_active_holds(&transaction, request.tenant_id, candidate.snapshot_id)
             .await?;
@@ -1473,8 +1473,8 @@ where
     ) -> Result<(), ArtifactDataError> {
         let transaction = self.db.begin().await.map_err(snapshot_storage_error)?;
         configure_tenant_scope(&transaction, work.tenant_id).await?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(snapshot_storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(snapshot_storage_error)?;
         if deleted_objects != work.object_count {
             return Err(ArtifactDataError::SnapshotIntegrity);
         }
@@ -1626,8 +1626,8 @@ async fn query_snapshot_records<C: ConnectionTrait>(
     connection: &C,
     scope: &ArtifactDataScope,
 ) -> Result<Vec<ArtifactDataRecord>, ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend())
-        .map_err(snapshot_storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(snapshot_storage_error)?;
     connection
         .query_all_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1661,8 +1661,8 @@ async fn query_source_objects<C: ConnectionTrait>(
     connection: &C,
     scope: &ArtifactDataScope,
 ) -> Result<Vec<SnapshotObject>, ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend())
-        .map_err(snapshot_storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(snapshot_storage_error)?;
     connection
         .query_all_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1689,8 +1689,8 @@ async fn query_snapshot_indexes<C: ConnectionTrait>(
     connection: &C,
     scope: &ArtifactDataScope,
 ) -> Result<Vec<SnapshotIndex>, ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend())
-        .map_err(snapshot_storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(snapshot_storage_error)?;
     connection
         .query_all_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1728,8 +1728,8 @@ async fn query_index_contract<C: ConnectionTrait>(
     connection: &C,
     scope: &ArtifactDataScope,
 ) -> Result<Option<String>, ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend())
-        .map_err(snapshot_storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(snapshot_storage_error)?;
     connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1760,8 +1760,8 @@ async fn persist_snapshot_rows(
     indexes: &[SnapshotIndex],
     index_contract: Option<&str>,
 ) -> Result<(), ArtifactDataError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend())
-        .map_err(snapshot_storage_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(snapshot_storage_error)?;
     for record in records {
         transaction.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
             "INSERT INTO module_artifact_data_snapshot_records (tenant_id, snapshot_id, data_key, value, revision) VALUES ({}, {}, {}, {}, {})",
@@ -1793,8 +1793,8 @@ pub(crate) async fn load_manifest<C: ConnectionTrait>(
     tenant_id: Uuid,
     snapshot_id: Uuid,
 ) -> Result<StoredSnapshotManifest, ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend())
-        .map_err(snapshot_storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(snapshot_storage_error)?;
     let snapshot_row = lock_snapshot(connection, tenant_id, snapshot_id).await?;
     let scope = snapshot_scope_from_row(&snapshot_row, backend)?;
     let source_namespace_revision = positive_u64(&snapshot_row, "source_namespace_revision")?;
@@ -1823,8 +1823,8 @@ async fn query_stored_snapshot_objects<C: ConnectionTrait>(
     tenant_id: Uuid,
     snapshot_id: Uuid,
 ) -> Result<Vec<SnapshotObject>, ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend())
-        .map_err(snapshot_storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(snapshot_storage_error)?;
     connection.query_all_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
         "SELECT object_name, content_type, size_bytes, digest_sha256, revision, source_storage_key, snapshot_storage_key FROM module_artifact_data_snapshot_objects WHERE tenant_id = {} AND snapshot_id = {} ORDER BY object_name ASC LIMIT {}",
         backend.placeholder(1), backend.placeholder(2), MAX_SNAPSHOT_OBJECTS + 1), vec![backend.uuid_value(tenant_id), backend.uuid_value(snapshot_id)])).await.map_err(snapshot_storage_error)?.into_iter().map(snapshot_object_from_snapshot_row).collect()
@@ -1835,8 +1835,8 @@ pub(crate) async fn lock_snapshot<C: ConnectionTrait>(
     tenant_id: Uuid,
     snapshot_id: Uuid,
 ) -> Result<sea_orm::QueryResult, ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend())
-        .map_err(snapshot_storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(snapshot_storage_error)?;
     connection.query_one_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
         "SELECT snapshot.*, namespace.module_slug, namespace.data_contract_revision, namespace.data_contract_digest
          FROM module_artifact_data_snapshots snapshot JOIN module_artifact_data_namespaces namespace
@@ -1870,8 +1870,8 @@ async fn lock_restore_namespace(
     transaction: &DatabaseTransaction,
     request: &ArtifactDataRestoreRequest,
 ) -> Result<(u64, bool), ArtifactDataError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend())
-        .map_err(snapshot_storage_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(snapshot_storage_error)?;
     let row = transaction.query_one_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
         "SELECT namespace_revision, CASE WHEN purged_at IS NULL THEN 0 ELSE 1 END AS is_purged
          FROM module_artifact_data_namespaces WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
@@ -1894,8 +1894,8 @@ async fn ensure_namespace_empty(
     transaction: &DatabaseTransaction,
     scope: &ArtifactDataScope,
 ) -> Result<(), ArtifactDataError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend())
-        .map_err(snapshot_storage_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(snapshot_storage_error)?;
     for table in [
         "module_artifact_data",
         "module_artifact_data_objects",
@@ -1933,8 +1933,8 @@ async fn persist_restore_rows(
     {
         return Err(ArtifactDataError::SnapshotIntegrity);
     }
-    let backend = SupportedBackend::new(transaction.get_database_backend())
-        .map_err(snapshot_storage_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(snapshot_storage_error)?;
     for record in &manifest.records {
         let value_size_bytes = artifact_data_value_size(&record.value)?;
         transaction.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
@@ -1964,8 +1964,8 @@ async fn find_restore_operation_in<C: ConnectionTrait>(
     request: &ArtifactDataRestoreRequest,
     request_digest: &str,
 ) -> Result<Option<ArtifactDataRestoreResult>, ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend())
-        .map_err(snapshot_storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(snapshot_storage_error)?;
     let row = connection.query_one_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
         "SELECT request_digest, snapshot_id, namespace_revision, restored_records, restored_objects FROM module_artifact_data_restore_operations WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} AND idempotency_key = {}",
         backend.placeholder(1), backend.placeholder(2), backend.placeholder(3), backend.placeholder(4)), vec![backend.uuid_value(request.target.tenant_id), backend.uuid_value(request.target.data_owner_id), backend.uuid_value(request.target.namespace_instance_id), backend.uuid_value(request.context.idempotency_key)])).await.map_err(snapshot_storage_error)?;
@@ -1992,8 +1992,8 @@ async fn find_retention_operation<C: ConnectionTrait>(
     request: &ArtifactDataSnapshotRetentionUpdateRequest,
     request_digest: &str,
 ) -> Result<Option<ArtifactDataSnapshotRetention>, ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend())
-        .map_err(snapshot_storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(snapshot_storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -2166,8 +2166,8 @@ async fn collection_work_in<C: ConnectionTrait>(
     tenant_id: Uuid,
     snapshot_id: Uuid,
 ) -> Result<CollectionWork, ArtifactDataError> {
-    let backend = SupportedBackend::new(connection.get_database_backend())
-        .map_err(snapshot_storage_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(snapshot_storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),

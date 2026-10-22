@@ -38,7 +38,10 @@ impl MigrationTrait for Migration {
 
         for statement in statements {
             connection
-                .execute_raw(Statement::from_string(backend.db_backend(), (*statement).to_string()))
+                .execute_raw(Statement::from_string(
+                    backend.db_backend(),
+                    (*statement).to_string(),
+                ))
                 .await?;
         }
         Ok(())
@@ -85,7 +88,10 @@ impl MigrationTrait for Migration {
 
         for statement in statements {
             connection
-                .execute_raw(Statement::from_string(backend.db_backend(), (*statement).to_string()))
+                .execute_raw(Statement::from_string(
+                    backend.db_backend(),
+                    (*statement).to_string(),
+                ))
                 .await?;
         }
         Ok(())

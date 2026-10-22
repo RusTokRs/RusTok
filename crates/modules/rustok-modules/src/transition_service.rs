@@ -18,7 +18,7 @@ use crate::{
     ControlPlaneInfrastructure, ModuleTransitionCheckpoint, ModuleTransitionCoordinator,
     ModuleTransitionFinalizeCommand, RetentionHoldStore, SeaOrmSecurityEpochStore,
     TransitionCheckpointStore, TransitionCoordinatorError, TransitionStoreError,
-    data::{uuid_from_row},
+    data::uuid_from_row,
 };
 
 const OPERATION_KIND: &str = "finalize";
@@ -419,8 +419,8 @@ async fn reserve_operation(
     command: &ModuleTransitionFinalizeCommand,
     request_digest: &str,
 ) -> Result<Option<ModuleTransitionFinalizeReceipt>, ModuleTransitionServiceError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend())
-        .map_err(database_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(database_error)?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -542,8 +542,8 @@ async fn complete_operation(
     idempotency_key: Uuid,
     receipt: &ModuleTransitionFinalizeReceipt,
 ) -> Result<(), ModuleTransitionServiceError> {
-    let backend = SupportedBackend::new(transaction.get_database_backend())
-        .map_err(database_error)?;
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(database_error)?;
     let receipt_json = serde_json::to_string(receipt)
         .map_err(|error| ModuleTransitionServiceError::Store(error.to_string()))?;
     let result = transaction

@@ -8,7 +8,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, QueryResult, Statement,
     TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
@@ -20,7 +20,7 @@ use rustok_events::DomainEvent;
 use crate::backend::SupportedBackend;
 use crate::{
     ArtifactPayloadKind, ControlPlaneInfrastructure, ModuleCommandContext,
-    data::{uuid_from_row},
+    data::uuid_from_row,
     installation::{InstalledModuleArtifact, ModuleInstallationScope},
     promotion::{digest_json, valid_digest, valid_reference},
     reconciliation::{
@@ -1563,7 +1563,7 @@ async fn insert_reconciliation(
             ),
             vec![
                 backend.uuid_value(reconciliation_id),
-                optional_backend.uuid_value(predecessor_reconciliation_id),
+                optional_uuid_value(predecessor_reconciliation_id, backend),
                 revision_value(reconciliation_revision)?,
                 topology.topology_reference.clone().into(),
                 topology.topology_digest.clone().into(),
@@ -1979,8 +1979,8 @@ async fn advance_state(
             ),
             vec![
                 revision_value(next_revision)?,
-                optional_backend.uuid_value(desired_reconciliation_id),
-                optional_backend.uuid_value(observed_reconciliation_id),
+                optional_uuid_value(desired_reconciliation_id, backend),
+                optional_uuid_value(observed_reconciliation_id, backend),
                 RECONCILIATION_STATE_ID.into(),
                 revision_value_allow_zero(expected_revision)?,
             ],
@@ -2685,8 +2685,8 @@ async fn complete_operation(
                 revision_value(completion.reconciliation_revision)?,
                 revision_value(completion.reconciliation_state_revision)?,
                 completion.reconciliation_status.as_str().into(),
-                optional_backend.uuid_value(completion.node_id),
-                optional_backend.uuid_value(completion.installation_id),
+                optional_uuid_value(completion.node_id, backend),
+                optional_uuid_value(completion.installation_id, backend),
                 optional_revision_value(completion.observation_revision)?,
                 completion
                     .assignment_phase

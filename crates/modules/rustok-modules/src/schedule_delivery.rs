@@ -168,8 +168,8 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
         configure_tenant_scope(&transaction, request.tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let descriptor = load_admitted_descriptor(
             &transaction,
             backend,
@@ -267,8 +267,8 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         expire_claims(
             &transaction,
             backend,
@@ -451,8 +451,8 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let affected = if retryable && attempt < self.config.max_attempts {
             complete_retryable(
                 &transaction,

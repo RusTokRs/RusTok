@@ -3,8 +3,8 @@
 use bytes::Bytes;
 use rustok_storage::{ObjectKey, ObjectScope, ObjectZone};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement,
-    TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
+    Value as SqlValue,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -104,8 +104,8 @@ where
         let request_digest = upload_session_request_digest(&request)?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         ensure_active_namespace(&transaction, scope, backend).await?;
         if let Some(row) = transaction
             .query_one_raw(Statement::from_sql_and_values(
@@ -215,8 +215,8 @@ where
         let digest_sha256 = format!("sha256:{}", hex::encode(Sha256::digest(&chunk.data)));
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         if let Some(row) = transaction.query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!("SELECT size_bytes, digest_sha256 FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {} AND sequence = {}", backend.placeholder(1), backend.placeholder(2), backend.placeholder(3)),
@@ -231,8 +231,8 @@ where
         transaction.commit().await.map_err(storage_error)?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         ensure_active_namespace(&transaction, scope, backend).await?;
         let active = transaction
             .execute_raw(Statement::from_sql_and_values(
@@ -407,8 +407,8 @@ where
             .await?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let rows = transaction.query_all_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!("SELECT sequence, storage_key, size_bytes, digest_sha256 FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {} ORDER BY sequence ASC", backend.placeholder(1), backend.placeholder(2)),
@@ -470,8 +470,8 @@ where
             .await?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let completed = transaction.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!("UPDATE module_artifact_data_object_upload_sessions SET status = 'completed', completed_revision = {}, completed_at = {}, updated_at = {} WHERE tenant_id = {} AND session_id = {} AND status = 'completing' AND expires_at > {}", backend.placeholder(1), backend.now_sql(), backend.now_sql(), backend.placeholder(2), backend.placeholder(3), backend.now_sql()), vec![revision_value(object.revision)?, backend.uuid_value(scope.tenant_id), backend.uuid_value(request.session_id)])).await.map_err(storage_error)?;
         if completed.rows_affected() != 1 {
             return Err(ArtifactDataError::NamespacePurged);

@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, QueryResult, Statement,
     TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
@@ -20,7 +20,7 @@ use crate::{
     ModuleStaticDistributionBuildEvidence, ModuleStaticDistributionBuildStatus,
     ModuleStaticDistributionCompletionCommand, ModuleStaticDistributionCompletionOutcome,
     ModuleStaticDistributionItem, ModuleStaticPromotionError, ModuleStaticPromotionStatus,
-    data::{uuid_from_row},
+    data::uuid_from_row,
     distribution::{
         load_build, load_distribution_state, module_static_distribution_composition_digest,
     },
@@ -931,7 +931,7 @@ pub(crate) async fn insert_release(
             vec![
                 backend.uuid_value(distribution_release_id),
                 backend.uuid_value(distribution_build_id),
-                optional_backend.uuid_value(predecessor_release_id),
+                optional_uuid_value(predecessor_release_id, backend),
                 revision_value(release_revision)?,
                 revision_value(composition_revision)?,
                 composition_digest.to_owned().into(),
@@ -1226,7 +1226,7 @@ pub(crate) async fn advance_release_state_optional(
             ),
             vec![
                 revision_value(next_revision)?,
-                optional_backend.uuid_value(distribution_release_id),
+                optional_uuid_value(distribution_release_id, backend),
                 DISTRIBUTION_RELEASE_STATE_ID.into(),
                 revision_value_allow_zero(expected_revision)?,
             ],

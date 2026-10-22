@@ -1,8 +1,8 @@
 //! Garbage collection service for expired artifact data objects.
 
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement,
-    TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
+    Value as SqlValue,
 };
 use uuid::Uuid;
 
@@ -38,8 +38,8 @@ impl SeaOrmArtifactDataObjectGcService {
         }
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, tenant_id).await?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let candidates = transaction
             .query_all_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -76,8 +76,8 @@ impl SeaOrmArtifactDataObjectGcService {
             }
             let transaction = self.db.begin().await.map_err(storage_error)?;
             configure_tenant_scope(&transaction, tenant_id).await?;
-            let backend = SupportedBackend::new(transaction.get_database_backend())
-                .map_err(storage_error)?;
+            let backend =
+                SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
             transaction
                 .query_one_raw(Statement::from_sql_and_values(
                     backend.db_backend(),

@@ -519,8 +519,8 @@ impl SeaOrmModuleBuildService {
             });
         }
 
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(persistence_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(persistence_error)?;
         let inserted = transaction
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -619,8 +619,8 @@ impl SeaOrmModuleBuildService {
         configure_tenant_scope(&transaction, result.tenant_id)
             .await
             .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(persistence_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(persistence_error)?;
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -733,8 +733,8 @@ impl SeaOrmModuleBuildService {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(persistence_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(persistence_error)?;
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -821,8 +821,8 @@ impl SeaOrmModuleBuildService {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(persistence_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(persistence_error)?;
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -1330,8 +1330,8 @@ async fn existing_submission<C: ConnectionTrait>(
     project_id: &str,
     idempotency_key: &str,
 ) -> Result<Option<ExistingSubmission>, ModuleBuildProtocolError> {
-    let backend = SupportedBackend::new(connection.get_database_backend())
-        .map_err(persistence_error)?;
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(persistence_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),

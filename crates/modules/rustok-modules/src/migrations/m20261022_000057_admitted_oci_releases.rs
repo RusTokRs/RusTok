@@ -268,7 +268,10 @@ impl MigrationTrait for Migration {
         for sql in statements {
             manager
                 .get_connection()
-                .execute_raw(Statement::from_string(backend.db_backend(), (*sql).to_string()))
+                .execute_raw(Statement::from_string(
+                    backend.db_backend(),
+                    (*sql).to_string(),
+                ))
                 .await?;
         }
 
@@ -288,7 +291,10 @@ impl MigrationTrait for Migration {
         for sql in statements {
             manager
                 .get_connection()
-                .execute_raw(Statement::from_string(backend.db_backend(), (*sql).to_string()))
+                .execute_raw(Statement::from_string(
+                    backend.db_backend(),
+                    (*sql).to_string(),
+                ))
                 .await?;
         }
 

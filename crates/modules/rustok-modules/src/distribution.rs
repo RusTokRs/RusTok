@@ -23,7 +23,7 @@ use crate::backend::SupportedBackend;
 use crate::{
     ControlPlaneInfrastructure, ModuleCommandContext, ModuleStaticPromotionError,
     ModuleStaticPromotionStatus,
-    data::{uuid_from_row},
+    data::uuid_from_row,
     promotion::{
         digest_json, load_platform_build_evidence, load_promotion, normalize_native_entry_type,
         valid_cargo_package, valid_cas_source_reference, valid_digest, valid_reference,
@@ -1546,7 +1546,7 @@ pub(crate) async fn insert_build(
             ),
             vec![
                 backend.uuid_value(distribution_build_id),
-                optional_backend.uuid_value(predecessor_build_id),
+                optional_uuid_value(predecessor_build_id, backend),
                 revision_value(composition_revision)?,
                 composition_digest.to_owned().into(),
                 platform_source_reference.to_owned().into(),

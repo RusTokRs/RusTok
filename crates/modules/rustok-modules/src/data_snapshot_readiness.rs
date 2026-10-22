@@ -14,7 +14,6 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::backend::SupportedBackend;
-use crate::data::{uuid_value};
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SnapshotReadinessError {
@@ -95,8 +94,8 @@ impl ArtifactDataRecoveryReadinessService {
         namespace_instance_id: Uuid,
         max_age: StdDuration,
     ) -> Result<ArtifactDataSnapshotReadiness, SnapshotReadinessError> {
-        let backend = SupportedBackend::new(self.db.get_database_backend())
-            .map_err(|e| SnapshotReadinessError::Storage(e.to_string()))?;
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(|e| SnapshotReadinessError::Storage(e.to_string()))?;
         let row_opt = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
@@ -200,8 +199,8 @@ impl ArtifactDataRecoveryReadinessService {
     pub async fn evaluate_platform_recovery_evidence(
         &self,
     ) -> Result<PlatformPostgresRecoveryEvidence, PostgresRecoveryEvidenceError> {
-        let backend = SupportedBackend::new(self.db.get_database_backend())
-            .map_err(|e| PostgresRecoveryEvidenceError::Storage(e.to_string()))?;
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(|e| PostgresRecoveryEvidenceError::Storage(e.to_string()))?;
         let now = Utc::now();
 
         match backend {

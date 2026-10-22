@@ -111,8 +111,8 @@ impl ArtifactDataSnapshotIntentService {
         configure_tenant_scope(&transaction, request.scope.tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let intent_id = Uuid::new_v4();
         transaction.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
             "INSERT INTO module_artifact_data_snapshot_copy_intents
@@ -181,8 +181,8 @@ impl ArtifactDataSnapshotIntentService {
         configure_tenant_scope(&transaction, intent.tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let result = transaction.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
             "UPDATE module_artifact_data_snapshot_copy_intents SET status = CASE
                WHEN status = 'intent' THEN 'staging' ELSE status END
@@ -240,8 +240,8 @@ impl ArtifactDataSnapshotIntentService {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let rows = transaction
             .query_all_raw(Statement::from_sql_and_values(
                 backend.db_backend(),

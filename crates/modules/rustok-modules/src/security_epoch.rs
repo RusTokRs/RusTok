@@ -9,6 +9,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::backend::SupportedBackend;
+
 /// Monotonically increasing platform security epoch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct GlobalSecurityEpoch(pub u64);
@@ -175,9 +177,11 @@ impl SeaOrmSecurityEpochStore {
     {
         use sea_orm::Statement;
 
+        let backend =
+            SupportedBackend::new(db.get_database_backend()).map_err(|e| SecurityEpochStoreError::Persistence(e.to_string()))?;
         let row = db
             .query_one_raw(Statement::from_string(
-                db.get_database_backend(),
+                backend.db_backend(),
                 "SELECT epoch, last_reason, updated_at FROM module_security_epoch \
                  WHERE singleton_id = 1",
             ))
@@ -189,12 +193,12 @@ impl SeaOrmSecurityEpochStore {
             .filter(|value| *value >= 1)
             .ok_or(SecurityEpochStoreError::InvalidStoredEpoch(epoch))?;
         let last_reason: String = row.try_get("", "last_reason")?;
-        let advanced_at = match db.get_database_backend() {
+        let advanced_at = match backend {
             SupportedBackend::Postgres => {
                 let value: chrono::DateTime<chrono::FixedOffset> = row.try_get("", "updated_at")?;
                 value.with_timezone(&Utc)
             }
-            _ => {
+            SupportedBackend::Sqlite => {
                 let value: String = row.try_get("", "updated_at")?;
                 chrono::DateTime::parse_from_rfc3339(&value)
                     .map(|parsed| parsed.with_timezone(&Utc))
@@ -246,8 +250,8 @@ impl SeaOrmSecurityEpochStore {
     {
         use sea_orm::Statement;
 
-        let backend = SupportedBackend::new(db.get_database_backend())
-            .map_err(|e| SecurityEpochStoreError::Persistence(e.to_string()))?;
+        let backend =
+            SupportedBackend::new(db.get_database_backend()).map_err(|e| SecurityEpochStoreError::Persistence(e.to_string()))?;
         let updated_at: sea_orm::Value = match backend {
             SupportedBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(now)),
             SupportedBackend::Sqlite => now.to_rfc3339().into(),

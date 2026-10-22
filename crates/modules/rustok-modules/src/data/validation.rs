@@ -209,8 +209,8 @@ impl SeaOrmArtifactDataSchemaValidator {
         }
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let placeholders = match backend {
             SupportedBackend::Postgres => ("$1", "$2", "$3", "$4", "$5"),
             SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4", "?5"),

@@ -18,7 +18,6 @@ use uuid::Uuid;
 use crate::backend::SupportedBackend;
 use crate::{
     ModuleCommandContext,
-    data::{now_expression},
 };
 use rustok_api::{
     ModuleCompositionSnapshotView, PortError, StaticInstalledModuleView, StaticModuleRegistryView,
@@ -335,8 +334,8 @@ impl SeaOrmModuleCompositionService {
         let canonical_manifest = canonical_manifest_snapshot_json(&update.manifest)
             .map_err(|error| ModuleCompositionError::Serialize(error.to_string()))?;
         let manifest_hash = hash_manifest_snapshot(&canonical_manifest);
-        let backend = SupportedBackend::new(connection.get_database_backend())
-            .map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
+        let backend =
+            SupportedBackend::new(connection.get_database_backend()).map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
         let placeholders = (1..=6)
             .map(|index| backend.placeholder(index))
             .collect::<Vec<_>>();
@@ -382,8 +381,8 @@ impl SeaOrmModuleCompositionService {
     pub async fn active_snapshot_on<C: ConnectionTrait>(
         connection: &C,
     ) -> Result<ModuleCompositionSnapshot, ModuleCompositionError> {
-        let backend = SupportedBackend::new(connection.get_database_backend())
-            .map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
+        let backend =
+            SupportedBackend::new(connection.get_database_backend()).map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
         let row = connection
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -427,8 +426,8 @@ impl SeaOrmModuleCompositionService {
         }
         let canonical_manifest = canonical_manifest_snapshot_json(bootstrap_manifest)
             .map_err(|error| ModuleCompositionError::Serialize(error.to_string()))?;
-        let backend = SupportedBackend::new(connection.get_database_backend())
-            .map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
+        let backend =
+            SupportedBackend::new(connection.get_database_backend()).map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
         let placeholders = (1..=4)
             .map(|index| backend.placeholder(index))
             .collect::<Vec<_>>();

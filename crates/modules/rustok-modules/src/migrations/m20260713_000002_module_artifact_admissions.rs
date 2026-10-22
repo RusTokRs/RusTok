@@ -52,7 +52,10 @@ impl MigrationTrait for Migration {
         for statement in statements {
             manager
                 .get_connection()
-                .execute_raw(Statement::from_string(backend.db_backend(), (*statement).to_string()))
+                .execute_raw(Statement::from_string(
+                    backend.db_backend(),
+                    (*statement).to_string(),
+                ))
                 .await?;
         }
         Ok(())
