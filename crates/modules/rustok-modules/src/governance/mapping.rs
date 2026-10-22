@@ -439,8 +439,7 @@ pub(crate) fn governance_actor_can_create_publish_request(
     actor_principal: &serde_json::Value,
     actor_can_manage_modules: bool,
 ) -> bool {
-    actor_can_manage_modules
-        || principal_matches_governance_actor(owner_principal, actor_principal)
+    actor_can_manage_modules || principal_matches_governance_actor(owner_principal, actor_principal)
 }
 
 pub(crate) fn governance_actor_can_manage_release(
