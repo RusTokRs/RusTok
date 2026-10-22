@@ -1,4 +1,4 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
 
 use crate::backend::SupportedBackend;
@@ -42,10 +42,7 @@ impl MigrationTrait for Migration {
         for statement in [create_table, seed_row] {
             manager
                 .get_connection()
-                .execute_raw(Statement::from_string(
-                    backend.db_backend(),
-                    statement,
-                ))
+                .execute_raw(Statement::from_string(backend.db_backend(), statement))
                 .await?;
         }
         Ok(())

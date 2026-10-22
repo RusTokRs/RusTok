@@ -88,7 +88,7 @@ async fn sqlite_table_exists<C: ConnectionTrait>(
 ) -> Result<bool, DbErr> {
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend.db_backend(),
+            SupportedBackend::Sqlite.db_backend(),
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?1",
             [table.into()],
         ))
@@ -105,7 +105,7 @@ async fn sqlite_column_exists<C: ConnectionTrait>(
     // PRAGMA does not accept bound parameters for the table name.
     let rows = connection
         .query_all_raw(Statement::from_string(
-            backend.db_backend(),
+            SupportedBackend::Sqlite.db_backend(),
             format!("PRAGMA table_info({table})"),
         ))
         .await?;

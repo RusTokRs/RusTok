@@ -59,7 +59,7 @@ pub(crate) async fn ensure_namespace_not_migration_held_on<C: ConnectionTrait>(
     });
     let record =
         crate::migrations::m20260903_000047_artifact_data_copy_operations::record_copy_hold(
-            backend,
+            crate::backend::SupportedBackend::new(backend).map_err(storage_error)?,
             "namespace",
             false,
             excluded.as_deref(),

@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
+
+use crate::backend::SupportedBackend;
 
 /// Persists crash-safe snapshot/restore intents, staging receipts, and post-purge
 /// namespace recovery operations with verified CAS cutover.
@@ -9,8 +11,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE module_artifact_data_snapshot_copy_intents (\
                     intent_id UUID PRIMARY KEY,\
                     tenant_id UUID NOT NULL,\
@@ -98,7 +101,7 @@ impl MigrationTrait for Migration {
                  USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
                  WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "CREATE TABLE module_artifact_data_snapshot_copy_intents (\
                     intent_id TEXT PRIMARY KEY NOT NULL,\
                     tenant_id TEXT NOT NULL,\
@@ -172,14 +175,13 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX idx_namespace_recovery_ops_scope \
                  ON module_artifact_data_namespace_recovery_operations (tenant_id, data_owner_id, namespace_instance_id, status)",
             ],
-            _ => return Err(DbErr::Custom("Unsupported database backend".to_string())),
         };
 
         for sql in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*sql).to_string(),
                 ))
                 .await?;
@@ -190,6 +192,7 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
         let statements = &[
             "DROP TABLE IF EXISTS module_artifact_data_namespace_recovery_operations",
             "DROP TABLE IF EXISTS module_artifact_data_snapshot_copy_intents",
@@ -200,13 +203,13 @@ impl MigrationTrait for Migration {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*sql).to_string(),
                 ))
                 .await?;
         }
 
-        if manager.get_database_backend() == DbBackend::Postgres {
+        if backend == SupportedBackend::Postgres {
             manager
                 .get_connection()
                 .execute_unprepared("DROP FUNCTION module_artifact_data_recovery_guard()")
@@ -242,8 +245,8 @@ async fn protect_recovery_operations(manager: &SchemaManager<'_>) -> Result<(), 
         "verified_manifest_digest",
         "verified_at",
     ];
-    let statements = match manager.get_database_backend() {
-        DbBackend::Postgres => {
+    let statements = match SupportedBackend::new(manager.get_database_backend())? {
+        SupportedBackend::Postgres => {
             let current = identity
                 .iter()
                 .map(|field| format!("NEW.{field}"))
@@ -289,7 +292,7 @@ async fn protect_recovery_operations(manager: &SchemaManager<'_>) -> Result<(), 
                  EXECUTE FUNCTION module_artifact_data_recovery_guard()".into(),
             ]
         }
-        DbBackend::Sqlite => {
+        SupportedBackend::Sqlite => {
             let immutable = identity
                 .iter()
                 .map(|field| format!("NEW.{field} IS NOT OLD.{field}"))
@@ -316,11 +319,6 @@ async fn protect_recovery_operations(manager: &SchemaManager<'_>) -> Result<(), 
                     ON module_artifact_data_namespace_recovery_operations WHEN OLD.status='cutover'
                     BEGIN SELECT RAISE(ABORT, 'Terminal recovery receipt is immutable'); END".into(),
             ]
-        }
-        _ => {
-            return Err(DbErr::Migration(
-                "Unsupported recovery guard backend".into(),
-            ));
         }
     };
     for statement in statements {

@@ -136,10 +136,13 @@ pub(crate) async fn protect_artifact_data_namespace_writes(
     manager: &sea_orm_migration::SchemaManager<'_>,
     table: &str,
 ) -> Result<(), sea_orm::DbErr> {
-    use sea_orm::{ConnectionTrait, DbBackend};
+    use sea_orm::ConnectionTrait;
+
+    use crate::backend::SupportedBackend;
     let table = artifact_data_storage_table(table)?;
-    let statements = match manager.get_database_backend() {
-        DbBackend::Postgres => vec![format!(
+    let backend = SupportedBackend::new(manager.get_database_backend())?;
+    let statements = match backend {
+        SupportedBackend::Postgres => vec![format!(
             "CREATE FUNCTION {table}_namespace_write_guard() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN
                IF TG_OP = 'DELETE' THEN
                  PERFORM 1 FROM module_artifact_data_namespaces namespace
@@ -168,7 +171,7 @@ pub(crate) async fn protect_artifact_data_namespace_writes(
             "CREATE TRIGGER {table}_namespace_write BEFORE INSERT OR UPDATE OR DELETE ON {table}
              FOR EACH ROW EXECUTE FUNCTION {table}_namespace_write_guard()"
         )],
-        DbBackend::Sqlite => ["INSERT", "UPDATE", "DELETE"].into_iter().map(|operation| {
+        SupportedBackend::Sqlite => ["INSERT", "UPDATE", "DELETE"].into_iter().map(|operation| {
             let row = if operation == "DELETE" { "OLD" } else { "NEW" };
             let states = if operation == "DELETE" {
                 "namespace.state IN ('staging', 'serving', 'purged')"
@@ -189,7 +192,6 @@ pub(crate) async fn protect_artifact_data_namespace_writes(
                 operation.to_ascii_lowercase()
             )
         }).collect(),
-        _ => return Err(sea_orm::DbErr::Migration("Unsupported artifact namespace write guard backend".into())),
     };
     for statement in statements {
         manager
@@ -243,10 +245,12 @@ pub(crate) async fn drop_artifact_data_namespace_write_guard(
     table: &str,
 ) -> Result<(), sea_orm::DbErr> {
     use sea_orm::ConnectionTrait;
+
+    use crate::backend::SupportedBackend;
     let table = artifact_data_storage_table(table)?;
     // SQLite drops table-owned triggers with the table; PostgreSQL also needs
     // the function removed after its table and trigger have been dropped.
-    if manager.get_database_backend() == sea_orm::DbBackend::Postgres {
+    if SupportedBackend::new(manager.get_database_backend())? == SupportedBackend::Postgres {
         manager
             .get_connection()
             .execute_unprepared(&format!("DROP FUNCTION {table}_namespace_write_guard()"))
