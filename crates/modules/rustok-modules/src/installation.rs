@@ -3851,10 +3851,11 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
                 .try_get::<DateTime<Utc>>("", "installed_at")
                 .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
             SupportedBackend::Sqlite => {
-                crate::backend::parse_sqlite_datetime(&row.try_get::<String>("", "installed_at").map_err(
-                    |error| ArtifactInstallationResolveError::Invariant(error.to_string()),
-                )?)
-                .map_err(|_| {
+                let installed_at_text: String =
+                    row.try_get("", "installed_at").map_err(|error| {
+                        ArtifactInstallationResolveError::Invariant(error.to_string())
+                    })?;
+                crate::backend::parse_sqlite_datetime(&installed_at_text).map_err(|_| {
                     ArtifactInstallationResolveError::Invariant(
                         "artifact installation timestamp is invalid".to_string(),
                     )

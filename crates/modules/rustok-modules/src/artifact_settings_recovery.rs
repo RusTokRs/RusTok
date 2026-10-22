@@ -962,7 +962,8 @@ where
                 format!(
                     "INSERT INTO module_artifact_settings_tombstones (tenant_id, data_owner_id, settings_instance_id, tombstone_revision, recovery_point_id, purge_operation_id, purged_at) VALUES ({}, {}, {}, {}, {}, {}, {})",
                     backend.placeholder(1), backend.placeholder(2), backend.placeholder(3),
-                    backend.placeholder(4), backend.placeholder(5), backend.placeholder(6), backend.now_rfc3339_sql(),
+                    backend.placeholder(4), backend.placeholder(5), backend.placeholder(6),
+                    backend.now_rfc3339_sql(),
                 ),
                 vec![
                     backend.uuid_value(request.tenant_id),
@@ -1159,7 +1160,8 @@ where
                     backend.placeholder(6),
                     backend.placeholder(7),
                     backend.placeholder(8),
-                    backend.placeholder(9), backend.placeholder(10), backend.placeholder(11), backend.now_rfc3339_sql(),
+                    backend.placeholder(9), backend.placeholder(10), backend.placeholder(11),
+                    backend.now_rfc3339_sql(),
                 ),
                 vec![
                     backend.uuid_value(restore_operation_id),

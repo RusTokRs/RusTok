@@ -620,14 +620,22 @@ the §13 renames); none is attributable to this remediation.
 
 Open follow-ups recorded during execution (not audit findings):
 
-1. **SQLite "now" format divergence.** Three textual now-formats
-   coexist in persisted columns: `datetime('now')`,
-   `CURRENT_TIMESTAMP`, and ISO `strftime('%Y-%m-%dT%H:%M:%fZ','now')`
-   (settings store, recovery, journals). They were preserved
-   byte-for-byte through H-1/H-5 because each is load-bearing for its
-   own comparisons; unification needs a dedicated data audit (lexical
-   vs chronological ordering per column) and is intentionally not part
-   of this remediation.
+1. **SQLite "now" format divergence.** Two textual format families
+   persist on SQLite: space-separated (`datetime('now')` /
+   `CURRENT_TIMESTAMP`, byte-identical) and RFC 3339
+   (`strftime('%Y-%m-%dT%H:%M:%fZ','now')` plus `to_rfc3339()` binds).
+   Since 2026-10-22 both families have exactly one owner each —
+   `SupportedBackend::now_sql` / `now_rfc3339_sql` for SQL fragments,
+   `SupportedBackend::datetime_value` for binds,
+   `backend::parse_sqlite_datetime` for readers (RFC 3339 first,
+   space form as fallback) — and literals survive only inside
+   per-backend whole-statement match arms and migration DDL defaults,
+   where the match itself is the dispatch. What remains open is the
+   writer-side collapse to a single persisted format per column: that
+   still needs the dedicated per-column data audit (lexical vs
+   chronological comparisons, DDL defaults) and, once writers are
+   uniform, the reader fallback should be removed again per the
+   zero-legacy policy.
 2. **Raw snapshot readers vs effective policy.** `rustok-api::runtime`
    (`is_tenant_module_enabled`) and SEO's snapshot-based guards answer
    "an explicit enabled row exists", while the control plane's
@@ -705,3 +713,62 @@ this remediation:
   crate's public types trips this. Suggested fix (infrastructure,
   needs the workflow's own approval step): per-checkout target
   directories.
+
+## 9. Internal-quality pass (2026-10-22)
+
+A crate-internal sweep after re-verification, aimed at the residual
+disorder classes rather than new behavior (15 commits,
+`c7ac2bd`…`dd1dfe0` + this note; net 547 insertions / 753 deletions).
+Verification boundary: the maintainer runs all checks for this pass;
+claims below rest on source-level censuses recorded in the commit
+messages, not on newly executed test evidence.
+
+Bugs fixed:
+
+1. **Silent HTTP-policy downgrade.** The `platform.http` capability
+   broker built its restricted client (no redirects, caller timeout)
+   with `unwrap_or_default()`; a builder failure silently substituted
+   the default client, dropping the redirect ban that is the
+   capability's SSRF boundary. Constructors are fallible end-to-end
+   (`SandboxResult`), `Default` removed.
+2. **Fabricated recovery evidence.** `evaluate_platform_recovery_evidence`
+   attested invented `lsn=0/0` / `wal_level=replica` (SQLite:
+   `0`/`4096`) when its probe row was missing or undecodable; both
+   probes now fail with a storage error instead of attesting.
+3. **Masked journal failures.** Two `mark_failed` results were
+   discarded on operation-failure paths; they now fold into the
+   returned error like every sibling site.
+4. **Swallowed migration copy errors.** Migration `000069` ignored
+   legacy-artifact copy failures (including path-escape rejections)
+   while re-keying rows to the uncopied keys; failures now abort the
+   migration (a missing source remains a success by design).
+5. **Masked grant-revision decode.** The rollback path read
+   `capability_grant_revision` (NOT NULL) with `unwrap_or(1)`;
+   decode failures are store errors now.
+
+Suppression discipline: every remaining production `let _ =` is a
+transaction rollback, a `Drop` cleanup, a deliberate
+validate-and-discard, or the body of one of three named best-effort
+policies (`delete_uploaded_object_best_effort`,
+`DurableArtifactBlobStore::discard_best_effort`,
+`remove_staged_file_best_effort`). The production panic census
+(40 `unwrap`/`expect` sites) was adjudicated clean — every site is an
+invariant guaranteed at its call boundary; no changes made there.
+
+Single-owner consolidations (zero-legacy): RLS scope primitives,
+RFC 3339 now-fragments, `datetime_value` and `optional_uuid_value`
+binds, the SQLite text-timestamp reader, SQL placeholder rendering
+(29 hand-rolled copies), `sha256_digest` (4 private copies + 17
+inline spellings + one wrapper), and digest-format validators (one
+per strictness level: `installation::valid_digest`,
+`trust::is_sha256_digest`). Hollow `revision_value_allow_zero`
+pass-throughs (×4) deleted. Adjudicated and deliberately kept:
+per-file `store_error`/`database_error`/`uuid_from_row` variants
+(distinct error taxonomies / storage conventions), whole-statement
+per-backend SQL arms, and the two raw-hex checksum sites in
+`authoring.rs` (distinct representation).
+
+Phase F movement: prerequisite §6.2.2 (GUC coverage) discharged in
+code (see §6.2). Role separation, per-table policy completion for
+the 43 uncovered tables, and the PostgreSQL evidence lane remain
+the blockers, unchanged.
