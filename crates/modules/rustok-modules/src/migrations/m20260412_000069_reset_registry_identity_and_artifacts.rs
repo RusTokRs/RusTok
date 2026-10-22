@@ -1,9 +1,11 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 
 use sea_orm_migration::prelude::*;
 use serde_json::json;
 use std::path::{Component, Path, PathBuf};
 use uuid::Uuid;
+
+use crate::backend::SupportedBackend;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -24,7 +26,7 @@ impl MigrationTrait for Migration {
 }
 
 async fn add_registry_identity_columns(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
-    if manager.get_database_backend() == DbBackend::Sqlite {
+    if SupportedBackend::new(manager.get_database_backend())? == SupportedBackend::Sqlite {
         for statement in [
             Table::alter()
                 .table(RegistryModuleOwners::Table)
@@ -320,10 +322,10 @@ async fn backfill_legacy_registry_identity_columns(
 }
 
 async fn backfill_registry_module_owners(db: &SchemaManagerConnection<'_>) -> Result<(), DbErr> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend())?;
     let rows = db
         .query_all_raw(Statement::from_string(
-            backend,
+            backend.db_backend(),
             "SELECT slug, owner_actor, bound_by FROM registry_module_owners".to_string(),
         ))
         .await?;
@@ -346,10 +348,10 @@ async fn backfill_registry_module_owners(db: &SchemaManagerConnection<'_>) -> Re
 }
 
 async fn backfill_registry_publish_requests(db: &SchemaManagerConnection<'_>) -> Result<(), DbErr> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend())?;
     let rows = db
         .query_all_raw(Statement::from_string(
-            backend,
+            backend.db_backend(),
             "SELECT id, slug, version, requested_by, publisher_identity, approved_by, rejected_by, changes_requested_by, held_by, artifact_path, artifact_url FROM registry_publish_requests".to_string(),
         ))
         .await?;
@@ -398,10 +400,10 @@ async fn backfill_registry_publish_requests(db: &SchemaManagerConnection<'_>) ->
 }
 
 async fn backfill_registry_module_releases(db: &SchemaManagerConnection<'_>) -> Result<(), DbErr> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend())?;
     let rows = db
         .query_all_raw(Statement::from_string(
-            backend,
+            backend.db_backend(),
             "SELECT id, request_id, slug, version, publisher, yanked_by, artifact_path, artifact_url FROM registry_module_releases".to_string(),
         ))
         .await?;
@@ -443,10 +445,10 @@ async fn backfill_registry_module_releases(db: &SchemaManagerConnection<'_>) -> 
 async fn backfill_registry_governance_events(
     db: &SchemaManagerConnection<'_>,
 ) -> Result<(), DbErr> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend())?;
     let rows = db
         .query_all_raw(Statement::from_string(
-            backend,
+            backend.db_backend(),
             "SELECT id, actor, publisher FROM registry_governance_events".to_string(),
         ))
         .await?;
@@ -650,8 +652,9 @@ async fn select_rows(
     db: &SchemaManagerConnection<'_>,
     sql: &str,
 ) -> Result<Vec<sea_orm::QueryResult>, DbErr> {
+    let backend = SupportedBackend::new(db.get_database_backend())?;
     db.query_all_raw(Statement::from_string(
-        db.get_database_backend(),
+        backend.db_backend(),
         sql.to_string(),
     ))
     .await
@@ -662,24 +665,20 @@ async fn execute_update(
     template: &str,
     values: Vec<sea_orm::Value>,
 ) -> Result<(), DbErr> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend())?;
     let sql = placeholder_sql(backend, template);
-    db.execute_raw(Statement::from_sql_and_values(backend, sql, values))
+    db.execute_raw(Statement::from_sql_and_values(backend.db_backend(), sql, values))
         .await?;
     Ok(())
 }
 
-fn placeholder_sql(backend: DbBackend, template: &str) -> String {
-    let placeholders = match backend {
-        DbBackend::Sqlite => ["?1", "?2", "?3", "?4", "?5", "?6", "?7", "?8"],
-        _ => ["$1", "$2", "$3", "$4", "$5", "$6", "$7", "$8"],
-    };
+fn placeholder_sql(backend: SupportedBackend, template: &str) -> String {
     let mut sql = template.to_string();
-    for (index, placeholder) in placeholders.into_iter().enumerate() {
-        sql = sql.replace(&format!("{{json{}}}", index + 1), placeholder);
+    for index in 1..=8 {
+        sql = sql.replace(&format!("{{json{index}}}"), &backend.placeholder(index));
     }
-    let pk_placeholder = placeholders[values_index_from_template(template) - 1];
-    sql.replace("{pk}", pk_placeholder)
+    let pk_placeholder = backend.placeholder(values_index_from_template(template));
+    sql.replace("{pk}", &pk_placeholder)
 }
 
 fn values_index_from_template(template: &str) -> usize {
@@ -691,10 +690,10 @@ async fn drop_columns(
     table: &str,
     columns: &[&str],
 ) -> Result<(), DbErr> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend())?;
     for column in columns {
         db.execute_raw(Statement::from_string(
-            backend,
+            backend.db_backend(),
             format!("ALTER TABLE {table} DROP COLUMN {column}"),
         ))
         .await?;

@@ -678,15 +678,15 @@ impl MigrationSource for ModulesModule {
         vec![
             MigrationDependencyDescriptor::new(
                 "m20260717_000017_create_registry_publish_build_staging",
-                vec!["m20260403_000002_create_registry_publish_tables"],
+                vec!["m20260403_000061_create_registry_publish_tables"],
             ),
             MigrationDependencyDescriptor::new(
                 "m20260722_000034_static_promotions",
-                vec!["m20260403_000002_create_registry_publish_tables"],
+                vec!["m20260403_000061_create_registry_publish_tables"],
             ),
             MigrationDependencyDescriptor::new(
                 "m20260727_000040_registry_platform_admission_contracts",
-                vec!["m20260403_000002_create_registry_publish_tables"],
+                vec!["m20260403_000061_create_registry_publish_tables"],
             ),
             MigrationDependencyDescriptor::new(
                 "m20260727_000041_registry_release_artifact_contracts",

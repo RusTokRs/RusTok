@@ -10,7 +10,7 @@ use crate::backend::SupportedBackend;
 /// claim; every fresh claim writes the timestamp.
 ///
 /// `module_static_tenant_lifecycle` itself is owned by `rustok-migrations`
-/// (`m20250101_000003_create_tenant_modules`). In the production migration
+/// (`m20250101_000060_create_tenant_modules`). In the production migration
 /// stack all migrations are sorted together by name, so the table exists by
 /// the time this column is added. Isolated crate-only test compositions may
 /// legitimately lack the table; the alteration is then skipped instead of

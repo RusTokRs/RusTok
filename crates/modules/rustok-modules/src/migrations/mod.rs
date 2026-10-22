@@ -1,3 +1,15 @@
+mod m20250101_000060_create_tenant_modules;
+mod m20260403_000061_create_registry_publish_tables;
+mod m20260403_000062_create_registry_module_owners;
+mod m20260403_000063_create_registry_governance_events;
+mod m20260403_000064_add_registry_publish_request_publisher_identity;
+mod m20260404_000065_create_registry_validation_jobs;
+mod m20260404_000066_create_registry_validation_stages;
+mod m20260408_000067_expand_registry_publish_request_governance_states;
+mod m20260408_000068_expand_registry_validation_stage_runner_leases;
+mod m20260412_000069_reset_registry_identity_and_artifacts;
+mod m20260412_000070_split_registry_localized_metadata;
+mod m20260419_000071_normalize_registry_governance_event_payloads;
 mod m20260711_000001_module_artifact_installations;
 mod m20260713_000002_module_artifact_admissions;
 mod m20260713_000003_artifact_installation_rollback_pointer;
@@ -20,6 +32,8 @@ mod m20260717_000019_artifact_schedule_deliveries;
 mod m20260717_000020_artifact_schedule_cursors;
 mod m20260717_000021_artifact_sandbox_policies;
 mod m20260717_000023_artifact_binding_operations;
+mod m20260717_000072_create_registry_publication_evidence;
+mod m20260717_000073_add_registry_artifact_origin_and_external_staging;
 mod m20260718_000025_artifact_data_objects;
 mod m20260718_000026_artifact_data_object_operations;
 mod m20260718_000027_artifact_data_object_gc_candidates;
@@ -27,6 +41,7 @@ mod m20260718_000028_artifact_data_object_upload_sessions;
 mod m20260718_000029_artifact_data_indexes;
 mod m20260718_000030_artifact_data_index_contracts;
 mod m20260718_000031_artifact_data_exports;
+mod m20260718_000074_add_registry_publication_idempotency;
 mod m20260720_000032_artifact_binding_operation_rls;
 mod m20260722_000033_artifact_data_snapshots;
 mod m20260722_000034_static_promotions;
@@ -59,6 +74,18 @@ use sea_orm_migration::prelude::MigrationTrait;
 
 pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![
+        Box::new(m20250101_000060_create_tenant_modules::Migration),
+        Box::new(m20260403_000061_create_registry_publish_tables::Migration),
+        Box::new(m20260403_000062_create_registry_module_owners::Migration),
+        Box::new(m20260403_000063_create_registry_governance_events::Migration),
+        Box::new(m20260403_000064_add_registry_publish_request_publisher_identity::Migration),
+        Box::new(m20260404_000065_create_registry_validation_jobs::Migration),
+        Box::new(m20260404_000066_create_registry_validation_stages::Migration),
+        Box::new(m20260408_000067_expand_registry_publish_request_governance_states::Migration),
+        Box::new(m20260408_000068_expand_registry_validation_stage_runner_leases::Migration),
+        Box::new(m20260412_000069_reset_registry_identity_and_artifacts::Migration),
+        Box::new(m20260412_000070_split_registry_localized_metadata::Migration),
+        Box::new(m20260419_000071_normalize_registry_governance_event_payloads::Migration),
         Box::new(m20260711_000001_module_artifact_installations::Migration),
         Box::new(m20260713_000002_module_artifact_admissions::Migration),
         Box::new(m20260713_000003_artifact_installation_rollback_pointer::Migration),
@@ -81,6 +108,8 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260717_000020_artifact_schedule_cursors::Migration),
         Box::new(m20260717_000021_artifact_sandbox_policies::Migration),
         Box::new(m20260717_000023_artifact_binding_operations::Migration),
+        Box::new(m20260717_000072_create_registry_publication_evidence::Migration),
+        Box::new(m20260717_000073_add_registry_artifact_origin_and_external_staging::Migration),
         Box::new(m20260718_000025_artifact_data_objects::Migration),
         Box::new(m20260718_000026_artifact_data_object_operations::Migration),
         Box::new(m20260718_000027_artifact_data_object_gc_candidates::Migration),
@@ -88,6 +117,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260718_000029_artifact_data_indexes::Migration),
         Box::new(m20260718_000030_artifact_data_index_contracts::Migration),
         Box::new(m20260718_000031_artifact_data_exports::Migration),
+        Box::new(m20260718_000074_add_registry_publication_idempotency::Migration),
         Box::new(m20260720_000032_artifact_binding_operation_rls::Migration),
         Box::new(m20260722_000033_artifact_data_snapshots::Migration),
         Box::new(m20260722_000034_static_promotions::Migration),

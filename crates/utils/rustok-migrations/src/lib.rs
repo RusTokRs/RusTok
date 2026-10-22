@@ -5,7 +5,6 @@ pub use sea_orm_migration::prelude::*;
 // tenant-module registry, tenant locales, builds/releases, platform settings.
 mod m20250101_000001_create_tenants;
 mod m20250101_000002_create_users;
-mod m20250101_000003_create_tenant_modules;
 mod m20250101_000004_create_sessions;
 mod m20250101_000005_create_roles_and_permissions;
 mod m20250101_000006_add_metadata_to_tenants_and_users;
@@ -20,31 +19,17 @@ mod m20260317_000001_create_flex_standalone_tables;
 mod m20260319_000001_create_mcp_management_tables;
 mod m20260320_000001_create_mcp_scaffold_drafts;
 mod m20260403_000001_create_ai_control_plane_tables;
-mod m20260403_000002_create_registry_publish_tables;
 mod m20260403_000003_expand_ai_control_plane_for_multiprovider;
 mod m20260403_000004_expand_ai_control_plane_for_direct_locale;
-mod m20260403_000005_create_registry_module_owners;
 mod m20260403_000006_add_sessions_active_lookup_index;
-mod m20260403_000007_create_registry_governance_events;
-mod m20260403_000008_add_registry_publish_request_publisher_identity;
-mod m20260404_000001_create_registry_validation_jobs;
-mod m20260404_000002_create_registry_validation_stages;
 mod m20260405_000001_expand_locale_storage_columns;
 mod m20260405_000002_split_flex_schema_localized_fields;
 mod m20260405_000003_add_is_localized_to_server_field_definitions;
 mod m20260405_000004_create_flex_attached_localized_values;
 mod m20260407_000001_split_flex_entry_localized_values;
-mod m20260408_000001_expand_registry_publish_request_governance_states;
-mod m20260408_000002_expand_registry_validation_stage_runner_leases;
 mod m20260410_000001_cleanup_flex_attached_legacy_inline_metadata;
-mod m20260412_000001_reset_registry_identity_and_artifacts;
-mod m20260412_000002_split_registry_localized_metadata;
-mod m20260419_000001_normalize_registry_governance_event_payloads;
 mod m20260426_000001_create_install_sessions;
 mod m20260501_000001_create_platform_composition_state;
-mod m20260717_000001_create_registry_publication_evidence;
-mod m20260717_000003_add_registry_artifact_origin_and_external_staging;
-mod m20260718_000002_add_registry_publication_idempotency;
 mod m20260723_000001_create_event_delivery_settings;
 mod m20260803_000001_create_owner_operation_receipts;
 mod m20260808_000099_create_module_operation_override_states;
@@ -138,13 +123,21 @@ struct InstallerOwnerMigrator;
 #[async_trait::async_trait]
 impl MigratorTrait for InstallerOwnerMigrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-        let static_owner = rustok_core::MigrationSource::migrations(&rustok_modules::ModulesModule)
-            .into_iter()
+        let mut modules_owner = rustok_core::MigrationSource::migrations(
+            &rustok_modules::ModulesModule,
+        )
+        .into_iter();
+        let publish_tables = modules_owner
+            .find(|migration| {
+                migration.name() == "m20260403_000061_create_registry_publish_tables"
+            })
+            .expect("registry publish tables migration must exist");
+        let static_owner = modules_owner
             .find(|migration| migration.name() == "m20260722_000034_static_promotions")
             .expect("static-distribution owner migration must exist");
         vec![
             Box::new(m20250101_000001_create_tenants::Migration),
-            Box::new(m20260403_000002_create_registry_publish_tables::Migration),
+            publish_tables,
             Box::new(m20260426_000001_create_install_sessions::Migration),
             static_owner,
         ]
@@ -426,7 +419,6 @@ impl MigratorTrait for Migrator {
         let mut all: Vec<Box<dyn MigrationTrait>> = vec![
             Box::new(m20250101_000001_create_tenants::Migration),
             Box::new(m20250101_000002_create_users::Migration),
-            Box::new(m20250101_000003_create_tenant_modules::Migration),
             Box::new(m20250130_000004_create_tenant_locales::Migration),
             Box::new(m20250101_000004_create_sessions::Migration),
             Box::new(m20250101_000005_create_roles_and_permissions::Migration),
@@ -441,29 +433,16 @@ impl MigratorTrait for Migrator {
             Box::new(m20260319_000001_create_mcp_management_tables::Migration),
             Box::new(m20260320_000001_create_mcp_scaffold_drafts::Migration),
             Box::new(m20260403_000001_create_ai_control_plane_tables::Migration),
-            Box::new(m20260403_000002_create_registry_publish_tables::Migration),
             Box::new(m20260403_000003_expand_ai_control_plane_for_multiprovider::Migration),
             Box::new(m20260403_000004_expand_ai_control_plane_for_direct_locale::Migration),
-            Box::new(m20260403_000005_create_registry_module_owners::Migration),
             Box::new(m20260403_000006_add_sessions_active_lookup_index::Migration),
-            Box::new(m20260403_000007_create_registry_governance_events::Migration),
-            Box::new(m20260403_000008_add_registry_publish_request_publisher_identity::Migration),
-            Box::new(m20260404_000001_create_registry_validation_jobs::Migration),
-            Box::new(m20260404_000002_create_registry_validation_stages::Migration),
             Box::new(m20260405_000001_expand_locale_storage_columns::Migration),
             Box::new(m20260405_000002_split_flex_schema_localized_fields::Migration),
             Box::new(m20260405_000003_add_is_localized_to_server_field_definitions::Migration),
             Box::new(m20260405_000004_create_flex_attached_localized_values::Migration),
             Box::new(m20260407_000001_split_flex_entry_localized_values::Migration),
             Box::new(m20260410_000001_cleanup_flex_attached_legacy_inline_metadata::Migration),
-            Box::new(m20260408_000001_expand_registry_publish_request_governance_states::Migration),
-            Box::new(m20260408_000002_expand_registry_validation_stage_runner_leases::Migration),
-            Box::new(m20260412_000001_reset_registry_identity_and_artifacts::Migration),
-            Box::new(m20260412_000002_split_registry_localized_metadata::Migration),
-            Box::new(m20260419_000001_normalize_registry_governance_event_payloads::Migration),
             Box::new(m20260426_000001_create_install_sessions::Migration),
-            Box::new(m20260717_000001_create_registry_publication_evidence::Migration),
-            Box::new(m20260717_000003_add_registry_artifact_origin_and_external_staging::Migration),
             Box::new(m20260723_000001_create_event_delivery_settings::Migration),
             Box::new(m20260803_000001_create_owner_operation_receipts::Migration),
             Box::new(m20260808_000099_create_module_operation_override_states::Migration),
@@ -549,9 +528,6 @@ impl MigratorTrait for Migrator {
         all.extend(rustok_iggy_connector::migrations::migrations());
         all.push(Box::new(
             m20260501_000001_create_platform_composition_state::Migration,
-        ));
-        all.push(Box::new(
-            m20260718_000002_add_registry_publication_idempotency::Migration,
         ));
         all.push(Box::new(
             m20261007_000014_add_sys_events_claim_index::Migration,
@@ -991,7 +967,7 @@ mod tests {
     fn dependency_sort_reconsiders_earlier_migration_after_each_unlock() {
         let mut migrations: Vec<Box<dyn sea_orm_migration::MigrationTrait>> = vec![
             Box::new(super::m20250101_000002_create_users::Migration),
-            Box::new(super::m20250101_000003_create_tenant_modules::Migration),
+            Box::new(super::m20250101_000004_create_sessions::Migration),
             Box::new(super::m20250101_000001_create_tenants::Migration),
         ];
         let descriptors = vec![MigrationDescriptor::new(
@@ -1009,7 +985,7 @@ mod tests {
         assert_eq!(
             names,
             vec![
-                "m20250101_000003_create_tenant_modules",
+                "m20250101_000004_create_sessions",
                 "m20250101_000001_create_tenants",
                 "m20250101_000002_create_users",
             ],

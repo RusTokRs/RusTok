@@ -1,8 +1,10 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 
 use sea_orm_migration::prelude::*;
 use serde_json::{Map, Value};
 use uuid::Uuid;
+
+use crate::backend::SupportedBackend;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -22,10 +24,10 @@ async fn normalize_registry_governance_event_payloads(
     db: &SchemaManagerConnection<'_>,
     forward: bool,
 ) -> Result<(), DbErr> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend())?;
     let rows = db
         .query_all_raw(Statement::from_string(
-            backend,
+            backend.db_backend(),
             "SELECT id, details FROM registry_governance_events".to_string(),
         ))
         .await?;
@@ -216,20 +218,17 @@ async fn execute_statement(
     template: &str,
     values: Vec<sea_orm::Value>,
 ) -> Result<(), DbErr> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend())?;
     let sql = placeholder_sql(backend, template, values.len());
-    db.execute_raw(Statement::from_sql_and_values(backend, sql, values))
+    db.execute_raw(Statement::from_sql_and_values(backend.db_backend(), sql, values))
         .await?;
     Ok(())
 }
 
-fn placeholder_sql(backend: DbBackend, template: &str, value_count: usize) -> String {
+fn placeholder_sql(backend: SupportedBackend, template: &str, value_count: usize) -> String {
     let mut sql = template.to_string();
     for index in 0..value_count {
-        let placeholder = match backend {
-            DbBackend::Sqlite => format!("?{}", index + 1),
-            _ => format!("${}", index + 1),
-        };
+        let placeholder = backend.placeholder(index + 1);
         sql = sql.replace(&format!("{{v{}}}", index + 1), &placeholder);
     }
     sql

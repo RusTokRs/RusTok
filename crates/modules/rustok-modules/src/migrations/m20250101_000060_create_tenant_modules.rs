@@ -162,3 +162,13 @@ enum ModuleStaticTenantLifecycle {
     CreatedAt,
     UpdatedAt,
 }
+
+/// Platform-core table reference used only as a foreign-key target. The
+/// `tenants` table itself is owned by `rustok-migrations`
+/// (`m20250101_000001_create_tenants`), which precedes this migration in
+/// the globally name-sorted server migrator.
+#[derive(Iden)]
+enum Tenants {
+    Table,
+    Id,
+}
