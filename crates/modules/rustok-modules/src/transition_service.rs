@@ -5,7 +5,7 @@ use rustok_api::{
 };
 use rustok_events::DomainEvent;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, QueryResult, Statement,
     TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
@@ -13,11 +13,12 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ControlPlaneInfrastructure, ModuleTransitionCheckpoint, ModuleTransitionCoordinator,
     ModuleTransitionFinalizeCommand, RetentionHoldStore, SeaOrmSecurityEpochStore,
     TransitionCheckpointStore, TransitionCoordinatorError, TransitionStoreError,
-    data::{now_expression, placeholder, uuid_from_row},
+    data::{uuid_from_row},
 };
 
 const OPERATION_KIND: &str = "finalize";
@@ -418,25 +419,26 @@ async fn reserve_operation(
     command: &ModuleTransitionFinalizeCommand,
     request_digest: &str,
 ) -> Result<Option<ModuleTransitionFinalizeReceipt>, ModuleTransitionServiceError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend())
+        .map_err(database_error)?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_transition_operations \
                  (idempotency_key, operation_kind, request_digest, actor_id, tenant_id, trace_id, \
                   correlation_id, operation_id, created_at) \
                  VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}) \
                  ON CONFLICT (idempotency_key) DO NOTHING",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.now_sql(),
             ),
             vec![
                 sea_orm::Value::Uuid(Some(command.context.idempotency_key)),
@@ -466,15 +468,15 @@ async fn load_operation<C: ConnectionTrait>(
     command: &ModuleTransitionFinalizeCommand,
     request_digest: &str,
 ) -> Result<Option<ModuleTransitionFinalizeReceipt>, ModuleTransitionServiceError> {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(database_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT operation_kind, request_digest, actor_id, tenant_id, trace_id, \
                  correlation_id, operation_id, receipt_json \
                  FROM module_transition_operations WHERE idempotency_key = {}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
             vec![sea_orm::Value::Uuid(Some(command.context.idempotency_key))],
         ))
@@ -496,13 +498,13 @@ async fn load_operation<C: ConnectionTrait>(
 
 fn validate_operation_row(
     row: &QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
     command: &ModuleTransitionFinalizeCommand,
     request_digest: &str,
 ) -> Result<(), ModuleTransitionServiceError> {
     let stored_tenant = match row.try_get::<Option<Uuid>>("", "tenant_id") {
         Ok(value) => value,
-        Err(_) if backend != DbBackend::Postgres => row
+        Err(_) if backend != SupportedBackend::Postgres => row
             .try_get::<Option<String>>("", "tenant_id")
             .map_err(database_error)?
             .map(|value| Uuid::parse_str(&value).map_err(database_error))
@@ -540,20 +542,21 @@ async fn complete_operation(
     idempotency_key: Uuid,
     receipt: &ModuleTransitionFinalizeReceipt,
 ) -> Result<(), ModuleTransitionServiceError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend())
+        .map_err(database_error)?;
     let receipt_json = serde_json::to_string(receipt)
         .map_err(|error| ModuleTransitionServiceError::Store(error.to_string()))?;
     let result = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_transition_operations SET resulting_revision = {}, \
                  receipt_json = {}, completed_at = {} \
                  WHERE idempotency_key = {} AND completed_at IS NULL",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                now_expression(backend),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.now_sql(),
+                backend.placeholder(3),
             ),
             vec![
                 i64::try_from(receipt.checkpoint.revision)

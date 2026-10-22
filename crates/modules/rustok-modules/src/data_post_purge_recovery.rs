@@ -6,22 +6,22 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rustok_storage::StorageRuntime;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement,
     TransactionTrait, Value as SqlValue,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ArtifactDataPurgeAuthorizationContext, ArtifactDataRestoreRequest, ArtifactDataScope,
     ArtifactDataSnapshotAuthorizer, ControlPlaneInfrastructure, ModuleCommandContext,
     SeaOrmArtifactDataSnapshotService,
     data::{
         configure_tenant_scope, load_retired_artifact_data_authorization_on,
-        lock_artifact_data_installation_on, namespace_lock_clause, placeholder, revision_value,
-        uuid_from_row, uuid_value,
-    },
+        lock_artifact_data_installation_on, namespace_lock_clause, revision_value,
+        uuid_from_row, },
     data_snapshot::{
         datetime_from_row, load_manifest, lock_snapshot, positive_u64, snapshot_from_row,
     },
@@ -278,7 +278,8 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
         {
             return Err(PostPurgeRecoveryError::Integrity);
         }
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(storage_error)?;
         let updated = transaction
             .execute_raw(statement(
                 backend,
@@ -292,8 +293,8 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
                     number(restored.restored_objects)?,
                     fingerprint.into(),
                     timestamp(self.infrastructure.now(), backend),
-                    uuid_value(tenant_id, backend),
-                    uuid_value(operation.recovery_id, backend),
+                    backend.uuid_value(tenant_id),
+                    backend.uuid_value(operation.recovery_id),
                 ],
             ))
             .await
@@ -315,7 +316,7 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
         request_digest: &str,
         original: ArtifactDataPurgeAuthorizationContext,
     ) -> Result<RecoveryOperation, PostPurgeRecoveryError> {
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(storage_error)?;
         let tenant_id = original.scope.tenant_id;
         let recovery_id = self.infrastructure.new_id();
         let namespace_instance_id = self.infrastructure.new_id();
@@ -366,7 +367,7 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
              (tenant_id,data_owner_id,namespace_instance_id,module_slug,data_contract_revision,data_contract_digest,
               state,namespace_revision,verified_manifest_digest,purged_at,created_at,updated_at)
              VALUES ({1},{2},{3},{4},{5},{6},'staging',1,NULL,NULL,{7},{7})",
-            vec![uuid_value(tenant_id,backend),uuid_value(target.data_owner_id,backend),uuid_value(namespace_instance_id,backend),
+            vec![backend.uuid_value(tenant_id),backend.uuid_value(target.data_owner_id),backend.uuid_value(namespace_instance_id),
                  target.module_slug.clone().into(),number(target.data_contract_revision)?,target.data_contract_digest.clone().into(),
                  timestamp(self.infrastructure.now(),backend)])).await.map_err(storage_error)?;
         db.execute_raw(statement(backend,
@@ -378,21 +379,21 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
               cutover_request_digest,cutover_request_json,active_reference_revision,active_namespace_revision)
              VALUES ({1},{2},{3},{4},{5},{6},{7},{8},{9},{10},1,'staging',0,0,{11},NULL,{12},{13},{14},{15},{16},
                      NULL,NULL,NULL,NULL,NULL,NULL)",
-            vec![uuid_value(recovery_id,backend),uuid_value(tenant_id,backend),uuid_value(request.installation_id,backend),
-                 uuid_value(target.data_owner_id,backend),uuid_value(operation.original.scope.namespace_instance_id,backend),
-                 uuid_value(namespace_instance_id,backend),uuid_value(request.source_snapshot_id,backend),
+            vec![backend.uuid_value(recovery_id),backend.uuid_value(tenant_id),backend.uuid_value(request.installation_id),
+                 backend.uuid_value(target.data_owner_id),backend.uuid_value(operation.original.scope.namespace_instance_id),
+                 backend.uuid_value(namespace_instance_id),backend.uuid_value(request.source_snapshot_id),
                  number(operation.source_retention_revision)?,number(operation.expected_reference_revision)?,
                  number(operation.tombstone_namespace_revision)?,operation.source_manifest_digest.clone().into(),
                  request_digest.to_owned().into(),serde_json::to_string(request).map_err(storage_error)?.into(),
                  serde_json::to_string(&operation.original).map_err(storage_error)?.into(),
-                 uuid_value(request.context.idempotency_key,backend),timestamp(self.infrastructure.now(),backend)])
+                 backend.uuid_value(request.context.idempotency_key),timestamp(self.infrastructure.now(),backend)])
         ).await.map_err(storage_error)?;
         db.execute_raw(statement(backend,
             "INSERT INTO module_artifact_data_snapshot_holds
              (tenant_id,snapshot_id,holder_kind,holder_id,data_owner_id,namespace_instance_id,request_digest,created_at,released_at)
              VALUES ({1},{2},'recovery',{3},{4},{5},{6},{7},NULL)",
-            vec![uuid_value(tenant_id,backend),uuid_value(request.source_snapshot_id,backend),uuid_value(recovery_id,backend),
-                 uuid_value(target.data_owner_id,backend),uuid_value(namespace_instance_id,backend),request_digest.to_owned().into(),
+            vec![backend.uuid_value(tenant_id),backend.uuid_value(request.source_snapshot_id),backend.uuid_value(recovery_id),
+                 backend.uuid_value(target.data_owner_id),backend.uuid_value(namespace_instance_id),request_digest.to_owned().into(),
                  timestamp(self.infrastructure.now(),backend)])).await.map_err(storage_error)?;
         Ok(operation)
     }
@@ -470,7 +471,9 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
         let snapshot_row = lock_snapshot(&transaction, tenant_id, operation.source_snapshot_id)
             .await
             .map_err(storage_error)?;
-        let snapshot = snapshot_from_row(&snapshot_row, transaction.get_database_backend())
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        let snapshot = snapshot_from_row(&snapshot_row, backend)
             .map_err(storage_error)?;
         let status: String = snapshot_row.try_get("", "status").map_err(storage_error)?;
         if status != "ready"
@@ -503,12 +506,13 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
             .expected_target_namespace_revision
             .checked_add(1)
             .ok_or(PostPurgeRecoveryError::InvalidCommand)?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(storage_error)?;
         let updated = transaction.execute_raw(statement(backend,
             "UPDATE module_artifact_data_owner_references SET namespace_instance_id={1}, reference_revision={2}
              WHERE tenant_id={3} AND data_owner_id={4} AND namespace_instance_id={5} AND reference_revision={6}",
-            vec![uuid_value(target.namespace_instance_id,backend),number(reference_revision)?,uuid_value(tenant_id,backend),
-                 uuid_value(target.data_owner_id,backend),uuid_value(operation.original.scope.namespace_instance_id,backend),
+            vec![backend.uuid_value(target.namespace_instance_id),number(reference_revision)?,backend.uuid_value(tenant_id),
+                 backend.uuid_value(target.data_owner_id),backend.uuid_value(operation.original.scope.namespace_instance_id),
                  number(request.expected_reference_revision)?])).await.map_err(storage_error)?;
         if updated.rows_affected() != 1 {
             return Err(PostPurgeRecoveryError::CasCutoverConflict);
@@ -517,8 +521,8 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
             "UPDATE module_artifact_data_namespaces SET state='serving',namespace_revision={1},updated_at={2}
              WHERE tenant_id={3} AND data_owner_id={4} AND namespace_instance_id={5} AND state='verified'
               AND namespace_revision={6} AND verified_manifest_digest={7} AND purged_at IS NULL",
-            vec![number(namespace_revision)?,timestamp(self.infrastructure.now(),backend),uuid_value(tenant_id,backend),
-                 uuid_value(target.data_owner_id,backend),uuid_value(target.namespace_instance_id,backend),
+            vec![number(namespace_revision)?,timestamp(self.infrastructure.now(),backend),backend.uuid_value(tenant_id),
+                 backend.uuid_value(target.data_owner_id),backend.uuid_value(target.namespace_instance_id),
                  number(request.expected_target_namespace_revision)?,fingerprint.into()])).await.map_err(storage_error)?;
         if updated.rows_affected() != 1 {
             return Err(PostPurgeRecoveryError::CasCutoverConflict);
@@ -528,7 +532,7 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
              cutover_request_digest={2},cutover_request_json={3},active_reference_revision={4},active_namespace_revision={5}
              WHERE tenant_id={6} AND recovery_id={7} AND status='verified'",
             vec![timestamp(self.infrastructure.now(),backend),request_digest.into(),serde_json::to_string(&request).map_err(storage_error)?.into(),
-                 number(reference_revision)?,number(namespace_revision)?,uuid_value(tenant_id,backend),uuid_value(request.recovery_id,backend)])
+                 number(reference_revision)?,number(namespace_revision)?,backend.uuid_value(tenant_id),backend.uuid_value(request.recovery_id)])
         ).await.map_err(storage_error)?;
         if updated.rows_affected() != 1 {
             return Err(PostPurgeRecoveryError::CasCutoverConflict);
@@ -541,9 +545,9 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
               AND request_digest={5} AND released_at IS NULL",
                 vec![
                     timestamp(self.infrastructure.now(), backend),
-                    uuid_value(tenant_id, backend),
-                    uuid_value(operation.source_snapshot_id, backend),
-                    uuid_value(operation.recovery_id, backend),
+                    backend.uuid_value(tenant_id),
+                    backend.uuid_value(operation.source_snapshot_id),
+                    backend.uuid_value(operation.recovery_id),
                     operation.request_digest.into(),
                 ],
             ))
@@ -639,7 +643,7 @@ async fn ensure_source_reference_on(
     db: &DatabaseTransaction,
     operation: &RecoveryOperation,
 ) -> Result<(), PostPurgeRecoveryError> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(storage_error)?;
     let scope = &operation.original.scope;
     let row=db.query_one_raw(statement(backend,&format!(
         "SELECT namespace.namespace_revision FROM module_artifact_data_owner_references reference
@@ -652,9 +656,9 @@ async fn ensure_source_reference_on(
             AND receipt.data_owner_id=reference.data_owner_id AND receipt.namespace_instance_id=reference.namespace_instance_id
             AND receipt.namespace_revision=namespace.namespace_revision){}",
         namespace_lock_clause(backend)),
-        vec![uuid_value(scope.tenant_id,backend),uuid_value(scope.data_owner_id,backend),uuid_value(scope.namespace_instance_id,backend),
+        vec![backend.uuid_value(scope.tenant_id),backend.uuid_value(scope.data_owner_id),backend.uuid_value(scope.namespace_instance_id),
              number(operation.expected_reference_revision)?,number(operation.tombstone_namespace_revision)?,
-             scope.data_contract_digest.clone().into(),uuid_value(operation.original.installation_id,backend)]))
+             scope.data_contract_digest.clone().into(),backend.uuid_value(operation.original.installation_id)]))
         .await.map_err(storage_error)?;
     if row.is_none() {
         return Err(PostPurgeRecoveryError::CasCutoverConflict);
@@ -666,7 +670,7 @@ async fn lock_verified_target_on(
     db: &DatabaseTransaction,
     scope: &ArtifactDataScope,
 ) -> Result<sea_orm::QueryResult, PostPurgeRecoveryError> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(storage_error)?;
     db.query_one_raw(statement(backend,&format!(
         "SELECT namespace_revision,verified_manifest_digest FROM module_artifact_data_namespaces namespace
          WHERE tenant_id={{1}} AND data_owner_id={{2}} AND namespace_instance_id={{3}}
@@ -675,7 +679,7 @@ async fn lock_verified_target_on(
            WHERE reference.tenant_id=namespace.tenant_id AND reference.data_owner_id=namespace.data_owner_id
             AND reference.namespace_instance_id=namespace.namespace_instance_id){}",
         namespace_lock_clause(backend)),
-        vec![uuid_value(scope.tenant_id,backend),uuid_value(scope.data_owner_id,backend),uuid_value(scope.namespace_instance_id,backend),
+        vec![backend.uuid_value(scope.tenant_id),backend.uuid_value(scope.data_owner_id),backend.uuid_value(scope.namespace_instance_id),
              scope.data_contract_digest.clone().into()])).await.map_err(storage_error)?
         .ok_or(PostPurgeRecoveryError::Integrity)
 }
@@ -684,14 +688,14 @@ async fn ensure_recovery_hold_on(
     db: &DatabaseTransaction,
     operation: &RecoveryOperation,
 ) -> Result<(), PostPurgeRecoveryError> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(storage_error)?;
     let scope = &operation.original.scope;
     let row=db.query_one_raw(statement(backend,
         "SELECT 1 FROM module_artifact_data_snapshot_holds WHERE tenant_id={1} AND snapshot_id={2}
          AND holder_kind='recovery' AND holder_id={3} AND data_owner_id={4} AND namespace_instance_id={5}
          AND request_digest={6} AND released_at IS NULL",
-        vec![uuid_value(scope.tenant_id,backend),uuid_value(operation.source_snapshot_id,backend),uuid_value(operation.recovery_id,backend),
-             uuid_value(scope.data_owner_id,backend),uuid_value(operation.namespace_instance_id,backend),operation.request_digest.clone().into()]))
+        vec![backend.uuid_value(scope.tenant_id),backend.uuid_value(operation.source_snapshot_id),backend.uuid_value(operation.recovery_id),
+             backend.uuid_value(scope.data_owner_id),backend.uuid_value(operation.namespace_instance_id),operation.request_digest.clone().into()]))
         .await.map_err(storage_error)?;
     if row.is_none() {
         return Err(PostPurgeRecoveryError::CasCutoverConflict);
@@ -705,16 +709,16 @@ async fn load_prepare_operation(
     tenant_id: Uuid,
     request_digest: &str,
 ) -> Result<Option<RecoveryOperation>, PostPurgeRecoveryError> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(storage_error)?;
     let row = db
         .query_one_raw(statement(
             backend,
             "SELECT * FROM module_artifact_data_namespace_recovery_operations
          WHERE tenant_id={1} AND installation_id={2} AND idempotency_key={3}",
             vec![
-                uuid_value(tenant_id, backend),
-                uuid_value(request.installation_id, backend),
-                uuid_value(request.context.idempotency_key, backend),
+                backend.uuid_value(tenant_id),
+                backend.uuid_value(request.installation_id),
+                backend.uuid_value(request.context.idempotency_key),
             ],
         ))
         .await
@@ -734,17 +738,17 @@ async fn load_operation(
     tenant_id: Uuid,
     recovery_id: Uuid,
 ) -> Result<RecoveryOperation, PostPurgeRecoveryError> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(storage_error)?;
     let row=db.query_one_raw(statement(backend,
         "SELECT * FROM module_artifact_data_namespace_recovery_operations WHERE tenant_id={1} AND recovery_id={2}",
-        vec![uuid_value(tenant_id,backend),uuid_value(recovery_id,backend)])).await.map_err(storage_error)?
+        vec![backend.uuid_value(tenant_id),backend.uuid_value(recovery_id)])).await.map_err(storage_error)?
         .ok_or(PostPurgeRecoveryError::CasCutoverConflict)?;
     operation_from_row(&row, backend)
 }
 
 fn operation_from_row(
     row: &sea_orm::QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<RecoveryOperation, PostPurgeRecoveryError> {
     let original: ArtifactDataPurgeAuthorizationContext = serde_json::from_str(
         &row.try_get::<String>("", "authorization_json")
@@ -879,18 +883,18 @@ fn validate_context(
     }
     Ok(tenant)
 }
-fn statement(backend: DbBackend, sql: &str, values: Vec<SqlValue>) -> Statement {
+fn statement(backend: SupportedBackend, sql: &str, values: Vec<SqlValue>) -> Statement {
     let mut sql = sql.to_owned();
     for index in 1..=values.len() {
-        sql = sql.replace(&format!("{{{index}}}"), &placeholder(backend, index));
+        sql = sql.replace(&format!("{{{index}}}"), &backend.placeholder(index));
     }
-    Statement::from_sql_and_values(backend, sql, values)
+    Statement::from_sql_and_values(backend.db_backend(), sql, values)
 }
 fn number(value: u64) -> Result<SqlValue, PostPurgeRecoveryError> {
     revision_value(value).map_err(storage_error)
 }
-fn timestamp(value: DateTime<Utc>, backend: DbBackend) -> SqlValue {
-    if backend == DbBackend::Postgres {
+fn timestamp(value: DateTime<Utc>, backend: SupportedBackend) -> SqlValue {
+    if backend == SupportedBackend::Postgres {
         SqlValue::ChronoDateTimeUtc(Some(value))
     } else {
         value.to_rfc3339().into()

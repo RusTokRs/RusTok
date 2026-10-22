@@ -1,7 +1,7 @@
 //! SQL query builders, placeholders, tenant scoping, and namespace lock helpers.
 
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, QueryResult, Statement,
     TransactionTrait, Value as SqlValue,
 };
 use uuid::Uuid;
@@ -15,17 +15,17 @@ pub(crate) async fn namespace_record_count<C: ConnectionTrait>(
     connection: &C,
     table: &'static str,
     scope: &ArtifactDataScope,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<u64, ArtifactDataError> {
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT COUNT(*) AS record_count FROM {table}
                  WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
             ),
             namespace_values(scope, backend)?,
         ))
@@ -42,10 +42,14 @@ pub(crate) async fn configure_tenant_scope<C: ConnectionTrait>(
     connection: &C,
     tenant_id: Uuid,
 ) -> Result<(), ArtifactDataError> {
-    if connection.get_database_backend() == DbBackend::Postgres {
+    // The RLS tenant GUC exists only on PostgreSQL; validate the backend so
+    // an unsupported one fails loudly instead of silently skipping scoping.
+    if SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?
+        == SupportedBackend::Postgres
+    {
         connection
             .execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
+                SupportedBackend::Postgres.db_backend(),
                 "SELECT set_config('rustok.tenant_id', $1, true)",
                 vec![tenant_id.to_string().into()],
             ))
@@ -73,18 +77,18 @@ pub(crate) async fn resolve_serving_artifact_data_scope(
     )
     .await
     .map_err(|error| ArtifactDataError::Storage(error.to_string()))?;
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
     let values = vec![
-        uuid_value(scope.tenant_id, backend),
-        uuid_value(scope.data_owner_id, backend),
-        uuid_value(scope.namespace_instance_id, backend),
+        backend.uuid_value(scope.tenant_id),
+        backend.uuid_value(scope.data_owner_id),
+        backend.uuid_value(scope.namespace_instance_id),
         scope.module_slug.clone().into(),
         revision_value(scope.data_contract_revision)?,
         scope.data_contract_digest.clone().into(),
-        uuid_value(installation.installation_id, backend),
+        backend.uuid_value(installation.installation_id),
         revision_value(scope.policy_revision)?,
     ];
-    transaction.execute_raw(Statement::from_sql_and_values(backend, format!(
+    transaction.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
         "INSERT INTO module_artifact_data_namespaces
          (tenant_id, data_owner_id, namespace_instance_id, module_slug, data_contract_revision,
           data_contract_digest, state, namespace_revision, created_at, updated_at)
@@ -103,20 +107,20 @@ pub(crate) async fn resolve_serving_artifact_data_scope(
            AND NOT EXISTS (SELECT 1 FROM module_artifact_data_owner_references reference
                            WHERE reference.tenant_id = {tenant} AND reference.data_owner_id = {owner})
          ON CONFLICT DO NOTHING",
-        tenant=placeholder(backend,1), owner=placeholder(backend,2), instance=placeholder(backend,3),
-        slug=placeholder(backend,4), revision=placeholder(backend,5), digest=placeholder(backend,6),
-        installation=placeholder(backend,7), policy=placeholder(backend,8), now=now_expression(backend),
+        tenant=backend.placeholder(1), owner=backend.placeholder(2), instance=backend.placeholder(3),
+        slug=backend.placeholder(4), revision=backend.placeholder(5), digest=backend.placeholder(6),
+        installation=backend.placeholder(7), policy=backend.placeholder(8), now=backend.now_sql(),
     ), values)).await.map_err(storage_error)?;
-    transaction.execute_raw(Statement::from_sql_and_values(backend, format!(
+    transaction.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
         "INSERT INTO module_artifact_data_owner_references
          (tenant_id, data_owner_id, namespace_instance_id, reference_revision)
          SELECT tenant_id, data_owner_id, namespace_instance_id, 1 FROM module_artifact_data_namespaces
          WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
            AND state = 'serving' AND purged_at IS NULL
          ON CONFLICT DO NOTHING",
-        placeholder(backend,1), placeholder(backend,2), placeholder(backend,3),
+        backend.placeholder(1), backend.placeholder(2), backend.placeholder(3),
     ), namespace_values(&scope,backend)?)).await.map_err(storage_error)?;
-    let row = transaction.query_one_raw(Statement::from_sql_and_values(backend, format!(
+    let row = transaction.query_one_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
         "SELECT namespace.namespace_instance_id, namespace.data_contract_digest
          FROM module_artifact_data_owner_references reference
          JOIN module_artifact_data_namespaces namespace
@@ -128,10 +132,10 @@ pub(crate) async fn resolve_serving_artifact_data_scope(
          WHERE reference.tenant_id = {} AND reference.data_owner_id = {}
            AND namespace.state = 'serving' AND namespace.purged_at IS NULL AND admission.status = 'active'
            AND installation.capability_grant_revision = {}{}",
-        placeholder(backend,3), placeholder(backend,1), placeholder(backend,2), placeholder(backend,4),
+        backend.placeholder(3), backend.placeholder(1), backend.placeholder(2), backend.placeholder(4),
         namespace_lock_clause(backend),
-    ), vec![uuid_value(scope.tenant_id,backend), uuid_value(scope.data_owner_id,backend),
-            uuid_value(installation.installation_id,backend), revision_value(scope.policy_revision)?]))
+    ), vec![backend.uuid_value(scope.tenant_id), backend.uuid_value(scope.data_owner_id),
+            backend.uuid_value(installation.installation_id), revision_value(scope.policy_revision)?]))
         .await.map_err(storage_error)?.ok_or(ArtifactDataError::PolicyDenied)?;
     let digest: String = row
         .try_get("", "data_contract_digest")
@@ -147,11 +151,11 @@ pub(crate) async fn resolve_serving_artifact_data_scope(
 pub(crate) async fn ensure_active_namespace<C: ConnectionTrait>(
     connection: &C,
     scope: &ArtifactDataScope,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<(), ArtifactDataError> {
     let active = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT namespace_revision FROM module_artifact_data_namespaces
                  WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
@@ -159,12 +163,12 @@ pub(crate) async fn ensure_active_namespace<C: ConnectionTrait>(
                  AND EXISTS (SELECT 1 FROM module_artifact_data_owner_references reference
                              WHERE reference.tenant_id = {} AND reference.data_owner_id = {}
                                AND reference.namespace_instance_id = {}){}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
                 namespace_lock_clause(backend),
             ),
             namespace_values(scope, backend)?,
@@ -184,18 +188,18 @@ pub(crate) async fn require_active_namespace<C: ConnectionTrait>(
     connection: &C,
     scope: &ArtifactDataScope,
     expected_namespace_revision: u64,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<u64, ArtifactDataError> {
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT namespace_revision FROM module_artifact_data_namespaces
                  WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                  AND purged_at IS NULL{}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
                 namespace_lock_clause(backend),
             ),
             namespace_values(scope, backend)?,
@@ -222,20 +226,20 @@ pub(crate) async fn require_active_namespace<C: ConnectionTrait>(
 pub(crate) async fn validate_artifact_data_index_contract<C: ConnectionTrait>(
     connection: &C,
     scope: &ArtifactDataScope,
-    backend: DbBackend,
+    backend: SupportedBackend,
     contract_digest: &str,
     bind_if_empty: bool,
 ) -> Result<(), ArtifactDataError> {
     let values = namespace_values(scope, backend)?;
     let existing = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT contract_digest FROM module_artifact_data_index_contracts
                  WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
             ),
             values.clone(),
         ))
@@ -249,14 +253,14 @@ pub(crate) async fn validate_artifact_data_index_contract<C: ConnectionTrait>(
     }
     let has_records = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT 1 FROM module_artifact_data
                  WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                  LIMIT 1",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
             ),
             values.clone(),
         ))
@@ -270,16 +274,16 @@ pub(crate) async fn validate_artifact_data_index_contract<C: ConnectionTrait>(
     }
     connection
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_artifact_data_index_contracts
                  (tenant_id, data_owner_id, namespace_instance_id, contract_digest, bound_at)
                  VALUES ({}, {}, {}, {}, {}) ON CONFLICT DO NOTHING",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.now_sql(),
             ),
             vec![
                 values[0].clone(),
@@ -292,13 +296,13 @@ pub(crate) async fn validate_artifact_data_index_contract<C: ConnectionTrait>(
         .map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT contract_digest FROM module_artifact_data_index_contracts
                  WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
             ),
             values,
         ))
@@ -348,25 +352,25 @@ pub(crate) fn validate_export_request(
 
 pub(crate) fn scope_values(
     scope: &ArtifactDataScope,
-    backend: DbBackend,
+    backend: SupportedBackend,
     key: &str,
 ) -> Result<Vec<SqlValue>, ArtifactDataError> {
     Ok(vec![
-        uuid_value(scope.tenant_id, backend),
-        uuid_value(scope.data_owner_id, backend),
-        uuid_value(scope.namespace_instance_id, backend),
+        backend.uuid_value(scope.tenant_id),
+        backend.uuid_value(scope.data_owner_id),
+        backend.uuid_value(scope.namespace_instance_id),
         key.to_owned().into(),
     ])
 }
 
 pub(crate) fn namespace_values(
     scope: &ArtifactDataScope,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Vec<SqlValue>, ArtifactDataError> {
     Ok(vec![
-        uuid_value(scope.tenant_id, backend),
-        uuid_value(scope.data_owner_id, backend),
-        uuid_value(scope.namespace_instance_id, backend),
+        backend.uuid_value(scope.tenant_id),
+        backend.uuid_value(scope.data_owner_id),
+        backend.uuid_value(scope.namespace_instance_id),
     ])
 }
 
@@ -386,21 +390,14 @@ pub(crate) fn optional_revision_value(value: Option<u64>) -> Result<SqlValue, Ar
         })
 }
 
-pub(crate) fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
-    match backend {
-        DbBackend::Postgres => SqlValue::Uuid(Some(value)),
-        _ => value.to_string().into(),
-    }
-}
-
 pub(crate) fn uuid_from_row(
     row: &sea_orm::QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Uuid, ArtifactDataError> {
     match backend {
-        DbBackend::Postgres => row.try_get("", column).map_err(storage_error),
-        _ => match row.try_get::<Uuid>("", column) {
+        SupportedBackend::Postgres => row.try_get("", column).map_err(storage_error),
+        SupportedBackend::Sqlite => match row.try_get::<Uuid>("", column) {
             Ok(value) => Ok(value),
             Err(_) => row
                 .try_get::<String>("", column)
@@ -411,20 +408,6 @@ pub(crate) fn uuid_from_row(
     }
 }
 
-pub(crate) fn placeholder(backend: DbBackend, index: usize) -> String {
-    match backend {
-        DbBackend::Postgres => format!("${index}"),
-        _ => format!("?{index}"),
-    }
-}
-
-pub(crate) fn now_expression(backend: DbBackend) -> &'static str {
-    match backend {
-        DbBackend::Postgres => "NOW()",
-        _ => "datetime('now')",
-    }
-}
-
 /// SQL expression of the delivery queues' retry delay for a row's current
 /// `attempt`: exponential backoff
 /// `min(retry_max_seconds, retry_base_seconds * 2^min(attempt - 1, 16))`
@@ -432,28 +415,28 @@ pub(crate) fn now_expression(backend: DbBackend) -> &'static str {
 /// with ordinary retryable failures: resetting `available_at` to now made
 /// a crash-looping delivery hot-retry with zero delay until `max_attempts`.
 pub(crate) fn retry_available_at_expression(
-    backend: DbBackend,
+    backend: SupportedBackend,
     base_parameter: usize,
     max_parameter: usize,
 ) -> String {
     match backend {
-        DbBackend::Postgres => format!(
+        SupportedBackend::Postgres => format!(
             "NOW() + (LEAST({}, {} * (1 << LEAST(GREATEST(attempt - 1, 0), 16))) * INTERVAL '1 second')",
-            placeholder(backend, max_parameter),
-            placeholder(backend, base_parameter),
+            backend.placeholder(max_parameter),
+            backend.placeholder(base_parameter),
         ),
-        _ => format!(
+        SupportedBackend::Sqlite => format!(
             "datetime('now', '+' || MIN({}, {} * (1 << MIN(MAX(attempt - 1, 0), 16))) || ' seconds')",
-            placeholder(backend, max_parameter),
-            placeholder(backend, base_parameter),
+            backend.placeholder(max_parameter),
+            backend.placeholder(base_parameter),
         ),
     }
 }
 
-pub(crate) fn namespace_lock_clause(backend: DbBackend) -> &'static str {
+pub(crate) fn namespace_lock_clause(backend: SupportedBackend) -> &'static str {
     match backend {
-        DbBackend::Postgres => " FOR UPDATE",
-        _ => "",
+        SupportedBackend::Postgres => " FOR UPDATE",
+        SupportedBackend::Sqlite => "",
     }
 }
 

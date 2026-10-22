@@ -16,13 +16,14 @@
 //! - the installation scope is either the tenant itself or platform;
 //! - the stored descriptor still parses and validates.
 
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ModuleArtifactDescriptor,
-    data::{placeholder, uuid_value},
+    data::{uuid_value},
 };
 
 #[derive(Debug, Error)]
@@ -42,19 +43,19 @@ fn storage_error(error: impl std::fmt::Display) -> LoadAdmittedDescriptorError {
 
 pub(crate) async fn load_admitted_descriptor<C: ConnectionTrait>(
     connection: &C,
-    backend: DbBackend,
+    backend: SupportedBackend,
     tenant_id: Uuid,
     installation_id: Uuid,
 ) -> Result<ModuleArtifactDescriptor, LoadAdmittedDescriptorError> {
     let enabled = match backend {
-        DbBackend::Postgres => "COALESCE(lifecycle.enabled, TRUE) = TRUE",
-        _ => "COALESCE(lifecycle.enabled, 1) = 1",
+        SupportedBackend::Postgres => "COALESCE(lifecycle.enabled, TRUE) = TRUE",
+        SupportedBackend::Sqlite => "COALESCE(lifecycle.enabled, 1) = 1",
     };
     let true_val = match backend {
-        DbBackend::Postgres => "TRUE",
-        _ => "1",
+        SupportedBackend::Postgres => "TRUE",
+        SupportedBackend::Sqlite => "1",
     };
-    let row = connection.query_one_raw(Statement::from_sql_and_values(backend, format!(
+    let row = connection.query_one_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
         "SELECT CAST(installation.descriptor AS TEXT) AS descriptor \
          FROM module_artifact_installations installation \
          JOIN module_artifact_admissions admission ON admission.installation_id = installation.installation_id \
@@ -66,8 +67,8 @@ pub(crate) async fn load_admitted_descriptor<C: ConnectionTrait>(
            AND {enabled} \
            AND ((installation.scope_kind = 'tenant' AND installation.tenant_id = {}) \
                 OR (installation.scope_kind = 'platform' AND installation.tenant_id IS NULL))",
-        placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3)),
-        vec![uuid_value(tenant_id, backend), uuid_value(installation_id, backend), uuid_value(tenant_id, backend)])).await.map_err(storage_error)?
+        backend.placeholder(1), backend.placeholder(2), backend.placeholder(3)),
+        vec![backend.uuid_value(tenant_id), backend.uuid_value(installation_id), backend.uuid_value(tenant_id)])).await.map_err(storage_error)?
         .ok_or(LoadAdmittedDescriptorError::Unavailable)?;
     let descriptor: ModuleArtifactDescriptor = serde_json::from_str(
         &row.try_get::<String>("", "descriptor")

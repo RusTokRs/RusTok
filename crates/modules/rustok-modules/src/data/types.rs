@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use rustok_sandbox::SandboxError;
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -47,31 +47,31 @@ pub(crate) async fn ensure_namespace_not_migration_held_on<C: ConnectionTrait>(
     namespace_instance_id: Uuid,
     authorized_record_copy_target: Option<Uuid>,
 ) -> Result<(), ArtifactDataError> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(storage_error)?;
     let mut values = vec![
-        uuid_value(tenant_id, backend),
-        uuid_value(data_owner_id, backend),
-        uuid_value(namespace_instance_id, backend),
+        backend.uuid_value(tenant_id),
+        backend.uuid_value(data_owner_id),
+        backend.uuid_value(namespace_instance_id),
     ];
     let excluded = authorized_record_copy_target.map(|target| {
-        values.push(uuid_value(target, backend));
-        placeholder(backend, 4)
+        values.push(backend.uuid_value(target));
+        backend.placeholder(4)
     });
     let record =
         crate::migrations::m20260903_000047_artifact_data_copy_operations::record_copy_hold(
-            crate::backend::SupportedBackend::new(backend).map_err(storage_error)?,
+            backend,
             "namespace",
             false,
             excluded.as_deref(),
         );
-    let held=db.query_one_raw(Statement::from_sql_and_values(backend,format!(
+    let held=db.query_one_raw(Statement::from_sql_and_values(backend.db_backend(),format!(
         "SELECT 1 FROM module_artifact_data_namespaces namespace
          WHERE namespace.tenant_id={} AND namespace.data_owner_id={} AND namespace.namespace_instance_id={}
           AND(EXISTS(SELECT 1 FROM module_artifact_data_object_migration_operations operation
               WHERE operation.tenant_id=namespace.tenant_id AND operation.data_owner_id=namespace.data_owner_id
                AND operation.status IN ('preparing','committing')
                AND(operation.source_namespace_instance_id=namespace.namespace_instance_id OR operation.target_namespace_instance_id=namespace.namespace_instance_id))
-           OR {record})",placeholder(backend,1),placeholder(backend,2),placeholder(backend,3)),values))
+           OR {record})",backend.placeholder(1),backend.placeholder(2),backend.placeholder(3)),values))
         .await.map_err(storage_error)?;
     if held.is_some() {
         return Err(ArtifactDataError::NamespaceHeld);
@@ -88,30 +88,30 @@ pub(crate) async fn lock_artifact_data_namespace_on<C: ConnectionTrait>(
     data_owner_id: Uuid,
     namespace_instance_id: Uuid,
 ) -> Result<Option<(ArtifactDataNamespace, String)>, ArtifactDataError> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(storage_error)?;
     let values = vec![
-        uuid_value(tenant_id, backend),
-        uuid_value(data_owner_id, backend),
-        uuid_value(namespace_instance_id, backend),
+        backend.uuid_value(tenant_id),
+        backend.uuid_value(data_owner_id),
+        backend.uuid_value(namespace_instance_id),
     ];
     db.execute_raw(Statement::from_sql_and_values(
-        backend,
+        backend.db_backend(),
         format!(
             "UPDATE module_artifact_data_namespaces SET namespace_revision=namespace_revision
          WHERE tenant_id={} AND data_owner_id={} AND namespace_instance_id={}",
-            placeholder(backend, 1),
-            placeholder(backend, 2),
-            placeholder(backend, 3)
+            backend.placeholder(1),
+            backend.placeholder(2),
+            backend.placeholder(3)
         ),
         values.clone(),
     ))
     .await
     .map_err(storage_error)?;
-    let row = db.query_one_raw(Statement::from_sql_and_values(backend, format!(
+    let row = db.query_one_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
         "SELECT namespace.*, CASE WHEN purged_at IS NULL THEN state ELSE 'purged' END AS migration_state
          FROM module_artifact_data_namespaces namespace
          WHERE tenant_id={} AND data_owner_id={} AND namespace_instance_id={}{}",
-        placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3),
+        backend.placeholder(1), backend.placeholder(2), backend.placeholder(3),
         namespace_lock_clause(backend)), values)).await.map_err(storage_error)?;
     let Some(row) = row else {
         return Ok(None);

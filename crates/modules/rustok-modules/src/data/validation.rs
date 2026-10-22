@@ -1,7 +1,7 @@
 //! Artifact data key, value, and prefix validations.
 
 use async_trait::async_trait;
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -209,14 +209,15 @@ impl SeaOrmArtifactDataSchemaValidator {
         }
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(storage_error)?;
         let placeholders = match backend {
-            DbBackend::Postgres => ("$1", "$2", "$3", "$4", "$5"),
-            _ => ("?1", "?2", "?3", "?4", "?5"),
+            SupportedBackend::Postgres => ("$1", "$2", "$3", "$4", "$5"),
+            SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4", "?5"),
         };
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT installation.descriptor \
                      FROM module_artifact_installations installation \
@@ -233,10 +234,10 @@ impl SeaOrmArtifactDataSchemaValidator {
                     placeholders.0, placeholders.1, placeholders.2,
                 ),
                 vec![
-                    uuid_value(self.installation_id, backend),
-                    uuid_value(scope.data_owner_id, backend),
-                    uuid_value(scope.tenant_id, backend),
-                    uuid_value(scope.namespace_instance_id, backend),
+                    backend.uuid_value(self.installation_id),
+                    backend.uuid_value(scope.data_owner_id),
+                    backend.uuid_value(scope.tenant_id),
+                    backend.uuid_value(scope.namespace_instance_id),
                     scope.data_contract_digest.clone().into(),
                 ],
             ))

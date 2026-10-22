@@ -1,6 +1,6 @@
 //! Shared test fixtures and builder helpers for governance test suites.
 
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Database, DatabaseConnection, Statement};
 use uuid::Uuid;
 
 use super::*;

@@ -190,7 +190,7 @@ impl SeaOrmSecurityEpochStore {
             .ok_or(SecurityEpochStoreError::InvalidStoredEpoch(epoch))?;
         let last_reason: String = row.try_get("", "last_reason")?;
         let advanced_at = match db.get_database_backend() {
-            sea_orm::DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 let value: chrono::DateTime<chrono::FixedOffset> = row.try_get("", "updated_at")?;
                 value.with_timezone(&Utc)
             }
@@ -246,16 +246,17 @@ impl SeaOrmSecurityEpochStore {
     {
         use sea_orm::Statement;
 
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(|e| SecurityEpochStoreError::Persistence(e.to_string()))?;
         let updated_at: sea_orm::Value = match backend {
-            sea_orm::DbBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(now)),
-            _ => now.to_rfc3339().into(),
+            SupportedBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(now)),
+            SupportedBackend::Sqlite => now.to_rfc3339().into(),
         };
-        let p1 = crate::data::placeholder(backend, 1);
-        let p2 = crate::data::placeholder(backend, 2);
+        let p1 = backend.placeholder(1);
+        let p2 = backend.placeholder(2);
         let result = db
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 &format!(
                     "UPDATE module_security_epoch \
                      SET epoch = epoch + 1, last_reason = {p1}, updated_at = {p2} \

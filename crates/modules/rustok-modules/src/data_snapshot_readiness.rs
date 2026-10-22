@@ -7,13 +7,14 @@
 use std::time::Duration as StdDuration;
 
 use chrono::{DateTime, Utc};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::data::{placeholder, uuid_value};
+use crate::backend::SupportedBackend;
+use crate::data::{uuid_value};
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SnapshotReadinessError {
@@ -94,11 +95,12 @@ impl ArtifactDataRecoveryReadinessService {
         namespace_instance_id: Uuid,
         max_age: StdDuration,
     ) -> Result<ArtifactDataSnapshotReadiness, SnapshotReadinessError> {
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| SnapshotReadinessError::Storage(e.to_string()))?;
         let row_opt = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT snapshot_id, manifest_digest, structured_record_count, object_count, \
                             total_object_bytes, created_at, retain_until \
@@ -106,14 +108,14 @@ impl ArtifactDataRecoveryReadinessService {
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} \
                        AND status = 'ready' \
                      ORDER BY created_at DESC LIMIT 1",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
                 vec![
-                    uuid_value(tenant_id, backend),
-                    uuid_value(data_owner_id, backend),
-                    uuid_value(namespace_instance_id, backend),
+                    backend.uuid_value(tenant_id),
+                    backend.uuid_value(data_owner_id),
+                    backend.uuid_value(namespace_instance_id),
                 ],
             ))
             .await
@@ -198,16 +200,17 @@ impl ArtifactDataRecoveryReadinessService {
     pub async fn evaluate_platform_recovery_evidence(
         &self,
     ) -> Result<PlatformPostgresRecoveryEvidence, PostgresRecoveryEvidenceError> {
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| PostgresRecoveryEvidenceError::Storage(e.to_string()))?;
         let now = Utc::now();
 
         match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 // Query PostgreSQL WAL/LSN or recovery state
                 let row_opt = self
                     .db
                     .query_one_raw(Statement::from_string(
-                        backend,
+                        backend.db_backend(),
                         "SELECT CASE \
                             WHEN pg_is_in_recovery() THEN pg_last_wal_replay_lsn()::text \
                             ELSE pg_current_wal_lsn()::text \
@@ -242,11 +245,11 @@ impl ArtifactDataRecoveryReadinessService {
                     attested_at: now,
                 })
             }
-            DbBackend::Sqlite => {
+            SupportedBackend::Sqlite => {
                 let row_opt = self
                     .db
                     .query_one_raw(Statement::from_string(
-                        backend,
+                        backend.db_backend(),
                         "SELECT page_count, page_size FROM pragma_page_count(), pragma_page_size()",
                     ))
                     .await
@@ -275,9 +278,6 @@ impl ArtifactDataRecoveryReadinessService {
                     attested_at: now,
                 })
             }
-            _ => Err(PostgresRecoveryEvidenceError::Storage(
-                "Unsupported database backend for recovery evidence".to_string(),
-            )),
         }
     }
 

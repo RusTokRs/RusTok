@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, QueryResult, Statement,
     TransactionTrait,
 };
 use semver::Version;
@@ -19,10 +19,11 @@ use uuid::Uuid;
 
 use rustok_events::DomainEvent;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ControlPlaneInfrastructure, ModuleCommandContext, ModuleStaticPromotionError,
     ModuleStaticPromotionStatus,
-    data::{now_expression, placeholder, uuid_from_row, uuid_value},
+    data::{uuid_from_row},
     promotion::{
         digest_json, load_platform_build_evidence, load_promotion, normalize_native_entry_type,
         valid_cargo_package, valid_cas_source_reference, valid_digest, valid_reference,
@@ -1070,15 +1071,15 @@ impl TerminalBuildFields {
 async fn lock_next_build_candidate(
     transaction: &DatabaseTransaction,
 ) -> Result<Option<BuildCandidate>, ModuleStaticDistributionError> {
-    let backend = transaction.get_database_backend();
-    let lock = if backend == DbBackend::Postgres {
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let lock = if backend == SupportedBackend::Postgres {
         " FOR UPDATE SKIP LOCKED"
     } else {
         ""
     };
     let row = transaction
         .query_one_raw(Statement::from_string(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT distribution_build_id, status, active_claim_id, attempt_count
                  FROM module_static_distribution_builds
@@ -1086,7 +1087,7 @@ async fn lock_next_build_candidate(
                     OR (status = 'running' AND lease_expires_at < {})
                  ORDER BY composition_revision, requested_at, distribution_build_id
                  LIMIT 1{lock}",
-                now_expression(backend),
+                backend.now_sql(),
             ),
         ))
         .await
@@ -1111,19 +1112,19 @@ async fn expire_active_attempt(
     transaction: &DatabaseTransaction,
     claim_id: Uuid,
 ) -> Result<(), ModuleStaticDistributionError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_attempts
                  SET status = 'lease_expired', completed_at = {}
                  WHERE claim_id = {} AND status = 'running' AND lease_expires_at < {}",
-                now_expression(backend),
-                placeholder(backend, 1),
-                now_expression(backend),
+                backend.now_sql(),
+                backend.placeholder(1),
+                backend.now_sql(),
             ),
-            vec![uuid_value(claim_id, backend)],
+            vec![backend.uuid_value(claim_id)],
         ))
         .await
         .map_err(store_error)?;
@@ -1141,44 +1142,44 @@ async fn claim_build(
     runner_id: &str,
     lease_expires_at: &DateTime<Utc>,
 ) -> Result<(), ModuleStaticDistributionError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let candidate_guard = match candidate.status {
         ModuleStaticDistributionBuildStatus::Queued => {
             "status = 'queued' AND active_claim_id IS NULL".to_string()
         }
         ModuleStaticDistributionBuildStatus::Running => format!(
             "status = 'running' AND active_claim_id = {} AND lease_expires_at < {}",
-            placeholder(backend, 6),
-            now_expression(backend),
+            backend.placeholder(6),
+            backend.now_sql(),
         ),
         _ => return Err(ModuleStaticDistributionError::ClaimConflict),
     };
     let mut values = vec![
-        uuid_value(claim_id, backend),
+        backend.uuid_value(claim_id),
         runner_id.to_owned().into(),
         lease_expires_at.to_owned().into(),
         i64::from(attempt_number).into(),
-        uuid_value(candidate.distribution_build_id, backend),
+        backend.uuid_value(candidate.distribution_build_id),
     ];
     if let Some(active_claim_id) = candidate.active_claim_id {
-        values.push(uuid_value(active_claim_id, backend));
+        values.push(backend.uuid_value(active_claim_id));
     }
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_builds
                  SET status = 'running', active_claim_id = {}, claimed_by = {},
                      lease_expires_at = {}, last_heartbeat_at = {}, attempt_count = {},
                      started_at = COALESCE(started_at, {})
                  WHERE distribution_build_id = {} AND {candidate_guard}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                now_expression(backend),
-                placeholder(backend, 4),
-                now_expression(backend),
-                placeholder(backend, 5),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.now_sql(),
+                backend.placeholder(4),
+                backend.now_sql(),
+                backend.placeholder(5),
             ),
             values,
         ))
@@ -1189,23 +1190,23 @@ async fn claim_build(
     }
     transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_static_distribution_attempts
                  (claim_id, distribution_build_id, attempt_number, runner_id, status,
                   lease_expires_at, last_heartbeat_at, started_at)
                  VALUES ({}, {}, {}, {}, 'running', {}, {}, {})",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                now_expression(backend),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.now_sql(),
+                backend.now_sql(),
             ),
             vec![
-                uuid_value(claim_id, backend),
-                uuid_value(candidate.distribution_build_id, backend),
+                backend.uuid_value(claim_id),
+                backend.uuid_value(candidate.distribution_build_id),
                 i64::from(attempt_number).into(),
                 runner_id.to_owned().into(),
                 lease_expires_at.to_owned().into(),
@@ -1221,24 +1222,24 @@ async fn heartbeat_claim(
     command: &ModuleStaticDistributionHeartbeatCommand,
     lease_expires_at: &DateTime<Utc>,
 ) -> Result<(), ModuleStaticDistributionError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated_build = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_builds
                  SET lease_expires_at = {}, last_heartbeat_at = {}
                  WHERE active_claim_id = {} AND claimed_by = {} AND status = 'running'
                    AND lease_expires_at >= {}",
-                placeholder(backend, 1),
-                now_expression(backend),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.now_sql(),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.now_sql(),
             ),
             vec![
                 lease_expires_at.to_owned().into(),
-                uuid_value(command.claim_id, backend),
+                backend.uuid_value(command.claim_id),
                 command.runner_id.clone().into(),
             ],
         ))
@@ -1251,21 +1252,21 @@ async fn heartbeat_claim(
     }
     let updated_attempt = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_attempts
                  SET lease_expires_at = {}, last_heartbeat_at = {}
                  WHERE claim_id = {} AND runner_id = {} AND status = 'running'
                    AND lease_expires_at >= {}",
-                placeholder(backend, 1),
-                now_expression(backend),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.now_sql(),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.now_sql(),
             ),
             vec![
                 lease_expires_at.to_owned().into(),
-                uuid_value(command.claim_id, backend),
+                backend.uuid_value(command.claim_id),
                 command.runner_id.clone().into(),
             ],
         ))
@@ -1282,15 +1283,15 @@ async fn classify_claim_failure(
     claim_id: Uuid,
     runner_id: &str,
 ) -> Result<ModuleStaticDistributionError, ModuleStaticDistributionError> {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT runner_id, status FROM module_static_distribution_attempts WHERE claim_id = {}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(claim_id, backend)],
+            vec![backend.uuid_value(claim_id)],
         ))
         .await
         .map_err(store_error)?
@@ -1310,21 +1311,21 @@ async fn lock_attempt(
     transaction: &DatabaseTransaction,
     claim_id: Uuid,
 ) -> Result<AttemptRecord, ModuleStaticDistributionError> {
-    let backend = transaction.get_database_backend();
-    let lock = if backend == DbBackend::Postgres {
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let lock = if backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
         ""
     };
     let row = transaction
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT distribution_build_id, runner_id, status, completion_digest
                  FROM module_static_distribution_attempts WHERE claim_id = {}{lock}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(claim_id, backend)],
+            vec![backend.uuid_value(claim_id)],
         ))
         .await
         .map_err(store_error)?
@@ -1342,21 +1343,21 @@ async fn lock_claimed_build(
     transaction: &DatabaseTransaction,
     distribution_build_id: Uuid,
 ) -> Result<ClaimedBuildRecord, ModuleStaticDistributionError> {
-    let backend = transaction.get_database_backend();
-    let lock = if backend == DbBackend::Postgres {
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let lock = if backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
         ""
     };
     let row = transaction
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT active_claim_id, claimed_by, composition_revision, composition_digest
                  FROM module_static_distribution_builds WHERE distribution_build_id = {}{lock}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(distribution_build_id, backend)],
+            vec![backend.uuid_value(distribution_build_id)],
         ))
         .await
         .map_err(store_error)?
@@ -1375,7 +1376,7 @@ async fn complete_claim(
     completion_digest: &str,
     terminal: &TerminalBuildFields,
 ) -> Result<(), ModuleStaticDistributionError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let terminal_values = || -> Vec<sea_orm::Value> {
         vec![
             terminal.status.into(),
@@ -1398,12 +1399,12 @@ async fn complete_claim(
     };
     let mut attempt_values = terminal_values();
     attempt_values.extend([
-        uuid_value(command.claim_id, backend),
+        backend.uuid_value(command.claim_id),
         command.runner_id.clone().into(),
     ]);
     let updated_attempt = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_attempts
                  SET status = {}, bundle_reference = {}, bundle_root_digest = {},
@@ -1414,26 +1415,26 @@ async fn complete_claim(
                      completion_digest = {}, completed_at = {}
                  WHERE claim_id = {} AND runner_id = {} AND status = 'running'
                    AND lease_expires_at >= {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                placeholder(backend, 9),
-                placeholder(backend, 10),
-                placeholder(backend, 11),
-                placeholder(backend, 12),
-                placeholder(backend, 13),
-                placeholder(backend, 14),
-                placeholder(backend, 15),
-                placeholder(backend, 16),
-                now_expression(backend),
-                placeholder(backend, 17),
-                placeholder(backend, 18),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.placeholder(9),
+                backend.placeholder(10),
+                backend.placeholder(11),
+                backend.placeholder(12),
+                backend.placeholder(13),
+                backend.placeholder(14),
+                backend.placeholder(15),
+                backend.placeholder(16),
+                backend.now_sql(),
+                backend.placeholder(17),
+                backend.placeholder(18),
+                backend.now_sql(),
             ),
             attempt_values,
         ))
@@ -1444,13 +1445,13 @@ async fn complete_claim(
     }
     let mut build_values = terminal_values();
     build_values.extend([
-        uuid_value(command.distribution_build_id, backend),
-        uuid_value(command.claim_id, backend),
+        backend.uuid_value(command.distribution_build_id),
+        backend.uuid_value(command.claim_id),
         command.runner_id.clone().into(),
     ]);
     let updated_build = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_builds
                  SET status = {}, bundle_reference = {}, bundle_root_digest = {},
@@ -1461,27 +1462,27 @@ async fn complete_claim(
                      completion_digest = {}, lease_expires_at = NULL, completed_at = {}
                  WHERE distribution_build_id = {} AND active_claim_id = {} AND claimed_by = {}
                    AND status = 'running' AND lease_expires_at >= {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                placeholder(backend, 9),
-                placeholder(backend, 10),
-                placeholder(backend, 11),
-                placeholder(backend, 12),
-                placeholder(backend, 13),
-                placeholder(backend, 14),
-                placeholder(backend, 15),
-                placeholder(backend, 16),
-                now_expression(backend),
-                placeholder(backend, 17),
-                placeholder(backend, 18),
-                placeholder(backend, 19),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.placeholder(9),
+                backend.placeholder(10),
+                backend.placeholder(11),
+                backend.placeholder(12),
+                backend.placeholder(13),
+                backend.placeholder(14),
+                backend.placeholder(15),
+                backend.placeholder(16),
+                backend.now_sql(),
+                backend.placeholder(17),
+                backend.placeholder(18),
+                backend.placeholder(19),
+                backend.now_sql(),
             ),
             build_values,
         ))
@@ -1522,37 +1523,37 @@ pub(crate) async fn insert_build(
         actor_id,
         items,
     } = build;
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_static_distribution_builds
                  (distribution_build_id, predecessor_build_id, composition_revision,
                   composition_digest, platform_source_reference, platform_source_digest,
                   toolchain_digest, build_target, preparation_source, status, requested_by, requested_at)
                  VALUES ({}, {}, {}, {}, {}, {}, {}, {}, 'built', 'queued', {}, {})",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                placeholder(backend, 9),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.placeholder(9),
+                backend.now_sql(),
             ),
             vec![
-                uuid_value(distribution_build_id, backend),
-                optional_uuid_value(predecessor_build_id, backend),
+                backend.uuid_value(distribution_build_id),
+                optional_backend.uuid_value(predecessor_build_id),
                 revision_value(composition_revision)?,
                 composition_digest.to_owned().into(),
                 platform_source_reference.to_owned().into(),
                 platform_source_digest.to_owned().into(),
                 toolchain_digest.to_owned().into(),
                 build_target.to_owned().into(),
-                uuid_value(actor_id, backend),
+                backend.uuid_value(actor_id),
             ],
         ))
         .await
@@ -1560,33 +1561,33 @@ pub(crate) async fn insert_build(
     for (ordinal, item) in items.iter().enumerate() {
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_static_distribution_items
                      (distribution_build_id, ordinal, promotion_id, promotion_revision,
                       release_id, module_slug, module_version, cargo_package, entry_type,
                       source_reference, source_digest, dependency_lock_digest, executor_mode)
                      VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
-                    placeholder(backend, 8),
-                    placeholder(backend, 9),
-                    placeholder(backend, 10),
-                    placeholder(backend, 11),
-                    placeholder(backend, 12),
-                    placeholder(backend, 13),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
+                    backend.placeholder(8),
+                    backend.placeholder(9),
+                    backend.placeholder(10),
+                    backend.placeholder(11),
+                    backend.placeholder(12),
+                    backend.placeholder(13),
                 ),
                 vec![
-                    uuid_value(distribution_build_id, backend),
+                    backend.uuid_value(distribution_build_id),
                     i64::try_from(ordinal)
                         .map_err(|_| ModuleStaticDistributionError::TooManySelections)?
                         .into(),
-                    uuid_value(item.promotion_id, backend),
+                    backend.uuid_value(item.promotion_id),
                     revision_value(item.promotion_revision)?,
                     item.release_id.clone().into(),
                     item.module_slug.clone().into(),
@@ -1616,19 +1617,19 @@ pub(crate) async fn load_distribution_state<C: ConnectionTrait>(
     connection: &C,
     lock_row: bool,
 ) -> Result<ModuleStaticDistributionState, ModuleStaticDistributionError> {
-    let backend = connection.get_database_backend();
-    let lock = if lock_row && backend == DbBackend::Postgres {
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
         ""
     };
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT revision, current_build_id FROM module_static_distribution_state
                  WHERE state_id = {}{lock}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
             vec![DISTRIBUTION_STATE_ID.into()],
         ))
@@ -1651,23 +1652,23 @@ pub(crate) async fn advance_distribution_state(
     next_revision: u64,
     distribution_build_id: Uuid,
 ) -> Result<(), ModuleStaticDistributionError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_state
                  SET revision = {}, current_build_id = {}, updated_at = {}
                  WHERE state_id = {} AND revision = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                now_expression(backend),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.now_sql(),
+                backend.placeholder(3),
+                backend.placeholder(4),
             ),
             vec![
                 revision_value(next_revision)?,
-                uuid_value(distribution_build_id, backend),
+                backend.uuid_value(distribution_build_id),
                 DISTRIBUTION_STATE_ID.into(),
                 revision_value_allow_zero(expected_revision)?,
             ],
@@ -1677,10 +1678,10 @@ pub(crate) async fn advance_distribution_state(
     if updated.rows_affected() != 1 {
         let current = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT revision FROM module_static_distribution_state WHERE state_id = {}",
-                    placeholder(backend, 1),
+                    backend.placeholder(1),
                 ),
                 vec![DISTRIBUTION_STATE_ID.into()],
             ))
@@ -1703,16 +1704,16 @@ async fn load_composition_digest<C: ConnectionTrait>(
     connection: &C,
     distribution_build_id: Uuid,
 ) -> Result<String, ModuleStaticDistributionError> {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT composition_digest FROM module_static_distribution_builds
                  WHERE distribution_build_id = {}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(distribution_build_id, backend)],
+            vec![backend.uuid_value(distribution_build_id)],
         ))
         .await
         .map_err(store_error)?
@@ -1727,27 +1728,27 @@ async fn reserve_operation(
     request_digest: &str,
     context: &ModuleCommandContext,
 ) -> Result<Option<ModuleStaticDistributionBuildReceipt>, ModuleStaticDistributionError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_static_distribution_operations
                  (idempotency_key, request_digest, actor_id, trace_id, correlation_id, created_at)
                  VALUES ({}, {}, {}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.now_sql(),
             ),
             vec![
-                uuid_value(idempotency_key, backend),
+                backend.uuid_value(idempotency_key),
                 request_digest.to_owned().into(),
-                uuid_value(context.actor_id, backend),
+                backend.uuid_value(context.actor_id),
                 context.trace_id.clone().into(),
-                uuid_value(context.correlation_id, backend),
+                backend.uuid_value(context.correlation_id),
             ],
         ))
         .await
@@ -1757,15 +1758,15 @@ async fn reserve_operation(
     }
     let row = transaction
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT request_digest, actor_id, trace_id, correlation_id, distribution_build_id,
                         composition_revision, composition_digest,
                         CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END AS completed
                  FROM module_static_distribution_operations WHERE idempotency_key = {}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(idempotency_key, backend)],
+            vec![backend.uuid_value(idempotency_key)],
         ))
         .await
         .map_err(store_error)?
@@ -1791,26 +1792,26 @@ async fn complete_operation(
     composition_revision: u64,
     composition_digest: &str,
 ) -> Result<(), ModuleStaticDistributionError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_operations
                  SET distribution_build_id = {}, composition_revision = {},
                      composition_digest = {}, completed_at = {}
                  WHERE idempotency_key = {} AND distribution_build_id IS NULL",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                now_expression(backend),
-                placeholder(backend, 4),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.now_sql(),
+                backend.placeholder(4),
             ),
             vec![
-                uuid_value(distribution_build_id, backend),
+                backend.uuid_value(distribution_build_id),
                 revision_value(composition_revision)?,
                 composition_digest.to_owned().into(),
-                uuid_value(idempotency_key, backend),
+                backend.uuid_value(idempotency_key),
             ],
         ))
         .await
@@ -1823,7 +1824,7 @@ async fn complete_operation(
 
 fn replay_receipt(
     row: &QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<ModuleStaticDistributionBuildReceipt, ModuleStaticDistributionError> {
     let distribution_build_id = optional_uuid_from_row(row, "distribution_build_id", backend)?
         .ok_or(ModuleStaticDistributionError::IdempotencyConflict)?;
@@ -1848,10 +1849,10 @@ pub(crate) async fn load_build<C: ConnectionTrait>(
     connection: &C,
     distribution_build_id: Uuid,
 ) -> Result<ModuleStaticDistributionBuild, ModuleStaticDistributionError> {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT distribution_build_id, predecessor_build_id, composition_revision,
                         composition_digest, platform_source_reference, platform_source_digest,
@@ -1863,25 +1864,25 @@ pub(crate) async fn load_build<C: ConnectionTrait>(
                         signature_reference, signature_digest, test_evidence_reference,
                         test_evidence_digest, failure_code, failure_detail, completion_digest
                  FROM module_static_distribution_builds WHERE distribution_build_id = {}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(distribution_build_id, backend)],
+            vec![backend.uuid_value(distribution_build_id)],
         ))
         .await
         .map_err(store_error)?
         .ok_or(ModuleStaticDistributionError::BuildNotFound)?;
     let item_rows = connection
         .query_all_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT promotion_id, promotion_revision, release_id, module_slug,
                         module_version, cargo_package, entry_type, source_reference, source_digest,
                         dependency_lock_digest, executor_mode
                  FROM module_static_distribution_items WHERE distribution_build_id = {}
                  ORDER BY ordinal",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(distribution_build_id, backend)],
+            vec![backend.uuid_value(distribution_build_id)],
         ))
         .await
         .map_err(store_error)?;
@@ -2006,7 +2007,7 @@ fn required_optional_string(
 
 fn item_from_row(
     row: &QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<ModuleStaticDistributionItem, ModuleStaticDistributionError> {
     Ok(ModuleStaticDistributionItem {
         promotion_id: uuid_from_row(row, "promotion_id", backend).map_err(store_error)?,
@@ -2131,22 +2132,22 @@ fn validate_completion_command(
     Ok(())
 }
 
-fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> sea_orm::Value {
+fn optional_uuid_value(value: Option<Uuid>, backend: SupportedBackend) -> sea_orm::Value {
     match (backend, value) {
-        (DbBackend::Postgres, value) => sea_orm::Value::Uuid(value),
-        (_, Some(value)) => value.to_string().into(),
-        (_, None) => sea_orm::Value::String(None),
+        (SupportedBackend::Postgres, value) => sea_orm::Value::Uuid(value),
+        (SupportedBackend::Sqlite, Some(value)) => value.to_string().into(),
+        (SupportedBackend::Sqlite, None) => sea_orm::Value::String(None),
     }
 }
 
 fn optional_uuid_from_row(
     row: &QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Option<Uuid>, ModuleStaticDistributionError> {
     match backend {
-        DbBackend::Postgres => row.try_get("", column).map_err(store_error),
-        _ => row
+        SupportedBackend::Postgres => row.try_get("", column).map_err(store_error),
+        SupportedBackend::Sqlite => row
             .try_get::<Option<String>>("", column)
             .map_err(store_error)?
             .map(|value| Uuid::parse_str(&value).map_err(store_error))

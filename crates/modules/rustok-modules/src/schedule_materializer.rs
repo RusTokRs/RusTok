@@ -11,19 +11,20 @@ use chrono::{DateTime, Duration, Timelike, Utc};
 use chrono_tz::Tz;
 use cron::Schedule;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement, TransactionTrait,
+    ConnectionTrait, DatabaseConnection, QueryResult, Statement, TransactionTrait,
     Value as SqlValue,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ArtifactScheduleDeliveryError, ArtifactScheduleDeliveryRequest, ModuleArtifactDescriptor,
     ModuleRuntimeBindingKind, ModuleScheduleBinding, ModuleScheduleMisfirePolicy,
     ModuleScheduleOverlapPolicy, SeaOrmArtifactScheduleDeliveryQueue,
     artifact::schedule_cron_expression,
-    data::{configure_tenant_scope, now_expression, placeholder, uuid_from_row, uuid_value},
+    data::{configure_tenant_scope, uuid_from_row},
     schedule_binding_digest,
 };
 
@@ -163,14 +164,15 @@ impl ArtifactScheduleMaterializer {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(storage_error)?;
         let enabled = match backend {
-            DbBackend::Postgres => "COALESCE(lifecycle.enabled, TRUE) = TRUE",
-            _ => "COALESCE(lifecycle.enabled, 1) = 1",
+            SupportedBackend::Postgres => "COALESCE(lifecycle.enabled, TRUE) = TRUE",
+            SupportedBackend::Sqlite => "COALESCE(lifecycle.enabled, 1) = 1",
         };
         let rows = transaction
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT installation.installation_id, installation.slug, installation.scope_kind, \
                             CAST(installation.descriptor AS TEXT) AS descriptor \
@@ -186,10 +188,10 @@ impl ArtifactScheduleMaterializer {
                        AND {enabled} \
                        AND ((installation.scope_kind = 'tenant' AND installation.tenant_id = {}) \
                             OR (installation.scope_kind = 'platform' AND installation.tenant_id IS NULL))",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
                 ),
-                vec![uuid_value(tenant_id, backend), uuid_value(tenant_id, backend)],
+                vec![backend.uuid_value(tenant_id), backend.uuid_value(tenant_id)],
             ))
             .await
             .map_err(storage_error)?;
@@ -249,21 +251,22 @@ impl ArtifactScheduleMaterializer {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(storage_error)?;
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT schedule_digest, materialized_through \
                      FROM module_artifact_schedule_cursors \
                      WHERE tenant_id = {} AND installation_id = {} AND binding_id = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
                 vec![
-                    uuid_value(tenant_id, backend),
-                    uuid_value(binding.installation_id, backend),
+                    backend.uuid_value(tenant_id),
+                    backend.uuid_value(binding.installation_id),
                     binding.binding_id.clone().into(),
                 ],
             ))
@@ -297,10 +300,11 @@ impl ArtifactScheduleMaterializer {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(storage_error)?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_schedule_cursors \
                      (tenant_id, installation_id, binding_id, schedule_digest, materialized_through, updated_at) \
@@ -314,16 +318,16 @@ impl ArtifactScheduleMaterializer {
                              ELSE excluded.materialized_through \
                          END, \
                          updated_at = excluded.updated_at",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    now_expression(backend),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.now_sql(),
                 ),
                 vec![
-                    uuid_value(tenant_id, backend),
-                    uuid_value(binding.installation_id, backend),
+                    backend.uuid_value(tenant_id),
+                    backend.uuid_value(binding.installation_id),
                     binding.binding_id.clone().into(),
                     binding.schedule_digest.clone().into(),
                     datetime_value(materialized_through, backend),
@@ -344,22 +348,23 @@ impl ArtifactScheduleMaterializer {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(storage_error)?;
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT 1 AS active_delivery FROM module_artifact_schedule_deliveries \
                      WHERE tenant_id = {} AND installation_id = {} AND binding_id = {} \
                        AND schedule_digest = {} AND status IN ('pending', 'running') LIMIT 1",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
                 ),
                 vec![
-                    uuid_value(tenant_id, backend),
-                    uuid_value(binding.installation_id, backend),
+                    backend.uuid_value(tenant_id),
+                    backend.uuid_value(binding.installation_id),
                     binding.binding_id.clone().into(),
                     binding.schedule_digest.clone().into(),
                 ],
@@ -395,7 +400,7 @@ struct DueSlots {
 
 fn candidate_from_row(
     row: &QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<ScheduleCandidate, ArtifactScheduleMaterializationError> {
     let slug: String = row.try_get("", "slug").map_err(storage_error)?;
     let tenant_scoped = match row
@@ -566,13 +571,13 @@ fn due_after(
 fn datetime_from_row(
     row: &QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<DateTime<Utc>, ArtifactScheduleMaterializationError> {
     match backend {
-        DbBackend::Postgres => row
+        SupportedBackend::Postgres => row
             .try_get::<DateTime<Utc>>("", column)
             .map_err(storage_error),
-        _ => row
+        SupportedBackend::Sqlite => row
             .try_get::<String>("", column)
             .map_err(storage_error)
             .and_then(|value| {
@@ -583,10 +588,10 @@ fn datetime_from_row(
     }
 }
 
-fn datetime_value(value: DateTime<Utc>, backend: DbBackend) -> SqlValue {
+fn datetime_value(value: DateTime<Utc>, backend: SupportedBackend) -> SqlValue {
     match backend {
-        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(value)),
-        _ => value.to_rfc3339().into(),
+        SupportedBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(value)),
+        SupportedBackend::Sqlite => value.to_rfc3339().into(),
     }
 }
 

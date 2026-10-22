@@ -1,7 +1,7 @@
 //! Artifact data purge target resolution, candidate counts, and collision checks.
 
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, QueryResult, Statement,
     TransactionTrait, Value as SqlValue,
 };
 use uuid::Uuid;
@@ -27,7 +27,7 @@ pub(crate) async fn load_artifact_data_purge_target<C: ConnectionTrait>(
 
 pub(crate) fn data_installation_scope_from_row(
     row: &sea_orm::QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<ModuleInstallationScope, ArtifactDataError> {
     match row
         .try_get::<String>("", "scope_kind")
@@ -48,21 +48,21 @@ pub(crate) async fn lock_artifact_data_installation_on<C: ConnectionTrait>(
     tenant_id: Uuid,
     installation_id: Uuid,
 ) -> Result<(), ArtifactDataError> {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT scope_kind, tenant_id, slug FROM module_artifact_installations
              WHERE installation_id = {}
                AND ((scope_kind = 'platform' AND tenant_id IS NULL)
                     OR (scope_kind = 'tenant' AND tenant_id = {}))",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
+                backend.placeholder(1),
+                backend.placeholder(2),
             ),
             vec![
-                uuid_value(installation_id, backend),
-                uuid_value(tenant_id, backend),
+                backend.uuid_value(installation_id),
+                backend.uuid_value(tenant_id),
             ],
         ))
         .await
@@ -81,10 +81,10 @@ pub(crate) async fn query_artifact_data_purge_target<C: ConnectionTrait>(
     installation_id: Uuid,
     lock: bool,
 ) -> Result<ArtifactDataPurgeTarget, ArtifactDataError> {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT installation.scope_kind, installation.tenant_id, installation.slug, installation.data_owner_id, \
                         reference.namespace_instance_id, namespace.data_contract_digest AS stored_contract_digest, \
@@ -103,14 +103,14 @@ pub(crate) async fn query_artifact_data_purge_target<C: ConnectionTrait>(
                  WHERE installation.installation_id = {} \
                    AND ((installation.scope_kind = 'platform' AND installation.tenant_id IS NULL) \
                         OR (installation.scope_kind = 'tenant' AND installation.tenant_id = {})){}",
-                placeholder(backend, 2),
-                placeholder(backend, 1),
-                placeholder(backend, 2),
+                backend.placeholder(2),
+                backend.placeholder(1),
+                backend.placeholder(2),
                 if lock { namespace_lock_clause(backend) } else { "" },
             ),
             vec![
-                uuid_value(installation_id, backend),
-                uuid_value(tenant_id, backend),
+                backend.uuid_value(installation_id),
+                backend.uuid_value(tenant_id),
             ],
         ))
         .await
@@ -163,8 +163,8 @@ pub(crate) async fn query_artifact_data_purge_target<C: ConnectionTrait>(
     .filter(|revision| *revision > 0)
     .ok_or(ArtifactDataError::PurgePrecondition)?;
     let uninstalled = match backend {
-        DbBackend::Postgres => row.try_get("", "uninstalled").map_err(storage_error)?,
-        _ => {
+        SupportedBackend::Postgres => row.try_get("", "uninstalled").map_err(storage_error)?,
+        SupportedBackend::Sqlite => {
             row.try_get::<i64>("", "uninstalled")
                 .map_err(storage_error)?
                 != 0
@@ -210,11 +210,11 @@ pub(crate) async fn ensure_no_active_artifact_data_scope_collision<C: Connection
     connection: &C,
     target: &ArtifactDataPurgeTarget,
 ) -> Result<(), ArtifactDataError> {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let scope = &target.authorization.scope;
     let active = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT 1
                  FROM module_artifact_installations installation
@@ -227,15 +227,15 @@ pub(crate) async fn ensure_no_active_artifact_data_scope_collision<C: Connection
                    AND ((installation.scope_kind = 'platform' AND installation.tenant_id IS NULL)
                         OR (installation.scope_kind = 'tenant' AND installation.tenant_id = {}))
                  LIMIT 1",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 1),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(1),
             ),
             vec![
-                uuid_value(scope.tenant_id, backend),
-                uuid_value(scope.data_owner_id, backend),
-                uuid_value(scope.namespace_instance_id, backend),
+                backend.uuid_value(scope.tenant_id),
+                backend.uuid_value(scope.data_owner_id),
+                backend.uuid_value(scope.namespace_instance_id),
             ],
         ))
         .await
@@ -249,7 +249,7 @@ pub(crate) async fn ensure_no_active_artifact_data_scope_collision<C: Connection
 pub(crate) async fn count_artifact_data_purge_records<C: ConnectionTrait>(
     connection: &C,
     scope: &ArtifactDataScope,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<u64, ArtifactDataError> {
     let structured =
         namespace_record_count(connection, "module_artifact_data", scope, backend).await?;

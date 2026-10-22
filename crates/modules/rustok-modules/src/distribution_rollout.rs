@@ -15,11 +15,12 @@ use uuid::Uuid;
 
 use rustok_events::DomainEvent;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ControlPlaneInfrastructure, ModuleCommandContext, ModuleStaticDistributionExecutorMode,
     ModuleStaticDistributionRelease, ModuleStaticDistributionReleaseStatus,
     ModuleStaticDistributionRole,
-    data::{now_expression, placeholder, uuid_from_row, uuid_value},
+    data::{uuid_from_row},
     distribution_release::{commit_recovery_release, load_release_record, load_release_state},
     promotion::{digest_json, valid_digest, valid_reference},
     reconciliation::{
@@ -1597,10 +1598,10 @@ async fn insert_rollout(
     transaction: &DatabaseTransaction,
     insert: RolloutInsert<'_>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_static_distribution_rollouts
                  (rollout_id, predecessor_rollout_id, distribution_release_id, transition_kind,
@@ -1611,30 +1612,30 @@ async fn insert_rollout(
                   status, requested_by, requested_at, status_changed_at)
                  VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'static_native', {}, {}, {}, {},
                          'preparing', {}, {}, {})",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                placeholder(backend, 9),
-                placeholder(backend, 10),
-                placeholder(backend, 11),
-                placeholder(backend, 12),
-                placeholder(backend, 13),
-                placeholder(backend, 14),
-                placeholder(backend, 15),
-                placeholder(backend, 16),
-                placeholder(backend, 17),
-                now_expression(backend),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.placeholder(9),
+                backend.placeholder(10),
+                backend.placeholder(11),
+                backend.placeholder(12),
+                backend.placeholder(13),
+                backend.placeholder(14),
+                backend.placeholder(15),
+                backend.placeholder(16),
+                backend.placeholder(17),
+                backend.now_sql(),
+                backend.now_sql(),
             ),
             vec![
-                uuid_value(insert.rollout_id, backend),
-                optional_uuid_value(insert.predecessor_rollout_id, backend),
-                uuid_value(insert.release.distribution_release_id, backend),
+                backend.uuid_value(insert.rollout_id),
+                optional_backend.uuid_value(insert.predecessor_rollout_id),
+                backend.uuid_value(insert.release.distribution_release_id),
                 insert.transition_kind.as_str().into(),
                 revision_value(insert.rollout_revision)?,
                 revision_value(insert.release.release_revision)?,
@@ -1650,7 +1651,7 @@ async fn insert_rollout(
                 i64::try_from(insert.topology.assignments.len())
                     .map_err(|_| ModuleStaticDistributionRolloutError::InvalidTopology)?
                     .into(),
-                uuid_value(insert.command.context.actor_id, backend),
+                backend.uuid_value(insert.command.context.actor_id),
             ],
         ))
         .await
@@ -1664,7 +1665,7 @@ async fn insert_rollout_assignments(
     assignments: &[ModuleStaticDistributionAssignment],
     predecessor: Option<&ModuleStaticDistributionRollout>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     for (ordinal, assignment) in assignments.iter().enumerate() {
         let predecessor_artifact_digest = predecessor
             .and_then(|rollout| {
@@ -1675,21 +1676,21 @@ async fn insert_rollout_assignments(
             .map(|candidate| candidate.candidate_artifact_digest.clone());
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_static_distribution_rollout_assignments
                      (rollout_id, node_id, role, candidate_artifact_digest,
                       predecessor_artifact_digest, ordinal, observation_revision, phase)
                      VALUES ({}, {}, {}, {}, {}, {}, 0, 'pending')",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
                 ),
                 vec![
-                    uuid_value(rollout_id, backend),
+                    backend.uuid_value(rollout_id),
                     assignment.node_id.clone().into(),
                     role_name(assignment.role).to_string().into(),
                     assignment.candidate_artifact_digest.clone().into(),
@@ -1712,7 +1713,7 @@ async fn update_rollout_assignment(
     report_digest: &str,
     now: &DateTime<Utc>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let health_reference = command
         .health_evidence
         .as_ref()
@@ -1728,7 +1729,7 @@ async fn update_rollout_assignment(
         .map(|failure| failure.detail.clone());
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_rollout_assignments
                  SET observation_revision = {}, phase = {}, observed_release_id = {},
@@ -1744,35 +1745,35 @@ async fn update_rollout_assignment(
                  WHERE rollout_id = {} AND node_id = {} AND role = {} AND observation_revision = {}
                    AND active_claim_id = {} AND claimed_by_agent = {}
                    AND claim_expires_at >= {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                placeholder(backend, 9),
-                placeholder(backend, 10),
-                placeholder(backend, 11),
-                placeholder(backend, 12),
-                placeholder(backend, 13),
-                placeholder(backend, 14),
-                placeholder(backend, 15),
-                placeholder(backend, 16),
-                placeholder(backend, 17),
-                placeholder(backend, 18),
-                placeholder(backend, 19),
-                placeholder(backend, 20),
-                placeholder(backend, 21),
-                placeholder(backend, 22),
-                placeholder(backend, 23),
-                placeholder(backend, 24),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.placeholder(9),
+                backend.placeholder(10),
+                backend.placeholder(11),
+                backend.placeholder(12),
+                backend.placeholder(13),
+                backend.placeholder(14),
+                backend.placeholder(15),
+                backend.placeholder(16),
+                backend.placeholder(17),
+                backend.placeholder(18),
+                backend.placeholder(19),
+                backend.placeholder(20),
+                backend.placeholder(21),
+                backend.placeholder(22),
+                backend.placeholder(23),
+                backend.placeholder(24),
             ),
             vec![
                 revision_value(observation_revision)?,
                 command.phase.as_str().into(),
-                uuid_value(command.distribution_release_id, backend),
+                backend.uuid_value(command.distribution_release_id),
                 revision_value(command.distribution_release_revision)?,
                 revision_value(command.composition_revision)?,
                 command.composition_digest.clone().into(),
@@ -1787,11 +1788,11 @@ async fn update_rollout_assignment(
                 report_digest.to_owned().into(),
                 now.to_owned().into(),
                 now.to_owned().into(),
-                uuid_value(command.rollout_id, backend),
+                backend.uuid_value(command.rollout_id),
                 command.node_id.clone().into(),
                 role_name(command.role).to_string().into(),
                 revision_value_allow_zero(command.expected_observation_revision)?,
-                uuid_value(command.claim_id, backend),
+                backend.uuid_value(command.claim_id),
                 command.agent_id.clone().into(),
                 now.to_owned().into(),
             ],
@@ -1880,37 +1881,37 @@ async fn update_rollout_status(
     next_status: ModuleStaticDistributionRolloutStatus,
     failure: Option<&ModuleReconciliationFailure>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let (converged_at, failed_at) = match next_status {
         ModuleStaticDistributionRolloutStatus::Converged => {
-            (now_expression(backend).to_string(), "NULL".to_string())
+            (backend.now_sql().to_string(), "NULL".to_string())
         }
         ModuleStaticDistributionRolloutStatus::Failed
         | ModuleStaticDistributionRolloutStatus::Degraded => {
-            ("NULL".to_string(), now_expression(backend).to_string())
+            ("NULL".to_string(), backend.now_sql().to_string())
         }
         _ => ("NULL".to_string(), "NULL".to_string()),
     };
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_rollouts
                  SET status = {}, status_changed_at = {}, converged_at = {converged_at},
                      failed_at = {failed_at}, failure_code = {}, failure_detail = {}
                  WHERE rollout_id = {} AND status = {}",
-                placeholder(backend, 1),
-                now_expression(backend),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
+                backend.placeholder(1),
+                backend.now_sql(),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
             ),
             vec![
                 next_status.as_str().into(),
                 failure.map(|failure| failure.code.clone()).into(),
                 failure.map(|failure| failure.detail.clone()).into(),
-                uuid_value(rollout_id, backend),
+                backend.uuid_value(rollout_id),
                 expected_status.as_str().into(),
             ],
         ))
@@ -1926,18 +1927,18 @@ async fn supersede_rollout(
     transaction: &DatabaseTransaction,
     rollout_id: Uuid,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_rollouts
                  SET status = 'superseded', status_changed_at = {}
                  WHERE rollout_id = {} AND status = 'converged'",
-                now_expression(backend),
-                placeholder(backend, 1),
+                backend.now_sql(),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(rollout_id, backend)],
+            vec![backend.uuid_value(rollout_id)],
         ))
         .await
         .map_err(store_error)?;
@@ -1951,17 +1952,17 @@ async fn load_phase_counts(
     connection: &impl ConnectionTrait,
     rollout_id: Uuid,
 ) -> Result<PhaseCounts, ModuleStaticDistributionRolloutError> {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let rows = connection
         .query_all_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT phase, COUNT(*) AS count
                  FROM module_static_distribution_rollout_assignments
                  WHERE rollout_id = {} GROUP BY phase",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(rollout_id, backend)],
+            vec![backend.uuid_value(rollout_id)],
         ))
         .await
         .map_err(store_error)?;
@@ -1989,20 +1990,20 @@ async fn load_rollout_state<C: ConnectionTrait>(
     connection: &C,
     lock_row: bool,
 ) -> Result<ModuleDesiredObservedState, ModuleStaticDistributionRolloutError> {
-    let backend = connection.get_database_backend();
-    let lock = if lock_row && backend == DbBackend::Postgres {
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
         ""
     };
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT revision, desired_rollout_id, observed_rollout_id
                  FROM module_static_distribution_rollout_state
                  WHERE state_id = {}{lock}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
             vec![ROLLOUT_STATE_ID.into()],
         ))
@@ -2027,26 +2028,26 @@ async fn advance_rollout_state(
     desired_rollout_id: Option<Uuid>,
     observed_rollout_id: Option<Uuid>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_rollout_state
                  SET revision = {}, desired_rollout_id = {}, observed_rollout_id = {},
                      updated_at = {}
                  WHERE state_id = {} AND revision = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                now_expression(backend),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.now_sql(),
+                backend.placeholder(4),
+                backend.placeholder(5),
             ),
             vec![
                 revision_value(next_revision)?,
-                optional_uuid_value(desired_rollout_id, backend),
-                optional_uuid_value(observed_rollout_id, backend),
+                optional_backend.uuid_value(desired_rollout_id),
+                optional_backend.uuid_value(observed_rollout_id),
                 ROLLOUT_STATE_ID.into(),
                 revision_value_allow_zero(expected_revision)?,
             ],
@@ -2068,15 +2069,15 @@ async fn load_rollout<C: ConnectionTrait>(
     rollout_id: Uuid,
     lock_row: bool,
 ) -> Result<ModuleStaticDistributionRollout, ModuleStaticDistributionRolloutError> {
-    let backend = connection.get_database_backend();
-    let lock = if lock_row && backend == DbBackend::Postgres {
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
         ""
     };
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT rollout_id, predecessor_rollout_id, distribution_release_id, transition_kind,
                         rollout_revision, distribution_release_revision, release_state_revision_at_request,
@@ -2086,16 +2087,16 @@ async fn load_rollout<C: ConnectionTrait>(
                         topology_reference, topology_digest, policy_revision, target_assignment_count,
                         status, requested_by, failure_code, failure_detail
                  FROM module_static_distribution_rollouts WHERE rollout_id = {}{lock}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(rollout_id, backend)],
+            vec![backend.uuid_value(rollout_id)],
         ))
         .await
         .map_err(store_error)?
         .ok_or(ModuleStaticDistributionRolloutError::RolloutNotFound)?;
     let assignment_rows = connection
         .query_all_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT node_id, role, candidate_artifact_digest, predecessor_artifact_digest,
                         ordinal, observation_revision, phase,
@@ -2104,9 +2105,9 @@ async fn load_rollout<C: ConnectionTrait>(
                         active_claim_id, claimed_by_agent, claim_expires_at
                  FROM module_static_distribution_rollout_assignments
                  WHERE rollout_id = {} ORDER BY ordinal",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(rollout_id, backend)],
+            vec![backend.uuid_value(rollout_id)],
         ))
         .await
         .map_err(store_error)?;
@@ -2190,15 +2191,15 @@ async fn load_rollout_assignment<C: ConnectionTrait>(
     role: ModuleStaticDistributionRole,
     lock_row: bool,
 ) -> Result<ModuleStaticDistributionRolloutAssignment, ModuleStaticDistributionRolloutError> {
-    let backend = connection.get_database_backend();
-    let lock = if lock_row && backend == DbBackend::Postgres {
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
         ""
     };
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT node_id, role, candidate_artifact_digest, predecessor_artifact_digest,
                         ordinal, observation_revision, phase,
@@ -2207,12 +2208,12 @@ async fn load_rollout_assignment<C: ConnectionTrait>(
                         active_claim_id, claimed_by_agent, claim_expires_at
                  FROM module_static_distribution_rollout_assignments
                  WHERE rollout_id = {} AND node_id = {} AND role = {}{lock}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
             ),
             vec![
-                uuid_value(rollout_id, backend),
+                backend.uuid_value(rollout_id),
                 node_id.to_owned().into(),
                 role_name(role).to_string().into(),
             ],
@@ -2234,15 +2235,15 @@ async fn load_next_assignment_for_node(
     now: &DateTime<Utc>,
 ) -> Result<Option<ModuleStaticDistributionRolloutAssignment>, ModuleStaticDistributionRolloutError>
 {
-    let backend = transaction.get_database_backend();
-    let lock = if backend == DbBackend::Postgres {
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let lock = if backend == SupportedBackend::Postgres {
         " FOR UPDATE SKIP LOCKED"
     } else {
         ""
     };
     let row = transaction
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT node_id, role, candidate_artifact_digest, predecessor_artifact_digest,
                         ordinal, observation_revision, phase,
@@ -2257,16 +2258,16 @@ async fn load_next_assignment_for_node(
                  ORDER BY CASE WHEN claimed_by_agent = {} AND claim_expires_at >= {} THEN 0 ELSE 1 END,
                           ordinal
                  LIMIT 1{lock}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
             ),
             vec![
-                uuid_value(rollout_id, backend),
+                backend.uuid_value(rollout_id),
                 node_id.to_owned().into(),
                 now.to_owned().into(),
                 agent_id.to_owned().into(),
@@ -2290,10 +2291,10 @@ async fn claim_rollout_assignment(
     now: &DateTime<Utc>,
     lease_expires_at: &DateTime<Utc>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_rollout_assignments
                  SET active_claim_id = {}, claimed_by_agent = {}, claim_expires_at = {},
@@ -2302,22 +2303,22 @@ async fn claim_rollout_assignment(
                    AND phase IN ('pending', 'prepared', 'healthy')
                    AND observation_revision = {}
                    AND (active_claim_id IS NULL OR claim_expires_at < {})",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                placeholder(backend, 9),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.placeholder(9),
             ),
             vec![
-                uuid_value(claim_id, backend),
+                backend.uuid_value(claim_id),
                 agent_id.to_owned().into(),
                 lease_expires_at.to_owned().into(),
                 now.to_owned().into(),
-                uuid_value(rollout_id, backend),
+                backend.uuid_value(rollout_id),
                 assignment.node_id.clone().into(),
                 role_name(assignment.role).to_string().into(),
                 revision_value_allow_zero(assignment.observation_revision)?,
@@ -2338,25 +2339,25 @@ async fn heartbeat_rollout_assignment(
     now: &DateTime<Utc>,
     lease_expires_at: &DateTime<Utc>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_rollout_assignments
                  SET claim_expires_at = {}, last_claimed_at = {}
                  WHERE active_claim_id = {} AND claimed_by_agent = {}
                    AND claim_expires_at >= {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
             ),
             vec![
                 lease_expires_at.to_owned().into(),
                 now.to_owned().into(),
-                uuid_value(command.claim_id, backend),
+                backend.uuid_value(command.claim_id),
                 command.agent_id.clone().into(),
                 now.to_owned().into(),
             ],
@@ -2371,7 +2372,7 @@ async fn heartbeat_rollout_assignment(
 
 fn assignment_from_row(
     row: &QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<ModuleStaticDistributionRolloutAssignment, ModuleStaticDistributionRolloutError> {
     let ordinal: i64 = row.try_get("", "ordinal").map_err(store_error)?;
     let health_reference: Option<String> = row
@@ -2438,24 +2439,24 @@ async fn reserve_operation(
     principal_id: &str,
     context: Option<&ModuleCommandContext>,
 ) -> Result<Option<OperationRecord>, ModuleStaticDistributionRolloutError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_static_distribution_rollout_operations
                  (idempotency_key, operation_kind, request_digest, principal_id, trace_id, correlation_id, created_at)
                  VALUES ({}, {}, {}, {}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.now_sql(),
             ),
             vec![
-                uuid_value(idempotency_key, backend),
+                backend.uuid_value(idempotency_key),
                 operation_kind.to_owned().into(),
                 request_digest.to_owned().into(),
                 principal_id.to_owned().into(),
@@ -2487,10 +2488,10 @@ async fn load_operation<C: ConnectionTrait>(
     principal_id: &str,
     context: Option<&ModuleCommandContext>,
 ) -> Result<Option<OperationRecord>, ModuleStaticDistributionRolloutError> {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let Some(row) = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT operation_kind, request_digest, principal_id, trace_id, correlation_id, rollout_id,
                         rollout_revision, rollout_state_revision, rollout_status,
@@ -2498,9 +2499,9 @@ async fn load_operation<C: ConnectionTrait>(
                         CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END AS completed
                  FROM module_static_distribution_rollout_operations
                  WHERE idempotency_key = {}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(idempotency_key, backend)],
+            vec![backend.uuid_value(idempotency_key)],
         ))
         .await
         .map_err(store_error)?
@@ -2609,29 +2610,29 @@ async fn complete_operation(
     transaction: &DatabaseTransaction,
     params: CompleteRolloutOperationParams<'_>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_rollout_operations
                  SET rollout_id = {}, rollout_revision = {}, rollout_state_revision = {},
                      rollout_status = {}, node_id = {}, role = {}, observation_revision = {},
                      assignment_phase = {}, completed_at = {}
                  WHERE idempotency_key = {} AND completed_at IS NULL",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                now_expression(backend),
-                placeholder(backend, 9),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.now_sql(),
+                backend.placeholder(9),
             ),
             vec![
-                uuid_value(params.rollout_id, backend),
+                backend.uuid_value(params.rollout_id),
                 revision_value(params.rollout_revision)?,
                 revision_value(params.rollout_state_revision)?,
                 params.rollout_status.as_str().into(),
@@ -2642,7 +2643,7 @@ async fn complete_operation(
                     .assignment_phase
                     .map(|phase| phase.as_str().to_string())
                     .into(),
-                uuid_value(params.idempotency_key, backend),
+                backend.uuid_value(params.idempotency_key),
             ],
         ))
         .await
@@ -2726,22 +2727,22 @@ fn valid_text(value: &str, maximum_bytes: usize) -> bool {
         && !value.chars().any(char::is_control)
 }
 
-fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> sea_orm::Value {
+fn optional_uuid_value(value: Option<Uuid>, backend: SupportedBackend) -> sea_orm::Value {
     match (backend, value) {
-        (DbBackend::Postgres, value) => sea_orm::Value::Uuid(value),
-        (_, Some(value)) => value.to_string().into(),
-        (_, None) => sea_orm::Value::String(None),
+        (SupportedBackend::Postgres, value) => sea_orm::Value::Uuid(value),
+        (SupportedBackend::Sqlite, Some(value)) => value.to_string().into(),
+        (SupportedBackend::Sqlite, None) => sea_orm::Value::String(None),
     }
 }
 
 fn optional_uuid_from_row(
     row: &QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Option<Uuid>, ModuleStaticDistributionRolloutError> {
     match backend {
-        DbBackend::Postgres => row.try_get("", column).map_err(store_error),
-        _ => row
+        SupportedBackend::Postgres => row.try_get("", column).map_err(store_error),
+        SupportedBackend::Sqlite => row
             .try_get::<Option<String>>("", column)
             .map_err(store_error)?
             .map(|value| Uuid::parse_str(&value).map_err(store_error))

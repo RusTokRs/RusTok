@@ -16,9 +16,10 @@ use uuid::Uuid;
 
 use rustok_events::DomainEvent;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ArtifactReleaseRef, ControlPlaneInfrastructure, ModuleCommandContext, SeaOrmSecurityEpochStore,
-    data::{now_expression, placeholder, uuid_value},
+    data::{now_expression},
     promotion::{digest_json, valid_digest},
 };
 
@@ -384,28 +385,28 @@ async fn persist_state(
     revision: u64,
     command: &ModuleArtifactSecurityCommand,
 ) -> Result<(), ModuleArtifactSecurityError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let checksum = command.release.digest.trim_start_matches("sha256:");
     let result = if command.expected_revision == 0 {
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_security_states
                      (module_slug, module_version, payload_digest, revision, status,
                       policy_revision, reason_code, reason_detail, changed_by, changed_at)
                      VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {})
                      ON CONFLICT (module_slug, module_version, payload_digest) DO NOTHING",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
-                    placeholder(backend, 8),
-                    placeholder(backend, 9),
-                    now_expression(backend),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
+                    backend.placeholder(8),
+                    backend.placeholder(9),
+                    backend.now_sql(),
                 ),
                 vec![
                     command.release.slug.clone().into(),
@@ -416,7 +417,7 @@ async fn persist_state(
                     command.policy_revision.clone().into(),
                     command.reason_code.clone().into(),
                     command.reason_detail.clone().into(),
-                    uuid_value(command.context.actor_id, backend),
+                    backend.uuid_value(command.context.actor_id),
                 ],
             ))
             .await
@@ -424,24 +425,24 @@ async fn persist_state(
     } else {
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_security_states
                      SET revision = {}, status = {}, policy_revision = {}, reason_code = {},
                          reason_detail = {}, changed_by = {}, changed_at = {}
                      WHERE module_slug = {} AND module_version = {} AND payload_digest = {}
                        AND revision = {} AND status <> 'revoked'",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    now_expression(backend),
-                    placeholder(backend, 7),
-                    placeholder(backend, 8),
-                    placeholder(backend, 9),
-                    placeholder(backend, 10),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.now_sql(),
+                    backend.placeholder(7),
+                    backend.placeholder(8),
+                    backend.placeholder(9),
+                    backend.placeholder(10),
                 ),
                 vec![
                     revision_value(revision)?,
@@ -449,7 +450,7 @@ async fn persist_state(
                     command.policy_revision.clone().into(),
                     command.reason_code.clone().into(),
                     command.reason_detail.clone().into(),
-                    uuid_value(command.context.actor_id, backend),
+                    backend.uuid_value(command.context.actor_id),
                     command.release.slug.clone().into(),
                     command.release.version.clone().into(),
                     command.release.digest.clone().into(),
@@ -474,22 +475,22 @@ async fn load_snapshot<C: ConnectionTrait>(
     release: &ArtifactReleaseRef,
     lock_row: bool,
 ) -> Result<ModuleArtifactSecuritySnapshot, ModuleArtifactSecurityError> {
-    let backend = connection.get_database_backend();
-    let lock = if lock_row && backend == DbBackend::Postgres {
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
         ""
     };
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT revision, status, policy_revision, reason_code, reason_detail
                  FROM module_artifact_security_states
                  WHERE module_slug = {} AND module_version = {} AND payload_digest = {}{lock}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
             ),
             vec![
                 release.slug.clone().into(),
@@ -518,16 +519,16 @@ async fn load_registry_status<C: ConnectionTrait>(
     connection: &C,
     release: &ArtifactReleaseRef,
 ) -> Result<ModuleArtifactRegistryReleaseStatus, ModuleArtifactSecurityError> {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT status FROM registry_module_releases
                  WHERE slug = {} AND version = {} AND checksum_sha256 = {} LIMIT 1",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
             ),
             vec![
                 release.slug.clone().into(),
@@ -579,28 +580,28 @@ async fn reserve_operation(
     action: SecurityAction,
     request_digest: &str,
 ) -> Result<Option<ModuleArtifactSecurityReceipt>, ModuleArtifactSecurityError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_artifact_security_operations
                  (idempotency_key, operation_kind, request_digest, principal_id, trace_id, correlation_id)
                  VALUES ({}, {}, {}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
             ),
             vec![
-                uuid_value(context.idempotency_key, backend),
+                backend.uuid_value(context.idempotency_key),
                 action.as_str().into(),
                 request_digest.to_owned().into(),
-                uuid_value(context.actor_id, backend),
+                backend.uuid_value(context.actor_id),
                 context.trace_id.clone().into(),
-                uuid_value(context.correlation_id, backend),
+                backend.uuid_value(context.correlation_id),
             ],
         ))
         .await
@@ -617,17 +618,17 @@ async fn load_operation<C: ConnectionTrait>(
     action: SecurityAction,
     request_digest: &str,
 ) -> Result<Option<ModuleArtifactSecurityReceipt>, ModuleArtifactSecurityError> {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT operation_kind, request_digest, principal_id, trace_id, correlation_id,
                         receipt_json
                  FROM module_artifact_security_operations WHERE idempotency_key = {}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(context.idempotency_key, backend)],
+            vec![backend.uuid_value(context.idempotency_key)],
         ))
         .await
         .map_err(store_error)?;
@@ -673,21 +674,21 @@ async fn complete_operation(
     idempotency_key: Uuid,
     receipt: &ModuleArtifactSecurityReceipt,
 ) -> Result<(), ModuleArtifactSecurityError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let receipt_json = serde_json::to_string(receipt)
         .map_err(|error| ModuleArtifactSecurityError::Store(error.to_string()))?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_artifact_security_operations
                  SET receipt_json = {}, completed_at = {}
                  WHERE idempotency_key = {} AND completed_at IS NULL",
-                placeholder(backend, 1),
-                now_expression(backend),
-                placeholder(backend, 2),
+                backend.placeholder(1),
+                backend.now_sql(),
+                backend.placeholder(2),
             ),
-            vec![receipt_json.into(), uuid_value(idempotency_key, backend)],
+            vec![receipt_json.into(), backend.uuid_value(idempotency_key)],
         ))
         .await
         .map_err(store_error)?;

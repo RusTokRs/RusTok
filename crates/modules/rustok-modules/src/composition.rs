@@ -15,9 +15,10 @@ use std::sync::Arc;
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ModuleCommandContext,
-    data::{now_expression, placeholder},
+    data::{now_expression},
 };
 use rustok_api::{
     ModuleCompositionSnapshotView, PortError, StaticInstalledModuleView, StaticModuleRegistryView,
@@ -334,13 +335,14 @@ impl SeaOrmModuleCompositionService {
         let canonical_manifest = canonical_manifest_snapshot_json(&update.manifest)
             .map_err(|error| ModuleCompositionError::Serialize(error.to_string()))?;
         let manifest_hash = hash_manifest_snapshot(&canonical_manifest);
-        let backend = connection.get_database_backend();
+        let backend = SupportedBackend::new(connection.get_database_backend())
+            .map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
         let placeholders = (1..=6)
-            .map(|index| placeholder(backend, index))
+            .map(|index| backend.placeholder(index))
             .collect::<Vec<_>>();
         let result = connection
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE platform_state SET revision = {}, manifest_json = {}, manifest_hash = {}, \
                      updated_by = {}, updated_at = {} WHERE id = {} AND revision = {}",
@@ -348,7 +350,7 @@ impl SeaOrmModuleCompositionService {
                     placeholders[1],
                     placeholders[2],
                     placeholders[3],
-                    now_expression(backend),
+                    backend.now_sql(),
                     placeholders[4],
                     placeholders[5],
                 ),
@@ -380,14 +382,15 @@ impl SeaOrmModuleCompositionService {
     pub async fn active_snapshot_on<C: ConnectionTrait>(
         connection: &C,
     ) -> Result<ModuleCompositionSnapshot, ModuleCompositionError> {
-        let backend = connection.get_database_backend();
+        let backend = SupportedBackend::new(connection.get_database_backend())
+            .map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
         let row = connection
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT revision, manifest_hash, CAST(manifest_json AS TEXT) AS manifest_json \
                      FROM platform_state WHERE id = {}",
-                    placeholder(backend, 1),
+                    backend.placeholder(1),
                 ),
                 vec![ACTIVE_MODULE_COMPOSITION_ID.into()],
             ))
@@ -424,13 +427,14 @@ impl SeaOrmModuleCompositionService {
         }
         let canonical_manifest = canonical_manifest_snapshot_json(bootstrap_manifest)
             .map_err(|error| ModuleCompositionError::Serialize(error.to_string()))?;
-        let backend = connection.get_database_backend();
+        let backend = SupportedBackend::new(connection.get_database_backend())
+            .map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
         let placeholders = (1..=4)
-            .map(|index| placeholder(backend, index))
+            .map(|index| backend.placeholder(index))
             .collect::<Vec<_>>();
         connection
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO platform_state (\
                         id, revision, manifest_json, manifest_hash, updated_by, created_at, updated_at\
@@ -439,8 +443,8 @@ impl SeaOrmModuleCompositionService {
                     placeholders[1],
                     placeholders[2],
                     placeholders[3],
-                    now_expression(backend),
-                    now_expression(backend),
+                    backend.now_sql(),
+                    backend.now_sql(),
                 ),
                 vec![
                     ACTIVE_MODULE_COMPOSITION_ID.into(),

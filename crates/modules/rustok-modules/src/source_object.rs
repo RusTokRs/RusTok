@@ -32,16 +32,17 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, Value};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ModuleInstallationScope,
-    data::{placeholder, uuid_value},
+    data::{uuid_value},
     installation::valid_digest,
 };
 
@@ -322,15 +323,16 @@ impl SourceObjectStore {
         destination: &Path,
         source_digest: &str,
     ) -> Result<(), SourceObjectError> {
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
         let row = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT COUNT(*) AS refs FROM module_source_object_receipts \
                      WHERE source_digest = {}",
-                    placeholder(backend, 1),
+                    backend.placeholder(1),
                 ),
                 vec![source_digest.into()],
             ))
@@ -579,7 +581,8 @@ impl SourceObjectStore {
         byte_length: u64,
         manifest_digest: Option<&str>,
     ) -> Result<SourceReceipt, SourceObjectError> {
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
         let receipt_id = Uuid::new_v4();
         let now = Utc::now();
 
@@ -594,15 +597,15 @@ impl SourceObjectStore {
                 source_digest, media_type, byte_length, manifest_digest, created_at\
              ) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {})\
              ON CONFLICT (preparation_id, source_digest) DO NOTHING",
-            placeholder(backend, 1),
-            placeholder(backend, 2),
-            placeholder(backend, 3),
-            placeholder(backend, 4),
-            placeholder(backend, 5),
-            placeholder(backend, 6),
-            placeholder(backend, 7),
-            placeholder(backend, 8),
-            placeholder(backend, 9),
+            backend.placeholder(1),
+            backend.placeholder(2),
+            backend.placeholder(3),
+            backend.placeholder(4),
+            backend.placeholder(5),
+            backend.placeholder(6),
+            backend.placeholder(7),
+            backend.placeholder(8),
+            backend.placeholder(9),
         );
 
         let manifest_val = match manifest_digest {
@@ -611,8 +614,8 @@ impl SourceObjectStore {
         };
 
         let values = vec![
-            uuid_value(receipt_id, backend),
-            uuid_value(preparation_id, backend),
+            backend.uuid_value(receipt_id),
+            backend.uuid_value(preparation_id),
             scope_kind.into(),
             scope_tenant_key.into(),
             source_digest.into(),
@@ -623,7 +626,7 @@ impl SourceObjectStore {
         ];
 
         self.db
-            .execute_raw(Statement::from_sql_and_values(backend, insert_sql, values))
+            .execute_raw(Statement::from_sql_and_values(backend.db_backend(), insert_sql, values))
             .await
             .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
 
@@ -703,21 +706,22 @@ impl SourceObjectStore {
         source_digest: &str,
         calling_scope: &ModuleInstallationScope,
     ) -> Result<Option<SourceReceipt>, SourceObjectError> {
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
         let query_sql = format!(
             "SELECT source_receipt_id, preparation_id, scope_kind, scope_tenant_key, \
                     source_digest, media_type, byte_length, manifest_digest, created_at \
              FROM module_source_object_receipts \
              WHERE preparation_id = {} AND source_digest = {}",
-            placeholder(backend, 1),
-            placeholder(backend, 2)
+            backend.placeholder(1),
+            backend.placeholder(2)
         );
 
-        let values = vec![uuid_value(preparation_id, backend), source_digest.into()];
+        let values = vec![backend.uuid_value(preparation_id), source_digest.into()];
 
         let row = self
             .db
-            .query_one_raw(Statement::from_sql_and_values(backend, query_sql, values))
+            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(), query_sql, values))
             .await
             .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
 
@@ -738,21 +742,22 @@ impl SourceObjectStore {
         source_receipt_id: Uuid,
         calling_scope: &ModuleInstallationScope,
     ) -> Result<Option<SourceReceipt>, SourceObjectError> {
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
         let query_sql = format!(
             "SELECT source_receipt_id, preparation_id, scope_kind, scope_tenant_key, \
                     source_digest, media_type, byte_length, manifest_digest, created_at \
              FROM module_source_object_receipts \
              WHERE source_receipt_id = {}",
-            placeholder(backend, 1)
+            backend.placeholder(1)
         );
 
         let row = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 query_sql,
-                vec![uuid_value(source_receipt_id, backend)],
+                vec![backend.uuid_value(source_receipt_id)],
             ))
             .await
             .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
@@ -791,28 +796,28 @@ impl SourceObjectStore {
     fn parse_receipt_row(
         &self,
         row: sea_orm::QueryResult,
-        backend: DbBackend,
+        backend: SupportedBackend,
     ) -> Result<SourceReceipt, SourceObjectError> {
         let source_receipt_id: Uuid = match backend {
-            DbBackend::Sqlite => {
+            SupportedBackend::Sqlite => {
                 let s: String = row
                     .try_get("", "source_receipt_id")
                     .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
                 Uuid::parse_str(&s).map_err(|e| SourceObjectError::Storage(e.to_string()))?
             }
-            _ => row
+            SupportedBackend::Postgres => row
                 .try_get("", "source_receipt_id")
                 .map_err(|e| SourceObjectError::Storage(e.to_string()))?,
         };
 
         let preparation_id: Uuid = match backend {
-            DbBackend::Sqlite => {
+            SupportedBackend::Sqlite => {
                 let s: String = row
                     .try_get("", "preparation_id")
                     .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
                 Uuid::parse_str(&s).map_err(|e| SourceObjectError::Storage(e.to_string()))?
             }
-            _ => row
+            SupportedBackend::Postgres => row
                 .try_get("", "preparation_id")
                 .map_err(|e| SourceObjectError::Storage(e.to_string()))?,
         };
@@ -846,7 +851,7 @@ impl SourceObjectStore {
             .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
 
         let created_at: DateTime<Utc> = match backend {
-            DbBackend::Sqlite => {
+            SupportedBackend::Sqlite => {
                 let s: String = row
                     .try_get("", "created_at")
                     .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
@@ -854,7 +859,7 @@ impl SourceObjectStore {
                     .map_err(|e| SourceObjectError::Storage(e.to_string()))?
                     .with_timezone(&Utc)
             }
-            _ => row
+            SupportedBackend::Postgres => row
                 .try_get("", "created_at")
                 .map_err(|e| SourceObjectError::Storage(e.to_string()))?,
         };
@@ -883,7 +888,8 @@ impl SourceObjectStore {
             return Err(SourceObjectError::InvalidDigest(source_digest.to_string()));
         }
 
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
         let hold_id = Uuid::new_v4();
         let now = Utc::now();
 
@@ -891,12 +897,12 @@ impl SourceObjectStore {
             "INSERT INTO module_source_object_retention_holds (\
                 hold_id, source_digest, held_by, reason, expires_at, created_at\
              ) VALUES ({}, {}, {}, {}, {}, {})",
-            placeholder(backend, 1),
-            placeholder(backend, 2),
-            placeholder(backend, 3),
-            placeholder(backend, 4),
-            placeholder(backend, 5),
-            placeholder(backend, 6),
+            backend.placeholder(1),
+            backend.placeholder(2),
+            backend.placeholder(3),
+            backend.placeholder(4),
+            backend.placeholder(5),
+            backend.placeholder(6),
         );
 
         let exp_val = match expires_at {
@@ -905,7 +911,7 @@ impl SourceObjectStore {
         };
 
         let values = vec![
-            uuid_value(hold_id, backend),
+            backend.uuid_value(hold_id),
             source_digest.into(),
             held_by.into(),
             reason.into(),
@@ -914,7 +920,7 @@ impl SourceObjectStore {
         ];
 
         self.db
-            .execute_raw(Statement::from_sql_and_values(backend, insert_sql, values))
+            .execute_raw(Statement::from_sql_and_values(backend.db_backend(), insert_sql, values))
             .await
             .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
 
@@ -923,17 +929,18 @@ impl SourceObjectStore {
 
     /// Releases an existing retention hold by ID.
     pub async fn release_retention_hold(&self, hold_id: Uuid) -> Result<(), SourceObjectError> {
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
         let delete_sql = format!(
             "DELETE FROM module_source_object_retention_holds WHERE hold_id = {}",
-            placeholder(backend, 1)
+            backend.placeholder(1)
         );
 
         self.db
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 delete_sql,
-                vec![uuid_value(hold_id, backend)],
+                vec![backend.uuid_value(hold_id)],
             ))
             .await
             .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
@@ -943,21 +950,22 @@ impl SourceObjectStore {
 
     /// Checks if a source object is currently protected by an active retention hold.
     pub async fn is_held(&self, source_digest: &str) -> Result<bool, SourceObjectError> {
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
         let query_sql = format!(
             "SELECT 1 FROM module_source_object_retention_holds \
              WHERE source_digest = {} \
                AND (expires_at IS NULL OR expires_at > {}) \
              LIMIT 1",
-            placeholder(backend, 1),
-            placeholder(backend, 2),
+            backend.placeholder(1),
+            backend.placeholder(2),
         );
 
         let now = Utc::now().to_rfc3339();
         let row = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 query_sql,
                 vec![source_digest.into(), now.into()],
             ))

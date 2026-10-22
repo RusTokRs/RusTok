@@ -1,7 +1,7 @@
 //! Garbage collection service for expired artifact data objects.
 
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement,
     TransactionTrait, Value as SqlValue,
 };
 use uuid::Uuid;
@@ -38,10 +38,11 @@ impl SeaOrmArtifactDataObjectGcService {
         }
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, tenant_id).await?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(storage_error)?;
         let candidates = transaction
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT candidate.candidate_id, candidate.tenant_id, candidate.data_owner_id,
                             candidate.namespace_instance_id, candidate.policy_revision, candidate.storage_key,
@@ -51,10 +52,10 @@ impl SeaOrmArtifactDataObjectGcService {
                        ON namespace.tenant_id = candidate.tenant_id AND namespace.data_owner_id = candidate.data_owner_id
                       AND namespace.namespace_instance_id = candidate.namespace_instance_id
                      WHERE candidate.tenant_id = {} ORDER BY candidate.queued_at ASC, candidate.candidate_id ASC LIMIT {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
                 ),
-                vec![uuid_value(tenant_id, backend), i64::from(limit).into()],
+                vec![backend.uuid_value(tenant_id), i64::from(limit).into()],
             ))
             .await
             .map_err(storage_error)?;
@@ -75,16 +76,17 @@ impl SeaOrmArtifactDataObjectGcService {
             }
             let transaction = self.db.begin().await.map_err(storage_error)?;
             configure_tenant_scope(&transaction, tenant_id).await?;
-            let backend = transaction.get_database_backend();
+            let backend = SupportedBackend::new(transaction.get_database_backend())
+                .map_err(storage_error)?;
             transaction
                 .query_one_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "SELECT namespace_revision FROM module_artifact_data_namespaces
                          WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}{}",
-                        placeholder(backend, 1),
-                        placeholder(backend, 2),
-                        placeholder(backend, 3),
+                        backend.placeholder(1),
+                        backend.placeholder(2),
+                        backend.placeholder(3),
                         namespace_lock_clause(backend),
                     ),
                     namespace_values(&candidate.scope, backend)?,
@@ -93,7 +95,7 @@ impl SeaOrmArtifactDataObjectGcService {
                 .map_err(storage_error)?;
             let snapshot_reference = transaction
                 .query_one_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "SELECT COUNT(*) AS reference_count
                          FROM module_artifact_data_snapshot_objects snapshot_object
@@ -102,11 +104,11 @@ impl SeaOrmArtifactDataObjectGcService {
                          WHERE snapshot_object.tenant_id = {}
                            AND snapshot_object.source_storage_key = {}
                            AND snapshot.status = 'staging'",
-                        placeholder(backend, 1),
-                        placeholder(backend, 2),
+                        backend.placeholder(1),
+                        backend.placeholder(2),
                     ),
                     vec![
-                        uuid_value(tenant_id, backend),
+                        backend.uuid_value(tenant_id),
                         candidate.storage_key.clone().into(),
                     ],
                 ))
@@ -135,17 +137,17 @@ impl SeaOrmArtifactDataObjectGcService {
                 .map_err(storage_error)?;
             transaction
                 .execute_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "DELETE FROM module_artifact_data_object_gc_candidates
                          WHERE tenant_id = {} AND candidate_id = {} AND storage_key = {}",
-                        placeholder(backend, 1),
-                        placeholder(backend, 2),
-                        placeholder(backend, 3),
+                        backend.placeholder(1),
+                        backend.placeholder(2),
+                        backend.placeholder(3),
                     ),
                     vec![
-                        uuid_value(tenant_id, backend),
-                        uuid_value(candidate.candidate_id, backend),
+                        backend.uuid_value(tenant_id),
+                        backend.uuid_value(candidate.candidate_id),
                         candidate.storage_key.into(),
                     ],
                 ))
@@ -169,7 +171,7 @@ struct ArtifactDataObjectGcCandidate {
 
 fn artifact_data_object_gc_candidate_from_row(
     row: sea_orm::QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<ArtifactDataObjectGcCandidate, ArtifactDataError> {
     let data_contract_revision: i64 = row
         .try_get("", "data_contract_revision")

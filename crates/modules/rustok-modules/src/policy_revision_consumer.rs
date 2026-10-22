@@ -1,12 +1,13 @@
 use rustok_core::ModuleRegistry;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement,
     TransactionTrait, Value as SqlValue,
 };
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::data::{configure_tenant_scope, now_expression, placeholder, uuid_value};
+use crate::backend::SupportedBackend;
+use crate::data::{configure_tenant_scope};
 use crate::policy::ModuleEffectivePolicyQuery;
 use crate::{
     ModuleDefinitionCatalog, ModuleDefinitionSource, ModuleEffectivePolicy,
@@ -57,7 +58,8 @@ impl SeaOrmModulePolicyRevisionConsumer {
         configure_tenant_scope(transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(storage_error)?;
         ensure_cursor_row(transaction, backend, tenant_id, consumer_key).await?;
         load_cursor_revision(transaction, backend, tenant_id, consumer_key).await
     }
@@ -126,21 +128,22 @@ impl SeaOrmModulePolicyRevisionConsumer {
             ModulePolicyRevisionApplyOutcome::Applied
                 | ModulePolicyRevisionApplyOutcome::ResyncRequired
         ) {
-            let backend = transaction.get_database_backend();
+            let backend = SupportedBackend::new(transaction.get_database_backend())
+                .map_err(storage_error)?;
             let updated = transaction
                 .execute_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "UPDATE module_policy_revision_cursors SET current_revision = {}, updated_at = {} \
                          WHERE tenant_id = {} AND consumer_key = {}",
-                        placeholder(backend, 1),
-                        now_expression(backend),
-                        placeholder(backend, 2),
-                        placeholder(backend, 3),
+                        backend.placeholder(1),
+                        backend.now_sql(),
+                        backend.placeholder(2),
+                        backend.placeholder(3),
                     ),
                     vec![
                         transition.next_revision.clone().into(),
-                        uuid_value(tenant_id, backend),
+                        backend.uuid_value(tenant_id),
                         consumer_key.to_string().into(),
                     ],
                 ))
@@ -163,7 +166,8 @@ impl SeaOrmModulePolicyRevisionConsumer {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(storage_error)?;
         ensure_cursor_row(&transaction, backend, tenant_id, consumer_key).await?;
         let revision = load_cursor_revision(&transaction, backend, tenant_id, consumer_key).await?;
         transaction.commit().await.map_err(storage_error)?;
@@ -187,25 +191,25 @@ pub enum ModulePolicyRevisionConsumerError {
 
 async fn ensure_cursor_row<C: ConnectionTrait>(
     connection: &C,
-    backend: DbBackend,
+    backend: SupportedBackend,
     tenant_id: Uuid,
     consumer_key: &str,
 ) -> Result<(), ModulePolicyRevisionConsumerError> {
     connection
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_policy_revision_cursors \
                  (tenant_id, consumer_key, current_revision, updated_at) \
                  VALUES ({}, {}, {}, {}) \
                  ON CONFLICT (tenant_id, consumer_key) DO NOTHING",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.now_sql(),
             ),
             vec![
-                uuid_value(tenant_id, backend),
+                backend.uuid_value(tenant_id),
                 consumer_key.to_string().into(),
                 SqlValue::String(None),
             ],
@@ -217,26 +221,26 @@ async fn ensure_cursor_row<C: ConnectionTrait>(
 
 async fn load_cursor_revision<C: ConnectionTrait>(
     connection: &C,
-    backend: DbBackend,
+    backend: SupportedBackend,
     tenant_id: Uuid,
     consumer_key: &str,
 ) -> Result<Option<String>, ModulePolicyRevisionConsumerError> {
-    let lock = if backend == DbBackend::Postgres {
+    let lock = if backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
         ""
     };
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT current_revision FROM module_policy_revision_cursors \
                  WHERE tenant_id = {} AND consumer_key = {}{lock}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
+                backend.placeholder(1),
+                backend.placeholder(2),
             ),
             vec![
-                uuid_value(tenant_id, backend),
+                backend.uuid_value(tenant_id),
                 consumer_key.to_string().into(),
             ],
         ))
@@ -250,18 +254,18 @@ async fn load_tenant_overrides<C: ConnectionTrait>(
     connection: &C,
     tenant_id: Uuid,
 ) -> Result<Vec<TenantModuleOverride>, ModuleLifecycleDbWriterError> {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let sql = match backend {
-        DbBackend::Postgres => {
+        SupportedBackend::Postgres => {
             "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = $1"
         }
-        _ => "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = ?1",
+        SupportedBackend::Sqlite => "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = ?1",
     };
     connection
         .query_all_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             sql,
-            vec![uuid_value(tenant_id, backend)],
+            vec![backend.uuid_value(tenant_id)],
         ))
         .await
         .map_err(|error| ModuleLifecycleDbWriterError::Database(error.to_string()))?
