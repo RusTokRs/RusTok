@@ -74,7 +74,7 @@ then records what was changed, in what order, and how it was verified.
 | C | H-3 claim lease/reclaim + executor outcome ordering | implemented (`052053a`) |
 | D | M-4 settings strictness; M-6 materializer honesty; M-9 numeric index canonicalization | implemented (`9249557`) |
 | E | D5/D6 initially deleted `dynamic_lifecycle`/`gc`/`wave_rollout`/`operator`; restored and reclassified after provenance review (see §5); §5.1 executed (generations folded into canonical owners, parallel service deleted); journal fixed in place (see §4) | partially reverted — `gc`/`wave_rollout`/`operator` remain restored and unwired per §5.2–§5.4 |
-| F | D4 RLS FORCE + GUC coverage (migration; needs PostgreSQL evidence) | pending |
+| F | D4 RLS FORCE + GUC coverage (migration; needs PostgreSQL evidence) | blocked — readiness inventory, prerequisites, and interim contract recorded in §6; no blind FORCE migration |
 | G | D9 durable epoch + attestation-only watchdog convergence | implemented |
 | H | M-12 schema ownership + backend newtype; typed errors at pub boundary; bounded lists | pending |
 
@@ -345,3 +345,78 @@ and the automatic-mode enforcement note now matches the rewritten
 preview (`generate_preview` for schema/dependents, `data_upgrade` for
 irreversibility). Remaining plan mentions of the deleted service exist
 only inside these dated corrections, as historical evidence.
+
+## 6. Phase F (H-4 / D4) — readiness inventory and blocked record (2026-10-22)
+
+**Status: BLOCKED. Do not land a `FORCE ROW LEVEL SECURITY` migration
+yet.** A blind FORCE migration would either be inert (the application
+connects as the database owner/superuser, which bypasses RLS) or, once a
+non-owner role is used, silently break the control plane (tenant rows
+become invisible wherever the tenant GUC is unset — an empty-result
+failure mode, not an error). This section records the verified inventory
+and the ordered prerequisites that make Phase F landable.
+
+### 6.1 Inventory (verified against the tree, 2026-10-22)
+
+- This crate's migrations create ~110 tables; ~67 carry
+  `ENABLE ROW LEVEL SECURITY` with at least one policy; **0 carry
+  `FORCE`**.
+- 43 tables have no RLS at all. Platform-global by design (no tenant
+  dimension; acceptable as-is): `module_security_epoch` (singleton),
+  `module_operations_tool_*` (fleet tooling), and
+  `module_artifact_node_reconciliation*` (node/topology state keyed by
+  installation, inherits installation scope). The remainder need an
+  explicit per-table scoping decision before FORCE — including the
+  tenant-bearing `module_transition_checkpoints` (`tenant_id` column),
+  the digest-keyed `module_retention_holds` and
+  `module_source_object_retention_holds`, the `registry_publish_*` /
+  `registry_module_releases*` publisher-lineage set,
+  `module_artifact_security_states` / `module_artifact_security_operations`,
+  `module_artifact_binding_operations`,
+  `module_artifact_data_object_{copy,migration}_operations`,
+  `module_artifact_ui_contribution_locks`, and the
+  `module_static_distribution_*` / `module_static_promotion*` families
+  (composition state whose tenant visibility must be decided per table).
+- GUC coverage is two functions — `data::helpers::configure_tenant_scope`
+  and `installation::configure_rls_scope` — three `set_config` call sites
+  against ~123 `current_setting('rustok.tenant_id')` /
+  `rustok.module_control_plane_owner` references in policies. Almost every
+  query path in the crate runs without GUCs and relies on hand-written
+  `WHERE` scoping.
+- No non-owner application database role exists anywhere in provisioning:
+  dev connects as `rustok` (`.env.dev.example`), compose as `postgres`
+  (superuser). Bounded `NOSUPERUSER` roles exist only inside CI evidence
+  harnesses, not for the application.
+
+### 6.2 Prerequisites, in order
+
+1. **Role separation.** Provision a dedicated application role (`LOGIN`,
+   `NOSUPERUSER`, no `BYPASSRLS`, not a table owner) in compose/init SQL
+   and deployment documentation; the server connects as that role,
+   migrations keep running as the owner.
+2. **GUC coverage.** Set transaction-local GUCs at every transaction /
+   connection boundary that touches tenant- or platform-scoped tables
+   (generalize the `configure_rls_scope` pattern to all stores; platform
+   work sets `rustok.module_control_plane_owner`, tenant work sets
+   `rustok.tenant_id`). No PostgreSQL path may run unscoped.
+3. **Policy completion.** For each of the 43 uncovered tables, either add
+   policies matching the decided scope or record the platform-global
+   classification in the migration. Review existing
+   `scope_kind = 'platform' OR tenant = …` policies: platform rows are
+   visible to any tenant session, which is acceptable only while
+   app-level scoping is authoritative.
+4. **PostgreSQL evidence workflow.** A CI job (modeled on the RBAC
+   PostgreSQL runtime-evidence workflow) that runs the crate's
+   PG-backed suites under the application role, plus negative
+   cross-tenant visibility tests per policy family.
+5. **FORCE rollout.** Only after 1–4: `FORCE ROW LEVEL SECURITY` per
+   table family in reviewable steps, each reversible with `NO FORCE`.
+
+### 6.3 Interim contract (binding until Phase F lands)
+
+- Application-level `WHERE` scoping is the authoritative tenant boundary.
+  Every new or changed query over scoped tables must carry explicit
+  scope predicates; reviewers must not accept "RLS will catch it".
+- Existing `ENABLE` + policy DDL is defense-in-depth documentation of
+  the intended boundaries. It must not be cited as active enforcement
+  in security claims, plan statuses, or verification matrices.
