@@ -8,7 +8,7 @@ description = "Generic comments domain for blog and other opt-in non-forum discu
 [features]
 default = ["server"]
 server = [
-  "dep:async-trait",
+  "ports",
   "dep:chrono",
   "dep:rustok-content",
   "dep:rustok-core",
@@ -20,6 +20,7 @@ server = [
   "dep:thiserror",
   "dep:tracing",
 ]
+ports = ["dep:async-trait"]
 tcp-transport = ["server", "dep:tokio"]
 
 [dependencies]
@@ -30,7 +31,6 @@ rustok-core = { workspace = true, optional = true }
 rustok-events = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 rustok-api.workspace = true
-rustok-comments-api.workspace = true
 rustok-telemetry = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
 sea-orm-migration = { workspace = true, optional = true }

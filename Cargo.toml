@@ -28,6 +28,7 @@ members = [
     "crates/modules/rustok-ai/admin",
     "crates/modules/rustok-mcp/admin",
     "crates/modules/rustok-comments/admin",
+    "crates/modules/rustok-comments/storefront",
     "crates/modules/rustok-blog/storefront",
     "crates/modules/rustok-commerce/admin",
     "crates/modules/rustok-commerce/storefront",

@@ -14392,7 +14392,6 @@ dependencies = [
  "async-trait",
  "chrono",
  "rustok-api",
- "rustok-comments-api",
  "rustok-content",
  "rustok-core",
  "rustok-events",

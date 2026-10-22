@@ -5,7 +5,7 @@ pub mod entities;
 pub mod error;
 #[cfg(feature = "server")]
 pub mod migrations;
-#[cfg(feature = "server")]
+#[cfg(feature = "ports")]
 pub mod ports;
 #[cfg(feature = "server")]
 mod public_read;
@@ -56,7 +56,7 @@ pub use dto::{
 pub use entities::*;
 #[cfg(feature = "server")]
 pub use error::{CommentsError, CommentsResult};
-#[cfg(feature = "server")]
+#[cfg(feature = "ports")]
 pub use ports::*;
 #[cfg(feature = "server")]
 pub use remote::*;

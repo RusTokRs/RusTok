@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use tokio::{net::TcpStream, time::timeout};
 
-use rustok_comments_api::CommentsThreadPort;
+use crate::ports::CommentsThreadPort;
 
 use crate::tcp_protocol::{
     DEFAULT_MAX_COMMENTS_FRAME_BYTES, read_frame, validate_frame_limit, write_frame,

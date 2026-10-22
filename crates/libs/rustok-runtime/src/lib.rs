@@ -1,3 +1,18 @@
+//! # RusToK Runtime
+//!
+//! Host runtime foundation helpers for RusToK server, CLI, and module adapters.
+//!
+//! Provides the neutral import surface for host runtime composition, typed shared-handle
+//! lookup, instance layout verification, role materialization, and module payload caching
+//! without coupling to framework-specific runtime contexts.
+//!
+//! ## Entry points
+//!
+//! - [`RuntimeComposition`]: Host-neutral database, settings, and typed-handle composition.
+//! - [`InstanceLayout`], [`InstancePlacement`]: Portable filesystem layout contract and path isolation.
+//! - [`materialize_role`]: Digest-addressed node-local static-role filesystem materialization.
+//! - [`materialize_module_payload`], [`record_prepared_module`]: Content-addressed module payload cache.
+
 use sea_orm::DatabaseConnection;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -9,6 +24,9 @@ use tokio::sync::RwLock;
 mod deployment;
 mod layout;
 mod module_cache;
+
+#[cfg(test)]
+mod contract_tests;
 
 pub use deployment::{
     RoleMaterializationError, RoleMaterializationReceipt, RoleMaterializationRequest,

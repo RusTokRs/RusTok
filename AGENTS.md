@@ -224,6 +224,12 @@ All UI applications (`apps/*`), module-owned UI packages (`crates/modules/*/admi
    - **Reactive Utilities:** `leptos-use` is the canonical reactive utility library (clipboard, event listeners, resize, timers). MUST NOT write custom JS snippets or raw WASM bindings for standard browser capabilities supported by `leptos-use`.
    - **Icons:** Canonical Lucide-based icon set exposed via `rustok-ui`. MUST NOT pull third-party icon crates/packages or paste raw inline `<svg>` blocks.
 
+5. **UI Workbench and Design System Parity (Storybook Alternative):**
+   RusToK rejects classic Storybook (due to zero WASM/Rust support, heavy dependency bloat, and lack of runtime autonomy) in favor of the native **UI Workbench** (`docs/UI/ui-workbench-architecture.md`):
+   - **Isolated Showcase Routes:** Reusable UI components and composite recipes MUST be showcased in native host galleries: `/design-system` in `apps/admin` (Leptos WASM playground) and `/dashboard/design-system` in `apps/next-admin`.
+   - **Single Source of Design Tokens:** Tokens originate strictly in `UI/tokens/tokens.json` and `UI/tokens/base.css`.
+   - **Cross-Framework Parity Gate:** When modifying or introducing design tokens or UI primitives, agents MUST run `npm run verify:ui:parity` to ensure parity across Rust, Next.js, and mobile targets. Introducing external Storybook configurations or standalone synthetic dev servers is forbidden.
+
 ### Reuse and abstraction
 
 Reuse is driven by shared semantics and ownership, not textual similarity.

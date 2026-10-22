@@ -48,5 +48,6 @@ adapters away from framework-specific runtime contexts.
   Async-GraphQL into module owners that consume runtime helpers.
 - Is consumed by server/module adapters for typed runtime lookups.
 - Does not own HTTP routing, CLI, FBA provider metadata, domain services, or UI transport.
+See [CRATE_API.md](CRATE_API.md) for the formal public API surface and contract invariants.
 
 See [docs](docs/README.md).

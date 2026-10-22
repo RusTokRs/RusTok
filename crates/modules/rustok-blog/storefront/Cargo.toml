@@ -44,4 +44,4 @@ rustok-channel = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 rustok-tenant = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }
-rustok-comments-storefront-support = { path = "../../rustok-comments-storefront-support", default-features = false }
+rustok-comments-storefront-support = { path = "../../rustok-comments/storefront", default-features = false }

@@ -1,4 +1,21 @@
+//! # RusToK Web
+//!
+//! Axum HTTP boundary helpers for RusToK server and module backend adapters.
+//!
+//! Provides the neutral import surface for HTTP error response mapping, typed status codes,
+//! per-response Content Security Policy (CSP) nonces, and release-qualified browser asset delivery.
+//!
+//! ## Entry points
+//!
+//! - [`HttpError`], [`HttpResult`]: Typed HTTP error model mapping to standard status codes.
+//! - [`ErrorBody`]: Standard JSON error payload response structure.
+//! - [`CspNonce`]: Per-response Content Security Policy nonce generator.
+//! - [`BrowserAssetRegistry`]: Release-qualified content-addressed asset serving with strong ETags.
+
 use std::fmt::Write as _;
+
+#[cfg(test)]
+mod contract_tests;
 
 use axum::{
     Json,
