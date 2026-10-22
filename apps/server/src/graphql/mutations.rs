@@ -1868,8 +1868,8 @@ mod tests {
         map_platform_composition_build_error, map_platform_composition_error,
         map_toggle_module_error, prepare_user_custom_fields_write,
         require_platform_composition_operator, toggle_err_core_module_cannot_be_disabled,
-        toggle_err_has_dependents, toggle_err_hook_failed, toggle_err_missing_dependencies,
-        validate_custom_fields,
+        toggle_err_has_dependents, toggle_err_hook_failed, toggle_err_incompatible_dependencies,
+        toggle_err_missing_dependencies, validate_custom_fields,
     };
     use crate::graphql::artifact_lifecycle::{
         map_artifact_installation_lifecycle_error, map_artifact_tenant_lifecycle_error,
