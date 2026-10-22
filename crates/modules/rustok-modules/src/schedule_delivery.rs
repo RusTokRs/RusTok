@@ -10,7 +10,6 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, QueryResult, Statement, TransactionTrait,
-    Value as SqlValue,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

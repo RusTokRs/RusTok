@@ -19,7 +19,8 @@ use crate::{
     data::{
         configure_tenant_scope, lock_artifact_data_namespace_on, revision_value, uuid_from_row,
     },
-    promotion::{digest_json, valid_digest},
+    installation::valid_digest,
+    promotion::digest_json,
 };
 
 #[derive(Debug, Error, PartialEq, Eq)]

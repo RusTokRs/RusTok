@@ -24,9 +24,10 @@ use crate::{
     distribution::{
         load_build, load_distribution_state, module_static_distribution_composition_digest,
     },
+    installation::valid_digest,
     promotion::{
         digest_json, load_platform_build_evidence, load_promotion, valid_cas_source_reference,
-        valid_digest, valid_reference, validate_promotion_review,
+        valid_reference, validate_promotion_review,
     },
 };
 

@@ -12,7 +12,7 @@ use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::promotion::valid_digest;
+use crate::installation::valid_digest;
 use crate::{
     ArtifactPayloadKind, ModuleArtifactRegistryReleaseStatus, ModuleArtifactSecuritySnapshot,
     ModuleArtifactSecurityStatus, ModuleDefinitionCatalog, ModuleDefinitionKind,

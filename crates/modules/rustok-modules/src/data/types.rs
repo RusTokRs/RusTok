@@ -141,7 +141,7 @@ pub(crate) async fn lock_artifact_data_namespace_on<C: ConnectionTrait>(
         || !valid_module_slug(&namespace.module_slug)
         || namespace.data_contract_revision == 0
         || namespace.namespace_revision == 0
-        || !crate::promotion::valid_digest(&namespace.data_contract_digest)
+        || !crate::installation::valid_digest(&namespace.data_contract_digest)
     {
         return Err(ArtifactDataError::InvalidScope);
     }
@@ -642,7 +642,7 @@ impl ArtifactDataScope {
         if self.tenant_id.is_nil()
             || self.data_owner_id.is_nil()
             || self.namespace_instance_id.is_nil()
-            || !crate::promotion::valid_digest(&self.data_contract_digest)
+            || !crate::installation::valid_digest(&self.data_contract_digest)
             || !valid_module_slug(&self.module_slug)
             || self.data_contract_revision == 0
             || self.policy_revision == 0

@@ -22,7 +22,8 @@ use crate::{
     ModuleStaticDistributionRole,
     data::uuid_from_row,
     distribution_release::{commit_recovery_release, load_release_record, load_release_state},
-    promotion::{digest_json, valid_digest, valid_reference},
+    installation::valid_digest,
+    promotion::{digest_json, valid_reference},
     reconciliation::{
         ModuleDesiredObservedState, ModuleReconciliationEvidence, ModuleReconciliationFailure,
         ModuleReconciliationPhase,

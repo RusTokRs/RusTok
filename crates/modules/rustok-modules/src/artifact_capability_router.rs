@@ -80,7 +80,7 @@ impl ArtifactCapabilityScope {
             || self.policy_revision == 0
             || self.release.slug.trim().is_empty()
             || semver::Version::parse(&self.release.version).is_err()
-            || !crate::promotion::valid_digest(&self.release.digest)
+            || !crate::installation::valid_digest(&self.release.digest)
         {
             return false;
         }

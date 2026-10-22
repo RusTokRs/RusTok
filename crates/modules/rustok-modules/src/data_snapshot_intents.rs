@@ -100,8 +100,8 @@ impl ArtifactDataSnapshotIntentService {
             || request.operation_id.is_nil()
             || request.source_storage_key.is_empty()
             || candidate_target_key.is_empty()
-            || !crate::promotion::valid_digest(request.operation_request_digest)
-            || !crate::promotion::valid_digest(&request.object.digest_sha256)
+            || !crate::installation::valid_digest(request.operation_request_digest)
+            || !crate::installation::valid_digest(&request.object.digest_sha256)
             || request.object.name.is_empty()
         {
             return Err(SnapshotIntentError::InvalidCommand);

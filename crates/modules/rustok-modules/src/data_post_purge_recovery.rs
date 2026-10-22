@@ -25,7 +25,8 @@ use crate::{
     data_snapshot::{
         datetime_from_row, load_manifest, lock_snapshot, positive_u64, snapshot_from_row,
     },
-    promotion::{digest_json, valid_digest},
+    installation::valid_digest,
+    promotion::digest_json,
 };
 
 #[derive(Debug, Error, PartialEq, Eq)]

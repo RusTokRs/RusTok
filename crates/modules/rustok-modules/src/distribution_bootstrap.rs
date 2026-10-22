@@ -12,7 +12,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::backend::SupportedBackend;
-use crate::installation::sha256_digest;
+use crate::installation::{sha256_digest, valid_digest};
 use crate::{
     ControlPlaneInfrastructure, ModuleCommandContext, ModuleStaticDistributionBuildEvidence,
     ModuleStaticDistributionExecutorMode, ModuleStaticDistributionItem,
@@ -28,7 +28,7 @@ use crate::{
         validate_admission,
     },
     promotion::{
-        normalize_native_entry_type, valid_cargo_package, valid_cas_source_reference, valid_digest,
+        normalize_native_entry_type, valid_cargo_package, valid_cas_source_reference,
         valid_reference,
     },
 };

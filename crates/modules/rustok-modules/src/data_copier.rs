@@ -12,7 +12,8 @@ use crate::{
         lock_artifact_data_namespace_on, revision_value, synchronize_artifact_data_indexes,
         uuid_from_row, validate_artifact_data_index_contract, validate_artifact_data_key,
     },
-    promotion::{digest_json, valid_digest},
+    installation::valid_digest,
+    promotion::digest_json,
 };
 use async_trait::async_trait;
 use sea_orm::{

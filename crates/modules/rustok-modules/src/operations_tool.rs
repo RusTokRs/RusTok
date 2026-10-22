@@ -12,7 +12,7 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::{DateTime, Utc};
 use ed25519_dalek::{Signature, VerifyingKey};
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait, Value};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use thiserror::Error;

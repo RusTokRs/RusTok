@@ -24,9 +24,10 @@ use crate::{
     ControlPlaneInfrastructure, ModuleCommandContext, ModuleStaticPromotionError,
     ModuleStaticPromotionStatus,
     data::uuid_from_row,
+    installation::valid_digest,
     promotion::{
         digest_json, load_platform_build_evidence, load_promotion, normalize_native_entry_type,
-        valid_cargo_package, valid_cas_source_reference, valid_digest, valid_reference,
+        valid_cargo_package, valid_cas_source_reference, valid_reference,
         validate_promotion_review,
     },
 };

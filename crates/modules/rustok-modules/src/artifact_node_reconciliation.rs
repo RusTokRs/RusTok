@@ -21,8 +21,8 @@ use crate::backend::SupportedBackend;
 use crate::{
     ArtifactPayloadKind, ControlPlaneInfrastructure, ModuleCommandContext,
     data::uuid_from_row,
-    installation::{InstalledModuleArtifact, ModuleInstallationScope},
-    promotion::{digest_json, valid_digest, valid_reference},
+    installation::{InstalledModuleArtifact, ModuleInstallationScope, valid_digest},
+    promotion::{digest_json, valid_reference},
     reconciliation::{
         ModuleDesiredObservedState, ModuleReconciliationEvidence, ModuleReconciliationFailure,
         ModuleReconciliationPhase,

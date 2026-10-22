@@ -12,7 +12,6 @@ use chrono_tz::Tz;
 use cron::Schedule;
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, QueryResult, Statement, TransactionTrait,
-    Value as SqlValue,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

@@ -5,7 +5,7 @@
 //! cleanup operate idempotently without orphaned staging residue.
 
 use chrono::{DateTime, Duration, Utc};
-use sea_orm::{ConnectionTrait, Statement, Value as SqlValue};
+use sea_orm::{ConnectionTrait, Statement};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
