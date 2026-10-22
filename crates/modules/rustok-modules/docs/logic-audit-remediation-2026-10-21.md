@@ -51,6 +51,11 @@ then records what was changed, in what order, and how it was verified.
   requester == publisher == owner, and separation of duties is provided by
   the `can_manage_modules` capability plus the validation stages, not by a
   second human. (Revisit only if multi-operator namespaces appear.)
+  Namespace bootstrap follows the same model: creating the first publish
+  request for an unowned slug requires `can_manage_modules` (the first
+  published release durably binds its publisher as owner, so a first-comer
+  claim by any authenticated user would be namespace squatting — H-6
+  remainder, closed in `52f26ba`).
 - **D9 — Real rollback safety.** The security epoch is durable (singleton
   `module_security_epoch` row, migration `m20261021_000055`) and advanced
   atomically with every quarantine/revocation. Convergence is never
@@ -167,6 +172,64 @@ The development sandbox has no `cargo`/`rustc`. Verification therefore is:
   accepted-unfinished). New tests cover streamed file publish, verified
   path/blob reads, corrupt-blob fail-closed on republish and read,
   oversize rejection on both publish paths, and NotFound reads.
+- **M-5a (policy engine, `685866a` + fmt `5ae1de9`):** all eight M-5 policy
+  sub-findings closed in `policy.rs`. Duplicate tenant overrides and
+  duplicate runtime inputs are typed errors (`DuplicateTenantOverride` /
+  `DuplicateRuntimeInput`) instead of silent `BTreeMap` last-wins.
+  `executor_available` is excluded from the revision hash via a shadow
+  projection (contract bumped to `rustok.module_effective_policy.v3`;
+  the flag still gates availability, so worker flapping no longer churns
+  the durable revision). Declared dependency `version_requirement`s are
+  now enforced both at toggle admission
+  (`ModuleToggleValidationError::IncompatibleDependencies`) and in the
+  availability cascade (new `DependencyVersionMismatch` denial, distinct
+  from `DependencyUnavailable`; rustok-api view, stable code, GraphQL
+  projection, and the server toggle-error mapping updated in the same
+  commit). Toggle admission is still deliberately *not* widened to
+  co-requisites/channel/maintenance/runtime: that is the documented
+  layering (`ordering_enabled_modules` contract) — toggle records tenant
+  intent against catalog topology; the effective policy decides
+  availability. The `TenantOverride` decision fact is suppressed for Core
+  definitions (it falsely claimed tenant intent was honored where Core
+  ignores overrides). The revision gate's `Stale` outcome is replaced by
+  gap-advancing `ResyncRequired` (no dual outcomes, §13): a missed
+  transition no longer wedges consumers — the revision consumer persists
+  the cursor on resync and the transition coordinator publishes on
+  resync; only `Duplicate` remains a rejection. New unit tests cover
+  duplicates, executor-flap revision stability, cascade/toggle version
+  mismatch, the Core fact, and gate resync semantics.
+- **M-5b (lifecycle writer + settings store, `c2675dd` + fmt `8c297e8`):**
+  `persist_settings` no longer freezes derived effective availability (or
+  a forced Core flag) into `tenant_modules.enabled`: existing rows keep
+  their recorded intent untouched, and a first row created by a settings
+  save records the caller-supplied platform default
+  (`TenantModuleSettingsRequest.default_enabled` replaces
+  `is_core`/`is_effectively_enabled`). The boolean column still cannot
+  express "settings without intent"; the tri-state split remains tracked
+  under M-12. `runtime_policy_inputs` is fallible: security-resolution
+  errors propagate as typed `ModuleLifecycleDbWriterError::Security`
+  (absence is an explicit `Clear` snapshot, so every error is genuine),
+  while the installation/sandbox ports keep failing closed with the
+  rationale recorded in code (opaque `String` port errors cannot
+  distinguish absence from storage failure; typed ports are Phase H).
+  Runtime evidence is resolved once per command context and shared by all
+  policy projections (previously re-queried N×3 per projection).
+  `overrides()` is bounded by the same 1000-row contract as
+  `tenant_override_snapshots` (`LIMIT 1001` + typed rejection), and the
+  definition catalog is shared via `Arc` with a `OnceLock` cache for the
+  registry-built catalog instead of a deep clone/rebuild per call.
+- **H-6 remainder (namespace squatting, `52f26ba` + fmt `df3be21`):** the
+  first-comer arm of `governance_actor_can_create_publish_request` is
+  removed. The first published release durably binds its publisher as the
+  slug owner (`registry_module_owners` insert in `publication.rs`), so
+  admitting any authenticated user to create a publish request for an
+  unowned slug was a namespace capture path. Namespace bootstrap now
+  requires `can_manage_modules`, consistent with the D8 single-operator
+  model; the bound owner publishes without the capability. A future
+  self-service marketplace must introduce an explicit namespace-claim
+  flow rather than widening this gate. Covered by updated unit
+  assertions plus a store-backed rejection test (empty owner table,
+  non-manager actor, rejected before any write).
 
 ## 5. Appendix: classification of the four restored modules (2026-10-21)
 
