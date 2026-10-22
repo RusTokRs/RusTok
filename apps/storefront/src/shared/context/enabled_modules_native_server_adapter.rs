@@ -19,9 +19,7 @@ pub(crate) async fn list_enabled_modules() -> Result<Vec<String>, ServerFnError>
             .map_err(ServerFnError::new)?;
         let reader = runtime
             .shared_get::<rustok_modules::SharedModuleEffectivePolicyReader>()
-            .ok_or_else(|| {
-                ServerFnError::new("effective module policy reader is not configured")
-            })?;
+            .ok_or_else(|| ServerFnError::new("effective module policy reader is not configured"))?;
         let mut modules = reader
             .0
             .resolve(tenant.id)
