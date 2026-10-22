@@ -25,7 +25,8 @@ use rustok_sandbox::{
 use crate::backend::SupportedBackend;
 use crate::{
     ArtifactDataError, ArtifactDataMigrationCheckpointStore, ArtifactModuleKind,
-    ArtifactPayloadKind, ArtifactReleaseRef, ArtifactSandboxPolicyResolver,
+    ArtifactInstallationResolveError, ArtifactPayloadKind, ArtifactReleaseRef,
+    ArtifactSandboxPolicyResolveError, ArtifactSandboxPolicyResolver,
     ArtifactUiContributionContent, ConflictFenceSet, ControlPlaneInfrastructure,
     ModuleArtifactDescriptor, ModuleArtifactError, ModuleCommandContext, ModuleDependencyLockGraph,
     ModuleTransitionCheckpoint, ModuleTransitionState, RetentionHoldKind, RetentionHoldRecord,
@@ -1219,16 +1220,22 @@ impl SeaOrmArtifactInstallationStore {
         &self,
         installation_id: Uuid,
         tenant_id: Uuid,
-    ) -> Result<InstalledModuleArtifact, String> {
+    ) -> Result<InstalledModuleArtifact, ArtifactInstallationResolveError> {
         if installation_id.is_nil() || tenant_id.is_nil() {
-            return Err("artifact route requires non-nil identities".to_string());
+            return Err(ArtifactInstallationResolveError::InvalidRequest(
+                "artifact route requires non-nil identities".to_string(),
+            ));
         }
-        let transaction = self.db.begin().await.map_err(|error| error.to_string())?;
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &ModuleInstallationScope::Tenant { tenant_id })
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
         let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
         let placeholder = if backend == SupportedBackend::Postgres {
             "$1"
         } else {
@@ -1243,20 +1250,22 @@ impl SeaOrmArtifactInstallationStore {
                 vec![backend.uuid_value(installation_id)],
             ))
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
         transaction
             .commit()
             .await
-            .map_err(|error| error.to_string())?;
-        let row = row.ok_or_else(|| "artifact routed installation is unavailable".to_string())?;
+            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
+        let row = row.ok_or(ArtifactInstallationResolveError::Unavailable)?;
         let release = ArtifactReleaseRef {
-            slug: row.try_get("", "slug").map_err(|error| error.to_string())?,
+            slug: row
+                .try_get("", "slug")
+                .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
             version: row
                 .try_get("", "version")
-                .map_err(|error| error.to_string())?,
+                .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
             digest: row
                 .try_get("", "payload_digest")
-                .map_err(|error| error.to_string())?,
+                .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
         };
         <Self as crate::ArtifactInstallationResolver>::resolve_exact(
             self,
@@ -3668,13 +3677,17 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
         &self,
         release: &ArtifactReleaseRef,
         tenant_id: Uuid,
-    ) -> Result<InstalledModuleArtifact, String> {
-        let transaction = self.db.begin().await.map_err(|error| error.to_string())?;
+    ) -> Result<InstalledModuleArtifact, ArtifactInstallationResolveError> {
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &ModuleInstallationScope::Tenant { tenant_id })
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
         let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
         let placeholders = match backend {
             SupportedBackend::Postgres => ("$1", "$2", "$3", "$4"),
             SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4"),
@@ -3729,102 +3742,136 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
                 ],
             ))
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
         let Some(row) = row else {
             transaction
                 .commit()
                 .await
-                .map_err(|error| error.to_string())?;
-            return Err("active artifact release is unavailable for the requested tenant".into());
+                .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
+            return Err(ArtifactInstallationResolveError::Unavailable);
         };
 
         let installation_id = required_uuid_from_row(&row, "installation_id", backend)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
         let data_owner_id = required_uuid_from_row(&row, "data_owner_id", backend)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
         let namespace_instance_id = optional_uuid_from_row(&row, "namespace_instance_id", backend)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
         let secret_instance_id = optional_uuid_from_row(&row, "secret_instance_id", backend)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
         let settings_instance_id = required_uuid_from_row(&row, "settings_instance_id", backend)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
         let scope_kind: String = row
             .try_get("", "scope_kind")
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
         let scope = match scope_kind.as_str() {
             "platform" => ModuleInstallationScope::Platform,
             "tenant" => ModuleInstallationScope::Tenant {
                 tenant_id: required_uuid_from_row(&row, "tenant_id", backend)
-                    .map_err(|error| error.to_string())?,
+                    .map_err(|error| {
+                        ArtifactInstallationResolveError::Invariant(error.to_string())
+                    })?,
             },
-            _ => return Err("artifact installation has an invalid scope".into()),
+            _ => {
+                return Err(ArtifactInstallationResolveError::Invariant(
+                    "artifact installation has an invalid scope".to_string(),
+                ))
+            }
         };
         let reference = OciArtifactReference {
             registry: row
                 .try_get("", "registry")
-                .map_err(|error| error.to_string())?,
+                .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
             repository: row
                 .try_get("", "repository")
-                .map_err(|error| error.to_string())?,
+                .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
             digest: row
                 .try_get("", "manifest_digest")
-                .map_err(|error| error.to_string())?,
+                .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
         };
-        reference.validate().map_err(|error| error.to_string())?;
+        reference.validate().map_err(|error| {
+            ArtifactInstallationResolveError::Invariant(error.to_string())
+        })?;
         let descriptor: ModuleArtifactDescriptor = serde_json::from_str(
             &row.try_get::<String>("", "descriptor")
-                .map_err(|error| error.to_string())?,
+                .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
         )
-        .map_err(|_| "artifact installation descriptor is invalid".to_string())?;
+        .map_err(|_| {
+            ArtifactInstallationResolveError::Invariant(
+                "artifact installation descriptor is invalid".to_string(),
+            )
+        })?;
         descriptor
             .validate()
-            .map_err(|_| "artifact installation descriptor is invalid".to_string())?;
+            .map_err(|_| {
+                ArtifactInstallationResolveError::Invariant(
+                    "artifact installation descriptor is invalid".to_string(),
+                )
+            })?;
         let payload_media_type: String = row
             .try_get("", "payload_media_type")
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
         if !valid_media_type_for(descriptor.payload_kind, &payload_media_type) {
-            return Err("artifact installation payload media type is invalid".into());
+            return Err(ArtifactInstallationResolveError::Invariant(
+                "artifact installation payload media type is invalid".to_string(),
+            ));
         }
         let dependency_lock: ModuleDependencyLockGraph = serde_json::from_str(
             &row.try_get::<String>("", "dependency_lock")
-                .map_err(|error| error.to_string())?,
+                .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
         )
-        .map_err(|_| "artifact installation dependency lock is invalid".to_string())?;
+        .map_err(|_| {
+            ArtifactInstallationResolveError::Invariant(
+                "artifact installation dependency lock is invalid".to_string(),
+            )
+        })?;
         dependency_lock
             .validate()
-            .map_err(|_| "artifact installation dependency lock is invalid".to_string())?;
+            .map_err(|_| {
+                ArtifactInstallationResolveError::Invariant(
+                    "artifact installation dependency lock is invalid".to_string(),
+                )
+            })?;
         let persisted_graph_revision: i64 = row
             .try_get("", "dependency_graph_revision")
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
         let persisted_graph_digest: String = row
             .try_get("", "dependency_graph_digest")
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
         let capability_grant_revision: i64 = row
             .try_get("", "capability_grant_revision")
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
         let installed_at = match backend {
             SupportedBackend::Postgres => row
                 .try_get::<DateTime<Utc>>("", "installed_at")
-                .map_err(|error| error.to_string())?,
+                .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
             SupportedBackend::Sqlite => DateTime::parse_from_rfc3339(
                 &row.try_get::<String>("", "installed_at")
-                    .map_err(|error| error.to_string())?,
+                    .map_err(|error| {
+                        ArtifactInstallationResolveError::Invariant(error.to_string())
+                    })?,
             )
-            .map_err(|_| "artifact installation timestamp is invalid".to_string())?
+            .map_err(|_| {
+                ArtifactInstallationResolveError::Invariant(
+                    "artifact installation timestamp is invalid".to_string(),
+                )
+            })?
             .with_timezone(&Utc),
         };
         transaction
             .commit()
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactInstallationResolveError::Store(error.to_string()))?;
 
-        let persisted_slug: String = row.try_get("", "slug").map_err(|error| error.to_string())?;
+        let persisted_slug: String = row
+            .try_get("", "slug")
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
         let persisted_version: String = row
             .try_get("", "version")
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
         let persisted_payload_digest: String = row
             .try_get("", "payload_digest")
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
         if descriptor.slug != persisted_slug
             || descriptor.version != persisted_version
             || descriptor.artifact_digest != persisted_payload_digest
@@ -3832,13 +3879,17 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
             || dependency_lock.graph_revision != persisted_graph_revision as u64
             || dependency_lock.graph_digest != persisted_graph_digest
         {
-            return Err(
+            return Err(ArtifactInstallationResolveError::Invariant(
                 "artifact installation immutable state does not match its persisted identity"
-                    .into(),
-            );
+                    .to_string(),
+            ));
         }
         let capability_grant_revision = u64::try_from(capability_grant_revision)
-            .map_err(|_| "artifact installation capability revision is invalid".to_string())?;
+            .map_err(|_| {
+                ArtifactInstallationResolveError::Invariant(
+                    "artifact installation capability revision is invalid".to_string(),
+                )
+            })?;
         Ok(InstalledModuleArtifact {
             installation_id,
             data_owner_id,
@@ -3863,21 +3914,29 @@ impl ArtifactSandboxPolicyResolver for SeaOrmArtifactSandboxPolicyResolver {
         &self,
         artifact: &InstalledModuleArtifact,
         tenant_id: Uuid,
-    ) -> Result<SandboxPolicy, String> {
+    ) -> Result<SandboxPolicy, ArtifactSandboxPolicyResolveError> {
         if artifact.installation_id.is_nil() || tenant_id.is_nil() {
-            return Err("artifact sandbox policy requires non-nil identities".to_string());
+            return Err(ArtifactSandboxPolicyResolveError::InvalidRequest(
+                "artifact sandbox policy requires non-nil identities".to_string(),
+            ));
         }
         if matches!(&artifact.scope, ModuleInstallationScope::Tenant { tenant_id: scope_tenant } if *scope_tenant != tenant_id)
         {
-            return Err("tenant-scoped artifact cannot execute for another tenant".to_string());
+            return Err(ArtifactSandboxPolicyResolveError::InvalidRequest(
+                "tenant-scoped artifact cannot execute for another tenant".to_string(),
+            ));
         }
 
-        let transaction = self.db.begin().await.map_err(|error| error.to_string())?;
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| ArtifactSandboxPolicyResolveError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &ModuleInstallationScope::Tenant { tenant_id })
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactSandboxPolicyResolveError::Store(error.to_string()))?;
         let backend = SupportedBackend::new(transaction.get_database_backend())
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactSandboxPolicyResolveError::Store(error.to_string()))?;
         let placeholders = match backend {
             SupportedBackend::Postgres => ("$1", "$2", "$3", "$4", "$5"),
             SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4", "?5"),
@@ -3935,29 +3994,31 @@ impl ArtifactSandboxPolicyResolver for SeaOrmArtifactSandboxPolicyResolver {
                 ],
             ))
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactSandboxPolicyResolveError::Store(error.to_string()))?;
         transaction
             .commit()
             .await
-            .map_err(|error| error.to_string())?;
-        let row = row.ok_or_else(|| {
-            "no eligible durable sandbox policy exists for the artifact installation".to_string()
-        })?;
+            .map_err(|error| ArtifactSandboxPolicyResolveError::Store(error.to_string()))?;
+        let row = row.ok_or(ArtifactSandboxPolicyResolveError::Unavailable)?;
         let revision: i64 = row
             .try_get("", "capability_grant_revision")
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactSandboxPolicyResolveError::Invariant(error.to_string()))?;
         let revision = u64::try_from(revision)
-            .map_err(|_| "sandbox policy revision is outside the supported range".to_string())?;
+            .map_err(|_| {
+                ArtifactSandboxPolicyResolveError::Invariant(
+                    "sandbox policy revision is outside the supported range".to_string(),
+                )
+            })?;
         if revision != artifact.capability_grant_revision {
-            return Err(
-                "sandbox policy revision does not match the admitted installation".to_string(),
-            );
+            return Err(ArtifactSandboxPolicyResolveError::RevisionMismatch);
         }
         let policy: SandboxPolicy = serde_json::from_str(
             &row.try_get::<String>("", "policy")
-                .map_err(|error| error.to_string())?,
+                .map_err(|error| ArtifactSandboxPolicyResolveError::Invariant(error.to_string()))?,
         )
-        .map_err(|_| "sandbox policy is invalid".to_string())?;
+        .map_err(|_| {
+            ArtifactSandboxPolicyResolveError::Invariant("sandbox policy is invalid".to_string())
+        })?;
         validate_sandbox_policy(artifact, &policy)?;
         Ok(policy)
     }
@@ -4631,9 +4692,9 @@ fn sandbox_policy_values(
 fn validate_sandbox_policy(
     artifact: &InstalledModuleArtifact,
     policy: &SandboxPolicy,
-) -> Result<(), String> {
+) -> Result<(), ArtifactSandboxPolicyResolveError> {
     validate_sandbox_policy_for_admission(&artifact.descriptor, policy)
-        .map_err(|error| error.to_string())
+        .map_err(|error| ArtifactSandboxPolicyResolveError::Invariant(error.to_string()))
 }
 
 fn validate_sandbox_policy_for_admission(

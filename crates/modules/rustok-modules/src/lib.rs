@@ -357,7 +357,8 @@ pub use dependency::{
 pub use dispatcher::{
     ARTIFACT_BINDING_DISPATCH_ENVELOPE_VERSION, ArtifactBindingDispatch,
     ArtifactBindingDispatchEnvelope, ArtifactBindingDispatchEnvelopeError,
-    ArtifactBindingExecutionContext, ArtifactBindingExecutor, ArtifactCommandBindingRequest,
+    ArtifactBindingDispatchError, ArtifactBindingExecutionContext, ArtifactBindingExecutor,
+    ArtifactCommandBindingRequest,
     ArtifactEventBindingOutcome, ArtifactHttpBindingRequest, ArtifactInstallationTarget,
     ArtifactLifecycleExecutor, ModuleDispatchError, ModuleExecutionDispatcher,
     ModuleLifecycleHookPhase, dispatch_artifact_command_binding, dispatch_artifact_http_binding,
@@ -588,8 +589,10 @@ pub use resolution::{
     ModuleResolutionResult, ModuleResolutionScope, resolve_module_dependencies,
 };
 pub use runtime::{
-    ArtifactEffectivePolicyResolver, ArtifactInstallationResolver, ArtifactRuntime,
-    ArtifactRuntimeError, ArtifactRuntimeLifecycleExecutor, ArtifactSandboxPolicyResolver,
+    ArtifactEffectivePolicyResolveError, ArtifactEffectivePolicyResolver,
+    ArtifactInstallationResolveError, ArtifactInstallationResolver, ArtifactRuntime,
+    ArtifactRuntimeError, ArtifactRuntimeLifecycleExecutor,
+    ArtifactSandboxPolicyResolveError, ArtifactSandboxPolicyResolver,
     VerifiedArtifactNodeCache,
 };
 pub use runtime_handles::{

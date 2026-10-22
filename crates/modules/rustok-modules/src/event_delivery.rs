@@ -593,6 +593,9 @@ impl ModuleWorkHandler for ArtifactEventDeliveryWorkAdapter {
             .await
         {
             Ok(_) => Ok(ModuleWorkOutcome::Completed),
+            Err(error) if error.is_terminal() => Ok(ModuleWorkOutcome::Rejected {
+                message: "execution_rejected".to_string(),
+            }),
             Err(_) => Ok(ModuleWorkOutcome::Retryable {
                 message: "execution_failed".to_string(),
             }),

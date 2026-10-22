@@ -26,8 +26,9 @@ pub(crate) use uuid::Uuid;
 
 pub(crate) use crate::backend::SupportedBackend;
 pub(crate) use crate::{
-    ArtifactModuleKind, ArtifactPayloadKind, ArtifactPersistenceContract, ArtifactSchemaDocument,
-    ModuleArtifactDescriptor, ModuleBindingIdempotency, ModulesModule, canonical_schema_digest,
+    ArtifactBindingDispatchError, ArtifactModuleKind, ArtifactPayloadKind,
+    ArtifactPersistenceContract, ArtifactSchemaDocument, ModuleArtifactDescriptor,
+    ModuleBindingIdempotency, ModulesModule, canonical_schema_digest,
 };
 
 pub(crate) use super::super::broker::*;
@@ -343,7 +344,7 @@ impl ArtifactBindingExecutor for RecordingUpgradeBindingExecutor {
     async fn dispatch_binding(
         &self,
         dispatch: ArtifactBindingDispatch<'_>,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, ArtifactBindingDispatchError> {
         self.calls.lock().expect("calls lock").push((
             dispatch.release.slug.clone(),
             dispatch.binding.id.clone(),

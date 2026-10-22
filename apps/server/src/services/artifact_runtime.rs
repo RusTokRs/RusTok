@@ -10,10 +10,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
-    ArtifactCapabilityBrokerResolverRouter, ArtifactEffectivePolicyResolver, ArtifactRuntime,
-    ArtifactRuntimeLifecycleExecutor, InstalledModuleArtifact, ModuleControlPlane,
-    ModuleEffectivePolicy, ResolvingArtifactCapabilityBroker, SeaOrmArtifactNodeReadiness,
-    SharedArtifactBindingExecutor, VerifiedArtifactNodeCache,
+    ArtifactCapabilityBrokerResolverRouter, ArtifactEffectivePolicyResolveError,
+    ArtifactEffectivePolicyResolver, ArtifactRuntime, ArtifactRuntimeLifecycleExecutor,
+    InstalledModuleArtifact, ModuleControlPlane, ModuleEffectivePolicy,
+    ResolvingArtifactCapabilityBroker, SeaOrmArtifactNodeReadiness, SharedArtifactBindingExecutor,
+    VerifiedArtifactNodeCache,
 };
 use rustok_sandbox::{CapabilityName, ExecutorRegistry, SandboxRuntime};
 use rustok_sandbox_transport::GrpcRhaiExecutor;
@@ -67,7 +68,7 @@ impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
         &self,
         tenant_id: uuid::Uuid,
         artifact: &InstalledModuleArtifact,
-    ) -> Result<ModuleEffectivePolicy, String> {
+    ) -> Result<ModuleEffectivePolicy, ArtifactEffectivePolicyResolveError> {
         let policy =
             crate::services::effective_module_policy::EffectiveModulePolicyService::resolve(
                 &self.db,
@@ -75,11 +76,13 @@ impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
                 tenant_id,
             )
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ArtifactEffectivePolicyResolveError::Store(error.to_string()))?;
         self.node_readiness
             .require_active(artifact, policy.policy_revision())
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| {
+                ArtifactEffectivePolicyResolveError::NodeNotReady(error.to_string())
+            })?;
         Ok(policy)
     }
 }
