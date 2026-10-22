@@ -708,7 +708,7 @@ impl ExternalPrebuiltIngressService {
                     .map_err(|e| ExternalPrebuiltIngressError::CasStorage(e.to_string()))?;
 
                 if let Err(error) = self.blobs.publish(&staged).await {
-                    let _ = self.blobs.discard(&staged).await;
+                    self.blobs.discard_best_effort(&staged).await;
                     return Err(ExternalPrebuiltIngressError::CasStorage(error.to_string()));
                 }
                 (size, true)
@@ -726,10 +726,10 @@ impl ExternalPrebuiltIngressService {
 
                 let size = staged.size_bytes;
                 let publish_result = self.blobs.publish(&staged).await;
-                let _ = tokio::fs::remove_file(&path).await;
+                crate::oci::remove_staged_file_best_effort(&path).await;
 
                 if let Err(error) = publish_result {
-                    let _ = self.blobs.discard(&staged).await;
+                    self.blobs.discard_best_effort(&staged).await;
                     return Err(ExternalPrebuiltIngressError::CasStorage(error.to_string()));
                 }
                 (size, true)

@@ -690,9 +690,8 @@ impl OciRegistryTransport {
                     tokio::time::sleep(retry_backoff(attempt)).await;
                 }
                 Ok(response) => return Ok(response),
-                Err(error) if attempt < maximum_attempts && retryable => {
+                Err(_) if attempt < maximum_attempts && retryable => {
                     tokio::time::sleep(retry_backoff(attempt)).await;
-                    let _ = error;
                 }
                 Err(_) => {
                     return Err(OciTransportError::Unavailable(

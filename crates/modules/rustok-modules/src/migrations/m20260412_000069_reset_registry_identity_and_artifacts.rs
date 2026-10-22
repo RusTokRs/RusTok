@@ -376,7 +376,8 @@ async fn backfill_registry_publish_requests(db: &SchemaManagerConnection<'_>) ->
         );
         if let (Some(path), Some(key)) = (artifact_path.as_deref(), artifact_storage_key.as_deref())
         {
-            let _ = copy_legacy_artifact_to_default_storage(path, key);
+            copy_legacy_artifact_to_default_storage(path, key)
+                .map_err(|e| DbErr::Custom(e.to_string()))?;
         }
         execute_update(
             db,
@@ -425,7 +426,8 @@ async fn backfill_registry_module_releases(db: &SchemaManagerConnection<'_>) -> 
         );
         if let (Some(path), Some(key)) = (artifact_path.as_deref(), artifact_storage_key.as_deref())
         {
-            let _ = copy_legacy_artifact_to_default_storage(path, key);
+            copy_legacy_artifact_to_default_storage(path, key)
+                .map_err(|e| DbErr::Custom(e.to_string()))?;
         }
         execute_update(
             db,

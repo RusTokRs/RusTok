@@ -287,7 +287,7 @@ async fn verify_published_artifact(
     let result =
         verify_fetched_published_artifact(verifier, limits, infrastructure, input, package).await;
     if let Some(path) = temporary_payload {
-        let _ = tokio::fs::remove_file(path).await;
+        crate::oci::remove_staged_file_best_effort(&path).await;
     }
     result
 }

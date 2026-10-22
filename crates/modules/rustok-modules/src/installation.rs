@@ -503,6 +503,14 @@ pub trait DurableArtifactBlobStore: ArtifactBlobStore {
     }
     async fn publish(&self, staged: &StagedArtifactBlob) -> Result<(), ModuleInstallationError>;
     async fn discard(&self, staged: &StagedArtifactBlob) -> Result<(), ModuleInstallationError>;
+    /// Best-effort discard for failure paths whose primary error is already
+    /// being returned: the staged blob never crossed the publish boundary,
+    /// so a discard failure must not mask that error. Callers discarding a
+    /// staged blob as their primary action use [`Self::discard`] and
+    /// propagate.
+    async fn discard_best_effort(&self, staged: &StagedArtifactBlob) {
+        let _ = self.discard(staged).await;
+    }
     /// Returns only digests that have crossed the durable publish boundary.
     /// The reconciler compares this set with committed control-plane references.
     async fn published_digests(&self) -> Result<Vec<String>, ModuleInstallationError>;
@@ -5132,7 +5140,7 @@ where
             .stage(&artifact.descriptor.artifact_digest, media_type, payload)
             .await?;
         if let Err(error) = self.blobs.publish(&staged).await {
-            let _ = self.blobs.discard(&staged).await;
+            self.blobs.discard_best_effort(&staged).await;
             return Err(error);
         }
         self.store
@@ -5155,7 +5163,7 @@ where
             .stage_file(&artifact.descriptor.artifact_digest, media_type, source)
             .await?;
         if let Err(error) = self.blobs.publish(&staged).await {
-            let _ = self.blobs.discard(&staged).await;
+            self.blobs.discard_best_effort(&staged).await;
             return Err(error);
         }
         self.store
@@ -5310,7 +5318,7 @@ where
                         &request_digest,
                     )
                     .await;
-                let _ = tokio::fs::remove_file(&path).await;
+                crate::oci::remove_staged_file_best_effort(&path).await;
                 result?
             }
         };
