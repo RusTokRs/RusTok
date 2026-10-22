@@ -812,9 +812,9 @@
       "category": "modules",
       "files": 3,
       "loc": 835,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-22 03:35",
+      "notes": "Audited; verified Universal Logic Dimensions across moderation subjects, scope claims, effect actions, and command port adapter/factory registries; implemented validate methods on ModerationScopeRef, ModerationSubjectRef, ApplyModerationDecisionCommand, and ModerationDecisionApplication; added ModerationCommandValidationError; added get, contains, and keys to ModerationSubjectAdapterFactoryRegistry; added comprehensive unit tests for scope, subject, command, application, adapter key, and factory registry invariants. 10/10 tests passed (both default and no-default-features), 0 clippy warnings, remediation gate passed."
     },
     "crates/modules/rustok-modules": {
       "name": "rustok-modules",

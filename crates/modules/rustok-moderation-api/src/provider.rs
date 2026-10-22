@@ -211,6 +211,23 @@ impl ModerationSubjectAdapterFactoryRegistry {
         Ok(())
     }
 
+    pub fn get(
+        &self,
+        module: &str,
+        kind: ModerationSubjectKind,
+    ) -> Option<Arc<dyn ModerationSubjectAdapterFactory>> {
+        let key = ModerationSubjectAdapterKey::new(module, kind).ok()?;
+        self.factories.get(&key).cloned()
+    }
+
+    pub fn contains(&self, module: &str, kind: ModerationSubjectKind) -> bool {
+        self.get(module, kind).is_some()
+    }
+
+    pub fn keys(&self) -> Vec<ModerationSubjectAdapterKey> {
+        self.factories.keys().cloned().collect()
+    }
+
     pub fn len(&self) -> usize {
         self.factories.len()
     }
@@ -316,5 +333,90 @@ mod tests {
         }
         .into();
         assert!(matches!(err4, rustok_core::Error::Internal(_)));
+    }
+
+    #[test]
+    fn adapter_key_validation() {
+        assert!(
+            ModerationSubjectAdapterKey::new("forum", ModerationSubjectKind::ForumTopic).is_ok()
+        );
+        assert!(
+            ModerationSubjectAdapterKey::new("my_module-1", ModerationSubjectKind::BlogPost).is_ok()
+        );
+
+        assert_eq!(
+            ModerationSubjectAdapterKey::new("", ModerationSubjectKind::ForumTopic),
+            Err(ModerationSubjectAdapterRegistryError::InvalidModule)
+        );
+        assert_eq!(
+            ModerationSubjectAdapterKey::new("-bad", ModerationSubjectKind::ForumTopic),
+            Err(ModerationSubjectAdapterRegistryError::InvalidModule)
+        );
+        assert_eq!(
+            ModerationSubjectAdapterKey::new("bad-", ModerationSubjectKind::ForumTopic),
+            Err(ModerationSubjectAdapterRegistryError::InvalidModule)
+        );
+        assert_eq!(
+            ModerationSubjectAdapterKey::new("_bad", ModerationSubjectKind::ForumTopic),
+            Err(ModerationSubjectAdapterRegistryError::InvalidModule)
+        );
+        assert_eq!(
+            ModerationSubjectAdapterKey::new("bad_", ModerationSubjectKind::ForumTopic),
+            Err(ModerationSubjectAdapterRegistryError::InvalidModule)
+        );
+        assert_eq!(
+            ModerationSubjectAdapterKey::new("Upper", ModerationSubjectKind::ForumTopic),
+            Err(ModerationSubjectAdapterRegistryError::InvalidModule)
+        );
+        assert_eq!(
+            ModerationSubjectAdapterKey::new("a".repeat(101), ModerationSubjectKind::ForumTopic),
+            Err(ModerationSubjectAdapterRegistryError::InvalidModule)
+        );
+    }
+
+    struct DummyFactory {
+        key: ModerationSubjectAdapterKey,
+    }
+
+    impl ModerationSubjectAdapterFactory for DummyFactory {
+        fn key(&self) -> ModerationSubjectAdapterKey {
+            self.key.clone()
+        }
+
+        fn build(
+            &self,
+            _host: &HostRuntimeContext,
+        ) -> Result<Arc<dyn ModerationSubjectCommandPort>, ModerationSubjectAdapterBuildError>
+        {
+            Err(ModerationSubjectAdapterBuildError::InvalidConfiguration)
+        }
+    }
+
+    #[test]
+    fn factory_registry_methods() {
+        let mut registry = ModerationSubjectAdapterFactoryRegistry::default();
+        assert!(registry.is_empty());
+        assert_eq!(registry.len(), 0);
+
+        let key =
+            ModerationSubjectAdapterKey::new("forum", ModerationSubjectKind::ForumTopic).unwrap();
+        let factory = DummyFactory { key: key.clone() };
+
+        assert!(registry.register(factory).is_ok());
+        assert!(!registry.is_empty());
+        assert_eq!(registry.len(), 1);
+        assert!(registry.contains("forum", ModerationSubjectKind::ForumTopic));
+        assert!(!registry.contains("blog", ModerationSubjectKind::BlogPost));
+        assert!(registry.get("forum", ModerationSubjectKind::ForumTopic).is_some());
+        assert_eq!(registry.keys(), vec![key.clone()]);
+
+        let dup = DummyFactory { key };
+        assert_eq!(
+            registry.register(dup),
+            Err(ModerationSubjectAdapterRegistryError::DuplicateFactory {
+                module: "forum".to_string(),
+                kind: ModerationSubjectKind::ForumTopic.as_str(),
+            })
+        );
     }
 }

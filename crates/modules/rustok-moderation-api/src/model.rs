@@ -75,6 +75,26 @@ impl ModerationScopeRef {
             id: None,
         }
     }
+
+    pub fn new(
+        kind: ModerationScopeKind,
+        id: Option<Uuid>,
+    ) -> Result<Self, ModerationScopeClaimError> {
+        let scope = Self { kind, id };
+        scope.validate()?;
+        Ok(scope)
+    }
+
+    pub fn validate(&self) -> Result<(), ModerationScopeClaimError> {
+        match (self.kind, self.id) {
+            (ModerationScopeKind::Platform, None) => Ok(()),
+            (ModerationScopeKind::Platform, Some(_)) => {
+                Err(ModerationScopeClaimError::InvalidScope)
+            }
+            (_, Some(id)) if !id.is_nil() => Ok(()),
+            _ => Err(ModerationScopeClaimError::InvalidScope),
+        }
+    }
 }
 
 /// Reserved trusted-context claim prefix for the immutable moderation case scope.
@@ -107,12 +127,12 @@ impl From<ModerationScopeClaimError> for rustok_core::Error {
 pub fn moderation_scope_claim(
     scope: &ModerationScopeRef,
 ) -> Result<String, ModerationScopeClaimError> {
+    scope.validate()?;
     match (scope.kind, scope.id) {
         (ModerationScopeKind::Platform, None) => {
             Ok(format!("{MODERATION_SCOPE_CLAIM_PREFIX}platform"))
         }
-        (ModerationScopeKind::Platform, Some(_)) => Err(ModerationScopeClaimError::InvalidScope),
-        (kind, Some(id)) if !id.is_nil() => Ok(format!(
+        (kind, Some(id)) => Ok(format!(
             "{MODERATION_SCOPE_CLAIM_PREFIX}{}:{id}",
             kind.as_str()
         )),
@@ -159,6 +179,37 @@ pub struct ModerationSubjectRef {
     pub kind: ModerationSubjectKind,
     pub id: Uuid,
     pub revision: i64,
+}
+
+impl ModerationSubjectRef {
+    pub fn new(
+        module: impl Into<String>,
+        kind: ModerationSubjectKind,
+        id: Uuid,
+        revision: i64,
+    ) -> Result<Self, ModerationCommandValidationError> {
+        let subject = Self {
+            module: module.into(),
+            kind,
+            id,
+            revision,
+        };
+        subject.validate()?;
+        Ok(subject)
+    }
+
+    pub fn validate(&self) -> Result<(), ModerationCommandValidationError> {
+        if self.module.trim().is_empty() {
+            return Err(ModerationCommandValidationError::EmptySubjectModule);
+        }
+        if self.id.is_nil() {
+            return Err(ModerationCommandValidationError::NilSubjectId);
+        }
+        if self.revision < 1 {
+            return Err(ModerationCommandValidationError::InvalidSubjectRevision);
+        }
+        Ok(())
+    }
 }
 
 string_enum! {
@@ -407,6 +458,32 @@ impl From<ModerationEffectValidationError> for rustok_core::Error {
     }
 }
 
+#[derive(Debug, thiserror::Error, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModerationCommandValidationError {
+    #[error("decision ID cannot be nil")]
+    NilDecisionId,
+    #[error("subject ID cannot be nil")]
+    NilSubjectId,
+    #[error("subject revision must be at least 1")]
+    InvalidSubjectRevision,
+    #[error("subject module cannot be empty")]
+    EmptySubjectModule,
+    #[error("decision hash must be a 64-character lowercase hex string")]
+    InvalidDecisionHash,
+    #[error("applied revision must be greater than or equal to subject revision")]
+    AppliedRevisionRegression,
+    #[error("effect validation failed: {0}")]
+    Effect(#[from] ModerationEffectValidationError),
+}
+
+#[cfg(feature = "server")]
+impl From<ModerationCommandValidationError> for rustok_core::Error {
+    fn from(err: ModerationCommandValidationError) -> Self {
+        Self::Validation(err.to_string())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApplyModerationDecisionCommand {
     pub decision_id: Uuid,
@@ -417,12 +494,45 @@ pub struct ApplyModerationDecisionCommand {
     pub decision_hash: String,
 }
 
+impl ApplyModerationDecisionCommand {
+    pub fn validate(&self) -> Result<(), ModerationCommandValidationError> {
+        if self.decision_id.is_nil() {
+            return Err(ModerationCommandValidationError::NilDecisionId);
+        }
+        self.subject.validate()?;
+        if self.decision_hash.len() != 64
+            || !self
+                .decision_hash
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        {
+            return Err(ModerationCommandValidationError::InvalidDecisionHash);
+        }
+        self.effect
+            .validate_for_decision_kind(self.decision_kind)?;
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModerationDecisionApplication {
     pub decision_id: Uuid,
     pub subject: ModerationSubjectRef,
     pub applied_revision: i64,
     pub applied_at: DateTime<Utc>,
+}
+
+impl ModerationDecisionApplication {
+    pub fn validate(&self) -> Result<(), ModerationCommandValidationError> {
+        if self.decision_id.is_nil() {
+            return Err(ModerationCommandValidationError::NilDecisionId);
+        }
+        self.subject.validate()?;
+        if self.applied_revision < self.subject.revision {
+            return Err(ModerationCommandValidationError::AppliedRevisionRegression);
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -504,5 +614,152 @@ mod tests {
                 effective_until: None,
             });
         assert!(effect.is_ok());
+    }
+
+    #[test]
+    fn scope_ref_validation_bounds() {
+        assert!(ModerationScopeRef::platform().validate().is_ok());
+        assert_eq!(
+            ModerationScopeRef::new(ModerationScopeKind::Platform, Some(Uuid::new_v4())),
+            Err(ModerationScopeClaimError::InvalidScope)
+        );
+        assert_eq!(
+            ModerationScopeRef::new(ModerationScopeKind::Group, None),
+            Err(ModerationScopeClaimError::InvalidScope)
+        );
+        assert_eq!(
+            ModerationScopeRef::new(ModerationScopeKind::Group, Some(Uuid::nil())),
+            Err(ModerationScopeClaimError::InvalidScope)
+        );
+        let valid_id = Uuid::new_v4();
+        let valid_scope =
+            ModerationScopeRef::new(ModerationScopeKind::Group, Some(valid_id)).unwrap();
+        assert_eq!(valid_scope.id, Some(valid_id));
+        assert!(valid_scope.validate().is_ok());
+    }
+
+    #[test]
+    fn subject_ref_validation_bounds() {
+        assert_eq!(
+            ModerationSubjectRef::new(
+                "  ",
+                ModerationSubjectKind::ForumTopic,
+                Uuid::new_v4(),
+                1
+            ),
+            Err(ModerationCommandValidationError::EmptySubjectModule)
+        );
+        assert_eq!(
+            ModerationSubjectRef::new(
+                "forum",
+                ModerationSubjectKind::ForumTopic,
+                Uuid::nil(),
+                1
+            ),
+            Err(ModerationCommandValidationError::NilSubjectId)
+        );
+        assert_eq!(
+            ModerationSubjectRef::new(
+                "forum",
+                ModerationSubjectKind::ForumTopic,
+                Uuid::new_v4(),
+                0
+            ),
+            Err(ModerationCommandValidationError::InvalidSubjectRevision)
+        );
+        assert_eq!(
+            ModerationSubjectRef::new(
+                "forum",
+                ModerationSubjectKind::ForumTopic,
+                Uuid::new_v4(),
+                -5
+            ),
+            Err(ModerationCommandValidationError::InvalidSubjectRevision)
+        );
+        assert!(
+            ModerationSubjectRef::new(
+                "forum",
+                ModerationSubjectKind::ForumTopic,
+                Uuid::new_v4(),
+                1
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn command_and_application_validation() {
+        let subject = ModerationSubjectRef {
+            module: "forum".to_string(),
+            kind: ModerationSubjectKind::ForumTopic,
+            id: Uuid::new_v4(),
+            revision: 2,
+        };
+        let effect =
+            ModerationDecisionEffect::v1(ModerationDecisionEffectAction::NoDomainMutation).unwrap();
+        let hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string();
+
+        let valid_cmd = ApplyModerationDecisionCommand {
+            decision_id: Uuid::new_v4(),
+            subject: subject.clone(),
+            decision_kind: ModerationDecisionKind::NoViolation,
+            reason_code: ModerationReasonCode::OffTopic,
+            effect: effect.clone(),
+            decision_hash: hash.clone(),
+        };
+        assert!(valid_cmd.validate().is_ok());
+
+        let mut nil_decision_cmd = valid_cmd.clone();
+        nil_decision_cmd.decision_id = Uuid::nil();
+        assert_eq!(
+            nil_decision_cmd.validate(),
+            Err(ModerationCommandValidationError::NilDecisionId)
+        );
+
+        let mut bad_hash_cmd = valid_cmd.clone();
+        bad_hash_cmd.decision_hash = "tooshort".to_string();
+        assert_eq!(
+            bad_hash_cmd.validate(),
+            Err(ModerationCommandValidationError::InvalidDecisionHash)
+        );
+
+        let mut upper_hash_cmd = valid_cmd.clone();
+        upper_hash_cmd.decision_hash =
+            "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef".to_string();
+        assert_eq!(
+            upper_hash_cmd.validate(),
+            Err(ModerationCommandValidationError::InvalidDecisionHash)
+        );
+
+        let mut mismatch_effect_cmd = valid_cmd.clone();
+        mismatch_effect_cmd.decision_kind = ModerationDecisionKind::Hide;
+        assert_eq!(
+            mismatch_effect_cmd.validate(),
+            Err(ModerationCommandValidationError::Effect(
+                ModerationEffectValidationError::DecisionKindMismatch
+            ))
+        );
+
+        let valid_app = ModerationDecisionApplication {
+            decision_id: Uuid::new_v4(),
+            subject: subject.clone(),
+            applied_revision: 2,
+            applied_at: Utc::now(),
+        };
+        assert!(valid_app.validate().is_ok());
+
+        let mut regressed_app = valid_app.clone();
+        regressed_app.applied_revision = 1;
+        assert_eq!(
+            regressed_app.validate(),
+            Err(ModerationCommandValidationError::AppliedRevisionRegression)
+        );
+
+        let mut nil_app = valid_app.clone();
+        nil_app.decision_id = Uuid::nil();
+        assert_eq!(
+            nil_app.validate(),
+            Err(ModerationCommandValidationError::NilDecisionId)
+        );
     }
 }
