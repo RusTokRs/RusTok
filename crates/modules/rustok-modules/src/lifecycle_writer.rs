@@ -20,9 +20,8 @@ use crate::recovery::{
 use crate::{
     ArtifactInstallationResolver, ArtifactLifecycleExecutor, ArtifactSandboxPolicyResolver,
     ControlPlaneInfrastructure, ModuleArtifactSecurityError, ModuleCommandContext,
-    ModuleDefinitionCatalog,
-    ModuleDefinitionError, ModuleDefinitionKind, ModuleDefinitionSource, ModuleEffectivePolicy,
-    ModuleEffectivePolicyError, ModuleEffectivePolicyTransitionCoordinator,
+    ModuleDefinitionCatalog, ModuleDefinitionError, ModuleDefinitionKind, ModuleDefinitionSource,
+    ModuleEffectivePolicy, ModuleEffectivePolicyError, ModuleEffectivePolicyTransitionCoordinator,
     ModuleExecutionDispatcher, ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest,
     ModuleOperationIssue, ModuleOperationJournal, ModuleOperationRecoveryError,
     ModuleOperationRecoveryPlan, ModuleOperationRequest, ModuleOperationStoreError,
