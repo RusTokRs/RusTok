@@ -17751,6 +17751,7 @@ dependencies = [
  "rustok-fulfillment-storefront",
  "rustok-graphql",
  "rustok-groups-storefront",
+ "rustok-modules",
  "rustok-navigation-storefront",
  "rustok-notifications-storefront",
  "rustok-order-storefront",
