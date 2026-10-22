@@ -1510,10 +1510,7 @@ impl SeaOrmArtifactInstallationStore {
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 update_admission,
-                vec![
-                    backend.uuid_value(request.installation_id),
-                    revision.into(),
-                ],
+                vec![backend.uuid_value(request.installation_id), revision.into()],
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
@@ -1959,10 +1956,7 @@ impl SeaOrmArtifactInstallationStore {
                     if backend == SupportedBackend::Postgres { "$1" } else { "?1" },
                     if backend == SupportedBackend::Postgres { "$2" } else { "?2" },
                 ),
-                vec![
-                    backend.uuid_value(request.installation_id),
-                    candidate_revision.into(),
-                ],
+                vec![backend.uuid_value(request.installation_id), candidate_revision.into()],
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
@@ -2371,10 +2365,7 @@ impl SeaOrmArtifactInstallationStore {
                        )",
                     placeholders.1, placeholders.0,
                 ),
-                vec![
-                    backend.uuid_value(installation_id),
-                    backend.uuid_value(tenant_id),
-                ],
+                vec![backend.uuid_value(installation_id), backend.uuid_value(tenant_id)],
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
@@ -3632,7 +3623,11 @@ impl SeaOrmArtifactInstallationStore {
         ];
         values.extend(scope_values);
         let updated = transaction
-            .execute_raw(Statement::from_sql_and_values(backend.db_backend(), sql, values))
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                sql,
+                values,
+            )))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         if updated.rows_affected() != 1 {
@@ -4776,7 +4771,11 @@ async fn active_predecessor_installation<C: ConnectionTrait>(
         slug.into(),
     ];
     let rows = connection
-        .query_all_raw(Statement::from_sql_and_values(backend.db_backend(), sql, values))
+        .query_all_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            sql,
+            values,
+        )))
         .await
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     match rows.as_slice() {
@@ -4955,7 +4954,11 @@ async fn assert_artifact_ui_contributions_available<C: ConnectionTrait>(
         ),
     };
     let rows = connection
-        .query_all_raw(Statement::from_sql_and_values(backend.db_backend(), sql, values))
+        .query_all_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            sql,
+            values,
+        )))
         .await
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     for row in rows {
@@ -5918,7 +5921,7 @@ mod tests {
                 &database,
                 &artifact.scope,
                 &artifact.release.slug,
-                DbBackend::Sqlite,
+                SupportedBackend::Sqlite,
             )
             .await
             .expect("one serving predecessor"),
@@ -5954,7 +5957,7 @@ mod tests {
                 &database,
                 &artifact.scope,
                 &artifact.release.slug,
-                DbBackend::Sqlite,
+                SupportedBackend::Sqlite,
             )
             .await,
             Err(ModuleInstallationError::AdmissionRevisionConflict(message))
@@ -5984,7 +5987,7 @@ mod tests {
                 &database,
                 &artifact.scope,
                 &artifact.release.slug,
-                DbBackend::Sqlite,
+                SupportedBackend::Sqlite,
             )
             .await
             .expect("no serving predecessor"),
