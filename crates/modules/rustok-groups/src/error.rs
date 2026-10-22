@@ -109,3 +109,16 @@ impl From<GroupsError> for PortError {
         }
     }
 }
+
+impl From<PortError> for GroupsError {
+    fn from(value: PortError) -> Self {
+        match value.kind {
+            PortErrorKind::Validation => Self::Validation(value.message),
+            PortErrorKind::NotFound => Self::NotFound,
+            PortErrorKind::Conflict => Self::Conflict(value.message),
+            PortErrorKind::Forbidden => Self::Forbidden(value.message),
+            PortErrorKind::InvariantViolation => Self::Invariant(value.message),
+            _ => Self::Validation(value.message),
+        }
+    }
+}

@@ -52,12 +52,24 @@ impl GroupsService {
         tenant_id: Uuid,
         membership_id: Uuid,
     ) -> GroupsResult<Option<GroupMembershipEffectiveState>> {
+        if tenant_id.is_nil() {
+            return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
+        if membership_id.is_nil() {
+            return Err(GroupsError::Validation("membership_id cannot be nil UUID".to_string()));
+        }
         self.legacy
             .lock_membership_enforcement_target_by_id(tenant_id, membership_id)
             .await
     }
 
     async fn group_model(&self, tenant_id: Uuid, group_id: Uuid) -> GroupsResult<group::Model> {
+        if tenant_id.is_nil() {
+            return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
+        if group_id.is_nil() {
+            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+        }
         group::Entity::find()
             .filter(group::Column::TenantId.eq(tenant_id))
             .filter(group::Column::Id.eq(group_id))
@@ -73,6 +85,9 @@ impl GroupsService {
         action: GroupAction,
     ) -> GroupsResult<GroupAccessDecision> {
         require_read(context)?;
+        if group_id.is_nil() {
+            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+        }
         let tenant_id = context_tenant_id(context)?;
         let group_model = self.group_model(tenant_id, group_id).await?;
         let visibility =
@@ -126,6 +141,7 @@ impl GroupsService {
         request: JoinGroupRequest,
     ) -> GroupsResult<GroupMembership> {
         require_write(context)?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let user_id = actor_user_id(context)?;
         let transaction = self.db.begin().await?;
@@ -242,6 +258,7 @@ impl GroupsService {
         request: LeaveGroupRequest,
     ) -> GroupsResult<GroupMembership> {
         require_write(context)?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let user_id = actor_user_id(context)?;
         let transaction = self.db.begin().await?;
@@ -319,6 +336,7 @@ impl GroupsService {
         request: SetGroupFeatureRequest,
     ) -> GroupsResult<GroupFeatureBinding> {
         require_write(context)?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let actor_id = actor_user_id(context)?;
         let transaction = self.db.begin().await?;
@@ -410,6 +428,7 @@ impl GroupSummaryReadPort for GroupsService {
         context: PortContext,
         request: ReadGroupRequest,
     ) -> Result<GroupDetails, PortError> {
+        request.validate()?;
         let mut details =
             GroupSummaryReadPort::read_group(&self.legacy, context.clone(), request).await?;
         let summary_decision = self
@@ -438,6 +457,7 @@ impl GroupSummaryReadPort for GroupsService {
         context: PortContext,
         request: ListGroupsRequest,
     ) -> Result<GroupConnection, PortError> {
+        request.validate()?;
         GroupSummaryReadPort::list_groups(&self.legacy, context, request).await
     }
 }
@@ -449,6 +469,7 @@ impl GroupMembershipReadPort for GroupsService {
         context: PortContext,
         request: ReadGroupMembershipRequest,
     ) -> Result<Option<GroupMembership>, PortError> {
+        request.validate()?;
         GroupMembershipReadPort::read_membership(&self.legacy, context, request).await
     }
 
@@ -457,6 +478,7 @@ impl GroupMembershipReadPort for GroupsService {
         context: PortContext,
         request: ListGroupMembershipsRequest,
     ) -> Result<GroupMembershipConnection, PortError> {
+        request.validate()?;
         let decision = self
             .decide_access_owned(&context, request.group_id, GroupAction::ViewMembers)
             .await
@@ -478,6 +500,7 @@ impl GroupAccessReadPort for GroupsService {
         context: PortContext,
         request: GroupAccessRequest,
     ) -> Result<GroupAccessDecision, PortError> {
+        request.validate()?;
         self.decide_access_owned(&context, request.group_id, request.action)
             .await
             .map_err(Into::into)
@@ -488,6 +511,12 @@ impl GroupAccessReadPort for GroupsService {
         context: PortContext,
         group_id: Uuid,
     ) -> Result<Vec<GroupFeatureBinding>, PortError> {
+        if group_id.is_nil() {
+            return Err(PortError::validation(
+                "groups.invalid_group_id",
+                "group_id cannot be nil UUID",
+            ));
+        }
         let decision = self
             .decide_access_owned(&context, group_id, GroupAction::View)
             .await
@@ -524,6 +553,7 @@ impl GroupCommandPort for GroupsService {
         context: PortContext,
         input: CreateGroupInput,
     ) -> Result<GroupDetails, PortError> {
+        input.validate()?;
         GroupCommandPort::create_group(&self.legacy, context, input).await
     }
 
@@ -532,6 +562,7 @@ impl GroupCommandPort for GroupsService {
         context: PortContext,
         request: JoinGroupRequest,
     ) -> Result<GroupMembership, PortError> {
+        request.validate()?;
         self.join_group_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -542,6 +573,7 @@ impl GroupCommandPort for GroupsService {
         context: PortContext,
         request: LeaveGroupRequest,
     ) -> Result<GroupMembership, PortError> {
+        request.validate()?;
         self.leave_group_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -552,6 +584,7 @@ impl GroupCommandPort for GroupsService {
         context: PortContext,
         request: SetGroupFeatureRequest,
     ) -> Result<GroupFeatureBinding, PortError> {
+        request.validate()?;
         self.set_group_feature_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -637,13 +670,30 @@ fn actor_user_id(context: &PortContext) -> GroupsResult<Uuid> {
 }
 
 fn optional_actor_user_id(context: &PortContext) -> Option<Uuid> {
-    (context.actor.kind == PortActorKind::User)
-        .then(|| Uuid::parse_str(&context.actor.id).ok())
-        .flatten()
+    if context.actor.kind != PortActorKind::User {
+        return None;
+    }
+    let trimmed = context.actor.id.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    match Uuid::parse_str(trimmed) {
+        Ok(parsed) if !parsed.is_nil() => Some(parsed),
+        _ => None,
+    }
 }
 
 fn parse_uuid(value: &str, field: &str) -> GroupsResult<Uuid> {
-    Uuid::parse_str(value).map_err(|_| GroupsError::Validation(format!("{field} must be a UUID")))
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(GroupsError::Validation(format!("{field} cannot be empty")));
+    }
+    let parsed = Uuid::parse_str(trimmed)
+        .map_err(|_| GroupsError::Validation(format!("{field} must be a UUID")))?;
+    if parsed.is_nil() {
+        return Err(GroupsError::Validation(format!("{field} cannot be nil UUID")));
+    }
+    Ok(parsed)
 }
 
 fn has_platform_manage(context: &PortContext) -> bool {

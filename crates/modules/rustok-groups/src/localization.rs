@@ -35,6 +35,7 @@ impl GroupLocalizationService {
         request: ListGroupTranslationsRequest,
     ) -> GroupsResult<Vec<GroupTranslation>> {
         require_read(context)?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
         self.require_manage_direct(context, tenant_id, request.group_id, actor_user_id)
@@ -57,6 +58,7 @@ impl GroupLocalizationService {
         request: UpsertGroupTranslationRequest,
     ) -> GroupsResult<GroupTranslationMutationResult> {
         require_write(context)?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
         let (locale, title, summary, body) = normalize_translation_input(
@@ -127,6 +129,7 @@ impl GroupLocalizationService {
         request: DeleteGroupTranslationRequest,
     ) -> GroupsResult<DeleteGroupTranslationResult> {
         require_write(context)?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
         let locale = normalize_locale_tag(&request.locale)
@@ -185,6 +188,15 @@ impl GroupLocalizationService {
         group_id: Uuid,
         actor_user_id: Uuid,
     ) -> GroupsResult<()> {
+        if tenant_id.is_nil() {
+            return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
+        if group_id.is_nil() {
+            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+        }
+        if actor_user_id.is_nil() {
+            return Err(GroupsError::Validation("actor_user_id cannot be nil UUID".to_string()));
+        }
         group::Entity::find()
             .filter(group::Column::TenantId.eq(tenant_id))
             .filter(group::Column::Id.eq(group_id))
@@ -211,6 +223,15 @@ impl GroupLocalizationService {
         group_id: Uuid,
         actor_user_id: Uuid,
     ) -> GroupsResult<group::Model> {
+        if tenant_id.is_nil() {
+            return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
+        if group_id.is_nil() {
+            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+        }
+        if actor_user_id.is_nil() {
+            return Err(GroupsError::Validation("actor_user_id cannot be nil UUID".to_string()));
+        }
         reserve_group_write_for_update(transaction, tenant_id, group_id).await?;
         let group_model = group::Entity::find()
             .filter(group::Column::TenantId.eq(tenant_id))
@@ -239,6 +260,7 @@ impl GroupLocalizationReadPort for GroupLocalizationService {
         context: PortContext,
         request: ListGroupTranslationsRequest,
     ) -> Result<Vec<GroupTranslation>, PortError> {
+        request.validate()?;
         self.list_group_translations_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -252,6 +274,7 @@ impl GroupLocalizationCommandPort for GroupLocalizationService {
         context: PortContext,
         request: UpsertGroupTranslationRequest,
     ) -> Result<GroupTranslationMutationResult, PortError> {
+        request.validate()?;
         self.upsert_group_translation_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -262,6 +285,7 @@ impl GroupLocalizationCommandPort for GroupLocalizationService {
         context: PortContext,
         request: DeleteGroupTranslationRequest,
     ) -> Result<DeleteGroupTranslationResult, PortError> {
+        request.validate()?;
         self.delete_group_translation_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -333,8 +357,16 @@ fn require_write(context: &PortContext) -> GroupsResult<()> {
 }
 
 fn context_tenant_id(context: &PortContext) -> GroupsResult<Uuid> {
-    Uuid::parse_str(&context.tenant_id)
-        .map_err(|_| GroupsError::Validation("tenant_id must be a UUID".to_string()))
+    let trimmed = context.tenant_id.trim();
+    if trimmed.is_empty() {
+        return Err(GroupsError::Validation("tenant_id cannot be empty".to_string()));
+    }
+    let parsed = Uuid::parse_str(trimmed)
+        .map_err(|_| GroupsError::Validation("tenant_id must be a UUID".to_string()))?;
+    if parsed.is_nil() {
+        return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+    }
+    Ok(parsed)
 }
 
 fn actor_user_id(context: &PortContext) -> GroupsResult<Uuid> {
@@ -343,6 +375,14 @@ fn actor_user_id(context: &PortContext) -> GroupsResult<Uuid> {
             "a user actor is required".to_string(),
         ));
     }
-    Uuid::parse_str(&context.actor.id)
-        .map_err(|_| GroupsError::Validation("actor.id must be a UUID".to_string()))
+    let trimmed = context.actor.id.trim();
+    if trimmed.is_empty() {
+        return Err(GroupsError::Validation("actor.id cannot be empty".to_string()));
+    }
+    let parsed = Uuid::parse_str(trimmed)
+        .map_err(|_| GroupsError::Validation("actor.id must be a UUID".to_string()))?;
+    if parsed.is_nil() {
+        return Err(GroupsError::Validation("actor.id cannot be nil UUID".to_string()));
+    }
+    Ok(parsed)
 }

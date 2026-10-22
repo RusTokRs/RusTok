@@ -109,6 +109,28 @@ pub struct UpsertGroupApplicationPolicyRequest {
     pub rules: Vec<GroupApplicationRule>,
 }
 
+impl UpsertGroupApplicationPolicyRequest {
+    pub fn validate(&self) -> GroupsResult<()> {
+        if self.group_id.is_nil() {
+            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+        }
+        if self.locale.trim().is_empty() || normalize_locale_tag(&self.locale).is_none() {
+            return Err(GroupsError::Validation("invalid application policy locale".to_string()));
+        }
+        if self.questions.len() > MAX_POLICY_QUESTIONS {
+            return Err(GroupsError::Validation(format!(
+                "membership policy may contain at most {MAX_POLICY_QUESTIONS} questions"
+            )));
+        }
+        if self.rules.len() > MAX_POLICY_RULES {
+            return Err(GroupsError::Validation(format!(
+                "membership policy may contain at most {MAX_POLICY_RULES} rules"
+            )));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UpsertGroupApplicationPolicyResult {
     pub policy: GroupApplicationPolicy,
@@ -122,11 +144,39 @@ pub struct ReadGroupApplicationPolicyRequest {
     pub group_id: Uuid,
 }
 
+impl ReadGroupApplicationPolicyRequest {
+    pub fn validate(&self) -> GroupsResult<()> {
+        if self.group_id.is_nil() {
+            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubmitGroupMembershipApplicationRequest {
     pub group_id: Uuid,
     pub answers: BTreeMap<String, String>,
     pub acknowledged_rule_keys: Vec<String>,
+}
+
+impl SubmitGroupMembershipApplicationRequest {
+    pub fn validate(&self) -> GroupsResult<()> {
+        if self.group_id.is_nil() {
+            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+        }
+        if self.answers.len() > MAX_POLICY_QUESTIONS {
+            return Err(GroupsError::Validation(format!(
+                "membership application answers count must not exceed {MAX_POLICY_QUESTIONS}"
+            )));
+        }
+        if self.acknowledged_rule_keys.len() > MAX_POLICY_RULES {
+            return Err(GroupsError::Validation(format!(
+                "membership application acknowledged rules count must not exceed {MAX_POLICY_RULES}"
+            )));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -164,6 +214,21 @@ pub struct ListGroupMembershipApplicationsRequest {
     pub per_page: u64,
 }
 
+impl ListGroupMembershipApplicationsRequest {
+    pub fn validate(&self) -> GroupsResult<()> {
+        if self.group_id.is_nil() {
+            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+        }
+        if self.page == 0 {
+            return Err(GroupsError::Validation("page must be greater than zero".to_string()));
+        }
+        if self.per_page == 0 || self.per_page > 100 {
+            return Err(GroupsError::Validation("per_page must be between 1 and 100".to_string()));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupMembershipApplicationConnection {
     pub items: Vec<GroupMembershipApplication>,
@@ -177,6 +242,20 @@ pub struct ReviewGroupMembershipApplicationRequest {
     pub application_id: Uuid,
     pub decision: GroupApplicationReviewDecision,
     pub note: Option<String>,
+}
+
+impl ReviewGroupMembershipApplicationRequest {
+    pub fn validate(&self) -> GroupsResult<()> {
+        if self.application_id.is_nil() {
+            return Err(GroupsError::Validation("application_id cannot be nil UUID".to_string()));
+        }
+        if self.note.as_ref().is_some_and(|note| note.chars().count() > MAX_REVIEW_NOTE_CHARS) {
+            return Err(GroupsError::Validation(format!(
+                "application review note must not exceed {MAX_REVIEW_NOTE_CHARS} characters"
+            )));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -239,6 +318,7 @@ impl GroupApplicationService {
         request: ReadGroupApplicationPolicyRequest,
     ) -> GroupsResult<GroupApplicationPolicy> {
         require_read(context)?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let user_id = actor_user_id(context)?;
         let group_model = find_group(&self.db, tenant_id, request.group_id).await?;
@@ -253,6 +333,7 @@ impl GroupApplicationService {
         mut request: UpsertGroupApplicationPolicyRequest,
     ) -> GroupsResult<UpsertGroupApplicationPolicyResult> {
         require_write(context)?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
         request.locale = normalize_locale_tag(&request.locale).ok_or_else(|| {
@@ -410,6 +491,7 @@ impl GroupApplicationService {
         mut request: SubmitGroupMembershipApplicationRequest,
     ) -> GroupsResult<SubmitGroupMembershipApplicationResult> {
         require_write(context)?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
         normalize_application_submission(&mut request)?;
@@ -615,6 +697,7 @@ impl GroupApplicationService {
         request: ListGroupMembershipApplicationsRequest,
     ) -> GroupsResult<GroupMembershipApplicationConnection> {
         require_read(context)?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
         authorize_application_review(
@@ -657,6 +740,7 @@ impl GroupApplicationService {
         mut request: ReviewGroupMembershipApplicationRequest,
     ) -> GroupsResult<ReviewGroupMembershipApplicationResult> {
         require_write(context)?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
         request.note = normalize_optional_note(request.note)?;
@@ -792,6 +876,7 @@ impl GroupApplicationReadPort for GroupApplicationService {
         context: PortContext,
         request: ReadGroupApplicationPolicyRequest,
     ) -> Result<GroupApplicationPolicy, PortError> {
+        request.validate().map_err(PortError::from)?;
         self.read_policy_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -802,6 +887,7 @@ impl GroupApplicationReadPort for GroupApplicationService {
         context: PortContext,
         request: ListGroupMembershipApplicationsRequest,
     ) -> Result<GroupMembershipApplicationConnection, PortError> {
+        request.validate().map_err(PortError::from)?;
         self.list_applications_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -815,6 +901,7 @@ impl GroupApplicationCommandPort for GroupApplicationService {
         context: PortContext,
         request: UpsertGroupApplicationPolicyRequest,
     ) -> Result<UpsertGroupApplicationPolicyResult, PortError> {
+        request.validate().map_err(PortError::from)?;
         self.upsert_policy_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -825,6 +912,7 @@ impl GroupApplicationCommandPort for GroupApplicationService {
         context: PortContext,
         request: SubmitGroupMembershipApplicationRequest,
     ) -> Result<SubmitGroupMembershipApplicationResult, PortError> {
+        request.validate().map_err(PortError::from)?;
         self.submit_application_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -835,6 +923,7 @@ impl GroupApplicationCommandPort for GroupApplicationService {
         context: PortContext,
         request: ReviewGroupMembershipApplicationRequest,
     ) -> Result<ReviewGroupMembershipApplicationResult, PortError> {
+        request.validate().map_err(PortError::from)?;
         self.review_application_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -1410,8 +1499,12 @@ fn require_write(context: &PortContext) -> GroupsResult<()> {
 }
 
 fn context_tenant_id(context: &PortContext) -> GroupsResult<Uuid> {
-    Uuid::parse_str(&context.tenant_id)
-        .map_err(|_| GroupsError::Validation("tenant_id must be a UUID".to_string()))
+    let id = Uuid::parse_str(context.tenant_id.trim())
+        .map_err(|_| GroupsError::Validation("tenant_id must be a UUID".to_string()))?;
+    if id.is_nil() {
+        return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+    }
+    Ok(id)
 }
 
 fn actor_user_id(context: &PortContext) -> GroupsResult<Uuid> {
@@ -1420,8 +1513,12 @@ fn actor_user_id(context: &PortContext) -> GroupsResult<Uuid> {
             "a user actor is required for group membership applications".to_string(),
         ));
     }
-    Uuid::parse_str(&context.actor.id)
-        .map_err(|_| GroupsError::Validation("actor.id must be a UUID".to_string()))
+    let id = Uuid::parse_str(context.actor.id.trim())
+        .map_err(|_| GroupsError::Validation("actor.id must be a UUID".to_string()))?;
+    if id.is_nil() {
+        return Err(GroupsError::Validation("actor.id cannot be nil UUID".to_string()));
+    }
+    Ok(id)
 }
 
 fn idempotency_key(context: &PortContext) -> GroupsResult<String> {
@@ -1444,4 +1541,133 @@ fn has_platform_manage(context: &PortContext) -> bool {
         .claims
         .iter()
         .any(|claim| matches!(claim.as_str(), "groups:manage" | "groups:*" | "*:*"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::{PortActor, PortActorKind, PortContext};
+
+    #[test]
+    fn test_applications_request_validation() {
+        let valid_group_id = Uuid::new_v4();
+        let valid_app_id = Uuid::new_v4();
+
+        // Nil group_id checks
+        let read_req = ReadGroupApplicationPolicyRequest { group_id: Uuid::nil() };
+        assert!(read_req.validate().is_err());
+
+        let upsert_req = UpsertGroupApplicationPolicyRequest {
+            group_id: Uuid::nil(),
+            locale: "en".to_string(),
+            enabled: true,
+            questions: vec![],
+            rules: vec![],
+        };
+        assert!(upsert_req.validate().is_err());
+
+        let submit_req = SubmitGroupMembershipApplicationRequest {
+            group_id: Uuid::nil(),
+            answers: BTreeMap::new(),
+            acknowledged_rule_keys: vec![],
+        };
+        assert!(submit_req.validate().is_err());
+
+        let list_req = ListGroupMembershipApplicationsRequest {
+            group_id: Uuid::nil(),
+            status: None,
+            page: 1,
+            per_page: 20,
+        };
+        assert!(list_req.validate().is_err());
+
+        let review_req = ReviewGroupMembershipApplicationRequest {
+            application_id: Uuid::nil(),
+            decision: GroupApplicationReviewDecision::Approve,
+            note: None,
+        };
+        assert!(review_req.validate().is_err());
+
+        // Bounds checks
+        let mut invalid_list = list_req.clone();
+        invalid_list.group_id = valid_group_id;
+        invalid_list.page = 0;
+        assert!(invalid_list.validate().is_err());
+        invalid_list.page = 1;
+        invalid_list.per_page = 0;
+        assert!(invalid_list.validate().is_err());
+        invalid_list.per_page = 101;
+        assert!(invalid_list.validate().is_err());
+        invalid_list.per_page = 100;
+        assert!(invalid_list.validate().is_ok());
+
+        let mut invalid_upsert = upsert_req.clone();
+        invalid_upsert.group_id = valid_group_id;
+        invalid_upsert.locale = "invalid-locale-!!!".to_string();
+        assert!(invalid_upsert.validate().is_err());
+        invalid_upsert.locale = "en".to_string();
+        assert!(invalid_upsert.validate().is_ok());
+
+        let mut invalid_review = review_req.clone();
+        invalid_review.application_id = valid_app_id;
+        invalid_review.note = Some("a".repeat(MAX_REVIEW_NOTE_CHARS + 1));
+        assert!(invalid_review.validate().is_err());
+        invalid_review.note = Some("Valid note".to_string());
+        assert!(invalid_review.validate().is_ok());
+    }
+
+    #[test]
+    fn test_applications_context_validation() {
+        let valid_tenant = Uuid::new_v4();
+        let valid_user = Uuid::new_v4();
+
+        // Valid context
+        let context = PortContext::new(
+            format!("  {}  ", valid_tenant),
+            PortActor {
+                id: format!("  {}  ", valid_user),
+                kind: PortActorKind::User,
+            },
+            "en",
+            "corr-1",
+        );
+        assert_eq!(context_tenant_id(&context).unwrap(), valid_tenant);
+        assert_eq!(actor_user_id(&context).unwrap(), valid_user);
+
+        // Nil tenant
+        let nil_tenant_ctx = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor {
+                id: valid_user.to_string(),
+                kind: PortActorKind::User,
+            },
+            "en",
+            "corr-2",
+        );
+        assert!(context_tenant_id(&nil_tenant_ctx).is_err());
+
+        // Nil actor
+        let nil_actor_ctx = PortContext::new(
+            valid_tenant.to_string(),
+            PortActor {
+                id: Uuid::nil().to_string(),
+                kind: PortActorKind::User,
+            },
+            "en",
+            "corr-3",
+        );
+        assert!(actor_user_id(&nil_actor_ctx).is_err());
+
+        // System actor (rejected)
+        let system_actor_ctx = PortContext::new(
+            valid_tenant.to_string(),
+            PortActor {
+                id: valid_user.to_string(),
+                kind: PortActorKind::System,
+            },
+            "en",
+            "corr-4",
+        );
+        assert!(actor_user_id(&system_actor_ctx).is_err());
+    }
 }

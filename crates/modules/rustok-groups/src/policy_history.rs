@@ -33,6 +33,30 @@ pub struct ListGroupApplicationPolicyRevisionsRequest {
     pub per_page: u64,
 }
 
+impl ListGroupApplicationPolicyRevisionsRequest {
+    pub fn validate(&self) -> Result<(), PortError> {
+        if self.group_id.is_nil() {
+            return Err(PortError::validation(
+                "groups.invalid_group_id",
+                "group_id cannot be nil UUID",
+            ));
+        }
+        if self.page == 0 {
+            return Err(PortError::validation(
+                "groups.invalid_page",
+                "page must be greater than zero",
+            ));
+        }
+        if self.per_page == 0 || self.per_page > 100 {
+            return Err(PortError::validation(
+                "groups.invalid_per_page",
+                "per_page must be between 1 and 100",
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupApplicationPolicyRevisionConnection {
     pub items: Vec<GroupApplicationPolicyRevision>,
@@ -69,9 +93,23 @@ impl GroupApplicationPolicyHistoryReadPort for GroupApplicationPolicyHistoryServ
         request: ListGroupApplicationPolicyRevisionsRequest,
     ) -> Result<GroupApplicationPolicyRevisionConnection, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
+        request.validate()?;
+        let trimmed_tenant = context.tenant_id.trim();
+        if trimmed_tenant.is_empty() {
+            return Err(PortError::validation(
+                "groups.invalid_tenant",
+                "tenant_id cannot be empty",
+            ));
+        }
+        let tenant_id = Uuid::parse_str(trimmed_tenant).map_err(|_| {
             PortError::validation("groups.invalid_tenant", "tenant_id must be a UUID")
         })?;
+        if tenant_id.is_nil() {
+            return Err(PortError::validation(
+                "groups.invalid_tenant",
+                "tenant_id cannot be nil UUID",
+            ));
+        }
 
         // Reuse the application review authorization boundary so history remains
         // manager-only for active owner/admin/moderator or platform manage actors.

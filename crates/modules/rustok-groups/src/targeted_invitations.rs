@@ -26,6 +26,15 @@ pub struct AcceptTargetedGroupInvitationRequest {
     pub invitation_id: Uuid,
 }
 
+impl AcceptTargetedGroupInvitationRequest {
+    pub fn validate(&self) -> GroupsResult<()> {
+        if self.invitation_id.is_nil() {
+            return Err(GroupsError::Validation("invitation_id cannot be nil UUID".to_string()));
+        }
+        Ok(())
+    }
+}
+
 #[async_trait]
 pub trait GroupTargetedInvitationCommandPort: Send + Sync {
     async fn accept_targeted_group_invitation(
@@ -51,6 +60,7 @@ impl GroupTargetedInvitationService {
         request: AcceptTargetedGroupInvitationRequest,
     ) -> GroupsResult<AcceptGroupInvitationResult> {
         require_write(context)?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
         let idempotency_key = idempotency_key(context)?;
@@ -206,6 +216,7 @@ impl GroupTargetedInvitationCommandPort for GroupTargetedInvitationService {
         context: PortContext,
         request: AcceptTargetedGroupInvitationRequest,
     ) -> Result<AcceptGroupInvitationResult, PortError> {
+        request.validate().map_err(PortError::from)?;
         self.accept_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -398,8 +409,16 @@ fn require_write(context: &PortContext) -> GroupsResult<()> {
 }
 
 fn context_tenant_id(context: &PortContext) -> GroupsResult<Uuid> {
-    Uuid::parse_str(&context.tenant_id)
-        .map_err(|_| GroupsError::Validation("tenant_id must be a UUID".to_string()))
+    let trimmed = context.tenant_id.trim();
+    if trimmed.is_empty() {
+        return Err(GroupsError::Validation("tenant_id cannot be empty".to_string()));
+    }
+    let parsed = Uuid::parse_str(trimmed)
+        .map_err(|_| GroupsError::Validation("tenant_id must be a UUID".to_string()))?;
+    if parsed.is_nil() {
+        return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+    }
+    Ok(parsed)
 }
 
 fn actor_user_id(context: &PortContext) -> GroupsResult<Uuid> {
@@ -408,8 +427,16 @@ fn actor_user_id(context: &PortContext) -> GroupsResult<Uuid> {
             "a user actor is required for targeted group invitations".to_string(),
         ));
     }
-    Uuid::parse_str(&context.actor.id)
-        .map_err(|_| GroupsError::Validation("actor.id must be a UUID".to_string()))
+    let trimmed = context.actor.id.trim();
+    if trimmed.is_empty() {
+        return Err(GroupsError::Validation("actor.id cannot be empty".to_string()));
+    }
+    let parsed = Uuid::parse_str(trimmed)
+        .map_err(|_| GroupsError::Validation("actor.id must be a UUID".to_string()))?;
+    if parsed.is_nil() {
+        return Err(GroupsError::Validation("actor.id cannot be nil UUID".to_string()));
+    }
+    Ok(parsed)
 }
 
 fn idempotency_key(context: &PortContext) -> GroupsResult<String> {
