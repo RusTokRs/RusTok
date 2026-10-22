@@ -99,7 +99,7 @@ rustok-marketplace-balance = { workspace = true, optional = true }
 rustok-marketplace-payout = { workspace = true, optional = true }
 rustok-marketplace = { workspace = true, optional = true }
 rustok-accounting = { workspace = true, optional = true }
-rustok-moderation = { workspace = true, optional = true }
+rustok-moderation = { workspace = true, optional = true, features = ["server"] }
 rustok-content = { workspace = true, optional = true }
 rustok-content-orchestration.workspace = true
 rustok-blog = { workspace = true, optional = true }

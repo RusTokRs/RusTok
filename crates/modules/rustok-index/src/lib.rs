@@ -1,4 +1,6 @@
-//! RusToK Index - cross-module relational Index Engine.
+//! # RusToK Index
+//!
+//! Cross-module relational Index Engine.
 //!
 //! The active implementation contains the database-independent generic engine
 //! core under [`domain`] and [`application`], the canonical M3 PostgreSQL
@@ -15,21 +17,101 @@
 //! secondary-index lifecycle, fail-closed measured partition admission, and the
 //! PostgreSQL execution adapter for structured Index queries.
 
-use async_trait::async_trait;
-use rustok_core::{
-    MigrationDependencyDescriptor, MigrationSource, ModuleKind, ModuleRuntimeExtensions,
-    RusToKModule,
-};
-use sea_orm_migration::MigrationTrait;
-
 pub mod application;
 pub mod domain;
 pub mod infrastructure;
 pub mod migrations;
+pub mod module;
 pub mod replay_dry_run;
 
-pub use application::*;
-pub use domain::*;
+pub use application::{
+    AggregateOrderValidationError, CompiledManyRelationColumn, CompiledPostgresCell,
+    CompiledPostgresCount, CompiledPostgresLocalizedPageQuery, CompiledPostgresPageQuery,
+    CompiledPostgresQuery, CompiledPostgresRow, CompiledQueryColumn, CursorCodec, CursorCodecError,
+    CursorValidationError, ExecutableQueryPlan, IndexCursor, IndexDriftAuthorizedRepairCommand,
+    IndexDriftAuthorizedRepairRecoveryCommand, IndexDriftCandidate,
+    IndexDriftCandidateConfirmationError, IndexDriftCandidateConfirmationFailure,
+    IndexDriftCandidateConfirmationFailureKind, IndexDriftCandidateConfirmationOutcome,
+    IndexDriftCandidateConfirmer, IndexDriftCandidateCursor, IndexDriftCandidateError,
+    IndexDriftCandidateFailure, IndexDriftCandidateFailureKind, IndexDriftCandidateFence,
+    IndexDriftCandidateMaterializedObservation, IndexDriftCandidateMaterializedObserver,
+    IndexDriftCandidateNotCandidateReason, IndexDriftCandidatePage, IndexDriftCandidateReader,
+    IndexDriftCandidateRequest, IndexDriftCandidateScope, IndexDriftConfirmedCandidate,
+    IndexDriftConfirmedMissingEntity, IndexDriftConfirmedOrphanLink, IndexDriftDependencyFailure,
+    IndexDriftDependencyFailureKind, IndexDriftDigestError, IndexDriftDigestMismatch,
+    IndexDriftDigestOutcome, IndexDriftDigestProducer, IndexDriftDigestRequest,
+    IndexDriftEntityState, IndexDriftFindingAuthorizedLifecycleCommand,
+    IndexDriftFindingLifecycleAction, IndexDriftFindingLifecycleActor,
+    IndexDriftFindingLifecycleAuthorization, IndexDriftFindingLifecycleAuthorizer,
+    IndexDriftFindingLifecycleCommand, IndexDriftFindingLifecycleFailure,
+    IndexDriftFindingLifecycleFailureError, IndexDriftFindingLifecycleFailureKind,
+    IndexDriftFindingLifecycleNotAppliedReason, IndexDriftFindingLifecycleOutcome,
+    IndexDriftFindingLifecycleReceipt, IndexDriftFindingLifecycleService,
+    IndexDriftFindingLifecycleStore, IndexDriftFindingLifecycleStoreOutcome,
+    IndexDriftFindingLifecycleValidationError, IndexDriftFindingState, IndexDriftMismatchReceipt,
+    IndexDriftMismatchRecordStatus, IndexDriftMismatchRecorder,
+    IndexDriftMissingEntityCandidateOutcome, IndexDriftOrphanLinkCandidate,
+    IndexDriftRepairAuthorization, IndexDriftRepairAuthorizer, IndexDriftRepairCommand,
+    IndexDriftRepairCompletion, IndexDriftRepairEvidence, IndexDriftRepairEvidenceReader,
+    IndexDriftRepairEvidenceState, IndexDriftRepairFailure, IndexDriftRepairFailureError,
+    IndexDriftRepairFailureKind, IndexDriftRepairFinding, IndexDriftRepairNotStartedReason,
+    IndexDriftRepairOutcome, IndexDriftRepairOwner, IndexDriftRepairOwnerOutcome,
+    IndexDriftRepairOwnerRegistry, IndexDriftRepairReceipt, IndexDriftRepairReceiptOutcome,
+    IndexDriftRepairRecoveryAction, IndexDriftRepairRecoveryAuthorization,
+    IndexDriftRepairRecoveryAuthorizer, IndexDriftRepairRecoveryCommand,
+    IndexDriftRepairRecoveryCommandParams, IndexDriftRepairRecoveryFailure,
+    IndexDriftRepairRecoveryFailureError, IndexDriftRepairRecoveryFailureKind,
+    IndexDriftRepairRecoveryOutcome, IndexDriftRepairRecoveryReceipt,
+    IndexDriftRepairRecoveryService, IndexDriftRepairRecoveryState, IndexDriftRepairRecoveryStore,
+    IndexDriftRepairRecoveryStoreOutcome, IndexDriftRepairRecoveryValidationError,
+    IndexDriftRepairReservationOutcome, IndexDriftRepairService, IndexDriftRepairStore,
+    IndexDriftRepairStoreCompletionOutcome, IndexDriftRepairTarget, IndexDriftRepairTargetKind,
+    IndexDriftRepairTicket, IndexDriftRepairValidationError, IndexDriftSnapshotBoundary,
+    IndexDriftSnapshotPair, IndexDriftSnapshotReader, IndexDriftSnapshotView,
+    IndexDriftStaleEntityCandidate, IndexMutationAcknowledgeFailure,
+    IndexMutationAcknowledgeFailureKind, IndexMutationEventAcknowledger, IndexMutationEventCatalog,
+    IndexMutationEventDelivery, IndexMutationEventDescriptor, IndexMutationEventError,
+    IndexMutationEventProcessError, IndexMutationEventProcessOutcome, IndexMutationEventWorker,
+    IndexNestedRelationItem, IndexNestedRelationProjection, IndexProjectedValue,
+    IndexQueryExecutionError, IndexQueryItem, IndexQueryPage, IndexQueryPort,
+    IndexRelationIdentity, IndexReplayCheckpoint, IndexReplayCheckpointKey,
+    IndexReplayCheckpointStore, IndexReplayError, IndexReplayExecutionSurface, IndexReplayFailure,
+    IndexReplayFailureKind, IndexReplayMode, IndexReplayModeSelection,
+    IndexReplayMutationOutcome, IndexReplayMutationSink, IndexReplayPageOutcome,
+    IndexReplayPageRequest, IndexReplayPageStatus, IndexReplayTargetedError,
+    IndexReplayTargetedExecutor, IndexReplayTargetedOutcome, IndexReplayWorker,
+    IndexSchemaSourceCatalog, IndexSchemaSourceDescriptor, IndexSchemaSourceError, IndexSource,
+    IndexSourceAbsenceCatalog, IndexSourceAbsenceDescriptor, IndexSourceAbsenceError,
+    IndexSourceAbsenceProvider, IndexSourceAbsenceWatermark, IndexSourceCatalog,
+    IndexSourceContinuationCodec, IndexSourceContinuationError, IndexSourceContinuationScope,
+    IndexSourceContinuationToken, IndexSourceCursor, IndexSourceDescriptor, IndexSourceError,
+    IndexSourceEventIdError, IndexSourceFailure, IndexSourceFailureKind, IndexSourceLoadBatch,
+    IndexSourceLoadRequest, IndexSourcePage, IndexSourceRefreshEventDelivery,
+    IndexSourceRefreshEventError, IndexSourceRefreshEventProcessError,
+    IndexSourceRefreshEventProcessOutcome, IndexSourceRefreshEventWorker, IndexSourceScanRequest,
+    LinkPathStep, LocalizedCursorCodec, LocalizedCursorCodecError, LocalizedCursorValidationError,
+    LocalizedEntityQueryValidationError, LocalizedIndexCursor, LocalizedQueryPlanFingerprint,
+    PersistedSchemaReadinessFailure, PlannedField, PlannedJoin, PlannedManyProjection, PlannedOrder,
+    PostgresBindValue, PostgresLocalizedQueryBuildError, PostgresLocalizedQueryDecodeError,
+    PostgresQueryEntityAdmission, PostgresQueryEntityAdmissionApplyError,
+    PostgresQueryEntityAdmissionError, PostgresQueryBuildError, PostgresQueryCompileError,
+    PostgresQueryDecodeError, PostgresQueryPageBuildError, QueryPlanError, QueryPlanFingerprint,
+    QueryValidationError, RecordValidationError, RegisteredSchema, RegistrationOutcome,
+    SchemaRegistry, SchemaRegistryError, SharedIndexMutationEventRegistry, SharedIndexQueryRuntime,
+    SharedIndexSchemaRegistry, SharedIndexSourceAbsenceRegistry, SharedIndexSourceRegistry,
+    derive_index_schema_source_event_id, derive_index_source_event_id,
+    materialize_index_mutation_event_registry, materialize_index_schema_registry,
+    materialize_index_source_absence_registry, materialize_index_source_registry,
+    register_index_mutation_event, register_index_schema_source, register_index_source,
+    register_index_source_absence_provider,
+};
+pub use domain::{
+    DomainError, EntityKey, EntityName, FieldCardinality, FieldName, FieldPath, FilterExpr,
+    IndexField, IndexLink, IndexLinkValue, IndexMutation, IndexQuery, IndexQueryScope, IndexRecord,
+    IndexSchema, IndexValue, IndexValueType, LinkCardinality, LinkName, LinkedEntityKey, LocaleKey,
+    LocaleMode, LocalizedEntityQuery, ManyOrderAggregate, ModuleName, OrderDirection, OrderExpr,
+    Pagination, SchemaFingerprint, SchemaIdentity, SchemaRef, SchemaVersion,
+};
 pub use infrastructure::postgres::{
     INDEX_RECONCILIATION_WORKER, IndexDriftCandidateCompositionError,
     IndexDriftCandidateObserverCompositionError, IndexDriftConfirmedCandidateNotRecordedReason,
@@ -91,54 +173,12 @@ pub use infrastructure::postgres::{
     register_postgres_index_query_link_target_availability,
     register_postgres_index_reconciliation_work, register_postgres_index_source_factory,
 };
-pub use replay_dry_run::*;
-
-pub struct IndexModule;
-
-#[async_trait]
-impl RusToKModule for IndexModule {
-    fn slug(&self) -> &'static str {
-        "index"
-    }
-
-    fn name(&self) -> &'static str {
-        "Index"
-    }
-
-    fn description(&self) -> &'static str {
-        "Cross-module relational index and query engine."
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn kind(&self) -> ModuleKind {
-        ModuleKind::Core
-    }
-
-    fn register_runtime_extensions(
-        &self,
-        extensions: &mut ModuleRuntimeExtensions,
-    ) -> rustok_core::Result<()> {
-        extensions.get_or_insert_with::<IndexSchemaSourceCatalog, _>(IndexSchemaSourceCatalog::new);
-        extensions.get_or_insert_with::<IndexSourceCatalog, _>(IndexSourceCatalog::new);
-        extensions.get_or_insert_with::<PostgresIndexSourceFactoryCatalog, _>(
-            PostgresIndexSourceFactoryCatalog::new,
-        );
-        Ok(())
-    }
-}
-
-impl MigrationSource for IndexModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-
-    fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
-        migrations::migration_dependencies()
-    }
-}
+pub use module::IndexModule;
+pub use replay_dry_run::{
+    IndexReplayDryRunError, IndexReplayDryRunOutcome, IndexReplayDryRunRequest,
+    IndexReplayDryRunRuntimeCompositionError, IndexReplayDryRunStatus,
+    SharedIndexReplayDryRunRuntime, materialize_index_replay_dry_run_runtime,
+};
 
 #[cfg(test)]
 mod contract_tests;

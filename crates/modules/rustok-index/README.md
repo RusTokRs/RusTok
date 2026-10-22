@@ -348,6 +348,7 @@ DDL remains benchmark-only and must not be copied into production migrations.
 
 ## Docs
 
+- [CRATE_API.md](CRATE_API.md)
 - [Module documentation](./docs/README.md)
 - [Live implementation plan](./docs/implementation-plan.md)
 - [M5/M6 bounded source replay contract](./docs/m5-m6-source-replay-contract.md)

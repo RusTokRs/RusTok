@@ -15,7 +15,7 @@ use rustok_moderation::{
     ModerationScopeRef, ModerationService, ModerationSubjectKind, ModerationSubjectRef,
     OpenModerationCaseCommand, SubmitModerationReportCommand,
 };
-use rustok_moderation_api::{
+use rustok_moderation::{
     ApplyModerationDecisionCommand, ModerationDecisionApplication, ModerationSubjectAdapterKey,
     ModerationSubjectAdapterRegistry, ModerationSubjectCommandPort,
 };

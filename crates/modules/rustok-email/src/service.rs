@@ -88,6 +88,21 @@ impl EmailService {
             "{trimmed}{separator}token={encoded_token}"
         )
     }
+
+    /// Register an additional template provider for transactional email.
+    pub fn with_provider(mut self, provider: std::sync::Arc<dyn EmailTemplateProvider>) -> Self {
+        if let Self::Smtp(ref mut sender) = self {
+            sender.providers.push(provider);
+        }
+        self
+    }
+
+    /// Add a template provider to this email service instance in place.
+    pub fn add_provider(&mut self, provider: std::sync::Arc<dyn EmailTemplateProvider>) {
+        if let Self::Smtp(ref mut sender) = self {
+            sender.providers.push(provider);
+        }
+    }
 }
 
 #[async_trait]
@@ -141,14 +156,44 @@ pub struct SmtpEmailSender {
     providers: Vec<std::sync::Arc<dyn EmailTemplateProvider>>,
 }
 
+fn html_escape(input: &str) -> String {
+    let mut escaped = String::with_capacity(input.len());
+    for c in input.chars() {
+        match c {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&#x27;"),
+            _ => escaped.push(c),
+        }
+    }
+    escaped
+}
+
 impl SmtpEmailSender {
     fn try_new(config: &EmailConfig) -> Result<Self> {
+        if config.from.contains('\r') || config.from.contains('\n') {
+            return Err(EmailError::InvalidAddress(
+                "From address contains invalid control characters".to_string(),
+            ));
+        }
+
         let from = config
             .from
             .parse::<Mailbox>()
             .map_err(|e| EmailError::InvalidAddress(format!("Invalid from address: {e}")))?;
 
-        let mut transport_builder = AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp.host)
+        let host = config.smtp.host.trim();
+        if host.is_empty() {
+            return Err(EmailError::SmtpConfig("SMTP host cannot be empty".to_string()));
+        }
+
+        if config.smtp.port == 0 {
+            return Err(EmailError::SmtpConfig("SMTP port cannot be 0".to_string()));
+        }
+
+        let mut transport_builder = AsyncSmtpTransport::<Tokio1Executor>::relay(host)
             .map_err(|e| EmailError::SmtpConfig(format!("Invalid SMTP relay: {e}")))?
             .port(config.smtp.port);
 
@@ -173,6 +218,12 @@ impl SmtpEmailSender {
 
     /// Send a pre-rendered email to the given recipient.
     pub async fn send_rendered(&self, to: &str, rendered: &RenderedEmail) -> Result<()> {
+        if to.contains('\r') || to.contains('\n') {
+            return Err(EmailError::InvalidAddress(
+                "Recipient address contains invalid control characters".to_string(),
+            ));
+        }
+
         let recipient = to
             .parse::<Mailbox>()
             .map_err(|e| EmailError::InvalidAddress(format!("Invalid recipient: {e}")))?;
@@ -208,20 +259,48 @@ impl SmtpEmailSender {
 #[async_trait]
 impl PasswordResetEmailSender for SmtpEmailSender {
     async fn send_password_reset(&self, email: PasswordResetEmail) -> Result<()> {
+        if email.to.contains('\r') || email.to.contains('\n') {
+            return Err(EmailError::InvalidAddress(
+                "Recipient address contains invalid control characters".to_string(),
+            ));
+        }
+
         let recipient = email
             .to
             .parse::<Mailbox>()
             .map_err(|e| EmailError::InvalidAddress(format!("Invalid recipient: {e}")))?;
 
+        if email.reset_url.contains('\r') || email.reset_url.contains('\n') {
+            return Err(EmailError::Build(
+                "Password reset URL contains invalid control characters".to_string(),
+            ));
+        }
+
+        let escaped_url = html_escape(&email.reset_url);
+
+        let body = MultiPart::alternative()
+            .singlepart(
+                SinglePart::builder()
+                    .header(ContentType::TEXT_PLAIN)
+                    .body(format!(
+                        "You requested a password reset for RusToK.\nUse the following link to reset your password:\n{}\n",
+                        email.reset_url
+                    )),
+            )
+            .singlepart(
+                SinglePart::builder()
+                    .header(ContentType::TEXT_HTML)
+                    .body(format!(
+                        "<p>You requested a password reset for RusToK.</p><p><a href=\"{}\">Reset password</a></p>",
+                        escaped_url
+                    )),
+            );
+
         let message = Message::builder()
             .from(self.from.clone())
             .to(recipient)
             .subject("RusToK password reset")
-            .header(ContentType::TEXT_HTML)
-            .body(format!(
-                "<p>You requested a password reset.</p><p><a href=\"{}\">Reset password</a></p>",
-                email.reset_url
-            ))
+            .multipart(body)
             .map_err(|e| EmailError::Build(e.to_string()))?;
 
         self.transport
@@ -324,5 +403,108 @@ mod tests {
             EmailService::password_reset_url(&config_amp, "my-token"),
             "/reset-password?tenant=demo&token=my-token"
         );
+    }
+
+    #[test]
+    fn test_html_escape_special_characters() {
+        assert_eq!(
+            html_escape("https://example.test/reset?token=1&foo=<script>\"'"),
+            "https://example.test/reset?token=1&amp;foo=&lt;script&gt;&quot;&#x27;"
+        );
+    }
+
+    #[test]
+    fn test_smtp_sender_preconditions_and_bounds() {
+        // CRLF in from address
+        let mut config = EmailConfig {
+            enabled: true,
+            from: "attacker@example.test\r\nBcc: evil@example.test".to_string(),
+            ..EmailConfig::default()
+        };
+        assert!(matches!(
+            SmtpEmailSender::try_new(&config),
+            Err(EmailError::InvalidAddress(_))
+        ));
+
+        // Empty host
+        config.from = "valid@example.test".to_string();
+        config.smtp.host = "   ".to_string();
+        assert!(matches!(
+            SmtpEmailSender::try_new(&config),
+            Err(EmailError::SmtpConfig(_))
+        ));
+
+        // Zero port
+        config.smtp.host = "localhost".to_string();
+        config.smtp.port = 0;
+        assert!(matches!(
+            SmtpEmailSender::try_new(&config),
+            Err(EmailError::SmtpConfig(_))
+        ));
+    }
+
+    struct DummyProvider;
+    impl EmailTemplateProvider for DummyProvider {
+        fn namespace(&self) -> &str {
+            "test"
+        }
+        fn render(
+            &self,
+            _template_id: &str,
+            _locale: &str,
+            _vars: &serde_json::Value,
+        ) -> Option<Result<RenderedEmail>> {
+            None
+        }
+    }
+
+    #[test]
+    fn test_email_service_provider_registration() {
+        let dummy = std::sync::Arc::new(DummyProvider);
+        let service = EmailService::Disabled.with_provider(dummy.clone());
+        assert!(matches!(service, EmailService::Disabled));
+
+        let config = EmailConfig {
+            enabled: true,
+            from: "valid@example.test".to_string(),
+            ..EmailConfig::default()
+        };
+        let mut smtp_service = EmailService::from_config(&config).expect("valid smtp config");
+        smtp_service.add_provider(dummy);
+        if let EmailService::Smtp(sender) = smtp_service {
+            assert_eq!(sender.providers.len(), 1);
+        } else {
+            panic!("Expected EmailService::Smtp");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_password_reset_crlf_rejections() {
+        let config = EmailConfig {
+            enabled: true,
+            from: "valid@example.test".to_string(),
+            ..EmailConfig::default()
+        };
+        let sender = SmtpEmailSender::try_new(&config).expect("valid config");
+
+        // CRLF in recipient
+        let bad_recipient = PasswordResetEmail {
+            to: "user@example.test\r\nBcc: evil@example.test".to_string(),
+            reset_url: "https://example.test/reset".to_string(),
+        };
+        assert!(matches!(
+            sender.send_password_reset(bad_recipient).await,
+            Err(EmailError::InvalidAddress(_))
+        ));
+
+        // CRLF in reset_url
+        let bad_url = PasswordResetEmail {
+            to: "user@example.test".to_string(),
+            reset_url: "https://example.test/reset\r\n".to_string(),
+        };
+        assert!(matches!(
+            sender.send_password_reset(bad_url).await,
+            Err(EmailError::Build(_))
+        ));
     }
 }

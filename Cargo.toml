@@ -311,7 +311,7 @@ rustok-marketplace-commission = { path = "crates/modules/rustok-marketplace-comm
 rustok-marketplace-balance = { path = "crates/modules/rustok-marketplace-balance" }
 rustok-marketplace-payout = { path = "crates/modules/rustok-marketplace-payout" }
 rustok-accounting = { path = "crates/modules/rustok-accounting" }
-rustok-moderation = { path = "crates/modules/rustok-moderation" }
+rustok-moderation = { path = "crates/modules/rustok-moderation", default-features = false }
 rustok-cart = { path = "crates/modules/rustok-cart" }
 rustok-cart-storefront = { path = "crates/modules/rustok-cart/storefront" }
 rustok-customer = { path = "crates/modules/rustok-customer" }
