@@ -938,9 +938,7 @@ fn datetime_from_row(
         SupportedBackend::Sqlite => row
             .try_get::<String>("", column)
             .map_err(storage_error)
-            .and_then(|value| {
-                crate::backend::parse_sqlite_datetime(&value).map_err(storage_error)
-            }),
+            .and_then(|value| crate::backend::parse_sqlite_datetime(&value).map_err(storage_error)),
     }
 }
 

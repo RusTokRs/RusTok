@@ -4324,7 +4324,9 @@ fn admission_command_scope(command: &ArtifactAdmissionCommand) -> (&'static str,
 }
 
 fn admission_command_insert_sql(backend: SupportedBackend) -> String {
-    let placeholders = (1..=8).map(|index| backend.placeholder(index)).collect::<Vec<_>>();
+    let placeholders = (1..=8)
+        .map(|index| backend.placeholder(index))
+        .collect::<Vec<_>>();
     format!(
         "INSERT INTO module_artifact_admission_commands (\
             scope_kind, scope_tenant_key, actor_id, idempotency_key, trace_id, correlation_id, request_digest, committed_at\
@@ -4588,7 +4590,9 @@ async fn configure_rls_scope<C: ConnectionTrait>(
 }
 
 fn installation_insert_sql(backend: SupportedBackend) -> String {
-    let placeholders = (1..=23).map(|index| backend.placeholder(index)).collect::<Vec<_>>();
+    let placeholders = (1..=23)
+        .map(|index| backend.placeholder(index))
+        .collect::<Vec<_>>();
     format!(
         "INSERT INTO module_artifact_installations (\
             installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, \
@@ -4620,7 +4624,9 @@ fn work_generation_retire_sql(backend: SupportedBackend) -> String {
 }
 
 fn sandbox_policy_insert_sql(backend: SupportedBackend) -> String {
-    let placeholders = (1..=5).map(|index| backend.placeholder(index)).collect::<Vec<_>>();
+    let placeholders = (1..=5)
+        .map(|index| backend.placeholder(index))
+        .collect::<Vec<_>>();
     format!(
         "INSERT INTO module_artifact_sandbox_policies \
          (installation_id, tenant_id, capability_grant_revision, policy, created_at) \
@@ -5018,7 +5024,9 @@ fn positive_revision(revision: i64, operation: &str) -> Result<u64, ModuleInstal
 }
 
 fn admission_insert_sql(backend: SupportedBackend) -> String {
-    let placeholders = (1..=9).map(|index| backend.placeholder(index)).collect::<Vec<_>>();
+    let placeholders = (1..=9)
+        .map(|index| backend.placeholder(index))
+        .collect::<Vec<_>>();
     format!(
         "INSERT INTO module_artifact_admissions (\
             stage_id, installation_id, payload_digest, media_type, size_bytes, verification_evidence, status, revision, committed_at\
@@ -5627,7 +5635,9 @@ fn replay_admission_reverification(
 }
 
 fn admission_reverification_receipt_insert_sql(backend: SupportedBackend) -> String {
-    let placeholders = (1..=11).map(|index| backend.placeholder(index)).collect::<Vec<_>>();
+    let placeholders = (1..=11)
+        .map(|index| backend.placeholder(index))
+        .collect::<Vec<_>>();
     format!(
         "INSERT INTO module_artifact_admission_reverification_operations \
          (scope_kind, scope_tenant_key, actor_id, idempotency_key, trace_id, correlation_id, request_digest, installation_id, expected_revision, resulting_revision, committed_at) \

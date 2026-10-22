@@ -987,7 +987,6 @@ fn valid_reference(value: &str) -> bool {
             }))
 }
 
-
 fn same_origin(left: &Url, right: &Url) -> bool {
     left.scheme() == right.scheme()
         && left.host_str() == right.host_str()

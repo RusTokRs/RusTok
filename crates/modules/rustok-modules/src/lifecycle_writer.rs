@@ -718,8 +718,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 return Err(error);
             }
         };
-        if let Err(error) =
-            crate::backend::set_tenant_scope(&transaction, command.tenant_id).await
+        if let Err(error) = crate::backend::set_tenant_scope(&transaction, command.tenant_id).await
         {
             let error = database_error(error);
             self.abandon_static_settings_operation(

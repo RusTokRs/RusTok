@@ -12,8 +12,8 @@ use rustok_sandbox::{
 };
 
 use crate::backend::SupportedBackend;
-use crate::installation::valid_digest;
 use crate::data::configure_tenant_scope;
+use crate::installation::valid_digest;
 
 /// Durable, redacted execution audit adapter for installed module artifacts.
 ///

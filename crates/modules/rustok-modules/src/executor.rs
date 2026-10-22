@@ -515,8 +515,7 @@ async fn record_override_state_or_fail(
     .await
     {
         let message = format!("recovery-state: {error}");
-        let journal_result =
-            ModuleOperationJournal::mark_failed(db, operation_id, &message).await;
+        let journal_result = ModuleOperationJournal::mark_failed(db, operation_id, &message).await;
         let persistence = match journal_result {
             Ok(()) => error.to_string(),
             Err(journal_error) => format!(

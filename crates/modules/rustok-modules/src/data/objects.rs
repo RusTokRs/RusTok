@@ -136,8 +136,7 @@ where
             .await
             .map_err(storage_error)?;
         if u64::try_from(data.len()).ok() != Some(stored.object.size_bytes)
-            || crate::installation::sha256_digest(&data)
-                != stored.object.digest_sha256
+            || crate::installation::sha256_digest(&data) != stored.object.digest_sha256
         {
             return Err(ArtifactDataError::ObjectIntegrity);
         }
@@ -195,11 +194,8 @@ where
             .map_err(storage_error)?;
         let uploaded_path = generated_key;
         if upload.data.len() as u64 != requested.size_bytes {
-            delete_uploaded_object_best_effort(
-                &self.storage,
-                &Path::from(uploaded_path.as_str()),
-            )
-            .await;
+            delete_uploaded_object_best_effort(&self.storage, &Path::from(uploaded_path.as_str()))
+                .await;
             return Err(ArtifactDataError::ObjectIntegrity);
         }
 
@@ -215,11 +211,8 @@ where
             }
         };
         if let Err(error) = configure_tenant_scope(&transaction, scope.tenant_id).await {
-            delete_uploaded_object_best_effort(
-                &self.storage,
-                &Path::from(uploaded_path.as_str()),
-            )
-            .await;
+            delete_uploaded_object_best_effort(&self.storage, &Path::from(uploaded_path.as_str()))
+                .await;
             return Err(error);
         }
         let stored = match persist_artifact_data_object(

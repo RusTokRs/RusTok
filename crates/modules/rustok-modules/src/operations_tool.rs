@@ -1604,4 +1604,3 @@ fn valid_assignment_observation(
         _ => false,
     }
 }
-

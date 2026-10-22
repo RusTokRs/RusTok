@@ -111,7 +111,9 @@ impl SeaOrmModuleGovernanceService {
         let default_locale = rustok_api::normalize_locale_tag(&command.default_locale)
             .ok_or(ModuleGovernanceError::InvalidPublishRequestCreateCommand)?;
         let tx = self.db.begin().await.map_err(store_error)?;
-        crate::backend::set_platform_scope(&tx).await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&tx)
+            .await
+            .map_err(store_error)?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
         let mark = |n| backend.placeholder(n);
         let now = backend.now_sql();
@@ -248,7 +250,9 @@ impl SeaOrmModuleGovernanceService {
         let upload_slot = self.prepare_publish_artifact_upload(&command).await?;
         let artifact_storage_key = upload_slot.artifact_storage_key;
         let tx = self.db.begin().await.map_err(store_error)?;
-        crate::backend::set_platform_scope(&tx).await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&tx)
+            .await
+            .map_err(store_error)?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
         let mark = |n| backend.placeholder(n);
         let now = backend.now_sql();

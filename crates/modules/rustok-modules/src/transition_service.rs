@@ -343,9 +343,7 @@ impl SeaOrmModuleTransitionService {
 
             let transaction = self.db.begin().await.map_err(database_error)?;
             match observed.tenant_id {
-                Some(tenant_id) => {
-                    crate::backend::set_tenant_scope(&transaction, tenant_id).await
-                }
+                Some(tenant_id) => crate::backend::set_tenant_scope(&transaction, tenant_id).await,
                 None => crate::backend::set_platform_scope(&transaction).await,
             }
             .map_err(database_error)?;

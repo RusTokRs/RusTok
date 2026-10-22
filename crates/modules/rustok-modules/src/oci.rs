@@ -899,7 +899,6 @@ fn canonical_alloy_workspace_provenance(
     .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))
 }
 
-
 fn validate_build_blob(
     kind: &str,
     blob: &OciBuildPublicationBlob,

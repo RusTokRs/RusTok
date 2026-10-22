@@ -200,12 +200,11 @@ impl SeaOrmSecurityEpochStore {
             }
             SupportedBackend::Sqlite => {
                 let value: String = row.try_get("", "updated_at")?;
-                crate::backend::parse_sqlite_datetime(&value)
-                    .map_err(|error| {
-                        SecurityEpochStoreError::Persistence(format!(
-                            "stored security epoch timestamp is invalid: {error}"
-                        ))
-                    })?
+                crate::backend::parse_sqlite_datetime(&value).map_err(|error| {
+                    SecurityEpochStoreError::Persistence(format!(
+                        "stored security epoch timestamp is invalid: {error}"
+                    ))
+                })?
             }
         };
         Ok(SecurityEpochRecord {

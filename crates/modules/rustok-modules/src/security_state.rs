@@ -232,7 +232,9 @@ where
         }
 
         let transaction = self.db.begin().await.map_err(store_error)?;
-        crate::backend::set_platform_scope(&transaction).await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction)
+            .await
+            .map_err(store_error)?;
         if let Some(receipt) =
             reserve_operation(&transaction, &command.context, action, &request_digest).await?
         {
