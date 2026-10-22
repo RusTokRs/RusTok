@@ -563,6 +563,9 @@ fn map_lifecycle_writer_error(error: ModuleLifecycleDbWriterError) -> ToggleModu
         error @ ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery => {
             ToggleModuleError::Policy(error.to_string())
         }
+        error @ ModuleLifecycleDbWriterError::Security(_) => {
+            ToggleModuleError::Policy(error.to_string())
+        }
     }
 }
 
@@ -629,6 +632,9 @@ fn map_lifecycle_writer_recovery_error(
         error @ ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery => {
             ModuleOperationRecoveryError::Policy(error.to_string())
         }
+        error @ ModuleLifecycleDbWriterError::Security(_) => {
+            ModuleOperationRecoveryError::Policy(error.to_string())
+        }
     }
 }
 
@@ -683,6 +689,9 @@ pub(crate) fn map_lifecycle_writer_settings_error(
             map_lifecycle_settings_receipt_error(error)
         }
         error @ ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery => {
+            UpdateModuleSettingsError::Policy(error.to_string())
+        }
+        error @ ModuleLifecycleDbWriterError::Security(_) => {
             UpdateModuleSettingsError::Policy(error.to_string())
         }
     }
