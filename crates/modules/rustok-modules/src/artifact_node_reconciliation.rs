@@ -515,8 +515,7 @@ impl SeaOrmArtifactNodeReadiness {
         identity: &InstallationIdentity,
         policy_revision: &str,
     ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-        let backend =
-            SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
+        let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
         let row = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
@@ -1468,8 +1467,7 @@ async fn load_current_installation_identity(
     installation_id: Uuid,
     lock_row: bool,
 ) -> Result<InstallationIdentity, ModuleArtifactNodeReconciliationError> {
-    let backend =
-        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
@@ -1542,8 +1540,7 @@ async fn insert_reconciliation(
     topology: &ModuleArtifactNodeTopologySnapshot,
     command: &ModuleArtifactNodeReconciliationRequest,
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1588,8 +1585,7 @@ async fn insert_assignments(
     policy_revision: &str,
     assignments: &[ResolvedAssignment],
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     for (ordinal, assignment) in assignments.iter().enumerate() {
         transaction
             .execute_raw(Statement::from_sql_and_values(
@@ -1690,8 +1686,7 @@ async fn update_assignment(
     report_digest: &str,
     now: &DateTime<Utc>,
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let health_reference = command
         .health_evidence
         .as_ref()
@@ -1795,8 +1790,7 @@ async fn load_phase_counts(
     connection: &impl ConnectionTrait,
     reconciliation_id: Uuid,
 ) -> Result<PhaseCounts, ModuleArtifactNodeReconciliationError> {
-    let backend =
-        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let rows = connection
         .query_all_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1834,8 +1828,7 @@ async fn activate_healthy_assignments(
     transaction: &DatabaseTransaction,
     reconciliation_id: Uuid,
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1859,8 +1852,7 @@ async fn update_reconciliation_status(
     next_status: ModuleArtifactNodeReconciliationStatus,
     failure: Option<&ModuleReconciliationFailure>,
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let (converged_at, failed_at) = match next_status {
         ModuleArtifactNodeReconciliationStatus::Converged => {
             (backend.now_sql().to_string(), "NULL".to_string())
@@ -1906,8 +1898,7 @@ async fn supersede_reconciliation(
     transaction: &DatabaseTransaction,
     reconciliation_id: Uuid,
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1932,8 +1923,7 @@ async fn load_state<C: ConnectionTrait>(
     connection: &C,
     lock_row: bool,
 ) -> Result<ModuleDesiredObservedState, ModuleArtifactNodeReconciliationError> {
-    let backend =
-        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
@@ -1971,8 +1961,7 @@ async fn advance_state(
     desired_reconciliation_id: Option<Uuid>,
     observed_reconciliation_id: Option<Uuid>,
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -2013,8 +2002,7 @@ async fn load_reconciliation<C: ConnectionTrait>(
     reconciliation_id: Uuid,
     lock_row: bool,
 ) -> Result<ModuleArtifactNodeReconciliation, ModuleArtifactNodeReconciliationError> {
-    let backend =
-        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
@@ -2107,8 +2095,7 @@ async fn load_assignment<C: ConnectionTrait>(
     installation_id: Uuid,
     lock_row: bool,
 ) -> Result<ModuleArtifactNodeAssignment, ModuleArtifactNodeReconciliationError> {
-    let backend =
-        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
@@ -2155,8 +2142,7 @@ async fn load_next_assignment_for_node(
     agent_id: &str,
     now: &DateTime<Utc>,
 ) -> Result<Option<ModuleArtifactNodeAssignment>, ModuleArtifactNodeReconciliationError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let lock = if backend == SupportedBackend::Postgres {
         " FOR UPDATE SKIP LOCKED"
     } else {
@@ -2219,8 +2205,7 @@ async fn claim_assignment(
     lease_expires_at: &DateTime<Utc>,
     now: &DateTime<Utc>,
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -2265,8 +2250,7 @@ async fn heartbeat_assignment(
     lease_expires_at: &DateTime<Utc>,
     now: &DateTime<Utc>,
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -2516,8 +2500,7 @@ async fn reserve_operation(
     principal_id: &str,
     context: Option<&ModuleCommandContext>,
 ) -> Result<Option<OperationRecord>, ModuleArtifactNodeReconciliationError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -2566,8 +2549,7 @@ async fn load_operation<C: ConnectionTrait>(
     principal_id: &str,
     context: Option<&ModuleCommandContext>,
 ) -> Result<Option<OperationRecord>, ModuleArtifactNodeReconciliationError> {
-    let backend =
-        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let Some(row) = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -2676,8 +2658,7 @@ async fn complete_operation(
     idempotency_key: Uuid,
     completion: OperationCompletion,
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),

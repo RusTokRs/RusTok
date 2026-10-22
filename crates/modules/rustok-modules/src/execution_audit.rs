@@ -143,8 +143,7 @@ impl SeaOrmArtifactExecutionObserver {
                 .await
                 .map_err(|_| ())?;
         }
-        let backend =
-            SupportedBackend::new(transaction.get_database_backend()).map_err(|_| ())?;
+        let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(|_| ())?;
         match record.status {
             ExecutionStatus::Started => {
                 let columns = "execution_id, tenant_id, installation_id, module_slug, module_version, artifact_digest, executor, phase, actor_id, trace_id, binding_id, status, started_at";

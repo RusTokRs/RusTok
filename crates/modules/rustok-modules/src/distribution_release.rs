@@ -618,8 +618,7 @@ fn valid_policy_revision(value: &str) -> bool {
 async fn ensure_no_static_transition_in_progress(
     transaction: &DatabaseTransaction,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let row = transaction
         .query_one_raw(Statement::from_string(
             backend.db_backend(),
@@ -838,8 +837,7 @@ async fn lock_build_for_admission(
     transaction: &DatabaseTransaction,
     distribution_build_id: Uuid,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let lock = if backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
@@ -894,8 +892,7 @@ pub(crate) async fn insert_release(
     } = insert;
     let role_artifacts_json = serde_json::to_string(&evidence.roles)
         .map_err(|error| ModuleStaticDistributionReleaseError::Store(error.to_string()))?;
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -969,8 +966,7 @@ pub(crate) async fn insert_admission(
     admission: &ModuleStaticDistributionReleaseAdmission,
     verified_at: chrono::DateTime<chrono::Utc>,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1018,8 +1014,7 @@ async fn supersede_release(
     transaction: &DatabaseTransaction,
     distribution_release_id: Uuid,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1064,8 +1059,7 @@ pub(crate) async fn commit_admitted_release(
     if let Some(predecessor_release_id) = predecessor_release_id {
         supersede_release(transaction, predecessor_release_id).await?;
     }
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let activated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1124,8 +1118,7 @@ pub(crate) async fn commit_recovery_release(
         return Err(ModuleStaticDistributionReleaseError::RollbackTargetInvalid);
     }
     supersede_release(transaction, from_release_id).await?;
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let activated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1167,8 +1160,7 @@ pub(crate) async fn load_release_state<C: ConnectionTrait>(
     connection: &C,
     lock_row: bool,
 ) -> Result<ModuleStaticDistributionReleaseState, ModuleStaticDistributionReleaseError> {
-    let backend =
-        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
@@ -1218,8 +1210,7 @@ pub(crate) async fn advance_release_state_optional(
     next_revision: u64,
     distribution_release_id: Option<Uuid>,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1258,8 +1249,7 @@ async fn validate_release_idempotency_key<C: ConnectionTrait>(
     context: &ModuleCommandContext,
     request_digest: &str,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend =
-        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1295,8 +1285,7 @@ async fn reserve_release_idempotency_key(
     context: &ModuleCommandContext,
     request_digest: &str,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1373,8 +1362,7 @@ async fn reserve_admission_operation(
     request_digest: &str,
 ) -> Result<Option<ModuleStaticDistributionAdmissionReceipt>, ModuleStaticDistributionReleaseError>
 {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     reserve_release_idempotency_key(transaction, "admit", context, request_digest).await?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
@@ -1428,8 +1416,7 @@ async fn load_admission_operation<C: ConnectionTrait>(
     request_digest: &str,
 ) -> Result<Option<ModuleStaticDistributionAdmissionReceipt>, ModuleStaticDistributionReleaseError>
 {
-    let backend =
-        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let Some(row) = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1461,8 +1448,7 @@ async fn complete_admission_operation(
     distribution_release_id: Uuid,
     release_revision: u64,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1515,8 +1501,7 @@ async fn revoke_release(
     reason: &str,
     policy_revision: &str,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1552,8 +1537,7 @@ async fn reserve_revocation_operation(
     request_digest: &str,
 ) -> Result<Option<ModuleStaticDistributionRevocationReceipt>, ModuleStaticDistributionReleaseError>
 {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     reserve_release_idempotency_key(transaction, "revoke", context, request_digest).await?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
@@ -1596,8 +1580,7 @@ async fn query_revocation_operation<C: ConnectionTrait>(
     request_digest: &str,
 ) -> Result<Option<ModuleStaticDistributionRevocationReceipt>, ModuleStaticDistributionReleaseError>
 {
-    let backend =
-        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let Some(row) = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1643,8 +1626,7 @@ async fn complete_revocation_operation(
     release_state_revision: u64,
     was_active: bool,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1679,8 +1661,7 @@ pub(crate) async fn load_release_record<C: ConnectionTrait>(
     distribution_release_id: Uuid,
     lock_row: bool,
 ) -> Result<ModuleStaticDistributionRelease, ModuleStaticDistributionReleaseError> {
-    let backend =
-        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {

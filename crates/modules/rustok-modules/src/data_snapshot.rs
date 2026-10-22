@@ -1762,8 +1762,8 @@ async fn persist_snapshot_rows(
     indexes: &[SnapshotIndex],
     index_contract: Option<&str>,
 ) -> Result<(), ArtifactDataError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(snapshot_storage_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend())
+        .map_err(snapshot_storage_error)?;
     for record in records {
         transaction.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
             "INSERT INTO module_artifact_data_snapshot_records (tenant_id, snapshot_id, data_key, value, revision) VALUES ({}, {}, {}, {}, {})",
@@ -1872,8 +1872,8 @@ async fn lock_restore_namespace(
     transaction: &DatabaseTransaction,
     request: &ArtifactDataRestoreRequest,
 ) -> Result<(u64, bool), ArtifactDataError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(snapshot_storage_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend())
+        .map_err(snapshot_storage_error)?;
     let row = transaction.query_one_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
         "SELECT namespace_revision, CASE WHEN purged_at IS NULL THEN 0 ELSE 1 END AS is_purged
          FROM module_artifact_data_namespaces WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
@@ -1896,8 +1896,8 @@ async fn ensure_namespace_empty(
     transaction: &DatabaseTransaction,
     scope: &ArtifactDataScope,
 ) -> Result<(), ArtifactDataError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(snapshot_storage_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend())
+        .map_err(snapshot_storage_error)?;
     for table in [
         "module_artifact_data",
         "module_artifact_data_objects",
@@ -1935,8 +1935,8 @@ async fn persist_restore_rows(
     {
         return Err(ArtifactDataError::SnapshotIntegrity);
     }
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(snapshot_storage_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend())
+        .map_err(snapshot_storage_error)?;
     for record in &manifest.records {
         let value_size_bytes = artifact_data_value_size(&record.value)?;
         transaction.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!(

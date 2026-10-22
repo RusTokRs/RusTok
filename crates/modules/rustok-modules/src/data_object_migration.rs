@@ -17,7 +17,9 @@ use uuid::Uuid;
 use crate::backend::SupportedBackend;
 use crate::{
     ArtifactDataNamespace, ArtifactDataObject, ArtifactDataQuota, ModuleCommandContext,
-    data::{configure_tenant_scope, lock_artifact_data_namespace_on, revision_value, uuid_from_row},
+    data::{
+        configure_tenant_scope, lock_artifact_data_namespace_on, revision_value, uuid_from_row,
+    },
     promotion::{digest_json, valid_digest},
 };
 

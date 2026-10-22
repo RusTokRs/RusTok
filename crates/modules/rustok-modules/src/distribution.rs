@@ -1071,8 +1071,7 @@ impl TerminalBuildFields {
 async fn lock_next_build_candidate(
     transaction: &DatabaseTransaction,
 ) -> Result<Option<BuildCandidate>, ModuleStaticDistributionError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let lock = if backend == SupportedBackend::Postgres {
         " FOR UPDATE SKIP LOCKED"
     } else {
@@ -1113,8 +1112,7 @@ async fn expire_active_attempt(
     transaction: &DatabaseTransaction,
     claim_id: Uuid,
 ) -> Result<(), ModuleStaticDistributionError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1144,8 +1142,7 @@ async fn claim_build(
     runner_id: &str,
     lease_expires_at: &DateTime<Utc>,
 ) -> Result<(), ModuleStaticDistributionError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let candidate_guard = match candidate.status {
         ModuleStaticDistributionBuildStatus::Queued => {
             "status = 'queued' AND active_claim_id IS NULL".to_string()
@@ -1225,8 +1222,7 @@ async fn heartbeat_claim(
     command: &ModuleStaticDistributionHeartbeatCommand,
     lease_expires_at: &DateTime<Utc>,
 ) -> Result<(), ModuleStaticDistributionError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated_build = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1287,8 +1283,7 @@ async fn classify_claim_failure(
     claim_id: Uuid,
     runner_id: &str,
 ) -> Result<ModuleStaticDistributionError, ModuleStaticDistributionError> {
-    let backend =
-        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1316,8 +1311,7 @@ async fn lock_attempt(
     transaction: &DatabaseTransaction,
     claim_id: Uuid,
 ) -> Result<AttemptRecord, ModuleStaticDistributionError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let lock = if backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
@@ -1349,8 +1343,7 @@ async fn lock_claimed_build(
     transaction: &DatabaseTransaction,
     distribution_build_id: Uuid,
 ) -> Result<ClaimedBuildRecord, ModuleStaticDistributionError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let lock = if backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
@@ -1383,8 +1376,7 @@ async fn complete_claim(
     completion_digest: &str,
     terminal: &TerminalBuildFields,
 ) -> Result<(), ModuleStaticDistributionError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let terminal_values = || -> Vec<sea_orm::Value> {
         vec![
             terminal.status.into(),
@@ -1531,8 +1523,7 @@ pub(crate) async fn insert_build(
         actor_id,
         items,
     } = build;
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1626,8 +1617,7 @@ pub(crate) async fn load_distribution_state<C: ConnectionTrait>(
     connection: &C,
     lock_row: bool,
 ) -> Result<ModuleStaticDistributionState, ModuleStaticDistributionError> {
-    let backend =
-        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
@@ -1662,8 +1652,7 @@ pub(crate) async fn advance_distribution_state(
     next_revision: u64,
     distribution_build_id: Uuid,
 ) -> Result<(), ModuleStaticDistributionError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1715,8 +1704,7 @@ async fn load_composition_digest<C: ConnectionTrait>(
     connection: &C,
     distribution_build_id: Uuid,
 ) -> Result<String, ModuleStaticDistributionError> {
-    let backend =
-        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1740,8 +1728,7 @@ async fn reserve_operation(
     request_digest: &str,
     context: &ModuleCommandContext,
 ) -> Result<Option<ModuleStaticDistributionBuildReceipt>, ModuleStaticDistributionError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1805,8 +1792,7 @@ async fn complete_operation(
     composition_revision: u64,
     composition_digest: &str,
 ) -> Result<(), ModuleStaticDistributionError> {
-    let backend =
-        SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -1863,8 +1849,7 @@ pub(crate) async fn load_build<C: ConnectionTrait>(
     connection: &C,
     distribution_build_id: Uuid,
 ) -> Result<ModuleStaticDistributionBuild, ModuleStaticDistributionError> {
-    let backend =
-        SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
