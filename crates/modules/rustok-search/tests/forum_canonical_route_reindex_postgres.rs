@@ -43,7 +43,7 @@ impl StaticModuleSettingsReader for DefaultForumSettingsReader {
     ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
         assert_eq!(slug, "forum");
         Ok(Some(StaticModuleSettingsSnapshot {
-            enabled: true,
+            enabled: Some(true),
             settings: serde_json::json!({}),
         }))
     }
