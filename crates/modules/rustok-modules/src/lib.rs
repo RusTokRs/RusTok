@@ -8,6 +8,7 @@ mod artifact_schema;
 mod artifact_settings;
 mod artifact_settings_recovery;
 mod authoring;
+mod backend;
 mod binding_idempotency;
 mod build;
 mod build_surface;

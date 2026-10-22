@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
+
+use crate::backend::SupportedBackend;
 
 /// Persists tenant/owner/secret-instance logical bindings separately from
 /// structured artifact data. Rows contain resolver references only, never
@@ -10,8 +12,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE module_artifact_secret_bindings (\
                     tenant_id UUID NOT NULL,\
                     data_owner_id UUID NOT NULL,\
@@ -54,7 +57,7 @@ impl MigrationTrait for Migration {
                  USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
                  WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "CREATE TABLE module_artifact_secret_bindings (\
                     tenant_id TEXT NOT NULL,\
                     data_owner_id TEXT NOT NULL,\
@@ -88,31 +91,25 @@ impl MigrationTrait for Migration {
                     PRIMARY KEY (tenant_id, data_owner_id, secret_instance_id, idempotency_key)\
                 )",
             ],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "artifact secret-binding migration does not support database backend {backend:?}"
-                )));
-            }
         };
         for statement in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;
         }
-        let guards: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let guards: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE FUNCTION module_artifact_secret_receipt_immutable() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'secret binding receipts are immutable'; END $$",
                 "CREATE TRIGGER module_artifact_secret_receipt_immutable BEFORE UPDATE OR DELETE ON module_artifact_secret_binding_operations FOR EACH ROW EXECUTE FUNCTION module_artifact_secret_receipt_immutable()",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "CREATE TRIGGER module_artifact_secret_receipt_update BEFORE UPDATE ON module_artifact_secret_binding_operations BEGIN SELECT RAISE(ABORT, 'secret binding receipts are immutable'); END",
                 "CREATE TRIGGER module_artifact_secret_receipt_delete BEFORE DELETE ON module_artifact_secret_binding_operations BEGIN SELECT RAISE(ABORT, 'secret binding receipts are immutable'); END",
             ],
-            _ => unreachable!("unsupported backend rejected before creating tables"),
         };
         for statement in guards {
             manager
@@ -124,6 +121,7 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
         for table in [
             "module_artifact_secret_binding_operations",
             "module_artifact_secret_bindings",
@@ -133,7 +131,7 @@ impl MigrationTrait for Migration {
                 .execute_unprepared(&format!("DROP TABLE {table}"))
                 .await?;
         }
-        if manager.get_database_backend() == DbBackend::Postgres {
+        if backend == SupportedBackend::Postgres {
             manager
                 .get_connection()
                 .execute_unprepared("DROP FUNCTION module_artifact_secret_receipt_immutable()")

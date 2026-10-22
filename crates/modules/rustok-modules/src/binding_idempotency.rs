@@ -1,5 +1,6 @@
 //! Durable idempotency coordination for platform-routed artifact bindings.
 
+use crate::backend::SupportedBackend;
 use crate::data::configure_tenant_scope;
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{
@@ -90,7 +91,7 @@ impl SeaOrmArtifactBindingIdempotencyStore {
     ) -> Result<ArtifactBindingIdempotencyClaim, ArtifactBindingIdempotencyError> {
         let tenant_id = validate_request(request)?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())?;
+        let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
@@ -197,7 +198,7 @@ impl SeaOrmArtifactBindingIdempotencyStore {
             return Err(ArtifactBindingIdempotencyError::InvalidRequest);
         }
         let transaction = self.db.begin().await.map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())?;
+        let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
@@ -239,7 +240,7 @@ impl SeaOrmArtifactBindingIdempotencyStore {
             return Err(ArtifactBindingIdempotencyError::InvalidRequest);
         }
         let transaction = self.db.begin().await.map_err(storage_error)?;
-        let backend = SupportedBackend::new(transaction.get_database_backend())?;
+        let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
@@ -293,34 +294,6 @@ fn is_digest(value: &str) -> bool {
             .all(|character| character.is_ascii_hexdigit())
 }
 
-/// Database backend validated once at the store boundary. Helpers match
-/// on this type exhaustively, so an unsupported backend is a typed error
-/// at entry instead of an `unreachable!` panic deep in SQL construction.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum SupportedBackend {
-    Postgres,
-    Sqlite,
-}
-
-impl SupportedBackend {
-    fn new(backend: DbBackend) -> Result<Self, ArtifactBindingIdempotencyError> {
-        match backend {
-            DbBackend::Postgres => Ok(Self::Postgres),
-            DbBackend::Sqlite => Ok(Self::Sqlite),
-            backend => Err(ArtifactBindingIdempotencyError::Storage(format!(
-                "artifact binding idempotency does not support {backend:?}"
-            ))),
-        }
-    }
-
-    fn db_backend(self) -> DbBackend {
-        match self {
-            Self::Postgres => DbBackend::Postgres,
-            Self::Sqlite => DbBackend::Sqlite,
-        }
-    }
-}
-
 fn request_values(
     request: &ArtifactBindingIdempotencyRequest,
     tenant_id: Uuid,
@@ -344,18 +317,18 @@ fn lease_value(now: DateTime<Utc>, backend: SupportedBackend) -> sea_orm::Value 
 }
 
 fn uuid_value(value: Uuid, backend: SupportedBackend) -> sea_orm::Value {
-    crate::data::uuid_value(value, backend.db_backend())
+    backend.uuid_value(value)
 }
 
 fn select_operation_sql(backend: SupportedBackend) -> String {
-    let prefix = placeholder_prefix(backend);
+    let prefix = backend.placeholder_prefix();
     format!(
         "SELECT request_digest, trace_id, CAST(correlation_id AS TEXT) AS correlation_id, status, CAST(response AS TEXT) AS response FROM module_artifact_binding_operations WHERE tenant_id = {prefix}1 AND actor_id = {prefix}2 AND installation_id = {prefix}3 AND binding_id = {prefix}4 AND idempotency_key = {prefix}5 LIMIT 1"
     )
 }
 
 fn recover_operation_sql(backend: SupportedBackend) -> String {
-    let prefix = placeholder_prefix(backend);
+    let prefix = backend.placeholder_prefix();
     let expired = match backend {
         SupportedBackend::Postgres => "lease_expires_at <= CURRENT_TIMESTAMP",
         SupportedBackend::Sqlite => "datetime(lease_expires_at) <= CURRENT_TIMESTAMP",
@@ -366,31 +339,24 @@ fn recover_operation_sql(backend: SupportedBackend) -> String {
 }
 
 fn insert_operation_sql(backend: SupportedBackend) -> String {
-    let prefix = placeholder_prefix(backend);
+    let prefix = backend.placeholder_prefix();
     format!(
         "INSERT INTO module_artifact_binding_operations (operation_id, tenant_id, actor_id, installation_id, binding_id, idempotency_key, request_digest, trace_id, correlation_id, status, lease_expires_at) VALUES ({prefix}1, {prefix}2, {prefix}3, {prefix}4, {prefix}5, {prefix}6, {prefix}7, {prefix}8, {prefix}9, 'pending', {prefix}10) ON CONFLICT (tenant_id, actor_id, installation_id, binding_id, idempotency_key) DO NOTHING"
     )
 }
 
 fn complete_operation_sql(backend: SupportedBackend) -> String {
-    let prefix = placeholder_prefix(backend);
+    let prefix = backend.placeholder_prefix();
     format!(
         "UPDATE module_artifact_binding_operations SET status = 'completed', response = {prefix}1, completed_at = CURRENT_TIMESTAMP WHERE operation_id = {prefix}2 AND tenant_id = {prefix}3 AND actor_id = {prefix}4 AND installation_id = {prefix}5 AND binding_id = {prefix}6 AND idempotency_key = {prefix}7 AND request_digest = {prefix}8 AND trace_id = {prefix}9 AND correlation_id = {prefix}10 AND status = 'pending'"
     )
 }
 
 fn abandon_operation_sql(backend: SupportedBackend) -> String {
-    let prefix = placeholder_prefix(backend);
+    let prefix = backend.placeholder_prefix();
     format!(
         "DELETE FROM module_artifact_binding_operations WHERE operation_id = {prefix}1 AND tenant_id = {prefix}2 AND actor_id = {prefix}3 AND installation_id = {prefix}4 AND binding_id = {prefix}5 AND idempotency_key = {prefix}6 AND request_digest = {prefix}7 AND trace_id = {prefix}8 AND correlation_id = {prefix}9 AND status = 'pending'"
     )
-}
-
-fn placeholder_prefix(backend: SupportedBackend) -> &'static str {
-    match backend {
-        SupportedBackend::Postgres => "$",
-        SupportedBackend::Sqlite => "?",
-    }
 }
 
 fn storage_error(error: impl std::fmt::Display) -> ArtifactBindingIdempotencyError {
