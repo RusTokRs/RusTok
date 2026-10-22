@@ -76,6 +76,9 @@ pub fn prepare_accept_targeted_group_invitation(
 ) -> Result<AcceptTargetedGroupInvitationCommand, GroupsStorefrontInvitationInputError> {
     let invitation_id = Uuid::parse_str(invitation_id.trim())
         .map_err(|_| GroupsStorefrontInvitationInputError::InvalidInvitationId)?;
+    if invitation_id.is_nil() {
+        return Err(GroupsStorefrontInvitationInputError::InvalidInvitationId);
+    }
     Ok(AcceptTargetedGroupInvitationCommand {
         idempotency_key: format!(
             "groups-storefront-accept-targeted-invitation-{}",
@@ -138,7 +141,7 @@ mod tests {
     }
 
     #[test]
-    fn targeted_invitation_acceptance_requires_uuid() {
+    fn targeted_invitation_acceptance_requires_non_nil_uuid() {
         let command =
             prepare_accept_targeted_group_invitation("550e8400-e29b-41d4-a716-446655440000")
                 .expect("targeted invitation id must be accepted");
@@ -153,6 +156,10 @@ mod tests {
         );
         assert_eq!(
             prepare_accept_targeted_group_invitation("not-a-uuid"),
+            Err(GroupsStorefrontInvitationInputError::InvalidInvitationId)
+        );
+        assert_eq!(
+            prepare_accept_targeted_group_invitation(&Uuid::nil().to_string()),
             Err(GroupsStorefrontInvitationInputError::InvalidInvitationId)
         );
     }
