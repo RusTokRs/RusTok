@@ -4572,37 +4572,19 @@ async fn configure_rls_scope<C: ConnectionTrait>(
     connection: &C,
     scope: &ModuleInstallationScope,
 ) -> Result<(), ModuleInstallationError> {
-    let backend = SupportedBackend::new(connection.get_database_backend())
-        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-    if backend == SupportedBackend::Postgres {
-        match scope {
-            // A platform-owned lifecycle transaction must examine every tenant
-            // overlay before it can activate a platform contribution. This
-            // setting is transaction-local and is accepted only by the
-            // module-control-plane RLS policy.
-            ModuleInstallationScope::Platform => {
-                connection
-                    .execute_raw(Statement::from_sql_and_values(
-                        SupportedBackend::Postgres.db_backend(),
-                        "SELECT set_config('rustok.module_control_plane_owner', $1, true)",
-                        vec!["platform".into()],
-                    ))
-                    .await
-                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-            }
-            ModuleInstallationScope::Tenant { tenant_id } => {
-                connection
-                    .execute_raw(Statement::from_sql_and_values(
-                        SupportedBackend::Postgres.db_backend(),
-                        "SELECT set_config('rustok.tenant_id', $1, true)",
-                        vec![tenant_id.to_string().into()],
-                    ))
-                    .await
-                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-            }
+    // The GUCs themselves are owned by `crate::backend`; this adapter only
+    // translates the installation scope and maps the error type.
+    let result = match scope {
+        // A platform-owned lifecycle transaction must examine every tenant
+        // overlay before it can activate a platform contribution. This
+        // setting is transaction-local and is accepted only by the
+        // module-control-plane RLS policy.
+        ModuleInstallationScope::Platform => crate::backend::set_platform_scope(connection).await,
+        ModuleInstallationScope::Tenant { tenant_id } => {
+            crate::backend::set_tenant_scope(connection, *tenant_id).await
         }
-    }
-    Ok(())
+    };
+    result.map_err(|error| ModuleInstallationError::Store(error.to_string()))
 }
 
 fn installation_insert_sql(backend: SupportedBackend) -> String {

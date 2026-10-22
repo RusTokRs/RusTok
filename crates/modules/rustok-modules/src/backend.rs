@@ -8,7 +8,7 @@
 //! against a different engine and fail — or worse, misbehave — far from
 //! the boundary where the configuration mistake was made.
 
-use sea_orm::{DbBackend, DbErr, Value};
+use sea_orm::{ConnectionTrait, DbBackend, DbErr, Statement, Value};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -70,12 +70,28 @@ impl SupportedBackend {
     }
 
     /// SQL expression for the database's current timestamp in the
-    /// representation this crate persists: native `NOW()` on PostgreSQL,
-    /// `datetime('now')` text on SQLite.
+    /// representation most of this crate persists: native `NOW()` on
+    /// PostgreSQL, `datetime('now')` text (`YYYY-MM-DD HH:MM:SS`) on
+    /// SQLite.
     pub(crate) fn now_sql(self) -> &'static str {
         match self {
             Self::Postgres => "NOW()",
             Self::Sqlite => "datetime('now')",
+        }
+    }
+
+    /// SQL expression for the database's current timestamp in the RFC3339
+    /// representation the artifact-settings-recovery family persists and
+    /// parses back with `DateTime::parse_from_rfc3339`: native `NOW()` on
+    /// PostgreSQL, `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')` text on SQLite.
+    ///
+    /// The two representations must never be mixed within one column:
+    /// `now_sql` text is not RFC3339-parseable, and lexical comparison
+    /// across the formats does not order chronologically.
+    pub(crate) fn now_rfc3339_sql(self) -> &'static str {
+        match self {
+            Self::Postgres => "NOW()",
+            Self::Sqlite => "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
         }
     }
 
@@ -87,4 +103,50 @@ impl SupportedBackend {
             Self::Sqlite => value.to_string().into(),
         }
     }
+}
+
+/// Set the transaction-local tenant RLS scope (`rustok.tenant_id`) on
+/// PostgreSQL as the first statement of a tenant-scoped transaction.
+///
+/// This is the single owner of the GUC name and value encoding; subsystem
+/// helpers only adapt the error type. SQLite has no RLS, so the call is a
+/// no-op there — but the backend is still validated, so an unsupported
+/// backend fails loudly instead of silently skipping scoping. Until the
+/// application connects as a non-owner role, application-level `WHERE`
+/// scoping remains the authoritative tenant boundary and this setting is
+/// defense-in-depth (see the Phase F record in the remediation plan).
+pub(crate) async fn set_tenant_scope<C: ConnectionTrait>(
+    connection: &C,
+    tenant_id: Uuid,
+) -> Result<(), DbErr> {
+    if SupportedBackend::new(connection.get_database_backend())? == SupportedBackend::Postgres {
+        connection
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "SELECT set_config('rustok.tenant_id', $1, true)",
+                vec![tenant_id.to_string().into()],
+            ))
+            .await?;
+    }
+    Ok(())
+}
+
+/// Set the transaction-local platform RLS scope
+/// (`rustok.module_control_plane_owner = 'platform'`) on PostgreSQL as
+/// the first statement of a platform-scoped transaction. A platform
+/// transaction legitimately examines rows across tenants (installation,
+/// distribution, governance, recovery sweeps); the module-control-plane
+/// RLS policies accept this setting as the owner assertion. Same SQLite
+/// and interim-contract semantics as [`set_tenant_scope`].
+pub(crate) async fn set_platform_scope<C: ConnectionTrait>(connection: &C) -> Result<(), DbErr> {
+    if SupportedBackend::new(connection.get_database_backend())? == SupportedBackend::Postgres {
+        connection
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "SELECT set_config('rustok.module_control_plane_owner', $1, true)",
+                vec!["platform".into()],
+            ))
+            .await?;
+    }
+    Ok(())
 }

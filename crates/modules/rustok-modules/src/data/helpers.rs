@@ -42,21 +42,11 @@ pub(crate) async fn configure_tenant_scope<C: ConnectionTrait>(
     connection: &C,
     tenant_id: Uuid,
 ) -> Result<(), ArtifactDataError> {
-    // The RLS tenant GUC exists only on PostgreSQL; validate the backend so
-    // an unsupported one fails loudly instead of silently skipping scoping.
-    if SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?
-        == SupportedBackend::Postgres
-    {
-        connection
-            .execute_raw(Statement::from_sql_and_values(
-                SupportedBackend::Postgres.db_backend(),
-                "SELECT set_config('rustok.tenant_id', $1, true)",
-                vec![tenant_id.to_string().into()],
-            ))
-            .await
-            .map_err(storage_error)?;
-    }
-    Ok(())
+    // The GUC itself is owned by `crate::backend`; this adapter only maps
+    // the error into the artifact-data taxonomy.
+    crate::backend::set_tenant_scope(connection, tenant_id)
+        .await
+        .map_err(storage_error)
 }
 
 /// Resolve the tenant's single owner reference, initializing its first empty
