@@ -1,4 +1,22 @@
-//! Module platform ownership: artifact identity, release lineage and lifecycle.
+//! # RusToK Modules Control Plane
+//!
+//! Mandatory platform control plane for module artifacts, marketplace catalog,
+//! security admission, lifecycle management, and runtime worker delivery.
+//!
+//! Provides the canonical control plane for module packaging, signing, publication
+//! verification, and dependency resolution across the RusToK platform.
+//!
+//! ## Entry points
+//!
+//! - [`ModulesModule`]: Platform module lifecycle and migration descriptor.
+//! - [`ArtifactPackageDescriptor`]: Content-addressed module artifact envelope.
+//! - [`ModuleLifecycle`]: Dynamic and static module lifecycle state machine.
+//! - [`ModuleRegistryService`]: Marketplace catalog and module discovery.
+
+pub mod module;
+
+#[cfg(test)]
+mod contract_tests;
 
 mod artifact;
 mod artifact_capability_router;
@@ -198,10 +216,6 @@ pub use wave_rollout::{
     WaveAssignmentPhase, WaveCohort, WaveNodeAssignment, WaveRollbackReceipt,
     WaveRolloutCoordinator, WaveRolloutError, WaveRolloutState,
 };
-
-use async_trait::async_trait;
-use rustok_core::{MigrationDependencyDescriptor, MigrationSource, ModuleKind, RusToKModule};
-use sea_orm_migration::MigrationTrait;
 
 pub use artifact::{
     ArtifactDataIndexField, ArtifactDataIndexValueType, ArtifactLocalizationCatalog,
@@ -657,70 +671,5 @@ pub use trust::{
     TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
 };
 
-/// Mandatory Core entry point for module and marketplace control-plane ownership.
-pub struct ModulesModule;
+pub use module::ModulesModule;
 
-impl MigrationSource for ModulesModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-
-    fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
-        vec![
-            MigrationDependencyDescriptor::new(
-                "m20260717_000002_create_registry_publish_build_staging",
-                vec!["m20260403_000002_create_registry_publish_tables"],
-            ),
-            MigrationDependencyDescriptor::new(
-                "m20260722_000034_static_promotions",
-                vec!["m20260403_000002_create_registry_publish_tables"],
-            ),
-            MigrationDependencyDescriptor::new(
-                "m20260727_000040_registry_platform_admission_contracts",
-                vec!["m20260403_000002_create_registry_publish_tables"],
-            ),
-            MigrationDependencyDescriptor::new(
-                "m20260727_000041_registry_release_artifact_contracts",
-                vec!["m20260717_000002_create_registry_publish_build_staging"],
-            ),
-        ]
-    }
-}
-
-#[async_trait]
-impl RusToKModule for ModulesModule {
-    fn slug(&self) -> &'static str {
-        "modules"
-    }
-
-    fn name(&self) -> &'static str {
-        "Module Platform"
-    }
-
-    fn description(&self) -> &'static str {
-        "Mandatory module artifact, marketplace, and lifecycle control plane"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn kind(&self) -> ModuleKind {
-        ModuleKind::Core
-    }
-
-    fn register_runtime_extensions(
-        &self,
-        extensions: &mut rustok_core::ModuleRuntimeExtensions,
-    ) -> rustok_core::Result<()> {
-        let registrations = extensions
-            .get_or_insert_with::<rustok_runtime::ModuleWorkRegistrations, _>(Default::default);
-        registrations.register(std::sync::Arc::new(
-            ArtifactEventDeliveryWorkRegistration::default(),
-        ));
-        registrations.register(std::sync::Arc::new(
-            ArtifactScheduleDeliveryWorkRegistration::default(),
-        ));
-        Ok(())
-    }
-}

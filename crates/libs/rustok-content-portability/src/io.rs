@@ -1,6 +1,4 @@
-//! File I/O helpers for import/export operations.
-
-use rustok_content_portability_api::PortabilityError;
+use crate::PortabilityError;
 use std::path::Path;
 use tokio::fs;
 

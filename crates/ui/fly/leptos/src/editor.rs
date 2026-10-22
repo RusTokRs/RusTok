@@ -343,15 +343,31 @@ pub fn FlyThemeTokenEditor(
     }
 }
 
-/// Read-only rendered preview of a document (first page), with the Fly project styles.
-/// The HTML comes from the Fly SSR renderer, which escapes every author-controlled sink.
+/// Rendered authoring canvas / preview of a document page.
+///
+/// In preview mode (when `interactive` is false and no `on_select` is passed),
+/// it produces clean, non-instrumented SSR HTML.
+///
+/// In interactive authoring mode (`interactive = true` or `on_select` provided):
+/// - Components are instrumented with `data-fly-component-id` so the author can click any
+///   block to select it;
+/// - The currently selected component receives an outline highlight;
+/// - Hover outlines guide the author to selectable components;
+/// - Double-clicking a text component enables inline WYSIWYG editing (`contenteditable="true"`),
+///   and on blur/focusout changes are emitted via `on_patch_content` so the document
+///   is updated directly in place.
 #[component]
 pub fn FlyCanvasPreview(
     document: ProjectDocument,
-    #[prop(optional)] page_index: Option<usize>,
+    #[prop(optional_no_strip)] page_index: Option<usize>,
+    #[prop(optional_no_strip)] selected: Option<String>,
+    #[prop(optional_no_strip)] on_select: Option<Callback<Option<String>>>,
+    #[prop(optional_no_strip)] on_patch_content: Option<Callback<(String, String)>>,
+    #[prop(optional_no_strip)] interactive: Option<bool>,
     #[prop(optional_no_strip)] viewport_width: Option<u32>,
-    #[prop(optional)] messages: Option<EditorMessages>,
+    #[prop(optional_no_strip)] messages: Option<EditorMessages>,
 ) -> impl IntoView {
+    let is_interactive = interactive.unwrap_or(on_select.is_some());
     let canvas_style =
         viewport_width.map(|width| format!("max-width: {width}px; margin-inline: auto"));
     let preview_failed_label = messages.unwrap_or_default().preview_failed;
@@ -359,11 +375,201 @@ pub fn FlyCanvasPreview(
         Some(index) => PageSelection::Index(index),
         None => PageSelection::First,
     };
-    let rendered = render_page(&document, &selection, &RenderPolicy::default());
+    let policy = if is_interactive {
+        RenderPolicy {
+            instrument_components: true,
+            emit_style_hooks: true,
+            ..RenderPolicy::default()
+        }
+    } else {
+        RenderPolicy::default()
+    };
+    let rendered = render_page(&document, &selection, &policy);
+
+    let on_canvas_click = {
+        let on_select = on_select;
+        move |event: leptos::ev::MouseEvent| {
+            if !is_interactive {
+                return;
+            }
+            #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+            {
+                use wasm_bindgen::JsCast;
+                if let Some(on_select) = on_select {
+                    let target = event
+                        .target()
+                        .and_then(|t| t.dyn_into::<web_sys::Element>().ok());
+                    if let Some(target) = target {
+                        if let Ok(Some(element)) = target.closest("[data-fly-component-id]") {
+                            event.prevent_default();
+                            let id = element.get_attribute("data-fly-component-id");
+                            on_select.run(id);
+                            return;
+                        }
+                    }
+                    on_select.run(None);
+                }
+            }
+            #[cfg(not(all(target_arch = "wasm32", feature = "wasm-client")))]
+            {
+                let _ = event;
+                if let Some(on_select) = on_select {
+                    on_select.run(None);
+                }
+            }
+        }
+    };
+
+    let on_canvas_dblclick = {
+        move |event: leptos::ev::MouseEvent| {
+            if !is_interactive {
+                return;
+            }
+            #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+            {
+                use wasm_bindgen::JsCast;
+                let target = event
+                    .target()
+                    .and_then(|t| t.dyn_into::<web_sys::Element>().ok());
+                if let Some(target) = target {
+                    if let Ok(Some(element)) = target.closest("[data-fly-component-id]") {
+                        event.prevent_default();
+                        if let Some(html_element) = element.dyn_ref::<web_sys::HtmlElement>() {
+                            let _ = html_element.set_attribute("contenteditable", "true");
+                            let _ = html_element.focus();
+                        }
+                    }
+                }
+            }
+            #[cfg(not(all(target_arch = "wasm32", feature = "wasm-client")))]
+            {
+                let _ = event;
+            }
+        }
+    };
+
+    let on_canvas_focusout = {
+        let on_patch_content = on_patch_content;
+        move |event: leptos::ev::FocusEvent| {
+            if !is_interactive {
+                return;
+            }
+            #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+            {
+                use wasm_bindgen::JsCast;
+                let target = event
+                    .target()
+                    .and_then(|t| t.dyn_into::<web_sys::Element>().ok());
+                if let Some(target) = target {
+                    if let Ok(Some(element)) = target.closest("[data-fly-component-id]") {
+                        let is_editable =
+                            element.get_attribute("contenteditable").as_deref() == Some("true");
+                        if is_editable {
+                            let _ = element.remove_attribute("contenteditable");
+                            if let Some(id) = element.get_attribute("data-fly-component-id") {
+                                if let Some(html_element) =
+                                    element.dyn_ref::<web_sys::HtmlElement>()
+                                {
+                                    let text = html_element.inner_text();
+                                    if let Some(on_patch_content) = on_patch_content {
+                                        on_patch_content.run((id, text));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            #[cfg(not(all(target_arch = "wasm32", feature = "wasm-client")))]
+            {
+                let _ = (&event, &on_patch_content);
+            }
+        }
+    };
+
+    let on_canvas_keydown = {
+        move |event: leptos::ev::KeyboardEvent| {
+            if !is_interactive {
+                return;
+            }
+            #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+            {
+                use wasm_bindgen::JsCast;
+                if event.key() == "Escape" {
+                    let target = event
+                        .target()
+                        .and_then(|t| t.dyn_into::<web_sys::Element>().ok());
+                    if let Some(target) = target {
+                        if let Ok(Some(element)) = target.closest("[data-fly-component-id]") {
+                            let _ = element.remove_attribute("contenteditable");
+                            if let Some(html_element) =
+                                element.dyn_ref::<web_sys::HtmlElement>()
+                            {
+                                let _ = html_element.blur();
+                            }
+                        }
+                    }
+                }
+            }
+            #[cfg(not(all(target_arch = "wasm32", feature = "wasm-client")))]
+            {
+                let _ = event;
+            }
+        }
+    };
+
+    let interactive_css = if is_interactive {
+        let selection_css = selected
+            .as_deref()
+            .map(|id| {
+                format!(
+                    "[data-fly-component-id=\"{id}\"] {{ outline: 2px solid #2563eb !important; outline-offset: 2px !important; position: relative; z-index: 5; }}"
+                )
+            })
+            .unwrap_or_default();
+        format!(
+            r#"
+            .fly-canvas--interactive [data-fly-component-id] {{
+                cursor: pointer;
+                transition: outline 0.12s ease-in-out;
+            }}
+            .fly-canvas--interactive [data-fly-component-id]:hover {{
+                outline: 1px dashed #3b82f6;
+                outline-offset: 1px;
+            }}
+            .fly-canvas--interactive [contenteditable="true"] {{
+                outline: 2px dashed #10b981 !important;
+                outline-offset: 2px !important;
+                cursor: text !important;
+                min-width: 1ch;
+            }}
+            {selection_css}
+            "#
+        )
+    } else {
+        String::new()
+    };
+
+    let canvas_class = if is_interactive {
+        "fly-canvas fly-canvas--interactive"
+    } else {
+        "fly-canvas"
+    };
+
     match rendered {
         Ok(page) => view! {
-            <div class="fly-canvas" data-fly-canvas="true" style=canvas_style>
-                <style>{page.css}</style>
+            <div
+                class=canvas_class
+                data-fly-canvas="true"
+                data-fly-interactive=is_interactive.to_string()
+                data-fly-selected=selected.unwrap_or_default()
+                style=canvas_style
+                on:click=on_canvas_click
+                on:dblclick=on_canvas_dblclick
+                on:focusout=on_canvas_focusout
+                on:keydown=on_canvas_keydown
+            >
+                <style>{format!("{}\n{}", page.css, interactive_css)}</style>
                 <div inner_html=page.html></div>
             </div>
         }
@@ -1528,8 +1734,11 @@ pub fn FlyEditorWorkspace(
     let toolbar_label = messages.toolbar.clone();
     let undo_label = messages.undo.clone();
     let redo_label = messages.redo.clone();
+    let edit_label = messages.edit.clone();
+    let preview_label = messages.preview.clone();
     let page_summaries = document.page_summaries();
     let active_page = RwSignal::new(initial_page.unwrap_or(0));
+    let interactive_mode = RwSignal::new(true);
     let registries = registries.unwrap_or_else(RegistrySet::with_builtins);
     let summary_assembly = contribution_assembly.clone();
     let palette_access = PaletteBlockAccess::from_optional_assembly(contribution_assembly.as_ref());
@@ -1805,6 +2014,17 @@ pub fn FlyEditorWorkspace(
         if let Some(on_change) = on_change {
             patch_editor.with(|editor| on_change.run(editor.document().clone()));
         }
+    });
+
+    let canvas_patch_handler = on_patch_property;
+    let on_canvas_patch_content = Callback::new(move |(component_id, text): (String, String)| {
+        canvas_patch_handler.run(ComponentPropertyChange {
+            component_id,
+            kind: ComponentPropertyKind::Field,
+            name: "content".to_string(),
+            value: text,
+            remove: false,
+        });
     });
 
     let asset_editor = editor;
@@ -2170,6 +2390,36 @@ pub fn FlyEditorWorkspace(
                 >
                     {redo_label}
                 </button>
+                <div class="fly-editor__toolbar-group" role="group">
+                    <button
+                        type="button"
+                        class=move || {
+                            if interactive_mode.get() {
+                                "fly-editor__mode-btn fly-editor__mode-btn--active"
+                            } else {
+                                "fly-editor__mode-btn"
+                            }
+                        }
+                        aria-pressed=move || if interactive_mode.get() { "true" } else { "false" }
+                        on:click=move |_| interactive_mode.set(true)
+                    >
+                        {edit_label.clone()}
+                    </button>
+                    <button
+                        type="button"
+                        class=move || {
+                            if !interactive_mode.get() {
+                                "fly-editor__mode-btn fly-editor__mode-btn--active"
+                            } else {
+                                "fly-editor__mode-btn"
+                            }
+                        }
+                        aria-pressed=move || if !interactive_mode.get() { "true" } else { "false" }
+                        on:click=move |_| interactive_mode.set(false)
+                    >
+                        {preview_label.clone()}
+                    </button>
+                </div>
             </div>
             {move || {
                 let active = active_page.get();
@@ -2238,16 +2488,20 @@ pub fn FlyEditorWorkspace(
                     view! {
                         <FlyLayerTree
                             document=document.clone()
-                            selected=selected
+                            selected=selected.clone()
                             on_select=on_select
                             page_index=page_index
                             messages=panel_messages.clone()
                         />
                         <FlyCanvasPreview
                             document=document
-                            page_index=page_index
+                            page_index=Some(page_index)
+                            selected=selected
+                            on_select=Some(on_select)
+                            on_patch_content=Some(on_canvas_patch_content)
+                            interactive=Some(interactive_mode.get())
                             viewport_width=preview_width.get()
-                            messages=panel_messages.clone()
+                            messages=Some(panel_messages.clone())
                         />
                     }
                 }}
@@ -2315,5 +2569,91 @@ mod tests {
         assert_eq!(layer_indent_class(3), "pl-[50px]");
         assert_eq!(layer_indent_class(8), "pl-[120px]");
         assert_eq!(layer_indent_class(usize::MAX), "pl-[120px]");
+    }
+
+    #[test]
+    fn fly_canvas_preview_renders_in_preview_and_interactive_modes() {
+        let document: ProjectDocument = serde_json::from_value(serde_json::json!({
+            "project": {
+                "pages": [{
+                    "id": "home",
+                    "name": "Home",
+                    "component": {
+                        "type": "wrapper",
+                        "id": "root",
+                        "components": [{
+                            "id": "hero-title",
+                            "tagName": "h1",
+                            "content": "Welcome to RusToK"
+                        }]
+                    }
+                }]
+            }
+        }))
+        .expect("document");
+
+        // Preview mode (clean HTML, non-instrumented)
+        let preview_html = view! {
+            <FlyCanvasPreview
+                document=document.clone()
+                page_index=Some(0)
+                interactive=Some(false)
+                viewport_width=Some(1024)
+            />
+        }
+        .to_html();
+        assert!(preview_html.contains("data-fly-interactive=\"false\""));
+        assert!(!preview_html.contains("data-fly-component-id=\"hero-title\""));
+        assert!(preview_html.contains("Welcome to RusToK"));
+
+        // Interactive authoring mode (instrumented components, outline styles, selection)
+        let interactive_html = view! {
+            <FlyCanvasPreview
+                document=document.clone()
+                page_index=Some(0)
+                selected=Some("hero-title".to_string())
+                on_select=Some(Callback::new(|_| ()))
+                interactive=Some(true)
+                viewport_width=Some(1024)
+            />
+        }
+        .to_html();
+        assert!(interactive_html.contains("data-fly-interactive=\"true\""));
+        assert!(interactive_html.contains("data-fly-component-id=\"hero-title\""));
+        assert!(interactive_html.contains("data-fly-selected=\"hero-title\""));
+        assert!(interactive_html.contains(".fly-canvas--interactive [data-fly-component-id]"));
+        assert!(interactive_html.contains("[data-fly-component-id=\"hero-title\"] { outline: 2px solid #2563eb !important;"));
+        assert!(interactive_html.contains(".fly-canvas--interactive [contenteditable=\"true\"]"));
+    }
+
+    #[test]
+    fn fly_editor_workspace_instantiates_with_toolbar_modes_and_canvas() {
+        let document: ProjectDocument = serde_json::from_value(serde_json::json!({
+            "project": {
+                "pages": [{
+                    "id": "page-1",
+                    "name": "Page One",
+                    "component": {
+                        "type": "wrapper",
+                        "id": "root",
+                        "components": []
+                    }
+                }]
+            }
+        }))
+        .expect("document");
+
+        let html = view! {
+            <FlyEditorWorkspace
+                document=document
+                instance_id="test-workspace".to_string()
+                initial_page=0
+            />
+        }
+        .to_html();
+        assert!(html.contains("fly-editor fly-editor--full"));
+        assert!(html.contains("fly-editor__toolbar-group"));
+        assert!(html.contains("data-fly-canvas=\"true\""));
+        assert!(html.contains("data-fly-interactive=\"true\""));
     }
 }

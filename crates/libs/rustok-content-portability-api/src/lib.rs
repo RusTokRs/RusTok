@@ -1,6 +1,7 @@
 //! # RusToK Content Portability API
 //!
 //! Unified content import/export contracts for the RusTok platform.
+//!
 //! This crate provides domain-agnostic contracts for importing and exporting
 //! business entities (posts, products, subscribers, etc.) across different
 //! formats (JSON, CSV, WordPress XML, Markdown).

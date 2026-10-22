@@ -1,5 +1,7 @@
 # rustok-modules
 
+See [CRATE_API.md](CRATE_API.md) for the formal public API surface, capability bindings, and minimum contract set.
+
 ## Purpose
 
 `rustok-modules` is the mandatory Core owner of module artifact, marketplace,
