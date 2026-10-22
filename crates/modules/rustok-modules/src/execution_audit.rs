@@ -1,5 +1,7 @@
 use async_trait::async_trait;
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait, Value as SqlValue};
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection, Statement, TransactionTrait, Value as SqlValue,
+};
 use thiserror::Error;
 use uuid::Uuid;
 
