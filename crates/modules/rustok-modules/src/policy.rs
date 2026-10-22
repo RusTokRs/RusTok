@@ -1388,7 +1388,6 @@ mod tests {
         ModulePolicyRevisionTransition, ModuleToggleValidationError, TenantModuleOverride,
         validate_module_toggle,
     };
-    use std::collections::HashSet;
     use crate::{
         ArtifactPayloadKind, ArtifactReleaseRef, ModuleArtifactRegistryReleaseStatus,
         ModuleArtifactSecuritySnapshot, ModuleArtifactSecurityStatus, ModuleDefinition,
@@ -1396,6 +1395,7 @@ mod tests {
         ModuleDependencyConstraint, ModuleInstallationScope, ModulesModule,
     };
     use rustok_core::ModuleRegistry;
+    use std::collections::HashSet;
     use uuid::Uuid;
 
     #[test]
@@ -1671,10 +1671,12 @@ mod tests {
         assert!(core.denial_reasons.is_empty());
         // Core definitions ignore tenant overrides entirely, so the recorded
         // disable override must not surface as an honored tenant-intent fact.
-        assert!(!core.facts.iter().any(|fact| matches!(
-            fact,
-            ModuleEffectivePolicyFact::TenantOverride { .. }
-        )));
+        assert!(
+            !core
+                .facts
+                .iter()
+                .any(|fact| matches!(fact, ModuleEffectivePolicyFact::TenantOverride { .. }))
+        );
 
         let unknown = policy.decision("missing");
         assert!(!unknown.enabled);
