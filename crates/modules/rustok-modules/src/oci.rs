@@ -447,9 +447,8 @@ impl OciDistributionArtifactPublisher {
     /// Creates a publisher with the mandatory client-enforced registry policy.
     pub fn strict(auth: RegistryAuth) -> Result<Self, OciArtifactPublicationError> {
         Ok(Self {
-            client: strict_oci_registry_transport().map_err(|error| {
-                OciArtifactPublicationError::Registry(error.to_string())
-            })?,
+            client: strict_oci_registry_transport()
+                .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?,
             auth,
         })
     }

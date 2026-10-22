@@ -89,11 +89,9 @@ impl RegistryReference {
                 .any(|segment| segment.is_empty() || !valid_path_segment(segment))
             || !valid_reference(&reference.reference)
         {
-            return Err(
-                OciTransportError::InvalidRequest(
-                    "OCI registry reference contains an invalid repository or reference".to_string(),
-                ),
-            );
+            return Err(OciTransportError::InvalidRequest(
+                "OCI registry reference contains an invalid repository or reference".to_string(),
+            ));
         }
         Ok(reference)
     }
@@ -104,10 +102,9 @@ impl RegistryReference {
     }
 
     fn base_url(&self) -> Result<Url, OciTransportError> {
-        let url = Url::parse(&format!("https://{}/", self.registry))
-            .map_err(|_| {
-                OciTransportError::InvalidRequest("OCI registry host is invalid".to_string())
-            })?;
+        let url = Url::parse(&format!("https://{}/", self.registry)).map_err(|_| {
+            OciTransportError::InvalidRequest("OCI registry host is invalid".to_string())
+        })?;
         if url.scheme() != "https"
             || url.host_str().is_none()
             || !url.username().is_empty()
@@ -148,14 +145,14 @@ impl RegistryReference {
         let base = self.base_url()?;
         let url = match Url::parse(location) {
             Ok(url) => url,
-            Err(url::ParseError::RelativeUrlWithoutBase) => base
-                .join(location)
-                .map_err(|_| {
-                    OciTransportError::InvalidResponse("OCI upload location is invalid".to_string())
-                })?,
-            Err(_) => return Err(OciTransportError::InvalidResponse(
-                "OCI upload location is invalid".to_string(),
-            )),
+            Err(url::ParseError::RelativeUrlWithoutBase) => base.join(location).map_err(|_| {
+                OciTransportError::InvalidResponse("OCI upload location is invalid".to_string())
+            })?,
+            Err(_) => {
+                return Err(OciTransportError::InvalidResponse(
+                    "OCI upload location is invalid".to_string(),
+                ));
+            }
         };
         if url.scheme() != "https"
             || !same_origin(&base, &url)
@@ -339,11 +336,9 @@ impl OciRegistryTransport {
         if let Some(declared_digest) = declared_digest
             && declared_digest != actual_digest
         {
-            return Err(
-                OciTransportError::DigestMismatch(
-                    "OCI registry returned a manifest with a mismatched digest header".to_string(),
-                ),
-            );
+            return Err(OciTransportError::DigestMismatch(
+                "OCI registry returned a manifest with a mismatched digest header".to_string(),
+            ));
         }
         Ok((body, actual_digest))
     }
@@ -354,12 +349,11 @@ impl OciRegistryTransport {
         auth: &RegistryAuth,
     ) -> Result<(OciImageManifest, String), OciTransportError> {
         let (body, digest) = self.pull_manifest(reference, auth).await?;
-        let manifest: OciImageManifest = serde_json::from_slice(&body)
-            .map_err(|_| {
-                OciTransportError::InvalidResponse(
-                    "OCI registry returned an invalid image manifest".to_string(),
-                )
-            })?;
+        let manifest: OciImageManifest = serde_json::from_slice(&body).map_err(|_| {
+            OciTransportError::InvalidResponse(
+                "OCI registry returned an invalid image manifest".to_string(),
+            )
+        })?;
         if manifest.schema_version != 2
             || manifest.media_type.as_deref() != Some(OCI_IMAGE_MEDIA_TYPE)
         {
@@ -453,12 +447,11 @@ impl OciRegistryTransport {
             artifact_type: Some(artifact_type.to_string()),
             annotations: None,
         };
-        let body = serde_json::to_vec(&manifest)
-            .map_err(|_| {
-                OciTransportError::InvalidRequest(
-                    "OCI artifact manifest could not be encoded".to_string(),
-                )
-            })?;
+        let body = serde_json::to_vec(&manifest).map_err(|_| {
+            OciTransportError::InvalidRequest(
+                "OCI artifact manifest could not be encoded".to_string(),
+            )
+        })?;
         self.push_manifest(reference, auth, body, OCI_IMAGE_MEDIA_TYPE)
             .await
     }
@@ -699,9 +692,11 @@ impl OciRegistryTransport {
                     tokio::time::sleep(retry_backoff(attempt)).await;
                     let _ = error;
                 }
-                Err(_) => return Err(OciTransportError::Unavailable(
-                    "OCI registry request failed".to_string(),
-                )),
+                Err(_) => {
+                    return Err(OciTransportError::Unavailable(
+                        "OCI registry request failed".to_string(),
+                    ));
+                }
             }
         }
     }
@@ -715,14 +710,9 @@ impl OciRegistryTransport {
         accept: Option<&str>,
         body: Option<Bytes>,
     ) -> Result<OciResponse, OciTransportError> {
-        let permit = self
-            .permits
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|_| {
-                OciTransportError::Unavailable("OCI registry transport is unavailable".to_string())
-            })?;
+        let permit = self.permits.clone().acquire_owned().await.map_err(|_| {
+            OciTransportError::Unavailable("OCI registry transport is unavailable".to_string())
+        })?;
         let mut request = self.client.request(method, url);
         if let Some(value) = content_type {
             request = request.header(CONTENT_TYPE, value);
@@ -742,12 +732,9 @@ impl OciRegistryTransport {
         if let Some(body) = body {
             request = request.body(body);
         }
-        let response = request
-            .send()
-            .await
-            .map_err(|_| {
-                OciTransportError::Unavailable("OCI registry request failed".to_string())
-            })?;
+        let response = request.send().await.map_err(|_| {
+            OciTransportError::Unavailable("OCI registry request failed".to_string())
+        })?;
         Ok(OciResponse {
             response,
             _permit: permit,
@@ -802,12 +789,11 @@ impl OciRegistryTransport {
         )?;
         let maximum = self.response_limit().min(TOKEN_RESPONSE_MAXIMUM_BYTES);
         let bytes = self.read_bytes(response, maximum).await?;
-        let token: TokenResponse = serde_json::from_slice(&bytes)
-            .map_err(|_| {
-                OciTransportError::InvalidResponse(
-                    "OCI token service returned an invalid response".to_string(),
-                )
-            })?;
+        let token: TokenResponse = serde_json::from_slice(&bytes).map_err(|_| {
+            OciTransportError::InvalidResponse(
+                "OCI token service returned an invalid response".to_string(),
+            )
+        })?;
         let value = token
             .token
             .or(token.access_token)
@@ -857,13 +843,11 @@ impl OciRegistryTransport {
             let chunk = chunk.map_err(|_| {
                 OciTransportError::Unavailable("OCI registry response transfer failed".to_string())
             })?;
-            received = received
-                .checked_add(chunk.len() as u64)
-                .ok_or_else(|| {
-                    OciTransportError::TooLarge(
-                        "OCI registry response exceeds the transfer limit".to_string(),
-                    )
-                })?;
+            received = received.checked_add(chunk.len() as u64).ok_or_else(|| {
+                OciTransportError::TooLarge(
+                    "OCI registry response exceeds the transfer limit".to_string(),
+                )
+            })?;
             if received > maximum {
                 return Err(OciTransportError::TooLarge(
                     "OCI registry response exceeds the transfer limit".to_string(),
@@ -892,13 +876,11 @@ impl OciRegistryTransport {
             .get(CONTENT_LENGTH)
             .and_then(|value| value.to_str().ok())
         {
-            let length = length
-                .parse::<u64>()
-                .map_err(|_| {
-                    OciTransportError::InvalidResponse(
-                        "OCI registry response has an invalid content length".to_string(),
-                    )
-                })?;
+            let length = length.parse::<u64>().map_err(|_| {
+                OciTransportError::InvalidResponse(
+                    "OCI registry response has an invalid content length".to_string(),
+                )
+            })?;
             if length > maximum {
                 return Err(OciTransportError::TooLarge(
                     "OCI registry response exceeds the transfer limit".to_string(),
@@ -955,10 +937,9 @@ fn descriptor(blob: Blob<'_>) -> Result<OciDescriptor, OciTransportError> {
     Ok(OciDescriptor {
         media_type: blob.media_type.to_string(),
         digest: blob.digest.to_string(),
-        size: i64::try_from(blob.bytes.len())
-            .map_err(|_| {
-                OciTransportError::TooLarge("OCI blob is too large to describe".to_string())
-            })?,
+        size: i64::try_from(blob.bytes.len()).map_err(|_| {
+            OciTransportError::TooLarge("OCI blob is too large to describe".to_string())
+        })?,
         urls: None,
         annotations: None,
     })
@@ -1025,26 +1006,22 @@ fn same_origin(left: &Url, right: &Url) -> bool {
 }
 
 fn parse_bearer_challenge(value: &str) -> Result<BearerChallenge, OciTransportError> {
-    let (scheme, parameters) = value
-        .split_once(char::is_whitespace)
-        .ok_or_else(|| {
-            OciTransportError::InvalidResponse(
-                "OCI registry returned an invalid authentication challenge".to_string(),
-            )
-        })?;
+    let (scheme, parameters) = value.split_once(char::is_whitespace).ok_or_else(|| {
+        OciTransportError::InvalidResponse(
+            "OCI registry returned an invalid authentication challenge".to_string(),
+        )
+    })?;
     if !scheme.eq_ignore_ascii_case("bearer") {
         return Err(OciTransportError::InvalidResponse(
             "OCI registry returned an unsupported authentication challenge".to_string(),
         ));
     }
     let parameters = parse_challenge_parameters(parameters.trim())?;
-    let realm = parameters
-        .get("realm")
-        .ok_or_else(|| {
-            OciTransportError::InvalidResponse(
-                "OCI bearer challenge has no token realm".to_string(),
-            )
-        })?;
+    let realm = parameters.get("realm").ok_or_else(|| {
+        OciTransportError::InvalidResponse(
+            "OCI bearer challenge has no token realm".to_string(),
+        )
+    })?;
     let realm = Url::parse(realm).map_err(|_| {
         OciTransportError::InvalidResponse("OCI bearer token realm is invalid".to_string())
     })?;
@@ -1068,13 +1045,11 @@ fn parse_challenge_parameters(value: &str) -> Result<HashMap<String, String>, Oc
     let mut values = HashMap::new();
     let mut rest = value.trim();
     while !rest.is_empty() {
-        let equals = rest
-            .find('=')
-            .ok_or_else(|| {
-                OciTransportError::InvalidResponse(
-                    "OCI bearer challenge has malformed parameters".to_string(),
-                )
-            })?;
+        let equals = rest.find('=').ok_or_else(|| {
+            OciTransportError::InvalidResponse(
+                "OCI bearer challenge has malformed parameters".to_string(),
+            )
+        })?;
         let name = rest[..equals].trim();
         if name.is_empty()
             || !name
@@ -1099,13 +1074,11 @@ fn parse_challenge_parameters(value: &str) -> Result<HashMap<String, String>, Oc
         if rest.is_empty() {
             break;
         }
-        rest = rest
-            .strip_prefix(',')
-            .ok_or_else(|| {
-                OciTransportError::InvalidResponse(
-                    "OCI bearer challenge has malformed parameters".to_string(),
-                )
-            })?
+        rest = rest.strip_prefix(',').ok_or_else(|| {
+            OciTransportError::InvalidResponse(
+                "OCI bearer challenge has malformed parameters".to_string(),
+            )
+        })?
             .trim_start();
     }
     Ok(values)
