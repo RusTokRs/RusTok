@@ -20,13 +20,7 @@ impl SeaOrmModuleGovernanceService {
                 command.lease_ttl_ms.max(1).min(i64::MAX as u64) as i64
             );
         let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
-        let mark = |n| {
-            if backend == SupportedBackend::Postgres {
-                format!("${n}")
-            } else {
-                format!("?{n}")
-            }
-        };
+        let mark = |n| backend.placeholder(n);
         let updated = self
             .db
             .execute_raw(Statement::from_sql_and_values(
@@ -107,13 +101,7 @@ impl SeaOrmModuleGovernanceService {
             return Ok(None);
         }
         let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
-        let mark = |n| {
-            if backend == SupportedBackend::Postgres {
-                format!("${n}")
-            } else {
-                format!("?{n}")
-            }
-        };
+        let mark = |n| backend.placeholder(n);
         let now = self.infrastructure.now();
         let stage_marks = (1..=supported_stages.len())
             .map(&mark)
@@ -400,13 +388,7 @@ impl SeaOrmModuleGovernanceService {
         &self,
     ) -> Result<ModuleRemoteValidationRunnerSnapshot, ModuleGovernanceError> {
         let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
-        let mark = |n| {
-            if backend == SupportedBackend::Postgres {
-                format!("${n}")
-            } else {
-                format!("?{n}")
-            }
-        };
+        let mark = |n| backend.placeholder(n);
         let now = self.infrastructure.now();
         let snapshot = self
             .db
@@ -457,13 +439,7 @@ impl SeaOrmModuleGovernanceService {
         &self,
     ) -> Result<usize, ModuleGovernanceError> {
         let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
-        let mark = |n| {
-            if backend == SupportedBackend::Postgres {
-                format!("${n}")
-            } else {
-                format!("?{n}")
-            }
-        };
+        let mark = |n| backend.placeholder(n);
         let now = self.infrastructure.now();
         let candidates = self.db.query_all_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -484,13 +460,7 @@ impl SeaOrmModuleGovernanceService {
                 .await
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
             let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
-            let mark = |n| {
-                if backend == SupportedBackend::Postgres {
-                    format!("${n}")
-                } else {
-                    format!("?{n}")
-                }
-            };
+            let mark = |n| backend.placeholder(n);
             let now = if backend == SupportedBackend::Postgres {
                 "NOW()"
             } else {

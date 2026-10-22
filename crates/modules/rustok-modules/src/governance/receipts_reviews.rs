@@ -47,13 +47,7 @@ pub(crate) async fn publish_request_review_replay(
     backend: SupportedBackend,
     receipt: &PublishRequestReviewReceipt<'_>,
 ) -> Result<bool, ModuleGovernanceError> {
-    let mark = |n| {
-        if backend == SupportedBackend::Postgres {
-            format!("${n}")
-        } else {
-            format!("?{n}")
-        }
-    };
+    let mark = |n| backend.placeholder(n);
     let existing = tx
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -126,13 +120,7 @@ pub(crate) async fn record_publish_request_review_receipt(
     resulting_status: &str,
     resulting_revision: i64,
 ) -> Result<(), ModuleGovernanceError> {
-    let mark = |n| {
-        if backend == SupportedBackend::Postgres {
-            format!("${n}")
-        } else {
-            format!("?{n}")
-        }
-    };
+    let mark = |n| backend.placeholder(n);
     tx.execute_raw(Statement::from_sql_and_values(
         backend.db_backend(),
         format!(

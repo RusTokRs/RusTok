@@ -89,13 +89,7 @@ pub(crate) async fn terminalize_invalid_validation_work_item(
         attempt_number,
         queue_reason,
     } = item;
-    let mark = |n| {
-        if backend == SupportedBackend::Postgres {
-            format!("${n}")
-        } else {
-            format!("?{n}")
-        }
-    };
+    let mark = |n| backend.placeholder(n);
     let now = if backend == SupportedBackend::Postgres {
         "NOW()"
     } else {

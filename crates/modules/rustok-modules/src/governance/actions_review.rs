@@ -25,13 +25,7 @@ impl SeaOrmModuleGovernanceService {
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
-        let mark = |n| {
-            if backend == SupportedBackend::Postgres {
-                format!("${n}")
-            } else {
-                format!("?{n}")
-            }
-        };
+        let mark = |n| backend.placeholder(n);
         let now = if backend == SupportedBackend::Postgres {
             "NOW()"
         } else {
@@ -207,13 +201,7 @@ impl SeaOrmModuleGovernanceService {
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
-        let mark = |n| {
-            if backend == SupportedBackend::Postgres {
-                format!("${n}")
-            } else {
-                format!("?{n}")
-            }
-        };
+        let mark = |n| backend.placeholder(n);
         let now = if backend == SupportedBackend::Postgres {
             "NOW()"
         } else {
@@ -371,13 +359,7 @@ impl SeaOrmModuleGovernanceService {
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
-        let mark = |n| {
-            if backend == SupportedBackend::Postgres {
-                format!("${n}")
-            } else {
-                format!("?{n}")
-            }
-        };
+        let mark = |n| backend.placeholder(n);
         let now = if backend == SupportedBackend::Postgres {
             "NOW()"
         } else {
@@ -539,13 +521,7 @@ impl SeaOrmModuleGovernanceService {
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
-        let mark = |n| {
-            if backend == SupportedBackend::Postgres {
-                format!("${n}")
-            } else {
-                format!("?{n}")
-            }
-        };
+        let mark = |n| backend.placeholder(n);
         let now = if backend == SupportedBackend::Postgres {
             "NOW()"
         } else {
