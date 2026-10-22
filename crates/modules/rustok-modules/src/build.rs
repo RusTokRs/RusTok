@@ -16,11 +16,13 @@ use uuid::Uuid;
 
 use rustok_events::DomainEvent;
 
+use crate::backend::SupportedBackend;
+use crate::installation::valid_digest;
 use crate::{ArtifactReleaseRef, OciArtifactReference};
 
 use crate::{
     ControlPlaneInfrastructure, ModuleCommandContext,
-    data::{configure_tenant_scope, now_expression, placeholder, uuid_from_row, uuid_value},
+    data::{configure_tenant_scope, uuid_from_row},
 };
 
 const MAX_BUILD_REFERENCE_BYTES: usize = 512;
@@ -518,26 +520,27 @@ impl SeaOrmModuleBuildService {
             });
         }
 
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(persistence_error)?;
         let inserted = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_build_requests \
                      (request_id, tenant_id, project_id, idempotency_key, request_hash, request, attempt, revision, status, created_at) \
                      VALUES ({}, {}, {}, {}, {}, {}, {}, 1, 'queued', {}) ON CONFLICT DO NOTHING",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
-                    now_expression(backend),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
+                    backend.now_sql(),
                 ),
                 vec![
-                    uuid_value(request.request_id, backend),
-                    uuid_value(tenant_id, backend),
+                    backend.uuid_value(request.request_id),
+                    backend.uuid_value(tenant_id),
                     request.project_id.clone().into(),
                     idempotency_key.clone().into(),
                     request_hash.clone().into(),
@@ -617,17 +620,18 @@ impl SeaOrmModuleBuildService {
         configure_tenant_scope(&transaction, result.tenant_id)
             .await
             .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(persistence_error)?;
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT request, status, result_hash, revision FROM module_build_requests \
                      WHERE request_id = {}{}",
-                    placeholder(backend, 1),
+                    backend.placeholder(1),
                     result_lock_clause(backend),
                 ),
-                vec![uuid_value(result.request_id, backend)],
+                vec![backend.uuid_value(result.request_id)],
             ))
             .await
             .map_err(persistence_error)?
@@ -661,29 +665,29 @@ impl SeaOrmModuleBuildService {
         }
         let updated = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_build_requests \
                      SET result = {}, result_hash = {}, status = 'completed', revision = revision + 1, \
                          execution_claim_id = NULL, lease_expires_at = NULL, completed_at = {} \
                      WHERE request_id = {} AND status = 'running' AND revision = {} \
                        AND execution_claim_id = {} AND {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    now_expression(backend),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.now_sql(),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
                     build_claim_is_live_expression(backend),
                 ),
                 vec![
                     sea_orm::Value::Json(Some(Box::new(result_json))),
                     result_hash.into(),
-                    uuid_value(result.request_id, backend),
+                    backend.uuid_value(result.request_id),
                     i64::try_from(claim.revision)
                         .map_err(|_| ModuleBuildProtocolError::ExecutionClaimConflict)?
                         .into(),
-                    uuid_value(claim.claim_id, backend),
+                    backend.uuid_value(claim.claim_id),
                 ],
             ))
             .await
@@ -730,16 +734,17 @@ impl SeaOrmModuleBuildService {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(persistence_error)?;
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT request, status, revision FROM module_build_requests WHERE request_id = {}{}",
-                    placeholder(backend, 1),
+                    backend.placeholder(1),
                     result_lock_clause(backend),
                 ),
-                vec![uuid_value(request_id, backend)],
+                vec![backend.uuid_value(request_id)],
             ))
             .await
             .map_err(persistence_error)?
@@ -764,23 +769,23 @@ impl SeaOrmModuleBuildService {
         let claim_id = self.infrastructure.new_id();
         let updated = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_build_requests \
                      SET status = 'running', revision = revision + 1, execution_claim_id = {}, \
                          lease_expires_at = {}, claimed_at = {} \
                      WHERE request_id = {} AND revision = {} AND \
                        (status = 'queued' OR (status = 'running' AND {}))",
-                    placeholder(backend, 1),
+                    backend.placeholder(1),
                     build_claim_expiry_expression(backend),
-                    now_expression(backend),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
+                    backend.now_sql(),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                     build_claim_is_expired_expression(backend),
                 ),
                 vec![
-                    uuid_value(claim_id, backend),
-                    uuid_value(request_id, backend),
+                    backend.uuid_value(claim_id),
+                    backend.uuid_value(request_id),
                     i64::try_from(revision)
                         .map_err(|_| ModuleBuildProtocolError::ExecutionClaimConflict)?
                         .into(),
@@ -817,15 +822,16 @@ impl SeaOrmModuleBuildService {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(persistence_error)?;
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT request, result, status, revision FROM module_build_requests WHERE request_id = {}",
-                    placeholder(backend, 1),
+                    backend.placeholder(1),
                 ),
-                vec![uuid_value(request_id, backend)],
+                vec![backend.uuid_value(request_id)],
             ))
             .await
             .map_err(persistence_error)?
@@ -1291,14 +1297,6 @@ fn validate_text(value: &str) -> Result<(), ModuleBuildProtocolError> {
     Ok(())
 }
 
-fn valid_digest(value: &str) -> bool {
-    value.len() == 71
-        && value.starts_with("sha256:")
-        && value[7..]
-            .chars()
-            .all(|character| character.is_ascii_hexdigit())
-}
-
 /// Produces a domain-separated SHA-256 digest over bounded protocol strings.
 /// Request validation rejects control characters, so NUL safely delimits the
 /// v1 fields without relying on a serializer implementation for evidence
@@ -1325,19 +1323,20 @@ async fn existing_submission<C: ConnectionTrait>(
     project_id: &str,
     idempotency_key: &str,
 ) -> Result<Option<ExistingSubmission>, ModuleBuildProtocolError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(persistence_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT request_id, request_hash, revision FROM module_build_requests \
                  WHERE tenant_id = {} AND project_id = {} AND idempotency_key = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
             ),
             vec![
-                uuid_value(tenant_id, backend),
+                backend.uuid_value(tenant_id),
                 project_id.to_owned().into(),
                 idempotency_key.to_owned().into(),
             ],
@@ -1358,19 +1357,13 @@ async fn existing_submission<C: ConnectionTrait>(
 fn build_request_hash(request: &ModuleBuildRequest) -> Result<String, ModuleBuildProtocolError> {
     let serialized = serde_json::to_vec(request)
         .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))?;
-    Ok(format!(
-        "sha256:{}",
-        hex::encode(Sha256::digest(serialized))
-    ))
+    Ok(crate::installation::sha256_digest(&serialized))
 }
 
 fn build_result_hash(result: &ModuleBuildResult) -> Result<String, ModuleBuildProtocolError> {
     let serialized = serde_json::to_vec(result)
         .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))?;
-    Ok(format!(
-        "sha256:{}",
-        hex::encode(Sha256::digest(serialized))
-    ))
+    Ok(crate::installation::sha256_digest(&serialized))
 }
 
 fn build_outcome_name(outcome: &ModuleBuildOutcome) -> &'static str {
@@ -1382,38 +1375,35 @@ fn build_outcome_name(outcome: &ModuleBuildOutcome) -> &'static str {
     }
 }
 
-fn result_lock_clause(backend: sea_orm::DbBackend) -> &'static str {
+fn result_lock_clause(backend: SupportedBackend) -> &'static str {
     match backend {
-        sea_orm::DbBackend::Postgres => " FOR UPDATE",
-        _ => "",
+        SupportedBackend::Postgres => " FOR UPDATE",
+        SupportedBackend::Sqlite => "",
     }
 }
 
-fn build_claim_expiry_expression(backend: sea_orm::DbBackend) -> String {
+fn build_claim_expiry_expression(backend: SupportedBackend) -> String {
     match backend {
-        sea_orm::DbBackend::Postgres => {
+        SupportedBackend::Postgres => {
             format!("NOW() + INTERVAL '{BUILD_CLAIM_LEASE_SECONDS} seconds'")
         }
-        sea_orm::DbBackend::Sqlite => {
+        SupportedBackend::Sqlite => {
             format!("datetime('now', '+{BUILD_CLAIM_LEASE_SECONDS} seconds')")
         }
-        _ => unreachable!("module builds support PostgreSQL and SQLite only"),
     }
 }
 
-fn build_claim_is_expired_expression(backend: sea_orm::DbBackend) -> &'static str {
+fn build_claim_is_expired_expression(backend: SupportedBackend) -> &'static str {
     match backend {
-        sea_orm::DbBackend::Postgres => "lease_expires_at <= NOW()",
-        sea_orm::DbBackend::Sqlite => "datetime(lease_expires_at) <= datetime('now')",
-        _ => unreachable!("module builds support PostgreSQL and SQLite only"),
+        SupportedBackend::Postgres => "lease_expires_at <= NOW()",
+        SupportedBackend::Sqlite => "datetime(lease_expires_at) <= datetime('now')",
     }
 }
 
-fn build_claim_is_live_expression(backend: sea_orm::DbBackend) -> &'static str {
+fn build_claim_is_live_expression(backend: SupportedBackend) -> &'static str {
     match backend {
-        sea_orm::DbBackend::Postgres => "lease_expires_at > NOW()",
-        sea_orm::DbBackend::Sqlite => "datetime(lease_expires_at) > datetime('now')",
-        _ => unreachable!("module builds support PostgreSQL and SQLite only"),
+        SupportedBackend::Postgres => "lease_expires_at > NOW()",
+        SupportedBackend::Sqlite => "datetime(lease_expires_at) > datetime('now')",
     }
 }
 
@@ -1745,7 +1735,7 @@ mod tests {
             .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "UPDATE module_build_requests SET lease_expires_at = datetime('now', '-1 second') WHERE request_id = ?1".to_string(),
-                [uuid_value(request.request_id, DbBackend::Sqlite)],
+                [SupportedBackend::Sqlite.uuid_value(request.request_id)],
             ))
             .await
             .expect("expire first claim");

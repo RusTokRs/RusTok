@@ -5,19 +5,19 @@ use rustok_api::{
 };
 use rustok_events::DomainEvent;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, QueryResult, Statement,
     TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ControlPlaneInfrastructure, ModuleTransitionCheckpoint, ModuleTransitionCoordinator,
-    ModuleTransitionFinalizeCommand, RetentionHoldStore, SecurityEpochRegistry,
+    ModuleTransitionFinalizeCommand, RetentionHoldStore, SeaOrmSecurityEpochStore,
     TransitionCheckpointStore, TransitionCoordinatorError, TransitionStoreError,
-    data::{now_expression, placeholder, uuid_from_row},
+    data::uuid_from_row,
 };
 
 const OPERATION_KIND: &str = "finalize";
@@ -251,7 +251,13 @@ impl SeaOrmModuleTransitionService {
             return Ok(receipt);
         }
 
-        let security_registry = SecurityEpochRegistry::new();
+        // Validate against the durable platform epoch: a quarantine or
+        // revocation recorded by any process since the checkpoint was taken
+        // must preempt this finalization. (Previously a fresh in-memory
+        // registry pinned at epoch 1 made the check a permanent no-op.)
+        let security_registry = SeaOrmSecurityEpochStore::load_registry(&transaction)
+            .await
+            .map_err(database_error)?;
         let mut coordinator = ModuleTransitionCoordinator::new(checkpoint);
         coordinator.finalize_convergence(&security_registry)?;
         TransitionCheckpointStore::save_checkpoint(&transaction, coordinator.checkpoint())
@@ -286,10 +292,27 @@ impl SeaOrmModuleTransitionService {
         Ok(receipt)
     }
 
+    /// Sweeps active transition checkpoints against the durable security
+    /// epoch and their observation windows.
+    ///
+    /// Convergence is an attested decision, never an automatic timeout
+    /// consequence: the checkpoint model records no positive health evidence
+    /// during `Observing`, so an elapsed window proves nothing about the
+    /// candidate. The watchdog therefore fails both stale-epoch and
+    /// expired-window checkpoints closed (retaining predecessor holds); the
+    /// only convergence path is the explicit, actor-authorized
+    /// [`finalize`](Self::finalize) command. Until this change the watchdog
+    /// silently marked every candidate converged ~300s after activation.
     pub async fn evaluate_watchdog(
         &self,
-        security_registry: &SecurityEpochRegistry,
     ) -> Result<Vec<ModuleTransitionCheckpoint>, ModuleTransitionServiceError> {
+        // The epoch is durable and shared across processes; a snapshot taken
+        // at sweep start is sufficient because a racing advancement is then
+        // picked up by the next sweep, and `finalize` re-reads the epoch
+        // inside its own transaction.
+        let security_registry = SeaOrmSecurityEpochStore::load_registry(&self.db)
+            .await
+            .map_err(database_error)?;
         let active = TransitionCheckpointStore::list_active_checkpoints(&self.db)
             .await
             .map_err(store_error)?;
@@ -303,11 +326,27 @@ impl SeaOrmModuleTransitionService {
                 crate::ModuleTransitionState::Observing { timeout_at }
                     if self.infrastructure.now() >= timeout_at
             );
-            if !stale_epoch && !timed_out {
+            let failure_reason = if stale_epoch {
+                format!(
+                    "Security epoch preemption: epoch {} is stale; current epoch is {}. Automatic rollback requires a fresh owner policy grant and was not attempted.",
+                    observed.security_epoch.value(),
+                    security_registry.current_epoch().value(),
+                )
+            } else if timed_out {
+                "Observation window elapsed without an explicit finalize attestation; \
+                 no positive health evidence is recorded for the candidate, so automatic \
+                 convergence is not permitted and the transition failed closed."
+                    .to_string()
+            } else {
                 continue;
-            }
+            };
 
             let transaction = self.db.begin().await.map_err(database_error)?;
+            match observed.tenant_id {
+                Some(tenant_id) => crate::backend::set_tenant_scope(&transaction, tenant_id).await,
+                None => crate::backend::set_platform_scope(&transaction).await,
+            }
+            .map_err(database_error)?;
             let current =
                 TransitionCheckpointStore::load_checkpoint(&transaction, observed.operation_id)
                     .await
@@ -319,60 +358,26 @@ impl SeaOrmModuleTransitionService {
                 continue;
             }
             let mut coordinator = ModuleTransitionCoordinator::new(current);
-            if stale_epoch {
-                let reason = format!(
-                    "Security epoch preemption: epoch {} is stale; current epoch is {}. Automatic rollback requires a fresh owner policy grant and was not attempted.",
-                    coordinator.checkpoint().security_epoch.value(),
-                    security_registry.current_epoch().value(),
-                );
-                coordinator.fail_closed(reason.clone())?;
-                TransitionCheckpointStore::save_checkpoint(&transaction, coordinator.checkpoint())
-                    .await
-                    .map_err(store_error)?;
-                self.infrastructure
-                    .write_event(
-                        &transaction,
-                        self.infrastructure.event_envelope(
-                            coordinator.checkpoint().tenant_id,
-                            None,
-                            DomainEvent::ModuleTransitionFailedClosed {
-                                operation_id: coordinator.checkpoint().operation_id,
-                                module_slug: coordinator.checkpoint().module_slug.clone(),
-                                revision: coordinator.checkpoint().revision,
-                                failure_reason: reason,
-                            },
-                        ),
-                    )
-                    .await
-                    .map_err(|error| ModuleTransitionServiceError::Outbox(error.to_string()))?;
-            } else {
-                coordinator.finalize_convergence(security_registry)?;
-                TransitionCheckpointStore::save_checkpoint(&transaction, coordinator.checkpoint())
-                    .await
-                    .map_err(store_error)?;
-                let released_holds = RetentionHoldStore::release_holds_for_operation(
-                    &transaction,
-                    coordinator.checkpoint().operation_id,
-                )
+            coordinator.fail_closed(failure_reason.clone())?;
+            TransitionCheckpointStore::save_checkpoint(&transaction, coordinator.checkpoint())
                 .await
                 .map_err(store_error)?;
-                self.infrastructure
-                    .write_event(
-                        &transaction,
-                        self.infrastructure.event_envelope(
-                            coordinator.checkpoint().tenant_id,
-                            None,
-                            DomainEvent::ModuleTransitionFinalized {
-                                operation_id: coordinator.checkpoint().operation_id,
-                                module_slug: coordinator.checkpoint().module_slug.clone(),
-                                revision: coordinator.checkpoint().revision,
-                                released_holds,
-                            },
-                        ),
-                    )
-                    .await
-                    .map_err(|error| ModuleTransitionServiceError::Outbox(error.to_string()))?;
-            }
+            self.infrastructure
+                .write_event(
+                    &transaction,
+                    self.infrastructure.event_envelope(
+                        coordinator.checkpoint().tenant_id,
+                        None,
+                        DomainEvent::ModuleTransitionFailedClosed {
+                            operation_id: coordinator.checkpoint().operation_id,
+                            module_slug: coordinator.checkpoint().module_slug.clone(),
+                            revision: coordinator.checkpoint().revision,
+                            failure_reason,
+                        },
+                    ),
+                )
+                .await
+                .map_err(|error| ModuleTransitionServiceError::Outbox(error.to_string()))?;
             transaction.commit().await.map_err(database_error)?;
             updated.push(coordinator.checkpoint().clone());
         }
@@ -382,13 +387,12 @@ impl SeaOrmModuleTransitionService {
 
 pub async fn evaluate_transition_watchdog(
     db: &DatabaseConnection,
-    security_registry: &SecurityEpochRegistry,
 ) -> Result<Vec<ModuleTransitionCheckpoint>, ModuleTransitionServiceError> {
     SeaOrmModuleTransitionService::with_infrastructure(
         db.clone(),
         ControlPlaneInfrastructure::for_database(db.clone()),
     )
-    .evaluate_watchdog(security_registry)
+    .evaluate_watchdog()
     .await
 }
 
@@ -411,7 +415,7 @@ fn request_digest(
 ) -> Result<String, ModuleTransitionServiceError> {
     let bytes = serde_json::to_vec(command)
         .map_err(|error| ModuleTransitionServiceError::Store(error.to_string()))?;
-    Ok(format!("sha256:{}", hex::encode(Sha256::digest(bytes))))
+    Ok(crate::installation::sha256_digest(&bytes))
 }
 
 async fn reserve_operation(
@@ -419,25 +423,26 @@ async fn reserve_operation(
     command: &ModuleTransitionFinalizeCommand,
     request_digest: &str,
 ) -> Result<Option<ModuleTransitionFinalizeReceipt>, ModuleTransitionServiceError> {
-    let backend = transaction.get_database_backend();
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(database_error)?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_transition_operations \
                  (idempotency_key, operation_kind, request_digest, actor_id, tenant_id, trace_id, \
                   correlation_id, operation_id, created_at) \
                  VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}) \
                  ON CONFLICT (idempotency_key) DO NOTHING",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.now_sql(),
             ),
             vec![
                 sea_orm::Value::Uuid(Some(command.context.idempotency_key)),
@@ -467,15 +472,16 @@ async fn load_operation<C: ConnectionTrait>(
     command: &ModuleTransitionFinalizeCommand,
     request_digest: &str,
 ) -> Result<Option<ModuleTransitionFinalizeReceipt>, ModuleTransitionServiceError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(database_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT operation_kind, request_digest, actor_id, tenant_id, trace_id, \
                  correlation_id, operation_id, receipt_json \
                  FROM module_transition_operations WHERE idempotency_key = {}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
             vec![sea_orm::Value::Uuid(Some(command.context.idempotency_key))],
         ))
@@ -497,13 +503,13 @@ async fn load_operation<C: ConnectionTrait>(
 
 fn validate_operation_row(
     row: &QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
     command: &ModuleTransitionFinalizeCommand,
     request_digest: &str,
 ) -> Result<(), ModuleTransitionServiceError> {
     let stored_tenant = match row.try_get::<Option<Uuid>>("", "tenant_id") {
         Ok(value) => value,
-        Err(_) if backend != DbBackend::Postgres => row
+        Err(_) if backend != SupportedBackend::Postgres => row
             .try_get::<Option<String>>("", "tenant_id")
             .map_err(database_error)?
             .map(|value| Uuid::parse_str(&value).map_err(database_error))
@@ -541,20 +547,21 @@ async fn complete_operation(
     idempotency_key: Uuid,
     receipt: &ModuleTransitionFinalizeReceipt,
 ) -> Result<(), ModuleTransitionServiceError> {
-    let backend = transaction.get_database_backend();
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(database_error)?;
     let receipt_json = serde_json::to_string(receipt)
         .map_err(|error| ModuleTransitionServiceError::Store(error.to_string()))?;
     let result = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_transition_operations SET resulting_revision = {}, \
                  receipt_json = {}, completed_at = {} \
                  WHERE idempotency_key = {} AND completed_at IS NULL",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                now_expression(backend),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.now_sql(),
+                backend.placeholder(3),
             ),
             vec![
                 i64::try_from(receipt.checkpoint.revision)

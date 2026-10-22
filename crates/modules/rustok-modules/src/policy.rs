@@ -12,11 +12,11 @@ use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::promotion::valid_digest;
+use crate::installation::valid_digest;
 use crate::{
     ArtifactPayloadKind, ModuleArtifactRegistryReleaseStatus, ModuleArtifactSecuritySnapshot,
     ModuleArtifactSecurityStatus, ModuleDefinitionCatalog, ModuleDefinitionKind,
-    ModuleDefinitionSource, ModuleInstallationScope,
+    ModuleDefinitionSource, ModuleDependencyConstraint, ModuleInstallationScope,
 };
 
 /// A persisted tenant-level module enablement override.
@@ -148,6 +148,7 @@ pub enum ModuleEffectivePolicyDenialReason {
     CapabilityPolicyUnavailable,
     ExecutorUnavailable,
     DependencyUnavailable { module_slug: String },
+    DependencyVersionMismatch { module_slug: String },
     CoRequisiteUnavailable { module_slug: String },
     CoRequisiteVersionMismatch { module_slug: String },
     RegistryReleaseUnavailable,
@@ -175,6 +176,9 @@ impl From<ModuleEffectivePolicyDenialReason> for ModuleEffectivePolicyDenialReas
             ModuleEffectivePolicyDenialReason::ExecutorUnavailable => Self::ExecutorUnavailable,
             ModuleEffectivePolicyDenialReason::DependencyUnavailable { module_slug } => {
                 Self::DependencyUnavailable { module_slug }
+            }
+            ModuleEffectivePolicyDenialReason::DependencyVersionMismatch { module_slug } => {
+                Self::DependencyVersionMismatch { module_slug }
             }
             ModuleEffectivePolicyDenialReason::CoRequisiteUnavailable { module_slug } => {
                 Self::CoRequisiteUnavailable { module_slug }
@@ -271,17 +275,25 @@ pub enum ModuleEffectivePolicyError {
     RevisionEncoding(String),
     #[error("effective module policy cache identity is invalid: {0}")]
     InvalidCacheIdentity(String),
+    #[error("effective module policy tenant overrides contain a duplicate entry for module `{0}`")]
+    DuplicateTenantOverride(String),
+    #[error("effective module policy runtime inputs contain a duplicate entry for module `{0}`")]
+    DuplicateRuntimeInput(String),
     #[error("effective module policy co-requisite input is invalid: {0}")]
     InvalidCoRequisiteInput(String),
     #[error("effective module policy channel input is invalid: {0}")]
     InvalidChannelInput(String),
     #[error("effective module policy maintenance input is invalid: {0}")]
     InvalidMaintenanceInput(String),
+    #[error("effective module policy cache lock is poisoned")]
+    CacheLockPoisoned,
 }
 
 /// One owner transition delivered to a revision-aware outbox consumer. Hashes
-/// are identities, not sortable clocks; consumers must apply transitions only
-/// when the predecessor matches their durable cursor.
+/// are identities, not sortable clocks; consumers apply a transition
+/// incrementally only when the predecessor matches their durable cursor, and
+/// reload the full policy snapshot when the gate reports a gap
+/// (`ModulePolicyRevisionApplyOutcome::ResyncRequired`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModulePolicyRevisionTransition {
@@ -292,9 +304,16 @@ pub struct ModulePolicyRevisionTransition {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModulePolicyRevisionApplyOutcome {
+    /// The predecessor matched the cursor; the transition was applied
+    /// incrementally.
     Applied,
+    /// The successor is already the cursor; nothing changed.
     Duplicate,
-    Stale,
+    /// The predecessor did not match the cursor (at least one transition was
+    /// missed). The cursor advanced to the successor, but the consumer must
+    /// reload the full policy snapshot at that revision instead of trusting
+    /// incremental state.
+    ResyncRequired,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -349,7 +368,12 @@ impl ModulePolicyRevisionGate {
             return Ok(ModulePolicyRevisionApplyOutcome::Duplicate);
         }
         if self.current_revision.as_deref() != transition.previous_revision.as_deref() {
-            return Ok(ModulePolicyRevisionApplyOutcome::Stale);
+            // Gap: at least one transition was missed, so incremental state
+            // can no longer be trusted. Advance to the successor and tell the
+            // consumer to reload the full snapshot; rejecting the transition
+            // instead would wedge the cursor permanently.
+            self.current_revision = Some(transition.next_revision.clone());
+            return Ok(ModulePolicyRevisionApplyOutcome::ResyncRequired);
         }
         self.current_revision = Some(transition.next_revision.clone());
         Ok(ModulePolicyRevisionApplyOutcome::Applied)
@@ -389,13 +413,25 @@ pub enum ModuleToggleValidationError {
     CoreModuleCannotBeDisabled(String),
     #[error("missing module dependencies: {0:?}")]
     MissingDependencies(Vec<String>),
+    #[error("module dependencies with incompatible versions: {0:?}")]
+    IncompatibleDependencies(Vec<String>),
     #[error("module has enabled dependents: {0:?}")]
     HasDependents(Vec<String>),
 }
 
 /// Validates a requested module enablement change against the effective module
-/// set and definition topology. Persistence, operation journaling and lifecycle
-/// hooks are intentionally outside this owner policy function.
+/// set and definition topology, including declared dependency version
+/// requirements. Persistence, operation journaling and lifecycle hooks are
+/// intentionally outside this owner policy function.
+///
+/// Layering contract: this validates *tenant intent admission* against the
+/// catalog topology. Co-requisites deliberately do not participate — they are
+/// availability constraints without ordering edges, evaluated by
+/// `ModuleEffectivePolicyQuery` — and neither do channel/maintenance state or
+/// runtime evidence (installation, executor, security), which are effective
+/// availability inputs. Recording intent for a temporarily unavailable module
+/// is therefore valid; the effective policy decides availability and explains
+/// denials.
 pub fn validate_module_toggle(
     catalog: &ModuleDefinitionCatalog,
     enabled_modules: &HashSet<String>,
@@ -413,14 +449,22 @@ pub fn validate_module_toggle(
     }
 
     if enabled {
-        let missing = module
-            .dependencies
-            .iter()
-            .filter(|dependency| !enabled_modules.contains(&dependency.slug))
-            .map(|dependency| dependency.slug.clone())
-            .collect::<Vec<_>>();
+        let mut missing = Vec::new();
+        let mut incompatible = Vec::new();
+        for dependency in &module.dependencies {
+            if !enabled_modules.contains(&dependency.slug) {
+                missing.push(dependency.slug.clone());
+            } else if !dependency_version_satisfied(catalog, dependency) {
+                incompatible.push(dependency.slug.clone());
+            }
+        }
         if !missing.is_empty() {
             return Err(ModuleToggleValidationError::MissingDependencies(missing));
+        }
+        if !incompatible.is_empty() {
+            return Err(ModuleToggleValidationError::IncompatibleDependencies(
+                incompatible,
+            ));
         }
     } else {
         let dependents = catalog
@@ -565,14 +609,42 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
         default_enabled.dedup();
         let mut tenant_overrides = self.tenant_overrides;
         tenant_overrides.sort_by(|left, right| left.module_slug.cmp(&right.module_slug));
+        if let Some(duplicate) = tenant_overrides
+            .windows(2)
+            .find(|pair| pair[0].module_slug == pair[1].module_slug)
+        {
+            return Err(ModuleEffectivePolicyError::DuplicateTenantOverride(
+                duplicate[0].module_slug.clone(),
+            ));
+        }
         let mut runtime_inputs = self.runtime_inputs;
         runtime_inputs.sort_by(|left, right| left.module_slug.cmp(&right.module_slug));
+        if let Some(duplicate) = runtime_inputs
+            .windows(2)
+            .find(|pair| pair[0].module_slug == pair[1].module_slug)
+        {
+            return Err(ModuleEffectivePolicyError::DuplicateRuntimeInput(
+                duplicate[0].module_slug.clone(),
+            ));
+        }
+        // The revision identifies durable policy intent and durable runtime
+        // evidence. Exclude the volatile executor-liveness flag from the hash
+        // so worker flapping does not churn the revision; the flag still
+        // drives decisions below.
+        let hashed_runtime_inputs = runtime_inputs
+            .iter()
+            .map(|input| {
+                let mut projection = input.clone();
+                projection.executor_available = true;
+                projection
+            })
+            .collect::<Vec<_>>();
         let policy_revision = effective_policy_revision(&EffectivePolicyRevisionInput {
-            contract: "rustok.module_effective_policy.v2",
+            contract: "rustok.module_effective_policy.v3",
             catalog: self.catalog,
             default_enabled: &default_enabled,
             tenant_overrides: &tenant_overrides,
-            runtime_inputs: &runtime_inputs,
+            runtime_inputs: &hashed_runtime_inputs,
             co_requisites: &co_requisites,
             channel: channel.as_ref(),
             maintenance: maintenance.as_ref(),
@@ -792,13 +864,20 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
                 .definitions()
                 .filter(|definition| enabled.contains(&definition.slug))
                 .filter_map(|definition| {
-                    let missing = definition
+                    let failures = definition
                         .dependencies
                         .iter()
-                        .filter(|dependency| !enabled.contains(&dependency.slug))
-                        .map(|dependency| dependency.slug.clone())
+                        .filter_map(|dependency| {
+                            if !enabled.contains(&dependency.slug) {
+                                Some((dependency.slug.clone(), true))
+                            } else if !dependency_version_satisfied(self.catalog, dependency) {
+                                Some((dependency.slug.clone(), false))
+                            } else {
+                                None
+                            }
+                        })
                         .collect::<Vec<_>>();
-                    (!missing.is_empty()).then(|| (definition.slug.clone(), missing))
+                    (!failures.is_empty()).then(|| (definition.slug.clone(), failures))
                 })
                 .collect::<Vec<_>>();
             let unavailable_corequisites = co_requisites
@@ -820,11 +899,19 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
             if unavailable_dependencies.is_empty() && unavailable_corequisites.is_empty() {
                 break;
             }
-            for (module_slug, dependencies) in unavailable_dependencies {
+            for (module_slug, failures) in unavailable_dependencies {
                 if enabled.remove(&module_slug) {
                     denial_reasons.entry(module_slug).or_default().extend(
-                        dependencies.into_iter().map(|module_slug| {
-                            ModuleEffectivePolicyDenialReason::DependencyUnavailable { module_slug }
+                        failures.into_iter().map(|(dependency_slug, missing)| {
+                            if missing {
+                                ModuleEffectivePolicyDenialReason::DependencyUnavailable {
+                                    module_slug: dependency_slug,
+                                }
+                            } else {
+                                ModuleEffectivePolicyDenialReason::DependencyVersionMismatch {
+                                    module_slug: dependency_slug,
+                                }
+                            }
                         }),
                     );
                 }
@@ -864,8 +951,12 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
                 facts.push(ModuleEffectivePolicyFact::PlatformDefault {
                     enabled: default_enabled.contains(&definition.slug),
                 });
-                if let Some(override_enabled) =
-                    tenant_override_by_slug.get(definition.slug.as_str())
+                // Core definitions ignore tenant overrides entirely, so an
+                // override fact would falsely claim tenant intent influenced
+                // the decision.
+                if definition.kind != ModuleDefinitionKind::Core
+                    && let Some(override_enabled) =
+                        tenant_override_by_slug.get(definition.slug.as_str())
                 {
                     facts.push(ModuleEffectivePolicyFact::TenantOverride {
                         enabled: *override_enabled,
@@ -1186,6 +1277,29 @@ fn corequisite_version_compatible(
     requirement.matches(&version)
 }
 
+/// Returns whether the catalog definition of an ordinary dependency satisfies
+/// the declared version requirement. An empty requirement accepts any
+/// version; unparsable requirements or versions fail closed (the catalog
+/// validates both at construction, so this is defense in depth).
+fn dependency_version_satisfied(
+    catalog: &ModuleDefinitionCatalog,
+    dependency: &ModuleDependencyConstraint,
+) -> bool {
+    if dependency.version_requirement.is_empty() {
+        return true;
+    }
+    let Some(provider) = catalog.get(&dependency.slug) else {
+        return false;
+    };
+    let (Ok(requirement), Ok(version)) = (
+        VersionReq::parse(&dependency.version_requirement),
+        Version::parse(&provider.version),
+    ) else {
+        return false;
+    };
+    requirement.matches(&version)
+}
+
 fn validate_channel_input(
     channel: Option<&ModuleEffectivePolicyChannelInput>,
 ) -> Result<(), ModuleEffectivePolicyError> {
@@ -1267,11 +1381,12 @@ mod tests {
     use super::{
         ModuleEffectivePolicyChannelBinding, ModuleEffectivePolicyChannelInput,
         ModuleEffectivePolicyCoRequisite, ModuleEffectivePolicyDenialReason,
-        ModuleEffectivePolicyFact, ModuleEffectivePolicyInstallationFact,
-        ModuleEffectivePolicyMaintenanceInput, ModuleEffectivePolicyQuery,
-        ModuleEffectivePolicyRuntimeInput, ModulePolicyRevisionApplyOutcome,
-        ModulePolicyRevisionGate, ModulePolicyRevisionGateError, ModulePolicyRevisionTransition,
-        TenantModuleOverride,
+        ModuleEffectivePolicyError, ModuleEffectivePolicyFact,
+        ModuleEffectivePolicyInstallationFact, ModuleEffectivePolicyMaintenanceInput,
+        ModuleEffectivePolicyQuery, ModuleEffectivePolicyRuntimeInput,
+        ModulePolicyRevisionApplyOutcome, ModulePolicyRevisionGate, ModulePolicyRevisionGateError,
+        ModulePolicyRevisionTransition, ModuleToggleValidationError, TenantModuleOverride,
+        validate_module_toggle,
     };
     use crate::{
         ArtifactPayloadKind, ArtifactReleaseRef, ModuleArtifactRegistryReleaseStatus,
@@ -1280,6 +1395,7 @@ mod tests {
         ModuleDependencyConstraint, ModuleInstallationScope, ModulesModule,
     };
     use rustok_core::ModuleRegistry;
+    use std::collections::HashSet;
     use uuid::Uuid;
 
     #[test]
@@ -1469,7 +1585,7 @@ mod tests {
     }
 
     #[test]
-    fn revision_gate_applies_only_matching_predecessors_and_replays_duplicates() {
+    fn revision_gate_applies_matching_predecessors_resyncs_gaps_and_replays_duplicates() {
         let first = digest('a');
         let second = digest('b');
         let third = digest('c');
@@ -1490,20 +1606,24 @@ mod tests {
             }),
             Ok(ModulePolicyRevisionApplyOutcome::Duplicate)
         );
+        // A transition whose predecessor was never seen is a gap: the cursor
+        // advances to the successor and the consumer must resync from a full
+        // snapshot instead of wedging at the last applied revision forever.
         assert_eq!(
             gate.apply(&ModulePolicyRevisionTransition {
-                previous_revision: Some(third.clone()),
+                previous_revision: Some(third),
                 next_revision: second.clone(),
             }),
-            Ok(ModulePolicyRevisionApplyOutcome::Stale)
+            Ok(ModulePolicyRevisionApplyOutcome::ResyncRequired)
         );
-        assert_eq!(gate.current_revision(), Some(first.as_str()));
+        assert_eq!(gate.current_revision(), Some(second.as_str()));
+        // The skipped link now names an already-covered successor.
         assert_eq!(
             gate.apply(&ModulePolicyRevisionTransition {
                 previous_revision: Some(first),
                 next_revision: second.clone(),
             }),
-            Ok(ModulePolicyRevisionApplyOutcome::Applied)
+            Ok(ModulePolicyRevisionApplyOutcome::Duplicate)
         );
         assert_eq!(gate.current_revision(), Some(second.as_str()));
 
@@ -1549,10 +1669,14 @@ mod tests {
         let core = policy.decision("modules");
         assert!(core.enabled);
         assert!(core.denial_reasons.is_empty());
-        assert!(core.facts.iter().any(|fact| matches!(
-            fact,
-            ModuleEffectivePolicyFact::TenantOverride { enabled: false }
-        )));
+        // Core definitions ignore tenant overrides entirely, so the recorded
+        // disable override must not surface as an honored tenant-intent fact.
+        assert!(
+            !core
+                .facts
+                .iter()
+                .any(|fact| matches!(fact, ModuleEffectivePolicyFact::TenantOverride { .. }))
+        );
 
         let unknown = policy.decision("missing");
         assert!(!unknown.enabled);
@@ -1832,6 +1956,175 @@ mod tests {
                 status: ModuleArtifactRegistryReleaseStatus::Yanked
             }
         )));
+    }
+
+    #[test]
+    fn duplicate_tenant_overrides_and_runtime_inputs_are_rejected() {
+        let catalog = artifact_catalog();
+
+        let duplicate_override = ModuleEffectivePolicyQuery::new(
+            &catalog,
+            [],
+            [
+                TenantModuleOverride {
+                    module_slug: "artifact".to_string(),
+                    enabled: true,
+                },
+                TenantModuleOverride {
+                    module_slug: "artifact".to_string(),
+                    enabled: false,
+                },
+            ],
+            [],
+        )
+        .execute()
+        .expect_err("conflicting duplicate overrides must fail closed");
+        assert_eq!(
+            duplicate_override,
+            ModuleEffectivePolicyError::DuplicateTenantOverride("artifact".to_string())
+        );
+
+        let duplicate_runtime = ModuleEffectivePolicyQuery::new(
+            &catalog,
+            [],
+            [],
+            [
+                artifact_runtime(
+                    ModuleArtifactSecurityStatus::Clear,
+                    ModuleArtifactRegistryReleaseStatus::Active,
+                ),
+                artifact_runtime(
+                    ModuleArtifactSecurityStatus::Quarantined,
+                    ModuleArtifactRegistryReleaseStatus::Active,
+                ),
+            ],
+        )
+        .execute()
+        .expect_err("duplicate runtime inputs must fail closed");
+        assert_eq!(
+            duplicate_runtime,
+            ModuleEffectivePolicyError::DuplicateRuntimeInput("artifact".to_string())
+        );
+    }
+
+    #[test]
+    fn executor_availability_flap_does_not_change_policy_revision() {
+        let catalog = artifact_catalog();
+        let intent = [TenantModuleOverride {
+            module_slug: "artifact".to_string(),
+            enabled: true,
+        }];
+        let available = artifact_runtime(
+            ModuleArtifactSecurityStatus::Clear,
+            ModuleArtifactRegistryReleaseStatus::Active,
+        );
+        let mut unavailable = available.clone();
+        unavailable.executor_available = false;
+
+        let up = ModuleEffectivePolicyQuery::new(&catalog, [], intent.clone(), [available])
+            .execute()
+            .expect("executor-up policy");
+        let down = ModuleEffectivePolicyQuery::new(&catalog, [], intent, [unavailable])
+            .execute()
+            .expect("executor-down policy");
+
+        // Executor liveness is volatile: it gates availability but must not
+        // churn the durable policy revision as workers flap.
+        assert_eq!(up.policy_revision(), down.policy_revision());
+        assert!(up.contains("artifact"));
+        let decision = down.decision("artifact");
+        assert!(!decision.enabled);
+        assert_eq!(
+            decision.denial_reasons,
+            vec![ModuleEffectivePolicyDenialReason::ExecutorUnavailable]
+        );
+    }
+
+    #[test]
+    fn dependency_version_mismatch_is_distinct_from_missing_dependency() {
+        let catalog = versioned_dependency_catalog();
+        let policy = ModuleEffectivePolicyQuery::new(
+            &catalog,
+            ["provider".to_string(), "consumer".to_string()],
+            [],
+            [],
+        )
+        .execute()
+        .expect("policy over versioned dependency");
+
+        assert!(policy.contains("provider"));
+        let consumer = policy.decision("consumer");
+        assert!(!consumer.enabled);
+        assert_eq!(
+            consumer.denial_reasons,
+            vec![
+                ModuleEffectivePolicyDenialReason::DependencyVersionMismatch {
+                    module_slug: "provider".to_string()
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn toggle_validation_rejects_incompatible_dependency_versions() {
+        let catalog = versioned_dependency_catalog();
+
+        let enabled = HashSet::from(["provider".to_string()]);
+        let incompatible = validate_module_toggle(&catalog, &enabled, "consumer", true)
+            .expect_err("incompatible dependency version must reject the toggle");
+        assert_eq!(
+            incompatible,
+            ModuleToggleValidationError::IncompatibleDependencies(vec!["provider".to_string()])
+        );
+
+        let missing = validate_module_toggle(&catalog, &HashSet::new(), "consumer", true)
+            .expect_err("missing dependency must reject the toggle");
+        assert_eq!(
+            missing,
+            ModuleToggleValidationError::MissingDependencies(vec!["provider".to_string()])
+        );
+    }
+
+    fn versioned_dependency_catalog() -> ModuleDefinitionCatalog {
+        let mut catalog = ModuleDefinitionCatalog::default();
+        catalog
+            .insert(ModuleDefinition {
+                slug: "provider".to_string(),
+                version: "1.0.0".to_string(),
+                kind: ModuleDefinitionKind::Optional,
+                source: ModuleDefinitionSource::PlatformNative {
+                    distribution_version: "1.0.0".to_string(),
+                },
+                dependencies: Vec::new(),
+                permissions: Vec::new(),
+                settings_schema_digest: None,
+                schema_documents: Vec::new(),
+                bindings: Vec::new(),
+                ui: Vec::new(),
+                capabilities: Vec::new(),
+            })
+            .expect("provider definition");
+        catalog
+            .insert(ModuleDefinition {
+                slug: "consumer".to_string(),
+                version: "0.1.0".to_string(),
+                kind: ModuleDefinitionKind::Optional,
+                source: ModuleDefinitionSource::PlatformNative {
+                    distribution_version: "0.1.0".to_string(),
+                },
+                dependencies: vec![ModuleDependencyConstraint {
+                    slug: "provider".to_string(),
+                    version_requirement: ">=2.0.0".to_string(),
+                }],
+                permissions: Vec::new(),
+                settings_schema_digest: None,
+                schema_documents: Vec::new(),
+                bindings: Vec::new(),
+                ui: Vec::new(),
+                capabilities: Vec::new(),
+            })
+            .expect("consumer definition");
+        catalog
     }
 
     fn corequisite_catalog() -> ModuleDefinitionCatalog {

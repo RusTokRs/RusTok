@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use super::fixtures::*;
 use super::*;
+use crate::backend::SupportedBackend;
 use crate::build::{
     ModuleBuildAuthoring, ModuleBuildComponentInterface, ModuleBuildDependencyPolicy,
     ModuleBuildEvidence, ModuleBuildLimits, ModuleBuildMetrics, ModuleBuildNetworkPolicy,
@@ -98,7 +99,7 @@ async fn external_security_stage_reconciles_exact_owner_evidence_once() {
     reconcile_external_prebuilt_security_stage(
         &infrastructure,
         &transaction,
-        DbBackend::Sqlite,
+        SupportedBackend::Sqlite,
         "request-1",
         &actor,
     )
@@ -107,7 +108,7 @@ async fn external_security_stage_reconciles_exact_owner_evidence_once() {
     reconcile_external_prebuilt_security_stage(
         &infrastructure,
         &transaction,
-        DbBackend::Sqlite,
+        SupportedBackend::Sqlite,
         "request-1",
         &actor,
     )
@@ -241,7 +242,7 @@ async fn alloy_security_stage_reconciles_sandbox_and_admission_evidence_once() {
         reconcile_alloy_authored_security_stage(
             &infrastructure,
             &transaction,
-            DbBackend::Sqlite,
+            SupportedBackend::Sqlite,
             "request-alloy",
             &actor,
         )

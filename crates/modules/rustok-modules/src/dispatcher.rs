@@ -61,6 +61,15 @@ impl ArtifactBindingExecutionContext {
     }
 }
 
+/// One binding's outcome from an event fan-out dispatch. Every matching
+/// binding is attempted; a failure is reported here instead of aborting the
+/// remaining fan-out, so executed side effects are never hidden.
+#[derive(Debug)]
+pub struct ArtifactEventBindingOutcome {
+    pub binding_id: String,
+    pub result: Result<serde_json::Value, ModuleDispatchError>,
+}
+
 pub struct ArtifactCommandBindingRequest<'a> {
     pub release: &'a ArtifactReleaseRef,
     pub bindings: &'a [ModuleRuntimeBinding],
@@ -207,13 +216,24 @@ impl<'a> ModuleExecutionDispatcher<'a> {
             }
             ModuleDefinitionSource::Artifact { release } => {
                 let kind = lifecycle_binding_kind(phase);
-                let binding = definition
+                // Admission validation enforces one binding per lifecycle
+                // kind; refuse to guess if a stored descriptor predates
+                // that rule instead of silently running only the first.
+                let mut matches = definition
                     .bindings
                     .iter()
-                    .find(|binding| binding.kind == kind)
-                    .ok_or_else(|| {
-                        ModuleDispatchError::ArtifactBindingUnavailable(module_slug.to_string())
-                    })?;
+                    .filter(|binding| binding.kind == kind);
+                let binding = matches.next().ok_or_else(|| {
+                    ModuleDispatchError::ArtifactBindingUnavailable(module_slug.to_string())
+                })?;
+                let extra = matches.count();
+                if extra > 0 {
+                    return Err(ModuleDispatchError::AmbiguousArtifactBinding {
+                        module_slug: module_slug.to_string(),
+                        kind: format!("{kind:?}"),
+                        matches: extra + 1,
+                    });
+                }
                 let executor = self.artifact_executor.ok_or_else(|| {
                     ModuleDispatchError::ArtifactExecutorUnavailable(module_slug.to_string())
                 })?;
@@ -277,17 +297,29 @@ impl<'a> ModuleExecutionDispatcher<'a> {
 
     /// Dispatches every admitted Event binding whose exact or terminal-wildcard
     /// subscription matches the supplied platform event type.
+    ///
+    /// Fan-out never aborts: each matching binding is attempted in
+    /// declaration order and its individual outcome is returned, so the
+    /// caller can tell exactly what ran. (Previously the first failure
+    /// aborted the remaining bindings after earlier ones had already
+    /// executed, and their outputs were discarded.) The supplied `context`
+    /// (actor/trace) is forwarded to every binding instead of being
+    /// replaced with a default.
     pub async fn dispatch_artifact_event(
         &self,
         tenant_id: uuid::Uuid,
         module_slug: &str,
         event_type: &str,
         payload: serde_json::Value,
-    ) -> Result<Vec<serde_json::Value>, ModuleDispatchError> {
+        context: ArtifactBindingExecutionContext,
+    ) -> Result<Vec<ArtifactEventBindingOutcome>, ModuleDispatchError> {
         if !valid_delivered_event_type(event_type) {
             return Err(ModuleDispatchError::InvalidArtifactEventType(
                 event_type.to_string(),
             ));
+        }
+        if !context.is_valid() {
+            return Err(ModuleDispatchError::InvalidArtifactExecutionContext);
         }
         let definition = self
             .catalog
@@ -310,10 +342,10 @@ impl<'a> ModuleExecutionDispatcher<'a> {
             })
             .map(|binding| binding.id.clone())
             .collect::<Vec<_>>();
-        let mut outputs = Vec::with_capacity(binding_ids.len());
+        let mut outcomes = Vec::with_capacity(binding_ids.len());
         for binding_id in binding_ids {
-            outputs.push(
-                self.dispatch_artifact_binding(
+            let result = self
+                .dispatch_artifact_binding(
                     tenant_id,
                     module_slug,
                     &binding_id,
@@ -323,12 +355,12 @@ impl<'a> ModuleExecutionDispatcher<'a> {
                         "payload": payload.clone(),
                     }),
                     ExecutionPhase::Event,
-                    ArtifactBindingExecutionContext::default(),
+                    context.clone(),
                 )
-                .await?,
-            );
+                .await;
+            outcomes.push(ArtifactEventBindingOutcome { binding_id, result });
         }
-        Ok(outputs)
+        Ok(outcomes)
     }
 
     /// Dispatches a platform-routed JSON HTTP request after the host has
@@ -564,6 +596,58 @@ where
     Ok(output)
 }
 
+/// Failure of an admitted artifact binding dispatch through
+/// [`ArtifactBindingExecutor`]. Resolution denials are preserved as typed
+/// variants so durable work queues can distinguish terminal causes (the
+/// installation or policy state can never satisfy the work item) from
+/// transient infrastructure failures via [`Self::is_terminal`].
+#[derive(Debug, Error)]
+pub enum ArtifactBindingDispatchError {
+    #[error("artifact binding execution context is invalid")]
+    InvalidContext,
+    #[error("HTTP dispatch requires an admitted HTTP binding")]
+    HttpBindingRequired,
+    #[error("module `{slug}` is denied by effective policy revision {policy_revision}")]
+    DeniedByPolicy {
+        slug: String,
+        policy_revision: String,
+    },
+    #[error(transparent)]
+    Installation(#[from] crate::ArtifactInstallationResolveError),
+    #[error(transparent)]
+    SandboxPolicy(#[from] crate::ArtifactSandboxPolicyResolveError),
+    #[error(transparent)]
+    EffectivePolicy(#[from] crate::ArtifactEffectivePolicyResolveError),
+    #[error(transparent)]
+    Runtime(#[from] crate::ArtifactRuntimeError),
+    #[error("{0}")]
+    Execution(String),
+}
+
+impl ArtifactBindingDispatchError {
+    /// Whether retrying the same durable work item can never succeed without
+    /// an operator or state change. Store failures and node-readiness gaps
+    /// are transient; sandbox execution failures stay retryable because
+    /// executor availability is transient evidence (see the M-5 policy
+    /// rationale).
+    pub fn is_terminal(&self) -> bool {
+        match self {
+            Self::InvalidContext | Self::HttpBindingRequired | Self::DeniedByPolicy { .. } => true,
+            Self::Installation(error) => {
+                !matches!(error, crate::ArtifactInstallationResolveError::Store(_))
+            }
+            Self::SandboxPolicy(error) => {
+                !matches!(error, crate::ArtifactSandboxPolicyResolveError::Store(_))
+            }
+            Self::EffectivePolicy(error) => matches!(
+                error,
+                crate::ArtifactEffectivePolicyResolveError::InvalidRequest(_)
+            ),
+            Self::Runtime(_) | Self::Execution(_) => false,
+        }
+    }
+}
+
 /// Narrow adapter owned by the artifact runtime integration. It must resolve an
 /// admitted installation and execute it through `SandboxRuntime`; a static
 /// callback cannot implement this port.
@@ -577,7 +661,7 @@ pub trait ArtifactBindingExecutor: Send + Sync {
     async fn dispatch_binding(
         &self,
         dispatch: ArtifactBindingDispatch<'_>,
-    ) -> Result<serde_json::Value, String>;
+    ) -> Result<serde_json::Value, ArtifactBindingDispatchError>;
 }
 
 /// Lifecycle remains a convenience surface over the generic admitted binding
@@ -591,7 +675,7 @@ pub trait ArtifactLifecycleExecutor: ArtifactBindingExecutor {
         tenant_id: uuid::Uuid,
         config: &serde_json::Value,
         phase: ModuleLifecycleHookPhase,
-    ) -> Result<(), String> {
+    ) -> Result<(), ArtifactBindingDispatchError> {
         self.dispatch_binding(ArtifactBindingDispatch {
             release,
             binding,
@@ -692,7 +776,7 @@ pub enum ModuleDispatchError {
     #[error("artifact module `{0}` has no sandbox lifecycle executor")]
     ArtifactExecutorUnavailable(String),
     #[error("artifact lifecycle binding failed: {0}")]
-    ArtifactHook(String),
+    ArtifactHook(#[from] ArtifactBindingDispatchError),
     #[error("static module `{0}` has no dynamic artifact binding path")]
     StaticDynamicBindingUnavailable(String),
     #[error("artifact binding phase does not match its declared kind")]
@@ -717,6 +801,14 @@ pub enum ModuleDispatchError {
     ArtifactHttpEnvelope(String),
     #[error("artifact binding execution context is invalid")]
     InvalidArtifactExecutionContext,
+    #[error(
+        "artifact module `{module_slug}` declares {matches} bindings for kind `{kind}`; exactly one is admissible"
+    )]
+    AmbiguousArtifactBinding {
+        module_slug: String,
+        kind: String,
+        matches: usize,
+    },
     #[error("module lifecycle binding failed: {0}")]
     StaticHook(String),
 }
@@ -749,14 +841,19 @@ mod tests {
         async fn dispatch_binding(
             &self,
             dispatch: ArtifactBindingDispatch<'_>,
-        ) -> Result<serde_json::Value, String> {
+        ) -> Result<serde_json::Value, ArtifactBindingDispatchError> {
             let phase: ModuleLifecycleHookPhase = dispatch
                 .input
                 .get("phase")
                 .cloned()
-                .ok_or_else(|| "lifecycle phase is missing".to_string())
+                .ok_or_else(|| {
+                    ArtifactBindingDispatchError::Execution(
+                        "lifecycle phase is missing".to_string(),
+                    )
+                })
                 .and_then(|value| {
-                    serde_json::from_value(value).map_err(|error| error.to_string())
+                    serde_json::from_value(value)
+                        .map_err(|error| ArtifactBindingDispatchError::Execution(error.to_string()))
                 })?;
             self.0
                 .lock()
@@ -775,7 +872,7 @@ mod tests {
         async fn dispatch_binding(
             &self,
             dispatch: ArtifactBindingDispatch<'_>,
-        ) -> Result<serde_json::Value, String> {
+        ) -> Result<serde_json::Value, ArtifactBindingDispatchError> {
             Ok(dispatch.input)
         }
     }

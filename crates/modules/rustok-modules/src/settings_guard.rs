@@ -158,7 +158,7 @@ pub fn validate_settings_intersection(
     settings: serde_json::Value,
 ) -> Result<serde_json::Value, SettingsGuardError> {
     // 1. Validate against predecessor schema (N)
-    let normalized_predecessor =
+    let _normalized_predecessor =
         normalize_module_settings(module_slug, predecessor_schema, settings.clone()).map_err(
             |e| match e {
                 ModuleSettingsValidationError::InvalidValue { key, reason, .. }
@@ -191,7 +191,6 @@ pub fn validate_settings_intersection(
 
     // Return the candidate-normalized value since N+1 is the active target,
     // but having proven N also accepts it without error.
-    let _ = normalized_predecessor;
     Ok(normalized_candidate)
 }
 

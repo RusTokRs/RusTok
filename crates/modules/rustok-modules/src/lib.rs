@@ -8,6 +8,7 @@ mod artifact_schema;
 mod artifact_settings;
 mod artifact_settings_recovery;
 mod authoring;
+mod backend;
 mod binding_idempotency;
 mod build;
 mod build_surface;
@@ -27,13 +28,13 @@ pub mod data_snapshot_intents;
 pub mod data_snapshot_readiness;
 pub mod data_upgrade;
 mod definition;
+mod delivery_descriptor;
 mod dependency;
 mod dispatcher;
 mod distribution;
 mod distribution_bootstrap;
 mod distribution_release;
 mod distribution_rollout;
-pub mod dynamic_lifecycle;
 mod event_delivery;
 mod execution_audit;
 mod executor;
@@ -96,7 +97,8 @@ mod trust;
 pub mod wave_rollout;
 
 pub use source_object::{
-    SourceObjectError, SourceObjectRetentionHold, SourceObjectStore, SourceReceipt,
+    MAX_SOURCE_OBJECT_BYTES, SourceObjectError, SourceObjectRetentionHold, SourceObjectStore,
+    SourceReceipt,
 };
 
 pub use conflict_fences::{ConflictFenceSet, ConflictKey, ConflictKeyKind};
@@ -128,16 +130,11 @@ pub use data_snapshot_readiness::{
 pub use data_upgrade::{
     DataUpgradeDecision, DataUpgradeEvidence, DataUpgradePhase, evaluate_data_upgrade_decision,
 };
-pub use dynamic_lifecycle::{
-    DynamicLifecycleAction, DynamicLifecycleError, DynamicLifecycleService,
-    ExecuteDataPurgeCommand, ExecuteDisableCommand, ExecuteEnableCommand, ExecuteInstallCommand,
-    ExecuteInstallResult, ExecuteSettingsPurgeCommand, ExecuteUninstallCommand,
-    ExecuteUninstallResult, ProductionOperationStatus, ReinstallChoice, WorkGenerationRecord,
-};
 pub use executor_readiness::{
-    CachedPreparedPayload, EvaluateReadinessCommand, ExecutorPoolIdentity, ExecutorReadinessError,
-    ExecutorReadinessService, ExecutorSmokeReceipt, OwnerPlacementPolicy, ReleaseReadinessTarget,
-    RuntimeFingerprint, VerifiedPayloadCache,
+    CachedPreparedPayload, DEFAULT_VERIFIED_PAYLOAD_CACHE_MAX_BYTES,
+    DEFAULT_VERIFIED_PAYLOAD_CACHE_MAX_ENTRIES, EvaluateReadinessCommand, ExecutorPoolIdentity,
+    ExecutorReadinessError, ExecutorReadinessService, ExecutorSmokeReceipt, OwnerPlacementPolicy,
+    ReleaseReadinessTarget, RuntimeFingerprint, VerifiedPayloadCache,
 };
 pub use gc::{
     ArtifactDataObjectGcAdapter, BrowserAssetGcAdapter, BuildAttemptGcAdapter, BuildAttemptStatus,
@@ -168,14 +165,16 @@ pub use queue_drain::{
     ArtifactQueueDrainService,
 };
 pub use release_admission_journal::{
-    ReleaseAdmissionIntentJournal, ReleaseAdmissionIntentRecord, ReleaseAdmissionJournalError,
+    MAX_STALE_UNFINISHED_INTENTS_PER_SCAN, ReleaseAdmissionIntentJournal,
+    ReleaseAdmissionIntentRecord, ReleaseAdmissionJournalError,
 };
 pub use retention::{
     ArtifactObjectState, RetentionError, RetentionHoldKind, RetentionHoldLedger,
     RetentionHoldRecord, RetentionTarget,
 };
 pub use security_epoch::{
-    GlobalSecurityEpoch, SecurityEpochConflictError, SecurityEpochRecord, SecurityEpochRegistry,
+    GlobalSecurityEpoch, SeaOrmSecurityEpochStore, SecurityEpochConflictError, SecurityEpochRecord,
+    SecurityEpochRegistry, SecurityEpochStoreError,
 };
 pub use settings_guard::{
     SettingsCompatibilityGuard, SettingsGuardError, SettingsGuardState,
@@ -235,9 +234,10 @@ pub use artifact_node_reconciliation::{
     ModuleArtifactNodeReconciliationAuthorizer, ModuleArtifactNodeReconciliationError,
     ModuleArtifactNodeReconciliationReceipt, ModuleArtifactNodeReconciliationRequest,
     ModuleArtifactNodeReconciliationStatus, ModuleArtifactNodeReconciliationWorkIdentity,
-    ModuleArtifactNodeTopologyResolver, ModuleArtifactNodeTopologySnapshot,
-    SeaOrmArtifactNodeReadiness, SeaOrmModuleArtifactNodeAgentService,
-    SeaOrmModuleArtifactNodeReconciliationService, module_artifact_node_topology_digest,
+    ModuleArtifactNodeTopologyResolveError, ModuleArtifactNodeTopologyResolver,
+    ModuleArtifactNodeTopologySnapshot, SeaOrmArtifactNodeReadiness,
+    SeaOrmModuleArtifactNodeAgentService, SeaOrmModuleArtifactNodeReconciliationService,
+    module_artifact_node_topology_digest,
 };
 pub use artifact_settings_recovery::{
     ArtifactSettingsPurgePreview, ArtifactSettingsPurgePreviewService,
@@ -297,10 +297,10 @@ pub use capability_http::{
 };
 pub use composition::{
     ACTIVE_MODULE_COMPOSITION_ID, ModuleCompositionBuildAdmission,
-    ModuleCompositionBuildEnqueueResult, ModuleCompositionBuildEnqueuer,
-    ModuleCompositionBuildLease, ModuleCompositionBuildReceipt, ModuleCompositionError,
-    ModuleCompositionOperation, ModuleCompositionSnapshot, ModuleCompositionUpdate,
-    STATIC_MODULE_REGISTRY_MAX_LIMIT, SeaOrmModuleCompositionService,
+    ModuleCompositionBuildEnqueueError, ModuleCompositionBuildEnqueueResult,
+    ModuleCompositionBuildEnqueuer, ModuleCompositionBuildLease, ModuleCompositionBuildReceipt,
+    ModuleCompositionError, ModuleCompositionOperation, ModuleCompositionSnapshot,
+    ModuleCompositionUpdate, STATIC_MODULE_REGISTRY_MAX_LIMIT, SeaOrmModuleCompositionService,
     SharedStaticInstalledModuleReader, SharedStaticModuleRegistryReader,
     StaticInstalledModuleReader, StaticInstalledModuleReaderError, StaticModuleRegistryQuery,
     StaticModuleRegistryReader, StaticModuleRegistryReaderError,
@@ -358,11 +358,12 @@ pub use dependency::{
 pub use dispatcher::{
     ARTIFACT_BINDING_DISPATCH_ENVELOPE_VERSION, ArtifactBindingDispatch,
     ArtifactBindingDispatchEnvelope, ArtifactBindingDispatchEnvelopeError,
-    ArtifactBindingExecutionContext, ArtifactBindingExecutor, ArtifactCommandBindingRequest,
-    ArtifactHttpBindingRequest, ArtifactInstallationTarget, ArtifactLifecycleExecutor,
-    ModuleDispatchError, ModuleExecutionDispatcher, ModuleLifecycleHookPhase,
-    dispatch_artifact_command_binding, dispatch_artifact_http_binding,
-    find_artifact_command_binding, find_artifact_http_binding, find_artifact_ui_action_binding,
+    ArtifactBindingDispatchError, ArtifactBindingExecutionContext, ArtifactBindingExecutor,
+    ArtifactCommandBindingRequest, ArtifactEventBindingOutcome, ArtifactHttpBindingRequest,
+    ArtifactInstallationTarget, ArtifactLifecycleExecutor, ModuleDispatchError,
+    ModuleExecutionDispatcher, ModuleLifecycleHookPhase, dispatch_artifact_command_binding,
+    dispatch_artifact_http_binding, find_artifact_command_binding, find_artifact_http_binding,
+    find_artifact_ui_action_binding,
 };
 pub use distribution::{
     ModuleStaticDistributionAuthorizer, ModuleStaticDistributionBuild,
@@ -395,9 +396,9 @@ pub use distribution_release::{
     ModuleStaticDistributionReleaseAdmission, ModuleStaticDistributionReleaseAuthorizer,
     ModuleStaticDistributionReleaseError, ModuleStaticDistributionReleaseState,
     ModuleStaticDistributionReleaseStatus, ModuleStaticDistributionReleaseVerificationRequest,
-    ModuleStaticDistributionReleaseVerifier, ModuleStaticDistributionRevocationCommand,
-    ModuleStaticDistributionRevocationReceipt, SeaOrmModuleStaticDistributionReleaseService,
-    resolve_static_distribution_install_binding,
+    ModuleStaticDistributionReleaseVerifier, ModuleStaticDistributionReleaseVerifyError,
+    ModuleStaticDistributionRevocationCommand, ModuleStaticDistributionRevocationReceipt,
+    SeaOrmModuleStaticDistributionReleaseService, resolve_static_distribution_install_binding,
 };
 pub use distribution_rollout::{
     ModuleStaticDistributionAssignment, ModuleStaticDistributionAssignmentClaimCommand,
@@ -408,9 +409,10 @@ pub use distribution_rollout::{
     ModuleStaticDistributionRolloutAssignment, ModuleStaticDistributionRolloutAuthorizer,
     ModuleStaticDistributionRolloutError, ModuleStaticDistributionRolloutReceipt,
     ModuleStaticDistributionRolloutRequest, ModuleStaticDistributionRolloutStatus,
-    ModuleStaticDistributionRolloutWorkIdentity, ModuleStaticDistributionTopologyResolver,
-    ModuleStaticDistributionTopologySnapshot, ModuleStaticDistributionTransitionKind,
-    SeaOrmModuleStaticDistributionRolloutService, module_static_distribution_topology_digest,
+    ModuleStaticDistributionRolloutWorkIdentity, ModuleStaticDistributionTopologyResolveError,
+    ModuleStaticDistributionTopologyResolver, ModuleStaticDistributionTopologySnapshot,
+    ModuleStaticDistributionTransitionKind, SeaOrmModuleStaticDistributionRolloutService,
+    module_static_distribution_topology_digest,
 };
 pub use event_delivery::{
     ARTIFACT_EVENT_DELIVERY_WORKER, ArtifactEventDeliveryCompletion, ArtifactEventDeliveryConfig,
@@ -474,18 +476,17 @@ pub use governance::{
 pub use infrastructure::{ControlPlaneClock, ControlPlaneIdGenerator, ControlPlaneInfrastructure};
 pub use installation::{
     ArtifactActivationRequest, ArtifactActivationResult, ArtifactAdmissionCommand,
-    ArtifactAdmissionLimits, ArtifactAdmissionReconciler, ArtifactAdmissionRecoveryRecord,
-    ArtifactAdmissionResult, ArtifactAdmissionReverification, ArtifactAdmissionService,
-    ArtifactAdmissionStage, ArtifactAdmissionStatus, ArtifactAdmissionStore,
-    ArtifactBlobRetentionPolicy, ArtifactBlobRetentionRule, ArtifactBlobStore,
-    ArtifactDeactivationRequest, ArtifactDeactivationResult, ArtifactMigrationCheckpointRequest,
-    ArtifactMigrationRollbackMode, ArtifactPayloadSource, ArtifactRegistry,
-    ArtifactRollbackRequest, ArtifactRollbackResult, ArtifactTenantDisableRequest,
-    ArtifactTenantDisableResult, ArtifactTenantEnableRequest, ArtifactTenantEnableResult,
-    ArtifactTenantLifecycleSnapshot, ArtifactUninstallRequest, ArtifactUninstallResult,
-    ArtifactVerificationEvidence, DurableArtifactBlobStore, InMemoryArtifactBlobStore,
-    InstalledModuleArtifact, ModuleArtifactPackage, ModuleInstallationError,
-    ModuleInstallationScope, ModuleInstaller, OciArtifactReference,
+    ArtifactAdmissionLimits, ArtifactAdmissionReconciler, ArtifactAdmissionResult,
+    ArtifactAdmissionReverification, ArtifactAdmissionService, ArtifactAdmissionStage,
+    ArtifactAdmissionStatus, ArtifactAdmissionStore, ArtifactBlobRetentionPolicy,
+    ArtifactBlobRetentionRule, ArtifactBlobStore, ArtifactDeactivationRequest,
+    ArtifactDeactivationResult, ArtifactMigrationCheckpointRequest, ArtifactMigrationRollbackMode,
+    ArtifactPayloadSource, ArtifactRegistry, ArtifactRollbackRequest, ArtifactRollbackResult,
+    ArtifactTenantDisableRequest, ArtifactTenantDisableResult, ArtifactTenantEnableRequest,
+    ArtifactTenantEnableResult, ArtifactTenantLifecycleSnapshot, ArtifactUninstallRequest,
+    ArtifactUninstallResult, ArtifactVerificationEvidence, DurableArtifactBlobStore,
+    InMemoryArtifactBlobStore, InstalledModuleArtifact, ModuleArtifactPackage,
+    ModuleInstallationError, ModuleInstallationScope, ModuleInstaller, OciArtifactReference,
     SeaOrmArtifactInstallationStore, SeaOrmArtifactSandboxPolicyResolver,
     SnapshotArtifactBlobRetentionPolicy, StagedArtifactBlob, TransitionRollbackRequest,
 };
@@ -527,6 +528,8 @@ pub use oci_admission::{
     OciAdmissionReceipt, OciReleaseAdmissionCommand, OciReleaseAdmissionError,
     OciReleaseAdmissionService,
 };
+#[cfg(feature = "oci-distribution")]
+pub use oci_transport::OciTransportError;
 pub use operation_store::{
     ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRecordOutcome,
     ModuleOperationRequest, ModuleOperationSnapshot, ModuleOperationStoreError,
@@ -545,7 +548,10 @@ pub use policy::{
     ModulePolicyRevisionGateError, ModulePolicyRevisionTransition, ModuleToggleValidationError,
     SharedModuleEffectivePolicyReader, TenantModuleOverride, validate_module_toggle,
 };
-pub use policy_cache::ModuleEffectivePolicyCache;
+pub use policy_cache::{
+    DEFAULT_POLICY_CACHE_MAX_AGE_SECONDS, DEFAULT_POLICY_CACHE_MAX_ENTRIES,
+    ModuleEffectivePolicyCache,
+};
 pub use policy_revision_consumer::{
     ModulePolicyRevisionConsumerError, SeaOrmModulePolicyRevisionConsumer,
 };
@@ -565,6 +571,7 @@ pub use publication_evidence::{
     ModulePlatformPublicationEvidenceCommand, ModulePlatformPublicationEvidenceError,
     ModulePlatformPublicationEvidenceOwner, ModulePlatformPublicationEvidenceProducer,
     ModulePlatformPublicationEvidenceResult, ModulePublicationArtifactRegistryProvider,
+    ModulePublicationRegistryError,
 };
 pub use publish_validation::{
     MODULE_PUBLISH_ALLOY_WORKSPACE_MAX_BYTES, MODULE_PUBLISH_ARTIFACT_MANIFEST_MAX_BYTES,
@@ -587,12 +594,14 @@ pub use resolution::{
     ModuleResolutionResult, ModuleResolutionScope, resolve_module_dependencies,
 };
 pub use runtime::{
-    ArtifactEffectivePolicyResolver, ArtifactInstallationResolver, ArtifactRuntime,
-    ArtifactRuntimeError, ArtifactRuntimeLifecycleExecutor, ArtifactSandboxPolicyResolver,
-    VerifiedArtifactNodeCache,
+    ArtifactEffectivePolicyResolveError, ArtifactEffectivePolicyResolver,
+    ArtifactInstallationResolveError, ArtifactInstallationResolver, ArtifactRuntime,
+    ArtifactRuntimeError, ArtifactRuntimeLifecycleExecutor, ArtifactSandboxPolicyResolveError,
+    ArtifactSandboxPolicyResolver, VerifiedArtifactNodeCache,
 };
 pub use runtime_handles::{
-    ArtifactDeliveryTenantSource, SharedArtifactBindingExecutor, SharedArtifactDeliveryTenantSource,
+    ArtifactDeliveryTenantSource, ArtifactDeliveryTenantSourceError, SharedArtifactBindingExecutor,
+    SharedArtifactDeliveryTenantSource,
 };
 pub use rustok_build_source::SourceTreeFile;
 pub use schedule_delivery::{
@@ -654,7 +663,7 @@ pub use trust::{
     ALLOY_WORKSPACE_PUBLICATION_BUILD_TYPE, ALLOY_WORKSPACE_PUBLICATION_BUILDER_ID,
     ALLOY_WORKSPACE_PUBLICATION_SOURCE_REF, ALLOY_WORKSPACE_PUBLICATION_SOURCE_URI,
     TrustAlloyWorkspaceProvenance, TrustEvidenceKind, TrustEvidenceReference, TrustPolicyRevision,
-    TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
+    TrustVerificationDecision, TrustVerificationError, TrustVerificationRequest, TrustVerifier,
 };
 
 /// Mandatory Core entry point for module and marketplace control-plane ownership.
@@ -668,20 +677,20 @@ impl MigrationSource for ModulesModule {
     fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
         vec![
             MigrationDependencyDescriptor::new(
-                "m20260717_000002_create_registry_publish_build_staging",
-                vec!["m20260403_000002_create_registry_publish_tables"],
+                "m20260717_000017_create_registry_publish_build_staging",
+                vec!["m20260403_000061_create_registry_publish_tables"],
             ),
             MigrationDependencyDescriptor::new(
                 "m20260722_000034_static_promotions",
-                vec!["m20260403_000002_create_registry_publish_tables"],
+                vec!["m20260403_000061_create_registry_publish_tables"],
             ),
             MigrationDependencyDescriptor::new(
                 "m20260727_000040_registry_platform_admission_contracts",
-                vec!["m20260403_000002_create_registry_publish_tables"],
+                vec!["m20260403_000061_create_registry_publish_tables"],
             ),
             MigrationDependencyDescriptor::new(
                 "m20260727_000041_registry_release_artifact_contracts",
-                vec!["m20260717_000002_create_registry_publish_build_staging"],
+                vec!["m20260717_000017_create_registry_publish_build_staging"],
             ),
         ]
     }

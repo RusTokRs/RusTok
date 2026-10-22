@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
+
+use crate::backend::SupportedBackend;
 
 /// Persists immutable source object receipts and retention holds.
 ///
@@ -13,8 +15,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE module_source_object_receipts (\
                     source_receipt_id UUID PRIMARY KEY,\
                     preparation_id UUID NOT NULL,\
@@ -45,7 +48,7 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX idx_source_object_retention_holds_digest \
                  ON module_source_object_retention_holds (source_digest)",
             ],
-            _ => &[
+            SupportedBackend::Sqlite => &[
                 "CREATE TABLE module_source_object_receipts (\
                     source_receipt_id TEXT PRIMARY KEY,\
                     preparation_id TEXT NOT NULL,\
@@ -77,7 +80,7 @@ impl MigrationTrait for Migration {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;
@@ -87,6 +90,7 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
         let statements: &[&str] = &[
             "DROP TABLE IF EXISTS module_source_object_retention_holds",
             "DROP TABLE IF EXISTS module_source_object_receipts",
@@ -96,7 +100,7 @@ impl MigrationTrait for Migration {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;

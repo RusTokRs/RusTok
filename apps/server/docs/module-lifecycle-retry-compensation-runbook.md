@@ -137,7 +137,7 @@ Steps:
 - `crates/modules/rustok-modules/src/recovery.rs`
 - `crates/modules/rustok-modules/src/executor.rs`
 - `crates/modules/rustok-modules/src/lifecycle_writer.rs`
-- `crates/utils/rustok-migrations/src/m20260808_000099_create_module_operation_override_states.rs`
+- `crates/modules/rustok-modules/src/migrations/m20260808_000075_create_module_operation_override_states.rs`
 - `apps/server/src/services/module_lifecycle.rs`
 - `docs/architecture/modules.md`
 - `DECISIONS/2026-05-22-module-lifecycle-hook-phases-and-retry-contract.md`

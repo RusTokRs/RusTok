@@ -57,7 +57,7 @@ impl StaticModuleSettingsReader for TestForumSettingsReader {
         }
 
         Ok(Some(StaticModuleSettingsSnapshot {
-            enabled: module_slug == "forum",
+            enabled: Some(module_slug == "forum"),
             settings: serde_json::json!({ "use_reactions": false }),
         }))
     }
@@ -86,7 +86,7 @@ impl StaticModuleSettingsTransactionReader for TestForumSettingsReader {
         }
 
         Ok(Some(StaticModuleSettingsSnapshot {
-            enabled: module_slug == "forum",
+            enabled: Some(module_slug == "forum"),
             settings: serde_json::json!({ "use_reactions": false }),
         }))
     }
@@ -216,7 +216,7 @@ async fn set_forum_module_settings(
                 id: Set(Uuid::new_v4()),
                 tenant_id: Set(tenant_id),
                 module_slug: Set("forum".to_string()),
-                enabled: Set(true),
+                enabled: Set(Some(true)),
                 settings: Set(settings),
                 created_at: Set(now.into()),
                 updated_at: Set(now.into()),

@@ -1,9 +1,8 @@
 //! Artifact data key, value, and prefix validations.
 
 use async_trait::async_trait;
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::constants::*;
@@ -11,6 +10,40 @@ use super::error::*;
 use super::traits::*;
 use super::types::*;
 use super::*;
+
+/// Canonical text form of an indexable scalar, used identically when an
+/// index row is written and when it is queried. Numbers are normalized so
+/// that `1`, `1.0`, and `1e2`-style spellings of the same value address the
+/// same index entry (raw `serde_json::to_string` preserves the input
+/// representation and would silently miss).
+pub(crate) fn canonical_index_value(value: &Value) -> Result<String, ArtifactDataError> {
+    let canonical = match value {
+        Value::Number(number) => {
+            if let Some(integer) = number.as_i64() {
+                Value::Number(integer.into())
+            } else if let Some(integer) = number.as_u64() {
+                Value::Number(integer.into())
+            } else if let Some(float) = number.as_f64() {
+                if float.fract() == 0.0
+                    && float >= i64::MIN as f64
+                    && float < 9_007_199_254_740_992.0
+                {
+                    // Exactly-integral floats within the precisely
+                    // representable range index as integers.
+                    Value::Number((float as i64).into())
+                } else {
+                    serde_json::Number::from_f64(float)
+                        .map(Value::Number)
+                        .ok_or(ArtifactDataError::InvalidIndexQuery)?
+                }
+            } else {
+                return Err(ArtifactDataError::InvalidIndexQuery);
+            }
+        }
+        _ => value.clone(),
+    };
+    serde_json::to_string(&canonical).map_err(|error| ArtifactDataError::Storage(error.to_string()))
+}
 
 pub(crate) fn validate_artifact_data_value(value: &Value) -> Result<(), ArtifactDataError> {
     let encoded_bytes = artifact_data_value_size(value)?;
@@ -84,8 +117,7 @@ pub(crate) fn validate_artifact_data_index_query(
         return Err(ArtifactDataError::InvalidIndexQuery);
     }
     validate_page_request(&query.page)?;
-    let value = serde_json::to_string(&query.value)
-        .map_err(|error| ArtifactDataError::Storage(error.to_string()))?;
+    let value = canonical_index_value(&query.value)?;
     if value.len() > MAX_ARTIFACT_DATA_INDEX_VALUE_BYTES {
         return Err(ArtifactDataError::InvalidIndexQuery);
     }
@@ -133,7 +165,7 @@ pub(crate) fn object_for_upload(
         name: upload.name.clone(),
         content_type: upload.content_type.clone(),
         size_bytes,
-        digest_sha256: format!("sha256:{}", hex::encode(Sha256::digest(&upload.data))),
+        digest_sha256: crate::installation::sha256_digest(&upload.data),
         revision: 1,
     };
     object.validate()?;
@@ -176,14 +208,15 @@ impl SeaOrmArtifactDataSchemaValidator {
         }
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let placeholders = match backend {
-            DbBackend::Postgres => ("$1", "$2", "$3", "$4", "$5"),
-            _ => ("?1", "?2", "?3", "?4", "?5"),
+            SupportedBackend::Postgres => ("$1", "$2", "$3", "$4", "$5"),
+            SupportedBackend::Sqlite => ("?1", "?2", "?3", "?4", "?5"),
         };
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT installation.descriptor \
                      FROM module_artifact_installations installation \
@@ -200,10 +233,10 @@ impl SeaOrmArtifactDataSchemaValidator {
                     placeholders.0, placeholders.1, placeholders.2,
                 ),
                 vec![
-                    uuid_value(self.installation_id, backend),
-                    uuid_value(scope.data_owner_id, backend),
-                    uuid_value(scope.tenant_id, backend),
-                    uuid_value(scope.namespace_instance_id, backend),
+                    backend.uuid_value(self.installation_id),
+                    backend.uuid_value(scope.data_owner_id),
+                    backend.uuid_value(scope.tenant_id),
+                    backend.uuid_value(scope.namespace_instance_id),
                     scope.data_contract_digest.clone().into(),
                 ],
             ))
@@ -259,5 +292,22 @@ impl ArtifactDataSchemaValidator for SeaOrmArtifactDataSchemaValidator {
                     ArtifactDataError::DataContractSchemaViolation
                 }
             })
+    }
+}
+
+#[cfg(test)]
+mod canonical_index_value_tests {
+    use super::canonical_index_value;
+    use serde_json::json;
+
+    #[test]
+    fn equivalent_number_spellings_share_one_index_value() {
+        assert_eq!(canonical_index_value(&json!(1)).unwrap(), "1");
+        assert_eq!(canonical_index_value(&json!(1.0)).unwrap(), "1");
+        assert_eq!(canonical_index_value(&json!(100.0)).unwrap(), "100");
+        assert_eq!(canonical_index_value(&json!(-3)).unwrap(), "-3");
+        assert_eq!(canonical_index_value(&json!(1.5)).unwrap(), "1.5");
+        assert_eq!(canonical_index_value(&json!("abc")).unwrap(), "\"abc\"");
+        assert_eq!(canonical_index_value(&json!(true)).unwrap(), "true");
     }
 }

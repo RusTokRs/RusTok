@@ -1,3 +1,16 @@
+mod m20250101_000060_create_tenant_modules;
+mod m20260403_000061_create_registry_publish_tables;
+mod m20260403_000062_create_registry_module_owners;
+mod m20260403_000063_create_registry_governance_events;
+mod m20260403_000064_add_registry_publish_request_publisher_identity;
+mod m20260404_000065_create_registry_validation_jobs;
+mod m20260404_000066_create_registry_validation_stages;
+mod m20260408_000067_expand_registry_publish_request_governance_states;
+mod m20260408_000068_expand_registry_validation_stage_runner_leases;
+mod m20260412_000069_reset_registry_identity_and_artifacts;
+mod m20260412_000070_split_registry_localized_metadata;
+mod m20260419_000071_normalize_registry_governance_event_payloads;
+mod m20260501_000076_create_module_operations;
 mod m20260711_000001_module_artifact_installations;
 mod m20260713_000002_module_artifact_admissions;
 mod m20260713_000003_artifact_installation_rollback_pointer;
@@ -14,12 +27,14 @@ mod m20260716_000013_artifact_admission_commands;
 mod m20260716_000014_artifact_secret_bindings;
 mod m20260716_000015_artifact_execution_audit;
 mod m20260716_000016_artifact_execution_audit_metrics;
-mod m20260717_000002_create_registry_publish_build_staging;
+mod m20260717_000017_create_registry_publish_build_staging;
 mod m20260717_000018_artifact_event_deliveries;
 mod m20260717_000019_artifact_schedule_deliveries;
 mod m20260717_000020_artifact_schedule_cursors;
 mod m20260717_000021_artifact_sandbox_policies;
 mod m20260717_000023_artifact_binding_operations;
+mod m20260717_000072_create_registry_publication_evidence;
+mod m20260717_000073_add_registry_artifact_origin_and_external_staging;
 mod m20260718_000025_artifact_data_objects;
 mod m20260718_000026_artifact_data_object_operations;
 mod m20260718_000027_artifact_data_object_gc_candidates;
@@ -27,6 +42,7 @@ mod m20260718_000028_artifact_data_object_upload_sessions;
 mod m20260718_000029_artifact_data_indexes;
 mod m20260718_000030_artifact_data_index_contracts;
 mod m20260718_000031_artifact_data_exports;
+mod m20260718_000074_add_registry_publication_idempotency;
 mod m20260720_000032_artifact_binding_operation_rls;
 mod m20260722_000033_artifact_data_snapshots;
 mod m20260722_000034_static_promotions;
@@ -37,6 +53,7 @@ mod m20260726_000038_artifact_data_object_deletions;
 mod m20260726_000039_artifact_data_record_deletions;
 mod m20260727_000040_registry_platform_admission_contracts;
 mod m20260727_000041_registry_release_artifact_contracts;
+mod m20260808_000075_create_module_operation_override_states;
 pub(crate) mod m20260814_000042_artifact_node_reconciliation;
 mod m20260822_000043_artifact_ui_contribution_locks;
 pub(crate) mod m20260822_000044_module_build_execution_claims;
@@ -45,17 +62,33 @@ pub(crate) mod m20260902_000046_module_transition_and_retention_tables;
 pub(crate) mod m20260903_000047_artifact_data_copy_operations;
 pub(crate) mod m20260903_000048_artifact_data_object_copy_operations;
 pub(crate) mod m20260903_000049_artifact_data_snapshot_and_recovery_operations;
-pub(crate) mod m20260904_000051_admitted_oci_releases;
 pub(crate) mod m20260904_000051_static_localized_settings;
-pub(crate) mod m20260904_000052_module_source_objects;
 pub(crate) mod m20260904_000052_static_settings_change_cursor;
-pub(crate) mod m20260904_000053_module_operations_tool;
 pub(crate) mod m20260904_000053_static_settings_source_locale;
+mod m20261021_000054_static_lifecycle_claim_lease;
+mod m20261021_000055_module_security_epoch;
+mod m20261021_000056_drop_production_operations;
+pub(crate) mod m20261022_000057_admitted_oci_releases;
+pub(crate) mod m20261022_000058_module_source_objects;
+pub(crate) mod m20261022_000059_module_operations_tool;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
 pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![
+        Box::new(m20250101_000060_create_tenant_modules::Migration),
+        Box::new(m20260403_000061_create_registry_publish_tables::Migration),
+        Box::new(m20260403_000062_create_registry_module_owners::Migration),
+        Box::new(m20260403_000063_create_registry_governance_events::Migration),
+        Box::new(m20260403_000064_add_registry_publish_request_publisher_identity::Migration),
+        Box::new(m20260404_000065_create_registry_validation_jobs::Migration),
+        Box::new(m20260404_000066_create_registry_validation_stages::Migration),
+        Box::new(m20260408_000067_expand_registry_publish_request_governance_states::Migration),
+        Box::new(m20260408_000068_expand_registry_validation_stage_runner_leases::Migration),
+        Box::new(m20260412_000069_reset_registry_identity_and_artifacts::Migration),
+        Box::new(m20260412_000070_split_registry_localized_metadata::Migration),
+        Box::new(m20260419_000071_normalize_registry_governance_event_payloads::Migration),
+        Box::new(m20260501_000076_create_module_operations::Migration),
         Box::new(m20260711_000001_module_artifact_installations::Migration),
         Box::new(m20260713_000002_module_artifact_admissions::Migration),
         Box::new(m20260713_000003_artifact_installation_rollback_pointer::Migration),
@@ -72,12 +105,14 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260716_000014_artifact_secret_bindings::Migration),
         Box::new(m20260716_000015_artifact_execution_audit::Migration),
         Box::new(m20260716_000016_artifact_execution_audit_metrics::Migration),
-        Box::new(m20260717_000002_create_registry_publish_build_staging::Migration),
+        Box::new(m20260717_000017_create_registry_publish_build_staging::Migration),
         Box::new(m20260717_000018_artifact_event_deliveries::Migration),
         Box::new(m20260717_000019_artifact_schedule_deliveries::Migration),
         Box::new(m20260717_000020_artifact_schedule_cursors::Migration),
         Box::new(m20260717_000021_artifact_sandbox_policies::Migration),
         Box::new(m20260717_000023_artifact_binding_operations::Migration),
+        Box::new(m20260717_000072_create_registry_publication_evidence::Migration),
+        Box::new(m20260717_000073_add_registry_artifact_origin_and_external_staging::Migration),
         Box::new(m20260718_000025_artifact_data_objects::Migration),
         Box::new(m20260718_000026_artifact_data_object_operations::Migration),
         Box::new(m20260718_000027_artifact_data_object_gc_candidates::Migration),
@@ -85,6 +120,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260718_000029_artifact_data_indexes::Migration),
         Box::new(m20260718_000030_artifact_data_index_contracts::Migration),
         Box::new(m20260718_000031_artifact_data_exports::Migration),
+        Box::new(m20260718_000074_add_registry_publication_idempotency::Migration),
         Box::new(m20260720_000032_artifact_binding_operation_rls::Migration),
         Box::new(m20260722_000033_artifact_data_snapshots::Migration),
         Box::new(m20260722_000034_static_promotions::Migration),
@@ -95,6 +131,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260726_000039_artifact_data_record_deletions::Migration),
         Box::new(m20260727_000040_registry_platform_admission_contracts::Migration),
         Box::new(m20260727_000041_registry_release_artifact_contracts::Migration),
+        Box::new(m20260808_000075_create_module_operation_override_states::Migration),
         Box::new(m20260814_000042_artifact_node_reconciliation::Migration),
         Box::new(m20260822_000043_artifact_ui_contribution_locks::Migration),
         Box::new(m20260822_000044_module_build_execution_claims::Migration),
@@ -106,9 +143,12 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260904_000051_static_localized_settings::Migration),
         Box::new(m20260904_000052_static_settings_change_cursor::Migration),
         Box::new(m20260904_000053_static_settings_source_locale::Migration),
-        Box::new(m20260904_000051_admitted_oci_releases::Migration),
-        Box::new(m20260904_000052_module_source_objects::Migration),
-        Box::new(m20260904_000053_module_operations_tool::Migration),
+        Box::new(m20261021_000054_static_lifecycle_claim_lease::Migration),
+        Box::new(m20261021_000055_module_security_epoch::Migration),
+        Box::new(m20261021_000056_drop_production_operations::Migration),
+        Box::new(m20261022_000057_admitted_oci_releases::Migration),
+        Box::new(m20261022_000058_module_source_objects::Migration),
+        Box::new(m20261022_000059_module_operations_tool::Migration),
     ]
 }
 
@@ -130,10 +170,13 @@ pub(crate) async fn protect_artifact_data_namespace_writes(
     manager: &sea_orm_migration::SchemaManager<'_>,
     table: &str,
 ) -> Result<(), sea_orm::DbErr> {
-    use sea_orm::{ConnectionTrait, DbBackend};
+    use sea_orm::ConnectionTrait;
+
+    use crate::backend::SupportedBackend;
     let table = artifact_data_storage_table(table)?;
-    let statements = match manager.get_database_backend() {
-        DbBackend::Postgres => vec![format!(
+    let backend = SupportedBackend::new(manager.get_database_backend())?;
+    let statements = match backend {
+        SupportedBackend::Postgres => vec![format!(
             "CREATE FUNCTION {table}_namespace_write_guard() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN
                IF TG_OP = 'DELETE' THEN
                  PERFORM 1 FROM module_artifact_data_namespaces namespace
@@ -162,7 +205,7 @@ pub(crate) async fn protect_artifact_data_namespace_writes(
             "CREATE TRIGGER {table}_namespace_write BEFORE INSERT OR UPDATE OR DELETE ON {table}
              FOR EACH ROW EXECUTE FUNCTION {table}_namespace_write_guard()"
         )],
-        DbBackend::Sqlite => ["INSERT", "UPDATE", "DELETE"].into_iter().map(|operation| {
+        SupportedBackend::Sqlite => ["INSERT", "UPDATE", "DELETE"].into_iter().map(|operation| {
             let row = if operation == "DELETE" { "OLD" } else { "NEW" };
             let states = if operation == "DELETE" {
                 "namespace.state IN ('staging', 'serving', 'purged')"
@@ -183,7 +226,6 @@ pub(crate) async fn protect_artifact_data_namespace_writes(
                 operation.to_ascii_lowercase()
             )
         }).collect(),
-        _ => return Err(sea_orm::DbErr::Migration("Unsupported artifact namespace write guard backend".into())),
     };
     for statement in statements {
         manager
@@ -194,15 +236,55 @@ pub(crate) async fn protect_artifact_data_namespace_writes(
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    /// Registration order is the apply order on fresh databases, and the
+    /// `m<date>_<ordinal>_<name>` identity is what the platform records as
+    /// applied. Keep both machine-checkable: names strictly lexically
+    /// increasing in registration order (so the list reads in apply order)
+    /// and ordinals unique (duplicate ordinals previously shipped for
+    /// 2026-09-04 and hid ordering mistakes).
+    #[test]
+    fn migration_registration_is_lexically_ordered_with_unique_ordinals() {
+        let names = super::migrations()
+            .iter()
+            .map(|migration| migration.name().to_string())
+            .collect::<Vec<_>>();
+        assert!(
+            names.windows(2).all(|pair| pair[0] < pair[1]),
+            "migration registration order must be lexically increasing: {names:?}"
+        );
+        let ordinals = names
+            .iter()
+            .map(|name| {
+                name.split('_')
+                    .nth(1)
+                    .expect("migration names carry an ordinal segment")
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+        let unique = ordinals.iter().collect::<BTreeSet<_>>();
+        assert_eq!(
+            unique.len(),
+            ordinals.len(),
+            "migration ordinals must be unique: {ordinals:?}"
+        );
+    }
+}
+
 pub(crate) async fn drop_artifact_data_namespace_write_guard(
     manager: &sea_orm_migration::SchemaManager<'_>,
     table: &str,
 ) -> Result<(), sea_orm::DbErr> {
     use sea_orm::ConnectionTrait;
+
+    use crate::backend::SupportedBackend;
     let table = artifact_data_storage_table(table)?;
     // SQLite drops table-owned triggers with the table; PostgreSQL also needs
     // the function removed after its table and trigger have been dropped.
-    if manager.get_database_backend() == sea_orm::DbBackend::Postgres {
+    if SupportedBackend::new(manager.get_database_backend())? == SupportedBackend::Postgres {
         manager
             .get_connection()
             .execute_unprepared(&format!("DROP FUNCTION {table}_namespace_write_guard()"))

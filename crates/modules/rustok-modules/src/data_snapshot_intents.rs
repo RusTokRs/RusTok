@@ -6,15 +6,16 @@
 
 use chrono::Utc;
 use rustok_storage::StorageRuntime;
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ArtifactDataObject, ArtifactDataScope,
-    data::{configure_tenant_scope, placeholder, revision_value, uuid_from_row, uuid_value},
+    data::{configure_tenant_scope, revision_value, uuid_from_row},
     promotion::digest_json,
 };
 
@@ -99,8 +100,8 @@ impl ArtifactDataSnapshotIntentService {
             || request.operation_id.is_nil()
             || request.source_storage_key.is_empty()
             || candidate_target_key.is_empty()
-            || !crate::promotion::valid_digest(request.operation_request_digest)
-            || !crate::promotion::valid_digest(&request.object.digest_sha256)
+            || !crate::installation::valid_digest(request.operation_request_digest)
+            || !crate::installation::valid_digest(&request.object.digest_sha256)
             || request.object.name.is_empty()
         {
             return Err(SnapshotIntentError::InvalidCommand);
@@ -110,9 +111,10 @@ impl ArtifactDataSnapshotIntentService {
         configure_tenant_scope(&transaction, request.scope.tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let intent_id = Uuid::new_v4();
-        transaction.execute_raw(Statement::from_sql_and_values(backend, format!(
+        transaction.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
             "INSERT INTO module_artifact_data_snapshot_copy_intents
              (intent_id, tenant_id, data_owner_id, namespace_instance_id, snapshot_id, operation_id,
               operation_kind, operation_request_digest, request_digest, object_name,
@@ -120,15 +122,15 @@ impl ArtifactDataSnapshotIntentService {
              VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'intent', {})
              ON CONFLICT (tenant_id, data_owner_id, namespace_instance_id, operation_id, operation_kind, object_name)
              DO NOTHING",
-            placeholder(backend,1), placeholder(backend,2), placeholder(backend,3),
-            placeholder(backend,4), placeholder(backend,5), placeholder(backend,6),
-            placeholder(backend,7), placeholder(backend,8), placeholder(backend,9),
-            placeholder(backend,10), placeholder(backend,11), placeholder(backend,12),
-            placeholder(backend,13), placeholder(backend,14), placeholder(backend,15),
+            backend.placeholder(1), backend.placeholder(2), backend.placeholder(3),
+            backend.placeholder(4), backend.placeholder(5), backend.placeholder(6),
+            backend.placeholder(7), backend.placeholder(8), backend.placeholder(9),
+            backend.placeholder(10), backend.placeholder(11), backend.placeholder(12),
+            backend.placeholder(13), backend.placeholder(14), backend.placeholder(15),
         ), vec![
-            uuid_value(intent_id,backend), uuid_value(request.scope.tenant_id,backend),
-            uuid_value(request.scope.data_owner_id,backend), uuid_value(request.scope.namespace_instance_id,backend),
-            uuid_value(request.snapshot_id,backend), uuid_value(request.operation_id,backend),
+            backend.uuid_value(intent_id), backend.uuid_value(request.scope.tenant_id),
+            backend.uuid_value(request.scope.data_owner_id), backend.uuid_value(request.scope.namespace_instance_id),
+            backend.uuid_value(request.snapshot_id), backend.uuid_value(request.operation_id),
             request.operation_kind.as_str().into(), request.operation_request_digest.to_owned().into(),
             request_digest.clone().into(), request.object.name.clone().into(),
             request.source_storage_key.to_owned().into(), candidate_target_key.to_owned().into(),
@@ -138,19 +140,19 @@ impl ArtifactDataSnapshotIntentService {
         let row =
             transaction
                 .query_one_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
             "SELECT * FROM module_artifact_data_snapshot_copy_intents WHERE tenant_id = {}
              AND data_owner_id = {} AND namespace_instance_id = {} AND operation_id = {}
              AND operation_kind = {} AND object_name = {}",
-            placeholder(backend,1), placeholder(backend,2), placeholder(backend,3),
-            placeholder(backend,4), placeholder(backend,5), placeholder(backend,6),
+            backend.placeholder(1), backend.placeholder(2), backend.placeholder(3),
+            backend.placeholder(4), backend.placeholder(5), backend.placeholder(6),
         ),
                     vec![
-                        uuid_value(request.scope.tenant_id, backend),
-                        uuid_value(request.scope.data_owner_id, backend),
-                        uuid_value(request.scope.namespace_instance_id, backend),
-                        uuid_value(request.operation_id, backend),
+                        backend.uuid_value(request.scope.tenant_id),
+                        backend.uuid_value(request.scope.data_owner_id),
+                        backend.uuid_value(request.scope.namespace_instance_id),
+                        backend.uuid_value(request.operation_id),
                         request.operation_kind.as_str().into(),
                         request.object.name.clone().into(),
                     ],
@@ -179,13 +181,14 @@ impl ArtifactDataSnapshotIntentService {
         configure_tenant_scope(&transaction, intent.tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
-        let result = transaction.execute_raw(Statement::from_sql_and_values(backend, format!(
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        let result = transaction.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
             "UPDATE module_artifact_data_snapshot_copy_intents SET status = CASE
                WHEN status = 'intent' THEN 'staging' ELSE status END
              WHERE tenant_id = {} AND intent_id = {} AND status IN ('intent', 'staging', 'committed')",
-            placeholder(backend,1), placeholder(backend,2),
-        ), vec![uuid_value(intent.tenant_id,backend), uuid_value(intent.intent_id,backend)]))
+            backend.placeholder(1), backend.placeholder(2),
+        ), vec![backend.uuid_value(intent.tenant_id), backend.uuid_value(intent.intent_id)]))
             .await.map_err(storage_error)?;
         if result.rows_affected() != 1 {
             return Err(SnapshotIntentError::InvalidIntentState(intent.intent_id));
@@ -199,7 +202,6 @@ impl ArtifactDataSnapshotIntentService {
         intent: &SnapshotCopyIntent,
     ) -> Result<(), SnapshotIntentError> {
         use object_store::{ObjectStoreExt, path::Path};
-        use sha2::{Digest, Sha256};
         let bytes = self
             .storage
             .objects
@@ -211,7 +213,7 @@ impl ArtifactDataSnapshotIntentService {
             .map_err(storage_error)?;
         let size = u64::try_from(bytes.len()).map_err(storage_error)?;
         if size != intent.size_bytes
-            || format!("sha256:{}", hex::encode(Sha256::digest(&bytes))) != intent.digest_sha256
+            || crate::installation::sha256_digest(&bytes) != intent.digest_sha256
         {
             return Err(SnapshotIntentError::Storage(
                 "Published copy bytes do not match the intent".into(),
@@ -237,18 +239,19 @@ impl ArtifactDataSnapshotIntentService {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let rows = transaction
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT * FROM module_artifact_data_snapshot_copy_intents WHERE tenant_id = {}
              AND status IN ('intent','staging') AND created_at < {}
              ORDER BY created_at, intent_id LIMIT 100",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
                 ),
-                vec![uuid_value(tenant_id, backend), threshold.into()],
+                vec![backend.uuid_value(tenant_id), threshold.into()],
             ))
             .await
             .map_err(storage_error)?;
@@ -276,7 +279,7 @@ async fn intent_metadata_committed<C: ConnectionTrait>(
     db: &C,
     intent: &SnapshotCopyIntent,
 ) -> Result<bool, SnapshotIntentError> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(storage_error)?;
     let sql = match intent.operation_kind {
         SnapshotCopyKind::Snapshot =>
             "SELECT 1 FROM module_artifact_data_snapshot_objects object
@@ -298,24 +301,28 @@ async fn intent_metadata_committed<C: ConnectionTrait>(
     };
     let mut sql = sql.to_owned();
     for index in 1..=10 {
-        sql = sql.replace(&format!("{{{index}}}"), &placeholder(backend, index));
+        sql = sql.replace(&format!("{{{index}}}"), &backend.placeholder(index));
     }
     let mut values = vec![
-        uuid_value(intent.tenant_id, backend),
-        uuid_value(intent.snapshot_id, backend),
+        backend.uuid_value(intent.tenant_id),
+        backend.uuid_value(intent.snapshot_id),
         intent.object_name.clone().into(),
         intent.target_storage_key.clone().into(),
         intent.digest_sha256.clone().into(),
         revision_value(intent.size_bytes).map_err(storage_error)?,
-        uuid_value(intent.data_owner_id, backend),
-        uuid_value(intent.namespace_instance_id, backend),
+        backend.uuid_value(intent.data_owner_id),
+        backend.uuid_value(intent.namespace_instance_id),
         intent.operation_request_digest.clone().into(),
     ];
     if intent.operation_kind == SnapshotCopyKind::Restore {
-        values.push(uuid_value(intent.operation_id, backend));
+        values.push(backend.uuid_value(intent.operation_id));
     }
     Ok(db
-        .query_one_raw(Statement::from_sql_and_values(backend, sql, values))
+        .query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            sql,
+            values,
+        ))
         .await
         .map_err(storage_error)?
         .is_some())
@@ -323,7 +330,7 @@ async fn intent_metadata_committed<C: ConnectionTrait>(
 
 fn intent_from_row(
     row: &sea_orm::QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<SnapshotCopyIntent, SnapshotIntentError> {
     let size: i64 = row.try_get("", "size_bytes").map_err(storage_error)?;
     let kind: String = row.try_get("", "operation_kind").map_err(storage_error)?;
@@ -363,23 +370,23 @@ pub(crate) async fn mark_copy_intent_committed_on<C: ConnectionTrait>(
     if !intent_metadata_committed(db, intent).await? {
         return Err(SnapshotIntentError::InvalidIntentState(intent.intent_id));
     }
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(storage_error)?;
     let updated = db
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_artifact_data_snapshot_copy_intents SET status = 'committed',
          committed_at = COALESCE(committed_at, {}) WHERE tenant_id = {} AND intent_id = {}
          AND target_storage_key = {} AND status IN ('staging', 'committed')",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
             ),
             vec![
                 Utc::now().into(),
-                uuid_value(intent.tenant_id, backend),
-                uuid_value(intent.intent_id, backend),
+                backend.uuid_value(intent.tenant_id),
+                backend.uuid_value(intent.intent_id),
                 intent.target_storage_key.clone().into(),
             ],
         ))

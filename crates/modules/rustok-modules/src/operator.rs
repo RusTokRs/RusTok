@@ -1,24 +1,34 @@
-//! Operator experience and command surface for module release and rollback lifecycle.
+//! Operator read-model projections for the module release and rollback lifecycle.
 //!
-//! Exposes a unified owner projection and command surface across:
-//! - Lifecycle commands: source/prebuilt submission, admission, install/add/update/enable/disable/remove/uninstall/reinstall,
-//!   rollback/containment, distinct finalization, dynamic artifact data purge, dynamic artifact settings purge, queue drain.
-//! - Canonical status reads and WordPress-like flow mapping using canonical tokens:
-//!   `ready`, `running`, `observing`, `accepted`, `recovering`, `recovered`, `rejected`, `cancelled`, `recovery_required`.
-//! - Blast radius, mode/reason, irreversible checkpoint, eligibility denial, fence state, diagnostics, recovery action.
-//! - Exact current, candidate, and direct-predecessor coordinates by unit.
-//! - Strict rejection of one publisher/module semver or distribution lineage/version resolving to different bytes.
-//! - Authorized diagnostic support-bundle retrieval with zero raw pointers/keys/passwords/bypass controls.
+//! This module is a read-only projection layer over canonical control-plane
+//! state. It executes no lifecycle commands: submission, admission,
+//! installation, enable/disable, rollback, finalization, and purge effects are
+//! owned by the canonical services in `installation`, `lifecycle`,
+//! `transition_service`, and `data`. Every projected value is derived from
+//! those owners' tables (`module_artifact_installations`,
+//! `module_artifact_admissions`, `module_admitted_oci_releases`,
+//! `module_external_prebuilt_ingress`, `module_artifact_work_generations`,
+//! `module_retention_holds`, `module_transition_checkpoints`,
+//! `module_artifact_node_reconciliation_assignments`); where no canonical
+//! source exists, the projection reports `None` or an empty collection
+//! instead of an invented value.
+//!
+//! Status (2026-10-21): not wired into any transport. A caller that exposes
+//! these projections must authorize the request first; the support bundle in
+//! particular aggregates diagnostics and must not be treated as
+//! pre-authorized.
 
 use chrono::{DateTime, Utc};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, QueryResult, Statement};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
+use crate::installation::sha256_digest;
+use crate::transition_store::RetentionHoldStore;
 use crate::{
-    ConflictFenceSet, DynamicLifecycleService, ModuleInstallationScope, RetentionHoldRecord,
+    ConflictFenceSet, ModuleArtifactDescriptor, ModuleInstallationScope, RetentionHoldRecord,
     UpdateMode,
 };
 
@@ -86,11 +96,17 @@ impl ContainmentOutcome {
     }
 }
 
-/// Exact release coordinate identifying either a dynamic artifact or a static distribution composition.
+/// Exact release coordinate identifying either a dynamic artifact or a static
+/// distribution composition.
+///
+/// For dynamic artifacts, `release_digest` is the admitted release (OCI
+/// manifest) digest recorded on the installation, and `publisher_identity` is
+/// the externally attested publisher from `module_external_prebuilt_ingress`.
+/// It is `None` for internally built releases, which carry no ingress record.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ModuleReleaseCoordinate {
     Dynamic {
-        publisher_identity: String,
+        publisher_identity: Option<String>,
         module_slug: String,
         version: String,
         release_digest: String,
@@ -115,16 +131,33 @@ pub struct ModuleVersionDiff {
 }
 
 /// Operator blast radius evaluation for preflight and preview.
+///
+/// Every field is derived from canonical state:
+/// - `affected_tenants_count`: for a tenant-scoped transition, exactly the
+///   targeted tenant (1); for a platform-scoped preview, the number of
+///   distinct tenants that have their own installation of the module.
+/// - `affected_nodes`: distinct node identifiers holding a reconciliation
+///   assignment for the active installation (empty before any assignment).
+/// - `dependent_modules`: slugs of other installations in the same scope
+///   whose admitted descriptor declares a dependency on this module.
+/// - `has_schema_migration`: comparison of the active and candidate admitted
+///   descriptors' data-schema fingerprints; `true` by policy for static
+///   candidates, whose native migrations cannot be introspected here.
+/// - `data_owner_id` / `settings_instance_id`: the active installation's
+///   owners; `None` when nothing is installed yet.
+///
+/// Irreversibility is deliberately not projected here: it is an operation
+/// property derived from live evidence by
+/// `data_upgrade::evaluate_data_upgrade_decision`, not a descriptor fact.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleBlastRadius {
     pub affected_scope: ModuleInstallationScope,
     pub affected_tenants_count: u64,
-    pub affected_roles: Vec<String>,
+    pub affected_nodes: Vec<String>,
     pub dependent_modules: Vec<String>,
     pub has_schema_migration: bool,
-    pub is_irreversible: bool,
-    pub data_owner_id: Uuid,
-    pub settings_instance_id: Uuid,
+    pub data_owner_id: Option<Uuid>,
+    pub settings_instance_id: Option<Uuid>,
 }
 
 /// Transition eligibility evaluation.
@@ -146,7 +179,7 @@ pub struct TransitionPreviewProjection {
     pub mode: UpdateMode,
     pub reason: String,
     pub blast_radius: ModuleBlastRadius,
-    pub irreversible_checkpoint: Option<String>,
+    pub point_of_no_return: Option<String>,
     pub eligibility: TransitionEligibility,
     pub fence_state: ConflictFenceSet,
     pub preview_digest: String,
@@ -157,6 +190,7 @@ pub struct TransitionPreviewProjection {
 pub struct ModuleStatusProjection {
     pub module_slug: String,
     pub scope: ModuleInstallationScope,
+    pub installation_id: Option<Uuid>,
     pub presentation_state: CanonicalPresentationState,
     pub display_label: String,
     pub containment_outcome: Option<ContainmentOutcome>,
@@ -170,7 +204,9 @@ pub struct ModuleStatusProjection {
     pub recovery_action: Option<String>,
 }
 
-/// Authorized support bundle for incident diagnostics and support escalations.
+/// Support bundle aggregating redacted diagnostic evidence for incident
+/// handling. Assembling a bundle performs no authorization; the exposing
+/// caller must authorize the request before returning it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleSupportBundle {
     pub bundle_id: Uuid,
@@ -205,37 +241,130 @@ pub enum ModuleOperatorError {
     TransitionIneligible(Vec<String>),
     #[error("Database error: {0}")]
     Database(String),
-    #[error("Dynamic lifecycle error: {0}")]
-    Lifecycle(String),
 }
 
-fn sha256_digest(bytes: &[u8]) -> String {
-    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
+fn database_error(error: impl std::fmt::Display) -> ModuleOperatorError {
+    ModuleOperatorError::Database(error.to_string())
 }
 
-/// Unified operator service for coordinating module release projections and commands.
+fn scope_parts(scope: &ModuleInstallationScope) -> (&'static str, Option<Uuid>) {
+    match scope {
+        ModuleInstallationScope::Platform => ("platform", None),
+        ModuleInstallationScope::Tenant { tenant_id } => ("tenant", Some(*tenant_id)),
+    }
+}
+
+/// SQL fragment matching the nullable tenant column against an optional
+/// tenant value, for `tenant_id` columns expressed without a table alias.
+fn tenant_clause(backend: SupportedBackend, column: &str, index: usize) -> String {
+    match backend {
+        SupportedBackend::Postgres => format!("{column} IS NOT DISTINCT FROM ${index}"),
+        SupportedBackend::Sqlite => format!("{column} IS ?{index}"),
+    }
+}
+
+/// Reads a `NOT NULL` UUID column. A malformed stored value is a typed
+/// database error; projections never substitute a fabricated identifier.
+fn uuid_column(
+    row: &QueryResult,
+    backend: SupportedBackend,
+    column: &str,
+) -> Result<Uuid, ModuleOperatorError> {
+    match backend {
+        SupportedBackend::Postgres => row.try_get::<Uuid>("", column).map_err(database_error),
+        SupportedBackend::Sqlite => {
+            let raw: String = row.try_get("", column).map_err(database_error)?;
+            Uuid::parse_str(&raw).map_err(|e| {
+                ModuleOperatorError::Database(format!(
+                    "stored value in column `{column}` is not a valid UUID: {e}"
+                ))
+            })
+        }
+    }
+}
+
+fn parse_descriptor(
+    raw: &str,
+    context: &str,
+) -> Result<ModuleArtifactDescriptor, ModuleOperatorError> {
+    serde_json::from_str(raw).map_err(|e| {
+        ModuleOperatorError::Database(format!("stored descriptor for {context} is invalid: {e}"))
+    })
+}
+
+/// Data-schema fingerprint of an admitted descriptor: the persistence
+/// contract schema digest and the declared data schema digest. A change in
+/// either means live data may require conversion.
+fn data_schema_fingerprint(descriptor: &ModuleArtifactDescriptor) -> (Option<&str>, Option<&str>) {
+    (
+        descriptor
+            .persistence_contract
+            .as_ref()
+            .map(|contract| contract.schema_digest.as_str()),
+        descriptor.data_schema_digest.as_deref(),
+    )
+}
+
+fn coordinate_digest(coordinate: &Option<ModuleReleaseCoordinate>) -> &str {
+    match coordinate {
+        Some(ModuleReleaseCoordinate::Dynamic { release_digest, .. }) => release_digest.as_str(),
+        Some(ModuleReleaseCoordinate::Static {
+            bundle_root_digest, ..
+        }) => bundle_root_digest.as_str(),
+        None => "none",
+    }
+}
+
+/// One installation row joined with its admission status, newest first.
+struct InstallationRow {
+    installation_id: Uuid,
+    version: String,
+    manifest_digest: String,
+    payload_digest: String,
+    data_owner_id: Uuid,
+    settings_instance_id: Uuid,
+    descriptor: ModuleArtifactDescriptor,
+    admission_status: String,
+}
+
+impl InstallationRow {
+    fn from_row(row: &QueryResult, backend: SupportedBackend) -> Result<Self, ModuleOperatorError> {
+        let descriptor_json: String = row.try_get("", "descriptor_json").map_err(database_error)?;
+        let manifest_digest: String = row.try_get("", "manifest_digest").map_err(database_error)?;
+        Ok(Self {
+            installation_id: uuid_column(row, backend, "installation_id")?,
+            version: row.try_get("", "version").map_err(database_error)?,
+            descriptor: parse_descriptor(
+                &descriptor_json,
+                &format!("installation with manifest digest {manifest_digest}"),
+            )?,
+            manifest_digest,
+            payload_digest: row.try_get("", "payload_digest").map_err(database_error)?,
+            data_owner_id: uuid_column(row, backend, "data_owner_id")?,
+            settings_instance_id: uuid_column(row, backend, "settings_instance_id")?,
+            admission_status: row
+                .try_get("", "admission_status")
+                .map_err(database_error)?,
+        })
+    }
+}
+
+/// Read-only operator projection service over canonical module state.
 #[derive(Clone)]
 pub struct ModuleOperatorService {
     db: DatabaseConnection,
-    dynamic_lifecycle: DynamicLifecycleService,
 }
 
 impl ModuleOperatorService {
     pub fn new(db: DatabaseConnection) -> Self {
-        let dynamic_lifecycle = DynamicLifecycleService::new(db.clone());
-        Self {
-            db,
-            dynamic_lifecycle,
-        }
+        Self { db }
     }
 
-    /// Returns a reference to the dynamic lifecycle service.
-    pub fn dynamic_lifecycle(&self) -> &DynamicLifecycleService {
-        &self.dynamic_lifecycle
-    }
-
-    /// Validates version coordinate immutability:
-    /// Rejects if the same publisher/module semver resolves to different bytes.
+    /// Validates version coordinate immutability against admitted releases:
+    /// rejects when the same module slug and version were already admitted
+    /// with different bytes. Namespace ownership admits a single publisher
+    /// per slug, so identity is checked on `(slug, version)`; the reported
+    /// publisher is the attested ingress publisher when one exists.
     pub async fn validate_version_identity_immutability(
         &self,
         publisher: &str,
@@ -243,49 +372,44 @@ impl ModuleOperatorService {
         version: &str,
         candidate_release_digest: &str,
     ) -> Result<(), ModuleOperatorError> {
-        let backend = self.db.get_database_backend();
-        let placeholder_slug = match backend {
-            DbBackend::Postgres => "$1",
-            _ => "?1",
-        };
-        let placeholder_version = match backend {
-            DbBackend::Postgres => "$2",
-            _ => "?2",
-        };
-
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
         let row = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT r.release_digest, e.publisher_identity \
                      FROM module_admitted_oci_releases r \
                      LEFT JOIN module_external_prebuilt_ingress e ON e.release_digest = r.release_digest \
-                     WHERE r.slug = {placeholder_slug} AND r.version = {placeholder_version} \
-                     LIMIT 1"
+                     WHERE r.slug = {} AND r.version = {} AND r.release_digest <> {} \
+                     LIMIT 1",
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
-                vec![slug.to_string().into(), version.to_string().into()],
+                vec![
+                    slug.to_string().into(),
+                    version.to_string().into(),
+                    candidate_release_digest.to_string().into(),
+                ],
             ))
             .await
-            .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
+            .map_err(database_error)?;
 
         if let Some(row) = row {
-            let existing_digest: String = row
-                .try_get("", "release_digest")
-                .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
-            let existing_publisher: Option<String> =
-                row.try_get("", "publisher_identity").unwrap_or(None);
-
-            if existing_digest != candidate_release_digest {
-                let pub_id = existing_publisher.unwrap_or_else(|| publisher.to_string());
-                return Err(ModuleOperatorError::VersionConflict {
-                    publisher: pub_id,
-                    slug: slug.to_string(),
-                    version: version.to_string(),
-                    existing_digest,
-                    new_digest: candidate_release_digest.to_string(),
-                });
-            }
+            let existing_digest: String =
+                row.try_get("", "release_digest").map_err(database_error)?;
+            let existing_publisher: Option<String> = row
+                .try_get("", "publisher_identity")
+                .map_err(database_error)?;
+            return Err(ModuleOperatorError::VersionConflict {
+                publisher: existing_publisher.unwrap_or_else(|| publisher.to_string()),
+                slug: slug.to_string(),
+                version: version.to_string(),
+                existing_digest,
+                new_digest: candidate_release_digest.to_string(),
+            });
         }
 
         Ok(())
@@ -301,148 +425,113 @@ impl ModuleOperatorService {
         mode: UpdateMode,
         reason: &str,
     ) -> Result<TransitionPreviewProjection, ModuleOperatorError> {
-        let backend = self.db.get_database_backend();
-        let (scope_kind, tenant_id) = match scope {
-            ModuleInstallationScope::Platform => ("platform", None),
-            ModuleInstallationScope::Tenant { tenant_id } => ("tenant", Some(*tenant_id)),
+        let chain = self.load_installation_chain(slug, scope).await?;
+        let current_index = chain
+            .iter()
+            .position(|row| row.admission_status == "active");
+        let current_row = current_index.map(|index| &chain[index]);
+        let predecessor_row = current_index.and_then(|index| chain.get(index + 1));
+
+        let current_identity = match current_row {
+            Some(row) => Some(self.dynamic_coordinate(slug, row).await?),
+            None => None,
+        };
+        let predecessor_identity = match predecessor_row {
+            Some(row) => Some(self.dynamic_coordinate(slug, row).await?),
+            None => None,
         };
 
-        // Query active installation if present
-        let scope_clause = match backend {
-            DbBackend::Postgres => "scope_kind = $2 AND tenant_id IS NOT DISTINCT FROM $3",
-            _ => "scope_kind = ?2 AND tenant_id IS ?3",
-        };
-
-        let placeholder_slug = match backend {
-            DbBackend::Postgres => "$1",
-            _ => "?1",
-        };
-
-        let inst_row = self
-            .db
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
-                format!(
-                    "SELECT i.installation_id, i.manifest_digest, i.version, i.payload_digest, \
-                            i.data_owner_id, i.settings_instance_id \
-                     FROM module_artifact_installations i \
-                     JOIN module_artifact_admissions a ON a.installation_id = i.installation_id \
-                     WHERE i.slug = {placeholder_slug} AND {scope_clause} AND a.status = 'active' \
-                     LIMIT 1"
-                ),
-                vec![
-                    slug.to_string().into(),
-                    scope_kind.into(),
-                    match backend {
-                        DbBackend::Postgres => sea_orm::Value::Uuid(tenant_id),
-                        _ => tenant_id.map(|u| u.to_string()).into(),
-                    },
-                ],
-            ))
-            .await
-            .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
-
-        let (current_identity, predecessor_identity, data_owner_id, settings_instance_id) =
-            match inst_row {
-                Some(row) => {
-                    let manifest_digest: String = row
-                        .try_get("", "manifest_digest")
-                        .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
-                    let version: String = row
-                        .try_get("", "version")
-                        .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
-                    let payload_digest: String = row
-                        .try_get("", "payload_digest")
-                        .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
-                    let owner_id = match backend {
-                        DbBackend::Postgres => row
-                            .try_get::<Uuid>("", "data_owner_id")
-                            .map_err(|e| ModuleOperatorError::Database(e.to_string()))?,
-                        _ => {
-                            let s: String = row
-                                .try_get("", "data_owner_id")
-                                .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
-                            Uuid::parse_str(&s).unwrap_or_else(|_| Uuid::new_v4())
+        // Schema-migration derivation. Static candidates are always treated
+        // as schema migrations: native distribution migrations cannot be
+        // introspected from admitted descriptors, so manual approval is the
+        // policy. Dynamic candidates compare admitted-descriptor data-schema
+        // fingerprints; when the active installation owns a data schema and
+        // the candidate was never admitted, compatibility is unverifiable
+        // and automatic mode fails closed.
+        let mut has_schema_migration = false;
+        let mut schema_unverifiable_digest: Option<&str> = None;
+        match &candidate_coordinate {
+            Some(ModuleReleaseCoordinate::Static { .. }) => {
+                has_schema_migration = true;
+            }
+            Some(ModuleReleaseCoordinate::Dynamic { release_digest, .. }) => {
+                if let Some(current) = current_row {
+                    let current_fingerprint = data_schema_fingerprint(&current.descriptor);
+                    match self.candidate_descriptor(release_digest).await? {
+                        Some(candidate) => {
+                            has_schema_migration =
+                                data_schema_fingerprint(&candidate) != current_fingerprint;
                         }
-                    };
-                    let settings_id = match backend {
-                        DbBackend::Postgres => row
-                            .try_get::<Uuid>("", "settings_instance_id")
-                            .map_err(|e| ModuleOperatorError::Database(e.to_string()))?,
-                        _ => {
-                            let s: String = row
-                                .try_get("", "settings_instance_id")
-                                .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
-                            Uuid::parse_str(&s).unwrap_or_else(|_| Uuid::new_v4())
+                        None => {
+                            if current_fingerprint != (None, None) {
+                                schema_unverifiable_digest = Some(release_digest.as_str());
+                            }
                         }
-                    };
-
-                    let coord = ModuleReleaseCoordinate::Dynamic {
-                        publisher_identity: "platform".to_string(),
-                        module_slug: slug.to_string(),
-                        version,
-                        release_digest: manifest_digest.clone(),
-                        payload_digest,
-                    };
-                    (Some(coord.clone()), Some(coord), owner_id, settings_id)
+                    }
                 }
-                None => (None, None, Uuid::new_v4(), Uuid::new_v4()),
-            };
+            }
+            None => {}
+        }
 
-        let (has_schema_migration, is_irreversible) = match &candidate_coordinate {
-            Some(ModuleReleaseCoordinate::Static { .. }) => (true, false),
-            _ => (false, false),
-        };
-
+        let dependent_modules = self.dependent_modules(slug, scope).await?;
+        let affected_nodes = self
+            .affected_nodes(current_row.map(|row| row.installation_id))
+            .await?;
         let blast_radius = ModuleBlastRadius {
             affected_scope: scope.clone(),
-            affected_tenants_count: match scope {
-                ModuleInstallationScope::Tenant { .. } => 1,
-                ModuleInstallationScope::Platform => 1,
-            },
-            affected_roles: vec!["api".to_string(), "monolith".to_string()],
-            dependent_modules: Vec::new(),
+            affected_tenants_count: self.affected_tenants_count(slug, scope).await?,
+            affected_nodes,
+            dependent_modules,
             has_schema_migration,
-            is_irreversible,
-            data_owner_id,
-            settings_instance_id,
+            data_owner_id: current_row.map(|row| row.data_owner_id),
+            settings_instance_id: current_row.map(|row| row.settings_instance_id),
         };
 
         let mut denial_reasons = Vec::new();
-        // Exact transition rule:
-        // Automatic mode is evaluated per exact transition and denied for schema migrations,
-        // irreversible checkpoints, or cross-module impacts.
+        // Exact transition rule: automatic mode is denied per exact transition
+        // for data-schema migrations, cross-module impact, or when schema
+        // compatibility cannot be verified from an admitted descriptor.
         if mode == UpdateMode::Automatic
-            && (blast_radius.has_schema_migration
-                || blast_radius.is_irreversible
-                || !blast_radius.dependent_modules.is_empty())
+            && (blast_radius.has_schema_migration || !blast_radius.dependent_modules.is_empty())
         {
             denial_reasons.push(
-                "Automatic mode denied: transition requires manual approval due to schema migration, irreversible checkpoint, or cross-module impact"
+                "Automatic mode denied: transition requires manual approval due to data-schema migration or cross-module impact"
                     .to_string(),
             );
         }
-
+        if mode == UpdateMode::Automatic {
+            if let Some(release_digest) = schema_unverifiable_digest {
+                denial_reasons.push(format!(
+                    "Automatic mode denied: candidate release {release_digest} has no admitted descriptor; data-schema compatibility with the active installation cannot be verified"
+                ));
+            }
+        }
         let eligibility = TransitionEligibility {
             eligible: denial_reasons.is_empty(),
             denial_reasons,
         };
 
-        let irreversible_checkpoint = if blast_radius.is_irreversible {
-            Some("PointOfNoReturn: irreversible schema or data conversion committed; automatic rollback prohibited".to_string())
-        } else if blast_radius.has_schema_migration {
-            Some("PointOfNoReturn: additive native schema migration will be committed".to_string())
+        let point_of_no_return = if blast_radius.has_schema_migration {
+            Some(match &candidate_coordinate {
+                Some(ModuleReleaseCoordinate::Static { .. }) => "PointOfNoReturn: static distribution updates may commit native schema migrations that cannot be introspected from admitted descriptors; manual approval is required".to_string(),
+                _ => "PointOfNoReturn: candidate changes the admitted data-schema fingerprint of the active installation; live data conversion may be required".to_string(),
+            })
         } else {
             None
         };
 
+        let (_, tenant_id) = scope_parts(scope);
         let fence_state = ConflictFenceSet::derive_module_update_fences(
             slug,
             tenant_id,
-            &blast_radius.affected_roles,
+            &blast_radius.affected_nodes,
         );
 
-        let preview_seed = format!("{operation_id}:{slug}:{mode:?}:{data_owner_id}");
+        let preview_seed = format!(
+            "{operation_id}:{slug}:{mode:?}:{}:{}",
+            coordinate_digest(&current_identity),
+            coordinate_digest(&candidate_coordinate),
+        );
         let preview_digest = sha256_digest(preview_seed.as_bytes());
 
         Ok(TransitionPreviewProjection {
@@ -455,7 +544,7 @@ impl ModuleOperatorService {
             mode,
             reason: reason.to_string(),
             blast_radius,
-            irreversible_checkpoint,
+            point_of_no_return,
             eligibility,
             fence_state,
             preview_digest,
@@ -468,159 +557,12 @@ impl ModuleOperatorService {
         slug: &str,
         scope: &ModuleInstallationScope,
     ) -> Result<ModuleStatusProjection, ModuleOperatorError> {
-        let backend = self.db.get_database_backend();
-        let (scope_kind, tenant_id) = match scope {
-            ModuleInstallationScope::Platform => ("platform", None),
-            ModuleInstallationScope::Tenant { tenant_id } => ("tenant", Some(*tenant_id)),
-        };
-
-        let scope_clause = match backend {
-            DbBackend::Postgres => "i.scope_kind = $2 AND i.tenant_id IS NOT DISTINCT FROM $3",
-            _ => "i.scope_kind = ?2 AND i.tenant_id IS ?3",
-        };
-        let placeholder_slug = match backend {
-            DbBackend::Postgres => "$1",
-            _ => "?1",
-        };
-
-        let row = self
-            .db
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
-                format!(
-                    "SELECT i.installation_id, i.manifest_digest, i.version, i.payload_digest, \
-                            a.status AS admission_status, w.work_generation, w.retired \
-                     FROM module_artifact_installations i \
-                     JOIN module_artifact_admissions a ON a.installation_id = i.installation_id \
-                     JOIN module_artifact_work_generations w ON w.installation_id = i.installation_id \
-                     WHERE i.slug = {placeholder_slug} AND {scope_clause} \
-                     ORDER BY i.installed_at DESC LIMIT 1"
-                ),
-                vec![
-                    slug.to_string().into(),
-                    scope_kind.into(),
-                    match backend {
-                        DbBackend::Postgres => sea_orm::Value::Uuid(tenant_id),
-                        _ => tenant_id.map(|u| u.to_string()).into(),
-                    },
-                ],
-            ))
-            .await
-            .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
-
-        match row {
-            Some(row) => {
-                let adm_status: String = row
-                    .try_get("", "admission_status")
-                    .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
-                let version: String = row
-                    .try_get("", "version")
-                    .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
-                let manifest_digest: String = row
-                    .try_get("", "manifest_digest")
-                    .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
-                let payload_digest: String = row
-                    .try_get("", "payload_digest")
-                    .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
-
-                let work_generation = match backend {
-                    DbBackend::Postgres => {
-                        let g: i64 = row
-                            .try_get("", "work_generation")
-                            .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
-                        g as u64
-                    }
-                    _ => {
-                        let g: i32 = row
-                            .try_get("", "work_generation")
-                            .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
-                        g as u64
-                    }
-                };
-
-                let retired = match backend {
-                    DbBackend::Postgres => row
-                        .try_get::<bool>("", "retired")
-                        .map_err(|e| ModuleOperatorError::Database(e.to_string()))?,
-                    _ => {
-                        row.try_get::<i32>("", "retired")
-                            .map_err(|e| ModuleOperatorError::Database(e.to_string()))?
-                            != 0
-                    }
-                };
-
-                let (presentation_state, containment_outcome, diagnostics, recovery_action) =
-                    if retired {
-                        (
-                            CanonicalPresentationState::Cancelled,
-                            Some(ContainmentOutcome::Stopped),
-                            vec!["Installation is retired".to_string()],
-                            Some("Reinstall or purge data".to_string()),
-                        )
-                    } else {
-                        match adm_status.as_str() {
-                            "active" => {
-                                (CanonicalPresentationState::Accepted, None, Vec::new(), None)
-                            }
-                            "inactive" => (
-                                CanonicalPresentationState::Ready,
-                                None,
-                                vec!["Inactive installation prepared".to_string()],
-                                Some("Enable when ready".to_string()),
-                            ),
-                            "failed" => (
-                                CanonicalPresentationState::RecoveryRequired,
-                                Some(ContainmentOutcome::Fenced),
-                                vec!["Installation failed preflight or activation".to_string()],
-                                Some("Investigate diagnostics and trigger recovery".to_string()),
-                            ),
-                            _ => (
-                                CanonicalPresentationState::Observing,
-                                None,
-                                Vec::new(),
-                                None,
-                            ),
-                        }
-                    };
-
-                let coord = ModuleReleaseCoordinate::Dynamic {
-                    publisher_identity: "platform".to_string(),
-                    module_slug: slug.to_string(),
-                    version,
-                    release_digest: manifest_digest,
-                    payload_digest,
-                };
-
-                Ok(ModuleStatusProjection {
-                    module_slug: slug.to_string(),
-                    scope: scope.clone(),
-                    presentation_state,
-                    display_label: presentation_state.display_label().to_string(),
-                    containment_outcome,
-                    current_identity: if presentation_state == CanonicalPresentationState::Accepted
-                    {
-                        Some(coord.clone())
-                    } else {
-                        None
-                    },
-                    candidate_identity: if presentation_state
-                        != CanonicalPresentationState::Accepted
-                    {
-                        Some(coord.clone())
-                    } else {
-                        None
-                    },
-                    predecessor_identity: None,
-                    work_generation,
-                    retired,
-                    active_retention_holds_count: 0,
-                    diagnostics,
-                    recovery_action,
-                })
-            }
-            None => Ok(ModuleStatusProjection {
+        let chain = self.load_installation_chain(slug, scope).await?;
+        let Some(latest) = chain.first() else {
+            return Ok(ModuleStatusProjection {
                 module_slug: slug.to_string(),
                 scope: scope.clone(),
+                installation_id: None,
                 presentation_state: CanonicalPresentationState::Ready,
                 display_label: CanonicalPresentationState::Ready
                     .display_label()
@@ -634,31 +576,435 @@ impl ModuleOperatorService {
                 active_retention_holds_count: 0,
                 diagnostics: vec!["No installation found".to_string()],
                 recovery_action: Some("Install module".to_string()),
-            }),
-        }
+            });
+        };
+
+        let (work_generation, retired) = self.work_generation(latest.installation_id).await?;
+
+        let (presentation_state, containment_outcome, diagnostics, recovery_action) = if retired {
+            (
+                CanonicalPresentationState::Cancelled,
+                Some(ContainmentOutcome::Stopped),
+                vec!["Installation is retired".to_string()],
+                Some("Reinstall or purge data".to_string()),
+            )
+        } else {
+            match latest.admission_status.as_str() {
+                "active" => (CanonicalPresentationState::Accepted, None, Vec::new(), None),
+                "inactive" => (
+                    CanonicalPresentationState::Ready,
+                    None,
+                    vec!["Inactive installation prepared".to_string()],
+                    Some("Enable when ready".to_string()),
+                ),
+                "failed" => (
+                    CanonicalPresentationState::RecoveryRequired,
+                    Some(ContainmentOutcome::Fenced),
+                    vec!["Installation failed preflight or activation".to_string()],
+                    Some("Investigate diagnostics and trigger recovery".to_string()),
+                ),
+                _ => (
+                    CanonicalPresentationState::Observing,
+                    None,
+                    Vec::new(),
+                    None,
+                ),
+            }
+        };
+
+        let coordinate = self.dynamic_coordinate(slug, latest).await?;
+        let predecessor_identity = match chain.get(1) {
+            Some(row) => Some(self.dynamic_coordinate(slug, row).await?),
+            None => None,
+        };
+        let active_retention_holds_count = self.active_holds_for(latest).await?.len();
+
+        Ok(ModuleStatusProjection {
+            module_slug: slug.to_string(),
+            scope: scope.clone(),
+            installation_id: Some(latest.installation_id),
+            presentation_state,
+            display_label: presentation_state.display_label().to_string(),
+            containment_outcome,
+            current_identity: if presentation_state == CanonicalPresentationState::Accepted {
+                Some(coordinate.clone())
+            } else {
+                None
+            },
+            candidate_identity: if presentation_state != CanonicalPresentationState::Accepted {
+                Some(coordinate)
+            } else {
+                None
+            },
+            predecessor_identity,
+            work_generation,
+            retired,
+            active_retention_holds_count,
+            diagnostics,
+            recovery_action,
+        })
     }
 
-    /// Generates an authorized support bundle containing redacted diagnostic evidence.
+    /// Assembles a support bundle with redacted diagnostic evidence. The
+    /// caller is responsible for authorizing access before exposing it.
     pub async fn generate_support_bundle(
         &self,
         slug: &str,
         scope: &ModuleInstallationScope,
     ) -> Result<ModuleSupportBundle, ModuleOperatorError> {
         let status = self.get_status(slug, scope).await?;
+        let chain = self.load_installation_chain(slug, scope).await?;
+        let active_retention_holds = match chain.first() {
+            Some(row) => self.active_holds_for(row).await?,
+            None => Vec::new(),
+        };
+        let operation_id = self.latest_operation_id(slug, scope).await?;
 
         Ok(ModuleSupportBundle {
             bundle_id: Uuid::new_v4(),
             module_slug: slug.to_string(),
-            installation_id: None,
-            operation_id: None,
+            installation_id: status.installation_id,
+            operation_id,
             generated_at: Utc::now(),
             presentation_state: status.presentation_state,
             containment_outcome: status.containment_outcome,
             diagnostics: status.diagnostics,
             recovery_action: status.recovery_action,
-            active_retention_holds: Vec::new(),
+            active_retention_holds,
             work_generation: status.work_generation,
             retired: status.retired,
         })
+    }
+
+    /// Loads the installation chain for a slug in one scope, newest first.
+    async fn load_installation_chain(
+        &self,
+        slug: &str,
+        scope: &ModuleInstallationScope,
+    ) -> Result<Vec<InstallationRow>, ModuleOperatorError> {
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
+        let (scope_kind, tenant_id) = scope_parts(scope);
+        let rows = self
+            .db
+            .query_all_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "SELECT i.installation_id, i.version, i.manifest_digest, i.payload_digest, \
+                            i.data_owner_id, i.settings_instance_id, \
+                            CAST(i.descriptor AS TEXT) AS descriptor_json, \
+                            a.status AS admission_status \
+                     FROM module_artifact_installations i \
+                     JOIN module_artifact_admissions a ON a.installation_id = i.installation_id \
+                     WHERE i.slug = {} AND i.scope_kind = {} AND {} \
+                     ORDER BY i.installed_at DESC",
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    tenant_clause(backend, "i.tenant_id", 3),
+                ),
+                vec![
+                    slug.to_string().into(),
+                    scope_kind.into(),
+                    backend.optional_uuid_value(tenant_id),
+                ],
+            ))
+            .await
+            .map_err(database_error)?;
+
+        rows.iter()
+            .map(|row| InstallationRow::from_row(row, backend))
+            .collect()
+    }
+
+    /// Resolves the externally attested publisher of an admitted release, if
+    /// the release arrived through external prebuilt ingress.
+    async fn publisher_for_release(
+        &self,
+        release_digest: &str,
+    ) -> Result<Option<String>, ModuleOperatorError> {
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
+        let row = self
+            .db
+            .query_one_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "SELECT publisher_identity FROM module_external_prebuilt_ingress \
+                     WHERE release_digest = {}",
+                    backend.placeholder(1),
+                ),
+                vec![release_digest.to_string().into()],
+            ))
+            .await
+            .map_err(database_error)?;
+
+        match row {
+            Some(row) => row
+                .try_get("", "publisher_identity")
+                .map_err(database_error),
+            None => Ok(None),
+        }
+    }
+
+    async fn dynamic_coordinate(
+        &self,
+        slug: &str,
+        row: &InstallationRow,
+    ) -> Result<ModuleReleaseCoordinate, ModuleOperatorError> {
+        Ok(ModuleReleaseCoordinate::Dynamic {
+            publisher_identity: self.publisher_for_release(&row.manifest_digest).await?,
+            module_slug: slug.to_string(),
+            version: row.version.clone(),
+            release_digest: row.manifest_digest.clone(),
+            payload_digest: row.payload_digest.clone(),
+        })
+    }
+
+    /// Loads the admitted descriptor of a candidate release by digest.
+    async fn candidate_descriptor(
+        &self,
+        release_digest: &str,
+    ) -> Result<Option<ModuleArtifactDescriptor>, ModuleOperatorError> {
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
+        let row = self
+            .db
+            .query_one_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "SELECT CAST(descriptor_json AS TEXT) AS descriptor_json \
+                     FROM module_admitted_oci_releases WHERE release_digest = {}",
+                    backend.placeholder(1),
+                ),
+                vec![release_digest.to_string().into()],
+            ))
+            .await
+            .map_err(database_error)?;
+
+        match row {
+            Some(row) => {
+                let raw: String = row.try_get("", "descriptor_json").map_err(database_error)?;
+                parse_descriptor(&raw, &format!("admitted release {release_digest}")).map(Some)
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Slugs of other installations in the scope whose admitted descriptor
+    /// declares a dependency on `slug`.
+    async fn dependent_modules(
+        &self,
+        slug: &str,
+        scope: &ModuleInstallationScope,
+    ) -> Result<Vec<String>, ModuleOperatorError> {
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
+        let (scope_kind, tenant_id) = scope_parts(scope);
+        let rows = self
+            .db
+            .query_all_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "SELECT slug, CAST(descriptor AS TEXT) AS descriptor_json \
+                     FROM module_artifact_installations \
+                     WHERE scope_kind = {} AND {} AND slug <> {}",
+                    backend.placeholder(1),
+                    tenant_clause(backend, "tenant_id", 2),
+                    backend.placeholder(3),
+                ),
+                vec![
+                    scope_kind.into(),
+                    backend.optional_uuid_value(tenant_id),
+                    slug.to_string().into(),
+                ],
+            ))
+            .await
+            .map_err(database_error)?;
+
+        let mut dependents = Vec::new();
+        for row in &rows {
+            let dependent_slug: String = row.try_get("", "slug").map_err(database_error)?;
+            let raw: String = row.try_get("", "descriptor_json").map_err(database_error)?;
+            let descriptor = parse_descriptor(&raw, &format!("installation of {dependent_slug}"))?;
+            if descriptor
+                .dependencies
+                .iter()
+                .any(|dependency| dependency.slug == slug)
+            {
+                dependents.push(dependent_slug);
+            }
+        }
+        dependents.sort();
+        dependents.dedup();
+        Ok(dependents)
+    }
+
+    /// Distinct nodes holding a reconciliation assignment for an installation.
+    async fn affected_nodes(
+        &self,
+        installation_id: Option<Uuid>,
+    ) -> Result<Vec<String>, ModuleOperatorError> {
+        let Some(installation_id) = installation_id else {
+            return Ok(Vec::new());
+        };
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
+        let rows = self
+            .db
+            .query_all_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "SELECT DISTINCT node_id \
+                     FROM module_artifact_node_reconciliation_assignments \
+                     WHERE installation_id = {}",
+                    backend.placeholder(1),
+                ),
+                vec![backend.uuid_value(installation_id)],
+            ))
+            .await
+            .map_err(database_error)?;
+
+        let mut nodes = Vec::with_capacity(rows.len());
+        for row in &rows {
+            nodes.push(uuid_column(row, backend, "node_id")?.to_string());
+        }
+        nodes.sort();
+        Ok(nodes)
+    }
+
+    async fn affected_tenants_count(
+        &self,
+        slug: &str,
+        scope: &ModuleInstallationScope,
+    ) -> Result<u64, ModuleOperatorError> {
+        match scope {
+            // A tenant-scoped transition targets exactly one tenant.
+            ModuleInstallationScope::Tenant { .. } => Ok(1),
+            ModuleInstallationScope::Platform => {
+                let backend = SupportedBackend::new(self.db.get_database_backend())
+                    .map_err(database_error)?;
+                let row = self
+                    .db
+                    .query_one_raw(Statement::from_sql_and_values(
+                        backend.db_backend(),
+                        format!(
+                            "SELECT COUNT(DISTINCT tenant_id) AS affected \
+                             FROM module_artifact_installations \
+                             WHERE slug = {} AND scope_kind = 'tenant'",
+                            backend.placeholder(1),
+                        ),
+                        vec![slug.to_string().into()],
+                    ))
+                    .await
+                    .map_err(database_error)?
+                    .ok_or_else(|| {
+                        ModuleOperatorError::Database(
+                            "tenant count query returned no row".to_string(),
+                        )
+                    })?;
+                let count: i64 = row.try_get("", "affected").map_err(database_error)?;
+                u64::try_from(count).map_err(database_error)
+            }
+        }
+    }
+
+    /// Work generation and retirement flag of an installation. A missing
+    /// generation row means the installation predates generation tracking at
+    /// admission time; canonically it is generation 1 and not retired.
+    async fn work_generation(
+        &self,
+        installation_id: Uuid,
+    ) -> Result<(u64, bool), ModuleOperatorError> {
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
+        let row = self
+            .db
+            .query_one_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "SELECT work_generation, retired FROM module_artifact_work_generations \
+                     WHERE installation_id = {}",
+                    backend.placeholder(1),
+                ),
+                vec![backend.uuid_value(installation_id)],
+            ))
+            .await
+            .map_err(database_error)?;
+
+        let Some(row) = row else {
+            return Ok((1, false));
+        };
+        let generation: i64 = match backend {
+            SupportedBackend::Postgres => {
+                row.try_get("", "work_generation").map_err(database_error)?
+            }
+            SupportedBackend::Sqlite => {
+                let value: i32 = row.try_get("", "work_generation").map_err(database_error)?;
+                i64::from(value)
+            }
+        };
+        let retired = match backend {
+            SupportedBackend::Postgres => {
+                row.try_get::<bool>("", "retired").map_err(database_error)?
+            }
+            SupportedBackend::Sqlite => {
+                row.try_get::<i32>("", "retired").map_err(database_error)? != 0
+            }
+        };
+        Ok((u64::try_from(generation).map_err(database_error)?, retired))
+    }
+
+    /// Active retention holds targeting the installation's manifest or
+    /// payload digests, from the canonical durable hold store.
+    async fn active_holds_for(
+        &self,
+        row: &InstallationRow,
+    ) -> Result<Vec<RetentionHoldRecord>, ModuleOperatorError> {
+        let holds = RetentionHoldStore::list_active_holds(&self.db)
+            .await
+            .map_err(database_error)?;
+        Ok(holds
+            .into_iter()
+            .filter(|hold| {
+                let (target_type, target_identity) = hold.target.identity_key();
+                (target_type == "oci_manifest" && target_identity == row.manifest_digest)
+                    || (target_type == "payload_cas" && target_identity == row.payload_digest)
+            })
+            .collect())
+    }
+
+    /// Most recent transition operation for the slug in the scope, from the
+    /// durable checkpoint ledger.
+    async fn latest_operation_id(
+        &self,
+        slug: &str,
+        scope: &ModuleInstallationScope,
+    ) -> Result<Option<Uuid>, ModuleOperatorError> {
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
+        let (_, tenant_id) = scope_parts(scope);
+        let row = self
+            .db
+            .query_one_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "SELECT operation_id FROM module_transition_checkpoints \
+                     WHERE module_slug = {} AND {} \
+                     ORDER BY created_at DESC LIMIT 1",
+                    backend.placeholder(1),
+                    tenant_clause(backend, "tenant_id", 2),
+                ),
+                vec![
+                    slug.to_string().into(),
+                    backend.optional_uuid_value(tenant_id),
+                ],
+            ))
+            .await
+            .map_err(database_error)?;
+
+        match row {
+            Some(row) => Ok(Some(uuid_column(&row, backend, "operation_id")?)),
+            None => Ok(None),
+        }
     }
 }

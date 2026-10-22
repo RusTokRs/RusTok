@@ -4,7 +4,7 @@ use std::time::Duration;
 use tokio::task::JoinHandle;
 use tracing::{error, info};
 
-use rustok_modules::{SecurityEpochRegistry, evaluate_transition_watchdog};
+use rustok_modules::evaluate_transition_watchdog;
 
 static MODULE_TRANSITION_WATCHDOG_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
@@ -39,7 +39,8 @@ pub fn spawn_module_transition_watchdog_handle(
     let instance_id = MODULE_TRANSITION_WATCHDOG_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     let min_interval_ms = if cfg!(test) { 5 } else { 1_000 };
     let interval = Duration::from_millis(poll_interval_ms.max(min_interval_ms));
-    let security_registry = SecurityEpochRegistry::new();
+    // The security epoch is durable (loaded from the database by each
+    // evaluation), so no process-local registry is kept here.
 
     info!(
         worker = "module_transition_watchdog",
@@ -68,7 +69,7 @@ pub fn spawn_module_transition_watchdog_handle(
                         "Evaluating transition watchdog checkpoints"
                     );
 
-                    match evaluate_transition_watchdog(&db, &security_registry).await {
+                    match evaluate_transition_watchdog(&db).await {
                         Ok(updated) if !updated.is_empty() => {
                             for checkpoint in updated {
                                 info!(

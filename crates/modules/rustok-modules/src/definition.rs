@@ -9,7 +9,7 @@ use thiserror::Error;
 
 use crate::artifact::canonical_schema_digest;
 use crate::{
-    ArtifactModuleKind, ArtifactPermissionDescriptor, ArtifactReleaseRef, ArtifactSchemaDocument,
+    ArtifactPermissionDescriptor, ArtifactReleaseRef, ArtifactSchemaDocument,
     ArtifactUiContribution, ModuleArtifactDescriptor, ModuleDependencyConstraint,
     ModuleRuntimeBinding, ModuleStaticDistributionExecutorMode, ModuleStaticDistributionRelease,
     ModuleStaticDistributionReleaseStatus,
@@ -124,14 +124,17 @@ impl ModuleDefinition {
     }
 
     /// Adapts immutable artifact identity while preserving descriptor metadata.
+    ///
+    /// Artifact-sourced definitions are always `Optional`: `Core` status is
+    /// granted only by platform composition, never by an artifact payload.
+    /// Descriptor validation rejects `ArtifactModuleKind::Core` outright;
+    /// this adapter additionally refuses to ever emit a Core definition so
+    /// that a descriptor which bypassed validation still cannot escalate.
     pub fn from_artifact_descriptor(descriptor: &ModuleArtifactDescriptor) -> Self {
         Self {
             slug: descriptor.slug.clone(),
             version: descriptor.version.clone(),
-            kind: match descriptor.module_kind {
-                ArtifactModuleKind::Core => ModuleDefinitionKind::Core,
-                ArtifactModuleKind::Optional => ModuleDefinitionKind::Optional,
-            },
+            kind: ModuleDefinitionKind::Optional,
             source: ModuleDefinitionSource::Artifact {
                 release: descriptor.release_ref(),
             },

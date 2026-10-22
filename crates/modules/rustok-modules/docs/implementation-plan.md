@@ -15,7 +15,7 @@ The cross-component sequence and completion rules are defined by the
 - Runtime kind: `Core`
 - Rollback unit: `Platform`
 - Data boundary owner: `module_transition_checkpoints`, `module_retention_holds`, `module_artifact_admission_commands`, `module_executor_readiness_receipts`, `module_source_object_receipts`, `module_source_object_retention_holds`, `module_operations_tool_releases`, `module_operations_tool_maintenance_operations`, `module_operations_tool_assignments`
-- Native migrations: `m20260903_000047_artifact_data_copy_operations`, `m20260903_000048_artifact_data_object_copy_operations`, `m20260904_000051_static_localized_settings`, `m20260904_000052_static_settings_change_cursor`, `m20260904_000053_static_settings_source_locale`, `m20260904_000051_admitted_oci_releases`, `m20260904_000052_module_source_objects`, `m20260904_000053_module_operations_tool`
+- Native migrations: `m20260903_000047_artifact_data_copy_operations`, `m20260903_000048_artifact_data_object_copy_operations`, `m20260904_000051_static_localized_settings`, `m20260904_000052_static_settings_change_cursor`, `m20260904_000053_static_settings_source_locale`, `m20261022_000057_admitted_oci_releases`, `m20261022_000058_module_source_objects`, `m20261022_000059_module_operations_tool`
 - Supported migration policy: `AdditiveOnly`
 - Predecessor standby strategy: `Standby DB + CAS Holds`
 - Rollback eligibility: `AutomaticSingleAttempt`
@@ -159,7 +159,7 @@ Verified on the current tree by:
 - `npm run lint -- --quiet` and `npm run typecheck` in `apps/next-admin`.
 
 On 2026-09-04, Separately Signed Operations-Tool Release and Maintenance Operation Ledger were delivered per Section 1 (Item 1782) of the Rollback Plan:
-- `crates/modules/rustok-modules/src/migrations/m20260904_000053_module_operations_tool.rs` created persistent tables:
+- `crates/modules/rustok-modules/src/migrations/m20261022_000059_module_operations_tool.rs` created persistent tables:
   - `module_operations_tool_releases`: Ed25519-signed release metadata (`package_digest`, `controller_digest`, `reconciler_digest`, `agent_digest`, `protocol_revision`, `signer_key_digest`).
   - `module_operations_tool_maintenance_operations`: canonical operation ledger with bounded predecessor recovery (`recovery_attempts <= 1`), a canonical digest plus complete platform command context for both mutable commands, and a durable one-active-operation fleet fence.
   - `module_operations_tool_assignments`: per-host desired/observed component assignments with typed, idempotent supervisor outcomes.
@@ -174,7 +174,7 @@ On 2026-09-04, Separately Signed Operations-Tool Release and Maintenance Operati
   - `cargo test --locked -p rustok-modules --test operations_tool_tests` (5 passed).
 
 On 2026-09-04, Media-Neutral `SourceObjectStore` and CAS Cutover were delivered per Section 1 (Item 1804–1811) of the Rollback Plan:
-- `crates/modules/rustok-modules/src/migrations/m20260904_000052_module_source_objects.rs` created tables `module_source_object_receipts` (with RLS tenant isolation) and `module_source_object_retention_holds`.
+- `crates/modules/rustok-modules/src/migrations/m20261022_000058_module_source_objects.rs` created tables `module_source_object_receipts` (with RLS tenant isolation) and `module_source_object_retention_holds`.
 - `crates/modules/rustok-modules/src/source_object.rs` implemented `SourceObjectStore` with media-neutral digest-addressed blob layout (`<cas_root>/<digest_hex>`), idempotent preparation receipts, and retention holds.
 - `crates/utils/rustok-build-source` updated to read and inspect media-neutral archives directly.
 - Verified by:

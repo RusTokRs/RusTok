@@ -2,7 +2,7 @@
 
 use bytes::Bytes;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, QueryResult, Statement,
     TransactionTrait, Value as SqlValue,
 };
 use uuid::Uuid;
@@ -25,18 +25,19 @@ pub(crate) async fn find_artifact_data_object<C: ConnectionTrait>(
     scope: &ArtifactDataScope,
     name: &str,
 ) -> Result<Option<StoredArtifactDataObject>, ArtifactDataError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT object_name, content_type, size_bytes, digest_sha256, revision, storage_key
                  FROM module_artifact_data_objects
                  WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} AND object_name = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
             ),
             scope_values(scope, backend, name)?,
         ))
@@ -51,27 +52,28 @@ pub(crate) async fn find_artifact_data_object_delete_operation<C: ConnectionTrai
     scope: &ArtifactDataScope,
     request: &ArtifactDataObjectDeleteRequest,
 ) -> Result<Option<ArtifactDataObjectDeleteResult>, ArtifactDataError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT object_name, expected_revision, deleted_revision
                  FROM module_artifact_data_object_delete_operations
                  WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                  AND policy_revision = {} AND idempotency_key = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
             ),
             vec![
-                uuid_value(scope.tenant_id, backend),
-                uuid_value(scope.data_owner_id, backend),
-                uuid_value(scope.namespace_instance_id, backend),
+                backend.uuid_value(scope.tenant_id),
+                backend.uuid_value(scope.data_owner_id),
+                backend.uuid_value(scope.namespace_instance_id),
                 revision_value(scope.policy_revision)?,
-                uuid_value(request.idempotency_key, backend),
+                backend.uuid_value(request.idempotency_key),
             ],
         ))
         .await
@@ -105,31 +107,32 @@ pub(crate) async fn persist_artifact_data_object_delete_operation<C: ConnectionT
     scope: &ArtifactDataScope,
     request: &ArtifactDataObjectDeleteRequest,
 ) -> Result<(), ArtifactDataError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     connection
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_artifact_data_object_delete_operations
                  (tenant_id, data_owner_id, namespace_instance_id, policy_revision, idempotency_key,
                   object_name, expected_revision, deleted_revision, completed_at)
                  VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {})",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.now_sql(),
             ),
             vec![
-                uuid_value(scope.tenant_id, backend),
-                uuid_value(scope.data_owner_id, backend),
-                uuid_value(scope.namespace_instance_id, backend),
+                backend.uuid_value(scope.tenant_id),
+                backend.uuid_value(scope.data_owner_id),
+                backend.uuid_value(scope.namespace_instance_id),
                 revision_value(scope.policy_revision)?,
-                uuid_value(request.idempotency_key, backend),
+                backend.uuid_value(request.idempotency_key),
                 request.name.clone().into(),
                 revision_value(request.expected_revision)?,
                 revision_value(request.expected_revision)?,
@@ -146,27 +149,28 @@ pub(crate) async fn queue_artifact_data_object_gc_candidate<C: ConnectionTrait>(
     scope: &ArtifactDataScope,
     storage_key: &str,
 ) -> Result<(), ArtifactDataError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     connection
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_artifact_data_object_gc_candidates
                  (candidate_id, tenant_id, data_owner_id, namespace_instance_id, policy_revision, storage_key, queued_at)
                  VALUES ({}, {}, {}, {}, {}, {}, {}) ON CONFLICT (storage_key) DO NOTHING",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.now_sql(),
             ),
             vec![
-                uuid_value(infrastructure.new_id(), backend),
-                uuid_value(scope.tenant_id, backend),
-                uuid_value(scope.data_owner_id, backend),
-                uuid_value(scope.namespace_instance_id, backend),
+                backend.uuid_value(infrastructure.new_id()),
+                backend.uuid_value(scope.tenant_id),
+                backend.uuid_value(scope.data_owner_id),
+                backend.uuid_value(scope.namespace_instance_id),
                 revision_value(scope.policy_revision)?,
                 storage_key.to_owned().into(),
             ],
@@ -186,7 +190,8 @@ pub(crate) async fn persist_artifact_data_object(
     quota: ArtifactDataQuota,
 ) -> Result<StoredArtifactDataObject, ArtifactDataError> {
     let quota = quota.validate()?;
-    let backend = transaction.get_database_backend();
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
     ensure_active_namespace(transaction, scope, backend).await?;
     if let Some((existing, expected_revision)) =
         find_artifact_data_object_operation(transaction, scope, upload.idempotency_key).await?
@@ -215,21 +220,21 @@ pub(crate) async fn persist_artifact_data_object(
                 .ok_or(ArtifactDataError::RevisionConflict)?;
             let result = transaction
                 .execute_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "UPDATE module_artifact_data_objects
                          SET storage_key = {}, content_type = {}, size_bytes = {}, digest_sha256 = {}, revision = {}, updated_at = {}
                          WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} AND object_name = {} AND revision = {}",
-                        placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3),
-                        placeholder(backend, 4), placeholder(backend, 5), now_expression(backend),
-                        placeholder(backend, 6), placeholder(backend, 7), placeholder(backend, 8),
-                        placeholder(backend, 9), placeholder(backend, 10),
+                        backend.placeholder(1), backend.placeholder(2), backend.placeholder(3),
+                        backend.placeholder(4), backend.placeholder(5), backend.now_sql(),
+                        backend.placeholder(6), backend.placeholder(7), backend.placeholder(8),
+                        backend.placeholder(9), backend.placeholder(10),
                     ),
                     vec![
                         storage_key.to_owned().into(), requested.content_type.clone().into(),
                         revision_value(requested.size_bytes)?, requested.digest_sha256.clone().into(),
-                        revision_value(revision)?, uuid_value(scope.tenant_id, backend),
-                        uuid_value(scope.data_owner_id, backend), uuid_value(scope.namespace_instance_id, backend),
+                        revision_value(revision)?, backend.uuid_value(scope.tenant_id),
+                        backend.uuid_value(scope.data_owner_id), backend.uuid_value(scope.namespace_instance_id),
                         requested.name.clone().into(), revision_value(current.object.revision)?,
                     ],
                 ))
@@ -255,18 +260,18 @@ pub(crate) async fn persist_artifact_data_object(
             }
             let result = transaction
                 .execute_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "INSERT INTO module_artifact_data_objects
                          (tenant_id, data_owner_id, namespace_instance_id, object_name, storage_key, content_type, size_bytes, digest_sha256, revision, created_at, updated_at)
                          VALUES ({}, {}, {}, {}, {}, {}, {}, {}, 1, {}, {}) ON CONFLICT DO NOTHING",
-                        placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3),
-                        placeholder(backend, 4), placeholder(backend, 5), placeholder(backend, 6),
-                        placeholder(backend, 7), placeholder(backend, 8), now_expression(backend), now_expression(backend),
+                        backend.placeholder(1), backend.placeholder(2), backend.placeholder(3),
+                        backend.placeholder(4), backend.placeholder(5), backend.placeholder(6),
+                        backend.placeholder(7), backend.placeholder(8), backend.now_sql(), backend.now_sql(),
                     ),
                     vec![
-                        uuid_value(scope.tenant_id, backend), uuid_value(scope.data_owner_id, backend),
-                        uuid_value(scope.namespace_instance_id, backend), requested.name.clone().into(),
+                        backend.uuid_value(scope.tenant_id), backend.uuid_value(scope.data_owner_id),
+                        backend.uuid_value(scope.namespace_instance_id), requested.name.clone().into(),
                         storage_key.to_owned().into(), requested.content_type.clone().into(),
                         revision_value(requested.size_bytes)?, requested.digest_sha256.clone().into(),
                     ],
@@ -291,20 +296,20 @@ pub(crate) async fn persist_artifact_data_object(
     };
     transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_artifact_data_object_operations
                  (tenant_id, data_owner_id, namespace_instance_id, policy_revision, idempotency_key, object_name, storage_key, content_type, size_bytes, digest_sha256, expected_revision, revision, completed_at)
                  VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
-                placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3), placeholder(backend, 4),
-                placeholder(backend, 5), placeholder(backend, 6), placeholder(backend, 7), placeholder(backend, 8),
-                placeholder(backend, 9), placeholder(backend, 10), placeholder(backend, 11), placeholder(backend, 12),
-                now_expression(backend),
+                backend.placeholder(1), backend.placeholder(2), backend.placeholder(3), backend.placeholder(4),
+                backend.placeholder(5), backend.placeholder(6), backend.placeholder(7), backend.placeholder(8),
+                backend.placeholder(9), backend.placeholder(10), backend.placeholder(11), backend.placeholder(12),
+                backend.now_sql(),
             ),
             vec![
-                uuid_value(scope.tenant_id, backend), uuid_value(scope.data_owner_id, backend),
-                uuid_value(scope.namespace_instance_id, backend), revision_value(scope.policy_revision)?,
-                uuid_value(upload.idempotency_key, backend),
+                backend.uuid_value(scope.tenant_id), backend.uuid_value(scope.data_owner_id),
+                backend.uuid_value(scope.namespace_instance_id), revision_value(scope.policy_revision)?,
+                backend.uuid_value(upload.idempotency_key),
                 stored.object.name.clone().into(), stored.storage_key.clone().into(),
                 stored.object.content_type.clone().into(), revision_value(stored.object.size_bytes)?,
                 stored.object.digest_sha256.clone().into(), optional_revision_value(upload.expected_revision)?,
@@ -323,17 +328,18 @@ pub(crate) async fn enforce_object_data_quota<C: ConnectionTrait>(
     current_size_bytes: Option<u64>,
     requested_size_bytes: u64,
 ) -> Result<(), ArtifactDataError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT COUNT(*) AS object_count, COALESCE(SUM(size_bytes), 0) AS total_bytes
                  FROM module_artifact_data_objects
                  WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
             ),
             namespace_values(scope, backend)?,
         ))
@@ -360,22 +366,23 @@ pub(crate) async fn find_artifact_data_object_operation<C: ConnectionTrait>(
     scope: &ArtifactDataScope,
     idempotency_key: Uuid,
 ) -> Result<Option<(StoredArtifactDataObject, Option<u64>)>, ArtifactDataError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT object_name, content_type, size_bytes, digest_sha256, revision, storage_key, expected_revision
                  FROM module_artifact_data_object_operations
                  WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                  AND policy_revision = {} AND idempotency_key = {}",
-                placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3),
-                placeholder(backend, 4), placeholder(backend, 5),
+                backend.placeholder(1), backend.placeholder(2), backend.placeholder(3),
+                backend.placeholder(4), backend.placeholder(5),
             ),
             vec![
-                uuid_value(scope.tenant_id, backend), uuid_value(scope.data_owner_id, backend),
-                uuid_value(scope.namespace_instance_id, backend), revision_value(scope.policy_revision)?,
-                uuid_value(idempotency_key, backend),
+                backend.uuid_value(scope.tenant_id), backend.uuid_value(scope.data_owner_id),
+                backend.uuid_value(scope.namespace_instance_id), revision_value(scope.policy_revision)?,
+                backend.uuid_value(idempotency_key),
             ],
         ))
         .await

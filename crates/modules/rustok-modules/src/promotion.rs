@@ -6,21 +6,22 @@
 
 use async_trait::async_trait;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, QueryResult, Statement,
     TransactionTrait,
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
 use rustok_events::DomainEvent;
 
+use crate::backend::SupportedBackend;
+use crate::installation::valid_digest;
 use crate::{
     ControlPlaneInfrastructure, ModuleBuildOutcome, ModuleBuildRequest, ModuleBuildResult,
     ModuleCommandContext,
-    data::{configure_tenant_scope, now_expression, placeholder, uuid_from_row, uuid_value},
+    data::{configure_tenant_scope, uuid_from_row},
 };
 
 const MAX_REFERENCE_BYTES: usize = 512;
@@ -153,6 +154,9 @@ where
         self.authorizer.authorize_request(&command).await?;
         let request_digest = digest_json(&command)?;
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction)
+            .await
+            .map_err(store_error)?;
         if let Some(receipt) =
             reserve_operation(&transaction, "request", &command.context, &request_digest).await?
         {
@@ -168,10 +172,11 @@ where
             return Err(ModuleStaticPromotionError::BuildEvidenceMismatch);
         }
         let promotion_id = self.infrastructure.new_id();
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
         let inserted = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_static_promotions
                      (promotion_id, release_id, publish_request_id, module_slug, module_version,
@@ -179,21 +184,21 @@ where
                       dependency_lock_digest, status, revision, requested_by, requested_at)
                      VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'requested', 1, {}, {})
                      ON CONFLICT (release_id) DO NOTHING",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
-                    placeholder(backend, 8),
-                    placeholder(backend, 9),
-                    placeholder(backend, 10),
-                    placeholder(backend, 11),
-                    now_expression(backend),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
+                    backend.placeholder(8),
+                    backend.placeholder(9),
+                    backend.placeholder(10),
+                    backend.placeholder(11),
+                    backend.now_sql(),
                 ),
                 vec![
-                    uuid_value(promotion_id, backend),
+                    backend.uuid_value(promotion_id),
                     command.release_id.clone().into(),
                     evidence.publish_request_id.clone().into(),
                     evidence.module_slug.clone().into(),
@@ -203,7 +208,7 @@ where
                     command.source_reference.clone().into(),
                     command.source_digest.clone().into(),
                     command.dependency_lock_digest.clone().into(),
-                    uuid_value(command.context.actor_id, backend),
+                    backend.uuid_value(command.context.actor_id),
                 ],
             ))
             .await
@@ -253,6 +258,9 @@ where
         let request_digest = digest_json(&command)?;
         let review_digest = digest_json(&command.evidence)?;
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction)
+            .await
+            .map_err(store_error)?;
         if let Some(receipt) =
             reserve_operation(&transaction, "approve", &command.context, &request_digest).await?
         {
@@ -285,10 +293,11 @@ where
             .checked_add(1)
             .ok_or(ModuleStaticPromotionError::RevisionConflict)?;
         let review_id = self.infrastructure.new_id();
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_static_promotion_reviews
                      (review_id, promotion_id, ownership_evidence_reference,
@@ -297,24 +306,24 @@ where
                       static_review_reference, static_review_digest, approval_policy_revision,
                       review_digest, reviewed_by, reviewed_at)
                      VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
-                    placeholder(backend, 8),
-                    placeholder(backend, 9),
-                    placeholder(backend, 10),
-                    placeholder(backend, 11),
-                    placeholder(backend, 12),
-                    placeholder(backend, 13),
-                    now_expression(backend),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
+                    backend.placeholder(8),
+                    backend.placeholder(9),
+                    backend.placeholder(10),
+                    backend.placeholder(11),
+                    backend.placeholder(12),
+                    backend.placeholder(13),
+                    backend.now_sql(),
                 ),
                 vec![
-                    uuid_value(review_id, backend),
-                    uuid_value(command.promotion_id, backend),
+                    backend.uuid_value(review_id),
+                    backend.uuid_value(command.promotion_id),
                     command.evidence.ownership.reference.clone().into(),
                     command.evidence.ownership.digest.clone().into(),
                     command.evidence.dependency_audit.reference.clone().into(),
@@ -325,28 +334,28 @@ where
                     command.evidence.static_review.digest.clone().into(),
                     command.evidence.policy_revision.clone().into(),
                     review_digest.into(),
-                    uuid_value(command.context.actor_id, backend),
+                    backend.uuid_value(command.context.actor_id),
                 ],
             ))
             .await
             .map_err(store_error)?;
         let updated = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_static_promotions
                      SET status = 'approved', revision = {}, approved_by = {}, approved_at = {}
                      WHERE promotion_id = {} AND status = 'requested' AND revision = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    now_expression(backend),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.now_sql(),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
                 ),
                 vec![
                     revision_value(next_revision)?,
-                    uuid_value(command.context.actor_id, backend),
-                    uuid_value(command.promotion_id, backend),
+                    backend.uuid_value(command.context.actor_id),
+                    backend.uuid_value(command.promotion_id),
                     revision_value(command.expected_revision)?,
                 ],
             ))
@@ -448,18 +457,18 @@ pub(crate) async fn load_platform_build_evidence<C: ConnectionTrait>(
     connection: &C,
     release_id: &str,
 ) -> Result<PinnedBuildEvidence, ModuleStaticPromotionError> {
-    let backend = connection.get_database_backend();
-    let lock = if backend == DbBackend::Postgres {
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let lock = if backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
         ""
     };
     let external = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT release_digest FROM module_external_prebuilt_ingress WHERE release_digest = {}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
             vec![release_id.to_owned().into()],
         ))
@@ -471,12 +480,12 @@ pub(crate) async fn load_platform_build_evidence<C: ConnectionTrait>(
 
     let release = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT request_id, slug, version, crate_name, entry_type, status,
                         artifact_origin, checksum_sha256
                  FROM registry_module_releases WHERE id = {}{lock}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
             vec![release_id.to_owned().into()],
         ))
@@ -526,15 +535,15 @@ pub(crate) async fn load_platform_build_evidence<C: ConnectionTrait>(
     let component_digest = format!("sha256:{checksum}");
     let stage = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT tenant_id, build_request_id, source_digest, component_digest,
                         artifact_manifest_digest
                  FROM registry_publish_build_staging
                  WHERE request_id = {} AND component_digest = {}
                  ORDER BY staged_at DESC LIMIT 1{lock}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
+                backend.placeholder(1),
+                backend.placeholder(2),
             ),
             vec![
                 publish_request_id.clone().into(),
@@ -558,13 +567,13 @@ pub(crate) async fn load_platform_build_evidence<C: ConnectionTrait>(
         .map_err(store_error)?;
     let build = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT request, result, status FROM module_build_requests
                  WHERE request_id = {}{lock}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(build_request_id, backend)],
+            vec![backend.uuid_value(build_request_id)],
         ))
         .await
         .map_err(store_error)?
@@ -617,29 +626,29 @@ async fn reserve_operation(
     context: &ModuleCommandContext,
     request_digest: &str,
 ) -> Result<Option<ModuleStaticPromotionReceipt>, ModuleStaticPromotionError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_static_promotion_operations
                  (idempotency_key, operation_kind, request_digest, actor_id, trace_id, correlation_id, created_at)
                  VALUES ({}, {}, {}, {}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.now_sql(),
             ),
             vec![
-                uuid_value(context.idempotency_key, backend),
+                backend.uuid_value(context.idempotency_key),
                 operation_kind.to_owned().into(),
                 request_digest.to_owned().into(),
-                uuid_value(context.actor_id, backend),
+                backend.uuid_value(context.actor_id),
                 context.trace_id.clone().into(),
-                uuid_value(context.correlation_id, backend),
+                backend.uuid_value(context.correlation_id),
             ],
         ))
         .await
@@ -649,15 +658,15 @@ async fn reserve_operation(
     }
     let row = transaction
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT operation_kind, request_digest, actor_id, trace_id, correlation_id, promotion_id,
                         result_revision, result_status,
                         CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END AS completed
                  FROM module_static_promotion_operations WHERE idempotency_key = {}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(context.idempotency_key, backend)],
+            vec![backend.uuid_value(context.idempotency_key)],
         ))
         .await
         .map_err(store_error)?
@@ -689,25 +698,25 @@ async fn complete_operation(
     revision: u64,
     status: ModuleStaticPromotionStatus,
 ) -> Result<(), ModuleStaticPromotionError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_promotion_operations
                  SET promotion_id = {}, result_revision = {}, result_status = {}, completed_at = {}
                  WHERE idempotency_key = {} AND promotion_id IS NULL",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                now_expression(backend),
-                placeholder(backend, 4),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.now_sql(),
+                backend.placeholder(4),
             ),
             vec![
-                uuid_value(promotion_id, backend),
+                backend.uuid_value(promotion_id),
                 revision_value(revision)?,
                 status.as_str().into(),
-                uuid_value(idempotency_key, backend),
+                backend.uuid_value(idempotency_key),
             ],
         ))
         .await
@@ -720,13 +729,13 @@ async fn complete_operation(
 
 fn replay_receipt(
     row: &QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<ModuleStaticPromotionReceipt, ModuleStaticPromotionError> {
     let promotion_id = match backend {
-        DbBackend::Postgres => row
+        SupportedBackend::Postgres => row
             .try_get::<Option<Uuid>>("", "promotion_id")
             .map_err(store_error)?,
-        _ => row
+        SupportedBackend::Sqlite => row
             .try_get::<Option<String>>("", "promotion_id")
             .map_err(store_error)?
             .as_deref()
@@ -760,23 +769,23 @@ async fn lock_promotion<C: ConnectionTrait>(
     connection: &C,
     promotion_id: Uuid,
 ) -> Result<ModuleStaticPromotion, ModuleStaticPromotionError> {
-    let backend = connection.get_database_backend();
-    let lock = if backend == DbBackend::Postgres {
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let lock = if backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
         ""
     };
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT promotion_id, release_id, publish_request_id, module_slug,
                         module_version, cargo_package, entry_type, source_reference, source_digest,
                         dependency_lock_digest, status, revision, requested_by
                  FROM module_static_promotions WHERE promotion_id = {}{lock}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(promotion_id, backend)],
+            vec![backend.uuid_value(promotion_id)],
         ))
         .await
         .map_err(store_error)?
@@ -788,18 +797,18 @@ pub(crate) async fn load_promotion<C: ConnectionTrait>(
     connection: &C,
     promotion_id: Uuid,
 ) -> Result<ModuleStaticPromotion, ModuleStaticPromotionError> {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT promotion_id, release_id, publish_request_id, module_slug,
                         module_version, cargo_package, entry_type, source_reference, source_digest,
                         dependency_lock_digest, status, revision, requested_by
                  FROM module_static_promotions WHERE promotion_id = {}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(promotion_id, backend)],
+            vec![backend.uuid_value(promotion_id)],
         ))
         .await
         .map_err(store_error)?
@@ -814,10 +823,10 @@ pub(crate) async fn validate_promotion_review<C: ConnectionTrait>(
     if promotion.status != ModuleStaticPromotionStatus::Approved {
         return Err(ModuleStaticPromotionError::InvalidEvidence);
     }
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT promotion.approved_by,
                         review.ownership_evidence_reference,
@@ -835,9 +844,9 @@ pub(crate) async fn validate_promotion_review<C: ConnectionTrait>(
                  JOIN module_static_promotion_reviews AS review
                    ON review.promotion_id = promotion.promotion_id
                  WHERE promotion.promotion_id = {} AND promotion.status = 'approved'",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(promotion.promotion_id, backend)],
+            vec![backend.uuid_value(promotion.promotion_id)],
         ))
         .await
         .map_err(store_error)?
@@ -894,7 +903,7 @@ pub(crate) async fn validate_promotion_review<C: ConnectionTrait>(
 
 fn promotion_from_row(
     row: &QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<ModuleStaticPromotion, ModuleStaticPromotionError> {
     Ok(ModuleStaticPromotion {
         promotion_id: uuid_from_row(row, "promotion_id", backend).map_err(store_error)?,
@@ -1088,14 +1097,6 @@ fn is_rust_keyword(value: &str) -> bool {
     )
 }
 
-pub(crate) fn valid_digest(value: &str) -> bool {
-    value.len() == 71
-        && value.starts_with("sha256:")
-        && value[7..]
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-}
-
 fn valid_sha256_hex(value: &str) -> bool {
     value.len() == 64
         && value
@@ -1117,9 +1118,14 @@ fn positive_revision(row: &QueryResult, column: &str) -> Result<u64, ModuleStati
         .ok_or_else(|| ModuleStaticPromotionError::Store("revision is invalid".to_string()))
 }
 
+/// Digest over the canonical JSON encoding (object keys sorted
+/// recursively), matching every other stored digest in the crate. The
+/// workspace enables serde_json's `preserve_order`, so hashing the raw
+/// serialization would make these digests depend on the key order of any
+/// embedded `serde_json::Value`/`HashMap` instead of only on content.
 pub(crate) fn digest_json(value: &impl Serialize) -> Result<String, ModuleStaticPromotionError> {
-    let bytes = serde_json::to_vec(value).map_err(store_error)?;
-    Ok(format!("sha256:{}", hex::encode(Sha256::digest(bytes))))
+    let bytes = rustok_api::manifest_hash::canonical_json_bytes(value).map_err(store_error)?;
+    Ok(crate::installation::sha256_digest(&bytes))
 }
 
 pub(crate) fn store_error(error: impl std::fmt::Display) -> ModuleStaticPromotionError {

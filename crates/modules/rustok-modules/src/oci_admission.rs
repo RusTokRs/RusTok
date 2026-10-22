@@ -12,11 +12,12 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ArtifactAdmissionLimits, ArtifactPayloadSource, ArtifactRegistry, ControlPlaneInfrastructure,
     DurableArtifactBlobStore, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor,
@@ -47,7 +48,10 @@ pub enum OciReleaseAdmissionError {
     InvalidLayer(String),
 
     #[error("Trust verification failed: {0}")]
-    TrustVerification(String),
+    TrustVerification(#[from] crate::TrustVerificationError),
+
+    #[error("Trust verification decision rejected artifact admission")]
+    VerificationRejected,
 
     #[error("Platform CAS storage error: {0}")]
     CasStorage(String),
@@ -98,20 +102,6 @@ pub struct OciReleaseAdmissionService {
     verifier: Option<Arc<dyn TrustVerifier>>,
     limits: ArtifactAdmissionLimits,
     infrastructure: ControlPlaneInfrastructure,
-}
-
-fn placeholder(backend: DbBackend, idx: usize) -> String {
-    match backend {
-        DbBackend::Postgres => format!("${idx}"),
-        _ => format!("?{idx}"),
-    }
-}
-
-fn uuid_value(value: Uuid, backend: DbBackend) -> sea_orm::Value {
-    match backend {
-        DbBackend::Postgres => sea_orm::Value::Uuid(Some(value)),
-        _ => value.to_string().into(),
-    }
 }
 
 fn valid_sha256_digest(digest: &str) -> bool {
@@ -181,7 +171,8 @@ impl OciReleaseAdmissionService {
             ));
         }
 
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
         let (scope_kind, scope_tenant_key) = match &command.scope {
             ModuleInstallationScope::Platform => ("platform", "platform".to_string()),
             ModuleInstallationScope::Tenant { tenant_id } => ("tenant", tenant_id.to_string()),
@@ -197,21 +188,21 @@ impl OciReleaseAdmissionService {
         let existing_by_key = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT release_digest, request_digest FROM module_admitted_oci_releases \
                      WHERE scope_kind = {} AND scope_tenant_key = {} \
                        AND actor_id = {} AND idempotency_key = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
                 ),
                 vec![
                     scope_kind.into(),
                     scope_tenant_key.clone().into(),
-                    uuid_value(command.context.actor_id, backend),
-                    uuid_value(command.context.idempotency_key, backend),
+                    backend.uuid_value(command.context.actor_id),
+                    backend.uuid_value(command.context.idempotency_key),
                 ],
             ))
             .await
@@ -238,14 +229,14 @@ impl OciReleaseAdmissionService {
         let existing_by_digest = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT release_digest, registry, repository, slug, version, \
                             payload_digest, payload_media_type, payload_size_bytes, \
                             descriptor_json, actor_id, idempotency_key, admitted_at \
                      FROM module_admitted_oci_releases \
                      WHERE release_digest = {}",
-                    placeholder(backend, 1)
+                    backend.placeholder(1)
                 ),
                 vec![command.reference.digest.clone().into()],
             ))
@@ -262,10 +253,10 @@ impl OciReleaseAdmissionService {
                 .try_get("", "payload_size_bytes")
                 .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
             let admitted_at: DateTime<Utc> = match backend {
-                DbBackend::Postgres => row
+                SupportedBackend::Postgres => row
                     .try_get("", "admitted_at")
                     .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?,
-                _ => {
+                SupportedBackend::Sqlite => {
                     let ts_str: String = row
                         .try_get("", "admitted_at")
                         .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
@@ -358,12 +349,10 @@ impl OciReleaseAdmissionService {
             let decision = verifier
                 .verify(req)
                 .await
-                .map_err(|e| OciReleaseAdmissionError::TrustVerification(e.to_string()))?;
+                .map_err(OciReleaseAdmissionError::TrustVerification)?;
 
             if !decision.admitted() {
-                return Err(OciReleaseAdmissionError::TrustVerification(
-                    "trust verification decision rejected artifact admission".to_string(),
-                ));
+                return Err(OciReleaseAdmissionError::VerificationRejected);
             }
         }
 
@@ -382,7 +371,7 @@ impl OciReleaseAdmissionService {
                     .map_err(|e| OciReleaseAdmissionError::CasStorage(e.to_string()))?;
 
                 if let Err(error) = self.blobs.publish(&staged).await {
-                    let _ = self.blobs.discard(&staged).await;
+                    self.blobs.discard_best_effort(&staged).await;
                     return Err(OciReleaseAdmissionError::CasStorage(error.to_string()));
                 }
                 (size, true)
@@ -400,10 +389,10 @@ impl OciReleaseAdmissionService {
 
                 let size = staged.size_bytes;
                 let publish_result = self.blobs.publish(&staged).await;
-                let _ = tokio::fs::remove_file(&path).await;
+                crate::oci::remove_staged_file_best_effort(&path).await;
 
                 if let Err(error) = publish_result {
-                    let _ = self.blobs.discard(&staged).await;
+                    self.blobs.discard_best_effort(&staged).await;
                     return Err(OciReleaseAdmissionError::CasStorage(error.to_string()));
                 }
                 (size, true)
@@ -423,7 +412,7 @@ impl OciReleaseAdmissionService {
         // 11. Commit immutable admission record in database
         self.db
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_admitted_oci_releases (\
                         release_digest, scope_kind, scope_tenant_key, registry, repository, \
@@ -432,23 +421,23 @@ impl OciReleaseAdmissionService {
                         request_digest, admitted_at\
                     ) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) \
                     ON CONFLICT (release_digest) DO NOTHING",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
-                    placeholder(backend, 8),
-                    placeholder(backend, 9),
-                    placeholder(backend, 10),
-                    placeholder(backend, 11),
-                    placeholder(backend, 12),
-                    placeholder(backend, 13),
-                    placeholder(backend, 14),
-                    placeholder(backend, 15),
-                    placeholder(backend, 16),
-                    placeholder(backend, 17),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
+                    backend.placeholder(8),
+                    backend.placeholder(9),
+                    backend.placeholder(10),
+                    backend.placeholder(11),
+                    backend.placeholder(12),
+                    backend.placeholder(13),
+                    backend.placeholder(14),
+                    backend.placeholder(15),
+                    backend.placeholder(16),
+                    backend.placeholder(17),
                 ),
                 vec![
                     command.reference.digest.clone().into(),
@@ -462,14 +451,14 @@ impl OciReleaseAdmissionService {
                     package.media_type.clone().into(),
                     (payload_size as i64).into(),
                     descriptor_json.into(),
-                    uuid_value(command.context.actor_id, backend),
-                    uuid_value(command.context.idempotency_key, backend),
+                    backend.uuid_value(command.context.actor_id),
+                    backend.uuid_value(command.context.idempotency_key),
                     command.context.trace_id.into(),
-                    uuid_value(command.context.correlation_id, backend),
+                    backend.uuid_value(command.context.correlation_id),
                     request_digest.into(),
                     match backend {
-                        DbBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(now)),
-                        _ => now.to_rfc3339().into(),
+                        SupportedBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(now)),
+                        SupportedBackend::Sqlite => now.to_rfc3339().into(),
                     },
                 ],
             ))
@@ -492,17 +481,18 @@ impl OciReleaseAdmissionService {
         &self,
         release_digest: &str,
     ) -> Result<Option<OciAdmissionReceipt>, OciReleaseAdmissionError> {
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
         let row = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT release_digest, registry, repository, payload_digest, \
                             payload_size_bytes, descriptor_json, admitted_at \
                      FROM module_admitted_oci_releases \
                      WHERE release_digest = {}",
-                    placeholder(backend, 1)
+                    backend.placeholder(1)
                 ),
                 vec![release_digest.into()],
             ))
@@ -532,10 +522,10 @@ impl OciReleaseAdmissionService {
             .map_err(|e| OciReleaseAdmissionError::Serialization(e.to_string()))?;
 
         let admitted_at: DateTime<Utc> = match backend {
-            DbBackend::Postgres => row
+            SupportedBackend::Postgres => row
                 .try_get("", "admitted_at")
                 .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?,
-            _ => {
+            SupportedBackend::Sqlite => {
                 let ts_str: String = row
                     .try_get("", "admitted_at")
                     .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;

@@ -37,7 +37,8 @@ fn test_call(capability: &str, input: serde_json::Value) -> CapabilityCall {
 
 #[tokio::test]
 async fn test_http_capability_broker_validation() {
-    let broker = ArtifactHttpCapabilityBroker::with_timeout(Duration::from_millis(500));
+    let broker =
+        ArtifactHttpCapabilityBroker::with_timeout(Duration::from_millis(500)).expect("broker");
     let grant = CapabilityGrant {
         name: CapabilityName::new("platform.http").expect("capability"),
         constraints: json!({
@@ -147,7 +148,8 @@ async fn test_capability_resolvers_fail_closed_on_unadmitted_execution() {
         .await
         .expect("db connect");
 
-    let http_resolver = SeaOrmArtifactHttpCapabilityBrokerResolver::new(db.clone());
+    let http_resolver =
+        SeaOrmArtifactHttpCapabilityBrokerResolver::new(db.clone()).expect("http resolver");
     let events_resolver = SeaOrmArtifactEventCapabilityBrokerResolver::new(db);
 
     let execution = ArtifactCapabilityExecution {

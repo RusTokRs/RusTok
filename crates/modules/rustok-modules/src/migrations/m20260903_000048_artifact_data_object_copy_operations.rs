@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
+
+use crate::backend::SupportedBackend;
 
 /// Durable frozen operations, reservations, and namespace holds for actual
 /// object migration. Pending publication cannot become age-authorized deletion.
@@ -29,19 +31,14 @@ const NAMESPACE_ROW_LOCKS: &str = "IF TG_OP='INSERT' THEN
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let backend = manager.get_database_backend();
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
         let (id, integer, timestamp) = match backend {
-            DbBackend::Postgres => ("UUID", "BIGINT", "TIMESTAMPTZ"),
-            DbBackend::Sqlite => ("TEXT", "INTEGER", "TEXT"),
-            _ => {
-                return Err(DbErr::Migration(
-                    "Object migration requires PostgreSQL or SQLite".into(),
-                ));
-            }
+            SupportedBackend::Postgres => ("UUID", "BIGINT", "TIMESTAMPTZ"),
+            SupportedBackend::Sqlite => ("TEXT", "INTEGER", "TEXT"),
         };
         let digest = |column: &str| match backend {
-            DbBackend::Postgres => format!("{column} ~ '^sha256:[0-9a-f]{{64}}$'"),
-            _ => format!(
+            SupportedBackend::Postgres => format!("{column} ~ '^sha256:[0-9a-f]{{64}}$'"),
+            SupportedBackend::Sqlite => format!(
                 "length({column})=71 AND substr({column},1,7)='sha256:' AND substr({column},8) NOT GLOB '*[^0-9a-f]*'"
             ),
         };
@@ -92,7 +89,7 @@ impl MigrationTrait for Migration {
                  )",digest("inventory_manifest_digest"),digest("digest_sha256")),
             "CREATE INDEX idx_artifact_data_object_migration_holds ON module_artifact_data_object_migration_operations (tenant_id,data_owner_id,status,source_namespace_instance_id,target_namespace_instance_id)".into(),
         ];
-        if backend == DbBackend::Postgres {
+        if backend == SupportedBackend::Postgres {
             for table in [
                 "module_artifact_data_object_migration_operations",
                 "module_artifact_data_object_copy_operations",
@@ -126,7 +123,7 @@ impl MigrationTrait for Migration {
             } else {
                 format!("OLD.status='{initial}' AND NEW.status='{terminal}'")
             };
-            if backend == DbBackend::Postgres {
+            if backend == SupportedBackend::Postgres {
                 statements.push(format!(
                     "CREATE FUNCTION {table}_immutable_guard() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN
                      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Object migration evidence cannot be deleted' USING ERRCODE='23514'; END IF;
@@ -188,7 +185,7 @@ impl MigrationTrait for Migration {
                 ));
             }
         }
-        if backend == DbBackend::Postgres {
+        if backend == SupportedBackend::Postgres {
             statements.push(format!(
                 "CREATE FUNCTION artifact_data_migration_root_guard() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN
                  IF (TG_OP='DELETE' OR NEW.state IS DISTINCT FROM OLD.state OR NEW.namespace_revision IS DISTINCT FROM OLD.namespace_revision)
@@ -205,7 +202,7 @@ impl MigrationTrait for Migration {
                 WHEN {} BEGIN SELECT RAISE(ABORT,'Object migration namespace is held'); END",root_hold("OLD", backend, true)));
         }
         for table in STORAGE_TABLES {
-            if backend == DbBackend::Postgres {
+            if backend == SupportedBackend::Postgres {
                 statements.push(format!(
                     "CREATE FUNCTION {table}_migration_write_guard() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN
                      {NAMESPACE_ROW_LOCKS}
@@ -231,7 +228,7 @@ impl MigrationTrait for Migration {
                 }
             }
         }
-        if backend == DbBackend::Postgres {
+        if backend == SupportedBackend::Postgres {
             statements.push(format!(
                 "CREATE FUNCTION artifact_data_migration_reference_guard() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN
                  {NAMESPACE_ROW_LOCKS}
@@ -259,16 +256,16 @@ impl MigrationTrait for Migration {
         for sql in statements {
             manager
                 .get_connection()
-                .execute_raw(Statement::from_string(backend, sql))
+                .execute_raw(Statement::from_string(backend.db_backend(), sql))
                 .await?;
         }
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let backend = manager.get_database_backend();
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
         let mut statements = Vec::new();
-        if backend == DbBackend::Postgres {
+        if backend == SupportedBackend::Postgres {
             statements.push("DROP TRIGGER artifact_data_migration_reference_guard ON module_artifact_data_owner_references".into());
             statements.push("DROP FUNCTION artifact_data_migration_reference_guard()".into());
         } else {
@@ -279,7 +276,7 @@ impl MigrationTrait for Migration {
             }
         }
         for table in STORAGE_TABLES {
-            if backend == DbBackend::Postgres {
+            if backend == SupportedBackend::Postgres {
                 statements.push(format!(
                     "DROP TRIGGER {table}_migration_write_guard ON {table}"
                 ));
@@ -290,7 +287,7 @@ impl MigrationTrait for Migration {
                 }
             }
         }
-        if backend == DbBackend::Postgres {
+        if backend == SupportedBackend::Postgres {
             statements.push("DROP TRIGGER artifact_data_migration_root_guard ON module_artifact_data_namespaces".into());
             statements.push("DROP FUNCTION artifact_data_migration_root_guard()".into());
         } else {
@@ -301,7 +298,7 @@ impl MigrationTrait for Migration {
             "module_artifact_data_object_copy_operations",
             "module_artifact_data_object_migration_operations",
         ] {
-            if backend == DbBackend::Postgres {
+            if backend == SupportedBackend::Postgres {
                 statements.push(format!("DROP TABLE {table}"));
                 statements.push(format!("DROP FUNCTION {table}_immutable_guard()"));
             } else {
@@ -311,14 +308,14 @@ impl MigrationTrait for Migration {
         for sql in statements {
             manager
                 .get_connection()
-                .execute_raw(Statement::from_string(backend, sql))
+                .execute_raw(Statement::from_string(backend.db_backend(), sql))
                 .await?;
         }
         Ok(())
     }
 }
 
-fn root_hold(row: &str, backend: DbBackend, allow_committing_record_target: bool) -> String {
+fn root_hold(row: &str, backend: SupportedBackend, allow_committing_record_target: bool) -> String {
     let record = super::m20260903_000047_artifact_data_copy_operations::record_copy_hold(
         backend,
         row,
@@ -331,7 +328,7 @@ fn root_hold(row: &str, backend: DbBackend, allow_committing_record_target: bool
          AND (operation.source_namespace_instance_id={row}.namespace_instance_id OR operation.target_namespace_instance_id={row}.namespace_instance_id)) OR {record})")
 }
 
-fn write_hold(row: &str, backend: DbBackend) -> String {
+fn write_hold(row: &str, backend: SupportedBackend) -> String {
     let record = super::m20260903_000047_artifact_data_copy_operations::record_copy_hold(
         backend, row, true, None,
     );

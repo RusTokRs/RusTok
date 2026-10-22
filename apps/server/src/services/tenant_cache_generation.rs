@@ -27,6 +27,10 @@ pub const TENANT_CACHE_BACKEND_PREFIX: &str = "rustok:tenant:v2";
 pub const TENANT_CACHE_DATA_BACKEND_PREFIX: &str = "tenant-cache:v2:data";
 pub const TENANT_CACHE_NEGATIVE_BACKEND_PREFIX: &str = "tenant-cache:v2:negative";
 pub const TENANT_CACHE_GENERATION_CHANNEL: &str = "tenant.cache.generation.v1";
+/// Invalidation-record key for platform-wide module policy events (security
+/// state, static distribution releases): there is no single tenant to
+/// invalidate, so listeners drop every cached effective policy.
+const PLATFORM_POLICY_INVALIDATION_KEY: &str = "platform";
 const LISTENER_RESTART_DELAY: Duration = Duration::from_secs(1);
 const GENERATION_RECONCILE_INTERVAL: Duration = Duration::from_secs(30);
 const PREFLIGHT_GENERATION: u64 = 1;
@@ -76,15 +80,16 @@ impl TenantCacheGenerationTransport {
 
     fn validated_record(
         envelope: &EventEnvelope,
-        tenant_id: uuid::Uuid,
+        tenant_id: Option<uuid::Uuid>,
+        key: String,
         generation: u64,
         emitted_at_unix_ms: u64,
     ) -> Result<DurableCacheInvalidationRecord> {
         DurableCacheInvalidationRecord::new(
             envelope.id,
-            Some(tenant_id),
+            tenant_id,
             TENANT_CACHE_GENERATION_CHANNEL,
-            tenant_id.to_string(),
+            key,
             generation,
             emitted_at_unix_ms,
             envelope.event_type.clone(),
@@ -94,9 +99,13 @@ impl TenantCacheGenerationTransport {
     }
 
     async fn publish_generation_if_needed(&self, envelope: &EventEnvelope) -> Result<()> {
-        let Some(tenant_id) =
+        let (tenant_id, invalidation_key) = if platform_wide_policy_event(&envelope.event) {
+            (None, PLATFORM_POLICY_INVALIDATION_KEY.to_string())
+        } else if let Some(tenant_id) =
             tenant_cache_event_tenant_id(&envelope.event, Some(envelope.tenant_id))
-        else {
+        {
+            (Some(tenant_id), tenant_id.to_string())
+        } else {
             return Ok(());
         };
 
@@ -122,6 +131,7 @@ impl TenantCacheGenerationTransport {
         let _preflight = Self::validated_record(
             envelope,
             tenant_id,
+            invalidation_key.clone(),
             PREFLIGHT_GENERATION,
             emitted_at_unix_ms,
         )?;
@@ -134,6 +144,7 @@ impl TenantCacheGenerationTransport {
         let record = Self::validated_record(
             envelope,
             tenant_id,
+            invalidation_key,
             generation.generation,
             emitted_at_unix_ms,
         )?;
@@ -203,9 +214,34 @@ fn tenant_cache_event_tenant_id(
         DomainEvent::ModuleArtifactActivated { .. }
         | DomainEvent::ModuleArtifactRolledBack { .. }
         | DomainEvent::ModuleTransitionFinalized { .. }
+        | DomainEvent::ModuleArtifactAdmitted { .. }
+        | DomainEvent::ModuleArtifactReverified { .. }
+        | DomainEvent::ModuleArtifactUninstalled { .. }
+        | DomainEvent::ModuleArtifactDeactivated { .. }
+        | DomainEvent::ModuleTransitionFailedClosed { .. }
+        | DomainEvent::ModuleEffectivePolicyRevisionChanged { .. }
         | DomainEvent::PlatformSettingsChanged { .. } => envelope_tenant_id,
         _ => None,
     }
+}
+
+/// Module policy events whose effect is platform-wide: a release security
+/// state or a static-distribution release change alters enablement for every
+/// tenant, so no per-tenant key can express the invalidation. Listeners react
+/// to these by dropping all cached effective policies (the cache TTL remains
+/// as the final fail-safe if an event is ever missed).
+fn platform_wide_policy_event(event: &DomainEvent) -> bool {
+    matches!(
+        event,
+        DomainEvent::ModuleArtifactSecurityStateChanged { .. }
+            | DomainEvent::ModuleStaticDistributionReleaseAdmitted { .. }
+            | DomainEvent::ModuleStaticDistributionReleaseActivated { .. }
+            | DomainEvent::ModuleStaticDistributionReleaseRevoked { .. }
+            | DomainEvent::ModuleStaticDistributionRolloutStatusChanged { .. }
+            | DomainEvent::ModuleStaticDistributionRecoveryConverged { .. }
+            | DomainEvent::ModuleStaticPromotionApproved { .. }
+            | DomainEvent::ModuleArtifactNodeReconciliationStatusChanged { .. }
+    )
 }
 
 #[derive(Clone)]
@@ -303,10 +339,14 @@ impl TenantCacheGenerationListener {
             }
         }
 
-        if let Some(policy_cache) = &self.effective_policy_cache
-            && let Ok(tenant_id) = uuid::Uuid::parse_str(&event.key)
-        {
-            policy_cache.invalidate_tenant(tenant_id);
+        if let Some(policy_cache) = &self.effective_policy_cache {
+            if event.key == PLATFORM_POLICY_INVALIDATION_KEY {
+                // Platform-wide module policy change (e.g. release quarantine):
+                // every tenant's cached policy may be stale.
+                policy_cache.clear();
+            } else if let Ok(tenant_id) = uuid::Uuid::parse_str(&event.key) {
+                policy_cache.invalidate_tenant(tenant_id);
+            }
         }
         self.cache.clear_shared_backends();
 
@@ -621,6 +661,48 @@ mod tests {
                 Some(tenant_id)
             );
         }
+    }
+
+    #[test]
+    fn module_policy_events_are_classified_for_cache_invalidation() {
+        let tenant_id = Uuid::from_u128(42);
+        // Envelope-tenant lifecycle events invalidate that tenant only.
+        for event in [
+            DomainEvent::ModuleArtifactAdmitted {
+                installation_id: Uuid::new_v4(),
+                artifact_digest: "sha256:abc".to_string(),
+                media_type: "application/wasm".to_string(),
+                size_bytes: 1,
+            },
+            DomainEvent::ModuleArtifactUninstalled {
+                installation_id: Uuid::new_v4(),
+                revision: 1,
+            },
+            DomainEvent::ModuleEffectivePolicyRevisionChanged {
+                consumer_key: "effective-policy".to_string(),
+                previous_revision: None,
+                next_revision: "rev-2".to_string(),
+            },
+        ] {
+            assert_eq!(
+                tenant_cache_event_tenant_id(&event, Some(tenant_id)),
+                Some(tenant_id)
+            );
+            assert!(!platform_wide_policy_event(&event));
+        }
+
+        // Release-scoped security changes are platform-wide: every tenant's
+        // cached policy must be dropped, not just the envelope tenant's.
+        let quarantined = DomainEvent::ModuleArtifactSecurityStateChanged {
+            module_slug: "blog".to_string(),
+            module_version: "1.0.0".to_string(),
+            payload_digest: "sha256:abc".to_string(),
+            security_revision: 2,
+            status: "quarantined".to_string(),
+            policy_revision: "rev-2".to_string(),
+            reason_code: "cve".to_string(),
+        };
+        assert!(platform_wide_policy_event(&quarantined));
     }
 
     #[test]

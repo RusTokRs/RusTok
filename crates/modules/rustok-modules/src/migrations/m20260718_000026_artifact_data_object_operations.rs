@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
+
+use crate::backend::SupportedBackend;
 
 /// Makes object uploads idempotent without persisting their binary payload.
 /// Operation rows retain only the owner-generated storage key and verified
@@ -10,8 +12,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE module_artifact_data_object_operations (\
                     tenant_id UUID NOT NULL,\
                     data_owner_id UUID NOT NULL,\
@@ -33,7 +36,7 @@ impl MigrationTrait for Migration {
                  USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
                  WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
             ],
-            DbBackend::Sqlite => &["CREATE TABLE module_artifact_data_object_operations (\
+            SupportedBackend::Sqlite => &["CREATE TABLE module_artifact_data_object_operations (\
                     tenant_id TEXT NOT NULL,\
                     data_owner_id TEXT NOT NULL,\
                     namespace_instance_id TEXT NOT NULL,\
@@ -49,17 +52,12 @@ impl MigrationTrait for Migration {
                     completed_at TEXT NOT NULL,\
                     PRIMARY KEY (tenant_id, data_owner_id, namespace_instance_id, policy_revision, idempotency_key)\
                 )"],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "artifact data object operation migration does not support database backend {backend:?}"
-                )));
-            }
         };
         for statement in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;

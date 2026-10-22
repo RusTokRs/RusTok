@@ -33,31 +33,35 @@ pub struct ArtifactHttpCapabilityBroker {
 }
 
 impl ArtifactHttpCapabilityBroker {
-    pub fn new() -> Self {
+    pub fn new() -> SandboxResult<Self> {
         Self::with_timeout(Duration::from_secs(10))
     }
 
-    pub fn with_timeout(timeout: Duration) -> Self {
+    pub fn with_timeout(timeout: Duration) -> SandboxResult<Self> {
         Self::with_timeout_and_limit(timeout, DEFAULT_MAX_RESPONSE_BYTES)
     }
 
-    pub fn with_timeout_and_limit(timeout: Duration, max_response_bytes: usize) -> Self {
+    pub fn with_timeout_and_limit(
+        timeout: Duration,
+        max_response_bytes: usize,
+    ) -> SandboxResult<Self> {
+        // The restricted client is this capability's SSRF boundary (no
+        // redirects, caller-set timeout): a construction failure must
+        // surface, never silently substitute the default client.
+        let capability = CapabilityName::new("platform.http")?;
         let client = Client::builder()
             .timeout(timeout)
             .redirect(reqwest::redirect::Policy::none())
             .build()
-            .unwrap_or_default();
-        Self {
+            .map_err(|error| SandboxError::HostCapability {
+                capability: capability.clone(),
+                message: format!("failed to construct HTTP capability client: {error}"),
+            })?;
+        Ok(Self {
             client,
             timeout,
             max_response_bytes,
-        }
-    }
-}
-
-impl Default for ArtifactHttpCapabilityBroker {
-    fn default() -> Self {
-        Self::new()
+        })
     }
 }
 
@@ -263,18 +267,18 @@ pub struct SeaOrmArtifactHttpCapabilityBrokerResolver {
 }
 
 impl SeaOrmArtifactHttpCapabilityBrokerResolver {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self {
+    pub fn new(db: DatabaseConnection) -> SandboxResult<Self> {
+        Ok(Self {
             db,
-            broker: Arc::new(ArtifactHttpCapabilityBroker::new()),
-        }
+            broker: Arc::new(ArtifactHttpCapabilityBroker::new()?),
+        })
     }
 
-    pub fn with_timeout(db: DatabaseConnection, timeout: Duration) -> Self {
-        Self {
+    pub fn with_timeout(db: DatabaseConnection, timeout: Duration) -> SandboxResult<Self> {
+        Ok(Self {
             db,
-            broker: Arc::new(ArtifactHttpCapabilityBroker::with_timeout(timeout)),
-        }
+            broker: Arc::new(ArtifactHttpCapabilityBroker::with_timeout(timeout)?),
+        })
     }
 }
 

@@ -68,7 +68,7 @@ impl StaticModuleSettingsReader for TestForumSettingsReader {
         }
 
         Ok(Some(StaticModuleSettingsSnapshot {
-            enabled: module_slug == "forum",
+            enabled: Some(module_slug == "forum"),
             settings: without_posting_cooldown(serde_json::json!({ "use_reactions": false })),
         }))
     }
@@ -97,7 +97,7 @@ impl StaticModuleSettingsTransactionReader for TestForumSettingsReader {
         }
 
         Ok(Some(StaticModuleSettingsSnapshot {
-            enabled: module_slug == "forum",
+            enabled: Some(module_slug == "forum"),
             settings: without_posting_cooldown(serde_json::json!({ "use_reactions": false })),
         }))
     }
@@ -427,7 +427,7 @@ async fn internal_votes_switch_by_forum_setting_independently_of_reactions_modul
         id: Set(Uuid::new_v4()),
         tenant_id: Set(tenant_id),
         module_slug: Set("reactions".to_string()),
-        enabled: Set(true),
+        enabled: Set(Some(true)),
         settings: Set(serde_json::json!({})),
         created_at: Set(now.into()),
         updated_at: Set(now.into()),
@@ -440,7 +440,7 @@ async fn internal_votes_switch_by_forum_setting_independently_of_reactions_modul
         id: Set(Uuid::new_v4()),
         tenant_id: Set(tenant_id),
         module_slug: Set("forum".to_string()),
-        enabled: Set(true),
+        enabled: Set(Some(true)),
         settings: Set(serde_json::json!({"useReactions": false})),
         created_at: Set(now.into()),
         updated_at: Set(now.into()),
@@ -948,7 +948,7 @@ async fn set_forum_module_settings(
                 id: Set(Uuid::new_v4()),
                 tenant_id: Set(tenant_id),
                 module_slug: Set("forum".to_string()),
-                enabled: Set(true),
+                enabled: Set(Some(true)),
                 settings: Set(settings),
                 created_at: Set(now.into()),
                 updated_at: Set(now.into()),

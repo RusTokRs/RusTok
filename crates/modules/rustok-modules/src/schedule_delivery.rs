@@ -8,10 +8,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement, TransactionTrait,
-    Value as SqlValue,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, QueryResult, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
@@ -23,18 +20,22 @@ use rustok_api::{
 use rustok_runtime::{ModuleWorkRegistration, ModuleWorkScheduler};
 use rustok_sandbox::ExecutionPhase;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ArtifactBindingDispatch, ArtifactInstallationTarget, ArtifactReleaseRef,
     ArtifactScheduleMaterializationConfig, ArtifactScheduleMaterializer,
     ControlPlaneInfrastructure, ModuleArtifactDescriptor, ModuleRuntimeBinding,
     ModuleRuntimeBindingKind, SharedArtifactBindingExecutor, SharedArtifactDeliveryTenantSource,
-    data::{configure_tenant_scope, now_expression, placeholder, uuid_from_row, uuid_value},
+    data::{configure_tenant_scope, retry_available_at_expression, uuid_from_row},
     schedule_binding_digest,
 };
 
 const MAX_BINDING_ID_BYTES: usize = 128;
 const MAX_WORKER_ID_BYTES: usize = 128;
 const MAX_ERROR_CODE_BYTES: usize = 96;
+/// Upper bound on poison/lost-race candidates one `claim_next` call will
+/// skip before reporting no work, so a single poll stays time-bounded.
+const MAX_CANDIDATE_SKIPS_PER_CLAIM: usize = 16;
 
 /// Stable generic-scheduler identity for all artifact Schedule slot work.
 pub const ARTIFACT_SCHEDULE_DELIVERY_WORKER: &str = "artifact_schedule_delivery";
@@ -162,7 +163,8 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
         configure_tenant_scope(&transaction, request.tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let descriptor = load_admitted_descriptor(
             &transaction,
             backend,
@@ -174,29 +176,29 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
         let delivery_id = self.infrastructure.new_id();
         let inserted = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_schedule_deliveries \
                      (delivery_id, tenant_id, installation_id, binding_id, schedule_digest, scheduled_for, \
                       attempt, status, available_at, created_at) \
                      VALUES ({}, {}, {}, {}, {}, {}, 0, 'pending', {}, {}) \
                      ON CONFLICT (tenant_id, installation_id, binding_id, scheduled_for) DO NOTHING",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    now_expression(backend),
-                    now_expression(backend),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.now_sql(),
+                    backend.now_sql(),
                 ),
                 vec![
-                    uuid_value(delivery_id, backend),
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(delivery_id),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(request.installation_id),
                     request.binding_id.clone().into(),
                     schedule_digest.clone().into(),
-                    datetime_value(request.scheduled_for, backend),
+                    backend.datetime_value(request.scheduled_for),
                 ],
             ))
             .await
@@ -211,21 +213,21 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
 
         let existing = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT delivery_id, schedule_digest FROM module_artifact_schedule_deliveries \
                      WHERE tenant_id = {} AND installation_id = {} AND binding_id = {} \
                        AND scheduled_for = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
                 ),
                 vec![
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(request.installation_id),
                     request.binding_id.into(),
-                    datetime_value(request.scheduled_for, backend),
+                    backend.datetime_value(request.scheduled_for),
                 ],
             ))
             .await
@@ -260,133 +262,150 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
-        expire_claims(&transaction, backend, tenant_id, self.config.max_attempts).await?;
-        let lock = if backend == DbBackend::Postgres {
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        expire_claims(
+            &transaction,
+            backend,
+            tenant_id,
+            self.config.max_attempts,
+            self.config.retry_base_seconds,
+            self.config.retry_max_seconds,
+        )
+        .await?;
+        let lock = if backend == SupportedBackend::Postgres {
             " FOR UPDATE SKIP LOCKED"
         } else {
             ""
         };
-        let candidate = transaction
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
-                format!(
-                    "SELECT delivery_id, installation_id, binding_id, schedule_digest, scheduled_for \
-                     FROM module_artifact_schedule_deliveries \
-                     WHERE tenant_id = {} AND status = 'pending' AND available_at <= {} \
-                     ORDER BY available_at, delivery_id LIMIT 1{lock}",
-                    placeholder(backend, 1),
-                    now_expression(backend),
-                ),
-                vec![uuid_value(tenant_id, backend)],
-            ))
-            .await
-            .map_err(storage_error)?;
-        let Some(candidate) = candidate else {
-            transaction.commit().await.map_err(storage_error)?;
-            return Ok(None);
-        };
-        let delivery_id =
-            uuid_from_row(&candidate, "delivery_id", backend).map_err(storage_error)?;
-        let installation_id =
-            uuid_from_row(&candidate, "installation_id", backend).map_err(storage_error)?;
-        let binding_id: String = candidate.try_get("", "binding_id").map_err(storage_error)?;
-        let persisted_digest: String = candidate
-            .try_get("", "schedule_digest")
-            .map_err(storage_error)?;
-        let scheduled_for = datetime_from_row(&candidate, "scheduled_for", backend)?;
-        let descriptor =
-            match load_admitted_descriptor(&transaction, backend, tenant_id, installation_id).await
-            {
-                Ok(descriptor) => descriptor,
-                Err(ArtifactScheduleDeliveryError::InstallationUnavailable) => {
+        // A poison candidate (uninstalled, quarantined, binding or
+        // digest gone) is cancelled and the scan moves on within the
+        // same claim call, bounded so one poll cannot spin forever on a
+        // poisoned backlog. (Previously each poison item ended the
+        // claim with `Ok(None)`, draining one item per poll and
+        // starving the valid work queued behind it.)
+        for _skip in 0..MAX_CANDIDATE_SKIPS_PER_CLAIM {
+            let candidate = transaction
+                .query_one_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
+                    format!(
+                        "SELECT delivery_id, installation_id, binding_id, schedule_digest, scheduled_for \
+                         FROM module_artifact_schedule_deliveries \
+                         WHERE tenant_id = {} AND status = 'pending' AND available_at <= {} \
+                         ORDER BY available_at, delivery_id LIMIT 1{lock}",
+                        backend.placeholder(1),
+                        backend.now_sql(),
+                    ),
+                    vec![backend.uuid_value(tenant_id)],
+                ))
+                .await
+                .map_err(storage_error)?;
+            let Some(candidate) = candidate else {
+                transaction.commit().await.map_err(storage_error)?;
+                return Ok(None);
+            };
+            let delivery_id =
+                uuid_from_row(&candidate, "delivery_id", backend).map_err(storage_error)?;
+            let installation_id =
+                uuid_from_row(&candidate, "installation_id", backend).map_err(storage_error)?;
+            let binding_id: String = candidate.try_get("", "binding_id").map_err(storage_error)?;
+            let persisted_digest: String = candidate
+                .try_get("", "schedule_digest")
+                .map_err(storage_error)?;
+            let scheduled_for = datetime_from_row(&candidate, "scheduled_for", backend)?;
+            let descriptor =
+                match load_admitted_descriptor(&transaction, backend, tenant_id, installation_id)
+                    .await
+                {
+                    Ok(descriptor) => descriptor,
+                    Err(ArtifactScheduleDeliveryError::InstallationUnavailable) => {
+                        cancel_unavailable(&transaction, backend, tenant_id, delivery_id).await?;
+                        continue;
+                    }
+                    Err(error) => return Err(error),
+                };
+            let schedule_digest = match schedule_digest_for_binding(&descriptor, &binding_id) {
+                Ok(digest) => digest,
+                Err(ArtifactScheduleDeliveryError::BindingUnavailable) => {
                     cancel_unavailable(&transaction, backend, tenant_id, delivery_id).await?;
-                    transaction.commit().await.map_err(storage_error)?;
-                    return Ok(None);
+                    continue;
                 }
                 Err(error) => return Err(error),
             };
-        let schedule_digest = match schedule_digest_for_binding(&descriptor, &binding_id) {
-            Ok(digest) => digest,
-            Err(ArtifactScheduleDeliveryError::BindingUnavailable) => {
+            if schedule_digest != persisted_digest {
                 cancel_unavailable(&transaction, backend, tenant_id, delivery_id).await?;
-                transaction.commit().await.map_err(storage_error)?;
-                return Ok(None);
+                continue;
             }
-            Err(error) => return Err(error),
-        };
-        if schedule_digest != persisted_digest {
-            cancel_unavailable(&transaction, backend, tenant_id, delivery_id).await?;
+            let claimed = transaction
+                .execute_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
+                    format!(
+                        "UPDATE module_artifact_schedule_deliveries \
+                         SET status = 'running', attempt = attempt + 1, claimed_by = {}, \
+                             claimed_until = {}, last_error_code = NULL \
+                         WHERE delivery_id = {} AND tenant_id = {} AND status = 'pending' \
+                           AND available_at <= {}",
+                        backend.placeholder(1),
+                        lease_expression(backend, 2),
+                        backend.placeholder(3),
+                        backend.placeholder(4),
+                        backend.now_sql(),
+                    ),
+                    vec![
+                        worker_id.to_owned().into(),
+                        i64::from(self.config.lease_seconds).into(),
+                        backend.uuid_value(delivery_id),
+                        backend.uuid_value(tenant_id),
+                    ],
+                ))
+                .await
+                .map_err(storage_error)?;
+            if claimed.rows_affected() != 1 {
+                // Lost the claim race for this candidate; try the next one.
+                continue;
+            }
+            let attempt = transaction
+                .query_one_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
+                    format!(
+                        "SELECT attempt FROM module_artifact_schedule_deliveries \
+                         WHERE delivery_id = {} AND tenant_id = {} AND status = 'running' AND claimed_by = {}",
+                        backend.placeholder(1),
+                        backend.placeholder(2),
+                        backend.placeholder(3),
+                    ),
+                    vec![
+                        backend.uuid_value(delivery_id),
+                        backend.uuid_value(tenant_id),
+                        worker_id.to_owned().into(),
+                    ],
+                ))
+                .await
+                .map_err(storage_error)?
+                .ok_or(ArtifactScheduleDeliveryError::ClaimLost)
+                .and_then(|row| attempt_from_row(&row, backend))?;
+            let release = descriptor.release_ref();
+            let binding = descriptor
+                .bindings
+                .into_iter()
+                .find(|binding| {
+                    binding.id == binding_id && binding.kind == ModuleRuntimeBindingKind::Schedule
+                })
+                .ok_or(ArtifactScheduleDeliveryError::BindingUnavailable)?;
             transaction.commit().await.map_err(storage_error)?;
-            return Ok(None);
+            return Ok(Some(ArtifactScheduleDeliveryWorkItem {
+                delivery_id,
+                tenant_id,
+                installation_id,
+                attempt,
+                scheduled_for,
+                schedule_digest,
+                release,
+                binding,
+            }));
         }
-        let claimed = transaction
-            .execute_raw(Statement::from_sql_and_values(
-                backend,
-                format!(
-                    "UPDATE module_artifact_schedule_deliveries \
-                     SET status = 'running', attempt = attempt + 1, claimed_by = {}, \
-                         claimed_until = {}, last_error_code = NULL \
-                     WHERE delivery_id = {} AND tenant_id = {} AND status = 'pending' \
-                       AND available_at <= {}",
-                    placeholder(backend, 1),
-                    lease_expression(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    now_expression(backend),
-                ),
-                vec![
-                    worker_id.to_owned().into(),
-                    i64::from(self.config.lease_seconds).into(),
-                    uuid_value(delivery_id, backend),
-                    uuid_value(tenant_id, backend),
-                ],
-            ))
-            .await
-            .map_err(storage_error)?;
-        if claimed.rows_affected() != 1 {
-            transaction.commit().await.map_err(storage_error)?;
-            return Ok(None);
-        }
-        let attempt = transaction
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
-                format!(
-                    "SELECT attempt FROM module_artifact_schedule_deliveries \
-                     WHERE delivery_id = {} AND tenant_id = {} AND status = 'running' AND claimed_by = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                ),
-                vec![
-                    uuid_value(delivery_id, backend),
-                    uuid_value(tenant_id, backend),
-                    worker_id.to_owned().into(),
-                ],
-            ))
-            .await
-            .map_err(storage_error)?
-            .ok_or(ArtifactScheduleDeliveryError::ClaimLost)
-            .and_then(|row| attempt_from_row(&row, backend))?;
-        let release = descriptor.release_ref();
-        let binding = descriptor
-            .bindings
-            .into_iter()
-            .find(|binding| {
-                binding.id == binding_id && binding.kind == ModuleRuntimeBindingKind::Schedule
-            })
-            .ok_or(ArtifactScheduleDeliveryError::BindingUnavailable)?;
         transaction.commit().await.map_err(storage_error)?;
-        Ok(Some(ArtifactScheduleDeliveryWorkItem {
-            delivery_id,
-            tenant_id,
-            installation_id,
-            attempt,
-            scheduled_for,
-            schedule_digest,
-            release,
-            binding,
-        }))
+        Ok(None)
     }
 
     pub async fn complete(
@@ -427,7 +446,8 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let affected = if retryable && attempt < self.config.max_attempts {
             complete_retryable(
                 &transaction,
@@ -710,6 +730,9 @@ impl ModuleWorkHandler for ArtifactScheduleDeliveryWorkAdapter {
             .await
         {
             Ok(_) => Ok(ModuleWorkOutcome::Completed),
+            Err(error) if error.is_terminal() => Ok(ModuleWorkOutcome::Rejected {
+                message: "execution_rejected".to_string(),
+            }),
             Err(_) => Ok(ModuleWorkOutcome::Retryable {
                 message: "execution_failed".to_string(),
             }),
@@ -767,78 +790,65 @@ fn schedule_digest_for_binding(
 
 async fn load_admitted_descriptor<C: ConnectionTrait>(
     connection: &C,
-    backend: DbBackend,
+    backend: SupportedBackend,
     tenant_id: Uuid,
     installation_id: Uuid,
 ) -> Result<ModuleArtifactDescriptor, ArtifactScheduleDeliveryError> {
-    let enabled = match backend {
-        DbBackend::Postgres => "COALESCE(lifecycle.enabled, TRUE) = TRUE",
-        _ => "COALESCE(lifecycle.enabled, 1) = 1",
-    };
-    let true_val = match backend {
-        DbBackend::Postgres => "TRUE",
-        _ => "1",
-    };
-    let row = connection.query_one_raw(Statement::from_sql_and_values(backend, format!(
-        "SELECT CAST(installation.descriptor AS TEXT) AS descriptor \
-         FROM module_artifact_installations installation \
-         JOIN module_artifact_admissions admission ON admission.installation_id = installation.installation_id \
-         LEFT JOIN module_artifact_tenant_lifecycle lifecycle ON lifecycle.installation_id = installation.installation_id AND lifecycle.tenant_id = {} \
-         WHERE installation.installation_id = {} AND admission.status = 'active' \
-           AND NOT EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall WHERE uninstall.installation_id = installation.installation_id) \
-           AND NOT EXISTS (SELECT 1 FROM module_artifact_work_generations wg WHERE wg.installation_id = installation.installation_id AND wg.retired = {true_val}) \
-           AND NOT EXISTS (SELECT 1 FROM module_artifact_security_states sec WHERE sec.module_slug = installation.slug AND sec.module_version = installation.version AND sec.status IN ('quarantined', 'revoked')) \
-           AND {enabled} \
-           AND ((installation.scope_kind = 'tenant' AND installation.tenant_id = {}) \
-                OR (installation.scope_kind = 'platform' AND installation.tenant_id IS NULL))",
-        placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3)),
-        vec![uuid_value(tenant_id, backend), uuid_value(installation_id, backend), uuid_value(tenant_id, backend)])).await.map_err(storage_error)?
-        .ok_or(ArtifactScheduleDeliveryError::InstallationUnavailable)?;
-    let descriptor: ModuleArtifactDescriptor = serde_json::from_str(
-        &row.try_get::<String>("", "descriptor")
-            .map_err(storage_error)?,
+    // Single canonical implementation shared with the event queue; see
+    // `delivery_descriptor` for the admissibility contract.
+    crate::delivery_descriptor::load_admitted_descriptor(
+        connection,
+        backend,
+        tenant_id,
+        installation_id,
     )
-    .map_err(|_| ArtifactScheduleDeliveryError::InstallationUnavailable)?;
-    descriptor
-        .validate()
-        .map_err(|_| ArtifactScheduleDeliveryError::InstallationUnavailable)?;
-    Ok(descriptor)
+    .await
+    .map_err(|error| match error {
+        crate::delivery_descriptor::LoadAdmittedDescriptorError::Unavailable => {
+            ArtifactScheduleDeliveryError::InstallationUnavailable
+        }
+        crate::delivery_descriptor::LoadAdmittedDescriptorError::Storage(message) => {
+            ArtifactScheduleDeliveryError::Storage(message)
+        }
+    })
 }
 
 async fn expire_claims<C: ConnectionTrait>(
     connection: &C,
-    backend: DbBackend,
+    backend: SupportedBackend,
     tenant_id: Uuid,
     max_attempts: u32,
+    retry_base_seconds: u32,
+    retry_max_seconds: u32,
 ) -> Result<(), ArtifactScheduleDeliveryError> {
-    connection.execute_raw(Statement::from_sql_and_values(backend, format!(
+    connection.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
         "UPDATE module_artifact_schedule_deliveries \
          SET status = CASE WHEN attempt >= {} THEN 'dead_letter' ELSE 'pending' END, \
              available_at = {}, claimed_by = NULL, claimed_until = NULL, last_error_code = 'lease_expired', \
              dead_lettered_at = CASE WHEN attempt >= {} THEN {} ELSE NULL END \
          WHERE tenant_id = {} AND status = 'running' AND claimed_until < {}",
-        placeholder(backend, 1), now_expression(backend), placeholder(backend, 2), now_expression(backend), placeholder(backend, 3), now_expression(backend)),
-        vec![i32::try_from(max_attempts).map_err(|_| ArtifactScheduleDeliveryError::InvalidConfiguration)?.into(), i32::try_from(max_attempts).map_err(|_| ArtifactScheduleDeliveryError::InvalidConfiguration)?.into(), uuid_value(tenant_id, backend)])).await.map_err(storage_error)?;
+        backend.placeholder(1), retry_available_at_expression(backend, 4, 5), backend.placeholder(2), backend.now_sql(), backend.placeholder(3), backend.now_sql()),
+        vec![i32::try_from(max_attempts).map_err(|_| ArtifactScheduleDeliveryError::InvalidConfiguration)?.into(), i32::try_from(max_attempts).map_err(|_| ArtifactScheduleDeliveryError::InvalidConfiguration)?.into(), backend.uuid_value(tenant_id), i64::from(retry_base_seconds).into(), i64::from(retry_max_seconds).into()])).await.map_err(storage_error)?;
     Ok(())
 }
 
 async fn cancel_unavailable<C: ConnectionTrait>(
     connection: &C,
-    backend: DbBackend,
+    backend: SupportedBackend,
     tenant_id: Uuid,
     delivery_id: Uuid,
 ) -> Result<(), ArtifactScheduleDeliveryError> {
-    connection.execute_raw(Statement::from_sql_and_values(backend, format!(
+    connection.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
         "UPDATE module_artifact_schedule_deliveries \
          SET status = 'cancelled', claimed_by = NULL, claimed_until = NULL, last_error_code = 'schedule_unavailable', cancelled_at = {} \
          WHERE delivery_id = {} AND tenant_id = {} AND status = 'pending'",
-        now_expression(backend), placeholder(backend, 1), placeholder(backend, 2)),
-        vec![uuid_value(delivery_id, backend), uuid_value(tenant_id, backend)])).await.map_err(storage_error)?;
+        backend.now_sql(), backend.placeholder(1), backend.placeholder(2)),
+        vec![backend.uuid_value(delivery_id), backend.uuid_value(tenant_id)])).await.map_err(storage_error)?;
     Ok(())
 }
 
 struct ScheduleDeliveryClaim<'a> {
-    backend: DbBackend,
+    backend: SupportedBackend,
     tenant_id: Uuid,
     worker_id: &'a str,
     delivery_id: Uuid,
@@ -861,19 +871,19 @@ async fn complete_terminal<C: ConnectionTrait>(
     } = claim;
     let (error_assignment, values) = match error_code {
         Some(error_code) => (
-            format!("last_error_code = {}, ", placeholder(backend, 1)),
+            format!("last_error_code = {}, ", backend.placeholder(1)),
             vec![error_code.to_owned().into()],
         ),
         None => ("last_error_code = NULL, ".to_string(), Vec::new()),
     };
     let offset = values.len();
-    let result = connection.execute_raw(Statement::from_sql_and_values(backend, format!(
+    let result = connection.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
         "UPDATE module_artifact_schedule_deliveries \
          SET status = '{status}', claimed_by = NULL, claimed_until = NULL, {error_assignment}{timestamp_column} = {} \
          WHERE delivery_id = {} AND tenant_id = {} AND status = 'running' AND claimed_by = {} AND attempt = {}",
-        now_expression(backend), placeholder(backend, offset + 1), placeholder(backend, offset + 2), placeholder(backend, offset + 3), placeholder(backend, offset + 4)), {
+        backend.now_sql(), backend.placeholder(offset + 1), backend.placeholder(offset + 2), backend.placeholder(offset + 3), backend.placeholder(offset + 4)), {
         let mut values = values;
-        values.extend([uuid_value(delivery_id, backend), uuid_value(tenant_id, backend), worker_id.to_owned().into(), i64::from(attempt).into()]);
+        values.extend([backend.uuid_value(delivery_id), backend.uuid_value(tenant_id), worker_id.to_owned().into(), i64::from(attempt).into()]);
         values
     })).await.map_err(storage_error)?;
     Ok(result.rows_affected())
@@ -892,22 +902,24 @@ async fn complete_retryable<C: ConnectionTrait>(
         delivery_id,
         attempt,
     } = claim;
-    let result = connection.execute_raw(Statement::from_sql_and_values(backend, format!(
+    let result = connection.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
         "UPDATE module_artifact_schedule_deliveries \
          SET status = 'pending', claimed_by = NULL, claimed_until = NULL, last_error_code = {}, available_at = {} \
          WHERE delivery_id = {} AND tenant_id = {} AND status = 'running' AND claimed_by = {} AND attempt = {}",
-        placeholder(backend, 1), lease_expression(backend, 2), placeholder(backend, 3), placeholder(backend, 4), placeholder(backend, 5), placeholder(backend, 6)),
-        vec![error_code.to_owned().into(), i64::from(delay_seconds).into(), uuid_value(delivery_id, backend), uuid_value(tenant_id, backend), worker_id.to_owned().into(), i64::from(attempt).into()])).await.map_err(storage_error)?;
+        backend.placeholder(1), lease_expression(backend, 2), backend.placeholder(3), backend.placeholder(4), backend.placeholder(5), backend.placeholder(6)),
+        vec![error_code.to_owned().into(), i64::from(delay_seconds).into(), backend.uuid_value(delivery_id), backend.uuid_value(tenant_id), worker_id.to_owned().into(), i64::from(attempt).into()])).await.map_err(storage_error)?;
     Ok(result.rows_affected())
 }
 
 fn attempt_from_row(
     row: &QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<u32, ArtifactScheduleDeliveryError> {
     let attempt = match backend {
-        DbBackend::Postgres => i64::from(row.try_get::<i32>("", "attempt").map_err(storage_error)?),
-        _ => row.try_get::<i64>("", "attempt").map_err(storage_error)?,
+        SupportedBackend::Postgres => {
+            i64::from(row.try_get::<i32>("", "attempt").map_err(storage_error)?)
+        }
+        SupportedBackend::Sqlite => row.try_get::<i64>("", "attempt").map_err(storage_error)?,
     };
     u32::try_from(attempt).map_err(|_| ArtifactScheduleDeliveryError::ClaimLost)
 }
@@ -915,39 +927,28 @@ fn attempt_from_row(
 fn datetime_from_row(
     row: &QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<DateTime<Utc>, ArtifactScheduleDeliveryError> {
     match backend {
-        DbBackend::Postgres => row
+        SupportedBackend::Postgres => row
             .try_get::<DateTime<Utc>>("", column)
             .map_err(storage_error),
-        _ => row
+        SupportedBackend::Sqlite => row
             .try_get::<String>("", column)
             .map_err(storage_error)
-            .and_then(|value| {
-                DateTime::parse_from_rfc3339(&value)
-                    .map(|timestamp| timestamp.with_timezone(&Utc))
-                    .map_err(storage_error)
-            }),
+            .and_then(|value| crate::backend::parse_sqlite_datetime(&value).map_err(storage_error)),
     }
 }
 
-fn datetime_value(value: DateTime<Utc>, backend: DbBackend) -> SqlValue {
+fn lease_expression(backend: SupportedBackend, parameter: usize) -> String {
     match backend {
-        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(value)),
-        _ => value.to_rfc3339().into(),
-    }
-}
-
-fn lease_expression(backend: DbBackend, parameter: usize) -> String {
-    match backend {
-        DbBackend::Postgres => format!(
+        SupportedBackend::Postgres => format!(
             "NOW() + ({} * INTERVAL '1 second')",
-            placeholder(backend, parameter)
+            backend.placeholder(parameter)
         ),
-        _ => format!(
+        SupportedBackend::Sqlite => format!(
             "datetime('now', '+' || {} || ' seconds')",
-            placeholder(backend, parameter)
+            backend.placeholder(parameter)
         ),
     }
 }

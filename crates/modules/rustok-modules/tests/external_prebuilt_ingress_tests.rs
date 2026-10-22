@@ -817,7 +817,7 @@ async fn test_runtime_and_recovery_read_cas_only_and_never_query_oci() {
         },
         descriptor: descriptor.clone(),
         payload_media_type: descriptor.payload_kind.oci_layer_media_type().to_string(),
-        dependency_lock: ModuleDependencyLockGraph::create(0, Vec::new())
+        dependency_lock: ModuleDependencyLockGraph::create(1, Vec::new())
             .expect("empty dependency lock"),
         capability_grant_revision: 1,
         installed_at: chrono::Utc::now(),

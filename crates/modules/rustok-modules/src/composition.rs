@@ -15,10 +15,8 @@ use std::sync::Arc;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::{
-    ModuleCommandContext,
-    data::{now_expression, placeholder},
-};
+use crate::ModuleCommandContext;
+use crate::backend::SupportedBackend;
 use rustok_api::{
     ModuleCompositionSnapshotView, PortError, StaticInstalledModuleView, StaticModuleRegistryView,
     manifest_hash::{canonical_manifest_snapshot_json, hash_manifest_snapshot},
@@ -163,6 +161,18 @@ struct ModuleCompositionOperationReceiptRequest<'a, R> {
 /// Host adapter that enqueues a build using the composition owner's open
 /// transaction. The owner controls the transaction boundary; the host only
 /// adapts its build persistence contract.
+/// Failure of a [`ModuleCompositionBuildEnqueuer`] port. The composition
+/// owner holds the transaction open, so `Unavailable` (the build queue
+/// cannot accept work) aborts the operation while `Store` reports the
+/// adapter's persistence failure.
+#[derive(Debug, Error)]
+pub enum ModuleCompositionBuildEnqueueError {
+    #[error("{0}")]
+    Unavailable(String),
+    #[error("{0}")]
+    Store(String),
+}
+
 #[async_trait]
 pub trait ModuleCompositionBuildEnqueuer: Send + Sync {
     type Output: Send + Serialize + DeserializeOwned;
@@ -171,7 +181,7 @@ pub trait ModuleCompositionBuildEnqueuer: Send + Sync {
         &self,
         transaction: &DatabaseTransaction,
         snapshot: &ModuleCompositionSnapshot,
-    ) -> Result<Self::Output, String>;
+    ) -> Result<Self::Output, ModuleCompositionBuildEnqueueError>;
 }
 
 /// Owner-side database adapter for module-composition state.
@@ -282,6 +292,9 @@ impl SeaOrmModuleCompositionService {
             .begin()
             .await
             .map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
+        crate::backend::set_platform_scope(&transaction)
+            .await
+            .map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
         let result = async {
             let snapshot = Self::replace_active_snapshot_on(&transaction, update).await?;
             let output = enqueuer
@@ -334,13 +347,14 @@ impl SeaOrmModuleCompositionService {
         let canonical_manifest = canonical_manifest_snapshot_json(&update.manifest)
             .map_err(|error| ModuleCompositionError::Serialize(error.to_string()))?;
         let manifest_hash = hash_manifest_snapshot(&canonical_manifest);
-        let backend = connection.get_database_backend();
+        let backend = SupportedBackend::new(connection.get_database_backend())
+            .map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
         let placeholders = (1..=6)
-            .map(|index| placeholder(backend, index))
+            .map(|index| backend.placeholder(index))
             .collect::<Vec<_>>();
         let result = connection
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE platform_state SET revision = {}, manifest_json = {}, manifest_hash = {}, \
                      updated_by = {}, updated_at = {} WHERE id = {} AND revision = {}",
@@ -348,7 +362,7 @@ impl SeaOrmModuleCompositionService {
                     placeholders[1],
                     placeholders[2],
                     placeholders[3],
-                    now_expression(backend),
+                    backend.now_sql(),
                     placeholders[4],
                     placeholders[5],
                 ),
@@ -380,14 +394,15 @@ impl SeaOrmModuleCompositionService {
     pub async fn active_snapshot_on<C: ConnectionTrait>(
         connection: &C,
     ) -> Result<ModuleCompositionSnapshot, ModuleCompositionError> {
-        let backend = connection.get_database_backend();
+        let backend = SupportedBackend::new(connection.get_database_backend())
+            .map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
         let row = connection
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT revision, manifest_hash, CAST(manifest_json AS TEXT) AS manifest_json \
                      FROM platform_state WHERE id = {}",
-                    placeholder(backend, 1),
+                    backend.placeholder(1),
                 ),
                 vec![ACTIVE_MODULE_COMPOSITION_ID.into()],
             ))
@@ -424,13 +439,14 @@ impl SeaOrmModuleCompositionService {
         }
         let canonical_manifest = canonical_manifest_snapshot_json(bootstrap_manifest)
             .map_err(|error| ModuleCompositionError::Serialize(error.to_string()))?;
-        let backend = connection.get_database_backend();
+        let backend = SupportedBackend::new(connection.get_database_backend())
+            .map_err(|error| ModuleCompositionError::Store(error.to_string()))?;
         let placeholders = (1..=4)
-            .map(|index| placeholder(backend, index))
+            .map(|index| backend.placeholder(index))
             .collect::<Vec<_>>();
         connection
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO platform_state (\
                         id, revision, manifest_json, manifest_hash, updated_by, created_at, updated_at\
@@ -439,8 +455,8 @@ impl SeaOrmModuleCompositionService {
                     placeholders[1],
                     placeholders[2],
                     placeholders[3],
-                    now_expression(backend),
-                    now_expression(backend),
+                    backend.now_sql(),
+                    backend.now_sql(),
                 ),
                 vec![
                     ACTIVE_MODULE_COMPOSITION_ID.into(),
@@ -480,7 +496,7 @@ pub enum ModuleCompositionError {
     #[error("module composition store error: {0}")]
     Store(String),
     #[error("module composition build enqueue failed: {0}")]
-    BuildEnqueue(String),
+    BuildEnqueue(#[from] ModuleCompositionBuildEnqueueError),
     #[error("failed to serialize module composition: {0}")]
     Serialize(String),
     #[error("failed to deserialize module composition: {0}")]
@@ -553,7 +569,7 @@ mod tests {
             &self,
             _transaction: &DatabaseTransaction,
             snapshot: &ModuleCompositionSnapshot,
-        ) -> Result<Self::Output, String> {
+        ) -> Result<Self::Output, ModuleCompositionBuildEnqueueError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(snapshot.revision)
         }
@@ -569,8 +585,10 @@ mod tests {
             &self,
             _transaction: &DatabaseTransaction,
             _snapshot: &ModuleCompositionSnapshot,
-        ) -> Result<Self::Output, String> {
-            Err("build queue unavailable".to_string())
+        ) -> Result<Self::Output, ModuleCompositionBuildEnqueueError> {
+            Err(ModuleCompositionBuildEnqueueError::Unavailable(
+                "build queue unavailable".to_string(),
+            ))
         }
     }
 

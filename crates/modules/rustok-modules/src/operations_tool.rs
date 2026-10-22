@@ -12,16 +12,16 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::{DateTime, Utc};
 use ed25519_dalek::{Signature, VerifyingKey};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, Value};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ModuleCommandContext,
     conflict_fences::ConflictKey,
-    data::{placeholder, uuid_value},
     installation::{sha256_digest, valid_digest},
     promotion::digest_json,
 };
@@ -342,7 +342,8 @@ impl OperationsToolService {
     ) -> Result<VerifiedOperationsToolRelease, OperationsToolError> {
         let verified = release.verify(&self.public_key_base64, now)?;
         let payload = verified.payload();
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
 
         let insert_sql = format!(
             "INSERT INTO module_operations_tool_releases (\
@@ -351,22 +352,22 @@ impl OperationsToolService {
                 expires_at, created_at\
              ) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})\
              ON CONFLICT (release_id) DO NOTHING",
-            placeholder(backend, 1),
-            placeholder(backend, 2),
-            placeholder(backend, 3),
-            placeholder(backend, 4),
-            placeholder(backend, 5),
-            placeholder(backend, 6),
-            placeholder(backend, 7),
-            placeholder(backend, 8),
-            placeholder(backend, 9),
-            placeholder(backend, 10),
-            placeholder(backend, 11),
-            placeholder(backend, 12),
+            backend.placeholder(1),
+            backend.placeholder(2),
+            backend.placeholder(3),
+            backend.placeholder(4),
+            backend.placeholder(5),
+            backend.placeholder(6),
+            backend.placeholder(7),
+            backend.placeholder(8),
+            backend.placeholder(9),
+            backend.placeholder(10),
+            backend.placeholder(11),
+            backend.placeholder(12),
         );
 
         let values = vec![
-            uuid_value(payload.release_id, backend),
+            backend.uuid_value(payload.release_id),
             payload.version.clone().into(),
             (payload.protocol_revision as i32).into(),
             payload.package_digest.clone().into(),
@@ -381,7 +382,11 @@ impl OperationsToolService {
         ];
 
         self.db
-            .execute_raw(Statement::from_sql_and_values(backend, insert_sql, values))
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                insert_sql,
+                values,
+            ))
             .await
             .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
 
@@ -406,19 +411,20 @@ impl OperationsToolService {
         current_protocol: u32,
         now: DateTime<Utc>,
     ) -> Result<VerifiedOperationsToolRelease, OperationsToolError> {
-        let backend = connection.get_database_backend();
+        let backend = SupportedBackend::new(connection.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
         let query_sql = format!(
             "SELECT release_id, version, protocol_revision, package_digest, controller_digest, \
                     reconciler_digest, agent_digest, signer_key_digest, signature, issued_at, expires_at \
              FROM module_operations_tool_releases WHERE release_id = {}",
-            placeholder(backend, 1)
+            backend.placeholder(1)
         );
 
         let row = connection
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 query_sql,
-                vec![uuid_value(target_release_id, backend)],
+                vec![backend.uuid_value(target_release_id)],
             ))
             .await
             .map_err(|e| OperationsToolError::Storage(e.to_string()))?
@@ -451,6 +457,9 @@ impl OperationsToolService {
         let transaction = self
             .db
             .begin()
+            .await
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        crate::backend::set_platform_scope(&transaction)
             .await
             .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
         if let Some(replay) = self
@@ -491,41 +500,42 @@ impl OperationsToolService {
             .await?;
         }
 
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
         let op_sql = format!(
             "INSERT INTO module_operations_tool_maintenance_operations (\
                 operation_id, target_release_id, predecessor_release_id, status, recovery_attempts, \
                 request_digest, actor_id, idempotency_key, trace_id, correlation_id, created_at, updated_at\
              ) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})\
              ON CONFLICT DO NOTHING",
-            placeholder(backend, 1),
-            placeholder(backend, 2),
-            placeholder(backend, 3),
-            placeholder(backend, 4),
-            placeholder(backend, 5),
-            placeholder(backend, 6),
-            placeholder(backend, 7),
-            placeholder(backend, 8),
-            placeholder(backend, 9),
-            placeholder(backend, 10),
-            placeholder(backend, 11),
-            placeholder(backend, 12),
+            backend.placeholder(1),
+            backend.placeholder(2),
+            backend.placeholder(3),
+            backend.placeholder(4),
+            backend.placeholder(5),
+            backend.placeholder(6),
+            backend.placeholder(7),
+            backend.placeholder(8),
+            backend.placeholder(9),
+            backend.placeholder(10),
+            backend.placeholder(11),
+            backend.placeholder(12),
         );
         let inserted = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 op_sql,
                 vec![
-                    uuid_value(command.operation_id, backend),
-                    uuid_value(command.target_release_id, backend),
-                    optional_uuid_value(command.predecessor_release_id, backend),
+                    backend.uuid_value(command.operation_id),
+                    backend.uuid_value(command.target_release_id),
+                    backend.optional_uuid_value(command.predecessor_release_id),
                     "in_progress".into(),
                     0i32.into(),
                     request_digest.clone().into(),
-                    uuid_value(command.context.actor_id, backend),
-                    uuid_value(command.context.idempotency_key, backend),
+                    backend.uuid_value(command.context.actor_id),
+                    backend.uuid_value(command.context.idempotency_key),
                     command.context.trace_id.clone().into(),
-                    uuid_value(command.context.correlation_id, backend),
+                    backend.uuid_value(command.context.correlation_id),
                     now.to_rfc3339().into(),
                     now.to_rfc3339().into(),
                 ],
@@ -568,13 +578,13 @@ impl OperationsToolService {
             "INSERT INTO module_operations_tool_assignments (\
                 assignment_id, operation_id, host_id, component, desired_digest, status, updated_at\
              ) VALUES ({}, {}, {}, {}, {}, {}, {})",
-            placeholder(backend, 1),
-            placeholder(backend, 2),
-            placeholder(backend, 3),
-            placeholder(backend, 4),
-            placeholder(backend, 5),
-            placeholder(backend, 6),
-            placeholder(backend, 7),
+            backend.placeholder(1),
+            backend.placeholder(2),
+            backend.placeholder(3),
+            backend.placeholder(4),
+            backend.placeholder(5),
+            backend.placeholder(6),
+            backend.placeholder(7),
         );
         let target_payload = target_release.payload();
         for host_id in &command.host_ids {
@@ -591,11 +601,11 @@ impl OperationsToolService {
             ] {
                 transaction
                     .execute_raw(Statement::from_sql_and_values(
-                        backend,
+                        backend.db_backend(),
                         assignment_sql.clone(),
                         vec![
-                            uuid_value(Uuid::new_v4(), backend),
-                            uuid_value(command.operation_id, backend),
+                            backend.uuid_value(Uuid::new_v4()),
+                            backend.uuid_value(command.operation_id),
                             host_id.clone().into(),
                             component.as_str().into(),
                             digest.clone().into(),
@@ -640,6 +650,9 @@ impl OperationsToolService {
             .begin()
             .await
             .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        crate::backend::set_platform_scope(&transaction)
+            .await
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
         let operation = self
             .find_operation_by_id_for_update(&transaction, report.operation_id)
             .await?
@@ -679,28 +692,29 @@ impl OperationsToolService {
             return Err(OperationsToolError::SupervisorReportConflict);
         }
 
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
         let updated = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_operations_tool_assignments \
                      SET observed_digest = {}, status = {}, reported_at = {}, updated_at = {} \
                      WHERE assignment_id = {} AND desired_digest = {} \
                        AND status = 'staged'",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
                 ),
                 vec![
                     report.observed_digest.clone().into(),
                     report_status.into(),
                     now.to_rfc3339().into(),
                     now.to_rfc3339().into(),
-                    uuid_value(assignment.assignment_id, backend),
+                    backend.uuid_value(assignment.assignment_id),
                     report.expected_desired_digest.clone().into(),
                 ],
             ))
@@ -718,17 +732,17 @@ impl OperationsToolService {
             OperationsToolSupervisorObservationStatus::Failed => {
                 let transitioned = transaction
                     .execute_raw(Statement::from_sql_and_values(
-                        backend,
+                        backend.db_backend(),
                         format!(
                             "UPDATE module_operations_tool_maintenance_operations \
                              SET status = 'recovery_required', updated_at = {} \
                              WHERE operation_id = {} AND status IN ('in_progress', 'rolling_back')",
-                            placeholder(backend, 1),
-                            placeholder(backend, 2),
+                            backend.placeholder(1),
+                            backend.placeholder(2),
                         ),
                         vec![
                             now.to_rfc3339().into(),
-                            uuid_value(report.operation_id, backend),
+                            backend.uuid_value(report.operation_id),
                         ],
                     ))
                     .await
@@ -771,6 +785,9 @@ impl OperationsToolService {
         let transaction = self
             .db
             .begin()
+            .await
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        crate::backend::set_platform_scope(&transaction)
             .await
             .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
         if let Some(replay) = self
@@ -816,7 +833,8 @@ impl OperationsToolService {
             .await?;
         let pred_payload = pred_release.payload();
 
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
 
         let update_op_sql = format!(
             "UPDATE module_operations_tool_maintenance_operations \
@@ -825,27 +843,27 @@ impl OperationsToolService {
                  recovery_correlation_id = {}, updated_at = {} \
              WHERE operation_id = {} AND status = 'recovery_required' AND recovery_attempts = 0 \
                AND recovery_idempotency_key IS NULL",
-            placeholder(backend, 1),
-            placeholder(backend, 2),
-            placeholder(backend, 3),
-            placeholder(backend, 4),
-            placeholder(backend, 5),
-            placeholder(backend, 6),
-            placeholder(backend, 7),
+            backend.placeholder(1),
+            backend.placeholder(2),
+            backend.placeholder(3),
+            backend.placeholder(4),
+            backend.placeholder(5),
+            backend.placeholder(6),
+            backend.placeholder(7),
         );
 
         let updated = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 update_op_sql,
                 vec![
                     request_digest.clone().into(),
-                    uuid_value(command.context.actor_id, backend),
-                    uuid_value(command.context.idempotency_key, backend),
+                    backend.uuid_value(command.context.actor_id),
+                    backend.uuid_value(command.context.idempotency_key),
                     command.context.trace_id.clone().into(),
-                    uuid_value(command.context.correlation_id, backend),
+                    backend.uuid_value(command.context.correlation_id),
                     now.to_rfc3339().into(),
-                    uuid_value(command.operation_id, backend),
+                    backend.uuid_value(command.operation_id),
                 ],
             ))
             .await
@@ -882,10 +900,10 @@ impl OperationsToolService {
              SET desired_digest = {}, observed_digest = NULL, status = 'staged', \
                  reported_at = NULL, updated_at = {} \
              WHERE operation_id = {} AND component = {}",
-            placeholder(backend, 1),
-            placeholder(backend, 2),
-            placeholder(backend, 3),
-            placeholder(backend, 4),
+            backend.placeholder(1),
+            backend.placeholder(2),
+            backend.placeholder(3),
+            backend.placeholder(4),
         );
         for (comp, digest) in [
             (
@@ -900,12 +918,12 @@ impl OperationsToolService {
         ] {
             transaction
                 .execute_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     update_assignment_sql.clone(),
                     vec![
                         digest.clone().into(),
                         now.to_rfc3339().into(),
-                        uuid_value(command.operation_id, backend),
+                        backend.uuid_value(command.operation_id),
                         comp.as_str().into(),
                     ],
                 ))
@@ -930,7 +948,8 @@ impl OperationsToolService {
         operation_id: Uuid,
         now: DateTime<Utc>,
     ) -> Result<(), OperationsToolError> {
-        let backend = connection.get_database_backend();
+        let backend = SupportedBackend::new(connection.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
         let update_sql = format!(
             "UPDATE module_operations_tool_maintenance_operations \
              SET status = CASE status \
@@ -943,18 +962,18 @@ impl OperationsToolService {
                     SELECT 1 FROM module_operations_tool_assignments \
                     WHERE operation_id = {} AND status != 'converged'\
                )",
-            placeholder(backend, 1),
-            placeholder(backend, 2),
-            placeholder(backend, 3),
+            backend.placeholder(1),
+            backend.placeholder(2),
+            backend.placeholder(3),
         );
         connection
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 update_sql,
                 vec![
                     now.to_rfc3339().into(),
-                    uuid_value(operation_id, backend),
-                    uuid_value(operation_id, backend),
+                    backend.uuid_value(operation_id),
+                    backend.uuid_value(operation_id),
                 ],
             ))
             .await
@@ -995,15 +1014,16 @@ impl OperationsToolService {
         operation_id: Uuid,
         lock_for_update: bool,
     ) -> Result<Option<OperationsToolMaintenanceOperation>, OperationsToolError> {
-        let backend = connection.get_database_backend();
-        let lock_clause = if lock_for_update && backend == DbBackend::Postgres {
+        let backend = SupportedBackend::new(connection.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let lock_clause = if lock_for_update && backend == SupportedBackend::Postgres {
             " FOR UPDATE"
         } else {
             ""
         };
         let row = connection
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT operation_id, target_release_id, predecessor_release_id, status, \
                             recovery_attempts, actor_id, idempotency_key, trace_id, correlation_id, \
@@ -1011,10 +1031,10 @@ impl OperationsToolService {
                             recovery_correlation_id, created_at, updated_at \
                      FROM module_operations_tool_maintenance_operations \
                      WHERE operation_id = {}{}",
-                    placeholder(backend, 1),
+                    backend.placeholder(1),
                     lock_clause,
                 ),
-                vec![uuid_value(operation_id, backend)],
+                vec![backend.uuid_value(operation_id)],
             ))
             .await
             .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
@@ -1026,10 +1046,11 @@ impl OperationsToolService {
         &self,
         connection: &C,
     ) -> Result<Option<Uuid>, OperationsToolError> {
-        let backend = connection.get_database_backend();
+        let backend = SupportedBackend::new(connection.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
         let row = connection
             .query_one_raw(Statement::from_string(
-                backend,
+                backend.db_backend(),
                 "SELECT operation_id FROM module_operations_tool_maintenance_operations \
                  WHERE status IN ('in_progress', 'rolling_back', 'recovery_required') LIMIT 1"
                     .to_string(),
@@ -1046,19 +1067,20 @@ impl OperationsToolService {
         command: &StartOperationsToolMaintenanceCommand,
         request_digest: &str,
     ) -> Result<Option<OperationsToolMaintenanceOperation>, OperationsToolError> {
-        let backend = connection.get_database_backend();
+        let backend = SupportedBackend::new(connection.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
         let Some(row) = connection
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT request_digest, operation_id, target_release_id, predecessor_release_id, status, \
                             recovery_attempts, actor_id, idempotency_key, trace_id, correlation_id, \
                             recovery_actor_id, recovery_idempotency_key, recovery_trace_id, \
                             recovery_correlation_id, created_at, updated_at \
                      FROM module_operations_tool_maintenance_operations WHERE idempotency_key = {}",
-                    placeholder(backend, 1),
+                    backend.placeholder(1),
                 ),
-                vec![uuid_value(command.context.idempotency_key, backend)],
+                vec![backend.uuid_value(command.context.idempotency_key)],
             ))
             .await
             .map_err(|error| OperationsToolError::Storage(error.to_string()))?
@@ -1084,10 +1106,11 @@ impl OperationsToolService {
         command: &AuthorizeOperationsToolPredecessorRecoveryCommand,
         request_digest: &str,
     ) -> Result<Option<OperationsToolMaintenanceOperation>, OperationsToolError> {
-        let backend = connection.get_database_backend();
+        let backend = SupportedBackend::new(connection.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
         let Some(row) = connection
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT recovery_request_digest, operation_id, target_release_id, \
                             predecessor_release_id, status, recovery_attempts, actor_id, \
@@ -1096,9 +1119,9 @@ impl OperationsToolService {
                             created_at, updated_at \
                      FROM module_operations_tool_maintenance_operations \
                      WHERE recovery_idempotency_key = {}",
-                    placeholder(backend, 1),
+                    backend.placeholder(1),
                 ),
-                vec![uuid_value(command.context.idempotency_key, backend)],
+                vec![backend.uuid_value(command.context.idempotency_key)],
             ))
             .await
             .map_err(|error| OperationsToolError::Storage(error.to_string()))?
@@ -1140,23 +1163,24 @@ impl OperationsToolService {
         host_id: &str,
         component: OperationsToolComponent,
     ) -> Result<Option<OperationsToolAssignment>, OperationsToolError> {
-        let backend = connection.get_database_backend();
+        let backend = SupportedBackend::new(connection.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
         let query_sql = format!(
             "SELECT assignment_id, operation_id, host_id, component, desired_digest, \
                     observed_digest, status, reported_at, updated_at \
              FROM module_operations_tool_assignments \
              WHERE operation_id = {} AND host_id = {} AND component = {}",
-            placeholder(backend, 1),
-            placeholder(backend, 2),
-            placeholder(backend, 3),
+            backend.placeholder(1),
+            backend.placeholder(2),
+            backend.placeholder(3),
         );
 
         let row = connection
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 query_sql,
                 vec![
-                    uuid_value(operation_id, backend),
+                    backend.uuid_value(operation_id),
                     host_id.into(),
                     component.as_str().into(),
                 ],
@@ -1171,7 +1195,7 @@ impl OperationsToolService {
     fn parse_assignment_row(
         &self,
         row: sea_orm::QueryResult,
-        backend: DbBackend,
+        backend: SupportedBackend,
     ) -> Result<OperationsToolAssignment, OperationsToolError> {
         let assignment_id = self.get_uuid_from_row(&row, "assignment_id", backend)?;
         let operation_id = self.get_uuid_from_row(&row, "operation_id", backend)?;
@@ -1231,7 +1255,7 @@ impl OperationsToolService {
     fn parse_release_row(
         &self,
         row: sea_orm::QueryResult,
-        backend: DbBackend,
+        backend: SupportedBackend,
     ) -> Result<OperationsToolRelease, OperationsToolError> {
         let release_id: Uuid = self.get_uuid_from_row(&row, "release_id", backend)?;
         let version: String = row
@@ -1282,7 +1306,7 @@ impl OperationsToolService {
     fn parse_operation_row(
         &self,
         row: sea_orm::QueryResult,
-        backend: DbBackend,
+        backend: SupportedBackend,
     ) -> Result<OperationsToolMaintenanceOperation, OperationsToolError> {
         let recovery_attempts: i32 = row
             .try_get("", "recovery_attempts")
@@ -1375,16 +1399,16 @@ impl OperationsToolService {
         &self,
         row: &sea_orm::QueryResult,
         col: &str,
-        backend: DbBackend,
+        backend: SupportedBackend,
     ) -> Result<Uuid, OperationsToolError> {
         match backend {
-            DbBackend::Sqlite => {
+            SupportedBackend::Sqlite => {
                 let s: String = row
                     .try_get("", col)
                     .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
                 Uuid::parse_str(&s).map_err(|e| OperationsToolError::Storage(e.to_string()))
             }
-            _ => row
+            SupportedBackend::Postgres => row
                 .try_get("", col)
                 .map_err(|e| OperationsToolError::Storage(e.to_string())),
         }
@@ -1394,10 +1418,10 @@ impl OperationsToolService {
         &self,
         row: &sea_orm::QueryResult,
         col: &str,
-        backend: DbBackend,
+        backend: SupportedBackend,
     ) -> Result<Option<Uuid>, OperationsToolError> {
         match backend {
-            DbBackend::Sqlite => {
+            SupportedBackend::Sqlite => {
                 let s: Option<String> = row
                     .try_get("", col)
                     .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
@@ -1408,7 +1432,7 @@ impl OperationsToolService {
                     None => Ok(None),
                 }
             }
-            _ => row
+            SupportedBackend::Postgres => row
                 .try_get("", col)
                 .map_err(|e| OperationsToolError::Storage(e.to_string())),
         }
@@ -1418,18 +1442,17 @@ impl OperationsToolService {
         &self,
         row: &sea_orm::QueryResult,
         col: &str,
-        backend: DbBackend,
+        backend: SupportedBackend,
     ) -> Result<DateTime<Utc>, OperationsToolError> {
         match backend {
-            DbBackend::Sqlite => {
+            SupportedBackend::Sqlite => {
                 let s: String = row
                     .try_get("", col)
                     .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-                DateTime::parse_from_rfc3339(&s)
-                    .map(|dt| dt.with_timezone(&Utc))
+                crate::backend::parse_sqlite_datetime(&s)
                     .map_err(|e| OperationsToolError::Storage(e.to_string()))
             }
-            _ => row
+            SupportedBackend::Postgres => row
                 .try_get("", col)
                 .map_err(|e| OperationsToolError::Storage(e.to_string())),
         }
@@ -1439,21 +1462,21 @@ impl OperationsToolService {
         &self,
         row: &sea_orm::QueryResult,
         col: &str,
-        backend: DbBackend,
+        backend: SupportedBackend,
     ) -> Result<Option<DateTime<Utc>>, OperationsToolError> {
         match backend {
-            DbBackend::Sqlite => {
+            SupportedBackend::Sqlite => {
                 let s: Option<String> = row
                     .try_get("", col)
                     .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
                 match s {
-                    Some(val) => DateTime::parse_from_rfc3339(&val)
-                        .map(|dt| Some(dt.with_timezone(&Utc)))
+                    Some(val) => crate::backend::parse_sqlite_datetime(&val)
+                        .map(Some)
                         .map_err(|e| OperationsToolError::Storage(e.to_string())),
                     None => Ok(None),
                 }
             }
-            _ => row
+            SupportedBackend::Postgres => row
                 .try_get("", col)
                 .map_err(|e| OperationsToolError::Storage(e.to_string())),
         }
@@ -1579,12 +1602,5 @@ fn valid_assignment_observation(
         "staged" => observed_digest.is_none() && reported_at.is_none(),
         "converged" | "failed" => observed_digest.is_some() && reported_at.is_some(),
         _ => false,
-    }
-}
-
-fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> Value {
-    match backend {
-        DbBackend::Postgres => Value::Uuid(value),
-        _ => Value::String(value.map(|value| value.to_string())),
     }
 }

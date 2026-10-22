@@ -19,18 +19,12 @@ impl SeaOrmModuleGovernanceService {
             + chrono::Duration::milliseconds(
                 command.lease_ttl_ms.max(1).min(i64::MAX as u64) as i64
             );
-        let backend = self.db.get_database_backend();
-        let mark = |n| {
-            if backend == sea_orm::DbBackend::Postgres {
-                format!("${n}")
-            } else {
-                format!("?{n}")
-            }
-        };
+        let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
+        let mark = |n| backend.placeholder(n);
         let updated = self
             .db
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE registry_validation_stages SET last_heartbeat_at = {}, \
                      claim_expires_at = {}, updated_at = {} WHERE claim_id = {} \
@@ -62,7 +56,7 @@ impl SeaOrmModuleGovernanceService {
         let stage = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT status, claimed_by, runner_kind FROM registry_validation_stages \
                      WHERE claim_id = {}",
@@ -106,14 +100,8 @@ impl SeaOrmModuleGovernanceService {
         if supported_stages.is_empty() {
             return Ok(None);
         }
-        let backend = self.db.get_database_backend();
-        let mark = |n| {
-            if backend == sea_orm::DbBackend::Postgres {
-                format!("${n}")
-            } else {
-                format!("?{n}")
-            }
-        };
+        let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
+        let mark = |n| backend.placeholder(n);
         let now = self.infrastructure.now();
         let stage_marks = (1..=supported_stages.len())
             .map(&mark)
@@ -126,7 +114,7 @@ impl SeaOrmModuleGovernanceService {
         let candidates = self
             .db
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT id FROM registry_validation_stages WHERE stage_key IN ({stage_marks}) \
                      AND runner_kind = 'remote' \
@@ -151,22 +139,16 @@ impl SeaOrmModuleGovernanceService {
                 .begin()
                 .await
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-            let tx_backend = tx.get_database_backend();
-            let tx_mark = |n| {
-                if tx_backend == sea_orm::DbBackend::Postgres {
-                    format!("${n}")
-                } else {
-                    format!("?{n}")
-                }
-            };
-            let tx_now = if tx_backend == sea_orm::DbBackend::Postgres {
-                "NOW()"
-            } else {
-                "datetime('now')"
-            };
+            crate::backend::set_platform_scope(&tx)
+                .await
+                .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+            let tx_backend =
+                SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
+            let tx_mark = |n| tx_backend.placeholder(n);
+            let tx_now = tx_backend.now_sql();
             let Some(stage) = tx
                 .query_one_raw(Statement::from_sql_and_values(
-                    tx_backend,
+                    tx_backend.db_backend(),
                     format!(
                         "SELECT s.stage_key, s.status, s.claim_id, s.claimed_by, s.attempt_number, \
                          s.queue_reason, r.id AS request_id, r.revision AS request_revision, \
@@ -264,7 +246,7 @@ impl SeaOrmModuleGovernanceService {
                 );
             let updated = tx
                 .execute_raw(Statement::from_sql_and_values(
-                    tx_backend,
+                    tx_backend.db_backend(),
                     format!(
                         "UPDATE registry_validation_stages SET status = 'running', detail = {}, \
                          started_at = COALESCE(started_at, {tx_now}), finished_at = NULL, \
@@ -300,7 +282,7 @@ impl SeaOrmModuleGovernanceService {
             }
             let request_updated = tx
                 .execute_raw(Statement::from_sql_and_values(
-                    tx_backend,
+                    tx_backend.db_backend(),
                     format!(
                         "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {tx_now} \
                          WHERE id = {} AND revision = {}",
@@ -334,7 +316,7 @@ impl SeaOrmModuleGovernanceService {
                 "previous_runner_id": previous_runner_id,
             });
             tx.execute_raw(Statement::from_sql_and_values(
-                tx_backend,
+                tx_backend.db_backend(),
                 format!(
                     "INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, 'validation_stage_running', {}, NULL, {}, {tx_now})",
                     tx_mark(1), tx_mark(2), tx_mark(3), tx_mark(4), tx_mark(5),
@@ -395,19 +377,13 @@ impl SeaOrmModuleGovernanceService {
     pub async fn remote_validation_runner_snapshot(
         &self,
     ) -> Result<ModuleRemoteValidationRunnerSnapshot, ModuleGovernanceError> {
-        let backend = self.db.get_database_backend();
-        let mark = |n| {
-            if backend == sea_orm::DbBackend::Postgres {
-                format!("${n}")
-            } else {
-                format!("?{n}")
-            }
-        };
+        let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
+        let mark = |n| backend.placeholder(n);
         let now = self.infrastructure.now();
         let snapshot = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT COUNT(*) AS active_claims, \
                      COALESCE(SUM(CASE WHEN claim_expires_at < {} THEN 1 ELSE 0 END), 0) \
@@ -452,17 +428,11 @@ impl SeaOrmModuleGovernanceService {
     pub async fn requeue_expired_remote_validation_claims(
         &self,
     ) -> Result<usize, ModuleGovernanceError> {
-        let backend = self.db.get_database_backend();
-        let mark = |n| {
-            if backend == sea_orm::DbBackend::Postgres {
-                format!("${n}")
-            } else {
-                format!("?{n}")
-            }
-        };
+        let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
+        let mark = |n| backend.placeholder(n);
         let now = self.infrastructure.now();
         let candidates = self.db.query_all_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!("SELECT id FROM registry_validation_stages WHERE status = 'running' AND runner_kind = 'remote' AND claim_expires_at < {} ORDER BY claim_expires_at ASC", mark(1)),
             vec![now.into()],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -476,21 +446,18 @@ impl SeaOrmModuleGovernanceService {
                 .begin()
                 .await
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-            let backend = tx.get_database_backend();
-            let mark = |n| {
-                if backend == sea_orm::DbBackend::Postgres {
-                    format!("${n}")
-                } else {
-                    format!("?{n}")
-                }
-            };
-            let now = if backend == sea_orm::DbBackend::Postgres {
+            crate::backend::set_platform_scope(&tx)
+                .await
+                .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+            let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
+            let mark = |n| backend.placeholder(n);
+            let now = if backend == SupportedBackend::Postgres {
                 "NOW()"
             } else {
                 "datetime('now')"
             };
             let Some(stage) = tx.query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!("SELECT s.stage_key, s.attempt_number, s.queue_reason, s.claim_id, s.claimed_by, r.id AS request_id, r.revision AS request_revision, r.slug, r.version, r.status AS request_status FROM registry_validation_stages s JOIN registry_publish_requests r ON r.id = s.request_id WHERE s.id = {}", mark(1)),
                 vec![stage_id.clone().into()],
             )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))? else {
@@ -533,7 +500,7 @@ impl SeaOrmModuleGovernanceService {
                 claim_id.as_deref().unwrap_or("unknown")
             );
             let blocked = tx.execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!("UPDATE registry_validation_stages SET status = 'blocked', detail = {}, last_error = NULL, finished_at = {now}, claim_id = NULL, claimed_by = NULL, claim_expires_at = NULL, last_heartbeat_at = NULL, runner_kind = NULL, updated_at = {now} WHERE id = {} AND status = 'running' AND runner_kind = 'remote' AND claim_expires_at < {now}", mark(1), mark(2)),
                 vec![detail.clone().into(), stage_id.clone().into()],
             )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -544,7 +511,7 @@ impl SeaOrmModuleGovernanceService {
                 continue;
             }
             let next_attempt = tx.query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!("SELECT COALESCE(MAX(attempt_number), 0) AS attempt_number FROM registry_validation_stages WHERE request_id = {} AND stage_key = {}", mark(1), mark(2)),
                 vec![request_id.clone().into(), stage_key.clone().into()],
             )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?.ok_or_else(|| ModuleGovernanceError::Store("missing validation attempt aggregate".to_string()))?.try_get::<i64>("", "attempt_number").map_err(|e| ModuleGovernanceError::Store(e.to_string()))? as i32 + 1;
@@ -554,13 +521,13 @@ impl SeaOrmModuleGovernanceService {
                 next_attempt, stage_key
             );
             tx.execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!("INSERT INTO registry_validation_stages (id, request_id, slug, version, stage_key, status, triggered_by, queue_reason, attempt_number, detail, started_at, finished_at, last_error, claim_id, claimed_by, claim_expires_at, last_heartbeat_at, runner_kind, created_at, updated_at) VALUES ({}, {}, {}, {}, {}, 'queued', 'system:registry-runner-reaper', 'remote_lease_expired', {}, {}, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'remote', {now}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7)),
                 vec![queued_id.clone().into(), request_id.clone().into(), slug.clone().into(), version.clone().into(), stage_key.clone().into(), next_attempt.into(), queued_detail.clone().into()],
             )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
             let request_updated = tx
                 .execute_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
                          WHERE id = {} AND revision = {}",
@@ -591,7 +558,8 @@ impl SeaOrmModuleGovernanceService {
                 ),
             ];
             for (event_type, details) in events {
-                tx.execute_raw(Statement::from_sql_and_values(backend,
+                tx.execute_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
                     format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, {}, {}, NULL, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)),
                     vec![self.infrastructure.prefixed_id("rge").into(), slug.clone().into(), request_id.clone().into(), event_type.into(), Value::Json(Some(Box::new(actor.clone()))), Value::Json(Some(Box::new(details)))],
                 )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;

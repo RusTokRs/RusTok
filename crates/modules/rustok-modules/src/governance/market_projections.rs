@@ -11,11 +11,11 @@ impl SeaOrmModuleGovernanceService {
     pub async fn published_artifact_contracts(
         &self,
     ) -> Result<Vec<ModulePublishedArtifactContract>, ModuleGovernanceError> {
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
         let rows = self
             .db
             .query_all_raw(Statement::from_string(
-                backend,
+                backend.db_backend(),
                 "SELECT artifact.release_id, CAST(artifact.artifact AS TEXT) AS artifact, \
                  CAST(artifact.descriptor AS TEXT) AS descriptor, CAST(artifact.lineage AS TEXT) AS lineage, \
                  admission.media_type AS payload_media_type, release.published_at \
@@ -144,11 +144,11 @@ impl SeaOrmModuleGovernanceService {
     pub(crate) async fn marketplace_release_projections(
         &self,
     ) -> Result<Vec<RegistryMarketplaceReleaseProjection>, ModuleGovernanceError> {
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
         let rows = self
             .db
             .query_all_raw(Statement::from_string(
-                backend,
+                backend.db_backend(),
                 "SELECT id, slug, version, status, \
                         CAST(publisher_principal AS TEXT) AS publisher_principal, \
                         checksum_sha256, default_locale, published_at \
@@ -186,12 +186,12 @@ impl SeaOrmModuleGovernanceService {
         preferred_locale: Option<&str>,
         fallback_locale: Option<&str>,
     ) -> Result<RegistryMarketplaceTranslationProjection, ModuleGovernanceError> {
-        let backend = self.db.get_database_backend();
-        let mark = |position| placeholder(backend, position);
+        let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
+        let mark = |position| backend.placeholder(position);
         let rows = self
             .db
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT locale, name, description \
                      FROM registry_module_release_translations \

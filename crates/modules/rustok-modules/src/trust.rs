@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{ModuleArtifactDescriptor, OciArtifactReference};
@@ -102,16 +103,16 @@ impl TrustAlloyWorkspaceProvenance {
             && !self.alloy_tenant_id.is_nil()
             && !self.alloy_script_id.is_nil()
             && self.source_revision > 0
-            && sha256_digest(&self.source_digest)
-            && sha256_digest(&self.review_digest)
-            && sha256_digest(&self.descriptor_digest)
+            && is_sha256_digest(&self.source_digest)
+            && is_sha256_digest(&self.review_digest)
+            && is_sha256_digest(&self.descriptor_digest)
             && !self.workspace_entrypoint.trim().is_empty()
             && self.workspace_entrypoint.len() <= 160
             && !self.workspace_entrypoint.chars().any(char::is_control)
     }
 }
 
-fn sha256_digest(value: &str) -> bool {
+pub(crate) fn is_sha256_digest(value: &str) -> bool {
     value.strip_prefix("sha256:").is_some_and(|digest| {
         digest.len() == 64
             && digest
@@ -170,13 +171,26 @@ impl TrustVerificationDecision {
     }
 }
 
+/// Failure of a [`TrustVerifier`] port. A verifier that could evaluate the
+/// request reports its verdict inside [`TrustVerificationDecision`]; this
+/// error is reserved for requests the verifier could not evaluate at all.
+/// `InvalidRequest` is terminal for the submitted evidence, while
+/// `Unavailable` covers verifier, transport, and evidence-fetch outages.
+#[derive(Debug, Error)]
+pub enum TrustVerificationError {
+    #[error("{0}")]
+    InvalidRequest(String),
+    #[error("{0}")]
+    Unavailable(String),
+}
+
 /// Owner port implemented by the isolated verification worker adapter.
 #[async_trait]
 pub trait TrustVerifier: Send + Sync {
     async fn verify(
         &self,
         request: TrustVerificationRequest,
-    ) -> Result<TrustVerificationDecision, String>;
+    ) -> Result<TrustVerificationDecision, TrustVerificationError>;
 }
 
 #[cfg(test)]

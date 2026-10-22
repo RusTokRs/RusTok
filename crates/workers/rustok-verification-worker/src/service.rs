@@ -1,5 +1,7 @@
 use async_trait::async_trait;
-use rustok_modules::{TrustVerificationDecision, TrustVerificationRequest, TrustVerifier};
+use rustok_modules::{
+    TrustVerificationDecision, TrustVerificationError, TrustVerificationRequest, TrustVerifier,
+};
 use thiserror::Error;
 
 use crate::VerificationPolicy;
@@ -25,18 +27,24 @@ where
     async fn verify(
         &self,
         request: TrustVerificationRequest,
-    ) -> Result<TrustVerificationDecision, String> {
+    ) -> Result<TrustVerificationDecision, TrustVerificationError> {
         if request.trust_policy_revision != self.policy.trust_policy_revision
             || request.capability_policy_revision != self.policy.capability_policy_revision
         {
-            return Err(VerificationWorkerError::PolicyRevisionMismatch.to_string());
+            return Err(TrustVerificationError::InvalidRequest(
+                VerificationWorkerError::PolicyRevisionMismatch.to_string(),
+            ));
         }
         let decision = self.verifier.verify(request).await?;
         if !self.policy.signer_is_allowed(&decision.signer_identity) {
-            return Err(VerificationWorkerError::SignerDenied.to_string());
+            return Err(TrustVerificationError::InvalidRequest(
+                VerificationWorkerError::SignerDenied.to_string(),
+            ));
         }
         if !decision.admitted() {
-            return Err(VerificationWorkerError::RequiredEvidenceMissing.to_string());
+            return Err(TrustVerificationError::InvalidRequest(
+                VerificationWorkerError::RequiredEvidenceMissing.to_string(),
+            ));
         }
         Ok(decision)
     }

@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
+
+use crate::backend::SupportedBackend;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -160,10 +162,10 @@ async fn backfill_registry_translation_tables(
 async fn backfill_publish_request_translations(
     db: &SchemaManagerConnection<'_>,
 ) -> Result<(), DbErr> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend())?;
     let rows = db
         .query_all_raw(Statement::from_string(
-            backend,
+            backend.db_backend(),
             "SELECT id, module_name, description FROM registry_publish_requests".to_string(),
         ))
         .await?;
@@ -189,10 +191,10 @@ async fn backfill_publish_request_translations(
 }
 
 async fn backfill_release_translations(db: &SchemaManagerConnection<'_>) -> Result<(), DbErr> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend())?;
     let rows = db
         .query_all_raw(Statement::from_string(
-            backend,
+            backend.db_backend(),
             "SELECT id, module_name, description FROM registry_module_releases".to_string(),
         ))
         .await?;
@@ -280,10 +282,10 @@ async fn restore_legacy_registry_metadata_columns(
 }
 
 async fn restore_publish_request_metadata(db: &SchemaManagerConnection<'_>) -> Result<(), DbErr> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend())?;
     let rows = db
         .query_all_raw(Statement::from_string(
-            backend,
+            backend.db_backend(),
             "SELECT id, default_locale FROM registry_publish_requests".to_string(),
         ))
         .await?;
@@ -315,10 +317,10 @@ async fn restore_publish_request_metadata(db: &SchemaManagerConnection<'_>) -> R
 }
 
 async fn restore_release_metadata(db: &SchemaManagerConnection<'_>) -> Result<(), DbErr> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend())?;
     let rows = db
         .query_all_raw(Statement::from_string(
-            backend,
+            backend.db_backend(),
             "SELECT id, default_locale FROM registry_module_releases".to_string(),
         ))
         .await?;
@@ -381,22 +383,21 @@ async fn execute_statement(
     template: &str,
     values: Vec<sea_orm::Value>,
 ) -> Result<(), DbErr> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend())?;
     let sql = placeholder_sql(backend, template, values.len());
-    db.execute_raw(Statement::from_sql_and_values(backend, sql, values))
-        .await?;
+    db.execute_raw(Statement::from_sql_and_values(
+        backend.db_backend(),
+        sql,
+        values,
+    ))
+    .await?;
     Ok(())
 }
 
-fn placeholder_sql(backend: DbBackend, template: &str, value_count: usize) -> String {
+fn placeholder_sql(backend: SupportedBackend, template: &str, value_count: usize) -> String {
     let mut sql = template.to_string();
     for index in 0..value_count {
-        let placeholder = match backend {
-            DbBackend::Postgres => format!("${}", index + 1),
-            DbBackend::MySql => "?".to_string(),
-            DbBackend::Sqlite => format!("?{}", index + 1),
-            _ => unreachable!("unsupported SeaORM database backend"),
-        };
+        let placeholder = backend.placeholder(index + 1);
         sql = sql.replace(&format!("{{v{}}}", index + 1), &placeholder);
     }
     sql
@@ -407,10 +408,10 @@ async fn drop_columns(
     table: &str,
     columns: &[&str],
 ) -> Result<(), DbErr> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend())?;
     for column in columns {
         db.execute_raw(Statement::from_string(
-            backend,
+            backend.db_backend(),
             format!("ALTER TABLE {table} DROP COLUMN {column}"),
         ))
         .await?;
@@ -425,14 +426,14 @@ async fn load_translation_row(
     owner_id: &str,
     default_locale: &str,
 ) -> Result<LocalizedMetadataRow, DbErr> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend())?;
     let sql = format!(
         "SELECT name, description FROM {table} WHERE {owner_column} = {{v1}} ORDER BY CASE WHEN locale = {{v2}} THEN 0 WHEN locale = {{v3}} THEN 1 ELSE 2 END, locale ASC LIMIT 1"
     );
     let sql = placeholder_sql(backend, &sql, 3);
     let row = db
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             sql,
             vec![
                 owner_id.into(),

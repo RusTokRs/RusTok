@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, Statement, TransactionTrait, Value as SqlValue,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -11,7 +11,9 @@ use rustok_sandbox::{
     SandboxSubject,
 };
 
-use crate::data::{configure_tenant_scope, placeholder, uuid_value};
+use crate::backend::SupportedBackend;
+use crate::data::configure_tenant_scope;
+use crate::installation::valid_digest;
 
 /// Durable, redacted execution audit adapter for installed module artifacts.
 ///
@@ -64,10 +66,11 @@ impl SeaOrmArtifactBindingExecutionAuditReader {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let rows = transaction
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT CAST(execution_id AS TEXT) AS execution_id, status, \
                      CAST(started_at AS TEXT) AS started_at, \
@@ -75,14 +78,14 @@ impl SeaOrmArtifactBindingExecutionAuditReader {
                      FROM module_artifact_execution_audit \
                      WHERE tenant_id = {} AND installation_id = {} AND binding_id = {} \
                      ORDER BY started_at DESC, execution_id DESC LIMIT {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
                 ),
                 vec![
-                    uuid_value(tenant_id, backend),
-                    uuid_value(installation_id, backend),
+                    backend.uuid_value(tenant_id),
+                    backend.uuid_value(installation_id),
                     binding_id.to_string().into(),
                     i64::from(limit).into(),
                 ],
@@ -143,25 +146,25 @@ impl SeaOrmArtifactExecutionObserver {
                 .await
                 .map_err(|_| ())?;
         }
-        let backend = transaction.get_database_backend();
+        let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(|_| ())?;
         match record.status {
             ExecutionStatus::Started => {
                 let columns = "execution_id, tenant_id, installation_id, module_slug, module_version, artifact_digest, executor, phase, actor_id, trace_id, binding_id, status, started_at";
                 let values = (1..=13)
-                    .map(|index| placeholder(backend, index))
+                    .map(|index| backend.placeholder(index))
                     .collect::<Vec<_>>()
                     .join(", ");
                 transaction
                     .execute_raw(Statement::from_sql_and_values(
-                        backend,
+                        backend.db_backend(),
                         format!(
                             "INSERT INTO module_artifact_execution_audit ({columns}) \
                              VALUES ({values}) ON CONFLICT (execution_id) DO NOTHING"
                         ),
                         vec![
-                            uuid_value(record.execution_id, backend),
-                            optional_uuid_value(record.context.tenant_id, backend),
-                            uuid_value(*installation_id, backend),
+                            backend.uuid_value(record.execution_id),
+                            backend.optional_uuid_value(record.context.tenant_id),
+                            backend.uuid_value(*installation_id),
                             slug.clone().into(),
                             version.clone().into(),
                             digest.clone().into(),
@@ -180,7 +183,7 @@ impl SeaOrmArtifactExecutionObserver {
             ExecutionStatus::Succeeded | ExecutionStatus::Failed => {
                 let updated = transaction
                     .execute_raw(Statement::from_sql_and_values(
-                        backend,
+                        backend.db_backend(),
                         format!(
                             "UPDATE module_artifact_execution_audit \
                              SET status = {}, finished_at = {}, queue_time_ms = {}, \
@@ -188,16 +191,16 @@ impl SeaOrmArtifactExecutionObserver {
                                  peak_memory_bytes = {}, output_bytes = {}, \
                                  capability_calls = {}, error_code = {} \
                              WHERE execution_id = {} AND status = 'started'",
-                            placeholder(backend, 1),
-                            placeholder(backend, 2),
-                            placeholder(backend, 3),
-                            placeholder(backend, 4),
-                            placeholder(backend, 5),
-                            placeholder(backend, 6),
-                            placeholder(backend, 7),
-                            placeholder(backend, 8),
-                            placeholder(backend, 9),
-                            placeholder(backend, 10),
+                            backend.placeholder(1),
+                            backend.placeholder(2),
+                            backend.placeholder(3),
+                            backend.placeholder(4),
+                            backend.placeholder(5),
+                            backend.placeholder(6),
+                            backend.placeholder(7),
+                            backend.placeholder(8),
+                            backend.placeholder(9),
+                            backend.placeholder(10),
                         ),
                         vec![
                             status_name(record).into(),
@@ -230,7 +233,7 @@ impl SeaOrmArtifactExecutionObserver {
                                     .map(|value| u64::from(value.capability_calls)),
                             )?,
                             optional_string_value(record.error_code.clone()),
-                            uuid_value(record.execution_id, backend),
+                            backend.uuid_value(record.execution_id),
                         ],
                     ))
                     .await
@@ -278,14 +281,6 @@ impl ExecutionObserver for SeaOrmArtifactExecutionObserver {
     }
 }
 
-fn valid_digest(value: &str) -> bool {
-    value.len() == 71
-        && value.starts_with("sha256:")
-        && value[7..]
-            .chars()
-            .all(|character| character.is_ascii_hexdigit())
-}
-
 fn executor_name(record: &ExecutionRecord) -> &'static str {
     match record.executor {
         rustok_sandbox::SandboxExecutorKind::Rhai => "rhai",
@@ -313,16 +308,6 @@ fn status_name(record: &ExecutionRecord) -> &'static str {
         ExecutionStatus::Started => "started",
         ExecutionStatus::Succeeded => "succeeded",
         ExecutionStatus::Failed => "failed",
-    }
-}
-
-fn optional_uuid_value(value: Option<uuid::Uuid>, backend: DbBackend) -> SqlValue {
-    match value {
-        Some(value) => uuid_value(value, backend),
-        None => match backend {
-            DbBackend::Postgres => SqlValue::Uuid(None),
-            _ => SqlValue::String(None),
-        },
     }
 }
 

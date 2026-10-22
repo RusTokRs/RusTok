@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbBackend};
+use sea_orm::ConnectionTrait;
 use sea_orm_migration::prelude::*;
+
+use crate::backend::SupportedBackend;
 
 /// Durable state persistence for module transitions and artifact retention holds.
 #[derive(DeriveMigrationName)]
@@ -8,8 +10,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE module_transition_checkpoints (\
                     operation_id UUID PRIMARY KEY,\
                     revision BIGINT NOT NULL CHECK (revision > 0),\
@@ -51,7 +54,7 @@ impl MigrationTrait for Migration {
                 )",
                 "CREATE INDEX idx_module_retention_holds_target ON module_retention_holds(target_type, target_identity)",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "CREATE TABLE module_transition_checkpoints (\
                     operation_id BLOB PRIMARY KEY NOT NULL,\
                     revision INTEGER NOT NULL CHECK (revision > 0),\
@@ -92,11 +95,6 @@ impl MigrationTrait for Migration {
                 )",
                 "CREATE INDEX idx_module_retention_holds_target ON module_retention_holds(target_type, target_identity)",
             ],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "module transition and retention migration does not support database backend {backend:?}"
-                )));
-            }
         };
 
         for statement in statements {
@@ -110,17 +108,13 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres | DbBackend::Sqlite => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres | SupportedBackend::Sqlite => &[
                 "DROP TABLE IF EXISTS module_retention_holds",
                 "DROP TABLE IF EXISTS module_transition_operations",
                 "DROP TABLE IF EXISTS module_transition_checkpoints",
             ],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "module transition and retention migration does not support database backend {backend:?}"
-                )));
-            }
         };
 
         for statement in statements {

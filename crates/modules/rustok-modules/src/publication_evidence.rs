@@ -10,7 +10,7 @@ use crate::{
     ModuleArtifactPackage, ModuleBuildServiceAttestationCommand, ModuleGovernanceError,
     ModulePlatformAdmissionCommand, ModulePlatformPublicationSource,
     ModulePublicationEvidenceResult, OciArtifactReference, SeaOrmModuleGovernanceService,
-    TrustVerificationRequest, TrustVerifier, normalize_module_registry_id,
+    TrustVerificationError, TrustVerificationRequest, TrustVerifier, normalize_module_registry_id,
 };
 
 /// Deployment policy selected for one platform-built publication verification.
@@ -57,11 +57,15 @@ pub enum ModulePlatformPublicationEvidenceError {
     #[error("platform publication source is unavailable: {0}")]
     Source(#[source] ModuleGovernanceError),
     #[error("platform publication OCI registry is unavailable: {0}")]
-    Registry(String),
+    Registry(#[source] ModulePublicationRegistryError),
+    #[error("platform publication OCI artifact fetch failed: {0}")]
+    RegistryFetch(#[source] crate::ModuleInstallationError),
+    #[error("platform publication OCI artifact package verification failed: {0}")]
+    PackageVerification(#[source] crate::ModuleInstallationError),
     #[error("published OCI artifact does not match the owner-selected build")]
     ArtifactIdentityMismatch,
     #[error("isolated platform publication verification failed: {0}")]
-    Verification(String),
+    Verification(#[source] TrustVerificationError),
     #[error("isolated platform publication verification did not admit the selected artifact")]
     VerificationRejected,
     #[error("platform publication evidence could not be recorded: {0}")]
@@ -108,8 +112,14 @@ pub enum ModuleAlloyPublicationEvidenceError {
     Source(#[source] ModuleGovernanceError),
     #[error("Alloy publication evidence could not be recorded: {0}")]
     Record(#[source] ModuleGovernanceError),
+    #[error("Alloy publication OCI registry is unavailable: {0}")]
+    Registry(#[source] ModulePublicationRegistryError),
+    #[error("Alloy publication OCI artifact fetch failed: {0}")]
+    RegistryFetch(#[source] crate::ModuleInstallationError),
+    #[error("Alloy publication OCI artifact package verification failed: {0}")]
+    PackageVerification(#[source] crate::ModuleInstallationError),
     #[error("Alloy publication verification failed: {0}")]
-    Verification(String),
+    Verification(#[source] TrustVerificationError),
     #[error("published Alloy OCI artifact does not match the immutable owner receipt")]
     ArtifactIdentityMismatch,
     #[error("isolated Alloy publication verification did not admit the selected artifact")]
@@ -198,19 +208,37 @@ impl ModuleAlloyPublicationEvidenceOwner for SeaOrmModuleGovernanceService {
 /// Credential-owning adapter that creates an exact digest-pinned registry
 /// reader. Production implementations acquire only a short-lived lease for
 /// the registry/repository carried by `reference`.
+/// Failure of a [`ModulePublicationArtifactRegistryProvider`] port.
+/// `Denied` means the credential broker refused the lease; `InvalidResponse`
+/// means the broker answered outside its contract (for example an expired
+/// credential). Both are distinct from transient `Unavailable` failures.
+#[derive(Debug, Error)]
+pub enum ModulePublicationRegistryError {
+    #[error("{0}")]
+    InvalidRequest(String),
+    #[error("{0}")]
+    Denied(String),
+    #[error("{0}")]
+    InvalidResponse(String),
+    #[error("{0}")]
+    Unavailable(String),
+}
+
 #[async_trait]
 pub trait ModulePublicationArtifactRegistryProvider: Send + Sync {
     async fn registry_for(
         &self,
         reference: &OciArtifactReference,
-    ) -> Result<Arc<dyn crate::ArtifactRegistry>, String>;
+    ) -> Result<Arc<dyn crate::ArtifactRegistry>, ModulePublicationRegistryError>;
 }
 
 #[derive(Debug)]
 enum PublishedArtifactVerificationError {
-    Registry(String),
+    RegistryProvider(ModulePublicationRegistryError),
+    RegistryFetch(crate::ModuleInstallationError),
+    PackageVerification(crate::ModuleInstallationError),
     IdentityMismatch,
-    Verification(String),
+    Verification(TrustVerificationError),
     Rejected,
 }
 
@@ -247,11 +275,11 @@ async fn verify_published_artifact(
     let registry = registries
         .registry_for(input.reference)
         .await
-        .map_err(PublishedArtifactVerificationError::Registry)?;
+        .map_err(PublishedArtifactVerificationError::RegistryProvider)?;
     let package = registry
         .fetch(input.reference, limits)
         .await
-        .map_err(|error| PublishedArtifactVerificationError::Registry(error.to_string()))?;
+        .map_err(PublishedArtifactVerificationError::RegistryFetch)?;
     let temporary_payload = match &package.payload {
         ArtifactPayloadSource::TemporaryFile(path) => Some(path.clone()),
         ArtifactPayloadSource::Bytes(_) => None,
@@ -259,7 +287,7 @@ async fn verify_published_artifact(
     let result =
         verify_fetched_published_artifact(verifier, limits, infrastructure, input, package).await;
     if let Some(path) = temporary_payload {
-        let _ = tokio::fs::remove_file(path).await;
+        crate::oci::remove_staged_file_best_effort(&path).await;
     }
     result
 }
@@ -274,7 +302,7 @@ async fn verify_fetched_published_artifact(
     package
         .verify(limits)
         .await
-        .map_err(|error| PublishedArtifactVerificationError::Registry(error.to_string()))?;
+        .map_err(PublishedArtifactVerificationError::PackageVerification)?;
     if package.reference != *input.reference
         || package.descriptor.slug != input.expected_slug
         || package.descriptor.version != input.expected_version
@@ -435,8 +463,14 @@ fn map_platform_publication_verification_error(
     error: PublishedArtifactVerificationError,
 ) -> ModulePlatformPublicationEvidenceError {
     match error {
-        PublishedArtifactVerificationError::Registry(error) => {
+        PublishedArtifactVerificationError::RegistryProvider(error) => {
             ModulePlatformPublicationEvidenceError::Registry(error)
+        }
+        PublishedArtifactVerificationError::RegistryFetch(error) => {
+            ModulePlatformPublicationEvidenceError::RegistryFetch(error)
+        }
+        PublishedArtifactVerificationError::PackageVerification(error) => {
+            ModulePlatformPublicationEvidenceError::PackageVerification(error)
         }
         PublishedArtifactVerificationError::IdentityMismatch => {
             ModulePlatformPublicationEvidenceError::ArtifactIdentityMismatch
@@ -540,8 +574,16 @@ fn map_alloy_publication_verification_error(
     error: PublishedArtifactVerificationError,
 ) -> ModuleAlloyPublicationEvidenceError {
     match error {
-        PublishedArtifactVerificationError::Registry(error)
-        | PublishedArtifactVerificationError::Verification(error) => {
+        PublishedArtifactVerificationError::RegistryProvider(error) => {
+            ModuleAlloyPublicationEvidenceError::Registry(error)
+        }
+        PublishedArtifactVerificationError::RegistryFetch(error) => {
+            ModuleAlloyPublicationEvidenceError::RegistryFetch(error)
+        }
+        PublishedArtifactVerificationError::PackageVerification(error) => {
+            ModuleAlloyPublicationEvidenceError::PackageVerification(error)
+        }
+        PublishedArtifactVerificationError::Verification(error) => {
             ModuleAlloyPublicationEvidenceError::Verification(error)
         }
         PublishedArtifactVerificationError::IdentityMismatch => {
@@ -730,7 +772,7 @@ mod tests {
         async fn registry_for(
             &self,
             _reference: &OciArtifactReference,
-        ) -> Result<Arc<dyn ArtifactRegistry>, String> {
+        ) -> Result<Arc<dyn ArtifactRegistry>, ModulePublicationRegistryError> {
             Ok(Arc::new(Registry {
                 package: self.package.clone(),
             }))
@@ -773,7 +815,7 @@ mod tests {
         async fn verify(
             &self,
             request: TrustVerificationRequest,
-        ) -> Result<TrustVerificationDecision, String> {
+        ) -> Result<TrustVerificationDecision, TrustVerificationError> {
             Ok(admitted_decision(&request))
         }
     }
@@ -787,7 +829,7 @@ mod tests {
         async fn verify(
             &self,
             request: TrustVerificationRequest,
-        ) -> Result<TrustVerificationDecision, String> {
+        ) -> Result<TrustVerificationDecision, TrustVerificationError> {
             let decision = admitted_decision(&request);
             self.requests
                 .lock()

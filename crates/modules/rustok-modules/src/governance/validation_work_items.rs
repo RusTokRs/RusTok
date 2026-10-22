@@ -1,6 +1,6 @@
 //! Validation job work item delivery contracts and invalid item terminalization.
 
-use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, QueryResult, Statement, Value};
+use sea_orm::{ConnectionTrait, DatabaseTransaction, QueryResult, Statement, Value};
 
 use super::helpers::*;
 use super::*;
@@ -10,16 +10,16 @@ use super::*;
 /// value in its lease and never queries mutable Alloy draft state.
 pub(crate) async fn alloy_descriptor_for_validation_work_item(
     transaction: &DatabaseTransaction,
-    backend: DbBackend,
+    backend: SupportedBackend,
     request_id: &str,
     slug: &str,
     version: &str,
     artifact_digest: &str,
 ) -> Result<crate::ModuleArtifactDescriptor, ModuleGovernanceError> {
-    let mark = |position| placeholder(backend, position);
+    let mark = |position| backend.placeholder(position);
     let stage = transaction
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT CAST(descriptor AS TEXT) AS descriptor, descriptor_digest \
                  FROM registry_publish_alloy_staging \
@@ -77,7 +77,7 @@ pub(crate) struct InvalidValidationWorkItem<'a> {
 pub(crate) async fn terminalize_invalid_validation_work_item(
     infrastructure: &ControlPlaneInfrastructure,
     tx: &DatabaseTransaction,
-    backend: DbBackend,
+    backend: SupportedBackend,
     item: InvalidValidationWorkItem<'_>,
 ) -> Result<(), ModuleGovernanceError> {
     let InvalidValidationWorkItem {
@@ -89,14 +89,8 @@ pub(crate) async fn terminalize_invalid_validation_work_item(
         attempt_number,
         queue_reason,
     } = item;
-    let mark = |n| {
-        if backend == DbBackend::Postgres {
-            format!("${n}")
-        } else {
-            format!("?{n}")
-        }
-    };
-    let now = if backend == DbBackend::Postgres {
+    let mark = |n| backend.placeholder(n);
+    let now = if backend == SupportedBackend::Postgres {
         "NOW()"
     } else {
         "datetime('now')"
@@ -104,7 +98,7 @@ pub(crate) async fn terminalize_invalid_validation_work_item(
     let errors = serde_json::json!([VALIDATION_WORK_ITEM_INVALID_ERROR]);
     let request_updated = tx
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE registry_publish_requests \
                  SET status = 'rejected', validation_errors = {}, \
@@ -139,7 +133,7 @@ pub(crate) async fn terminalize_invalid_validation_work_item(
     }
     let job_updated = tx
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE registry_validation_jobs \
                  SET status = 'failed', finished_at = {now}, last_error = {}, \
@@ -186,7 +180,7 @@ pub(crate) async fn terminalize_invalid_validation_work_item(
     ];
     for (event_type, details) in events {
         tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
                  (id, slug, request_id, release_id, event_type, actor_principal, \

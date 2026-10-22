@@ -77,7 +77,7 @@ impl BlogReactionSubjectProvider {
         else {
             return Ok(ReactionSubjectAuthorization::Unavailable);
         };
-        if !snapshot.enabled {
+        if snapshot.enabled != Some(true) {
             return Ok(ReactionSubjectAuthorization::Unavailable);
         }
         let settings = serde_json::from_value::<BlogReactionSettings>(snapshot.settings)

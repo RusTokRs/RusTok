@@ -466,7 +466,7 @@ impl rustok_api::StaticModuleSettingsReader for ClosedGraphqlForumSettings {
     ) -> Result<Option<rustok_api::StaticModuleSettingsSnapshot>, PortError> {
         assert_eq!(slug, "forum");
         Ok(Some(rustok_api::StaticModuleSettingsSnapshot {
-            enabled: true,
+            enabled: Some(true),
             settings: serde_json::json!({"allow_anonymous_reading": false}),
         }))
     }

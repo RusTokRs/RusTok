@@ -107,7 +107,7 @@ async fn insert_seo_settings(
         id: Set(Uuid::new_v4()),
         tenant_id: Set(tenant_id),
         module_slug: Set("seo".to_string()),
-        enabled: Set(true),
+        enabled: Set(Some(true)),
         settings: Set(settings),
         created_at: Set(now.into()),
         updated_at: Set(now.into()),

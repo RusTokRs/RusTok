@@ -332,7 +332,7 @@ pub async fn tenant_bootstrap_native() -> Result<TenantAdminBootstrap, ServerFnE
                     enabled,
                     source: if is_core {
                         "core-default".to_string()
-                    } else if explicit.is_some() {
+                    } else if matches!(explicit, Some(Some(_))) {
                         "tenant-override".to_string()
                     } else if manifest_defaults.contains(module.slug()) {
                         "manifest-default".to_string()

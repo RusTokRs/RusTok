@@ -7,21 +7,20 @@ use chrono::Utc;
 use object_store::{ObjectStoreExt, PutMode, path::Path};
 use rustok_storage::{ObjectKey, ObjectScope, ObjectZone, StorageRuntime};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
-    TransactionTrait,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ArtifactDataNamespace, ArtifactDataObject, ArtifactDataQuota, ModuleCommandContext,
     data::{
-        configure_tenant_scope, lock_artifact_data_namespace_on, placeholder, revision_value,
-        uuid_from_row, uuid_value,
+        configure_tenant_scope, lock_artifact_data_namespace_on, revision_value, uuid_from_row,
     },
-    promotion::{digest_json, valid_digest},
+    installation::valid_digest,
+    promotion::digest_json,
 };
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -154,17 +153,17 @@ impl LockedNamespaces {
         {
             return Err(ArtifactDataObjectMigrationError::NamespacePrecondition);
         }
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(storage_error)?;
         let serving = db
             .query_one_raw(statement(
                 backend,
                 "SELECT 1 FROM module_artifact_data_owner_references
              WHERE tenant_id={1} AND data_owner_id={2} AND namespace_instance_id IN ({3},{4})",
                 vec![
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.data_owner_id, backend),
-                    uuid_value(request.source_namespace_instance_id, backend),
-                    uuid_value(request.target_namespace_instance_id, backend),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(request.data_owner_id),
+                    backend.uuid_value(request.source_namespace_instance_id),
+                    backend.uuid_value(request.target_namespace_instance_id),
                 ],
             ))
             .await
@@ -276,16 +275,17 @@ impl<A: ArtifactDataObjectMigrationAuthorizer> ArtifactDataObjectMigrationServic
             }
             _ => ArtifactDataObjectMigrationError::NamespacePrecondition,
         })?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         if transaction
             .query_one_raw(statement(
                 backend,
                 "SELECT 1 FROM module_artifact_data_object_migration_operations
              WHERE tenant_id={1} AND data_owner_id={2} AND target_namespace_instance_id={3}",
                 vec![
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.data_owner_id, backend),
-                    uuid_value(request.target_namespace_instance_id, backend),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(request.data_owner_id),
+                    backend.uuid_value(request.target_namespace_instance_id),
                 ],
             ))
             .await
@@ -329,15 +329,16 @@ impl<A: ArtifactDataObjectMigrationAuthorizer> ArtifactDataObjectMigrationServic
             inventory,
             committed: false,
         };
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         transaction.execute_raw(statement(backend,
             "INSERT INTO module_artifact_data_object_migration_operations
              (operation_id,tenant_id,data_owner_id,source_namespace_instance_id,target_namespace_instance_id,
               idempotency_key,request_digest,request_json,inventory_manifest_digest,inventory_json,status,created_at)
              VALUES ({1},{2},{3},{4},{5},{6},{7},{8},{9},{10},'preparing',{11})",
-            vec![uuid_value(operation.id,backend),uuid_value(request.tenant_id,backend),uuid_value(request.data_owner_id,backend),
-                 uuid_value(request.source_namespace_instance_id,backend),uuid_value(request.target_namespace_instance_id,backend),
-                 uuid_value(request.context.idempotency_key,backend),operation.request_digest.clone().into(),
+            vec![backend.uuid_value(operation.id),backend.uuid_value(request.tenant_id),backend.uuid_value(request.data_owner_id),
+                 backend.uuid_value(request.source_namespace_instance_id),backend.uuid_value(request.target_namespace_instance_id),
+                 backend.uuid_value(request.context.idempotency_key),operation.request_digest.clone().into(),
                  serde_json::to_string(request).map_err(storage_error)?.into(),operation.inventory_digest.clone().into(),
                  serde_json::to_string(&operation.inventory).map_err(storage_error)?.into(),Utc::now().into()]))
             .await.map_err(storage_error)?;
@@ -348,13 +349,13 @@ impl<A: ArtifactDataObjectMigrationAuthorizer> ArtifactDataObjectMigrationServic
                   inventory_manifest_digest,object_name,source_storage_key,target_storage_key,digest_sha256,size_bytes,status,
                   actor_id,trace_id,correlation_id,idempotency_key,reason,created_at)
                  VALUES ({1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},'intent',{13},{14},{15},{16},{17},{18})",
-                vec![uuid_value(Uuid::new_v4(),backend),uuid_value(operation.id,backend),uuid_value(request.tenant_id,backend),
-                     uuid_value(request.data_owner_id,backend),uuid_value(request.source_namespace_instance_id,backend),
-                     uuid_value(request.target_namespace_instance_id,backend),operation.inventory_digest.clone().into(),
+                vec![backend.uuid_value(Uuid::new_v4()),backend.uuid_value(operation.id),backend.uuid_value(request.tenant_id),
+                     backend.uuid_value(request.data_owner_id),backend.uuid_value(request.source_namespace_instance_id),
+                     backend.uuid_value(request.target_namespace_instance_id),operation.inventory_digest.clone().into(),
                      object.object.name.clone().into(),object.source_storage_key.clone().into(),object.target_storage_key.clone().into(),
                      object.object.digest_sha256.clone().into(),number(object.object.size_bytes)?,
-                     uuid_value(request.context.actor_id,backend),request.context.trace_id.clone().into(),
-                     uuid_value(request.context.correlation_id,backend),uuid_value(request.context.idempotency_key,backend),
+                     backend.uuid_value(request.context.actor_id),request.context.trace_id.clone().into(),
+                     backend.uuid_value(request.context.correlation_id),backend.uuid_value(request.context.idempotency_key),
                      request.reason.clone().into(),Utc::now().into()])).await.map_err(storage_error)?;
         }
         transaction.commit().await.map_err(storage_error)?;
@@ -448,7 +449,8 @@ impl<A: ArtifactDataObjectMigrationAuthorizer> ArtifactDataObjectMigrationServic
         if !load_objects(&transaction, &locked.target).await?.is_empty() {
             return Err(ArtifactDataObjectMigrationError::Integrity);
         }
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         // This transient state is visible only in this write transaction. Other
         // writers still see preparing; a crash rolls back to that held state.
         let committing = transaction
@@ -457,7 +459,7 @@ impl<A: ArtifactDataObjectMigrationAuthorizer> ArtifactDataObjectMigrationServic
                 "UPDATE module_artifact_data_object_migration_operations SET status='committing'
              WHERE operation_id={1} AND request_digest={2} AND status='preparing'",
                 vec![
-                    uuid_value(operation.id, backend),
+                    backend.uuid_value(operation.id),
                     operation.request_digest.clone().into(),
                 ],
             ))
@@ -472,7 +474,7 @@ impl<A: ArtifactDataObjectMigrationAuthorizer> ArtifactDataObjectMigrationServic
                 "INSERT INTO module_artifact_data_objects
                  (tenant_id,data_owner_id,namespace_instance_id,object_name,storage_key,content_type,size_bytes,digest_sha256,revision,created_at,updated_at)
                  VALUES ({1},{2},{3},{4},{5},{6},{7},{8},1,{9},{9})",
-                vec![uuid_value(request.tenant_id,backend),uuid_value(request.data_owner_id,backend),uuid_value(request.target_namespace_instance_id,backend),
+                vec![backend.uuid_value(request.tenant_id),backend.uuid_value(request.data_owner_id),backend.uuid_value(request.target_namespace_instance_id),
                      object.object.name.clone().into(),object.target_storage_key.clone().into(),object.object.content_type.clone().into(),
                      number(object.object.size_bytes)?,object.object.digest_sha256.clone().into(),Utc::now().into()])).await.map_err(storage_error)?;
             let checkpoint = transaction.execute_raw(statement(backend,
@@ -480,7 +482,7 @@ impl<A: ArtifactDataObjectMigrationAuthorizer> ArtifactDataObjectMigrationServic
                  WHERE migration_operation_id={2} AND tenant_id={3} AND object_name={4}
                   AND source_storage_key={5} AND target_storage_key={6} AND inventory_manifest_digest={7}
                   AND digest_sha256={8} AND size_bytes={9} AND status='intent'",
-                vec![Utc::now().into(),uuid_value(operation.id,backend),uuid_value(request.tenant_id,backend),object.object.name.clone().into(),
+                vec![Utc::now().into(),backend.uuid_value(operation.id),backend.uuid_value(request.tenant_id),object.object.name.clone().into(),
                      object.source_storage_key.clone().into(),object.target_storage_key.clone().into(),operation.inventory_digest.clone().into(),
                      object.object.digest_sha256.clone().into(),number(object.object.size_bytes)?])).await.map_err(storage_error)?;
             if checkpoint.rows_affected() != 1 {
@@ -490,7 +492,7 @@ impl<A: ArtifactDataObjectMigrationAuthorizer> ArtifactDataObjectMigrationServic
         let finished = transaction.execute_raw(statement(backend,
             "UPDATE module_artifact_data_object_migration_operations SET status='committed',committed_at={1}
              WHERE operation_id={2} AND request_digest={3} AND status='committing'",
-            vec![Utc::now().into(),uuid_value(operation.id,backend),operation.request_digest.clone().into()])).await.map_err(storage_error)?;
+            vec![Utc::now().into(),backend.uuid_value(operation.id),operation.request_digest.clone().into()])).await.map_err(storage_error)?;
         if finished.rows_affected() != 1 {
             return Err(ArtifactDataObjectMigrationError::Integrity);
         }
@@ -512,11 +514,12 @@ impl<A: ArtifactDataObjectMigrationAuthorizer> ArtifactDataObjectMigrationServic
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let rows = transaction.query_all_raw(statement(backend,
             "SELECT request_json FROM module_artifact_data_object_migration_operations
              WHERE tenant_id={1} AND data_owner_id={2} AND status='preparing' ORDER BY created_at,operation_id LIMIT 100",
-            vec![uuid_value(tenant_id,backend),uuid_value(data_owner_id,backend)])).await.map_err(storage_error)?;
+            vec![backend.uuid_value(tenant_id),backend.uuid_value(data_owner_id)])).await.map_err(storage_error)?;
         transaction.commit().await.map_err(storage_error)?;
         let mut resumed = 0_u64;
         for row in rows {
@@ -547,7 +550,8 @@ impl<A: ArtifactDataObjectMigrationAuthorizer> ArtifactDataObjectMigrationServic
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let row = transaction.query_one_raw(statement(backend,
             "SELECT COUNT(*) AS count FROM module_artifact_data_objects source
              WHERE source.tenant_id={1} AND source.data_owner_id={2} AND source.namespace_instance_id={3}
@@ -555,7 +559,7 @@ impl<A: ArtifactDataObjectMigrationAuthorizer> ArtifactDataObjectMigrationServic
                WHERE target.tenant_id=source.tenant_id AND target.data_owner_id=source.data_owner_id
                 AND target.namespace_instance_id={4} AND target.object_name=source.object_name
                 AND target.content_type=source.content_type AND target.digest_sha256=source.digest_sha256 AND target.size_bytes=source.size_bytes)",
-            vec![uuid_value(tenant_id,backend),uuid_value(data_owner_id,backend),uuid_value(source,backend),uuid_value(target,backend)]))
+            vec![backend.uuid_value(tenant_id),backend.uuid_value(data_owner_id),backend.uuid_value(source),backend.uuid_value(target)]))
             .await.map_err(storage_error)?.ok_or(ArtifactDataObjectMigrationError::Integrity)?;
         let count = u64::try_from(row.try_get::<i64>("", "count").map_err(storage_error)?)
             .map_err(storage_error)?;
@@ -596,11 +600,11 @@ async fn load_operation<C: ConnectionTrait>(
     db: &C,
     request: &ArtifactDataObjectMigrationRequest,
 ) -> Result<Option<MigrationOperation>, ArtifactDataObjectMigrationError> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(storage_error)?;
     let row = db.query_one_raw(statement(backend,
         "SELECT operation_id,request_digest,inventory_manifest_digest,inventory_json,status
          FROM module_artifact_data_object_migration_operations WHERE tenant_id={1} AND data_owner_id={2} AND idempotency_key={3}",
-        vec![uuid_value(request.tenant_id,backend),uuid_value(request.data_owner_id,backend),uuid_value(request.context.idempotency_key,backend)]))
+        vec![backend.uuid_value(request.tenant_id),backend.uuid_value(request.data_owner_id),backend.uuid_value(request.context.idempotency_key)]))
         .await.map_err(storage_error)?;
     let Some(row) = row else {
         return Ok(None);
@@ -687,7 +691,7 @@ async fn load_objects<C: ConnectionTrait>(
     db: &C,
     namespace: &ArtifactDataNamespace,
 ) -> Result<Vec<ReservedObject>, ArtifactDataObjectMigrationError> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(storage_error)?;
     let limit = ArtifactDataQuota::default()
         .max_objects
         .checked_add(1)
@@ -695,7 +699,7 @@ async fn load_objects<C: ConnectionTrait>(
     let rows = db.query_all_raw(statement(backend,
         "SELECT object_name,storage_key,content_type,size_bytes,digest_sha256,revision FROM module_artifact_data_objects
          WHERE tenant_id={1} AND data_owner_id={2} AND namespace_instance_id={3} ORDER BY object_name LIMIT {4}",
-        vec![uuid_value(namespace.tenant_id,backend),uuid_value(namespace.data_owner_id,backend),uuid_value(namespace.namespace_instance_id,backend),number(limit)?]))
+        vec![backend.uuid_value(namespace.tenant_id),backend.uuid_value(namespace.data_owner_id),backend.uuid_value(namespace.namespace_instance_id),number(limit)?]))
         .await.map_err(storage_error)?;
     rows.into_iter()
         .map(|row| {
@@ -744,7 +748,7 @@ fn verify_bytes(
     bytes: &[u8],
 ) -> Result<(), ArtifactDataObjectMigrationError> {
     if u64::try_from(bytes.len()).ok() != Some(object.size_bytes)
-        || format!("sha256:{}", hex::encode(Sha256::digest(bytes))) != object.digest_sha256
+        || crate::installation::sha256_digest(bytes) != object.digest_sha256
     {
         return Err(ArtifactDataObjectMigrationError::Integrity);
     }
@@ -755,10 +759,10 @@ fn number(value: u64) -> Result<sea_orm::Value, ArtifactDataObjectMigrationError
     revision_value(value).map_err(storage_error)
 }
 
-fn statement(backend: DbBackend, template: &str, values: Vec<sea_orm::Value>) -> Statement {
+fn statement(backend: SupportedBackend, template: &str, values: Vec<sea_orm::Value>) -> Statement {
     let mut sql = template.to_owned();
     for index in 1..=values.len() {
-        sql = sql.replace(&format!("{{{index}}}"), &placeholder(backend, index));
+        sql = sql.replace(&format!("{{{index}}}"), &backend.placeholder(index));
     }
-    Statement::from_sql_and_values(backend, sql, values)
+    Statement::from_sql_and_values(backend.db_backend(), sql, values)
 }

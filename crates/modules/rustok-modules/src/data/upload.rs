@@ -3,10 +3,9 @@
 use bytes::Bytes;
 use rustok_storage::{ObjectKey, ObjectScope, ObjectZone};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
-    TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
+    Value as SqlValue,
 };
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::constants::*;
@@ -104,18 +103,19 @@ where
         let request_digest = upload_session_request_digest(&request)?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         ensure_active_namespace(&transaction, scope, backend).await?;
         if let Some(row) = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT session_id, object_name, content_type, expected_revision, request_digest, CAST(expires_at AS TEXT) AS expires_at
                      FROM module_artifact_data_object_upload_sessions
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} AND policy_revision = {} AND idempotency_key = {}",
-                    placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3), placeholder(backend, 4), placeholder(backend, 5),
+                    backend.placeholder(1), backend.placeholder(2), backend.placeholder(3), backend.placeholder(4), backend.placeholder(5),
                 ),
-                vec![uuid_value(scope.tenant_id, backend), uuid_value(scope.data_owner_id, backend), uuid_value(scope.namespace_instance_id, backend), revision_value(scope.policy_revision)?, uuid_value(request.idempotency_key, backend)],
+                vec![backend.uuid_value(scope.tenant_id), backend.uuid_value(scope.data_owner_id), backend.uuid_value(scope.namespace_instance_id), revision_value(scope.policy_revision)?, backend.uuid_value(request.idempotency_key)],
             )).await.map_err(storage_error)? {
             let stored_digest: String = row.try_get("", "request_digest").map_err(storage_error)?;
             if stored_digest != request_digest {
@@ -135,15 +135,15 @@ where
         }
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT COUNT(*) AS session_count
                      FROM module_artifact_data_object_upload_sessions
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND status IN ('open', 'completing')",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
                 namespace_values(scope, backend)?,
             ))
@@ -164,19 +164,19 @@ where
         )?;
         let session_id = self.infrastructure.new_id();
         transaction.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_artifact_data_object_upload_sessions
                  (session_id, tenant_id, data_owner_id, namespace_instance_id, policy_revision, object_name, content_type, expected_revision, idempotency_key, request_digest, status, expires_at, created_at, updated_at)
                  VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'open', {}, {}, {})",
-                placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3), placeholder(backend, 4), placeholder(backend, 5), placeholder(backend, 6), placeholder(backend, 7), placeholder(backend, 8), placeholder(backend, 9), placeholder(backend, 10), upload_expiry_expression(backend), now_expression(backend), now_expression(backend),
+                backend.placeholder(1), backend.placeholder(2), backend.placeholder(3), backend.placeholder(4), backend.placeholder(5), backend.placeholder(6), backend.placeholder(7), backend.placeholder(8), backend.placeholder(9), backend.placeholder(10), upload_expiry_expression(backend), backend.now_sql(), backend.now_sql(),
             ),
-            vec![uuid_value(session_id, backend), uuid_value(scope.tenant_id, backend), uuid_value(scope.data_owner_id, backend), uuid_value(scope.namespace_instance_id, backend), revision_value(scope.policy_revision)?, request.name.clone().into(), request.content_type.clone().into(), optional_revision_value(request.expected_revision)?, uuid_value(request.idempotency_key, backend), request_digest.into()],
+            vec![backend.uuid_value(session_id), backend.uuid_value(scope.tenant_id), backend.uuid_value(scope.data_owner_id), backend.uuid_value(scope.namespace_instance_id), revision_value(scope.policy_revision)?, request.name.clone().into(), request.content_type.clone().into(), optional_revision_value(request.expected_revision)?, backend.uuid_value(request.idempotency_key), request_digest.into()],
         )).await.map_err(storage_error)?;
         let row = transaction.query_one_raw(Statement::from_sql_and_values(
-            backend,
-            format!("SELECT CAST(expires_at AS TEXT) AS expires_at FROM module_artifact_data_object_upload_sessions WHERE session_id = {}", placeholder(backend, 1)),
-            vec![uuid_value(session_id, backend)],
+            backend.db_backend(),
+            format!("SELECT CAST(expires_at AS TEXT) AS expires_at FROM module_artifact_data_object_upload_sessions WHERE session_id = {}", backend.placeholder(1)),
+            vec![backend.uuid_value(session_id)],
         )).await.map_err(storage_error)?.ok_or_else(|| ArtifactDataError::Storage("upload session was not persisted".to_string()))?;
         let expires_at: String = row.try_get("", "expires_at").map_err(storage_error)?;
         transaction.commit().await.map_err(storage_error)?;
@@ -211,14 +211,15 @@ where
             )
             .await?;
         let quota = self.quota.validate()?;
-        let digest_sha256 = format!("sha256:{}", hex::encode(Sha256::digest(&chunk.data)));
+        let digest_sha256 = crate::installation::sha256_digest(&chunk.data);
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         if let Some(row) = transaction.query_one_raw(Statement::from_sql_and_values(
-            backend,
-            format!("SELECT size_bytes, digest_sha256 FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {} AND sequence = {}", placeholder(backend,1), placeholder(backend,2), placeholder(backend,3)),
-            vec![uuid_value(scope.tenant_id, backend), uuid_value(chunk.session_id, backend), revision_value(chunk.sequence)?],
+            backend.db_backend(),
+            format!("SELECT size_bytes, digest_sha256 FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {} AND sequence = {}", backend.placeholder(1), backend.placeholder(2), backend.placeholder(3)),
+            vec![backend.uuid_value(scope.tenant_id), backend.uuid_value(chunk.session_id), revision_value(chunk.sequence)?],
         )).await.map_err(storage_error)? {
             let size: i64 = row.try_get("", "size_bytes").map_err(storage_error)?;
             let digest: String = row.try_get("", "digest_sha256").map_err(storage_error)?;
@@ -229,30 +230,31 @@ where
         transaction.commit().await.map_err(storage_error)?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         ensure_active_namespace(&transaction, scope, backend).await?;
         let active = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_data_object_upload_sessions
                      SET updated_at = updated_at
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND policy_revision = {} AND session_id = {} AND status = 'open'
                      AND expires_at > {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    now_expression(backend),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.now_sql(),
                 ),
                 vec![
-                    uuid_value(scope.tenant_id, backend),
-                    uuid_value(scope.data_owner_id, backend),
-                    uuid_value(scope.namespace_instance_id, backend),
+                    backend.uuid_value(scope.tenant_id),
+                    backend.uuid_value(scope.data_owner_id),
+                    backend.uuid_value(scope.namespace_instance_id),
                     revision_value(scope.policy_revision)?,
-                    uuid_value(chunk.session_id, backend),
+                    backend.uuid_value(chunk.session_id),
                 ],
             ))
             .await
@@ -262,9 +264,9 @@ where
             return Err(ArtifactDataError::NamespacePurged);
         }
         if let Some(row) = transaction.query_one_raw(Statement::from_sql_and_values(
-            backend,
-            format!("SELECT size_bytes, digest_sha256 FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {} AND sequence = {}", placeholder(backend,1), placeholder(backend,2), placeholder(backend,3)),
-            vec![uuid_value(scope.tenant_id, backend), uuid_value(chunk.session_id, backend), revision_value(chunk.sequence)?],
+            backend.db_backend(),
+            format!("SELECT size_bytes, digest_sha256 FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {} AND sequence = {}", backend.placeholder(1), backend.placeholder(2), backend.placeholder(3)),
+            vec![backend.uuid_value(scope.tenant_id), backend.uuid_value(chunk.session_id), revision_value(chunk.sequence)?],
         )).await.map_err(storage_error)? {
             let size: i64 = row.try_get("", "size_bytes").map_err(storage_error)?;
             let digest: String = row.try_get("", "digest_sha256").map_err(storage_error)?;
@@ -275,9 +277,9 @@ where
             return Err(ArtifactDataError::IdempotencyConflict);
         }
         let row = transaction.query_one_raw(Statement::from_sql_and_values(
-            backend,
-            format!("SELECT COALESCE(SUM(size_bytes), 0) AS total_size FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {}", placeholder(backend, 1), placeholder(backend, 2)),
-            vec![uuid_value(scope.tenant_id, backend), uuid_value(chunk.session_id, backend)],
+            backend.db_backend(),
+            format!("SELECT COALESCE(SUM(size_bytes), 0) AS total_size FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {}", backend.placeholder(1), backend.placeholder(2)),
+            vec![backend.uuid_value(scope.tenant_id), backend.uuid_value(chunk.session_id)],
         )).await.map_err(storage_error)?.ok_or_else(|| ArtifactDataError::Storage("chunk total was not computed".to_string()))?;
         let total_size: i64 = row.try_get("", "total_size").map_err(storage_error)?;
         let total_size =
@@ -292,7 +294,7 @@ where
         }
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT COALESCE(SUM(chunk.size_bytes), 0) AS total_size
                      FROM module_artifact_data_object_upload_chunks chunk
@@ -301,9 +303,9 @@ where
                      WHERE session.tenant_id = {} AND session.data_owner_id = {}
                        AND session.namespace_instance_id = {}
                        AND session.status IN ('open', 'completing')",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
                 namespace_values(scope, backend)?,
             ))
@@ -348,13 +350,13 @@ where
             .map_err(storage_error)?;
         let stored_size = chunk.data.len() as u64;
         let inserted = transaction.execute_raw(Statement::from_sql_and_values(
-            backend,
-            format!("INSERT INTO module_artifact_data_object_upload_chunks (tenant_id, session_id, sequence, storage_key, size_bytes, digest_sha256, created_at) VALUES ({}, {}, {}, {}, {}, {}, {})", placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4), placeholder(backend,5), placeholder(backend,6), now_expression(backend)),
-            vec![uuid_value(scope.tenant_id, backend), uuid_value(chunk.session_id, backend), revision_value(chunk.sequence)?, stored_path.clone().into(), i64::try_from(stored_size).map_err(|_| ArtifactDataError::InvalidObject)?.into(), digest_sha256.into()],
+            backend.db_backend(),
+            format!("INSERT INTO module_artifact_data_object_upload_chunks (tenant_id, session_id, sequence, storage_key, size_bytes, digest_sha256, created_at) VALUES ({}, {}, {}, {}, {}, {}, {})", backend.placeholder(1), backend.placeholder(2), backend.placeholder(3), backend.placeholder(4), backend.placeholder(5), backend.placeholder(6), backend.now_sql()),
+            vec![backend.uuid_value(scope.tenant_id), backend.uuid_value(chunk.session_id), revision_value(chunk.sequence)?, stored_path.clone().into(), i64::try_from(stored_size).map_err(|_| ArtifactDataError::InvalidObject)?.into(), digest_sha256.into()],
         )).await;
         if let Err(error) = inserted {
             let _ = transaction.rollback().await;
-            let _ = self.storage.objects.delete(&Path::from(stored_path)).await;
+            delete_uploaded_object_best_effort(&self.storage, &Path::from(stored_path)).await;
             return Err(storage_error(error));
         }
         transaction.commit().await.map_err(storage_error)?;
@@ -404,11 +406,12 @@ where
             .await?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let rows = transaction.query_all_raw(Statement::from_sql_and_values(
-            backend,
-            format!("SELECT sequence, storage_key, size_bytes, digest_sha256 FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {} ORDER BY sequence ASC", placeholder(backend,1), placeholder(backend,2)),
-            vec![uuid_value(scope.tenant_id, backend), uuid_value(request.session_id, backend)],
+            backend.db_backend(),
+            format!("SELECT sequence, storage_key, size_bytes, digest_sha256 FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {} ORDER BY sequence ASC", backend.placeholder(1), backend.placeholder(2)),
+            vec![backend.uuid_value(scope.tenant_id), backend.uuid_value(request.session_id)],
         )).await.map_err(storage_error)?;
         transaction.commit().await.map_err(storage_error)?;
         let mut payload = Vec::with_capacity(
@@ -432,7 +435,7 @@ where
                 .await
                 .map_err(storage_error)?;
             if u64::try_from(size).ok() != Some(bytes.len() as u64)
-                || format!("sha256:{}", hex::encode(Sha256::digest(&bytes))) != digest
+                || crate::installation::sha256_digest(&bytes) != digest
             {
                 return Err(ArtifactDataError::ObjectIntegrity);
             }
@@ -447,7 +450,7 @@ where
             payload.extend_from_slice(&bytes);
         }
         if payload.len() as u64 != request.size_bytes
-            || format!("sha256:{}", hex::encode(Sha256::digest(&payload))) != request.digest_sha256
+            || crate::installation::sha256_digest(&payload) != request.digest_sha256
         {
             return Err(ArtifactDataError::ObjectIntegrity);
         }
@@ -466,12 +469,13 @@ where
             .await?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = transaction.get_database_backend();
-        let completed = transaction.execute_raw(Statement::from_sql_and_values(backend, format!("UPDATE module_artifact_data_object_upload_sessions SET status = 'completed', completed_revision = {}, completed_at = {}, updated_at = {} WHERE tenant_id = {} AND session_id = {} AND status = 'completing' AND expires_at > {}", placeholder(backend,1), now_expression(backend), now_expression(backend), placeholder(backend,2), placeholder(backend,3), now_expression(backend)), vec![revision_value(object.revision)?, uuid_value(scope.tenant_id, backend), uuid_value(request.session_id, backend)])).await.map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        let completed = transaction.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!("UPDATE module_artifact_data_object_upload_sessions SET status = 'completed', completed_revision = {}, completed_at = {}, updated_at = {} WHERE tenant_id = {} AND session_id = {} AND status = 'completing' AND expires_at > {}", backend.placeholder(1), backend.now_sql(), backend.now_sql(), backend.placeholder(2), backend.placeholder(3), backend.now_sql()), vec![revision_value(object.revision)?, backend.uuid_value(scope.tenant_id), backend.uuid_value(request.session_id)])).await.map_err(storage_error)?;
         if completed.rows_affected() != 1 {
             return Err(ArtifactDataError::NamespacePurged);
         }
-        let rows = transaction.query_all_raw(Statement::from_sql_and_values(backend, format!("SELECT storage_key FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {}", placeholder(backend,1), placeholder(backend,2)), vec![uuid_value(scope.tenant_id, backend), uuid_value(request.session_id, backend)])).await.map_err(storage_error)?;
+        let rows = transaction.query_all_raw(Statement::from_sql_and_values(backend.db_backend(), format!("SELECT storage_key FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {}", backend.placeholder(1), backend.placeholder(2)), vec![backend.uuid_value(scope.tenant_id), backend.uuid_value(request.session_id)])).await.map_err(storage_error)?;
         for row in rows {
             let key: String = row.try_get("", "storage_key").map_err(storage_error)?;
             queue_artifact_data_object_gc_candidate(
@@ -482,7 +486,7 @@ where
             )
             .await?;
         }
-        transaction.execute_raw(Statement::from_sql_and_values(backend, format!("DELETE FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {}", placeholder(backend,1), placeholder(backend,2)), vec![uuid_value(scope.tenant_id, backend), uuid_value(request.session_id, backend)])).await.map_err(storage_error)?;
+        transaction.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!("DELETE FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {}", backend.placeholder(1), backend.placeholder(2)), vec![backend.uuid_value(scope.tenant_id), backend.uuid_value(request.session_id)])).await.map_err(storage_error)?;
         transaction.commit().await.map_err(storage_error)?;
         Ok(object)
     }

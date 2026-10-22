@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
+
+use crate::backend::SupportedBackend;
 
 /// Makes artifact origin an explicit durable release fact and records the
 /// stricter provenance/quarantine decision required for external prebuilts and
@@ -10,8 +12,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "ALTER TABLE registry_publish_requests \
                  ADD COLUMN artifact_origin TEXT NOT NULL DEFAULT 'unclassified' \
                  CHECK (artifact_origin IN ('unclassified', 'platform_built', 'external_prebuilt', 'alloy_authored'))",
@@ -49,7 +52,7 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX registry_publish_external_staging_request_current_idx \
                  ON registry_publish_external_staging (request_id, artifact_digest, staged_at DESC)",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "ALTER TABLE registry_publish_requests \
                  ADD COLUMN artifact_origin TEXT NOT NULL DEFAULT 'unclassified' \
                  CHECK (artifact_origin IN ('unclassified', 'platform_built', 'external_prebuilt', 'alloy_authored'))",
@@ -87,17 +90,12 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX registry_publish_external_staging_request_current_idx \
                  ON registry_publish_external_staging (request_id, artifact_digest, staged_at DESC)",
             ],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "registry external artifact staging does not support database backend {backend:?}"
-                )));
-            }
         };
         for statement in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;
@@ -106,7 +104,7 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let backend = manager.get_database_backend();
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
         for statement in [
             "DROP TABLE registry_publish_external_staging",
             "ALTER TABLE registry_module_releases DROP COLUMN artifact_origin",
@@ -114,7 +112,10 @@ impl MigrationTrait for Migration {
         ] {
             manager
                 .get_connection()
-                .execute_raw(Statement::from_string(backend, statement.to_string()))
+                .execute_raw(Statement::from_string(
+                    backend.db_backend(),
+                    statement.to_string(),
+                ))
                 .await?;
         }
         Ok(())
