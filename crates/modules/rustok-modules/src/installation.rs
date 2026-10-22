@@ -3851,7 +3851,7 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
                 .try_get::<DateTime<Utc>>("", "installed_at")
                 .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
             SupportedBackend::Sqlite => {
-                DateTime::parse_from_rfc3339(&row.try_get::<String>("", "installed_at").map_err(
+                crate::backend::parse_sqlite_datetime(&row.try_get::<String>("", "installed_at").map_err(
                     |error| ArtifactInstallationResolveError::Invariant(error.to_string()),
                 )?)
                 .map_err(|_| {
@@ -3859,7 +3859,6 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
                         "artifact installation timestamp is invalid".to_string(),
                     )
                 })?
-                .with_timezone(&Utc)
             }
         };
         transaction

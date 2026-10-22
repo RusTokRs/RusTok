@@ -200,11 +200,10 @@ impl SeaOrmSecurityEpochStore {
             }
             SupportedBackend::Sqlite => {
                 let value: String = row.try_get("", "updated_at")?;
-                chrono::DateTime::parse_from_rfc3339(&value)
-                    .map(|parsed| parsed.with_timezone(&Utc))
+                crate::backend::parse_sqlite_datetime(&value)
                     .map_err(|error| {
                         SecurityEpochStoreError::Persistence(format!(
-                            "stored security epoch timestamp is not RFC3339: {error}"
+                            "stored security epoch timestamp is invalid: {error}"
                         ))
                     })?
             }

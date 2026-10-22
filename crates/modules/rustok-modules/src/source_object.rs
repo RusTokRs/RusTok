@@ -859,9 +859,8 @@ impl SourceObjectStore {
                 let s: String = row
                     .try_get("", "created_at")
                     .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
-                DateTime::parse_from_rfc3339(&s)
+                crate::backend::parse_sqlite_datetime(&s)
                     .map_err(|e| SourceObjectError::Storage(e.to_string()))?
-                    .with_timezone(&Utc)
             }
             SupportedBackend::Postgres => row
                 .try_get("", "created_at")

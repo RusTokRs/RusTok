@@ -940,9 +940,7 @@ fn datetime_from_row(
             .try_get::<String>("", column)
             .map_err(storage_error)
             .and_then(|value| {
-                DateTime::parse_from_rfc3339(&value)
-                    .map(|timestamp| timestamp.with_timezone(&Utc))
-                    .map_err(storage_error)
+                crate::backend::parse_sqlite_datetime(&value).map_err(storage_error)
             }),
     }
 }

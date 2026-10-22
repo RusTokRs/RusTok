@@ -71,12 +71,11 @@ fn parse_datetime_column(
         SupportedBackend::Postgres => row
             .try_get::<DateTime<Utc>>("", column)
             .map_err(|e| ReleaseAdmissionJournalError::Store(e.to_string())),
-        SupportedBackend::Sqlite => DateTime::parse_from_rfc3339(
+        SupportedBackend::Sqlite => crate::backend::parse_sqlite_datetime(
             &row.try_get::<String>("", column)
                 .map_err(|e| ReleaseAdmissionJournalError::Store(e.to_string()))?,
         )
-        .map_err(|_| ReleaseAdmissionJournalError::Store("Invalid timestamp in column".into()))
-        .map(|dt| dt.with_timezone(&Utc)),
+        .map_err(|_| ReleaseAdmissionJournalError::Store("Invalid timestamp in column".into())),
     }
 }
 

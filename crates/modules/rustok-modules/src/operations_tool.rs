@@ -1449,8 +1449,7 @@ impl OperationsToolService {
                 let s: String = row
                     .try_get("", col)
                     .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-                DateTime::parse_from_rfc3339(&s)
-                    .map(|dt| dt.with_timezone(&Utc))
+                crate::backend::parse_sqlite_datetime(&s)
                     .map_err(|e| OperationsToolError::Storage(e.to_string()))
             }
             SupportedBackend::Postgres => row
@@ -1471,8 +1470,8 @@ impl OperationsToolService {
                     .try_get("", col)
                     .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
                 match s {
-                    Some(val) => DateTime::parse_from_rfc3339(&val)
-                        .map(|dt| Some(dt.with_timezone(&Utc)))
+                    Some(val) => crate::backend::parse_sqlite_datetime(&val)
+                        .map(Some)
                         .map_err(|e| OperationsToolError::Storage(e.to_string())),
                     None => Ok(None),
                 }

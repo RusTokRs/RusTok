@@ -1799,7 +1799,10 @@ fn datetime_from_row(
     match backend {
         SupportedBackend::Postgres => row.try_get("", column).map_err(store_error),
         SupportedBackend::Sqlite => {
-            parse_sqlite_datetime(&row.try_get::<String>("", column).map_err(store_error)?)
+            crate::backend::parse_sqlite_datetime(
+                &row.try_get::<String>("", column).map_err(store_error)?,
+            )
+            .map_err(store_error)
         }
     }
 }
@@ -1815,21 +1818,10 @@ fn optional_datetime_from_row(
             .try_get::<Option<String>>("", column)
             .map_err(store_error)?
             .as_deref()
-            .map(parse_sqlite_datetime)
-            .transpose(),
+            .map(crate::backend::parse_sqlite_datetime)
+            .transpose()
+            .map_err(store_error),
     }
-}
-
-fn parse_sqlite_datetime(
-    value: &str,
-) -> Result<chrono::DateTime<chrono::Utc>, ModuleStaticDistributionReleaseError> {
-    chrono::DateTime::parse_from_rfc3339(value)
-        .map(|timestamp| timestamp.with_timezone(&chrono::Utc))
-        .or_else(|_| {
-            chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S")
-                .map(|timestamp| timestamp.and_utc())
-        })
-        .map_err(store_error)
 }
 
 fn optional_uuid_from_row(

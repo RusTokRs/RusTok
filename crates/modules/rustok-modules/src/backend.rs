@@ -124,6 +124,24 @@ impl SupportedBackend {
     }
 }
 
+/// Parse a SQLite text timestamp written by this crate: binds are
+/// RFC 3339 ([`SupportedBackend::datetime_value`]), while SQL-side
+/// `datetime('now')`/`CURRENT_TIMESTAMP` expressions produce the
+/// space-separated form. Readers accept both until the writer-side
+/// format audit collapses the two representations; the fallback only
+/// runs when RFC 3339 parsing fails, so it cannot reinterpret a valid
+/// RFC 3339 value.
+pub(crate) fn parse_sqlite_datetime(
+    value: &str,
+) -> Result<chrono::DateTime<chrono::Utc>, chrono::ParseError> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .map(|timestamp| timestamp.with_timezone(&chrono::Utc))
+        .or_else(|_| {
+            chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S")
+                .map(|timestamp| timestamp.and_utc())
+        })
+}
+
 /// Set the transaction-local tenant RLS scope (`rustok.tenant_id`) on
 /// PostgreSQL as the first statement of a tenant-scoped transaction.
 ///
