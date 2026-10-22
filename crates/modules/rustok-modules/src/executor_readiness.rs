@@ -534,7 +534,7 @@ impl ExecutorReadinessService {
 
         let statement = match backend {
             SupportedBackend::Postgres => Statement::from_sql_and_values(
-                SupportedBackend::Postgres,
+                SupportedBackend::Postgres.db_backend(),
                 "INSERT INTO module_executor_readiness_receipts (\
                     id, operation_id, installation_id, release_digest, payload_digest,\
                     runtime_fingerprint, pool_id, pool_generation, placement,\
@@ -558,7 +558,7 @@ impl ExecutorReadinessService {
                 ],
             ),
             SupportedBackend::Sqlite => Statement::from_sql_and_values(
-                SupportedBackend::Sqlite,
+                SupportedBackend::Sqlite.db_backend(),
                 "INSERT INTO module_executor_readiness_receipts (\
                     id, operation_id, installation_id, release_digest, payload_digest,\
                     runtime_fingerprint, pool_id, pool_generation, placement,\
@@ -613,7 +613,7 @@ impl ExecutorReadinessService {
             .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
         let statement = match backend {
             SupportedBackend::Postgres => Statement::from_sql_and_values(
-                SupportedBackend::Postgres,
+                SupportedBackend::Postgres.db_backend(),
                 "SELECT id, operation_id, installation_id, release_digest, payload_digest,\
                         runtime_fingerprint, pool_id, pool_generation, placement,\
                         placement_policy_revision, capability_routes_verified, smoke_passed,\
@@ -630,7 +630,7 @@ impl ExecutorReadinessService {
                 ],
             ),
             SupportedBackend::Sqlite => Statement::from_sql_and_values(
-                SupportedBackend::Sqlite,
+                SupportedBackend::Sqlite.db_backend(),
                 "SELECT id, operation_id, installation_id, release_digest, payload_digest,\
                         runtime_fingerprint, pool_id, pool_generation, placement,\
                         placement_policy_revision, capability_routes_verified, smoke_passed,\

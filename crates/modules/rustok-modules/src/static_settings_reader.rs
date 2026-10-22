@@ -2,11 +2,11 @@ use async_trait::async_trait;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement};
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use rustok_api::{
     PortError, SharedStaticModuleSettingsReader, StaticModuleSettingsReader,
     StaticModuleSettingsSnapshot, StaticModuleSettingsTransactionReader,
 };
-use crate::backend::SupportedBackend;
 
 /// Database-backed owner implementation for static/native tenant-module settings.
 ///
@@ -54,10 +54,7 @@ impl StaticModuleSettingsReader for DatabaseStaticModuleSettingsReader {
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 query,
-                vec![
-                    backend.uuid_value(tenant_id),
-                    module_slug.into(),
-                ],
+                vec![backend.uuid_value(tenant_id), module_slug.into()],
             ))
             .await
             .map_err(|_| {
@@ -129,10 +126,7 @@ impl StaticModuleSettingsTransactionReader for DatabaseStaticModuleSettingsReade
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 query,
-                vec![
-                    backend.uuid_value(tenant_id),
-                    module_slug.into(),
-                ],
+                vec![backend.uuid_value(tenant_id), module_slug.into()],
             ))
             .await
             .map_err(|_| {
