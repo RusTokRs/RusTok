@@ -2641,7 +2641,7 @@ try {
     "target_storage_key",
     "PutMode::Create",
     "self.storage.objects.get",
-    "Sha256::digest(bytes)",
+    "crate::installation::sha256_digest(bytes)",
     "operation.committed",
     "ensure_namespace_not_migration_held_on",
   ]) {
