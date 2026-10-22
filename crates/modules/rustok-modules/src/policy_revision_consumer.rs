@@ -119,7 +119,13 @@ impl SeaOrmModulePolicyRevisionConsumer {
             .await?;
         let mut gate = ModulePolicyRevisionGate::new(current_revision)?;
         let outcome = gate.apply(transition)?;
-        if outcome == ModulePolicyRevisionApplyOutcome::Applied {
+        // Both an incremental apply and a gap resync advance the durable
+        // cursor to the successor revision; only a duplicate leaves it as-is.
+        if matches!(
+            outcome,
+            ModulePolicyRevisionApplyOutcome::Applied
+                | ModulePolicyRevisionApplyOutcome::ResyncRequired
+        ) {
             let backend = transaction.get_database_backend();
             let updated = transaction
                 .execute_raw(Statement::from_sql_and_values(

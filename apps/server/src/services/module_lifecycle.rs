@@ -93,6 +93,8 @@ pub enum ToggleModuleError {
     CoreModuleCannotBeDisabled(String),
     #[error("Missing module dependencies: {0}")]
     MissingDependencies(String),
+    #[error("Module dependencies with incompatible versions: {0}")]
+    IncompatibleDependencies(String),
     #[error("Module is required by: {0}")]
     HasDependents(String),
     #[error("Database error: {0}")]
@@ -477,6 +479,9 @@ fn map_toggle_validation_error(error: ModuleToggleValidationError) -> ToggleModu
         }
         ModuleToggleValidationError::MissingDependencies(dependencies) => {
             ToggleModuleError::MissingDependencies(dependencies.join(", "))
+        }
+        ModuleToggleValidationError::IncompatibleDependencies(dependencies) => {
+            ToggleModuleError::IncompatibleDependencies(dependencies.join(", "))
         }
         ModuleToggleValidationError::HasDependents(dependents) => {
             ToggleModuleError::HasDependents(dependents.join(", "))

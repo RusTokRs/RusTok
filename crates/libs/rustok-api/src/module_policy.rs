@@ -54,6 +54,10 @@ pub enum ModuleEffectivePolicyDenialReasonView {
         #[serde(rename = "moduleSlug")]
         module_slug: String,
     },
+    DependencyVersionMismatch {
+        #[serde(rename = "moduleSlug")]
+        module_slug: String,
+    },
     CoRequisiteUnavailable {
         #[serde(rename = "moduleSlug")]
         module_slug: String,
@@ -82,6 +86,7 @@ impl ModuleEffectivePolicyDenialReasonView {
             Self::CapabilityPolicyUnavailable => "capability_policy_unavailable",
             Self::ExecutorUnavailable => "executor_unavailable",
             Self::DependencyUnavailable { .. } => "dependency_unavailable",
+            Self::DependencyVersionMismatch { .. } => "dependency_version_mismatch",
             Self::CoRequisiteUnavailable { .. } => "co_requisite_unavailable",
             Self::CoRequisiteVersionMismatch { .. } => "co_requisite_version_mismatch",
             Self::RegistryReleaseUnavailable => "registry_release_unavailable",
@@ -98,6 +103,7 @@ impl ModuleEffectivePolicyDenialReasonView {
     pub fn related_module_slug(&self) -> Option<&str> {
         match self {
             Self::DependencyUnavailable { module_slug }
+            | Self::DependencyVersionMismatch { module_slug }
             | Self::CoRequisiteUnavailable { module_slug }
             | Self::CoRequisiteVersionMismatch { module_slug } => Some(module_slug),
             _ => None,
