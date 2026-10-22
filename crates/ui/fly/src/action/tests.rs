@@ -436,6 +436,11 @@ fn switch_tab_and_toggle_accordion_materialize_correctly() {
                         "id": "accordion-trigger",
                         "type": "button",
                         "flyAction": { "kind": "toggle_accordion", "target_id": "faq-content", "exclusive": true }
+                    },
+                    {
+                        "id": "slider-next",
+                        "type": "button",
+                        "flyAction": { "kind": "switch_slide", "slider_id": "main-carousel", "direction": "next" }
                     }
                 ]
             }
@@ -443,7 +448,7 @@ fn switch_tab_and_toggle_accordion_materialize_correctly() {
     }))
     .expect("document");
     let result = materialize_component_actions(&document, &json!({}));
-    assert_eq!(result.custom_actions, 2);
+    assert_eq!(result.custom_actions, 3);
 
     let tab_btn = result.document.component("tab-btn").expect("tab-btn");
     assert_eq!(tab_btn.attributes[FLY_ACTION_KIND_ATTRIBUTE], "switch_tab");
@@ -478,6 +483,19 @@ fn switch_tab_and_toggle_accordion_materialize_correctly() {
     assert_eq!(accordion_action["kind"], "toggle_accordion");
     assert_eq!(accordion_action["target_id"], "faq-content");
     assert_eq!(accordion_action["exclusive"], true);
+
+    let slider_btn = result.document.component("slider-next").expect("slider-next");
+    assert_eq!(slider_btn.attributes[FLY_ACTION_KIND_ATTRIBUTE], "switch_slide");
+    assert_eq!(slider_btn.attributes["data-fly-action-target"], "main-carousel");
+    let slider_action: serde_json::Value = serde_json::from_str(
+        slider_btn.attributes[FLY_ACTION_DATA_ATTRIBUTE]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(slider_action["kind"], "switch_slide");
+    assert_eq!(slider_action["slider_id"], "main-carousel");
+    assert_eq!(slider_action["direction"], "next");
 }
 
 #[test]
@@ -497,6 +515,11 @@ fn switch_tab_and_toggle_accordion_validation_rejects_empty_targets() {
                         "id": "bad-accordion",
                         "type": "button",
                         "flyAction": { "kind": "toggle_accordion", "target_id": "" }
+                    },
+                    {
+                        "id": "bad-slider",
+                        "type": "button",
+                        "flyAction": { "kind": "switch_slide", "slider_id": "" }
                     }
                 ]
             }
@@ -506,5 +529,6 @@ fn switch_tab_and_toggle_accordion_validation_rejects_empty_targets() {
     let diagnostics = validate_component_actions(&document);
     assert!(diagnostics.iter().any(|d| d.code == "action_definition_invalid" && d.path == "component:bad-tab"));
     assert!(diagnostics.iter().any(|d| d.code == "action_definition_invalid" && d.path == "component:bad-accordion"));
+    assert!(diagnostics.iter().any(|d| d.code == "action_definition_invalid" && d.path == "component:bad-slider"));
 }
 

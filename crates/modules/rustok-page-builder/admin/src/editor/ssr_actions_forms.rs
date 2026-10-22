@@ -82,6 +82,14 @@ pub struct SsrComponentActionRequest {
     pub panel_id: String,
     #[serde(default)]
     pub exclusive: bool,
+    #[serde(default)]
+    pub slider_id: String,
+    #[serde(default)]
+    pub target_slide: String,
+    #[serde(default)]
+    pub direction: String,
+    #[serde(default)]
+    pub index: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -391,6 +399,7 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                             {option("animate", "Animate component", &action_values.kind)}
                             {option("switch_tab", "Switch tab", &action_values.kind)}
                             {option("toggle_accordion", "Toggle accordion", &action_values.kind)}
+                            {option("switch_slide", "Switch slide (carousel)", &action_values.kind)}
                         </select>
                         <select name="page_id" class="rounded border border-input bg-background px-2 py-1 text-xs">
                             <option value="">"Target page"</option>
@@ -429,6 +438,14 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                 {option("show", "Show target", &action_values.mode)}
                                 {option("hide", "Hide target", &action_values.mode)}
                             </select>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <input name="slider_id" value=action_values.slider_id placeholder="Slider id (carousel)" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
+                            <input name="target_slide" value=action_values.target_slide placeholder="Target slide id (optional)" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <input name="direction" value=action_values.direction placeholder="Direction: next / prev" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
+                            <input name="index" value=action_values.index placeholder="Slide index (0, 1...)" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
                         </div>
                         <button type="submit" class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary">{save_action}</button>
                     </form>
@@ -538,6 +555,10 @@ struct ActionValues {
     duration_ms: String,
     panel_id: String,
     exclusive: bool,
+    slider_id: String,
+    target_slide: String,
+    direction: String,
+    index: String,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -621,6 +642,23 @@ impl ActionValues {
                 values.target_id = target_id.clone();
                 values.exclusive = *exclusive;
                 values.mode = if *exclusive { "exclusive".to_string() } else { "toggle".to_string() };
+            }
+            Some(ComponentAction::SwitchSlide {
+                slider_id,
+                target_slide,
+                direction,
+                index,
+            }) => {
+                values.kind = "switch_slide".to_string();
+                values.slider_id = slider_id.clone();
+                values.target_id = slider_id.clone();
+                values.target_slide = target_slide.clone().unwrap_or_default();
+                values.direction = match direction {
+                    Some(fly::SlideDirection::Next) => "next".to_string(),
+                    Some(fly::SlideDirection::Prev) => "prev".to_string(),
+                    None => String::new(),
+                };
+                values.index = index.map(|i| i.to_string()).unwrap_or_default();
             }
             None => {}
         }
@@ -751,6 +789,32 @@ fn action_from_request(request: SsrComponentActionRequest) -> Result<ComponentAc
                     "exclusive" | "true"
                 ),
         }),
+        "switch_slide" => {
+            let direction = match request.direction.trim().to_ascii_lowercase().as_str() {
+                "next" => Some(fly::SlideDirection::Next),
+                "prev" => Some(fly::SlideDirection::Prev),
+                _ => None,
+            };
+            let index = request.index.trim().parse::<usize>().ok();
+            let target_slide = if !request.target_slide.trim().is_empty() {
+                Some(validate_token(&request.target_slide, "target slide id")?)
+            } else {
+                None
+            };
+            let slider_id = if !request.slider_id.trim().is_empty() {
+                validate_token(&request.slider_id, "slider id")?
+            } else if !request.target_id.trim().is_empty() {
+                validate_token(&request.target_id, "slider id")?
+            } else {
+                "self".to_string()
+            };
+            Ok(ComponentAction::SwitchSlide {
+                slider_id,
+                target_slide,
+                direction,
+                index,
+            })
+        }
         other => Err(format!("component action kind `{other}` is unsupported")),
     }
 }

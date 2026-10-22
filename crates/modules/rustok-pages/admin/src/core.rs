@@ -270,6 +270,41 @@ mod tests {
             SymbolValidationError::RootNotObject
         );
     }
+
+    #[test]
+    fn symbol_usage_matrix_computation_and_warning() {
+        let templates = vec![
+            crate::model::PageTemplateSummary {
+                key: "default".to_string(),
+                locale: "en".to_string(),
+                header_symbol_ids: vec!["site-header".to_string()],
+                footer_symbol_ids: vec!["site-footer".to_string()],
+                revision: 1,
+            },
+            crate::model::PageTemplateSummary {
+                key: "landing".to_string(),
+                locale: "en".to_string(),
+                header_symbol_ids: vec!["site-header".to_string()],
+                footer_symbol_ids: vec![],
+                revision: 1,
+            },
+        ];
+
+        let header_usage = compute_symbol_usage("site-header", &templates, vec!["page-uuid-1".to_string()]);
+        assert!(header_usage.is_used());
+        assert!(!header_usage.can_delete_safely());
+        assert_eq!(header_usage.total_dependents(), 3);
+        assert_eq!(header_usage.dependent_templates, vec!["default".to_string(), "landing".to_string()]);
+        assert_eq!(header_usage.dependent_page_ids, vec!["page-uuid-1".to_string()]);
+        assert!(header_usage.deletion_warning().unwrap().contains("2 template(s): default, landing"));
+        assert!(header_usage.deletion_warning().unwrap().contains("1 page(s)"));
+
+        let unused_usage = compute_symbol_usage("promo-banner", &templates, vec![]);
+        assert!(!unused_usage.is_used());
+        assert!(unused_usage.can_delete_safely());
+        assert_eq!(unused_usage.total_dependents(), 0);
+        assert_eq!(unused_usage.deletion_warning(), None);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -343,4 +378,82 @@ pub fn default_symbol_content_json(name: &str) -> String {
     format!(
         "{{\n  \"type\": \"section\",\n  \"classes\": [\"site-symbol-wrapper\"],\n  \"components\": [\n    {{\n      \"type\": \"text\",\n      \"content\": \"{label}\"\n    }}\n  ]\n}}"
     )
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SiteSymbolUsageInfo {
+    pub symbol_id: String,
+    pub dependent_templates: Vec<String>,
+    pub dependent_page_ids: Vec<String>,
+}
+
+impl SiteSymbolUsageInfo {
+    pub fn is_used(&self) -> bool {
+        !self.dependent_templates.is_empty() || !self.dependent_page_ids.is_empty()
+    }
+
+    pub fn total_dependents(&self) -> usize {
+        self.dependent_templates.len() + self.dependent_page_ids.len()
+    }
+
+    pub fn can_delete_safely(&self) -> bool {
+        !self.is_used()
+    }
+
+    pub fn deletion_warning(&self) -> Option<String> {
+        if !self.is_used() {
+            return None;
+        }
+        let mut parts = Vec::new();
+        if !self.dependent_templates.is_empty() {
+            parts.push(format!(
+                "{} template(s): {}",
+                self.dependent_templates.len(),
+                self.dependent_templates.join(", ")
+            ));
+        }
+        if !self.dependent_page_ids.is_empty() {
+            parts.push(format!(
+                "{} page(s)",
+                self.dependent_page_ids.len()
+            ));
+        }
+        Some(format!(
+            "Symbol `{}` is referenced by {}. Deleting it will cause rendering errors or will be rejected by the server.",
+            self.symbol_id,
+            parts.join(" and ")
+        ))
+    }
+}
+
+pub fn compute_symbol_usage(
+    symbol_id: &str,
+    templates: &[crate::model::PageTemplateSummary],
+    dependent_page_ids: Vec<String>,
+) -> SiteSymbolUsageInfo {
+    let normalized_id = symbol_id.trim().to_ascii_lowercase();
+    let mut dependent_templates: Vec<String> = templates
+        .iter()
+        .filter(|tpl| {
+            tpl.header_symbol_ids
+                .iter()
+                .any(|id| id.trim().eq_ignore_ascii_case(&normalized_id))
+                || tpl.footer_symbol_ids
+                    .iter()
+                    .any(|id| id.trim().eq_ignore_ascii_case(&normalized_id))
+        })
+        .map(|tpl| tpl.key.clone())
+        .collect();
+    dependent_templates.sort();
+    dependent_templates.dedup();
+
+    let mut pages = dependent_page_ids;
+    pages.sort();
+    pages.dedup();
+
+    SiteSymbolUsageInfo {
+        symbol_id: normalized_id,
+        dependent_templates,
+        dependent_page_ids: pages,
+    }
 }

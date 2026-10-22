@@ -394,6 +394,18 @@ fn collect_action_targets(node: &ComponentNode, targets: &mut std::collections::
             crate::ComponentAction::SwitchTab { panel_id } => {
                 targets.insert(panel_id);
             }
+            crate::ComponentAction::SwitchSlide {
+                slider_id,
+                target_slide,
+                ..
+            } => {
+                if slider_id != "self" {
+                    targets.insert(slider_id);
+                }
+                if let Some(target) = target_slide {
+                    targets.insert(target);
+                }
+            }
             _ => {}
         }
     }
@@ -810,7 +822,7 @@ fn safe_tag(component: &ComponentObject) -> &'static str {
         .as_deref()
         .unwrap_or_else(|| match component.component_type() {
             "wrapper" | "container" | "row" | "column" | "grid" | "spacer" | "symbol"
-            | "product_price" | "tabs" | "accordion" | "page_content_slot" => "div",
+            | "product_price" | "tabs" | "accordion" | "slider" | "page_content_slot" => "div",
             "section" | "product_grid" | "pricing_table" => "section",
             "heading" => "h2",
             "text" => "p",

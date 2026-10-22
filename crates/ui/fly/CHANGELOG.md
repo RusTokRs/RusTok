@@ -11,6 +11,16 @@ versioned with the host workspace, so until it is extracted (see the `rustok-ui-
 
 ### Added
 
+- **Slider / Carousel interactive primitive (`slider` and `switch_slide`).**
+  Added built-in `slider` component definition to `fly::builtin_blocks` under the
+  `"interactive"` category, complete with carousel track, multi-slide templates,
+  previous/next button controls, and pagination dot indicators. Extended
+  `ComponentAction` with `SwitchSlide { slider_id, target_slide, direction, index }`
+  and `SlideDirection` (next, prev). `fly-actions.js` runtime gained `switchSlide`
+  handling active slide visibility, loop navigation, aria-hidden / dot states,
+  and native touch/swipe gesture support (`touchstart`/`touchend` with horizontal delta).
+  Integrated `switch_slide` into SSR action forms editor in `rustok-page-builder-admin`.
+
 - **Workspace hardening: error channel, history-aware toolbar, scoped styles.**
   The Leptos workspace gained an `on_error` callback that receives every
   failed local command (insert/pages/properties/styles/assets/tokens) instead

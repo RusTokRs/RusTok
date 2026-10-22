@@ -17441,13 +17441,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustok-seo-render"
-version = "0.1.0"
-dependencies = [
- "rustok-seo-storefront",
-]
-
-[[package]]
 name = "rustok-seo-storefront"
 version = "0.1.0"
 dependencies = [
@@ -17769,7 +17762,6 @@ dependencies = [
  "rustok-region-storefront",
  "rustok-search-storefront",
  "rustok-seo",
- "rustok-seo-render",
  "rustok-seo-storefront",
  "rustok-tenant",
  "rustok-ui-core",

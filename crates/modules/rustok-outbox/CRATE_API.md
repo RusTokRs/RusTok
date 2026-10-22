@@ -38,11 +38,16 @@
   `dispatched` rows whose `dispatched_at` is older than the window, in bounded batches, and never
   touches `pending` (still owed) or `failed` (DLQ) rows.
 
-## Dependencies on Other RusToK Crates
-- `rustok-core`
-- `rustok-api`
-- `rustok-events`
-- `rustok-telemetry` (retention counters and the run timestamp gauge)
+## Platform Capability Bindings
+
+- **rustok-core**: Platform error traits, module lifecycle descriptor, and base migration primitives
+- **rustok-api**: Standard API response envelopes and error definitions
+- **rustok-events**: Canonical event envelope traits and contract event serialization
+- **rustok-telemetry**: Retention metrics counters, outbox queue gauges, and dispatch latency histograms
+
+## Domain Collaborations
+
+- All domain modules emitting transactional events or storing durable command idempotency receipts via `TransactionalEventBus`
 
 ## Common AI Mistakes
 - Publishes an event directly to a transport instead of the transactional bus inside the owner transaction.

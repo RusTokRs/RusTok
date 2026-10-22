@@ -62,7 +62,8 @@ pub use contribution_host::{
 };
 pub use core::{EditorSessionAction, EditorSessionEffect, EditorSessionState, gate_error_message};
 pub use draft_session::{
-    InMemorySsrDraftSessionStore, SsrDraftSessionError, SsrDraftSessionSnapshot,
+    DurableSsrDraftSessionStore, FileSsrDraftSessionStore, InMemorySsrDraftSessionStore,
+    PersistentDraftSessionRecord, SsrDraftSessionError, SsrDraftSessionSnapshot,
     SsrDraftSessionStore,
 };
 pub use editor::ConsumerPropertiesPanel;

@@ -279,6 +279,15 @@ Deliberate public modules and exports:
 - Tenant isolation: All queries and commands strictly enforce `tenant_id` scoping.
 - Concurrency: Write operations execute within explicit transaction boundaries.
 
+## Platform Capability Bindings
+
+- **rustok-outbox**: Transactional outbox events and durable idempotency receipts
+- **rustok-tenant**: Multi-tenant data isolation (`TenantId`)
+
+## Domain Collaborations
+
+- None (isolated domain service)
+
 ## Minimum Contract Set
 
 ### Input DTOs/Commands
@@ -306,6 +315,8 @@ Deliberate public modules and exports:
 fn crate_api_defines_minimal_contract_sections() {
     let api = include_str!("../CRATE_API.md");
     for marker in [
+        "## Platform Capability Bindings",
+        "## Domain Collaborations",
         "## Minimum Contract Set",
         "### Input DTOs/Commands",
         "### Domain Invariants",

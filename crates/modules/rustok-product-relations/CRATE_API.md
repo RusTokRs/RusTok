@@ -66,6 +66,15 @@ Deliberate public modules and exports:
 3. Subsequent requests with the same key replay the stored result, rejecting mismatched payloads
    as conflicts.
 
+## Platform Capability Bindings
+
+- **rustok-outbox**: Idempotency receipts and durable command completion ledger
+- **rustok-tenant**: Multi-tenant isolation (`TenantId`) across all relation queries and row locks
+
+## Domain Collaborations
+
+- **rustok-product**: Validates existence and acquires row-level locks on source/target catalog products (`ProductId`)
+
 ## Minimum Contract Set
 
 ### Input DTOs/Commands

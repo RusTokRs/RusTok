@@ -184,9 +184,11 @@ for (const { type, dir } of searchDirs) {
         issues.push('CRATE_API.md missing invariants section (`## Invariants` or `### Domain Invariants`)');
       }
 
-      // For domain modules (crates/modules/*), verify full Minimum Contract Set
+      // For domain modules (crates/modules/*), verify full Minimum Contract Set & Capability Bindings
       if (type === 'module') {
         const requiredModuleSections = [
+          '## Platform Capability Bindings',
+          '## Domain Collaborations',
           '## Minimum Contract Set',
           '### Input DTOs/Commands',
           '### Domain Invariants',
@@ -214,9 +216,23 @@ for (const { type, dir } of searchDirs) {
       issues.push('Missing README.md');
     }
 
-    // 6. Contract Tests presence
-    if (hasCrateApi && !hasContractTests && type === 'module') {
-      issues.push('Module missing contract test harness (contract_tests.rs validating CRATE_API.md)');
+    // 6. Contract Tests presence and registration
+    if (hasCrateApi && type === 'module') {
+      if (!hasContractTests) {
+        issues.push('Module missing contract test harness (contract_tests.rs validating CRATE_API.md)');
+      } else {
+        if (fs.existsSync(srcContractTestsPath)) {
+          const libContent = hasLibRs ? fs.readFileSync(libRsPath, 'utf8') : '';
+          if (!libContent.includes('contract_tests')) {
+            issues.push('src/contract_tests.rs exists but is not registered in src/lib.rs (missing `mod contract_tests;`)');
+          }
+        }
+        const testFile = fs.existsSync(srcContractTestsPath) ? srcContractTestsPath : testsContractTestsPath;
+        const testContent = fs.readFileSync(testFile, 'utf8');
+        if (!testContent.includes('CRATE_API.md') || !testContent.includes('Minimum Contract Set')) {
+          issues.push(`${path.relative(crateDir, testFile)} does not assert CRATE_API.md contract markers`);
+        }
+      }
     }
 
     results.push({

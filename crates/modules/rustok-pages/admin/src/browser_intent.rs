@@ -12,7 +12,7 @@ use rustok_page_builder::runtime_context::{
 };
 use rustok_page_builder_admin::{
     AdminCanvasController, BrowserIntentDispatchError, BrowserIntentDispatchResult,
-    BrowserIntentEffect, InMemorySsrDraftSessionStore, PageBuilderAdminFacade,
+    BrowserIntentEffect, DurableSsrDraftSessionStore, PageBuilderAdminFacade,
     PageBuilderAdminFacadeError, SsrDraftSessionError, SsrDraftSessionStore,
     dispatch_browser_intent,
 };
@@ -35,9 +35,9 @@ pub struct PagesBrowserIntentResponse {
     pub runtime_context: Value,
 }
 
-pub fn pages_browser_draft_store() -> &'static InMemorySsrDraftSessionStore {
-    static STORE: OnceLock<InMemorySsrDraftSessionStore> = OnceLock::new();
-    STORE.get_or_init(InMemorySsrDraftSessionStore::editor_default)
+pub fn pages_browser_draft_store() -> &'static DurableSsrDraftSessionStore {
+    static STORE: OnceLock<DurableSsrDraftSessionStore> = OnceLock::new();
+    STORE.get_or_init(DurableSsrDraftSessionStore::editor_default)
 }
 
 pub async fn dispatch_pages_browser_intent(

@@ -4,9 +4,10 @@ use fly::{
 };
 use fly_ui::{FlyUiStateMachine, Presentation, UiEffect, UiIntent};
 use rustok_page_builder::dto::{PageBuilderCapabilityRequest, PublishPageBuilderInput};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AdminCanvasController {
     page_id: String,
     revision_id: String,
@@ -493,7 +494,7 @@ impl AdminCanvasController {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum AdminCanvasEffect {
     Request {
         request: PageBuilderCapabilityRequest,

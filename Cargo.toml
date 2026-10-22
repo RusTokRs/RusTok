@@ -22,7 +22,6 @@ members = [
     "crates/modules/*",
     "crates/modules/rustok-forms/admin",
     "crates/modules/rustok-seo/admin",
-    "crates/modules/rustok-seo/render",
     "crates/modules/rustok-seo/storefront",
     "crates/modules/rustok-seo/panel",
     "crates/modules/rustok-blog/admin",
@@ -54,6 +53,7 @@ members = [
     "crates/modules/rustok-profiles/cli",
     "crates/modules/rustok-auth/cli",
     "crates/modules/rustok-rbac/cli",
+    "crates/modules/rustok-social-graph/cli",
     "crates/modules/rustok-outbox/admin",
     "crates/modules/rustok-events-module",
     "crates/modules/rustok-events-module/admin",
@@ -67,6 +67,7 @@ members = [
     "crates/modules/rustok-pages/admin",
     "crates/modules/rustok-pages/storefront",
     "crates/modules/rustok-navigation/storefront",
+    "crates/modules/rustok-reactions/storefront",
     "crates/modules/rustok-page-builder/admin",
     "crates/modules/rustok-page-builder/storefront",
     "crates/modules/rustok-search/admin",
@@ -353,7 +354,6 @@ rustok-seo = { path = "crates/modules/rustok-seo" }
 rustok-seo-targets = { path = "crates/modules/rustok-seo-targets" }
 rustok-translation-targets = { path = "crates/modules/rustok-translation-targets" }
 rustok-translation = { path = "crates/modules/rustok-translation" }
-rustok-seo-render = { path = "crates/modules/rustok-seo/render" }
 rustok-seo-storefront = { path = "crates/modules/rustok-seo/storefront" }
 rustok-seo-panel = { path = "crates/modules/rustok-seo/panel" }
 rustok-auth = { path = "crates/modules/rustok-auth" }
@@ -431,7 +431,7 @@ rustok-media = { path = "crates/modules/rustok-media" }
 rustok-media-transport = { path = "crates/modules/rustok-media-transport" }
 rustok-media-cli = { path = "crates/modules/rustok-media/cli" }
 rustok-profiles-cli = { path = "crates/modules/rustok-profiles/cli" }
-rustok-social-graph-cli = { path = "crates/modules/rustok-social-graph-cli" }
+rustok-social-graph-cli = { path = "crates/modules/rustok-social-graph/cli" }
 rustok-auth-cli = { path = "crates/modules/rustok-auth/cli" }
 rustok-rbac-cli = { path = "crates/modules/rustok-rbac/cli" }
 flex = { path = "crates/modules/flex" }
