@@ -81,7 +81,7 @@ then records what was changed, in what order, and how it was verified.
 | E | D5/D6 initially deleted `dynamic_lifecycle`/`gc`/`wave_rollout`/`operator`; restored and reclassified after provenance review (see §5); §5.1 executed (generations folded into canonical owners, parallel service deleted); journal fixed in place (see §4) | partially reverted — `gc`/`wave_rollout`/`operator` remain restored and unwired per §5.2–§5.4 |
 | F | D4 RLS FORCE + GUC coverage (migration; needs PostgreSQL evidence) | blocked — readiness inventory, prerequisites, and interim contract recorded in §6; no blind FORCE migration |
 | G | D9 durable epoch + attestation-only watchdog convergence | implemented |
-| H | M-12 schema ownership + backend newtype; typed errors at pub boundary; bounded lists | pending |
+| H | M-12 schema ownership move + `SupportedBackend` newtype; typed errors at pub boundary; tri-state `tenant_modules.enabled` (closes the M-5 residual) | implemented — see the Phase H slice entries at the end of §4; each slice green on the focused CI gate (`Atomic module settings CAS`) |
 
 ## 3. Verification strategy (no local toolchain)
 
@@ -143,9 +143,11 @@ The development sandbox has no `cargo`/`rustc`. Verification therefore is:
 - **CI fix (migration `m20261021_000054`):** the claim-lease column
   migration now guards table/column existence (`IF EXISTS` /
   `ADD COLUMN IF NOT EXISTS` on PostgreSQL; `sqlite_master` + `PRAGMA
-  table_info` on SQLite). The table is owned by `rustok-migrations`
-  (`m20250101_000003`) and precedes this migration in the sorted
-  production stack; the guard only affects isolated crate-only test
+  table_info` on SQLite). The table was then owned by
+  `rustok-migrations` and preceded this migration in the sorted
+  production stack; since Phase H-3 it is owned by this crate
+  (`m20250101_000060_create_tenant_modules`, still preceding by name
+  order). The guard only affects isolated crate-only test
   compositions (focused CI run `39632605124`:
   `artifact_settings_recovery` tests failed with "no such table").
 - **CI evidence (focused workflow, `f59142d`):** `cargo test -p
@@ -232,6 +234,84 @@ The development sandbox has no `cargo`/`rustc`. Verification therefore is:
   flow rather than widening this gate. Covered by updated unit
   assertions plus a store-backed rejection test (empty owner table,
   non-manager actor, rejected before any write).
+
+Phase H was executed in full ideal scope per the 2026-10-22 directive
+(no deferral options). Slice labels below (H-1…H-5) are Phase H work
+slices, **not** audit finding IDs — audit H-4 is Phase F (§6), audit
+H-5 is dispositioned in §5.5. Slices, in execution order:
+
+- **H-2 (migration ordinal hygiene, `4beaa97`):** duplicate migration
+  ordinals renamed; registration is lexically ordered with unique
+  ordinals, enforced by
+  `migration_registration_is_lexically_ordered_with_unique_ordinals`.
+- **H-1 (`SupportedBackend` newtype, through `f930d2f`):**
+  `src/backend.rs` validates the connection backend once at every store
+  boundary (`Postgres | Sqlite`, exhaustive matching). All
+  `DbBackend::Postgres => …, _ => …` MySQL-as-SQLite fallthroughs and
+  backend `unreachable!` panics are deleted across migrations, data,
+  governance, operation/settings/recovery stores, `installation.rs`,
+  and the long tail; the public surface no longer exposes raw
+  `DbBackend`. Conversion scripts retained under `scripts/`.
+- **H-4 (typed errors at the pub boundary):** every `Result<_, String>`
+  host/runtime port now carries a dedicated typed error owned by the
+  trait-defining module, with consumers mapping via `#[from]`/`#[source]`
+  and denials remaining Ok-side decisions. H-4a (`8f18818`/`570c505`):
+  runtime resolvers + `ArtifactBindingDispatchError::is_terminal`
+  (terminal rejections dead-letter as `execution_rejected` instead of
+  retrying forever). H-4b (`fd0d9cc`…`00545dd`):
+  `TrustVerificationError` across trust/ingress/admission and the
+  verification workers; alloy registry failures no longer masquerade as
+  verification failures. H-4c (`d369cfb`/`32c49cc`): composition
+  enqueue, delivery tenant source, backfill processor,
+  artifact-node/static-distribution topology resolvers, release
+  verifier, publication registry provider. H-4d (`70ad7e5`…`d2f8ebd`):
+  `OciTransportError` for the strict OCI distribution transport
+  (`Rejected` preserves the registry HTTP status; `DigestMismatch` is
+  an integrity failure, never transient).
+- **H-3 (schema ownership move, `62af640` + `9f95ff4`):** the 15
+  module-domain migrations (`tenant_modules`, all `registry_*` publish /
+  validation / governance / publication-evidence tables) moved from
+  `crates/utils/rustok-migrations` into this crate with fresh ordinals
+  `000060..=000074` (dates preserved, so the globally name-sorted server
+  migrator order is unchanged; dev databases reset per §13). Moved
+  migrations were converted to the `SupportedBackend` contract; the
+  platform `tenants` FK target is declared as a local minimal `Iden`
+  (rustok-auth precedent). `InstallerOwnerMigrator` now sources the
+  publish-tables migration from `ModulesModule` by name.
+  `install_http_jobs` creation deliberately stays in
+  `rustok-migrations`: its runtime owner is
+  `rustok-installer-persistence`, not this domain. Two orphaned,
+  unregistered migration drafts found during the move were deleted as
+  dead: `m20260407_000002_expand_registry_request_and_stage_leases`
+  (superseded column-for-column by the registered `20260408` pair) and
+  `m20260928_000002_add_install_http_job_idempotency` (columns no
+  entity reads). M-12's split-ownership finding is closed: every table
+  this crate's SQL touches is created by this crate's migrations.
+- **H-5 (tri-state `tenant_modules.enabled`, `5bc7215`):** the column
+  is nullable (amended in `m20250101_000060` in place per §13): NULL =
+  "no tenant intent recorded", the platform default applies. A settings
+  save creates no intent (INSERT writes NULL; the UPDATE no longer
+  touches the column; `TenantModuleSettingsRequest.default_enabled`
+  deleted) — the M-5 freeze is gone end-to-end. Policy override reads
+  filter `enabled IS NOT NULL`, so settings-only rows are not overrides
+  and later platform-default changes take effect for tenants that never
+  expressed intent. Clearing an override (recovery
+  `apply_tenant_override_enabled(None)`) now sets `enabled = NULL` and
+  preserves the row's settings instead of deleting the row. Owner facts
+  are tri-state (`Option<bool>`: state/settings records,
+  `TenantModuleOverrideSnapshot`, `StaticModuleSettingsSnapshot`, the
+  `tenant_module` entity and `TenantModuleResponse`);
+  effective-state projections stay `bool` and resolve the platform
+  default at the owner boundary (`StaticTenantModuleView`,
+  `ModuleLifecycleSettingsResult`), failing loudly for unknown slugs.
+  `rustok-api` settings reads accept not-explicitly-disabled rows while
+  `is_tenant_module_enabled` keeps counting only explicit enables.
+  Consequence to be aware of: raw snapshot readers (e.g. SEO's
+  `is_enabled`/`owner_module_enabled`) no longer flip to `true` after a
+  mere settings save on a default-enabled module — that flip was the
+  freeze defect; consumers needing effective state must use the
+  lifecycle/effective-policy projections. `artifact_settings::persist`
+  also stopped fabricating `enabled: true` for a table it does not own.
 
 ## 5. Appendix: classification of the four restored modules (2026-10-21)
 
@@ -485,3 +565,49 @@ and the ordered prerequisites that make Phase F landable.
 - Existing `ENABLE` + policy DDL is defense-in-depth documentation of
   the intended boundaries. It must not be cited as active enforcement
   in security claims, plan statuses, or verification matrices.
+
+## 7. Remediation status and open follow-ups (2026-10-22)
+
+With Phase H complete, every audit finding is dispositioned: H-1…H-3,
+H-6…H-8, M-1…M-12 are implemented (Phases A–E as reclassified in §5, G,
+H). The single exception is **Phase F (H-4 FORCE RLS)**, blocked on the
+§6 prerequisites (connection-role separation + PostgreSQL evidence) —
+it remains explicitly open, with the §6.3 interim contract in force.
+
+Verification note: per §3, every Phase H slice was landed only after
+the crate-scoped CI gate (`Atomic module settings CAS`: `cargo fmt -p
+rustok-modules -- --check` + `cargo test -p rustok-modules --lib
+settings_`) went green, and new tests were written to fail on the old
+code (tri-state intent lifecycle in `operation_store`, NULL-intent
+settings exposure in `rustok-api::runtime`, typed-error classifications
+in H-4a/H-4b). Cross-crate compile surfaces touched by H-3/H-5
+(`rustok-migrations`, `rustok-api`, `rustok-tenant`, forum/blog/seo,
+`apps/server`) are covered only by the broader workspace jobs, which
+are baseline-red on `main`; no green claim is made for them here
+beyond the crate-scoped gate and workspace-wide reference sweeps
+recorded in the commit messages.
+
+Open follow-ups recorded during execution (not audit findings):
+
+1. **SQLite "now" format divergence.** Three textual now-formats
+   coexist in persisted columns: `datetime('now')`,
+   `CURRENT_TIMESTAMP`, and ISO `strftime('%Y-%m-%dT%H:%M:%fZ','now')`
+   (settings store, recovery, journals). They were preserved
+   byte-for-byte through H-1/H-5 because each is load-bearing for its
+   own comparisons; unification needs a dedicated data audit (lexical
+   vs chronological ordering per column) and is intentionally not part
+   of this remediation.
+2. **Raw snapshot readers vs effective policy.** `rustok-api::runtime`
+   (`is_tenant_module_enabled`) and SEO's snapshot-based guards answer
+   "an explicit enabled row exists", while the control plane's
+   effective policy also applies Core/platform defaults. H-5 made the
+   divergence honest (a settings save no longer masquerades as intent),
+   but new consumers must pick the right question: explicit-row lookup
+   for optional-module gating, effective-policy projection for "is it
+   on". Hosts composing new gates should prefer the lifecycle reader.
+3. **Crate tests still hand-write some DDL.** H-3 made the real
+   migrations crate-owned, but several test fixtures still declare
+   local `CREATE TABLE tenant_modules` copies (kept in sync manually,
+   nullable `enabled` included). Migrating fixtures to run the real
+   migration set is worthwhile future hygiene; it was not required to
+   close M-12's ownership finding.
