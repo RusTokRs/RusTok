@@ -425,6 +425,15 @@ pub(crate) fn governance_actor_can_manage_request_principals(
                 || principal_matches_governance_actor(publisher_principal, actor_principal)))
 }
 
+/// Namespace policy for publish-request creation: the bound owner of a slug,
+/// or an actor holding the `can_manage_modules` capability. There is no
+/// first-comer claim for unowned slugs: the first published release binds
+/// its publisher as the durable owner (see `publication.rs`), so letting any
+/// authenticated user open a request for an unowned slug would be namespace
+/// squatting by first-comer. Bootstrapping a new namespace is therefore a
+/// module-manager action; a future self-service marketplace must introduce
+/// an explicit, separately authorized namespace-claim flow instead of
+/// widening this gate again.
 pub(crate) fn governance_actor_can_create_publish_request(
     owner_principal: Option<&serde_json::Value>,
     actor_principal: &serde_json::Value,
@@ -432,7 +441,6 @@ pub(crate) fn governance_actor_can_create_publish_request(
 ) -> bool {
     actor_can_manage_modules
         || principal_matches_governance_actor(owner_principal, actor_principal)
-        || (owner_principal.is_none() && governance_principal_user_id(actor_principal).is_some())
 }
 
 pub(crate) fn governance_actor_can_manage_release(
