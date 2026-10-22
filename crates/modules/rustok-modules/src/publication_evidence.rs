@@ -109,7 +109,7 @@ pub enum ModuleAlloyPublicationEvidenceError {
     #[error("Alloy publication evidence could not be recorded: {0}")]
     Record(#[source] ModuleGovernanceError),
     #[error("Alloy publication verification failed: {0}")]
-    Verification(String),
+    Verification(#[source] TrustVerificationError),
     #[error("published Alloy OCI artifact does not match the immutable owner receipt")]
     ArtifactIdentityMismatch,
     #[error("isolated Alloy publication verification did not admit the selected artifact")]
