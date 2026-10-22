@@ -10,6 +10,7 @@ mod m20260408_000068_expand_registry_validation_stage_runner_leases;
 mod m20260412_000069_reset_registry_identity_and_artifacts;
 mod m20260412_000070_split_registry_localized_metadata;
 mod m20260419_000071_normalize_registry_governance_event_payloads;
+mod m20260501_000076_create_module_operations;
 mod m20260711_000001_module_artifact_installations;
 mod m20260713_000002_module_artifact_admissions;
 mod m20260713_000003_artifact_installation_rollback_pointer;
@@ -52,6 +53,7 @@ mod m20260726_000038_artifact_data_object_deletions;
 mod m20260726_000039_artifact_data_record_deletions;
 mod m20260727_000040_registry_platform_admission_contracts;
 mod m20260727_000041_registry_release_artifact_contracts;
+mod m20260808_000075_create_module_operation_override_states;
 pub(crate) mod m20260814_000042_artifact_node_reconciliation;
 mod m20260822_000043_artifact_ui_contribution_locks;
 pub(crate) mod m20260822_000044_module_build_execution_claims;
@@ -86,6 +88,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260412_000069_reset_registry_identity_and_artifacts::Migration),
         Box::new(m20260412_000070_split_registry_localized_metadata::Migration),
         Box::new(m20260419_000071_normalize_registry_governance_event_payloads::Migration),
+        Box::new(m20260501_000076_create_module_operations::Migration),
         Box::new(m20260711_000001_module_artifact_installations::Migration),
         Box::new(m20260713_000002_module_artifact_admissions::Migration),
         Box::new(m20260713_000003_artifact_installation_rollback_pointer::Migration),
@@ -128,6 +131,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260726_000039_artifact_data_record_deletions::Migration),
         Box::new(m20260727_000040_registry_platform_admission_contracts::Migration),
         Box::new(m20260727_000041_registry_release_artifact_contracts::Migration),
+        Box::new(m20260808_000075_create_module_operation_override_states::Migration),
         Box::new(m20260814_000042_artifact_node_reconciliation::Migration),
         Box::new(m20260822_000043_artifact_ui_contribution_locks::Migration),
         Box::new(m20260822_000044_module_build_execution_claims::Migration),

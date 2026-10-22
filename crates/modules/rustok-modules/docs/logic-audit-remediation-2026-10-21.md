@@ -285,8 +285,18 @@ H-5 is dispositioned in §5.5. Slices, in execution order:
   dead: `m20260407_000002_expand_registry_request_and_stage_leases`
   (superseded column-for-column by the registered `20260408` pair) and
   `m20260928_000002_add_install_http_job_idempotency` (columns no
-  entity reads). M-12's split-ownership finding is closed: every table
-  this crate's SQL touches is created by this crate's migrations.
+  entity reads). Re-verification (2026-10-22) found two census gaps
+  the file-level sweep had missed: `module_operation_override_states`
+  moved in as `m20260808_000075`, and the `module_operations` table
+  creation was extracted from the mixed-domain
+  `m20260501_000001_create_platform_composition_state` into
+  `m20260501_000076_create_module_operations`. M-12's split-ownership
+  finding is closed at that point: every module-domain table this
+  crate's SQL touches is created by this crate's migrations. The
+  remaining foreign-created tables it accesses are platform-owned
+  infrastructure used as a client — `tenants` (FK target),
+  `platform_state` (written only through the composition owner
+  service), `owner_operation_receipts`, and `sys_events`.
 - **H-5 (tri-state `tenant_modules.enabled`, `5bc7215`):** the column
   is nullable (amended in `m20250101_000060` in place per §13): NULL =
   "no tenant intent recorded", the platform default applies. A settings
@@ -586,6 +596,27 @@ in H-4a/H-4b). Cross-crate compile surfaces touched by H-3/H-5
 are baseline-red on `main`; no green claim is made for them here
 beyond the crate-scoped gate and workspace-wide reference sweeps
 recorded in the commit messages.
+
+An independent re-verification pass (2026-10-22) then mined the logs
+of those baseline-red workspace jobs instead of accepting the
+crate-scoped gate as sufficient, and found real regressions the gate
+could not see. All are fixed: (1) the storefront native
+enabled-modules reader still compiled against the pre-H-5 `bool`
+field and read raw rows; it now resolves through the canonical
+`SharedModuleEffectivePolicyReader` exactly like admin and GraphQL
+(`3b268f2`); (2) four exhaustive matches in `rustok-server` missed
+the H-4 variants `ModuleLifecycleDbWriterError::Security` and
+`ToggleModuleError::IncompatibleDependencies`; the mappers now cover
+them semantically (Policy / BAD_USER_INPUT, with a contract-test
+case) (`dda8c2e`); (3) two H-3 schema-ownership census gaps closed
+(`000075`/`000076`, see the H-3 slice note), and the stale textual
+pins they and earlier slices left in two source-evidence contracts
+(`verify-product-lifecycle-collaboration`,
+`verify-module-control-plane-write-path`) were re-aimed and both
+contracts re-run green. The remaining red workspace jobs were
+classified per-job against `main` (baseline fmt/clippy/i18n/docs
+failures and the sanctioned append-only migration-plan diffs from
+the §13 renames); none is attributable to this remediation.
 
 Open follow-ups recorded during execution (not audit findings):
 

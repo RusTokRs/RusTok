@@ -217,11 +217,11 @@ const staticLifecycleJournalPath = path.join(ownerRoot, "operation_store.rs");
 const alloyOwnerSourcePath = path.join(ownerRoot, "governance");
 const registryPublicationEvidenceMigrationPath = path.join(
   root,
-  "crates/utils/rustok-migrations/src/m20260717_000001_create_registry_publication_evidence.rs",
+  "crates/modules/rustok-modules/src/migrations/m20260717_000072_create_registry_publication_evidence.rs",
 );
 const registryPublicationMigrationPath = path.join(
   root,
-  "crates/utils/rustok-migrations/src/m20260718_000002_add_registry_publication_idempotency.rs",
+  "crates/modules/rustok-modules/src/migrations/m20260718_000074_add_registry_publication_idempotency.rs",
 );
 const registryHttpControllerPath = path.join(
   root,

@@ -33,7 +33,7 @@ The active composition derives package co-requisites through `ManifestManager::m
 
 - `ModuleLifecycleDbWriter::with_corequisites` accepts the normalized `consumer -> provider -> version requirement` map separately from the definition catalog's ordinary dependencies;
 - `ModuleEffectivePolicyQuery` normalizes the co-requisite input against the active catalog, rejects self-references, dependency/co-requisite overlap, unknown consumers/providers, conflicting duplicates, and malformed version requirements;
-- the normalized co-requisite contract participates in both base and final `rustok.module_effective_policy.v2` revision input, so `policy_revision`, `EffectivePolicyCacheIdentity`, lifecycle current/next transitions, and the policy-transition outbox share one owner identity;
+- the normalized co-requisite contract participates in both base and final `rustok.module_effective_policy.v3` revision input, so `policy_revision`, `EffectivePolicyCacheIdentity`, lifecycle current/next transitions, and the policy-transition outbox share one owner identity;
 - the owner fixed point applies ordinary dependencies and co-requisites as distinct constraints. A missing effective owner produces `CoRequisiteUnavailable`; a selected but incompatible owner version produces `CoRequisiteVersionMismatch`;
 - each Product decision carries `CoRequisite` facts with the admitted owner version, declared requirement, compatibility result, and final owner availability.
 

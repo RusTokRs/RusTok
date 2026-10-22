@@ -32,7 +32,6 @@ mod m20260426_000001_create_install_sessions;
 mod m20260501_000001_create_platform_composition_state;
 mod m20260723_000001_create_event_delivery_settings;
 mod m20260803_000001_create_owner_operation_receipts;
-mod m20260808_000099_create_module_operation_override_states;
 mod m20260928_000001_create_install_http_jobs;
 mod m20261007_000014_add_sys_events_claim_index;
 mod m20261007_000015_add_sys_events_retention_index;
@@ -445,7 +444,6 @@ impl MigratorTrait for Migrator {
             Box::new(m20260426_000001_create_install_sessions::Migration),
             Box::new(m20260723_000001_create_event_delivery_settings::Migration),
             Box::new(m20260803_000001_create_owner_operation_receipts::Migration),
-            Box::new(m20260808_000099_create_module_operation_override_states::Migration),
             Box::new(m20260928_000001_create_install_http_jobs::Migration),
         ];
 
