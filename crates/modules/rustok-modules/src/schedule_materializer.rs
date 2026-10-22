@@ -330,7 +330,7 @@ impl ArtifactScheduleMaterializer {
                     backend.uuid_value(binding.installation_id),
                     binding.binding_id.clone().into(),
                     binding.schedule_digest.clone().into(),
-                    datetime_value(materialized_through, backend),
+                    backend.datetime_value(materialized_through),
                 ],
             ))
             .await
@@ -585,13 +585,6 @@ fn datetime_from_row(
                     .map(|timestamp| timestamp.with_timezone(&Utc))
                     .map_err(storage_error)
             }),
-    }
-}
-
-fn datetime_value(value: DateTime<Utc>, backend: SupportedBackend) -> SqlValue {
-    match backend {
-        SupportedBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(value)),
-        SupportedBackend::Sqlite => value.to_rfc3339().into(),
     }
 }
 

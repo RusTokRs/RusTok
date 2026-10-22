@@ -427,7 +427,7 @@ where
                     revision_value(records.len() as u64)?,
                     revision_value(objects.len() as u64)?,
                     revision_value(total_object_bytes)?,
-                    datetime_value(request.retain_until, backend),
+                    backend.datetime_value(request.retain_until),
                     request.legal_hold.into(),
                 ],
             ))
@@ -1107,7 +1107,7 @@ where
                 ),
                 vec![
                     revision_value(retention_revision)?,
-                    datetime_value(retain_until.to_owned(), backend),
+                    backend.datetime_value(retain_until.to_owned()),
                     legal_hold.into(),
                     backend.uuid_value(request.tenant_id),
                     backend.uuid_value(request.snapshot_id),
@@ -1149,7 +1149,7 @@ where
                     request_digest.into(),
                     revision_value(request.expected_retention_revision)?,
                     revision_value(retention_revision)?,
-                    datetime_value(retain_until.to_owned(), backend),
+                    backend.datetime_value(retain_until.to_owned()),
                     legal_hold.into(),
                     backend.uuid_value(request.context.actor_id),
                     request.context.trace_id.clone().into(),
@@ -2534,13 +2534,6 @@ pub(crate) fn datetime_from_row(
                     .map(|timestamp| timestamp.with_timezone(&Utc))
                     .map_err(snapshot_storage_error)
             }),
-    }
-}
-
-fn datetime_value(value: DateTime<Utc>, backend: SupportedBackend) -> SqlValue {
-    match backend {
-        SupportedBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(value)),
-        SupportedBackend::Sqlite => value.to_rfc3339().into(),
     }
 }
 

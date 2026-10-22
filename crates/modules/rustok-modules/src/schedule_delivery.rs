@@ -201,7 +201,7 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
                     backend.uuid_value(request.installation_id),
                     request.binding_id.clone().into(),
                     schedule_digest.clone().into(),
-                    datetime_value(request.scheduled_for, backend),
+                    backend.datetime_value(request.scheduled_for),
                 ],
             ))
             .await
@@ -230,7 +230,7 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
                     backend.uuid_value(request.tenant_id),
                     backend.uuid_value(request.installation_id),
                     request.binding_id.into(),
-                    datetime_value(request.scheduled_for, backend),
+                    backend.datetime_value(request.scheduled_for),
                 ],
             ))
             .await
@@ -944,13 +944,6 @@ fn datetime_from_row(
                     .map(|timestamp| timestamp.with_timezone(&Utc))
                     .map_err(storage_error)
             }),
-    }
-}
-
-fn datetime_value(value: DateTime<Utc>, backend: SupportedBackend) -> SqlValue {
-    match backend {
-        SupportedBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(value)),
-        SupportedBackend::Sqlite => value.to_rfc3339().into(),
     }
 }
 

@@ -3580,7 +3580,7 @@ impl SeaOrmArtifactInstallationStore {
                     backend.uuid_value(request.installation_id),
                     expected_revision.into(),
                     resulting_revision_i64.into(),
-                    datetime_value(backend, &self.infrastructure.now()),
+                    backend.datetime_value(self.infrastructure.now()),
                 ],
             ))
             .await
@@ -4169,7 +4169,7 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
                     command.context.trace_id.clone().into(),
                     backend.uuid_value(command.context.correlation_id),
                     request_digest.into(),
-                    datetime_value(backend, &committed_at),
+                    backend.datetime_value(committed_at),
                 ],
             ))
             .await
@@ -4226,7 +4226,7 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
                 work_generation_insert_sql(backend),
                 vec![
                     backend.uuid_value(artifact.installation_id),
-                    datetime_value(backend, &committed_at),
+                    backend.datetime_value(committed_at),
                 ],
             ))
             .await
@@ -4320,13 +4320,6 @@ fn admission_command_scope(command: &ArtifactAdmissionCommand) -> (&'static str,
     match &command.scope {
         ModuleInstallationScope::Platform => ("platform", "platform".to_string()),
         ModuleInstallationScope::Tenant { tenant_id } => ("tenant", tenant_id.to_string()),
-    }
-}
-
-fn datetime_value(backend: SupportedBackend, value: &DateTime<Utc>) -> SqlValue {
-    match backend {
-        SupportedBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(value.to_owned())),
-        SupportedBackend::Sqlite => value.to_rfc3339().into(),
     }
 }
 
@@ -4658,7 +4651,7 @@ fn sandbox_policy_values(
         optional_uuid_value(tenant_id, backend),
         revision.into(),
         SqlValue::Json(Some(Box::new(policy))),
-        datetime_value(backend, committed_at),
+        backend.datetime_value(*committed_at),
     ])
 }
 
@@ -5063,7 +5056,7 @@ fn admission_values(
         SqlValue::Json(Some(Box::new(evidence))),
         ArtifactAdmissionStatus::Admitted.as_str().into(),
         1_i64.into(),
-        datetime_value(backend, committed_at),
+        backend.datetime_value(*committed_at),
     ])
 }
 

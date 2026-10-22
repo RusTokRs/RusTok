@@ -97,6 +97,16 @@ impl SupportedBackend {
 
     /// UUID bind value in the persisted representation: native `uuid` on
     /// PostgreSQL, hyphenated text on SQLite.
+    /// Bind representation for a timestamp: native `timestamptz` on
+    /// PostgreSQL, RFC 3339 text on SQLite (the representation this
+    /// crate's text-column readers parse back).
+    pub(crate) fn datetime_value(self, value: chrono::DateTime<chrono::Utc>) -> Value {
+        match self {
+            Self::Postgres => Value::ChronoDateTimeUtc(Some(value)),
+            Self::Sqlite => value.to_rfc3339().into(),
+        }
+    }
+
     pub(crate) fn uuid_value(self, value: Uuid) -> Value {
         match self {
             Self::Postgres => Value::Uuid(Some(value)),

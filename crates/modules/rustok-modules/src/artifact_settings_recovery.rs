@@ -762,7 +762,7 @@ where
                     bytes_value(ciphertext.bytes.clone()),
                     retention.policy_snapshot_id.clone().into(),
                     retention.secret_handle_digest.clone().into(),
-                    datetime_value(retention.retain_until, backend),
+                    backend.datetime_value(retention.retain_until),
                     bool_value(retention.legal_hold, backend),
                     bool_value(retention.audit_hold, backend),
                     bool_value(retention.incident_hold, backend),
@@ -1272,7 +1272,7 @@ where
                 vec![
                     revision_value(retention_revision)?,
                     retention.policy_snapshot_id.clone().into(),
-                    datetime_value(retention.retain_until, backend),
+                    backend.datetime_value(retention.retain_until),
                     bool_value(retention.legal_hold, backend),
                     bool_value(retention.audit_hold, backend),
                     bool_value(retention.incident_hold, backend),
@@ -1317,7 +1317,7 @@ where
                     request_digest.into(),
                     revision_value(request.expected_retention_revision)?,
                     revision_value(retention_revision)?,
-                    datetime_value(retention.retain_until, backend),
+                    backend.datetime_value(retention.retain_until),
                     bool_value(retention.legal_hold, backend),
                     bool_value(retention.audit_hold, backend),
                     bool_value(retention.incident_hold, backend),
@@ -3442,13 +3442,6 @@ fn bool_value(value: bool, backend: SupportedBackend) -> SqlValue {
     match backend {
         SupportedBackend::Postgres => value.into(),
         SupportedBackend::Sqlite => i64::from(value).into(),
-    }
-}
-
-fn datetime_value(value: DateTime<Utc>, backend: SupportedBackend) -> SqlValue {
-    match backend {
-        SupportedBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(value)),
-        SupportedBackend::Sqlite => value.to_rfc3339().into(),
     }
 }
 

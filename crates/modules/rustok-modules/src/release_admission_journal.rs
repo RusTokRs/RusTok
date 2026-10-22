@@ -45,13 +45,6 @@ pub struct ReleaseAdmissionIntentRecord {
 #[derive(Debug, Clone, Default)]
 pub struct ReleaseAdmissionIntentJournal;
 
-fn datetime_value(backend: SupportedBackend, value: &DateTime<Utc>) -> SqlValue {
-    match backend {
-        SupportedBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(value.to_owned())),
-        SupportedBackend::Sqlite => value.to_rfc3339().into(),
-    }
-}
-
 fn parse_uuid_column(
     row: &sea_orm::QueryResult,
     column: &str,
@@ -201,7 +194,7 @@ impl ReleaseAdmissionIntentJournal {
                     context.trace_id.clone().into(),
                     backend.uuid_value(context.correlation_id),
                     request_digest.into(),
-                    datetime_value(backend, &now),
+                    backend.datetime_value(now),
                 ],
             ))
             .await
@@ -365,7 +358,7 @@ impl ReleaseAdmissionIntentJournal {
                     },
                     MAX_STALE_UNFINISHED_INTENTS_PER_SCAN
                 ),
-                vec![datetime_value(backend, &threshold)],
+                vec![backend.datetime_value(threshold)],
             ))
             .await
             .map_err(|e| ReleaseAdmissionJournalError::Store(e.to_string()))?;

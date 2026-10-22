@@ -963,7 +963,7 @@ pub(crate) async fn insert_release(
                 evidence.test_evidence_reference.clone().into(),
                 evidence.test_evidence_digest.clone().into(),
                 backend.uuid_value(actor_id),
-                datetime_value(admitted_at, backend),
+                backend.datetime_value(admitted_at),
             ],
         ))
         .await
@@ -1017,7 +1017,7 @@ pub(crate) async fn insert_admission(
                 admission.sbom_verified.into(),
                 admission.test_evidence_verified.into(),
                 admission.dependency_policy_verified.into(),
-                datetime_value(verified_at, backend),
+                backend.datetime_value(verified_at),
             ],
         ))
         .await
@@ -1796,16 +1796,6 @@ fn optional_uuid_value(value: Option<Uuid>, backend: SupportedBackend) -> sea_or
         (SupportedBackend::Postgres, value) => sea_orm::Value::Uuid(value),
         (SupportedBackend::Sqlite, Some(value)) => value.to_string().into(),
         (SupportedBackend::Sqlite, None) => sea_orm::Value::String(None),
-    }
-}
-
-fn datetime_value(
-    value: chrono::DateTime<chrono::Utc>,
-    backend: SupportedBackend,
-) -> sea_orm::Value {
-    match backend {
-        SupportedBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(value)),
-        SupportedBackend::Sqlite => value.to_rfc3339().into(),
     }
 }
 

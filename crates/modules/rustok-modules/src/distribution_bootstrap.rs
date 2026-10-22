@@ -436,7 +436,7 @@ async fn insert_bootstrap_preparation(
                 preparation.build_target.clone().into(),
                 receipt_digest.to_owned().into(),
                 backend.uuid_value(actor_id),
-                datetime_value(completed_at, backend),
+                backend.datetime_value(completed_at),
                 preparation.evidence.bundle_reference.clone().into(),
                 preparation.evidence.bundle_root_digest.clone().into(),
                 preparation.evidence.role_set_digest.clone().into(),
@@ -450,7 +450,7 @@ async fn insert_bootstrap_preparation(
                 preparation.evidence.test_evidence_reference.clone().into(),
                 preparation.evidence.test_evidence_digest.clone().into(),
                 receipt_digest.to_owned().into(),
-                datetime_value(completed_at, backend),
+                backend.datetime_value(completed_at),
             ],
         ))
         .await
@@ -639,13 +639,6 @@ fn revision_value(value: u64) -> Result<sea_orm::Value, ModuleStaticDistribution
     i64::try_from(value)
         .map(Into::into)
         .map_err(|_| ModuleStaticDistributionReleaseError::RevisionOverflow)
-}
-
-fn datetime_value(value: DateTime<Utc>, backend: SupportedBackend) -> sea_orm::Value {
-    match backend {
-        SupportedBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(value)),
-        SupportedBackend::Sqlite => value.to_rfc3339().into(),
-    }
 }
 
 fn distribution_error(
