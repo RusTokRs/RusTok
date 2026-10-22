@@ -1,6 +1,6 @@
 //! Idempotent operation receipts for publish request reviews and holds.
 
-use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, Statement, Value};
+use sea_orm::{ConnectionTrait, DatabaseTransaction, Statement, Value};
 
 use super::helpers::*;
 use super::*;
@@ -18,21 +18,20 @@ pub(crate) struct PublishRequestReviewReceipt<'a> {
 
 pub(crate) async fn lock_publish_request(
     tx: &DatabaseTransaction,
-    backend: DbBackend,
+    backend: SupportedBackend,
     request_id: &str,
 ) -> Result<(), ModuleGovernanceError> {
-    let mark = if backend == DbBackend::Postgres {
+    let mark = if backend == SupportedBackend::Postgres {
         "$1"
     } else {
         "?1"
     };
-    let request_lock = if backend == DbBackend::Postgres {
+    let request_lock = if backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
         ""
     };
-    tx.query_one_raw(Statement::from_sql_and_values(
-        backend,
+    tx.query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
         format!("SELECT id FROM registry_publish_requests WHERE id = {mark}{request_lock}"),
         vec![request_id.to_string().into()],
     ))
@@ -44,19 +43,18 @@ pub(crate) async fn lock_publish_request(
 
 pub(crate) async fn publish_request_review_replay(
     tx: &DatabaseTransaction,
-    backend: DbBackend,
+    backend: SupportedBackend,
     receipt: &PublishRequestReviewReceipt<'_>,
 ) -> Result<bool, ModuleGovernanceError> {
     let mark = |n| {
-        if backend == DbBackend::Postgres {
+        if backend == SupportedBackend::Postgres {
             format!("${n}")
         } else {
             format!("?{n}")
         }
     };
     let existing = tx
-        .query_one_raw(Statement::from_sql_and_values(
-            backend,
+        .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
             format!(
                 "SELECT operation_kind, expected_revision, CAST(actor_id AS TEXT) AS actor_id, \
                  trace_id, CAST(correlation_id AS TEXT) AS correlation_id, \
@@ -68,7 +66,7 @@ pub(crate) async fn publish_request_review_replay(
             ),
             vec![
                 receipt.request_id.to_string().into(),
-                registry_uuid_value(receipt.context.idempotency_key, backend),
+                backend.uuid_value(receipt.context.idempotency_key),
             ],
         ))
         .await
@@ -120,21 +118,20 @@ pub(crate) async fn publish_request_review_replay(
 pub(crate) async fn record_publish_request_review_receipt(
     infrastructure: &ControlPlaneInfrastructure,
     tx: &DatabaseTransaction,
-    backend: DbBackend,
+    backend: SupportedBackend,
     now: &str,
     receipt: &PublishRequestReviewReceipt<'_>,
     resulting_status: &str,
     resulting_revision: i64,
 ) -> Result<(), ModuleGovernanceError> {
     let mark = |n| {
-        if backend == DbBackend::Postgres {
+        if backend == SupportedBackend::Postgres {
             format!("${n}")
         } else {
             format!("?{n}")
         }
     };
-    tx.execute_raw(Statement::from_sql_and_values(
-        backend,
+    tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
         format!(
             "INSERT INTO registry_publish_request_review_operations \
              (operation_id, request_id, operation_kind, idempotency_key, expected_revision, actor_id, \
@@ -156,14 +153,14 @@ pub(crate) async fn record_publish_request_review_receipt(
             mark(13),
         ),
         vec![
-            registry_uuid_value(infrastructure.new_id(), backend),
+            backend.uuid_value(infrastructure.new_id()),
             receipt.request_id.to_string().into(),
             receipt.operation_kind.into(),
-            registry_uuid_value(receipt.context.idempotency_key, backend),
+            backend.uuid_value(receipt.context.idempotency_key),
             receipt.expected_revision.into(),
-            registry_uuid_value(receipt.context.actor_id, backend),
+            backend.uuid_value(receipt.context.actor_id),
             receipt.context.trace_id.clone().into(),
-            registry_uuid_value(receipt.context.correlation_id, backend),
+            backend.uuid_value(receipt.context.correlation_id),
             Value::Json(Some(Box::new(receipt.actor_principal.clone()))),
             receipt.reason.to_string().into(),
             receipt.reason_code.to_string().into(),

@@ -2,6 +2,8 @@
 
 pub use crate::{ControlPlaneInfrastructure, ModuleCommandContext};
 
+pub(crate) use crate::backend::SupportedBackend;
+
 pub mod actions_ownership;
 pub mod actions_review;
 pub mod admissions;

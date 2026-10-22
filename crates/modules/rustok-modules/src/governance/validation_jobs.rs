@@ -1,6 +1,6 @@
 //! Validation job queue enqueue and leasing.
 
-use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait, Value};
+use sea_orm::{ConnectionTrait, Statement, TransactionTrait, Value};
 
 use super::helpers::*;
 use super::receipts::*;
@@ -22,26 +22,25 @@ impl SeaOrmModuleGovernanceService {
             .begin()
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-        let backend = tx.get_database_backend();
+        let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
         let mark = |n| {
-            if backend == sea_orm::DbBackend::Postgres {
+            if backend == SupportedBackend::Postgres {
                 format!("${n}")
             } else {
                 format!("?{n}")
             }
         };
-        let now = if backend == sea_orm::DbBackend::Postgres {
+        let now = if backend == SupportedBackend::Postgres {
             "NOW()"
         } else {
             "datetime('now')"
         };
         let request = tx
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
+            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "SELECT id, slug, version, revision, status, artifact_origin FROM registry_publish_requests WHERE id = {}{}",
                     mark(1),
-                    if backend == DbBackend::Postgres { " FOR UPDATE" } else { "" },
+                    if backend == SupportedBackend::Postgres { " FOR UPDATE" } else { "" },
                 ),
                 vec![command.request_id.clone().into()],
             ))
@@ -90,7 +89,7 @@ impl SeaOrmModuleGovernanceService {
         }
         let actor = validation_stage_actor_label(&command.actor_principal)?;
         let actor_json = command.actor_principal.clone();
-        let stale_predicate = if backend == sea_orm::DbBackend::Postgres {
+        let stale_predicate = if backend == SupportedBackend::Postgres {
             format!(
                 "started_at <= NOW() - INTERVAL '{} seconds'",
                 VALIDATION_JOB_STALE_AFTER_SECONDS
@@ -101,8 +100,7 @@ impl SeaOrmModuleGovernanceService {
                 VALIDATION_JOB_STALE_AFTER_SECONDS
             )
         };
-        let stale_job = tx.query_one_raw(Statement::from_sql_and_values(
-            backend,
+        let stale_job = tx.query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
             format!(
                 "SELECT id FROM registry_validation_jobs WHERE request_id = {} AND status = 'running' AND {stale_predicate} ORDER BY started_at ASC LIMIT 1",
                 mark(1)
@@ -113,8 +111,7 @@ impl SeaOrmModuleGovernanceService {
             let stale_job_id: String = job
                 .try_get("", "id")
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-            let updated = tx.execute_raw(Statement::from_sql_and_values(
-                backend,
+            let updated = tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "UPDATE registry_validation_jobs SET status = 'failed', finished_at = {now}, last_error = 'validation_worker_lease_expired', updated_at = {now} WHERE id = {} AND status = 'running' AND {stale_predicate}",
                     mark(1)
@@ -127,8 +124,7 @@ impl SeaOrmModuleGovernanceService {
                     "reason_code": "validation_worker_lease_expired",
                     "lease_timeout_seconds": VALIDATION_JOB_STALE_AFTER_SECONDS,
                 });
-                tx.execute_raw(Statement::from_sql_and_values(
-                    backend,
+                tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
                     format!(
                         "INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, 'validation_job_recovered', {}, NULL, {}, {now})",
                         mark(1), mark(2), mark(3), mark(4), mark(5)
@@ -148,8 +144,7 @@ impl SeaOrmModuleGovernanceService {
         } else {
             false
         };
-        let active_job = tx.query_one_raw(Statement::from_sql_and_values(
-            backend,
+        let active_job = tx.query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
             format!("SELECT id FROM registry_validation_jobs WHERE request_id = {} AND status IN ('queued', 'running') ORDER BY created_at DESC LIMIT 1", mark(1)),
             vec![request_id.clone().into()],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -188,8 +183,7 @@ impl SeaOrmModuleGovernanceService {
             "initial_validation"
         };
         if status != "validating" {
-            let request_updated = tx.execute_raw(Statement::from_sql_and_values(
-                backend,
+            let request_updated = tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!("UPDATE registry_publish_requests SET status = 'validating', validation_errors = {}, rejected_by_principal = NULL, rejection_reason = NULL, validated_at = NULL, revision = revision + 1, updated_at = {now} WHERE id = {} AND revision = {}", mark(1), mark(2), mark(3)),
                 vec![Value::Json(Some(Box::new(serde_json::json!([])))), request_id.clone().into(), command.expected_revision.into()],
             )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -203,14 +197,12 @@ impl SeaOrmModuleGovernanceService {
                 .await?);
             }
         }
-        let attempt = tx.query_one_raw(Statement::from_sql_and_values(
-            backend,
+        let attempt = tx.query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
             format!("SELECT COALESCE(MAX(attempt_number), 0) AS attempt_number FROM registry_validation_jobs WHERE request_id = {}", mark(1)),
             vec![request_id.clone().into()],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?.ok_or_else(|| ModuleGovernanceError::Store("missing validation job attempt aggregate".to_string()))?.try_get::<i64>("", "attempt_number").map_err(|e| ModuleGovernanceError::Store(e.to_string()))? as i32 + 1;
         let job_id = self.infrastructure.prefixed_id("rvj");
-        tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+        tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
             format!("INSERT INTO registry_validation_jobs (id, request_id, slug, version, status, triggered_by, queue_reason, attempt_number, started_at, finished_at, last_error, created_at, updated_at) VALUES ({}, {}, {}, {}, 'queued', {}, {}, {}, NULL, NULL, NULL, {now}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7)),
             vec![job_id.clone().into(), request_id.clone().into(), slug.clone().into(), version.clone().into(), actor.clone().into(), queue_reason.into(), attempt.into()],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -233,7 +225,7 @@ impl SeaOrmModuleGovernanceService {
             ),
         ];
         for (event_type, details) in events {
-            tx.execute_raw(Statement::from_sql_and_values(backend,
+            tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, {}, {}, NULL, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)),
                 vec![self.infrastructure.prefixed_id("rge").into(), slug.clone().into(), request_id.clone().into(), event_type.into(), Value::Json(Some(Box::new(actor_json.clone()))), Value::Json(Some(Box::new(details)))],
             )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -272,21 +264,20 @@ impl SeaOrmModuleGovernanceService {
             .begin()
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-        let backend = tx.get_database_backend();
+        let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
         let mark = |n| {
-            if backend == sea_orm::DbBackend::Postgres {
+            if backend == SupportedBackend::Postgres {
                 format!("${n}")
             } else {
                 format!("?{n}")
             }
         };
-        let now = if backend == sea_orm::DbBackend::Postgres {
+        let now = if backend == SupportedBackend::Postgres {
             "NOW()"
         } else {
             "datetime('now')"
         };
-        let Some(job) = tx.query_one_raw(Statement::from_sql_and_values(
-            backend,
+        let Some(job) = tx.query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
             format!("SELECT j.status, j.request_id, j.attempt_number, j.queue_reason, r.slug, r.version, r.revision AS request_revision, r.crate_name, r.ownership, r.trust_level, r.license, r.entry_type, r.artifact_origin, r.marketplace, r.ui_packages, r.validation_warnings, r.status AS request_status, r.artifact_storage_key, r.artifact_checksum_sha256, r.artifact_size, r.artifact_content_type, t.name AS module_name, t.description AS module_description FROM registry_validation_jobs j JOIN registry_publish_requests r ON r.id = j.request_id LEFT JOIN registry_publish_request_translations t ON t.request_id = r.id AND t.locale = r.default_locale WHERE j.id = {}", mark(1)),
             vec![command.validation_job_id.clone().into()],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))? else {
@@ -397,8 +388,7 @@ impl SeaOrmModuleGovernanceService {
             Ok(work_item) => Ok(work_item),
             Err(error) => Err(error),
         };
-        let updated = tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+        let updated = tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
             format!("UPDATE registry_validation_jobs SET status = 'running', started_at = {now}, finished_at = NULL, last_error = NULL, updated_at = {now} WHERE id = {} AND status = 'queued'", mark(1)),
             vec![command.validation_job_id.clone().into()],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -440,7 +430,7 @@ impl SeaOrmModuleGovernanceService {
                 }));
             }
         };
-        tx.execute_raw(Statement::from_sql_and_values(backend,
+        tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
             format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, 'validation_job_started', {}, NULL, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5)),
             vec![self.infrastructure.prefixed_id("rge").into(), slug.into(), request_id.clone().into(), Value::Json(Some(Box::new(command.actor_principal))), Value::Json(Some(Box::new(serde_json::json!({"job_id":command.validation_job_id,"attempt_number":attempt_number,"queue_reason":queue_reason,"request_status":request_status,"version":version}))))],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -471,11 +461,11 @@ impl SeaOrmModuleGovernanceService {
         };
         command.validate()?;
         for _ in 0..2 {
-            let backend = self.db.get_database_backend();
+            let backend =
+                SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
             let candidate = self
                 .db
-                .query_one_raw(Statement::from_sql_and_values(
-                    backend,
+                .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
                     "SELECT id FROM registry_validation_jobs WHERE status = 'queued' \
                      ORDER BY created_at ASC, id ASC LIMIT 1"
                         .to_string(),

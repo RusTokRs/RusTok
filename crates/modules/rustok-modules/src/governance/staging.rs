@@ -67,17 +67,16 @@ impl SeaOrmModuleGovernanceService {
         }
 
         let tx = self.db.begin().await.map_err(store_error)?;
-        let backend = tx.get_database_backend();
-        let mark = |n| placeholder(backend, n);
-        let now = database_now(backend);
-        let request_lock = if backend == sea_orm::DbBackend::Postgres {
+        let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
+        let mark = |n| backend.placeholder(n);
+        let now = backend.now_sql();
+        let request_lock = if backend == SupportedBackend::Postgres {
             " FOR UPDATE"
         } else {
             ""
         };
         let request = tx
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
+            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "SELECT slug, version, revision, status, artifact_origin, artifact_checksum_sha256, \
                             CAST(requested_by_principal AS TEXT) AS requested_by_principal, \
@@ -134,8 +133,7 @@ impl SeaOrmModuleGovernanceService {
 
         let staging_id = self.infrastructure.prefixed_id("rpbs");
         let inserted = tx
-            .execute_raw(Statement::from_sql_and_values(
-                backend,
+            .execute_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "INSERT INTO registry_publish_build_staging \
                      (id, request_id, expected_revision, tenant_id, build_request_id, source_reference, source_digest, \
@@ -153,8 +151,8 @@ impl SeaOrmModuleGovernanceService {
                     staging_id.clone().into(),
                     command.request_id.clone().into(),
                     command.expected_revision.into(),
-                    registry_uuid_value(tenant_id, backend),
-                    registry_uuid_value(command.build_request_id, backend),
+                    backend.uuid_value(tenant_id),
+                    backend.uuid_value(command.build_request_id),
                     completed.request.source.reference.clone().into(),
                     completed.request.source.digest.clone().into(),
                     completed.request.parent_release.as_ref().map(|parent| parent.slug.clone()).into(),
@@ -164,19 +162,18 @@ impl SeaOrmModuleGovernanceService {
                     receipt.artifact.digest.clone().into(),
                     receipt.signature_manifest.digest.clone().into(),
                     Value::Json(Some(Box::new(command.actor_principal.clone()))),
-                    registry_uuid_value(command.context.actor_id, backend),
+                    backend.uuid_value(command.context.actor_id),
                     command.context.trace_id.clone().into(),
-                    registry_uuid_value(command.context.correlation_id, backend),
+                    backend.uuid_value(command.context.correlation_id),
                     Value::Bool(Some(command.actor_can_manage_modules)),
-                    registry_uuid_value(command.context.idempotency_key, backend),
+                    backend.uuid_value(command.context.idempotency_key),
                 ],
             ))
             .await
             .map_err(store_error)?;
         if inserted.rows_affected() == 0 {
             let existing = tx
-                .query_one_raw(Statement::from_sql_and_values(
-                    backend,
+                .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
                     format!(
                         "SELECT id, expected_revision, CAST(tenant_id AS TEXT) AS tenant_id, \
                          CAST(build_request_id AS TEXT) AS build_request_id, \
@@ -192,7 +189,7 @@ impl SeaOrmModuleGovernanceService {
                     ),
                     vec![
                         command.request_id.clone().into(),
-                        registry_uuid_value(command.context.idempotency_key, backend),
+                        backend.uuid_value(command.context.idempotency_key),
                     ],
                 ))
                 .await
@@ -277,8 +274,7 @@ impl SeaOrmModuleGovernanceService {
             });
         }
         let request_updated = tx
-            .execute_raw(Statement::from_sql_and_values(
-                backend,
+            .execute_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
                      WHERE id = {} AND revision = {}",
@@ -321,8 +317,7 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?;
         }
-        tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+        tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
                  (id, slug, request_id, release_id, event_type, actor_principal, \
@@ -378,12 +373,11 @@ impl SeaOrmModuleGovernanceService {
         if request_id.trim().is_empty() || request_id.len() > MAX_PUBLICATION_REQUEST_ID_BYTES {
             return Err(ModuleGovernanceError::InvalidPlatformPublicationEvidenceRequest);
         }
-        let backend = self.db.get_database_backend();
-        let mark = |position| placeholder(backend, position);
+        let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
+        let mark = |position| backend.placeholder(position);
         let row = self
             .db
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
+            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "SELECT request.slug, request.version, request.revision, request.status, request.artifact_origin, \
                      CAST(stage.tenant_id AS TEXT) AS tenant_id, \
@@ -482,12 +476,11 @@ impl SeaOrmModuleGovernanceService {
         if request_id.trim().is_empty() || request_id.len() > MAX_PUBLICATION_REQUEST_ID_BYTES {
             return Err(ModuleGovernanceError::InvalidAlloyPublicationEvidenceRequest);
         }
-        let backend = self.db.get_database_backend();
-        let mark = |position| placeholder(backend, position);
+        let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
+        let mark = |position| backend.placeholder(position);
         let row = self
             .db
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
+            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "SELECT request.slug, request.version, request.revision, request.status, \
                      request.artifact_origin, request.license, request.artifact_checksum_sha256, \

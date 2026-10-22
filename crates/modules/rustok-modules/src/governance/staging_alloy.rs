@@ -1,8 +1,6 @@
 //! Alloy authored artifact staging and sandbox security stage reconciliation.
 
-use sea_orm::{
-    ConnectionTrait, DatabaseTransaction, DbBackend, Statement, TransactionTrait, Value,
-};
+use sea_orm::{ConnectionTrait, DatabaseTransaction, Statement, TransactionTrait, Value};
 
 use super::helpers::*;
 use super::mapping::*;
@@ -20,17 +18,16 @@ impl SeaOrmModuleGovernanceService {
     ) -> Result<ModuleAlloyAuthoredStageResult, ModuleGovernanceError> {
         command.validate()?;
         let tx = self.db.begin().await.map_err(store_error)?;
-        let backend = tx.get_database_backend();
-        let mark = |n| placeholder(backend, n);
-        let now = database_now(backend);
-        let request_lock = if backend == sea_orm::DbBackend::Postgres {
+        let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
+        let mark = |n| backend.placeholder(n);
+        let now = backend.now_sql();
+        let request_lock = if backend == SupportedBackend::Postgres {
             " FOR UPDATE"
         } else {
             ""
         };
         let request = tx
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
+            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "SELECT slug, version, revision, status, artifact_origin, artifact_checksum_sha256, \
                             CAST(requested_by_principal AS TEXT) AS requested_by_principal, \
@@ -97,8 +94,7 @@ impl SeaOrmModuleGovernanceService {
         let descriptor_digest = crate::canonical_artifact_descriptor_digest(&command.descriptor);
         let descriptor = serde_json::to_value(&command.descriptor).map_err(store_error)?;
         let inserted = tx
-            .execute_raw(Statement::from_sql_and_values(
-                backend,
+            .execute_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "INSERT INTO registry_publish_alloy_staging \
                      (id, request_id, expected_revision, alloy_tenant_id, alloy_script_id, artifact_digest, source_digest, source_revision, \
@@ -143,8 +139,8 @@ impl SeaOrmModuleGovernanceService {
                     staging_id.clone().into(),
                     command.request_id.clone().into(),
                     command.expected_revision.into(),
-                    registry_uuid_value(command.alloy_tenant_id, backend),
-                    registry_uuid_value(command.alloy_script_id, backend),
+                    backend.uuid_value(command.alloy_tenant_id),
+                    backend.uuid_value(command.alloy_script_id),
                     command.artifact_digest.clone().into(),
                     command.source_digest.clone().into(),
                     i64::from(command.source_revision).into(),
@@ -169,7 +165,7 @@ impl SeaOrmModuleGovernanceService {
                     command.review_digest.clone().into(),
                     command.review_policy_revision.clone().into(),
                     Value::Json(Some(Box::new(command.reviewed_by_principal.clone()))),
-                    registry_uuid_value(command.sandbox_execution_id, backend),
+                    backend.uuid_value(command.sandbox_execution_id),
                     command.sandbox_test_path.clone().into(),
                     command.sandbox_executor.clone().into(),
                     command.sandbox_scenario_digest.clone().into(),
@@ -177,18 +173,17 @@ impl SeaOrmModuleGovernanceService {
                     command.sandbox_policy_digest.clone().into(),
                     i64::from(command.sandbox_capability_grants).into(),
                     Value::Json(Some(Box::new(command.actor_principal.clone()))),
-                    registry_uuid_value(command.context.actor_id, backend),
+                    backend.uuid_value(command.context.actor_id),
                     command.context.trace_id.clone().into(),
-                    registry_uuid_value(command.context.correlation_id, backend),
-                    registry_uuid_value(command.context.idempotency_key, backend),
+                    backend.uuid_value(command.context.correlation_id),
+                    backend.uuid_value(command.context.idempotency_key),
                 ],
             ))
             .await
             .map_err(store_error)?;
         if inserted.rows_affected() == 0 {
             let existing = tx
-                .query_one_raw(Statement::from_sql_and_values(
-                    backend,
+                .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
                     format!(
                         "SELECT id, expected_revision, CAST(alloy_tenant_id AS TEXT) AS alloy_tenant_id, \
                          CAST(alloy_script_id AS TEXT) AS alloy_script_id, \
@@ -211,7 +206,7 @@ impl SeaOrmModuleGovernanceService {
                     ),
                     vec![
                         command.request_id.clone().into(),
-                        registry_uuid_value(command.context.idempotency_key, backend),
+                        backend.uuid_value(command.context.idempotency_key),
                     ],
                 ))
                 .await
@@ -339,8 +334,7 @@ impl SeaOrmModuleGovernanceService {
             });
         }
         let request_updated = tx
-            .execute_raw(Statement::from_sql_and_values(
-                backend,
+            .execute_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
                      WHERE id = {} AND revision = {}",
@@ -363,8 +357,7 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?);
         }
-        tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+        tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
                  (id, slug, request_id, release_id, event_type, actor_principal, \
@@ -430,13 +423,12 @@ impl SeaOrmModuleGovernanceService {
 
 pub(crate) async fn alloy_authored_supply_chain_evidence(
     tx: &DatabaseTransaction,
-    backend: DbBackend,
+    backend: SupportedBackend,
     request_id: &str,
 ) -> Result<Option<(String, String)>, ModuleGovernanceError> {
-    let mark = |n| placeholder(backend, n);
+    let mark = |n| backend.placeholder(n);
     let Some(row) = tx
-        .query_one_raw(Statement::from_sql_and_values(
-            backend,
+        .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
             format!(
                 "SELECT request.slug, request.version, request.status, request.artifact_origin, \
                  EXISTS (SELECT 1 FROM registry_publish_alloy_staging AS stage \
@@ -536,14 +528,13 @@ pub(crate) fn parent_release_from_stage_row(
 
 pub(crate) async fn active_published_rhai_parent_exists(
     tx: &DatabaseTransaction,
-    backend: DbBackend,
+    backend: SupportedBackend,
     parent: &crate::ArtifactReleaseRef,
 ) -> Result<bool, ModuleGovernanceError> {
     let checksum = receipt_digest_sha256(&parent.digest)
         .map_err(|_| ModuleGovernanceError::InvalidAlloyAuthoredStageCommand)?;
-    let mark = |position| placeholder(backend, position);
-    tx.query_one_raw(Statement::from_sql_and_values(
-        backend,
+    let mark = |position| backend.placeholder(position);
+    tx.query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
         format!(
             "SELECT 1 FROM registry_module_releases AS release \
              INNER JOIN registry_module_release_artifacts AS artifact \
@@ -574,7 +565,7 @@ pub(crate) async fn active_published_rhai_parent_exists(
 pub(crate) async fn reconcile_alloy_authored_security_stage(
     infrastructure: &ControlPlaneInfrastructure,
     tx: &DatabaseTransaction,
-    backend: DbBackend,
+    backend: SupportedBackend,
     request_id: &str,
     actor_principal: &serde_json::Value,
 ) -> Result<(), ModuleGovernanceError> {

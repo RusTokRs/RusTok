@@ -153,12 +153,11 @@ impl SeaOrmModuleGovernanceService {
             return Err(ModuleGovernanceError::InvalidLifecycleQuery);
         }
 
-        let backend = self.db.get_database_backend();
-        let mark = |position| placeholder(backend, position);
+        let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
+        let mark = |position| backend.placeholder(position);
         let owner_row = self
             .db
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
+            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "SELECT CAST(owner_principal AS TEXT) AS owner_principal, \
                             CAST(bound_by_principal AS TEXT) AS bound_by_principal, \
@@ -172,8 +171,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
         let request_row = self
             .db
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
+            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "SELECT id, revision, slug, version, status, artifact_origin, \
                             CAST(requested_by_principal AS TEXT) AS requested_by_principal, \
@@ -199,8 +197,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
         let release_row = self
             .db
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
+            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "SELECT version, status, \
                             CAST(publisher_principal AS TEXT) AS publisher_principal, \
@@ -216,8 +213,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
         let event_rows = self
             .db
-            .query_all_raw(Statement::from_sql_and_values(
-                backend,
+            .query_all_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "SELECT id, event_type, \
                             CAST(actor_principal AS TEXT) AS actor_principal, \
@@ -251,8 +247,7 @@ impl SeaOrmModuleGovernanceService {
 
         let stage_rows = if let Some(request) = latest_request.as_ref() {
             self.db
-                .query_all_raw(Statement::from_sql_and_values(
-                    backend,
+                .query_all_raw(Statement::from_sql_and_values(backend.db_backend(),
                     format!(
                         "SELECT stage_key, status, detail, attempt_number, updated_at, \
                                 started_at, finished_at \
@@ -327,17 +322,16 @@ impl SeaOrmModuleGovernanceService {
         if slug.is_empty() {
             return Err(ModuleGovernanceError::InvalidOwnerBindingQuery);
         }
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
         let row = self
             .db
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
+            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "SELECT CAST(owner_principal AS TEXT) AS owner_principal, \
                             CAST(bound_by_principal AS TEXT) AS bound_by_principal, \
                             bound_at, updated_at \
                      FROM registry_module_owners WHERE slug = {} LIMIT 1",
-                    placeholder(backend, 1)
+                    backend.placeholder(1)
                 ),
                 vec![slug.into()],
             ))
@@ -358,15 +352,14 @@ impl SeaOrmModuleGovernanceService {
         if request_id.is_empty() {
             return Err(ModuleGovernanceError::InvalidPublishArtifactDownloadQuery);
         }
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
         let row = self
             .db
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
+            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "SELECT artifact_storage_key, artifact_content_type \
                      FROM registry_publish_requests WHERE id = {} LIMIT 1",
-                    placeholder(backend, 1)
+                    backend.placeholder(1)
                 ),
                 vec![request_id.into()],
             ))
@@ -402,12 +395,11 @@ impl SeaOrmModuleGovernanceService {
             return Err(ModuleGovernanceError::InvalidPublishRequestStatusQuery);
         }
 
-        let backend = self.db.get_database_backend();
-        let mark = |position| placeholder(backend, position);
+        let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
+        let mark = |position| backend.placeholder(position);
         let request_row = self
             .db
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
+            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "SELECT slug, id, revision, version, status, artifact_origin, \
                             CAST(requested_by_principal AS TEXT) AS requested_by_principal, \
@@ -438,8 +430,7 @@ impl SeaOrmModuleGovernanceService {
 
         let owner_row = self
             .db
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
+            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "SELECT CAST(owner_principal AS TEXT) AS owner_principal, \
                             CAST(bound_by_principal AS TEXT) AS bound_by_principal, \
@@ -457,8 +448,7 @@ impl SeaOrmModuleGovernanceService {
             .transpose()?;
         let stage_rows = self
             .db
-            .query_all_raw(Statement::from_sql_and_values(
-                backend,
+            .query_all_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "SELECT stage_key, status, detail, attempt_number, updated_at, \
                             started_at, finished_at \
@@ -504,8 +494,7 @@ impl SeaOrmModuleGovernanceService {
         let rejected_retry_allowed = if request.snapshot.status == "rejected" {
             let latest_event_type = self
                 .db
-                .query_one_raw(Statement::from_sql_and_values(
-                    backend,
+                .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
                     format!(
                         "SELECT event_type FROM registry_governance_events \
                          WHERE request_id = {} ORDER BY created_at DESC LIMIT 1",

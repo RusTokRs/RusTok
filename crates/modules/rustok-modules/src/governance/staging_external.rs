@@ -1,8 +1,6 @@
 //! External prebuilt artifact staging and security stage reconciliation.
 
-use sea_orm::{
-    ConnectionTrait, DatabaseTransaction, DbBackend, Statement, TransactionTrait, Value,
-};
+use sea_orm::{ConnectionTrait, DatabaseTransaction, Statement, TransactionTrait, Value};
 
 use super::helpers::*;
 use super::validation_evidence::*;
@@ -36,17 +34,16 @@ impl SeaOrmModuleGovernanceService {
                 }
             };
         let tx = self.db.begin().await.map_err(store_error)?;
-        let backend = tx.get_database_backend();
-        let mark = |n| placeholder(backend, n);
-        let now = database_now(backend);
-        let request_lock = if backend == sea_orm::DbBackend::Postgres {
+        let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
+        let mark = |n| backend.placeholder(n);
+        let now = backend.now_sql();
+        let request_lock = if backend == SupportedBackend::Postgres {
             " FOR UPDATE"
         } else {
             ""
         };
         let request = tx
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
+            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "SELECT slug, revision, status, artifact_origin, artifact_checksum_sha256 \
                      FROM registry_publish_requests WHERE id = {}{request_lock}",
@@ -75,8 +72,7 @@ impl SeaOrmModuleGovernanceService {
 
         let staging_id = self.infrastructure.prefixed_id("rpes");
         let inserted = tx
-            .execute_raw(Statement::from_sql_and_values(
-                backend,
+            .execute_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "INSERT INTO registry_publish_external_staging \
                      (id, request_id, expected_revision, artifact_digest, source_evidence_kind, source_reference, \
@@ -125,19 +121,18 @@ impl SeaOrmModuleGovernanceService {
                         command.quarantine_approved_by_principal.clone(),
                     ))),
                     Value::Json(Some(Box::new(command.actor_principal.clone()))),
-                    registry_uuid_value(command.context.actor_id, backend),
+                    backend.uuid_value(command.context.actor_id),
                     command.context.trace_id.clone().into(),
-                    registry_uuid_value(command.context.correlation_id, backend),
+                    backend.uuid_value(command.context.correlation_id),
                     Value::Bool(Some(command.actor_can_manage_modules)),
-                    registry_uuid_value(command.context.idempotency_key, backend),
+                    backend.uuid_value(command.context.idempotency_key),
                 ],
             ))
             .await
             .map_err(store_error)?;
         if inserted.rows_affected() == 0 {
             let existing = tx
-                .query_one_raw(Statement::from_sql_and_values(
-                    backend,
+                .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
                     format!(
                         "SELECT id, expected_revision, artifact_digest, source_evidence_kind, source_reference, source_digest, \
                          source_absence_reason, provenance_reference, provenance_digest, \
@@ -154,7 +149,7 @@ impl SeaOrmModuleGovernanceService {
                     ),
                     vec![
                         command.request_id.clone().into(),
-                        registry_uuid_value(command.context.idempotency_key, backend),
+                        backend.uuid_value(command.context.idempotency_key),
                     ],
                 ))
                 .await
@@ -253,8 +248,7 @@ impl SeaOrmModuleGovernanceService {
             });
         }
         let request_updated = tx
-            .execute_raw(Statement::from_sql_and_values(
-                backend,
+            .execute_raw(Statement::from_sql_and_values(backend.db_backend(),
                 format!(
                     "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
                      WHERE id = {} AND revision = {}",
@@ -277,8 +271,7 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?);
         }
-        tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+        tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
                  (id, slug, request_id, release_id, event_type, actor_principal, \
@@ -334,13 +327,12 @@ impl SeaOrmModuleGovernanceService {
 
 pub(crate) async fn external_prebuilt_supply_chain_evidence(
     tx: &DatabaseTransaction,
-    backend: DbBackend,
+    backend: SupportedBackend,
     request_id: &str,
 ) -> Result<Option<(String, String)>, ModuleGovernanceError> {
-    let mark = |n| placeholder(backend, n);
+    let mark = |n| backend.placeholder(n);
     let Some(row) = tx
-        .query_one_raw(Statement::from_sql_and_values(
-            backend,
+        .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
             format!(
                 "SELECT request.slug, request.version, request.status, request.artifact_origin, \
                  EXISTS (SELECT 1 FROM registry_publish_external_staging AS stage \
@@ -396,7 +388,7 @@ pub(crate) async fn external_prebuilt_supply_chain_evidence(
 pub(crate) async fn reconcile_external_prebuilt_security_stage(
     infrastructure: &ControlPlaneInfrastructure,
     tx: &DatabaseTransaction,
-    backend: DbBackend,
+    backend: SupportedBackend,
     request_id: &str,
     actor_principal: &serde_json::Value,
 ) -> Result<(), ModuleGovernanceError> {
