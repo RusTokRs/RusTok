@@ -14,7 +14,7 @@ mod m20260716_000013_artifact_admission_commands;
 mod m20260716_000014_artifact_secret_bindings;
 mod m20260716_000015_artifact_execution_audit;
 mod m20260716_000016_artifact_execution_audit_metrics;
-mod m20260717_000002_create_registry_publish_build_staging;
+mod m20260717_000017_create_registry_publish_build_staging;
 mod m20260717_000018_artifact_event_deliveries;
 mod m20260717_000019_artifact_schedule_deliveries;
 mod m20260717_000020_artifact_schedule_cursors;
@@ -45,15 +45,15 @@ pub(crate) mod m20260902_000046_module_transition_and_retention_tables;
 pub(crate) mod m20260903_000047_artifact_data_copy_operations;
 pub(crate) mod m20260903_000048_artifact_data_object_copy_operations;
 pub(crate) mod m20260903_000049_artifact_data_snapshot_and_recovery_operations;
-pub(crate) mod m20260904_000051_admitted_oci_releases;
 pub(crate) mod m20260904_000051_static_localized_settings;
-pub(crate) mod m20260904_000052_module_source_objects;
 pub(crate) mod m20260904_000052_static_settings_change_cursor;
-pub(crate) mod m20260904_000053_module_operations_tool;
 pub(crate) mod m20260904_000053_static_settings_source_locale;
 mod m20261021_000054_static_lifecycle_claim_lease;
 mod m20261021_000055_module_security_epoch;
 mod m20261021_000056_drop_production_operations;
+pub(crate) mod m20261022_000057_admitted_oci_releases;
+pub(crate) mod m20261022_000058_module_source_objects;
+pub(crate) mod m20261022_000059_module_operations_tool;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -75,7 +75,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260716_000014_artifact_secret_bindings::Migration),
         Box::new(m20260716_000015_artifact_execution_audit::Migration),
         Box::new(m20260716_000016_artifact_execution_audit_metrics::Migration),
-        Box::new(m20260717_000002_create_registry_publish_build_staging::Migration),
+        Box::new(m20260717_000017_create_registry_publish_build_staging::Migration),
         Box::new(m20260717_000018_artifact_event_deliveries::Migration),
         Box::new(m20260717_000019_artifact_schedule_deliveries::Migration),
         Box::new(m20260717_000020_artifact_schedule_cursors::Migration),
@@ -112,9 +112,9 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261021_000054_static_lifecycle_claim_lease::Migration),
         Box::new(m20261021_000055_module_security_epoch::Migration),
         Box::new(m20261021_000056_drop_production_operations::Migration),
-        Box::new(m20260904_000051_admitted_oci_releases::Migration),
-        Box::new(m20260904_000052_module_source_objects::Migration),
-        Box::new(m20260904_000053_module_operations_tool::Migration),
+        Box::new(m20261022_000057_admitted_oci_releases::Migration),
+        Box::new(m20261022_000058_module_source_objects::Migration),
+        Box::new(m20261022_000059_module_operations_tool::Migration),
     ]
 }
 
@@ -198,6 +198,45 @@ pub(crate) async fn protect_artifact_data_namespace_writes(
             .await?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use sea_orm_migration::prelude::MigrationTrait;
+    use std::collections::BTreeSet;
+
+    /// Registration order is the apply order on fresh databases, and the
+    /// `m<date>_<ordinal>_<name>` identity is what the platform records as
+    /// applied. Keep both machine-checkable: names strictly lexically
+    /// increasing in registration order (so the list reads in apply order)
+    /// and ordinals unique (duplicate ordinals previously shipped for
+    /// 2026-09-04 and hid ordering mistakes).
+    #[test]
+    fn migration_registration_is_lexically_ordered_with_unique_ordinals() {
+        let names = super::migrations()
+            .iter()
+            .map(|migration| migration.name().to_string())
+            .collect::<Vec<_>>();
+        assert!(
+            names.windows(2).all(|pair| pair[0] < pair[1]),
+            "migration registration order must be lexically increasing: {names:?}"
+        );
+        let ordinals = names
+            .iter()
+            .map(|name| {
+                name.split('_')
+                    .nth(1)
+                    .expect("migration names carry an ordinal segment")
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+        let unique = ordinals.iter().collect::<BTreeSet<_>>();
+        assert_eq!(
+            unique.len(),
+            ordinals.len(),
+            "migration ordinals must be unique: {ordinals:?}"
+        );
+    }
 }
 
 pub(crate) async fn drop_artifact_data_namespace_write_guard(

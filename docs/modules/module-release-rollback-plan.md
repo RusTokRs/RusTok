@@ -1800,7 +1800,7 @@ backend preflight.
   (`OperationsToolService`, `OperationsToolRelease`, `OperationsToolReleasePayload`,
   `VerifiedOperationsToolRelease`, `OperationsToolProtocolMatrix`,
   `OperationsToolMaintenanceOperation`, `OperationsToolAssignment`) backed by migration
-  `m20260904_000053_module_operations_tool.rs` (`module_operations_tool_releases`,
+  `m20261022_000059_module_operations_tool.rs` (`module_operations_tool_releases`,
   `module_operations_tool_maintenance_operations`, `module_operations_tool_assignments`).
   Fleet-level exclusion uses `ConflictKey::fleet_operations_tool()` in `ConflictFenceSet`.
   Verified by `crates/modules/rustok-modules/tests/operations_tool_tests.rs` (5 passed).
@@ -1825,7 +1825,7 @@ backend preflight.
   archive-specialized client; route reviewed Rhai bounded-workspace bytes
   through the same generic owner without tar wrapping or a second writer.
   Implemented `SourceObjectStore` in `crates/modules/rustok-modules/src/source_object.rs`
-  backed by migration `m20260904_000052_module_source_objects.rs` with tables
+  backed by migration `m20261022_000058_module_source_objects.rs` with tables
   `module_source_object_receipts` and `module_source_object_retention_holds`.
   Blobs are stored media-type neutral directly under `<cas_root>/<digest_hex>` without
   extension, supporting deterministic archives and reviewed Rhai bounded-workspace objects
@@ -2240,14 +2240,14 @@ backend preflight.
   Admission validates a scope-matched `ModuleCommandContext` before I/O and
   persists a complete-command request digest, so changed replay evidence cannot
   be accepted merely because the immutable release already exists.
-  Verified by `m20260904_000051_admitted_oci_releases.rs`, `oci_admission.rs`,
+  Verified by `m20261022_000057_admitted_oci_releases.rs`, `oci_admission.rs`,
   `OciReleaseAdmissionService`, and `oci_admission_tests.rs` (7 passed).
 - [x] Complete external-prebuilt ingress with independently verified ownership,
   lineage, signature, SBOM/provenance, ABI/capability and policy evidence; an
   external prebuilt remains dynamic and cannot enter native promotion. Its
   scope-matched context and complete evidence packet are also part of the
   durable replay digest.
-  Verified by consolidated migration `m20260904_000051_admitted_oci_releases.rs` (`module_external_prebuilt_ingress` with foreign key to `module_admitted_oci_releases`), `external_prebuilt_ingress.rs` (`ExternalPrebuiltIngressService`), `promotion.rs` (`ExternalPrebuiltCannotBePromoted` denial), and `external_prebuilt_ingress_tests.rs` (8 passed).
+  Verified by consolidated migration `m20261022_000057_admitted_oci_releases.rs` (`module_external_prebuilt_ingress` with foreign key to `module_admitted_oci_releases`), `external_prebuilt_ingress.rs` (`ExternalPrebuiltIngressService`), `promotion.rs` (`ExternalPrebuiltCannotBePromoted` denial), and `external_prebuilt_ingress_tests.rs` (8 passed).
 - [x] Compose verified payload caching and authenticated prefetch/readiness for
   candidate and predecessor across every required executor pool/generation,
   including exact executor/engine binary digest, engine-config revision,
@@ -2255,7 +2255,7 @@ backend preflight.
   placement-attestation checks. An engine change invalidates old receipts, and
   automatic mode is denied unless both releases smoke on every serving or
   recovery fingerprint.
-  Verified by consolidated migration `m20260904_000051_admitted_oci_releases.rs` (`module_executor_readiness_receipts`), `executor_readiness.rs` (`ExecutorReadinessService`, `RuntimeFingerprint`, `VerifiedPayloadCache`), and `executor_readiness_tests.rs` (tests `test_verified_payload_caching_and_cas_rehash`, `test_engine_change_invalidates_readiness_receipts`, `test_monotonic_pool_generation_gating`, `test_capability_route_checks_fail_closed_on_missing_route`, `test_dual_candidate_and_predecessor_smoke_readiness_for_automatic_mode`).
+  Verified by consolidated migration `m20261022_000057_admitted_oci_releases.rs` (`module_executor_readiness_receipts`), `executor_readiness.rs` (`ExecutorReadinessService`, `RuntimeFingerprint`, `VerifiedPayloadCache`), and `executor_readiness_tests.rs` (tests `test_verified_payload_caching_and_cas_rehash`, `test_engine_change_invalidates_readiness_receipts`, `test_monotonic_pool_generation_gating`, `test_capability_route_checks_fail_closed_on_missing_route`, `test_dual_candidate_and_predecessor_smoke_readiness_for_automatic_mode`).
 - [x] Add the canonical owner-selected executor-placement fact and policy
   revision to scoped install/update preflight/readiness evidence. Global
   admission validates only immutable kind/ABI/global constraints. Authors may declare

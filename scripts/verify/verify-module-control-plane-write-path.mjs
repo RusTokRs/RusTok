@@ -159,7 +159,7 @@ const operationsToolOwnerPath = path.join(
 );
 const operationsToolMigrationPath = path.join(
   root,
-  "crates/modules/rustok-modules/src/migrations/m20260904_000053_module_operations_tool.rs",
+  "crates/modules/rustok-modules/src/migrations/m20261022_000059_module_operations_tool.rs",
 );
 const ociAdmissionOwnerPath = path.join(
   root,
@@ -171,7 +171,7 @@ const externalPrebuiltIngressOwnerPath = path.join(
 );
 const admittedOciReleasesMigrationPath = path.join(
   root,
-  "crates/modules/rustok-modules/src/migrations/m20260904_000051_admitted_oci_releases.rs",
+  "crates/modules/rustok-modules/src/migrations/m20261022_000057_admitted_oci_releases.rs",
 );
 const runtimeManifestPath = path.join(
   root,

@@ -668,7 +668,7 @@ impl MigrationSource for ModulesModule {
     fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
         vec![
             MigrationDependencyDescriptor::new(
-                "m20260717_000002_create_registry_publish_build_staging",
+                "m20260717_000017_create_registry_publish_build_staging",
                 vec!["m20260403_000002_create_registry_publish_tables"],
             ),
             MigrationDependencyDescriptor::new(
@@ -681,7 +681,7 @@ impl MigrationSource for ModulesModule {
             ),
             MigrationDependencyDescriptor::new(
                 "m20260727_000041_registry_release_artifact_contracts",
-                vec!["m20260717_000002_create_registry_publish_build_staging"],
+                vec!["m20260717_000017_create_registry_publish_build_staging"],
             ),
         ]
     }

@@ -107,7 +107,9 @@ The development sandbox has no `cargo`/`rustc`. Verification therefore is:
   review this was **reverted**: the scan proved only "unwired today", and
   a provenance check found all four are deliverables of the active
   `docs/modules/module-release-rollback-plan.md`, with their schema
-  created by migration `m20260904_000051`. Deleting them also orphaned
+  created by migration `m20261022_000057_admitted_oci_releases`
+  (renamed from `m20260904_000051` in the M-12 ordinal cleanup).
+  Deleting them also orphaned
   the sole writers of `module_artifact_work_generations` (read by the
   canonical delivery descriptor loader) and
   `module_production_operations`. All four modules, their five test
@@ -238,7 +240,7 @@ commit `d69e768` (12 453 files), so per-file git history carries no
 intent signal. The authoring plan is `docs/modules/module-release-rollback-plan.md`
 (status `active`), which names all four as implemented deliverables with
 checked work items and "verified by tests" claims, and migration
-`m20260904_000051` creates their schema (`module_admitted_oci_releases`,
+`m20261022_000057_admitted_oci_releases` creates their schema (`module_admitted_oci_releases`,
 `module_external_prebuilt_ingress`, `module_executor_readiness_receipts`,
 `module_artifact_work_generations`, `module_production_operations`).
 The restored integration tests run the real crate migrations on SQLite.
