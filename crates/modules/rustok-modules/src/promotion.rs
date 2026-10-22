@@ -11,7 +11,6 @@ use sea_orm::{
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -1129,7 +1128,7 @@ fn positive_revision(row: &QueryResult, column: &str) -> Result<u64, ModuleStati
 /// embedded `serde_json::Value`/`HashMap` instead of only on content.
 pub(crate) fn digest_json(value: &impl Serialize) -> Result<String, ModuleStaticPromotionError> {
     let bytes = rustok_api::manifest_hash::canonical_json_bytes(value).map_err(store_error)?;
-    Ok(format!("sha256:{}", hex::encode(Sha256::digest(bytes))))
+    Ok(crate::installation::sha256_digest(&bytes))
 }
 
 pub(crate) fn store_error(error: impl std::fmt::Display) -> ModuleStaticPromotionError {

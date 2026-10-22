@@ -3,7 +3,6 @@
 use async_trait::async_trait;
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::constants::*;
@@ -166,7 +165,7 @@ pub(crate) fn object_for_upload(
         name: upload.name.clone(),
         content_type: upload.content_type.clone(),
         size_bytes,
-        digest_sha256: format!("sha256:{}", hex::encode(Sha256::digest(&upload.data))),
+        digest_sha256: crate::installation::sha256_digest(&upload.data),
         revision: 1,
     };
     object.validate()?;

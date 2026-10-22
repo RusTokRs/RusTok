@@ -202,7 +202,6 @@ impl ArtifactDataSnapshotIntentService {
         intent: &SnapshotCopyIntent,
     ) -> Result<(), SnapshotIntentError> {
         use object_store::{ObjectStoreExt, path::Path};
-        use sha2::{Digest, Sha256};
         let bytes = self
             .storage
             .objects
@@ -214,7 +213,7 @@ impl ArtifactDataSnapshotIntentService {
             .map_err(storage_error)?;
         let size = u64::try_from(bytes.len()).map_err(storage_error)?;
         if size != intent.size_bytes
-            || format!("sha256:{}", hex::encode(Sha256::digest(&bytes))) != intent.digest_sha256
+            || crate::installation::sha256_digest(&bytes) != intent.digest_sha256
         {
             return Err(SnapshotIntentError::Storage(
                 "Published copy bytes do not match the intent".into(),

@@ -14,6 +14,7 @@ use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
 use crate::installation::sha256_digest;
+use crate::trust::is_sha256_digest;
 use crate::{
     ALLOY_WORKSPACE_PUBLICATION_BUILD_TYPE, ALLOY_WORKSPACE_PUBLICATION_BUILDER_ID,
     ALLOY_WORKSPACE_PUBLICATION_SOURCE_REF, ALLOY_WORKSPACE_PUBLICATION_SOURCE_URI,
@@ -898,14 +899,6 @@ fn canonical_alloy_workspace_provenance(
     .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))
 }
 
-fn is_sha256_digest(value: &str) -> bool {
-    value.strip_prefix("sha256:").is_some_and(|digest| {
-        digest.len() == 64
-            && digest
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    })
-}
 
 fn validate_build_blob(
     kind: &str,
@@ -1059,7 +1052,7 @@ impl ArtifactRegistry for OciDistributionArtifactRegistry {
                 .pull_config_to_memory(&image, &manifest.config, limits)
                 .await?;
             let _config_size = config.len() as u64;
-            let config_digest = format!("sha256:{}", hex::encode(Sha256::digest(&config)));
+            let config_digest = crate::installation::sha256_digest(&config);
             if manifest.config.digest != config_digest {
                 return Err(ModuleInstallationError::Registry(format!(
                     "OCI artifact config digest mismatch: manifest declares `{}`, received `{config_digest}`",

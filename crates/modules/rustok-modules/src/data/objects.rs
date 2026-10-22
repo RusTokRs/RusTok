@@ -8,7 +8,6 @@ use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
     Value as SqlValue,
 };
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::constants::*;
@@ -137,7 +136,7 @@ where
             .await
             .map_err(storage_error)?;
         if u64::try_from(data.len()).ok() != Some(stored.object.size_bytes)
-            || format!("sha256:{}", hex::encode(Sha256::digest(&data)))
+            || crate::installation::sha256_digest(&data)
                 != stored.object.digest_sha256
         {
             return Err(ArtifactDataError::ObjectIntegrity);

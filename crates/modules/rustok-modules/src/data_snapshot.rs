@@ -6,7 +6,6 @@ use sea_orm::{
     Value as SqlValue,
 };
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -2472,7 +2471,7 @@ fn digest_json(value: &impl Serialize) -> Result<String, ArtifactDataError> {
 
 fn verify_object_bytes(object: &ArtifactDataObject, bytes: &[u8]) -> Result<(), ArtifactDataError> {
     if u64::try_from(bytes.len()).ok() != Some(object.size_bytes)
-        || format!("sha256:{}", hex::encode(Sha256::digest(bytes))) != object.digest_sha256
+        || crate::installation::sha256_digest(bytes) != object.digest_sha256
     {
         return Err(ArtifactDataError::SnapshotIntegrity);
     }

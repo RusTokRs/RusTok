@@ -5,7 +5,6 @@ use sea_orm::{
     TransactionTrait, Value as SqlValue,
 };
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::constants::*;
@@ -461,7 +460,7 @@ pub(crate) fn index_contract_digest(indexes: &[ArtifactDataIndexField]) -> Optio
         });
         let encoded = serde_json::to_vec(&canonical)
             .expect("artifact data index declarations are always serializable");
-        format!("sha256:{}", hex::encode(Sha256::digest(encoded)))
+        crate::installation::sha256_digest(&encoded)
     })
 }
 

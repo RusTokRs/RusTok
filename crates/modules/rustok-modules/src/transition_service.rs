@@ -9,7 +9,6 @@ use sea_orm::{
     TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -418,7 +417,7 @@ fn request_digest(
 ) -> Result<String, ModuleTransitionServiceError> {
     let bytes = serde_json::to_vec(command)
         .map_err(|error| ModuleTransitionServiceError::Store(error.to_string()))?;
-    Ok(format!("sha256:{}", hex::encode(Sha256::digest(bytes))))
+    Ok(crate::installation::sha256_digest(&bytes))
 }
 
 async fn reserve_operation(

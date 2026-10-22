@@ -1364,19 +1364,13 @@ async fn existing_submission<C: ConnectionTrait>(
 fn build_request_hash(request: &ModuleBuildRequest) -> Result<String, ModuleBuildProtocolError> {
     let serialized = serde_json::to_vec(request)
         .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))?;
-    Ok(format!(
-        "sha256:{}",
-        hex::encode(Sha256::digest(serialized))
-    ))
+    Ok(crate::installation::sha256_digest(&serialized))
 }
 
 fn build_result_hash(result: &ModuleBuildResult) -> Result<String, ModuleBuildProtocolError> {
     let serialized = serde_json::to_vec(result)
         .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))?;
-    Ok(format!(
-        "sha256:{}",
-        hex::encode(Sha256::digest(serialized))
-    ))
+    Ok(crate::installation::sha256_digest(&serialized))
 }
 
 fn build_outcome_name(outcome: &ModuleBuildOutcome) -> &'static str {

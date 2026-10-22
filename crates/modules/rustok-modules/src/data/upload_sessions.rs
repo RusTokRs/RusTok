@@ -4,7 +4,6 @@ use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
     Value as SqlValue,
 };
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::constants::*;
@@ -337,7 +336,7 @@ pub(crate) fn upload_session_request_digest(
 ) -> Result<String, ArtifactDataError> {
     let bytes = serde_json::to_vec(request)
         .map_err(|error| ArtifactDataError::Storage(error.to_string()))?;
-    Ok(format!("sha256:{}", hex::encode(Sha256::digest(bytes))))
+    Ok(crate::installation::sha256_digest(&bytes))
 }
 
 pub(crate) fn upload_expiry_expression(backend: SupportedBackend) -> &'static str {

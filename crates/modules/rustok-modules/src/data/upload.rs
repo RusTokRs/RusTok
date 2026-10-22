@@ -6,7 +6,6 @@ use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
     Value as SqlValue,
 };
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::constants::*;
@@ -212,7 +211,7 @@ where
             )
             .await?;
         let quota = self.quota.validate()?;
-        let digest_sha256 = format!("sha256:{}", hex::encode(Sha256::digest(&chunk.data)));
+        let digest_sha256 = crate::installation::sha256_digest(&chunk.data);
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
         let backend =
@@ -436,7 +435,7 @@ where
                 .await
                 .map_err(storage_error)?;
             if u64::try_from(size).ok() != Some(bytes.len() as u64)
-                || format!("sha256:{}", hex::encode(Sha256::digest(&bytes))) != digest
+                || crate::installation::sha256_digest(&bytes) != digest
             {
                 return Err(ArtifactDataError::ObjectIntegrity);
             }
@@ -451,7 +450,7 @@ where
             payload.extend_from_slice(&bytes);
         }
         if payload.len() as u64 != request.size_bytes
-            || format!("sha256:{}", hex::encode(Sha256::digest(&payload))) != request.digest_sha256
+            || crate::installation::sha256_digest(&payload) != request.digest_sha256
         {
             return Err(ArtifactDataError::ObjectIntegrity);
         }

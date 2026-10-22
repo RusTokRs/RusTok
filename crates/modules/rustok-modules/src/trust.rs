@@ -112,7 +112,7 @@ impl TrustAlloyWorkspaceProvenance {
     }
 }
 
-fn is_sha256_digest(value: &str) -> bool {
+pub(crate) fn is_sha256_digest(value: &str) -> bool {
     value.strip_prefix("sha256:").is_some_and(|digest| {
         digest.len() == 64
             && digest

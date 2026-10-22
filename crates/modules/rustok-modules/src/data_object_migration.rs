@@ -10,7 +10,6 @@ use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -748,7 +747,7 @@ fn verify_bytes(
     bytes: &[u8],
 ) -> Result<(), ArtifactDataObjectMigrationError> {
     if u64::try_from(bytes.len()).ok() != Some(object.size_bytes)
-        || format!("sha256:{}", hex::encode(Sha256::digest(bytes))) != object.digest_sha256
+        || crate::installation::sha256_digest(bytes) != object.digest_sha256
     {
         return Err(ArtifactDataObjectMigrationError::Integrity);
     }

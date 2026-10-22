@@ -3,7 +3,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 /// One exact selected release in an installation-scope lock graph.
@@ -171,7 +170,7 @@ fn graph_digest(
     canonicalize_nodes(&mut canonical_nodes);
     let canonical = serde_json::to_vec(&(graph_revision, canonical_nodes))
         .map_err(|error| ModuleDependencyLockError::Serialize(error.to_string()))?;
-    Ok(format!("sha256:{}", hex::encode(Sha256::digest(canonical))))
+    Ok(crate::installation::sha256_digest(&canonical))
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]

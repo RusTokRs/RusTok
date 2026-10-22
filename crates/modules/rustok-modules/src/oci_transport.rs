@@ -334,7 +334,7 @@ impl OciRegistryTransport {
             .and_then(|value| value.to_str().ok())
             .map(str::to_owned);
         let body = self.read_bytes(response, self.response_limit()).await?;
-        let actual_digest = digest_bytes(&body);
+        let actual_digest = crate::installation::sha256_digest(&body);
         if let Some(declared_digest) = declared_digest
             && declared_digest != actual_digest
         {
@@ -950,7 +950,7 @@ fn validate_blob(blob: Blob<'_>) -> Result<(), OciTransportError> {
     if blob.bytes.is_empty()
         || !valid_digest(blob.digest)
         || !valid_media_type(blob.media_type)
-        || digest_bytes(blob.bytes) != blob.digest
+        || crate::installation::sha256_digest(blob.bytes) != blob.digest
     {
         return Err(OciTransportError::DigestMismatch(
             "OCI blob does not match its immutable descriptor".to_string(),
@@ -994,11 +994,6 @@ fn valid_digest(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
-fn digest_bytes(bytes: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-
-    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
-}
 
 fn same_origin(left: &Url, right: &Url) -> bool {
     left.scheme() == right.scheme()
