@@ -142,9 +142,6 @@ pub(crate) fn optional_timestamp(
         .map_err(store_error)
 }
 
-
-
-
 pub(crate) fn store_error(error: impl std::fmt::Display) -> ModuleGovernanceError {
     ModuleGovernanceError::Store(error.to_string())
 }
