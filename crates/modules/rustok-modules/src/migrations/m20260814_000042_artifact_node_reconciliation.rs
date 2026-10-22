@@ -1,6 +1,6 @@
 //! Durable owner ledger for artifact/sandbox node reconciliation.
 
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
 
 use crate::backend::SupportedBackend;

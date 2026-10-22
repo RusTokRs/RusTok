@@ -143,7 +143,9 @@ pub(crate) fn record_copy_hold(
         SupportedBackend::Postgres => {
             "(copy.receipt_json->'is_terminal_page') IS DISTINCT FROM 'true'::jsonb"
         }
-        SupportedBackend::Sqlite => "json_type(copy.receipt_json,'$.is_terminal_page') IS NOT 'true'",
+        SupportedBackend::Sqlite => {
+            "json_type(copy.receipt_json,'$.is_terminal_page') IS NOT 'true'"
+        }
     };
     let target_states = if allow_committing_target {
         "copy.status='preparing'"

@@ -315,7 +315,11 @@ impl MigrationTrait for Migration {
     }
 }
 
-fn root_hold(row: &str, backend: SupportedBackend, allow_committing_record_target: bool) -> String {
+fn root_hold(
+    row: &str,
+    backend: SupportedBackend,
+    allow_committing_record_target: bool,
+) -> String {
     let record = super::m20260903_000047_artifact_data_copy_operations::record_copy_hold(
         backend,
         row,
