@@ -772,3 +772,31 @@ Phase F movement: prerequisite §6.2.2 (GUC coverage) discharged in
 code (see §6.2). Role separation, per-table policy completion for
 the 43 uncovered tables, and the PostgreSQL evidence lane remain
 the blockers, unchanged.
+
+**CI evidence — regression found and repaired (2026-10-22)**: the first
+CI round for this pass (`410b5d5`) failed the crate gate. Diagnosis from
+the job log: 15× E0603 (`promotion::valid_digest` became private when
+promotion's own copy was deleted — its many importers were missed by the
+consolidation census), 1× E0308 (`capability_events` passed an
+`Option<Uuid>` tenant to the new scope setter), 4 orphaned imports, and
+a large rustfmt diff set (hand-written one-line scope calls exceed
+`chain_width`; several joined/split shapes differed from canonical
+rustfmt output). Repairs: `9ee6af3` (all `promotion::valid_digest`
+consumers repointed to the single owner
+`crate::installation::valid_digest`; `capability_events` dispatches
+tenant vs platform scope on the optional tenant; orphaned `Value`
+imports removed), `3061f23` + `d9cf68a` (crate formatting brought to
+canonical form hunk by hunk from the gate's own diff output), `46ed18f`
+(re-pinned `verify-module-control-plane-write-path` to the canonical
+digest helper; the four other verify-script failures in this area
+reproduce on the pre-pass tree and are baseline). At `46ed18f`: the
+crate-scoped formatting + settings-test gate is green again (settings
+tests 20 passed); workspace Cargo Check (stable) error set is exactly
+the main baseline (3× messenger E0425); Documentation is exactly the
+baseline blog private-intra-doc-link; Clippy's only error is the
+baseline forum `needless_borrow` (whether that run finished checking
+this crate before aborting is not confirmed); Spell Check fails on a
+baseline file. Residual risks: broader test suites that the focused
+gate does not run (e.g. snapshot-readiness evidence tests now exercise
+the real pragma decode instead of the fabricated defaults) still await
+a full test run.
