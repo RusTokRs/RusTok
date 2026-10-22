@@ -108,6 +108,8 @@ pub enum ModuleAlloyPublicationEvidenceError {
     Source(#[source] ModuleGovernanceError),
     #[error("Alloy publication evidence could not be recorded: {0}")]
     Record(#[source] ModuleGovernanceError),
+    #[error("Alloy publication OCI registry is unavailable: {0}")]
+    Registry(String),
     #[error("Alloy publication verification failed: {0}")]
     Verification(#[source] TrustVerificationError),
     #[error("published Alloy OCI artifact does not match the immutable owner receipt")]
@@ -540,8 +542,10 @@ fn map_alloy_publication_verification_error(
     error: PublishedArtifactVerificationError,
 ) -> ModuleAlloyPublicationEvidenceError {
     match error {
-        PublishedArtifactVerificationError::Registry(error)
-        | PublishedArtifactVerificationError::Verification(error) => {
+        PublishedArtifactVerificationError::Registry(error) => {
+            ModuleAlloyPublicationEvidenceError::Registry(error)
+        }
+        PublishedArtifactVerificationError::Verification(error) => {
             ModuleAlloyPublicationEvidenceError::Verification(error)
         }
         PublishedArtifactVerificationError::IdentityMismatch => {
