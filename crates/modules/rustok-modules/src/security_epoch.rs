@@ -177,8 +177,8 @@ impl SeaOrmSecurityEpochStore {
     {
         use sea_orm::Statement;
 
-        let backend =
-            SupportedBackend::new(db.get_database_backend()).map_err(|e| SecurityEpochStoreError::Persistence(e.to_string()))?;
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(|e| SecurityEpochStoreError::Persistence(e.to_string()))?;
         let row = db
             .query_one_raw(Statement::from_string(
                 backend.db_backend(),
@@ -250,8 +250,8 @@ impl SeaOrmSecurityEpochStore {
     {
         use sea_orm::Statement;
 
-        let backend =
-            SupportedBackend::new(db.get_database_backend()).map_err(|e| SecurityEpochStoreError::Persistence(e.to_string()))?;
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(|e| SecurityEpochStoreError::Persistence(e.to_string()))?;
         let updated_at: sea_orm::Value = match backend {
             SupportedBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(now)),
             SupportedBackend::Sqlite => now.to_rfc3339().into(),

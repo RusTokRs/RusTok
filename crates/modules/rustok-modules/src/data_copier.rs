@@ -9,8 +9,8 @@ use crate::{
     artifact_schema::ArtifactSchemaValidatorCache,
     data::{
         configure_tenant_scope, ensure_namespace_not_migration_held_on, index_contract_digest,
-        lock_artifact_data_namespace_on, revision_value,
-        synchronize_artifact_data_indexes, uuid_from_row, validate_artifact_data_index_contract, validate_artifact_data_key,
+        lock_artifact_data_namespace_on, revision_value, synchronize_artifact_data_indexes,
+        uuid_from_row, validate_artifact_data_index_contract, validate_artifact_data_key,
     },
     promotion::{digest_json, valid_digest},
 };

@@ -342,8 +342,8 @@ impl OperationsToolService {
     ) -> Result<VerifiedOperationsToolRelease, OperationsToolError> {
         let verified = release.verify(&self.public_key_base64, now)?;
         let payload = verified.payload();
-        let backend =
-            SupportedBackend::new(self.db.get_database_backend()).map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
 
         let insert_sql = format!(
             "INSERT INTO module_operations_tool_releases (\
@@ -382,7 +382,11 @@ impl OperationsToolService {
         ];
 
         self.db
-            .execute_raw(Statement::from_sql_and_values(backend.db_backend(), insert_sql, values))
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                insert_sql,
+                values,
+            ))
             .await
             .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
 
@@ -407,8 +411,8 @@ impl OperationsToolService {
         current_protocol: u32,
         now: DateTime<Utc>,
     ) -> Result<VerifiedOperationsToolRelease, OperationsToolError> {
-        let backend =
-            SupportedBackend::new(connection.get_database_backend()).map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let backend = SupportedBackend::new(connection.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
         let query_sql = format!(
             "SELECT release_id, version, protocol_revision, package_digest, controller_digest, \
                     reconciler_digest, agent_digest, signer_key_digest, signature, issued_at, expires_at \
@@ -493,8 +497,8 @@ impl OperationsToolService {
             .await?;
         }
 
-        let backend =
-            SupportedBackend::new(transaction.get_database_backend()).map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
         let op_sql = format!(
             "INSERT INTO module_operations_tool_maintenance_operations (\
                 operation_id, target_release_id, predecessor_release_id, status, recovery_attempts, \
@@ -682,8 +686,8 @@ impl OperationsToolService {
             return Err(OperationsToolError::SupervisorReportConflict);
         }
 
-        let backend =
-            SupportedBackend::new(transaction.get_database_backend()).map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
         let updated = transaction
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -820,8 +824,8 @@ impl OperationsToolService {
             .await?;
         let pred_payload = pred_release.payload();
 
-        let backend =
-            SupportedBackend::new(transaction.get_database_backend()).map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let backend = SupportedBackend::new(transaction.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
 
         let update_op_sql = format!(
             "UPDATE module_operations_tool_maintenance_operations \
@@ -935,8 +939,8 @@ impl OperationsToolService {
         operation_id: Uuid,
         now: DateTime<Utc>,
     ) -> Result<(), OperationsToolError> {
-        let backend =
-            SupportedBackend::new(connection.get_database_backend()).map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let backend = SupportedBackend::new(connection.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
         let update_sql = format!(
             "UPDATE module_operations_tool_maintenance_operations \
              SET status = CASE status \
@@ -1001,8 +1005,8 @@ impl OperationsToolService {
         operation_id: Uuid,
         lock_for_update: bool,
     ) -> Result<Option<OperationsToolMaintenanceOperation>, OperationsToolError> {
-        let backend =
-            SupportedBackend::new(connection.get_database_backend()).map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let backend = SupportedBackend::new(connection.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
         let lock_clause = if lock_for_update && backend == SupportedBackend::Postgres {
             " FOR UPDATE"
         } else {
@@ -1033,8 +1037,8 @@ impl OperationsToolService {
         &self,
         connection: &C,
     ) -> Result<Option<Uuid>, OperationsToolError> {
-        let backend =
-            SupportedBackend::new(connection.get_database_backend()).map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let backend = SupportedBackend::new(connection.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
         let row = connection
             .query_one_raw(Statement::from_string(
                 backend.db_backend(),
@@ -1054,8 +1058,8 @@ impl OperationsToolService {
         command: &StartOperationsToolMaintenanceCommand,
         request_digest: &str,
     ) -> Result<Option<OperationsToolMaintenanceOperation>, OperationsToolError> {
-        let backend =
-            SupportedBackend::new(connection.get_database_backend()).map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let backend = SupportedBackend::new(connection.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
         let Some(row) = connection
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -1093,8 +1097,8 @@ impl OperationsToolService {
         command: &AuthorizeOperationsToolPredecessorRecoveryCommand,
         request_digest: &str,
     ) -> Result<Option<OperationsToolMaintenanceOperation>, OperationsToolError> {
-        let backend =
-            SupportedBackend::new(connection.get_database_backend()).map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let backend = SupportedBackend::new(connection.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
         let Some(row) = connection
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -1150,8 +1154,8 @@ impl OperationsToolService {
         host_id: &str,
         component: OperationsToolComponent,
     ) -> Result<Option<OperationsToolAssignment>, OperationsToolError> {
-        let backend =
-            SupportedBackend::new(connection.get_database_backend()).map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let backend = SupportedBackend::new(connection.get_database_backend())
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
         let query_sql = format!(
             "SELECT assignment_id, operation_id, host_id, component, desired_digest, \
                     observed_digest, status, reported_at, updated_at \

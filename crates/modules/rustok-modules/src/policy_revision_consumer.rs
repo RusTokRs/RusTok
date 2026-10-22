@@ -254,8 +254,8 @@ async fn load_tenant_overrides<C: ConnectionTrait>(
     connection: &C,
     tenant_id: Uuid,
 ) -> Result<Vec<TenantModuleOverride>, ModuleLifecycleDbWriterError> {
-    let backend =
-        SupportedBackend::new(connection.get_database_backend()).map_err(|error| ModuleLifecycleDbWriterError::Database(error.to_string()))?;
+    let backend = SupportedBackend::new(connection.get_database_backend())
+        .map_err(|error| ModuleLifecycleDbWriterError::Database(error.to_string()))?;
     let sql = match backend {
         SupportedBackend::Postgres => {
             "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = $1"

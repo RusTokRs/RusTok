@@ -31,8 +31,8 @@ use crate::{
     ModuleRuntimeBindingKind, SharedArtifactBindingExecutor, SharedArtifactDeliveryTenantSource,
     artifact::{event_topic_matches, valid_event_topic},
     data::{
-        configure_tenant_scope, retry_available_at_expression,
-        uuid_from_row, },
+        configure_tenant_scope, retry_available_at_expression, uuid_from_row,
+    },
 };
 
 const MAX_EVENT_TYPE_BYTES: usize = 128;

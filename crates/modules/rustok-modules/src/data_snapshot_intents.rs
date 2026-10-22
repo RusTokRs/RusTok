@@ -319,7 +319,11 @@ async fn intent_metadata_committed<C: ConnectionTrait>(
         values.push(backend.uuid_value(intent.operation_id));
     }
     Ok(db
-        .query_one_raw(Statement::from_sql_and_values(backend.db_backend(), sql, values))
+        .query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            sql,
+            values,
+        ))
         .await
         .map_err(storage_error)?
         .is_some())

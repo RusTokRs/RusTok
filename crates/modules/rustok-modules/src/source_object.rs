@@ -322,8 +322,8 @@ impl SourceObjectStore {
         destination: &Path,
         source_digest: &str,
     ) -> Result<(), SourceObjectError> {
-        let backend =
-            SupportedBackend::new(self.db.get_database_backend()).map_err(|e| SourceObjectError::Storage(e.to_string()))?;
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
         let row = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
@@ -580,8 +580,8 @@ impl SourceObjectStore {
         byte_length: u64,
         manifest_digest: Option<&str>,
     ) -> Result<SourceReceipt, SourceObjectError> {
-        let backend =
-            SupportedBackend::new(self.db.get_database_backend()).map_err(|e| SourceObjectError::Storage(e.to_string()))?;
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
         let receipt_id = Uuid::new_v4();
         let now = Utc::now();
 
@@ -709,8 +709,8 @@ impl SourceObjectStore {
         source_digest: &str,
         calling_scope: &ModuleInstallationScope,
     ) -> Result<Option<SourceReceipt>, SourceObjectError> {
-        let backend =
-            SupportedBackend::new(self.db.get_database_backend()).map_err(|e| SourceObjectError::Storage(e.to_string()))?;
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
         let query_sql = format!(
             "SELECT source_receipt_id, preparation_id, scope_kind, scope_tenant_key, \
                     source_digest, media_type, byte_length, manifest_digest, created_at \
@@ -749,8 +749,8 @@ impl SourceObjectStore {
         source_receipt_id: Uuid,
         calling_scope: &ModuleInstallationScope,
     ) -> Result<Option<SourceReceipt>, SourceObjectError> {
-        let backend =
-            SupportedBackend::new(self.db.get_database_backend()).map_err(|e| SourceObjectError::Storage(e.to_string()))?;
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
         let query_sql = format!(
             "SELECT source_receipt_id, preparation_id, scope_kind, scope_tenant_key, \
                     source_digest, media_type, byte_length, manifest_digest, created_at \
@@ -895,8 +895,8 @@ impl SourceObjectStore {
             return Err(SourceObjectError::InvalidDigest(source_digest.to_string()));
         }
 
-        let backend =
-            SupportedBackend::new(self.db.get_database_backend()).map_err(|e| SourceObjectError::Storage(e.to_string()))?;
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
         let hold_id = Uuid::new_v4();
         let now = Utc::now();
 
@@ -940,8 +940,8 @@ impl SourceObjectStore {
 
     /// Releases an existing retention hold by ID.
     pub async fn release_retention_hold(&self, hold_id: Uuid) -> Result<(), SourceObjectError> {
-        let backend =
-            SupportedBackend::new(self.db.get_database_backend()).map_err(|e| SourceObjectError::Storage(e.to_string()))?;
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
         let delete_sql = format!(
             "DELETE FROM module_source_object_retention_holds WHERE hold_id = {}",
             backend.placeholder(1)
@@ -961,8 +961,8 @@ impl SourceObjectStore {
 
     /// Checks if a source object is currently protected by an active retention hold.
     pub async fn is_held(&self, source_digest: &str) -> Result<bool, SourceObjectError> {
-        let backend =
-            SupportedBackend::new(self.db.get_database_backend()).map_err(|e| SourceObjectError::Storage(e.to_string()))?;
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
         let query_sql = format!(
             "SELECT 1 FROM module_source_object_retention_holds \
              WHERE source_digest = {} \

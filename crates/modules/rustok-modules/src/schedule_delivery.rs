@@ -30,8 +30,8 @@ use crate::{
     ControlPlaneInfrastructure, ModuleArtifactDescriptor, ModuleRuntimeBinding,
     ModuleRuntimeBindingKind, SharedArtifactBindingExecutor, SharedArtifactDeliveryTenantSource,
     data::{
-        configure_tenant_scope, retry_available_at_expression,
-        uuid_from_row, },
+        configure_tenant_scope, retry_available_at_expression, uuid_from_row,
+    },
     schedule_binding_digest,
 };
 

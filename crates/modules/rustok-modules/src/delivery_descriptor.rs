@@ -20,10 +20,8 @@ use sea_orm::{ConnectionTrait, Statement};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::ModuleArtifactDescriptor;
 use crate::backend::SupportedBackend;
-use crate::{
-    ModuleArtifactDescriptor,
-};
 
 #[derive(Debug, Error)]
 pub(crate) enum LoadAdmittedDescriptorError {

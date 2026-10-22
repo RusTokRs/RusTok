@@ -20,8 +20,8 @@ use crate::{
     SeaOrmArtifactDataSnapshotService,
     data::{
         configure_tenant_scope, load_retired_artifact_data_authorization_on,
-        lock_artifact_data_installation_on, namespace_lock_clause, revision_value,
-        uuid_from_row, },
+        lock_artifact_data_installation_on, namespace_lock_clause, revision_value, uuid_from_row,
+    },
     data_snapshot::{
         datetime_from_row, load_manifest, lock_snapshot, positive_u64, snapshot_from_row,
     },
@@ -473,8 +473,7 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
             .map_err(storage_error)?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
-        let snapshot = snapshot_from_row(&snapshot_row, backend)
-            .map_err(storage_error)?;
+        let snapshot = snapshot_from_row(&snapshot_row, backend).map_err(storage_error)?;
         let status: String = snapshot_row.try_get("", "status").map_err(storage_error)?;
         if status != "ready"
             || snapshot.manifest_digest != operation.source_manifest_digest

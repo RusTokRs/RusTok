@@ -109,7 +109,11 @@ where
             ),
         };
         let mut records = transaction
-            .query_all_raw(Statement::from_sql_and_values(backend.db_backend(), query, values))
+            .query_all_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                query,
+                values,
+            ))
             .await
             .map_err(storage_error)?
             .into_iter()
