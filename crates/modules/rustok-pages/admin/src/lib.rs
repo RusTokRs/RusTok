@@ -38,7 +38,8 @@ pub use access::{
     pages_editor_permissions_for_role, pages_editor_provider_state,
 };
 pub use browser_intent::{
-    PagesBrowserIntentError, PagesBrowserIntentResponse, pages_browser_draft_store,
+    PagesBrowserIntentError, PagesBrowserIntentResponse, pages_browser_default_durable_store,
+    pages_browser_draft_store, set_pages_browser_draft_store,
 };
 pub use browser_problem::PagesBrowserIntentProblem;
 pub use builder::PagesBuilderSaveSnapshot;

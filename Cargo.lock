@@ -15948,7 +15948,6 @@ dependencies = [
  "hex",
  "rustok-api",
  "rustok-core",
- "rustok-moderation-api",
  "rustok-runtime",
  "sea-orm",
  "sea-orm-migration",

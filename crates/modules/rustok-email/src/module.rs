@@ -1,0 +1,67 @@
+use async_trait::async_trait;
+use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
+use sea_orm_migration::MigrationTrait;
+
+/// Core email module — SMTP transport, templates, email lifecycle.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct EmailModule;
+
+impl MigrationSource for EmailModule {
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        Vec::new()
+    }
+}
+
+#[async_trait]
+impl RusToKModule for EmailModule {
+    fn slug(&self) -> &'static str {
+        "email"
+    }
+
+    fn name(&self) -> &'static str {
+        "Email"
+    }
+
+    fn description(&self) -> &'static str {
+        "SMTP transport, email templates, delivery lifecycle."
+    }
+
+    fn version(&self) -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+
+    fn kind(&self) -> ModuleKind {
+        ModuleKind::Core
+    }
+
+    async fn health(&self) -> HealthStatus {
+        // Module-level health has no host AppContext, so it cannot validate
+        // the effective SMTP transport. The server readiness layer owns
+        // the concrete `email_backend` check and metrics.
+        HealthStatus::Degraded
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EmailModule;
+    use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
+
+    #[tokio::test]
+    async fn email_module_health_defers_to_host_readiness() {
+        let module = EmailModule;
+        assert_eq!(module.health().await, HealthStatus::Degraded);
+        assert_eq!(module.slug(), "email");
+        assert_eq!(module.name(), "Email");
+        assert_eq!(module.kind(), ModuleKind::Core);
+        assert!(module.migrations().is_empty());
+    }
+
+    #[test]
+    #[allow(clippy::default_constructed_unit_structs)]
+    fn email_module_traits() {
+        let m1 = EmailModule;
+        let m2 = EmailModule::default();
+        assert_eq!(m1, m2);
+    }
+}

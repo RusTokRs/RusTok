@@ -473,6 +473,8 @@ mod tests {
 
     #[test]
     fn pages_browser_draft_store_resolves_and_stores_session() {
+        let default_durable = pages_browser_default_durable_store();
+        assert_eq!(default_durable.memory().len().unwrap(), 0);
         let store = pages_browser_draft_store();
         assert!(store.load("non-existent-token", "home").unwrap().is_none());
     }

@@ -22,7 +22,7 @@ use rustok_page_builder::runtime_scenario_release::{
 use rustok_page_builder::{RuntimeContextExamplePolicy, RuntimeContextScenario};
 use rustok_page_builder_admin::{
     PageBuilderAdmin, PageBuilderAdminFacade, PageBuilderAdminHostContext,
-    PageBuilderAdminProviderStatus, SsrDraftSessionStore,
+    PageBuilderAdminProviderStatus,
 };
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 use serde_json::{Value, json};

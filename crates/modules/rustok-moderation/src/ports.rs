@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use rustok_api::{Permission, PortCallPolicy, PortContext, PortError, PortErrorKind};
 use uuid::Uuid;
 
-pub use rustok_moderation_api::ModerationSubjectCommandPort;
+pub use crate::provider::ModerationSubjectCommandPort;
 
 use crate::domain::{
     AssignModerationCaseCommand, DecideModerationCaseCommand, ModerationApplicationRecoveryRecord,
