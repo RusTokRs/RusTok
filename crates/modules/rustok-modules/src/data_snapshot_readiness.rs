@@ -254,13 +254,19 @@ impl ArtifactDataRecoveryReadinessService {
                     .await
                     .map_err(|e| PostgresRecoveryEvidenceError::Storage(e.to_string()))?;
 
-                let (page_count, page_size) = if let Some(row) = row_opt {
-                    let count: i64 = row.try_get("", "page_count").unwrap_or(0);
-                    let size: i64 = row.try_get("", "page_size").unwrap_or(4096);
-                    (count, size)
-                } else {
-                    (0, 4096)
-                };
+                // The pragma functions always return exactly one row; see
+                // the PostgreSQL branch for why absence is an error.
+                let row = row_opt.ok_or_else(|| {
+                    PostgresRecoveryEvidenceError::Storage(
+                        "SQLite recovery evidence query returned no row".to_string(),
+                    )
+                })?;
+                let page_count: i64 = row
+                    .try_get("", "page_count")
+                    .map_err(|e| PostgresRecoveryEvidenceError::Storage(e.to_string()))?;
+                let page_size: i64 = row
+                    .try_get("", "page_size")
+                    .map_err(|e| PostgresRecoveryEvidenceError::Storage(e.to_string()))?;
 
                 let tag = format!("sqlite:page_count={}:page_size={}", page_count, page_size);
                 let mut hasher = Sha256::new();
