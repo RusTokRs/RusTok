@@ -49,7 +49,8 @@ impl SeaOrmModuleGovernanceService {
             return Ok(());
         }
         let request = tx
-            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "SELECT slug, version, revision, status, CAST(validation_errors AS TEXT) AS validation_errors \
                      FROM registry_publish_requests WHERE id = {}",
@@ -110,7 +111,8 @@ impl SeaOrmModuleGovernanceService {
         }
         let validation_errors = serde_json::json!(deduplicated);
         let update = tx
-            .execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+.execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "UPDATE registry_publish_requests \
                      SET status = 'rejected', rejected_by_principal = {}, rejection_reason = {}, \
@@ -141,7 +143,8 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?);
         }
-        tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+tx.execute_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
                  (id, slug, request_id, release_id, event_type, actor_principal, \
@@ -225,7 +228,8 @@ impl SeaOrmModuleGovernanceService {
             return Ok(());
         }
         let request = tx
-            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "SELECT slug, version, revision, status, CAST(publisher_principal AS TEXT) AS publisher_principal \
                      FROM registry_publish_requests WHERE id = {}",
@@ -266,7 +270,8 @@ impl SeaOrmModuleGovernanceService {
             .transpose()
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let update = tx
-            .execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+.execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "UPDATE registry_publish_requests \
                      SET status = 'changes_requested', changes_requested_by_principal = {}, \
@@ -298,7 +303,8 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?);
         }
-        tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+tx.execute_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
                  (id, slug, request_id, release_id, event_type, actor_principal, \
@@ -383,7 +389,8 @@ impl SeaOrmModuleGovernanceService {
             return Ok(());
         }
         let request = tx
-            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "SELECT slug, version, revision, status, CAST(publisher_principal AS TEXT) AS publisher_principal \
                      FROM registry_publish_requests WHERE id = {}",
@@ -427,7 +434,8 @@ impl SeaOrmModuleGovernanceService {
             .transpose()
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let update = tx
-            .execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+.execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "UPDATE registry_publish_requests \
                      SET status = 'on_hold', held_by_principal = {}, held_reason = {}, \
@@ -461,7 +469,8 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?);
         }
-        tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+tx.execute_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
                  (id, slug, request_id, release_id, event_type, actor_principal, \

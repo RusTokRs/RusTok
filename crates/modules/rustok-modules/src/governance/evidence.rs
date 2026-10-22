@@ -60,7 +60,8 @@ impl SeaOrmModuleGovernanceService {
         let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
         let artifact_origin = self
             .db
-            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "SELECT artifact_origin FROM registry_publish_requests WHERE id = {}",
                     backend.placeholder(1),
@@ -95,7 +96,8 @@ impl SeaOrmModuleGovernanceService {
             ""
         };
         let request = tx
-            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "SELECT slug, version, revision, status, artifact_origin, artifact_checksum_sha256, \
                             CAST(requested_by_principal AS TEXT) AS requested_by_principal, \
@@ -214,7 +216,8 @@ impl SeaOrmModuleGovernanceService {
         let evidence_digest_sha256 = publication_evidence_digest_sha256(&command);
         let evidence_id = self.infrastructure.prefixed_id("rpe");
         let inserted = tx
-            .execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+.execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "INSERT INTO registry_publication_evidence \
                  (id, request_id, authority, subject_digest_sha256, evidence_reference, \
@@ -265,7 +268,8 @@ impl SeaOrmModuleGovernanceService {
         }
         if inserted.rows_affected() == 0 {
             let existing = tx
-                .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
                     format!(
                         "SELECT id FROM registry_publication_evidence \
                          WHERE request_id = {} AND evidence_digest_sha256 = {}",
@@ -325,7 +329,8 @@ impl SeaOrmModuleGovernanceService {
             return Ok(result);
         }
         let request_updated = tx
-            .execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+.execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
                      WHERE id = {} AND revision = {}",
@@ -348,7 +353,8 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?);
         }
-        tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+tx.execute_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
                  (id, slug, request_id, release_id, event_type, actor_principal, \
@@ -424,7 +430,8 @@ pub(crate) async fn load_publication_evidence_contract(
 ) -> Result<(String, String), ModuleGovernanceError> {
     let mark = |position| backend.placeholder(position);
     let row = transaction
-        .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
             format!(
                 "SELECT evidence_reference, evidence_digest_sha256 \
                  FROM registry_publication_evidence \

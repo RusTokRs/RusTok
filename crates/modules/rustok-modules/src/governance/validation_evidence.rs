@@ -46,7 +46,8 @@ pub(crate) async fn pass_owner_evidence_validation_stage(
     let mark = |n| backend.placeholder(n);
     let now = backend.now_sql();
     let Some(stage) = tx
-        .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
             format!(
                 "SELECT id, status, attempt_number, queue_reason, runner_kind \
                  FROM registry_validation_stages WHERE request_id = {} AND stage_key = {} \
@@ -81,7 +82,8 @@ pub(crate) async fn pass_owner_evidence_validation_stage(
         let stage_id = infrastructure.prefixed_id("rvs");
         let attempt_number = prior_attempt + 1;
         let queue_reason = reason_code.to_string();
-        tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+tx.execute_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
             format!(
                 "INSERT INTO registry_validation_stages \
                  (id, request_id, slug, version, stage_key, status, triggered_by, queue_reason, \
@@ -109,7 +111,8 @@ pub(crate) async fn pass_owner_evidence_validation_stage(
     } else {
         let stage_id: String = stage.try_get("", "id").map_err(store_error)?;
         let updated = tx
-            .execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+.execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "UPDATE registry_validation_stages SET status = 'passed', detail = {}, \
                      last_error = NULL, started_at = COALESCE(started_at, {now}), \
@@ -159,7 +162,8 @@ pub(crate) async fn pass_owner_evidence_validation_stage(
             }),
         ),
     ] {
-        tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+tx.execute_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
                  (id, slug, request_id, release_id, event_type, actor_principal, \

@@ -8,6 +8,7 @@ use uuid::Uuid;
 use super::fixtures::*;
 use super::*;
 use crate::build::{
+use crate::backend::SupportedBackend;
     ModuleBuildAuthoring, ModuleBuildComponentInterface, ModuleBuildDependencyPolicy,
     ModuleBuildEvidence, ModuleBuildLimits, ModuleBuildMetrics, ModuleBuildNetworkPolicy,
     ModuleBuildNextAction, ModuleBuildOutcome, ModuleBuildPublicationReceipt, ModuleBuildRequest,
@@ -363,7 +364,7 @@ async fn imported_alloy_fork_stage_and_published_contract_preserve_parent_lineag
     assert_eq!(
         canonical_marketplace_artifact_contract(
             &revoked_parent_transaction,
-            DbBackend::Sqlite,
+            SupportedBackend::Sqlite,
             "request-fork",
             "tax_rule",
             "1.1.0",
@@ -389,7 +390,7 @@ async fn imported_alloy_fork_stage_and_published_contract_preserve_parent_lineag
     let transaction = database.begin().await.expect("publication transaction");
     let (artifact, published_descriptor, lineage) = canonical_marketplace_artifact_contract(
         &transaction,
-        DbBackend::Sqlite,
+        SupportedBackend::Sqlite,
         "request-fork",
         "tax_rule",
         "1.1.0",
@@ -400,7 +401,7 @@ async fn imported_alloy_fork_stage_and_published_contract_preserve_parent_lineag
     .expect("canonical fork contract");
     persist_published_artifact_contract(
         &transaction,
-        DbBackend::Sqlite,
+        SupportedBackend::Sqlite,
         "child-release",
         "request-fork",
         &artifact,

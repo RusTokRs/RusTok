@@ -37,7 +37,8 @@ pub(crate) async fn verify_publish_request_prerequisites(
     };
 
     let request = tx
-            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "SELECT slug, version, revision, crate_name, default_locale, ownership, trust_level, license, \
                      entry_type, CAST(marketplace AS TEXT) AS marketplace, \
@@ -71,7 +72,8 @@ pub(crate) async fn verify_publish_request_prerequisites(
     }
     if status == "published" {
         let release_exists = tx
-            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "SELECT release.id FROM registry_module_releases AS release \
                          INNER JOIN registry_module_release_artifacts AS artifact \
@@ -158,7 +160,8 @@ pub(crate) async fn verify_publish_request_prerequisites(
     let platform_build_manifest = match artifact_origin {
         ModulePublicationArtifactOrigin::PlatformBuilt => {
             let platform_build_manifest = tx
-                    .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+                        backend.db_backend(),
                         format!(
                             "SELECT artifact_manifest_digest FROM registry_publish_build_staging AS stage \
                              WHERE stage.request_id = {} \
@@ -185,7 +188,8 @@ pub(crate) async fn verify_publish_request_prerequisites(
         }
         ModulePublicationArtifactOrigin::ExternalPrebuilt => {
             let external_prebuilt_staged = tx
-                    .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+                        backend.db_backend(),
                         format!(
                             "SELECT 1 FROM registry_publish_external_staging AS stage \
                              WHERE stage.request_id = {} \
@@ -213,7 +217,8 @@ pub(crate) async fn verify_publish_request_prerequisites(
         }
         ModulePublicationArtifactOrigin::AlloyAuthored => {
             let alloy_authored_staged = tx
-                    .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+                        backend.db_backend(),
                         format!(
                             "SELECT 1 FROM registry_publish_alloy_staging AS stage \
                              WHERE stage.request_id = {} \
@@ -242,7 +247,8 @@ pub(crate) async fn verify_publish_request_prerequisites(
     };
 
     let author_signature_recorded = tx
-        .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
             format!(
                 "SELECT 1 FROM registry_publication_evidence AS author \
                      WHERE author.request_id = {} AND author.authority = 'author_signature' \
@@ -272,7 +278,8 @@ pub(crate) async fn verify_publish_request_prerequisites(
             let platform_build_manifest = platform_build_manifest
                 .expect("platform-built staging must provide an OCI manifest digest");
             let matched_build_and_platform_evidence = tx
-                    .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+                        backend.db_backend(),
                         format!(
                             "SELECT 1 FROM registry_publication_evidence AS build \
                              WHERE build.request_id = {} \
@@ -311,7 +318,8 @@ pub(crate) async fn verify_publish_request_prerequisites(
         ModulePublicationArtifactOrigin::ExternalPrebuilt
         | ModulePublicationArtifactOrigin::AlloyAuthored => {
             let platform_admission_recorded = tx
-                    .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+                        backend.db_backend(),
                         format!(
                             "SELECT 1 FROM registry_publication_evidence AS platform \
                              WHERE platform.request_id = {} \
@@ -347,7 +355,8 @@ pub(crate) async fn verify_publish_request_prerequisites(
     }
 
     let translations = tx
-        .query_all_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_all_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
             format!(
                 "SELECT locale, name, description FROM registry_publish_request_translations \
                      WHERE request_id = {} ORDER BY locale",

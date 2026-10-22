@@ -55,7 +55,8 @@ impl SeaOrmModuleGovernanceService {
             ""
         };
         let request = tx
-            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "SELECT slug, version, revision, status, artifact_origin \
                      FROM registry_publish_requests WHERE id = {}{request_lock}",
@@ -118,7 +119,8 @@ impl SeaOrmModuleGovernanceService {
         let actor_label = validation_stage_actor_label(&command.actor_principal)?;
         let (stage_id, attempt_number, queue_reason, event_type) = if command.requeue {
             let next_attempt =
-                tx.query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+tx.query_one_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
                     format!(
                         "SELECT COALESCE(MAX(attempt_number), 0) AS attempt_number \
                          FROM registry_validation_stages WHERE request_id = {} AND stage_key = {}",
@@ -140,7 +142,8 @@ impl SeaOrmModuleGovernanceService {
                     + 1;
             let stage_id = self.infrastructure.prefixed_id("rvs");
             let queue_reason = "manual_requeue".to_string();
-            tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+tx.execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "INSERT INTO registry_validation_stages \
                      (id, request_id, slug, version, stage_key, status, triggered_by, queue_reason, \
@@ -167,7 +170,8 @@ impl SeaOrmModuleGovernanceService {
             )
         } else {
             let stage = tx
-                .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
                     format!(
                         "SELECT id, status, attempt_number, queue_reason \
                          FROM registry_validation_stages WHERE request_id = {} AND stage_key = {} \
@@ -200,7 +204,8 @@ impl SeaOrmModuleGovernanceService {
             let queue_reason: String = stage
                 .try_get("", "queue_reason")
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-            tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+tx.execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "UPDATE registry_validation_stages SET status = {}, detail = {}, \
                      last_error = CASE WHEN {} = 'failed' THEN {} ELSE NULL END, \
@@ -246,7 +251,8 @@ impl SeaOrmModuleGovernanceService {
         };
 
         let request_updated = tx
-            .execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+.execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
                      WHERE id = {} AND revision = {}",
@@ -283,7 +289,8 @@ impl SeaOrmModuleGovernanceService {
         if let Some(reason_code) = &command.reason_code {
             stage_details["reason_code"] = serde_json::Value::String(reason_code.clone());
         }
-        tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+tx.execute_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
                  (id, slug, request_id, release_id, event_type, actor_principal, \
@@ -322,7 +329,8 @@ impl SeaOrmModuleGovernanceService {
             if let Some(reason_code) = &command.reason_code {
                 gate_details["reason_code"] = serde_json::Value::String(reason_code.clone());
             }
-            tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+tx.execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "INSERT INTO registry_governance_events \
                      (id, slug, request_id, release_id, event_type, actor_principal, \
@@ -486,7 +494,8 @@ impl SeaOrmModuleGovernanceService {
             .await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         if update.rows_affected() != 1 {
             let current = tx
-                .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
                     format!(
                         "SELECT status, claimed_by, runner_kind FROM registry_validation_stages \
                          WHERE claim_id = {}",
@@ -519,7 +528,8 @@ impl SeaOrmModuleGovernanceService {
             return Err(ModuleGovernanceError::RemoteValidationLeaseExpired);
         }
         let request_updated = tx
-            .execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+.execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
                      WHERE id = {} AND revision = {}",
@@ -553,7 +563,8 @@ impl SeaOrmModuleGovernanceService {
                 serde_json::json!({"stage_key":stage_key,"status":gate_status,"detail":detail,"reason_code":reason_code}),
             ),
         ] {
-            tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+tx.execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, {}, {}, NULL, {}, {now})",
                     mark(1), mark(2), mark(3), mark(4), mark(5), mark(6),

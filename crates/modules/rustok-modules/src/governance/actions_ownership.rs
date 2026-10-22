@@ -23,7 +23,8 @@ impl SeaOrmModuleGovernanceService {
             ""
         };
         let release = tx
-            .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "SELECT id, request_id, status, CAST(publisher_principal AS TEXT) AS publisher_principal \
                      FROM registry_module_releases WHERE slug = {} AND version = {}{release_lock}",
@@ -74,7 +75,8 @@ impl SeaOrmModuleGovernanceService {
             return Err(ModuleGovernanceError::ReleaseCannotBeYanked(status));
         }
         let update = tx
-            .execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+.execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "UPDATE registry_module_releases SET status = 'yanked', yanked_reason = {}, \
                      yanked_by_principal = {}, yanked_at = {now}, updated_at = {now} WHERE id = {}",
@@ -93,7 +95,8 @@ impl SeaOrmModuleGovernanceService {
         if update.rows_affected() != 1 {
             return Err(ModuleGovernanceError::ReleaseNotFound);
         }
-        tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+tx.execute_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
                  (id, slug, request_id, release_id, event_type, actor_principal, \
@@ -186,7 +189,8 @@ impl SeaOrmModuleGovernanceService {
         }
 
         let update = tx
-            .execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+.execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
                     "UPDATE registry_module_owners \
                      SET owner_principal = {}, bound_by_principal = {}, \
@@ -207,7 +211,8 @@ impl SeaOrmModuleGovernanceService {
         if update.rows_affected() != 1 {
             return Err(ModuleGovernanceError::OwnerBindingNotFound);
         }
-        tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+tx.execute_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
                  (id, slug, request_id, release_id, event_type, actor_principal, \

@@ -31,7 +31,8 @@ pub(crate) async fn lock_publish_request(
     } else {
         ""
     };
-    tx.query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+tx.query_one_raw(Statement::from_sql_and_values(
+        backend.db_backend(),
         format!("SELECT id FROM registry_publish_requests WHERE id = {mark}{request_lock}"),
         vec![request_id.to_string().into()],
     ))
@@ -54,7 +55,8 @@ pub(crate) async fn publish_request_review_replay(
         }
     };
     let existing = tx
-        .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
             format!(
                 "SELECT operation_kind, expected_revision, CAST(actor_id AS TEXT) AS actor_id, \
                  trace_id, CAST(correlation_id AS TEXT) AS correlation_id, \
@@ -131,7 +133,8 @@ pub(crate) async fn record_publish_request_review_receipt(
             format!("?{n}")
         }
     };
-    tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+tx.execute_raw(Statement::from_sql_and_values(
+        backend.db_backend(),
         format!(
             "INSERT INTO registry_publish_request_review_operations \
              (operation_id, request_id, operation_kind, idempotency_key, expected_revision, actor_id, \

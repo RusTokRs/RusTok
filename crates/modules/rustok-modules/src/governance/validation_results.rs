@@ -37,7 +37,8 @@ impl SeaOrmModuleGovernanceService {
         } else {
             "datetime('now')"
         };
-        let job = tx.query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+let job = tx.query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
             format!("SELECT j.status AS job_status, j.request_id, j.attempt_number, j.queue_reason, r.slug, r.version, r.artifact_origin, r.status AS request_status, r.revision AS request_revision FROM registry_validation_jobs j JOIN registry_publish_requests r ON r.id = j.request_id WHERE j.id = {}", mark(1)),
             vec![command.validation_job_id.clone().into()],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?.ok_or(ModuleGovernanceError::ValidationJobNotFound)?;
@@ -105,11 +106,13 @@ impl SeaOrmModuleGovernanceService {
         let last_error = errors.first().cloned();
         let actor = validation_stage_actor_label(&command.actor_principal)?;
         let request_updated = match command.outcome {
-            ModuleValidationJobResultOutcome::Passed => tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+ModuleValidationJobResultOutcome::Passed => tx.execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!("UPDATE registry_publish_requests SET status = 'approved', validation_warnings = {}, validation_errors = {}, rejected_by_principal = NULL, rejection_reason = NULL, validated_at = {now}, approved_by_principal = {}, approved_at = {now}, revision = revision + 1, updated_at = {now} WHERE id = {} AND status = 'validating' AND revision = {}", mark(1), mark(2), mark(3), mark(4), mark(5)),
                 vec![Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!([])))), Value::Json(Some(Box::new(command.actor_principal.clone()))), request_id.clone().into(), command.expected_request_revision.into()],
             )),
-            ModuleValidationJobResultOutcome::Failed => tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+ModuleValidationJobResultOutcome::Failed => tx.execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!("UPDATE registry_publish_requests SET status = 'rejected', validation_warnings = {}, validation_errors = {}, rejected_by_principal = {}, rejection_reason = {}, validated_at = {now}, approved_by_principal = NULL, approved_at = NULL, published_at = NULL, revision = revision + 1, updated_at = {now} WHERE id = {} AND status = 'validating' AND revision = {}", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)),
                 vec![Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!(errors.clone())))), Value::Json(Some(Box::new(command.actor_principal.clone()))), last_error.clone().into(), request_id.clone().into(), command.expected_request_revision.into()],
             )),
@@ -123,7 +126,8 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?);
         }
-        let job_updated = tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+let job_updated = tx.execute_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
             format!("UPDATE registry_validation_jobs SET status = {}, finished_at = {now}, last_error = {}, updated_at = {now} WHERE id = {} AND status = 'running'", mark(1), mark(2), mark(3)),
             vec![terminal_job_status.into(), last_error.clone().into(), command.validation_job_id.clone().into()],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -139,7 +143,8 @@ impl SeaOrmModuleGovernanceService {
             let platform_build_staged = artifact_origin
                 == ModulePublicationArtifactOrigin::PlatformBuilt
                 && tx
-                    .query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+.query_one_raw(Statement::from_sql_and_values(
+                        backend.db_backend(),
                         format!(
                             "SELECT 1 FROM registry_publish_build_staging WHERE request_id = {} LIMIT 1",
                             mark(1)
@@ -161,14 +166,16 @@ impl SeaOrmModuleGovernanceService {
                     .is_some();
             for stage in publication_follow_up_stages(artifact_origin) {
                 let stage_key = stage.key;
-                let active_stage = tx.query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+let active_stage = tx.query_one_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
                     format!("SELECT id FROM registry_validation_stages WHERE request_id = {} AND stage_key = {} AND status IN ('queued', 'running') LIMIT 1", mark(1), mark(2)),
                     vec![request_id.clone().into(), stage_key.into()],
                 )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
                 if active_stage.is_some() {
                     continue;
                 }
-                let prior_attempt = tx.query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+let prior_attempt = tx.query_one_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
                     format!("SELECT COALESCE(MAX(attempt_number), 0) AS attempt_number FROM registry_validation_stages WHERE request_id = {} AND stage_key = {}", mark(1), mark(2)),
                     vec![request_id.clone().into(), stage_key.into()],
                 )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?.ok_or_else(|| ModuleGovernanceError::Store("missing validation stage attempt aggregate".to_string()))?;
@@ -215,7 +222,8 @@ impl SeaOrmModuleGovernanceService {
                 } else {
                     Some(stage.runner_kind.to_string())
                 };
-                tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+tx.execute_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
                     format!("INSERT INTO registry_validation_stages (id, request_id, slug, version, stage_key, status, triggered_by, queue_reason, attempt_number, detail, started_at, finished_at, last_error, claim_id, claimed_by, claim_expires_at, last_heartbeat_at, runner_kind, created_at, updated_at) VALUES ({}, {}, {}, {}, {}, {}, {}, 'validation_passed', {}, {}, {started_at}, {finished_at}, NULL, NULL, NULL, NULL, NULL, {}, {now}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8), mark(9), mark(10)),
                     vec![stage_id.clone().into(), request_id.clone().into(), slug.clone().into(), version.clone().into(), stage_key.into(), status.into(), actor.clone().into(), attempt_number.into(), detail.clone().into(), runner_kind.into()],
                 )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -252,7 +260,8 @@ impl SeaOrmModuleGovernanceService {
                         serde_json::json!({"stage_key":stage_key,"status":gate_status,"detail":detail,"reason_code":pass_reason_code}),
                     ),
                 ] {
-                    tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+tx.execute_raw(Statement::from_sql_and_values(
+                        backend.db_backend(),
                         format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, {}, {}, NULL, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)),
                         vec![self.infrastructure.prefixed_id("rge").into(), slug.clone().into(), request_id.clone().into(), event_type.into(), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(details)))],
                     )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -276,7 +285,8 @@ impl SeaOrmModuleGovernanceService {
                 serde_json::json!({"job_id":command.validation_job_id,"attempt_number":attempt_number,"queue_reason":queue_reason,"request_status":terminal_request_status,"version":version,"error":last_error}),
             ),
         ] {
-            tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+tx.execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, {}, {}, NULL, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)),
                 vec![self.infrastructure.prefixed_id("rge").into(), slug.clone().into(), request_id.clone().into(), event_type.into(), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(details)))],
             )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -312,7 +322,8 @@ impl SeaOrmModuleGovernanceService {
         } else {
             "datetime('now')"
         };
-        let job = tx.query_one_raw(Statement::from_sql_and_values(backend.db_backend(),
+let job = tx.query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
             format!("SELECT j.status, j.attempt_number, r.id AS request_id, r.slug, r.version, r.status AS request_status FROM registry_validation_jobs j JOIN registry_publish_requests r ON r.id = j.request_id WHERE j.id = {}", mark(1)),
             vec![command.validation_job_id.clone().into()],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?.ok_or(ModuleGovernanceError::ValidationJobNotFound)?;
@@ -356,7 +367,8 @@ impl SeaOrmModuleGovernanceService {
         } else {
             details["max_attempts"] = serde_json::json!(command.attempt);
         }
-        tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(),
+tx.execute_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
             format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, {}, {}, NULL, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)),
             vec![self.infrastructure.prefixed_id("rge").into(), slug.into(), request_id.into(), event_type.into(), Value::Json(Some(Box::new(command.actor_principal))), Value::Json(Some(Box::new(details)))],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
