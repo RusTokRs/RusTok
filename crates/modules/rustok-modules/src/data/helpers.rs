@@ -49,6 +49,17 @@ pub(crate) async fn configure_tenant_scope<C: ConnectionTrait>(
         .map_err(storage_error)
 }
 
+/// Best-effort compensation for object bytes uploaded before their owning
+/// database work failed. The database is the source of truth — the object
+/// never became reachable — so the primary error the caller is already
+/// returning stays authoritative; if this delete also fails, the bytes
+/// remain unreachable garbage for out-of-band storage reconciliation
+/// instead of masking that primary error. This helper is the single
+/// owner of that policy; call sites must not open-code the suppression.
+pub(crate) async fn delete_uploaded_object_best_effort(storage: &StorageRuntime, path: &Path) {
+    let _ = storage.objects.delete(path).await;
+}
+
 /// Resolve the tenant's single owner reference, initializing its first empty
 /// instance only from the exact admitted serving installation allocation.
 /// A retained tombstone or another contract never becomes an initial instance.

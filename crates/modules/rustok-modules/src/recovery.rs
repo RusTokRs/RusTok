@@ -278,8 +278,16 @@ pub(crate) async fn retry_failed_post_hook_operation(
             .await
             {
                 let message = format!("recovery-state: {error}");
-                let _ = ModuleOperationJournal::mark_failed(db, operation.id, &message).await;
-                return Err(ModuleOperationRecoveryError::Persistence(error.to_string()));
+                let journal_result =
+                    ModuleOperationJournal::mark_failed(db, operation.id, &message).await;
+                let persistence = match journal_result {
+                    Ok(()) => error.to_string(),
+                    Err(journal_error) => format!(
+                        "{error} (additionally, marking the operation failed did not \
+                         persist: {journal_error})"
+                    ),
+                };
+                return Err(ModuleOperationRecoveryError::Persistence(persistence));
             }
             operation
         }

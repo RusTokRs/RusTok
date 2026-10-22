@@ -357,7 +357,7 @@ where
         )).await;
         if let Err(error) = inserted {
             let _ = transaction.rollback().await;
-            let _ = self.storage.objects.delete(&Path::from(stored_path)).await;
+            delete_uploaded_object_best_effort(&self.storage, &Path::from(stored_path)).await;
             return Err(storage_error(error));
         }
         transaction.commit().await.map_err(storage_error)?;

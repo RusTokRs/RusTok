@@ -196,31 +196,31 @@ where
             .map_err(storage_error)?;
         let uploaded_path = generated_key;
         if upload.data.len() as u64 != requested.size_bytes {
-            let _ = self
-                .storage
-                .objects
-                .delete(&Path::from(uploaded_path.as_str()))
-                .await;
+            delete_uploaded_object_best_effort(
+                &self.storage,
+                &Path::from(uploaded_path.as_str()),
+            )
+            .await;
             return Err(ArtifactDataError::ObjectIntegrity);
         }
 
         let transaction = match self.db.begin().await.map_err(storage_error) {
             Ok(transaction) => transaction,
             Err(error) => {
-                let _ = self
-                    .storage
-                    .objects
-                    .delete(&Path::from(uploaded_path.as_str()))
-                    .await;
+                delete_uploaded_object_best_effort(
+                    &self.storage,
+                    &Path::from(uploaded_path.as_str()),
+                )
+                .await;
                 return Err(error);
             }
         };
         if let Err(error) = configure_tenant_scope(&transaction, scope.tenant_id).await {
-            let _ = self
-                .storage
-                .objects
-                .delete(&Path::from(uploaded_path.as_str()))
-                .await;
+            delete_uploaded_object_best_effort(
+                &self.storage,
+                &Path::from(uploaded_path.as_str()),
+            )
+            .await;
             return Err(error);
         }
         let stored = match persist_artifact_data_object(
@@ -236,21 +236,17 @@ where
         {
             Ok(stored) => stored,
             Err(error) => {
-                let _ = self
-                    .storage
-                    .objects
-                    .delete(&Path::from(uploaded_path.as_str()))
-                    .await;
+                delete_uploaded_object_best_effort(
+                    &self.storage,
+                    &Path::from(uploaded_path.as_str()),
+                )
+                .await;
                 return Err(error);
             }
         };
         transaction.commit().await.map_err(storage_error)?;
         if stored.storage_key != uploaded_path {
-            let _ = self
-                .storage
-                .objects
-                .delete(&Path::from(uploaded_path))
-                .await;
+            delete_uploaded_object_best_effort(&self.storage, &Path::from(uploaded_path)).await;
         }
         Ok(stored.object)
     }

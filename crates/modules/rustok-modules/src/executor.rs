@@ -515,10 +515,16 @@ async fn record_override_state_or_fail(
     .await
     {
         let message = format!("recovery-state: {error}");
-        let _ = ModuleOperationJournal::mark_failed(db, operation_id, &message).await;
-        return Err(ModuleLifecycleExecutionError::Persistence(
-            error.to_string(),
-        ));
+        let journal_result =
+            ModuleOperationJournal::mark_failed(db, operation_id, &message).await;
+        let persistence = match journal_result {
+            Ok(()) => error.to_string(),
+            Err(journal_error) => format!(
+                "{error} (additionally, marking the operation failed did not persist: \
+                 {journal_error})"
+            ),
+        };
+        return Err(ModuleLifecycleExecutionError::Persistence(persistence));
     }
     Ok(())
 }
