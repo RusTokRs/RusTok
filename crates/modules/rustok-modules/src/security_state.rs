@@ -19,8 +19,7 @@ use rustok_events::DomainEvent;
 use crate::backend::SupportedBackend;
 use crate::{
     ArtifactReleaseRef, ControlPlaneInfrastructure, ModuleCommandContext, SeaOrmSecurityEpochStore,
-    installation::valid_digest,
-    promotion::digest_json,
+    installation::valid_digest, promotion::digest_json,
 };
 
 const MAX_POLICY_REVISION_BYTES: usize = 128;

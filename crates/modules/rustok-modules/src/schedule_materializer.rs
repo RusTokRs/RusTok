@@ -10,9 +10,7 @@ use std::{collections::BTreeMap, str::FromStr};
 use chrono::{DateTime, Duration, Timelike, Utc};
 use chrono_tz::Tz;
 use cron::Schedule;
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, QueryResult, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, QueryResult, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;

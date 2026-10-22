@@ -8,9 +8,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, QueryResult, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, QueryResult, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
