@@ -577,16 +577,10 @@ impl StaticTenantLifecycleStore {
             .enumerate()
             .map(|(index, module_slug)| {
                 values.push(module_slug.clone().into());
-                match backend {
-                    SupportedBackend::Postgres => format!("${}", index + 2),
-                    SupportedBackend::Sqlite => format!("?{}", index + 2),
-                }
+                backend.placeholder(index + 2)
             })
             .collect::<Vec<_>>();
-        let tenant_placeholder = match backend {
-            SupportedBackend::Postgres => "$1",
-            SupportedBackend::Sqlite => "?1",
-        };
+        let tenant_placeholder = backend.placeholder(1);
         let rows = db
             .query_all_raw(Statement::from_sql_and_values(
                 backend.db_backend(),

@@ -144,18 +144,8 @@ impl SeaOrmModuleGovernanceService {
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
             let tx_backend =
                 SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
-            let tx_mark = |n| {
-                if tx_backend == SupportedBackend::Postgres {
-                    format!("${n}")
-                } else {
-                    format!("?{n}")
-                }
-            };
-            let tx_now = if tx_backend == SupportedBackend::Postgres {
-                "NOW()"
-            } else {
-                "datetime('now')"
-            };
+            let tx_mark = |n| tx_backend.placeholder(n);
+            let tx_now = tx_backend.now_sql();
             let Some(stage) = tx
                 .query_one_raw(Statement::from_sql_and_values(
                     tx_backend.db_backend(),

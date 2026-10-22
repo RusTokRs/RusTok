@@ -181,16 +181,10 @@ impl ReleaseAdmissionIntentJournal {
         }
 
         // 2. Insert new reservation
-        let insert_placeholders = match backend {
-            SupportedBackend::Postgres => (1..=8)
-                .map(|i| format!("${i}"))
-                .collect::<Vec<_>>()
-                .join(", "),
-            SupportedBackend::Sqlite => (1..=8)
-                .map(|i| format!("?{i}"))
-                .collect::<Vec<_>>()
-                .join(", "),
-        };
+        let insert_placeholders = (1..=8)
+            .map(|i| backend.placeholder(i))
+            .collect::<Vec<_>>()
+            .join(", ");
         let inserted = db
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
