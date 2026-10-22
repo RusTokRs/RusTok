@@ -220,8 +220,12 @@ async fn execute_statement(
 ) -> Result<(), DbErr> {
     let backend = SupportedBackend::new(db.get_database_backend())?;
     let sql = placeholder_sql(backend, template, values.len());
-    db.execute_raw(Statement::from_sql_and_values(backend.db_backend(), sql, values))
-        .await?;
+    db.execute_raw(Statement::from_sql_and_values(
+        backend.db_backend(),
+        sql,
+        values,
+    ))
+    .await?;
     Ok(())
 }
 

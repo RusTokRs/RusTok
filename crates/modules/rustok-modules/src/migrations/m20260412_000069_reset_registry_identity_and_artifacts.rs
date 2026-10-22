@@ -667,8 +667,12 @@ async fn execute_update(
 ) -> Result<(), DbErr> {
     let backend = SupportedBackend::new(db.get_database_backend())?;
     let sql = placeholder_sql(backend, template);
-    db.execute_raw(Statement::from_sql_and_values(backend.db_backend(), sql, values))
-        .await?;
+    db.execute_raw(Statement::from_sql_and_values(
+        backend.db_backend(),
+        sql,
+        values,
+    ))
+    .await?;
     Ok(())
 }
 

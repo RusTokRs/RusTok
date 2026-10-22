@@ -1,7 +1,5 @@
 use sea_orm_migration::prelude::*;
 
-use super::m20250101_000001_create_tenants::Tenants;
-
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
