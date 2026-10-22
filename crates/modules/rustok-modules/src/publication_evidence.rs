@@ -10,8 +10,7 @@ use crate::{
     ModuleArtifactPackage, ModuleBuildServiceAttestationCommand, ModuleGovernanceError,
     ModulePlatformAdmissionCommand, ModulePlatformPublicationSource,
     ModulePublicationEvidenceResult, OciArtifactReference, SeaOrmModuleGovernanceService,
-    TrustVerificationError, TrustVerificationRequest, TrustVerifier,
-    normalize_module_registry_id,
+    TrustVerificationError, TrustVerificationRequest, TrustVerifier, normalize_module_registry_id,
 };
 
 /// Deployment policy selected for one platform-built publication verification.
@@ -62,7 +61,7 @@ pub enum ModulePlatformPublicationEvidenceError {
     #[error("published OCI artifact does not match the owner-selected build")]
     ArtifactIdentityMismatch,
     #[error("isolated platform publication verification failed: {0}")]
-    Verification(TrustVerificationError),
+    Verification(#[source] TrustVerificationError),
     #[error("isolated platform publication verification did not admit the selected artifact")]
     VerificationRejected,
     #[error("platform publication evidence could not be recorded: {0}")]
@@ -211,7 +210,7 @@ pub trait ModulePublicationArtifactRegistryProvider: Send + Sync {
 enum PublishedArtifactVerificationError {
     Registry(String),
     IdentityMismatch,
-    Verification(String),
+    Verification(TrustVerificationError),
     Rejected,
 }
 
