@@ -714,10 +714,7 @@ where
         configure_tenant_scope(&transaction, request.tenant_id)
             .await
             .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
-        if let Some(existing) =
-            find_recovery_operation_in(&transaction, &request)
-                .await?
-        {
+        if let Some(existing) = find_recovery_operation_in(&transaction, &request).await? {
             transaction.commit().await.map_err(storage_error)?;
             return Ok(existing);
         }
@@ -1934,9 +1931,7 @@ where
         configure_tenant_scope(&transaction, request.tenant_id)
             .await
             .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
-        let result =
-            find_recovery_operation_in(&transaction, request)
-                .await?;
+        let result = find_recovery_operation_in(&transaction, request).await?;
         transaction.commit().await.map_err(storage_error)?;
         Ok(result)
     }
@@ -1949,9 +1944,7 @@ where
         configure_tenant_scope(&transaction, request.tenant_id)
             .await
             .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
-        let result =
-            find_purge_operation_in(&transaction, request)
-                .await?;
+        let result = find_purge_operation_in(&transaction, request).await?;
         transaction.commit().await.map_err(storage_error)?;
         Ok(result)
     }
@@ -1964,9 +1957,7 @@ where
         configure_tenant_scope(&transaction, request.tenant_id)
             .await
             .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
-        let result =
-            find_restore_operation_in(&transaction, request)
-                .await?;
+        let result = find_restore_operation_in(&transaction, request).await?;
         transaction.commit().await.map_err(storage_error)?;
         Ok(result)
     }
@@ -1979,9 +1970,7 @@ where
         configure_tenant_scope(&transaction, request.tenant_id)
             .await
             .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
-        let result =
-            find_rewrap_operation_in(&transaction, request)
-                .await?;
+        let result = find_rewrap_operation_in(&transaction, request).await?;
         transaction.commit().await.map_err(storage_error)?;
         Ok(result)
     }
@@ -1994,9 +1983,7 @@ where
         configure_tenant_scope(&transaction, request.tenant_id)
             .await
             .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
-        let result =
-            find_bind_operation_in(&transaction, request)
-                .await?;
+        let result = find_bind_operation_in(&transaction, request).await?;
         transaction.commit().await.map_err(storage_error)?;
         Ok(result)
     }

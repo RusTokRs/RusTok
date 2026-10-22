@@ -237,10 +237,14 @@ impl ModuleOperationJournal {
                 vec![tenant_id.into()],
             ),
         };
-        db.query_all_raw(Statement::from_sql_and_values(backend.db_backend(), sql, values))
-            .await
-            .map_err(database_error)?
-            .into_iter()
+        db.query_all_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            sql,
+            values,
+        )))
+        .await
+        .map_err(database_error)?
+        .into_iter()
             .map(operation_snapshot)
             .collect()
     }
@@ -530,7 +534,8 @@ impl StaticTenantLifecycleStore {
         tenant_id: Uuid,
         module_slug: &str,
     ) -> Result<Option<StaticTenantLifecycleSnapshot>, StaticTenantLifecycleStoreError> {
-        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(static_lifecycle_database_error)?;
         let sql = match backend {
             SupportedBackend::Postgres => {
                 "SELECT revision, active_idempotency_key FROM module_static_tenant_lifecycle \
@@ -544,7 +549,7 @@ impl StaticTenantLifecycleStore {
         db.query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             sql,
-            vec![uuid_query_value(backend, tenant_id), module_slug.into()],
+            vec![backend.uuid_value(tenant_id), module_slug.into()],
         ))
         .await
         .map_err(static_lifecycle_database_error)?
@@ -565,8 +570,9 @@ impl StaticTenantLifecycleStore {
         if module_slugs.is_empty() {
             return Ok(BTreeMap::new());
         }
-        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
-        let mut values = vec![uuid_query_value(backend, tenant_id)];
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(static_lifecycle_database_error)?;
+        let mut values = vec![backend.uuid_value(tenant_id)];
         let placeholders = module_slugs
             .iter()
             .enumerate()
@@ -679,7 +685,8 @@ impl StaticTenantLifecycleStore {
             });
         }
 
-        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(static_lifecycle_database_error)?;
         if persisted.is_none() {
             let insert = db
                 .execute_raw(Statement::from_sql_and_values(
@@ -697,7 +704,7 @@ impl StaticTenantLifecycleStore {
                         }
                     },
                     vec![
-                        uuid_query_value(backend, tenant_id),
+                        backend.uuid_value(tenant_id),
                         module_slug.into(),
                         i64::try_from(expected_revision)
                             .map_err(|_| {
@@ -706,7 +713,7 @@ impl StaticTenantLifecycleStore {
                                 )
                             })?
                             .into(),
-                        uuid_query_value(backend, idempotency_key),
+                        backend.uuid_value(idempotency_key),
                     ],
                 ))
                 .await;
@@ -759,8 +766,8 @@ impl StaticTenantLifecycleStore {
                     backend,
                 ),
                 vec![
-                    uuid_query_value(backend, idempotency_key),
-                    uuid_query_value(backend, tenant_id),
+                    backend.uuid_value(idempotency_key),
+                    backend.uuid_value(tenant_id),
                     module_slug.into(),
                     i64::try_from(expected_revision)
                         .map_err(|_| {
@@ -812,7 +819,8 @@ impl StaticTenantLifecycleStore {
         expired_idempotency_key: Uuid,
         idempotency_key: Uuid,
     ) -> Result<bool, StaticTenantLifecycleStoreError> {
-        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(static_lifecycle_database_error)?;
         let claim_expired = match backend {
             SupportedBackend::Postgres => format!(
                 "(active_claimed_at IS NULL OR active_claimed_at <= CURRENT_TIMESTAMP - INTERVAL '{STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS} seconds')"
@@ -836,8 +844,8 @@ impl StaticTenantLifecycleStore {
                     backend,
                 ),
                 vec![
-                    uuid_query_value(backend, idempotency_key),
-                    uuid_query_value(backend, tenant_id),
+                    backend.uuid_value(idempotency_key),
+                    backend.uuid_value(tenant_id),
                     module_slug.into(),
                     i64::try_from(expected_revision)
                         .map_err(|_| {
@@ -846,7 +854,7 @@ impl StaticTenantLifecycleStore {
                             )
                         })?
                         .into(),
-                    uuid_query_value(backend, expired_idempotency_key),
+                    backend.uuid_value(expired_idempotency_key),
                 ],
             ))
             .await
@@ -867,7 +875,8 @@ impl StaticTenantLifecycleStore {
         let next_revision = expected_revision.checked_add(1).ok_or_else(|| {
             StaticTenantLifecycleStoreError::RevisionOverflow(module_slug.to_string())
         })?;
-        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(static_lifecycle_database_error)?;
         let result = db
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -886,7 +895,7 @@ impl StaticTenantLifecycleStore {
                             )
                         })?
                         .into(),
-                    uuid_query_value(backend, tenant_id),
+                    backend.uuid_value(tenant_id),
                     module_slug.into(),
                     i64::try_from(expected_revision)
                         .map_err(|_| {
@@ -895,7 +904,7 @@ impl StaticTenantLifecycleStore {
                             )
                         })?
                         .into(),
-                    uuid_query_value(backend, idempotency_key),
+                    backend.uuid_value(idempotency_key),
                 ],
             ))
             .await
@@ -916,7 +925,8 @@ impl StaticTenantLifecycleStore {
         module_slug: &str,
         idempotency_key: Uuid,
     ) -> Result<(), StaticTenantLifecycleStoreError> {
-        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(static_lifecycle_database_error)?;
         let result = db
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -929,9 +939,9 @@ impl StaticTenantLifecycleStore {
                     backend,
                 ),
                 vec![
-                    uuid_query_value(backend, tenant_id),
+                    backend.uuid_value(tenant_id),
                     module_slug.into(),
-                    uuid_query_value(backend, idempotency_key),
+                    backend.uuid_value(idempotency_key),
                 ],
             ))
             .await
@@ -1061,7 +1071,7 @@ impl TenantModuleStateStore {
         db.query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             sql,
-            vec![uuid_query_value(backend, tenant_id), module_slug.into()],
+            vec![backend.uuid_value(tenant_id), module_slug.into()],
         ))
         .await
         .map_err(database_error)?
@@ -1095,7 +1105,7 @@ impl TenantModuleStateStore {
                 backend.db_backend(),
                 select,
                 vec![
-                    uuid_query_value(backend, request.tenant_id),
+                    backend.uuid_value(request.tenant_id),
                     request.module_slug.clone().into(),
                 ],
             ))
@@ -1130,7 +1140,7 @@ impl TenantModuleStateStore {
             "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings) VALUES ({1}, {2}, {3}, {4}, '{}')",
             vec![
                 id.into(),
-                uuid_query_value(backend, request.tenant_id),
+                backend.uuid_value(request.tenant_id),
                 request.module_slug.into(),
                 request.enabled.into(),
             ],
@@ -1176,7 +1186,7 @@ impl TenantModuleStateStore {
                 backend.db_backend(),
                 select,
                 vec![
-                    uuid_query_value(backend, request.tenant_id),
+                    backend.uuid_value(request.tenant_id),
                     request.module_slug.clone().into(),
                 ],
             ))
@@ -1214,7 +1224,7 @@ impl TenantModuleStateStore {
             "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings) VALUES ({1}, {2}, {3}, {4}, {5})",
             vec![
                 id.into(),
-                uuid_query_value(backend, request.tenant_id),
+                backend.uuid_value(request.tenant_id),
                 request.module_slug.into(),
                 enabled.into(),
                 json_value(request.settings),
@@ -1232,14 +1242,6 @@ impl TenantModuleStateStore {
 
 fn json_value(value: serde_json::Value) -> sea_orm::Value {
     sea_orm::Value::Json(Some(Box::new(value)))
-}
-
-pub(crate) fn uuid_query_value(backend: SupportedBackend, value: Uuid) -> sea_orm::Value {
-    if backend == SupportedBackend::Sqlite {
-        value.to_string().into()
-    } else {
-        value.into()
-    }
 }
 
 async fn execute<C: ConnectionTrait>(
