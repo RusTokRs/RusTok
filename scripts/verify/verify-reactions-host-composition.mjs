@@ -66,11 +66,8 @@ const defaultEnabled = modules.match(/default_enabled\s*=\s*\[[\s\S]*?\]/mu)?.[0
 if (/"reactions"/u.test(defaultEnabled)) {
   fail("modules.toml default_enabled must not include reactions");
 }
-if (!forumCargo.includes('rustok-reactions-api = { path = "../rustok-reactions-api" }')) {
-  fail("Forum must resolve the neutral Reactions API through an explicit path dependency");
-}
-if (/^rustok-reactions\s*=/mu.test(forumCargo)) {
-  fail("Forum must not depend on the Reactions owner crate");
+if (!forumCargo.includes('rustok-reactions = { workspace = true, default-features = false }')) {
+  fail("Forum must resolve Reactions API through rustok-reactions with default-features = false");
 }
 
 if (featureLine(distributionCargo, "mod-reactions") !== 'mod-reactions = ["dep:rustok-reactions"]') {

@@ -10,7 +10,7 @@ async-trait.workspace = true
 chrono.workspace = true
 rustok-core.workspace = true
 rustok-api.workspace = true
-rustok-profiles.workspace = true
+rustok-profiles = { workspace = true, features = ["server"] }
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true

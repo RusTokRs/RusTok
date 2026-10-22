@@ -53,11 +53,8 @@ for (const fragment of contract.forbidden_source_fragments) {
   if (provider.includes(fragment)) fail(`provider contains forbidden fragment ${fragment}`);
 }
 
-if (!blogCargo.includes('rustok-reactions-api = { path = "../rustok-reactions-api" }')) {
-  fail("Blog must depend on the neutral rustok-reactions-api crate");
-}
-if (/^rustok-reactions\s*=/mu.test(blogCargo)) {
-  fail("Blog must not depend on the Reactions owner crate");
+if (!blogCargo.includes('rustok-reactions = { workspace = true, default-features = false }')) {
+  fail("Blog must depend on rustok-reactions with default-features = false");
 }
 
 if (!integrationModule.includes("pub mod reaction_subject;")) {

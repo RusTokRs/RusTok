@@ -14008,7 +14008,7 @@ dependencies = [
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
- "rustok-profiles-api",
+ "rustok-profiles",
  "rustok-reactions",
  "rustok-runtime",
  "rustok-seo-targets",
@@ -14987,7 +14987,7 @@ dependencies = [
  "rustok-notifications-api",
  "rustok-outbox",
  "rustok-profiles",
- "rustok-reactions-api",
+ "rustok-reactions",
  "rustok-seo-targets",
  "rustok-storage",
  "rustok-taxonomy",
@@ -16920,7 +16920,6 @@ dependencies = [
  "rustok-events",
  "rustok-media",
  "rustok-outbox",
- "rustok-profiles-api",
  "rustok-social-graph",
  "rustok-storage",
  "rustok-taxonomy",
@@ -17061,19 +17060,6 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tracing",
- "uuid",
-]
-
-[[package]]
-name = "rustok-reactions-api"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "rustok-api",
- "rustok-core",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
  "uuid",
 ]
 
@@ -17539,7 +17525,6 @@ dependencies = [
  "rustok-product-relations",
  "rustok-product-transport",
  "rustok-profiles",
- "rustok-profiles-api",
  "rustok-rbac",
  "rustok-reactions",
  "rustok-region",

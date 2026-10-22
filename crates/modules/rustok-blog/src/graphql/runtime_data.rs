@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use rustok_api::{SharedStaticModuleSettingsReader, graphql::GraphqlRuntimeInputs};
 use rustok_comments::CommentsThreadPort;
-use rustok_profiles_api::ProfileSummaryReader;
+use rustok_profiles::ProfileSummaryReader;
 use sea_orm::DatabaseConnection;
 
 use rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort;

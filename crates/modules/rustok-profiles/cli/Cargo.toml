@@ -14,7 +14,7 @@ rustok-cli-core.workspace = true
 rustok-core.workspace = true
 rustok-customer.workspace = true
 rustok-outbox.workspace = true
-rustok-profiles.workspace = true
+rustok-profiles = { workspace = true, features = ["server"] }
 rustok-runtime.workspace = true
 rustok-tenant.workspace = true
 serde_json.workspace = true

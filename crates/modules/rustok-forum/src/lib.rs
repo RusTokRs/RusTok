@@ -4,7 +4,7 @@ use rustok_core::search_projection::register_search_projection_source;
 use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
 use rustok_moderation_api::register_moderation_subject_adapter_factory;
 use rustok_notifications_api::register_notification_source_provider_factory;
-use rustok_reactions_api::register_reaction_subject_provider_factory;
+use rustok_reactions::register_reaction_subject_provider_factory;
 use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
 

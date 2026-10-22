@@ -1,9 +1,9 @@
-use async_trait::async_trait;
-use rustok_core::{
-    MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry, ModuleKind,
-    RusToKModule, module::HealthStatus,
-};
-use sea_orm_migration::MigrationTrait;
+//! # RusToK Search Module
+//!
+//! Postgres-first search capability with settings-driven engine selection and connector registry.
+//!
+//! Provides projection ingestion, faceted search, analytics, dictionary/synonym management,
+//! search presets, suggestions, and transport-neutral search query ports.
 
 pub mod analytics;
 pub mod audience_security;
@@ -25,6 +25,7 @@ pub mod graphql;
 pub mod ingestion;
 pub mod migrations;
 pub mod models;
+pub mod module;
 pub(crate) mod docs_projector;
 pub(crate) mod pages_projector;
 pub mod pg_engine;
@@ -41,6 +42,12 @@ pub mod storefront_channel_authority;
 mod storefront_product_channel_visibility;
 pub mod storefront_result_eligibility;
 pub mod suggestions;
+
+#[cfg(test)]
+mod contract_tests;
+
+pub use module::SearchModule;
+
 
 pub use analytics::{
     SLOW_QUERY_THRESHOLD_MS, SearchAnalyticsInsightRow, SearchAnalyticsQueryRow,
@@ -93,7 +100,7 @@ pub use forum_storefront_execution::{
 pub use ingestion::SearchIngestionHandler;
 pub use models::SearchSettingsRecord;
 pub use pg_engine::PgSearchEngine;
-pub use ports::*;
+pub use ports::{SearchQueryPort, SearchSuggestionPort};
 pub use presets::{ResolvedSearchFilterPreset, SearchFilterPreset, SearchFilterPresetService};
 pub use product_channel_reconciliation::{
     DEFAULT_PRODUCT_CHANNEL_REPAIR_TENANT_LIMIT, ProductChannelProjectionReconciler,
@@ -126,86 +133,3 @@ pub use storefront_result_eligibility::{
 pub use suggestions::{
     SearchSuggestion, SearchSuggestionKind, SearchSuggestionQuery, SearchSuggestionService,
 };
-
-/// Core search module that owns engine selection and connector-facing contracts.
-pub struct SearchModule;
-
-impl SearchModule {
-    pub fn available_engines(&self) -> Vec<SearchConnectorDescriptor> {
-        vec![SearchConnectorDescriptor::postgres_default()]
-    }
-}
-
-impl MigrationSource for SearchModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-}
-
-#[async_trait]
-impl RusToKModule for SearchModule {
-    fn slug(&self) -> &'static str {
-        "search"
-    }
-
-    fn name(&self) -> &'static str {
-        "Search"
-    }
-
-    fn description(&self) -> &'static str {
-        "Postgres-first search capability with settings-driven engine selection."
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn kind(&self) -> ModuleKind {
-        ModuleKind::Core
-    }
-
-    fn register_event_listeners(
-        &self,
-        registry: &mut ModuleEventListenerRegistry,
-        ctx: &ModuleEventListenerContext<'_>,
-    ) {
-        let sources = search_projection_source_registry_from_extensions(ctx.extensions);
-        let forum_source = sources
-            .as_ref()
-            .and_then(|s| s.build_with_extensions("forum", ctx.db.clone(), ctx.extensions));
-        let blog_source = sources
-            .as_ref()
-            .and_then(|s| s.build_with_extensions("blog", ctx.db.clone(), ctx.extensions));
-        let pages_source = sources
-            .as_ref()
-            .and_then(|s| s.build_with_extensions("pages", ctx.db.clone(), ctx.extensions));
-        let docs_source = sources
-            .as_ref()
-            .and_then(|s| s.build_with_extensions("docs", ctx.db.clone(), ctx.extensions));
-        registry.register(SearchIngestionHandler::with_all_projection_sources(
-            ctx.db.clone(),
-            blog_source,
-            forum_source,
-            pages_source,
-            docs_source,
-        ));
-    }
-
-    async fn health(&self) -> HealthStatus {
-        // Module-level health has no host AppContext, so it cannot validate
-        // search_documents, indexing lag, query plans or connector reachability.
-        // The server readiness layer owns the concrete search backend/lag checks.
-        HealthStatus::Degraded
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::SearchModule;
-    use rustok_core::module::{HealthStatus, RusToKModule};
-
-    #[tokio::test]
-    async fn search_module_health_defers_to_host_readiness() {
-        assert_eq!(SearchModule.health().await, HealthStatus::Degraded);
-    }
-}

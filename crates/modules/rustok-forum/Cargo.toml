@@ -32,8 +32,8 @@ rustok-events.workspace = true
 rustok-moderation-api = { path = "../rustok-moderation-api" }
 rustok-notifications-api.workspace = true
 rustok-outbox.workspace = true
-rustok-profiles.workspace = true
-rustok-reactions-api = { path = "../rustok-reactions-api" }
+rustok-profiles = { workspace = true, features = ["server"] }
+rustok-reactions = { workspace = true, default-features = false }
 rustok-seo-targets.workspace = true
 rustok-translation-targets.workspace = true
 rustok-media.workspace = true

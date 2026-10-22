@@ -6,7 +6,7 @@ use rustok_api::{
 use rustok_channel::ChannelService;
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
-use rustok_profiles_api::{GqlProfileSummary, ProfileSummaryAudience};
+use rustok_profiles::{GqlProfileSummary, ProfileSummaryAudience};
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
 use std::collections::{HashMap, HashSet};

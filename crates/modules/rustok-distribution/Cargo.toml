@@ -81,7 +81,7 @@ rustok-product = { workspace = true, optional = true }
 rustok-product-relations = { workspace = true, optional = true }
 rustok-brand = { workspace = true, optional = true }
 rustok-product-bundles = { workspace = true, optional = true }
-rustok-profiles = { workspace = true, optional = true }
+rustok-profiles = { workspace = true, optional = true, features = ["server"] }
 rustok-social-graph = { path = "../rustok-social-graph" }
 rustok-groups = { path = "../rustok-groups", optional = true }
 rustok-region = { workspace = true, optional = true }

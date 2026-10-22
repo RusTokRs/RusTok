@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Cache module for RusTok — Redis connection lifecycle, backend factory, health checks"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [features]
 default = ["redis-cache"]
 redis-cache = ["rustok-core/redis-cache", "dep:redis", "dep:futures-util"]
