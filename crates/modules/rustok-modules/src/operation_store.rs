@@ -241,7 +241,7 @@ impl ModuleOperationJournal {
             backend.db_backend(),
             sql,
             values,
-        )))
+        ))
         .await
         .map_err(database_error)?
         .into_iter()
