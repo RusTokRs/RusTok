@@ -41,6 +41,32 @@ Primary entry points:
 - `BlogQuery` / `BlogMutation`
 - `controllers::axum_router`
 
+## Platform Capability Bindings
+
+- **Core Module Registration**: Exposes `BlogModule` implementing `RusToKModule` (slug `"blog"`, dependencies `["content", "taxonomy", "outbox", "channel"]`) and `MigrationSource`.
+- **Domain Services**:
+  - `PostService`: Post lifecycle, draft preview tokens, scheduled publishing, search projection, and bulk post operations.
+  - `CategoryService`: Blog-owned Category membership, extension settings, and taxonomy-synchronized localized hierarchy.
+  - `TagService`: Blog-owned tag attachment and usage projections over taxonomy terms.
+  - `CommentService`: Neutral thread integration via `CommentsThreadPort` with optimistic validation and compensating deletion.
+- **Runtime Extensions & Capabilities**:
+  - Registers `BlogSeoTargetProvider` via `rustok-seo-targets`.
+  - Registers `BlogReactionSubjectProviderFactory` via `rustok-reactions`.
+  - Registers `BlogTaxonomyTranslationOwner` via `rustok-taxonomy`.
+  - Registers `BlogSearchProjectionSourceFactory` via `rustok-core`.
+  - Registers event listeners for comment projection and target deletion route retirement.
+  - Registers scheduled publish, preview token cleanup, and route reconciliation work handlers.
+
+## Domain Collaborations
+
+- **`rustok-content`**: Canonical URL registry and routing (`CanonicalUrlWriter`) for blog post slug mappings.
+- **`rustok-taxonomy`**: Shared taxonomy terms and category localization projection for blog category and tag relations.
+- **`rustok-comments`**: Consumed through `CommentsThreadPort` facade; provides thread moderation, comment counts, and public comment snapshots.
+- **`rustok-reactions`**: Provides reaction subject metadata and reaction availability checks.
+- **`rustok-seo-targets`**: Resolves post and category SEO targets and metadata.
+- **`rustok-channel`**: Channel module binding and public post visibility allowlists.
+- **`rustok-outbox`**: Transactional outbox event publishing for post lifecycle changes.
+
 ## Category owner contract
 
 Blog Category localized names are bounded by the canonical Taxonomy Category owner contract: a name is at most 120 characters. The Blog DTO/OpenAPI schema and service validation use the same bound, so invalid names fail as Blog input validation before any Taxonomy mutation is attempted.

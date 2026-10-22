@@ -1,6 +1,6 @@
 use rustok_api::{Action, PortContext, Resource};
 use rustok_core::SecurityContext;
-use rustok_moderation_api::{
+use rustok_moderation::{
     ModerationReasonCode, ModerationScopeRef, ModerationSubjectKind, ModerationSubjectRef,
 };
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait};

@@ -2,7 +2,7 @@ use async_graphql::{Context, FieldError, Object, Result, dataloader::DataLoader}
 use rustok_api::Permission;
 use rustok_api::graphql::{GraphQLError, require_module_enabled};
 use rustok_api::{AuthContext, RequestContext, TenantContext};
-use rustok_moderation_api::ModerationReasonCode;
+use rustok_moderation::ModerationReasonCode;
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::{
     ProfileService, ProfileSummaryLoader, ProfileSummaryLoaderKey, ProfilesReader,

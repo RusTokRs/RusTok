@@ -99,7 +99,7 @@ impl EmailService {
 
     /// Add a template provider to this email service instance in place.
     pub fn add_provider(&mut self, provider: std::sync::Arc<dyn EmailTemplateProvider>) {
-        if let Self::Smtp(ref mut sender) = self {
+        if let Self::Smtp(sender) = self {
             sender.providers.push(provider);
         }
     }

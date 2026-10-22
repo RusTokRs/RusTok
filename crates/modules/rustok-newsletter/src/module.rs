@@ -43,3 +43,20 @@ impl RusToKModule for NewsletterModule {
         HealthStatus::Healthy
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::NewsletterModule;
+    use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
+
+    #[tokio::test]
+    async fn newsletter_module_metadata_and_health() {
+        let module = NewsletterModule;
+        assert_eq!(module.slug(), "newsletter");
+        assert_eq!(module.name(), "Newsletter");
+        assert_eq!(module.kind(), ModuleKind::Optional);
+        assert_eq!(module.dependencies(), &["email", "outbox"]);
+        assert_eq!(module.health().await, HealthStatus::Healthy);
+        assert!(!module.migrations().is_empty());
+    }
+}

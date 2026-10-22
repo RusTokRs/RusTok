@@ -1,3 +1,5 @@
+//! # RusToK Blog
+//!
 //! Blog domain module for the RusToK platform.
 //!
 //! The crate owns Blog posts, Blog-specific Category membership/settings and tag
@@ -7,7 +9,7 @@
 
 pub(crate) mod domain;
 mod integrations;
-mod module;
+pub mod module;
 
 pub mod controllers;
 pub mod dto;
@@ -55,5 +57,7 @@ pub use services::{
 };
 pub use state_machine::{BlogPostStatus, CommentStatus};
 
+#[cfg(test)]
+mod contract_tests;
 #[cfg(test)]
 mod tests;

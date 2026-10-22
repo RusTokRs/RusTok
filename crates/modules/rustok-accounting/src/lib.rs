@@ -20,6 +20,9 @@ pub mod events;
 pub mod module;
 pub mod ports;
 
+#[cfg(test)]
+mod contract_tests;
+
 pub use domain::{
     AccountDefinition, AccountType, PostingDirection, PostingRule, standard_accounts,
     validate_transaction_balance,

@@ -13,7 +13,7 @@ use rustok_forum::{
     ForumModerationReportPort, ForumModerationReportService, ForumModule, ReplyService,
     SharedForumModerationReportPort, TopicService,
 };
-use rustok_moderation_api::{ModerationReasonCode, ModerationScopeRef, ModerationSubjectKind};
+use rustok_moderation::{ModerationReasonCode, ModerationScopeRef, ModerationSubjectKind};
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};

@@ -1,12 +1,9 @@
-use async_trait::async_trait;
-use rustok_api::Permission;
-use rustok_core::search_projection::register_search_projection_source;
-use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
-use rustok_moderation_api::register_moderation_subject_adapter_factory;
-use rustok_notifications_api::register_notification_source_provider_factory;
-use rustok_reactions::register_reaction_subject_provider_factory;
-use rustok_seo_targets::register_seo_target_provider;
-use sea_orm_migration::MigrationTrait;
+//! # RusToK Forum
+//!
+//! Forum domain module for the RusToK platform.
+//!
+//! Provides categories, topics, replies, moderation workflows, user trust tiers,
+//! audience policies, and rich-text discussion state.
 
 pub mod attachment_relation;
 pub mod audience;
@@ -32,6 +29,7 @@ pub mod migrations;
 pub mod moderation_report;
 mod moderation_subject;
 mod moderation_transport;
+pub mod module;
 pub mod notification_recipient;
 mod notification_source;
 pub mod openapi;
@@ -50,7 +48,14 @@ pub mod topic_create_transport;
 pub mod topic_read_transport;
 pub mod visibility;
 
-pub use attachment_relation::*;
+pub use attachment_relation::{
+    ForumAttachmentRelationAdmissionError, ForumAttachmentRelationAdmissionRequest,
+    ForumAttachmentRelationInput, ForumAttachmentRelationPreparer, ForumAttachmentRelationRecord,
+    ForumAttachmentRelationRevision, ForumAttachmentRelationRevisionError,
+    ForumAttachmentRelationSet, ForumAttachmentRelationWriteKind, ForumAttachmentSourceRevision,
+    ForumAttachmentUsage, ForumPreparedAttachmentRelation, ForumPreparedAttachmentRelationBatch,
+    MAX_FORUM_ATTACHMENTS_PER_SET, MAX_FORUM_ATTACHMENT_CAPTION_BYTES,
+};
 pub use audience::{
     FORUM_AUDIENCE_FACTS_CAPABILITY, FORUM_AUDIENCE_FACTS_CAPABILITY_UNAVAILABLE,
     ForumAudienceConstraints, ForumAudienceDecision, ForumAudienceDecisionReason,
@@ -60,26 +65,115 @@ pub use audience::{
     SharedForumAudienceFactsPort,
 };
 pub use category_read_transport::{
-    ForumCategoryReadOperation, ForumCategoryReadTransport, category_read_audience_port_context,
+    category_read_audience_port_context, ForumCategoryReadOperation, ForumCategoryReadTransport,
 };
-pub use constants::*;
-pub use dto::*;
-pub use entities::*;
+pub use constants::{reply_status, topic_status, KIND_CATEGORY, KIND_REPLY, KIND_TOPIC};
+pub use dto::{
+    bounded_forum_read_limit, deserialize_forum_read_limit, CategoryBreadcrumb, CategoryCursorPage,
+    CategoryCursorQuery, CategoryListItem, CategoryPlacementResponse, CategoryReadModel,
+    CategoryResponse, CategorySubtreeLifecycleResponse, CategoryTopicPolicyResponse,
+    CategoryTreeNode, CategoryTreeQuery, CategoryTreeResponse, CreateCategoryInput,
+    CreateReplyCommandInput, CreateReplyInput, CreateTopicCommandInput, CreateTopicInput,
+    DEFAULT_FORUM_READ_LIMIT, ForumDomainEventQuery, ForumDomainEventResponse, ForumModuleSettings,
+    ForumProjectionOwnerRevisionImpact, ForumProjectionOwnerRevisionResponse,
+    ForumProjectionOwnerTenantHeadResponse, ForumQuoteReferenceInput, ForumQuoteTargetKindInput,
+    ForumRelationQuoteResponse, ForumRelationSnapshotQuery, ForumRelationSnapshotResponse,
+    ForumReplyStreamWidgetPreview, ForumSubscriptionPolicyResponse, ForumSubscriptionResponse,
+    ForumSubscriptionTargetType, ForumTopicDetailWidgetPreview, ForumTopicListOrder,
+    ForumTopicListWidgetPreview, ForumUserStatsResponse, ForumWidgetCapabilityRequirements,
+    ForumWidgetCatalogItem, ForumWidgetCatalogResponse, ForumWidgetCompatibilityEntry,
+    ForumWidgetErrorMapping, ForumWidgetPreviewPayload, ForumWidgetPreviewResponse,
+    ForumWidgetPropsValidationResponse, ForumWidgetValidationIssue, ListRepliesFilter,
+    ListTopicsFilter, MoveCategoryInput, MoveCategoryResponse, PreviewForumWidgetInput,
+    ReorderCategorySiblingsInput, ReorderCategorySiblingsResponse, ReplyCursor, ReplyCursorPage,
+    ReplyCursorQuery, ReplyListItem, ReplyListItemPage, ReplyPage, ReplyReadModel, ReplyResponse,
+    ReplyRevisionResponse, SetForumQuotesInput, TopicCursorPage, TopicCursorQuery, TopicListCursor,
+    TopicListItem, TopicListItemPage, TopicPage, TopicReadModel, TopicResponse,
+    TopicRevisionResponse, TopicUnreadCursorPage, TopicUnreadCursorQuery, TopicUnreadReadModel,
+    TopicUnreadSummaryReadModel, UpdateCategoryInput, UpdateCategoryTopicPolicyInput,
+    UpdateForumSubscriptionInput, UpdateForumSubscriptionPolicyInput, UpdateReplyCommandInput,
+    UpdateReplyInput, UpdateTopicCommandInput, UpdateTopicInput, ValidateForumWidgetPropsInput,
+    MAX_FORUM_CATEGORY_TREE_DEPTH, MAX_FORUM_CATEGORY_TREE_NODES, MAX_FORUM_READ_LIMIT,
+};
+pub use entities::{
+    ForumAttachmentRelation, ForumAttachmentRelationHead, ForumCategory,
+    ForumCategoryAudiencePolicyEntity, ForumCategoryLifecycle,
+    ForumCategoryModerationAudiencePolicyEntity, ForumCategoryPolicy,
+    ForumCategoryReplyCreateAudiencePolicyEntity, ForumCategoryTopicCreateAudiencePolicyEntity,
+    ForumDomainEvent, ForumRelationRevision, ForumReply, ForumReplyRevision, ForumTopic,
+    ForumTopicAudiencePolicyEntity, ForumTopicMergeAudienceOutcome,
+    ForumTopicMergeAudienceReconciliationEntity, ForumTopicMergeOperationEntity,
+    ForumTopicMergeReadStateReconciliationEntity, ForumTopicMergeSolutionResolutionEntity,
+    ForumTopicMergeSubscriptionReconciliationEntity, ForumTopicMergeTagReconciliationEntity,
+    ForumTopicMergeVoteReconciliationEntity, ForumTopicMoveOperationEntity,
+    ForumTopicReadStateEntity, ForumTopicReplyCreateAudiencePolicyEntity, ForumTopicRevision,
+    ForumUserTrustChangeKind, ForumUserTrustRevisionEntity, ForumUserTrustStateEntity,
+};
 pub use error::{ForumError, ForumResult};
-pub use export_mapping::*;
+pub use export_mapping::{
+    ForumExportCategoryRecord, ForumExportFragment, ForumExportMappingError,
+    ForumExportOwnerViewBatch, ForumExportReplyRecord, ForumExportTopicRecord, ForumExportUserRef,
+    ForumOwnerExportMapper, FORUM_EXPORT_SCHEMA_V1, MAX_FORUM_EXPORT_OWNER_VIEWS_PER_FRAGMENT,
+};
 pub use graphql::{ForumMutation, ForumQuery};
-pub use import_inspection::*;
-pub use import_mapping::*;
-pub use import_relation_preparation::*;
-pub use import_resolution::*;
-pub use import_tombstone_preparation::*;
-pub use import_write_preparation::*;
-pub use mentions::*;
+pub use import_inspection::{
+    ForumImportDependencyDisposition, ForumImportDependencyIssue, ForumImportDependencyRelation,
+    NodebbForumImportInspection, NodebbForumImportInspector,
+    MAX_FORUM_IMPORT_DEPENDENCY_ISSUES_PER_BATCH,
+};
+pub use import_mapping::{
+    ForumImportCandidateBatch, ForumImportCategoryCandidate, ForumImportEntityKind,
+    ForumImportExternalRef, ForumImportMappingError, ForumImportPostCandidate,
+    ForumImportPostRole, ForumImportTopicCandidate, NodebbCategoryRecord, NodebbExportBatch,
+    NodebbForumImportMapper, NodebbPostRecord, NodebbTopicRecord, FORUM_IMPORT_SOURCE_NODEBB,
+    MAX_FORUM_IMPORT_SOURCE_RECORDS_PER_BATCH,
+};
+pub use import_relation_preparation::{
+    ForumImportContentRelationDecision, ForumImportMentionBinding,
+    ForumImportRelationEventMode, ForumImportRelationMode,
+    ForumImportRelationPreparationError, ForumImportRelationPreparationRequest,
+    ForumImportRelationPreparer, ForumPreparedImportContentRelations,
+    ForumPreparedImportMention, ForumPreparedImportRelationBatch,
+    MAX_FORUM_IMPORT_RELATION_TARGETS_PER_BATCH,
+};
+pub use import_resolution::{
+    ForumImportApplicationResolutionRequest, ForumImportApplicationResolver,
+    ForumImportIdentityBinding, ForumImportResolutionError,
+    ForumImportTargetIdentityKind, ForumResolvedImportApplicationBatch,
+    ForumResolvedImportAuthor, ForumResolvedImportCategory,
+    ForumResolvedImportReply, ForumResolvedImportTopic,
+    MAX_FORUM_IMPORT_RESOLUTION_BINDINGS_PER_BATCH,
+};
+pub use import_tombstone_preparation::{
+    ForumImportReplyTombstoneFact, ForumImportTombstonePreparationError,
+    ForumImportTombstonePreparationRequest, ForumImportTombstonePreparer,
+    NodebbForumReplyTombstoneMapper, NodebbReplyTombstoneRecord,
+    ForumPreparedDeletedReplyTombstone, ForumPreparedImportTombstoneBatch,
+    MAX_FORUM_IMPORT_REPLY_TOMBSTONES_PER_BATCH,
+};
+pub use import_write_preparation::{
+    ForumImportCategoryWriteDecision, ForumImportReplyWriteDecision,
+    ForumImportTopicWriteDecision, ForumImportWriteEventMode,
+    ForumImportWritePreparationError, ForumImportWritePreparationRequest,
+    ForumImportWritePreparer, ForumPreparedImportCategory,
+    ForumPreparedImportReply, ForumPreparedImportTopic,
+    ForumPreparedImportWriteBatch, MAX_FORUM_IMPORT_WRITE_RECORDS_PER_BATCH,
+};
+pub use mentions::{
+    diff_forum_mentions, extract_forum_mention_candidates, resolve_forum_mentions,
+    validate_forum_quote_references, ForumContentTarget, ForumContentTargetKind,
+    ForumMentionAudience, ForumMentionCandidates, ForumMentionDiff,
+    ForumMentionEventCandidate, ForumMentionEventTarget, ForumMentionPolicy,
+    ForumMentionRevisionProjection, ForumQuoteReference, ForumRevisionIdentity,
+    ForumResolvedMentions, ResolvedForumMention, FORUM_MAX_MENTION_TARGETS_PER_REVISION,
+    FORUM_MAX_QUOTE_REFERENCES_PER_REVISION, FORUM_MENTION_PROFILES_CAPABILITY,
+};
 pub use moderation_report::{
     FORUM_MODERATION_REPORT_CAPABILITY, ForumModerationReportCommand, ForumModerationReportPort,
     SharedForumModerationReportPort,
 };
 pub use moderation_subject::{FORUM_MODERATION_MODULE, ForumModerationSubjectAdapterFactory};
+pub use module::ForumModule;
 pub use notification_recipient::{
     FORUM_NOTIFICATION_RECIPIENT_CONTEXT_CAPABILITY,
     FORUM_NOTIFICATION_RECIPIENT_CONTEXT_CAPABILITY_UNAVAILABLE, ForumNotificationRecipientContext,
@@ -90,9 +184,9 @@ pub use reaction_subject::{
     FORUM_REACTION_SOURCE, FORUM_REACTION_V1_KEY, FORUM_REPLY_REACTION_KIND,
     FORUM_TOPIC_REACTION_KIND, ForumReactionSubjectProviderFactory,
 };
-pub use reply_create_transport::{ForumReplyCreateTransport, reply_create_audience_port_context};
+pub use reply_create_transport::{reply_create_audience_port_context, ForumReplyCreateTransport};
 pub use reply_read_transport::{
-    ForumReplyReadOperation, ForumReplyReadTransport, reply_read_audience_port_context,
+    reply_read_audience_port_context, ForumReplyReadOperation, ForumReplyReadTransport,
 };
 pub use search_projection::ForumSearchProjectionSourceFactory;
 pub use services::moderation_report::ForumModerationReportService;
@@ -191,139 +285,11 @@ pub use services::{
 };
 pub use state_machine::{ReplyStatus, TopicStatus};
 pub use subscription::{ForumDigestMode, ForumSubscriptionLevel, ForumSubscriptionPreferences};
-pub use topic_create_transport::{ForumTopicCreateTransport, topic_create_audience_port_context};
+pub use topic_create_transport::{topic_create_audience_port_context, ForumTopicCreateTransport};
 pub use topic_read_transport::{
-    ForumTopicReadOperation, ForumTopicReadTransport, topic_read_audience_port_context,
+    topic_read_audience_port_context, ForumTopicReadOperation, ForumTopicReadTransport,
 };
 pub use visibility::ForumCategoryVisibility;
-
-pub struct ForumModule;
-
-#[async_trait]
-impl RusToKModule for ForumModule {
-    fn slug(&self) -> &'static str {
-        "forum"
-    }
-
-    fn name(&self) -> &'static str {
-        "Forum"
-    }
-
-    fn description(&self) -> &'static str {
-        "Forum categories, topics, replies, and moderation workflows"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn dependencies(&self) -> &[&'static str] {
-        &["content", "media", "taxonomy"]
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::FORUM_CATEGORIES_CREATE,
-            Permission::FORUM_CATEGORIES_READ,
-            Permission::FORUM_CATEGORIES_UPDATE,
-            Permission::FORUM_CATEGORIES_DELETE,
-            Permission::FORUM_CATEGORIES_LIST,
-            Permission::FORUM_CATEGORIES_MANAGE,
-            Permission::FORUM_TOPICS_CREATE,
-            Permission::FORUM_TOPICS_READ,
-            Permission::FORUM_TOPICS_UPDATE,
-            Permission::FORUM_TOPICS_DELETE,
-            Permission::FORUM_TOPICS_LIST,
-            Permission::FORUM_TOPICS_MODERATE,
-            Permission::FORUM_TOPICS_MANAGE,
-            Permission::FORUM_REPLIES_CREATE,
-            Permission::FORUM_REPLIES_READ,
-            Permission::FORUM_REPLIES_UPDATE,
-            Permission::FORUM_REPLIES_DELETE,
-            Permission::FORUM_REPLIES_LIST,
-            Permission::FORUM_REPLIES_MODERATE,
-            Permission::FORUM_REPLIES_MANAGE,
-        ]
-    }
-
-    fn register_runtime_extensions(
-        &self,
-        extensions: &mut ModuleRuntimeExtensions,
-    ) -> rustok_core::Result<()> {
-        register_search_projection_source(extensions, ForumSearchProjectionSourceFactory).map_err(
-            |error| {
-                rustok_core::Error::Validation(format!(
-                    "forum Search projection source registration failed: {error}"
-                ))
-            },
-        )?;
-        register_seo_target_provider(
-            extensions,
-            seo_audience_targets::ForumCategorySeoTargetProvider,
-        )
-        .map_err(|error| {
-            rustok_core::Error::Validation(format!(
-                "forum category SEO target registration failed: {error}"
-            ))
-        })?;
-        register_seo_target_provider(
-            extensions,
-            seo_audience_targets::ForumTopicSeoTargetProvider,
-        )
-        .map_err(|error| {
-            rustok_core::Error::Validation(format!(
-                "forum topic SEO target registration failed: {error}"
-            ))
-        })?;
-        register_reaction_subject_provider_factory(
-            extensions,
-            reaction_subject::ForumReactionSubjectProviderFactory,
-        )
-        .map_err(|error| {
-            rustok_core::Error::Validation(format!(
-                "forum reaction subject factory registration failed: {error}"
-            ))
-        })?;
-        register_moderation_subject_adapter_factory(
-            extensions,
-            moderation_subject::ForumModerationSubjectAdapterFactory::topic(),
-        )
-        .map_err(|error| {
-            rustok_core::Error::Validation(format!(
-                "forum moderation topic adapter factory registration failed: {error}"
-            ))
-        })?;
-        register_moderation_subject_adapter_factory(
-            extensions,
-            moderation_subject::ForumModerationSubjectAdapterFactory::reply(),
-        )
-        .map_err(|error| {
-            rustok_core::Error::Validation(format!(
-                "forum moderation reply adapter factory registration failed: {error}"
-            ))
-        })?;
-        register_notification_source_provider_factory(
-            extensions,
-            notification_source::ForumNotificationSourceProviderFactory,
-        )
-        .map_err(|error| {
-            rustok_core::Error::Validation(format!(
-                "forum notification source factory registration failed: {error}"
-            ))
-        })?;
-        Ok(())
-    }
-}
-
-impl MigrationSource for ForumModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-
-    fn migration_dependencies(&self) -> Vec<rustok_core::MigrationDependencyDescriptor> {
-        migrations::migration_dependencies()
-    }
-}
 
 #[cfg(test)]
 mod contract_tests;

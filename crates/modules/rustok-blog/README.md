@@ -358,6 +358,7 @@ The following are not implemented. Each is tracked with its audit identifier in
 
 ## Docs
 
+- [CRATE_API](./CRATE_API.md)
 - [Module docs](./docs/README.md)
 - [Current implementation cursor](./docs/implementation-plan-current.md)
 - [Platform docs index](../../../docs/index.md)

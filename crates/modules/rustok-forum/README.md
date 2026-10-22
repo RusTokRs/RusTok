@@ -552,6 +552,7 @@ into README files, issues, or additional planning documents.
 
 ## Docs
 
+- [CRATE_API](./CRATE_API.md)
 - [Module docs](./docs/README.md)
 - [Canonical implementation plan](./docs/implementation-plan.md)
 - [Accepted Forum slug/locale decision](../../../DECISIONS/2026-03-29-forum-slug-locale-contract.md)

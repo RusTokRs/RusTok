@@ -4,11 +4,11 @@ use std::{sync::Arc, time::Duration};
 
 use rustok_api::{HostRuntimeContext, PortActor, PortContext, PortError, PortErrorKind};
 use rustok_forum::ForumModerationSubjectAdapterFactory;
-use rustok_moderation_api::{
-    ApplyModerationDecisionCommand, ModerationDecisionEffect, ModerationDecisionEffectAction,
-    ModerationDecisionKind, ModerationReasonCode, ModerationSubjectAdapterFactory,
-    ModerationSubjectCommandPort, ModerationSubjectKind, ModerationSubjectRef,
-    ModerationVisibilityState,
+use rustok_moderation::{
+    ApplyModerationDecisionCommand, ModerationDecisionApplication, ModerationDecisionEffect,
+    ModerationDecisionEffectAction, ModerationDecisionKind, ModerationReasonCode,
+    ModerationSubjectAdapterFactory, ModerationSubjectCommandPort, ModerationSubjectKind,
+    ModerationSubjectRef, ModerationVisibilityState,
 };
 use sea_orm::{
     ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction, Statement,
@@ -150,7 +150,7 @@ fn spawn_application(
     adapter: Arc<dyn ModerationSubjectCommandPort>,
     tenant_id: Uuid,
     command: ApplyModerationDecisionCommand,
-) -> tokio::task::JoinHandle<Result<rustok_moderation_api::ModerationDecisionApplication, PortError>>
+) -> tokio::task::JoinHandle<Result<rustok_moderation::ModerationDecisionApplication, PortError>>
 {
     tokio::spawn(async move {
         adapter
@@ -197,7 +197,7 @@ async fn wait_for_processing_receipt(
 
 async fn assert_application_waits_while_edit_owns_revision(
     application: &mut tokio::task::JoinHandle<
-        Result<rustok_moderation_api::ModerationDecisionApplication, PortError>,
+        Result<rustok_moderation::ModerationDecisionApplication, PortError>,
     >,
 ) -> TestResult<()> {
     if let Ok(result) = timeout(Duration::from_millis(50), application).await {

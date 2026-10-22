@@ -4,7 +4,7 @@ use std::{sync::Arc, time::Duration};
 
 use rustok_api::{HostRuntimeContext, PortActor, PortContext, PortErrorKind};
 use rustok_forum::ForumModerationSubjectAdapterFactory;
-use rustok_moderation_api::{
+use rustok_moderation::{
     ApplyModerationDecisionCommand, ModerationDecisionEffect, ModerationDecisionEffectAction,
     ModerationDecisionKind, ModerationReasonCode, ModerationSubjectAdapterFactory,
     ModerationSubjectCommandPort, ModerationSubjectKind, ModerationSubjectRef,

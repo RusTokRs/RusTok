@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_api::{PortContext, PortError};
-use rustok_moderation_api::{ModerationReasonCode, ModerationScopeRef, ModerationSubjectRef};
+use rustok_moderation::{ModerationReasonCode, ModerationScopeRef, ModerationSubjectRef};
 use uuid::Uuid;
 
 /// Capability name used in forum error payloads for report intake failures.
