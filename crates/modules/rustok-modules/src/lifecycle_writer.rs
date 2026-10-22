@@ -68,7 +68,9 @@ pub struct ModuleLifecycleDbWriter<'a> {
 #[derive(Clone, Debug, PartialEq)]
 pub struct TenantModuleOverrideSnapshot {
     pub module_slug: String,
-    pub enabled: bool,
+    /// Recorded tenant enablement intent, or `None` when the row carries
+    /// settings without intent (the platform default applies).
+    pub enabled: Option<bool>,
     pub settings: serde_json::Value,
 }
 
@@ -717,17 +719,18 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             }
         };
         let result = async {
+            // Effective enablement for the result projection: recorded
+            // intent wins; without intent the platform default applies
+            // (Core and default-enabled modules). A settings save itself
+            // records no intent (see `persist_settings`).
+            let platform_default_enabled = definition.kind == ModuleDefinitionKind::Core
+                || self.default_enabled_modules.contains(&definition.slug);
             let state = TenantModuleStateStore::persist_settings(
                 &transaction,
                 TenantModuleSettingsRequest {
                     tenant_id: command.tenant_id,
                     module_slug: definition.slug.clone(),
                     settings: command.settings.clone(),
-                    // A first settings row records the platform default,
-                    // never the module's current derived availability; an
-                    // existing row keeps its recorded intent untouched.
-                    default_enabled: definition.kind == ModuleDefinitionKind::Core
-                        || self.default_enabled_modules.contains(&definition.slug),
                 },
             )
             .await
@@ -751,7 +754,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             .map_err(map_static_lifecycle_settings_error)?;
             let result = ModuleLifecycleSettingsResult {
                 module_slug: state.module_slug,
-                enabled: state.enabled,
+                enabled: state.enabled.unwrap_or(platform_default_enabled),
                 settings: state.settings,
                 revision,
             };
@@ -1002,7 +1005,16 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 overrides.iter().map(|module| module.module_slug.clone()),
             )
             .await?;
-        project_static_tenant_module_views(overrides, &lifecycle_revisions)
+        let catalog = self.definition_catalog()?;
+        project_static_tenant_module_views(overrides, &lifecycle_revisions, &|module_slug| {
+            catalog.get(module_slug).map(|definition| {
+                definition.kind == ModuleDefinitionKind::Core
+                    || self
+                        .default_enabled_modules
+                        .iter()
+                        .any(|slug| slug == module_slug)
+            })
+        })
     }
 
     /// Resolves the explainable, revisioned availability policy from the exact
@@ -1345,10 +1357,12 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
         let sql = match backend {
             SupportedBackend::Postgres => {
-                "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = $1 LIMIT 1001"
+                "SELECT module_slug, enabled FROM tenant_modules \
+                 WHERE tenant_id = $1 AND enabled IS NOT NULL LIMIT 1001"
             }
             SupportedBackend::Sqlite => {
-                "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = ?1 LIMIT 1001"
+                "SELECT module_slug, enabled FROM tenant_modules \
+                 WHERE tenant_id = ?1 AND enabled IS NOT NULL LIMIT 1001"
             }
         };
         let overrides = self
@@ -1415,6 +1429,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
 fn project_static_tenant_module_views(
     overrides: Vec<TenantModuleOverrideSnapshot>,
     lifecycle_revisions: &BTreeMap<String, StaticTenantLifecycleSnapshot>,
+    platform_default_enabled: &dyn Fn(&str) -> Option<bool>,
 ) -> Result<Vec<StaticTenantModuleView>, ModuleLifecycleDbWriterError> {
     overrides
         .into_iter()
@@ -1428,9 +1443,22 @@ fn project_static_tenant_module_views(
                     ))
                 })?
                 .revision;
+            // The browser projection presents effective enablement:
+            // recorded intent wins; without intent the platform default
+            // applies. An unknown slug has no resolvable default and must
+            // fail loudly instead of presenting fabricated state.
+            let enabled = match module.enabled {
+                Some(enabled) => enabled,
+                None => platform_default_enabled(&module.module_slug).ok_or_else(|| {
+                    ModuleLifecycleDbWriterError::Configuration(format!(
+                        "cannot resolve the platform default for unknown module `{}`",
+                        module.module_slug
+                    ))
+                })?,
+            };
             Ok(StaticTenantModuleView {
                 module_slug: module.module_slug,
-                enabled: module.enabled,
+                enabled,
                 settings: module.settings.to_string(),
                 revision: i64::try_from(revision).map_err(|_| {
                     ModuleLifecycleDbWriterError::Configuration(
@@ -1681,10 +1709,12 @@ mod tests {
         let views = project_static_tenant_module_views(
             vec![TenantModuleOverrideSnapshot {
                 module_slug: "forum".to_string(),
-                enabled: true,
+                enabled: Some(true),
                 settings: serde_json::json!({ "visibility": "public" }),
             }],
             &revisions,
+            // Explicit intent never consults the platform default.
+            &|_| None,
         )
         .expect("owner projection");
 
@@ -1700,10 +1730,11 @@ mod tests {
         let error = project_static_tenant_module_views(
             vec![TenantModuleOverrideSnapshot {
                 module_slug: "forum".to_string(),
-                enabled: true,
+                enabled: Some(true),
                 settings: serde_json::json!({}),
             }],
             &BTreeMap::new(),
+            &|_| None,
         )
         .expect_err("missing aggregate revision must not become a synthetic response");
 

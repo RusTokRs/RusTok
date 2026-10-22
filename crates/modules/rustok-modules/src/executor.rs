@@ -738,7 +738,7 @@ mod tests {
                     id TEXT PRIMARY KEY NOT NULL, \
                     tenant_id TEXT NOT NULL, \
                     module_slug TEXT NOT NULL, \
-                    enabled BOOLEAN NOT NULL, \
+                    enabled BOOLEAN NULL, \
                     settings TEXT NOT NULL DEFAULT '{}', \
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \

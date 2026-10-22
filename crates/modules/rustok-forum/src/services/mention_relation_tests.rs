@@ -606,7 +606,7 @@ impl rustok_api::StaticModuleSettingsReader for QuoteEditSettings {
             ));
         }
         Ok(Some(rustok_api::StaticModuleSettingsSnapshot {
-            enabled: true,
+            enabled: Some(true),
             settings: serde_json::json!({ "max_edit_window_minutes": self.minutes }),
         }))
     }

@@ -208,9 +208,14 @@ impl ModuleLifecycleService {
                 "explicit module toggle did not persist a tenant override row".to_string(),
             )
         })?;
+        let enabled = state.enabled.ok_or_else(|| {
+            ToggleModuleError::Policy(
+                "explicit module toggle did not record tenant enablement intent".to_string(),
+            )
+        })?;
         Ok(ModuleLifecycleStateSnapshot {
             module_slug: module_slug.to_string(),
-            enabled: state.enabled,
+            enabled,
             settings: result.settings,
             operation_id: result.operation_id,
             revision: result.revision.ok_or_else(|| {
@@ -317,7 +322,14 @@ impl ModuleLifecycleService {
             .await
             .map_err(map_lifecycle_writer_recovery_error)?;
         let (enabled, settings) = match result.state {
-            Some(state) => (state.enabled, result.settings),
+            // A restored "no recorded intent" state falls back to the
+            // effective policy, exactly like a missing row.
+            Some(state) => (
+                state
+                    .enabled
+                    .unwrap_or_else(|| policy.contains(&module_slug)),
+                result.settings,
+            ),
             None => (policy.contains(&module_slug), serde_json::json!({})),
         };
         Ok(ModuleLifecycleStateSnapshot {
@@ -1151,7 +1163,10 @@ mod tests {
             .expect("load stored core settings")
             .expect("tenant_modules row");
         assert_eq!(stored.settings["workspaceName"], serde_json::json!("Acme"));
-        assert!(stored.enabled);
+        // A settings save records no enablement intent (tri-state): the
+        // Core module stays available through the platform default, not
+        // through a frozen flag.
+        assert_eq!(stored.enabled, None);
     }
 
     #[tokio::test]

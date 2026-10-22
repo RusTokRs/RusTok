@@ -91,11 +91,15 @@ pub struct TenantModuleStateRequest {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TenantModuleStateRecord {
     pub id: Uuid,
-    /// Explicit enablement persisted by this operation.
-    pub enabled: bool,
-    /// Enablement recorded before this operation, or `None` when no
-    /// `tenant_modules` row existed. (Previously the insert path fabricated
-    /// `!enabled` here, inventing a predecessor state that never existed.)
+    /// Tenant enablement intent recorded after this operation, or `None`
+    /// when the tenant has recorded no intent and the module inherits the
+    /// platform default.
+    pub enabled: Option<bool>,
+    /// Tenant enablement intent recorded before this operation, or `None`
+    /// when none was recorded (no `tenant_modules` row existed, or the row
+    /// carried settings without intent). (Previously the insert path
+    /// fabricated `!enabled` here, inventing a predecessor state that never
+    /// existed.)
     pub previous_enabled: Option<bool>,
     pub changed: bool,
 }
@@ -105,20 +109,15 @@ pub struct TenantModuleSettingsRequest {
     pub tenant_id: Uuid,
     pub module_slug: String,
     pub settings: serde_json::Value,
-    /// Enablement recorded only when this save creates the tenant's first
-    /// row for the module. Callers pass the platform default (`true` for Core
-    /// and default-enabled modules, `false` otherwise). Settings persistence
-    /// never changes recorded enablement intent for an existing row and never
-    /// freezes derived effective availability into intent;
-    /// see [`TenantModuleStateStore::persist_settings`].
-    pub default_enabled: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TenantModuleSettingsRecord {
     pub id: Uuid,
     pub module_slug: String,
-    pub enabled: bool,
+    /// Recorded tenant enablement intent after the save, or `None` when the
+    /// row carries settings without intent (platform default applies).
+    pub enabled: Option<bool>,
     pub settings: serde_json::Value,
 }
 
@@ -1076,11 +1075,11 @@ impl TenantModuleStateStore {
         .await
         .map_err(database_error)?
         .map(|row| {
-            let enabled: bool = row.try_get("", "enabled").map_err(database_error)?;
+            let enabled: Option<bool> = row.try_get("", "enabled").map_err(database_error)?;
             Ok(TenantModuleStateRecord {
                 id: row.try_get("", "id").map_err(database_error)?,
                 enabled,
-                previous_enabled: Some(enabled),
+                previous_enabled: enabled,
                 changed: false,
             })
         })
@@ -1115,10 +1114,10 @@ impl TenantModuleStateStore {
             let id: Uuid = row
                 .try_get("", "id")
                 .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?;
-            let previous_enabled = row
+            let previous_enabled: Option<bool> = row
                 .try_get("", "enabled")
                 .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?;
-            if previous_enabled != request.enabled {
+            if previous_enabled != Some(request.enabled) {
                 execute(
                     db,
                     "UPDATE tenant_modules SET enabled = {1}, updated_at = CURRENT_TIMESTAMP WHERE id = {2}",
@@ -1128,9 +1127,9 @@ impl TenantModuleStateStore {
             }
             return Ok(TenantModuleStateRecord {
                 id,
-                enabled: request.enabled,
-                previous_enabled: Some(previous_enabled),
-                changed: previous_enabled != request.enabled,
+                enabled: Some(request.enabled),
+                previous_enabled,
+                changed: previous_enabled != Some(request.enabled),
             });
         }
 
@@ -1148,24 +1147,23 @@ impl TenantModuleStateStore {
         .await?;
         Ok(TenantModuleStateRecord {
             id,
-            enabled: request.enabled,
+            enabled: Some(request.enabled),
             // The row was just created: there is no predecessor state.
             previous_enabled: None,
             changed: true,
         })
     }
 
-    /// Persists tenant module settings without changing enablement intent.
+    /// Persists tenant module settings without creating or changing
+    /// enablement intent.
     ///
-    /// An existing row keeps its recorded enablement. A newly created row
-    /// records `request.default_enabled` (the platform/Core default), never
-    /// the module's derived effective availability: freezing a transient
-    /// denial (unavailable dependency, security hold, ...) as explicit
-    /// tenant intent would outlive the condition that caused it. The boolean
-    /// `enabled` column cannot express "settings without intent", so
-    /// first-row creation necessarily records the default; splitting intent
-    /// from settings storage is tracked with module schema ownership
-    /// (audit M-12).
+    /// An existing row keeps its recorded intent untouched (the column is
+    /// not part of the UPDATE). A newly created row stores NULL intent —
+    /// "settings without intent" — so the platform default keeps applying
+    /// until the tenant explicitly toggles the module; freezing a default
+    /// (or, worse, derived effective availability such as a transient
+    /// denial) into the column would fabricate tenant intent that outlives
+    /// the condition that produced it (audit M-5).
     pub async fn persist_settings<C: ConnectionTrait>(
         db: &C,
         request: TenantModuleSettingsRequest,
@@ -1194,19 +1192,13 @@ impl TenantModuleStateStore {
             .map_err(database_error)?;
         if let Some(row) = existing {
             let id: Uuid = row.try_get("", "id").map_err(database_error)?;
-            let previous_enabled: bool = row.try_get("", "enabled").map_err(database_error)?;
-            // A settings save never changes recorded enablement intent.
-            // (Core modules stay available through the effective policy,
-            // not through this flag.)
-            let enabled = previous_enabled;
+            let enabled: Option<bool> = row.try_get("", "enabled").map_err(database_error)?;
+            // A settings save never changes recorded enablement intent:
+            // the column is not part of this UPDATE at all.
             execute(
                 db,
-                "UPDATE tenant_modules SET enabled = {1}, settings = {2}, updated_at = CURRENT_TIMESTAMP WHERE id = {3}",
-                vec![
-                    enabled.into(),
-                    json_value(request.settings),
-                    id.into(),
-                ],
+                "UPDATE tenant_modules SET settings = {1}, updated_at = CURRENT_TIMESTAMP WHERE id = {2}",
+                vec![json_value(request.settings), id.into()],
             )
             .await?;
             return Ok(TenantModuleSettingsRecord {
@@ -1218,7 +1210,9 @@ impl TenantModuleStateStore {
         }
 
         let id = rustok_core::generate_id();
-        let enabled = request.default_enabled;
+        // A first row created by a settings save records no enablement
+        // intent (NULL): the platform default keeps applying until the
+        // tenant explicitly toggles the module.
         execute(
             db,
             "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings) VALUES ({1}, {2}, {3}, {4}, {5})",
@@ -1226,7 +1220,7 @@ impl TenantModuleStateStore {
                 id.into(),
                 backend.uuid_value(request.tenant_id),
                 request.module_slug.into(),
-                enabled.into(),
+                Option::<bool>::None.into(),
                 json_value(request.settings),
             ],
         )
@@ -1234,7 +1228,7 @@ impl TenantModuleStateStore {
         Ok(TenantModuleSettingsRecord {
             id,
             module_slug,
-            enabled,
+            enabled: None,
             settings,
         })
     }
@@ -1286,7 +1280,7 @@ mod tests {
                     id TEXT PRIMARY KEY NOT NULL, \
                     tenant_id TEXT NOT NULL, \
                     module_slug TEXT NOT NULL, \
-                    enabled BOOLEAN NOT NULL, \
+                    enabled BOOLEAN NULL, \
                     settings JSON NOT NULL, \
                     updated_at TEXT\
                  )"
@@ -1298,71 +1292,71 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn settings_persistence_preserves_recorded_enablement_intent() {
+    async fn settings_persistence_creates_no_intent_and_preserves_recorded_intent() {
         let database = database().await;
         let tenant_id = Uuid::new_v4();
+        // A first settings save records no enablement intent: the row
+        // carries settings only and the platform default keeps applying.
         let dormant = TenantModuleStateStore::persist_settings(
             &database,
             TenantModuleSettingsRequest {
                 tenant_id,
                 module_slug: "optional_module".to_string(),
                 settings: json!({ "value": 1 }),
-                default_enabled: false,
             },
         )
         .await
-        .expect("dormant settings for disabled module");
+        .expect("settings without intent");
         assert_eq!(dormant.module_slug, "optional_module");
-        assert!(!dormant.enabled);
+        assert_eq!(dormant.enabled, None);
         assert_eq!(dormant.settings, json!({ "value": 1 }));
 
-        // A later settings save must not flip the recorded intent even when
-        // the caller now reports a different default.
+        // An explicit toggle records intent on the same row; the previous
+        // state reports "no recorded intent", not a fabricated boolean.
+        let toggled = TenantModuleStateStore::persist(
+            &database,
+            TenantModuleStateRequest {
+                tenant_id,
+                module_slug: "optional_module".to_string(),
+                enabled: false,
+            },
+        )
+        .await
+        .expect("explicit disable");
+        assert_eq!(toggled.id, dormant.id);
+        assert_eq!(toggled.enabled, Some(false));
+        assert_eq!(toggled.previous_enabled, None);
+        assert!(toggled.changed);
+
+        // A later settings save must not disturb the recorded intent.
         let refreshed = TenantModuleStateStore::persist_settings(
             &database,
             TenantModuleSettingsRequest {
                 tenant_id,
                 module_slug: "optional_module".to_string(),
                 settings: json!({ "value": 11 }),
-                default_enabled: true,
             },
         )
         .await
-        .expect("refreshed dormant settings");
+        .expect("refreshed settings");
         assert_eq!(refreshed.id, dormant.id);
-        assert!(!refreshed.enabled);
+        assert_eq!(refreshed.enabled, Some(false));
         assert_eq!(refreshed.settings, json!({ "value": 11 }));
 
-        let core = TenantModuleStateStore::persist_settings(
+        // Re-recording the same intent is not a change.
+        let repeated = TenantModuleStateStore::persist(
             &database,
-            TenantModuleSettingsRequest {
+            TenantModuleStateRequest {
                 tenant_id,
-                module_slug: "modules".to_string(),
-                settings: json!({ "value": 2 }),
-                default_enabled: true,
+                module_slug: "optional_module".to_string(),
+                enabled: false,
             },
         )
         .await
-        .expect("core settings");
-        assert_eq!(core.module_slug, "modules");
-        assert!(core.enabled);
-        assert_eq!(core.settings, json!({ "value": 2 }));
-
-        let updated = TenantModuleStateStore::persist_settings(
-            &database,
-            TenantModuleSettingsRequest {
-                tenant_id,
-                module_slug: "modules".to_string(),
-                settings: json!({ "value": 3 }),
-                default_enabled: true,
-            },
-        )
-        .await
-        .expect("updated core settings");
-        assert_eq!(updated.id, core.id);
-        assert_eq!(updated.module_slug, "modules");
-        assert!(updated.enabled);
-        assert_eq!(updated.settings, json!({ "value": 3 }));
+        .expect("repeated disable");
+        assert_eq!(repeated.enabled, Some(false));
+        assert_eq!(repeated.previous_enabled, Some(false));
+        assert!(!repeated.changed);
     }
 
     #[tokio::test]
@@ -1375,7 +1369,6 @@ mod tests {
                 tenant_id,
                 module_slug: "blog".to_string(),
                 settings: json!({ "use_reactions": true }),
-                default_enabled: true,
             },
         )
         .await
@@ -1398,7 +1391,7 @@ mod tests {
             .await
             .expect("disabled settings read")
             .expect("disabled settings row");
-        assert!(!disabled.enabled);
+        assert_eq!(disabled.enabled, Some(false));
         assert_eq!(disabled.settings, json!({ "use_reactions": true }));
 
         TenantModuleStateStore::persist(
@@ -1417,7 +1410,7 @@ mod tests {
             .await
             .expect("re-enabled settings read")
             .expect("re-enabled settings row");
-        assert!(reenabled.enabled);
+        assert_eq!(reenabled.enabled, Some(true));
         assert_eq!(reenabled.settings, json!({ "use_reactions": true }));
     }
 }

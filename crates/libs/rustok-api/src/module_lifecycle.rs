@@ -21,6 +21,9 @@ use crate::ports::PortError;
 pub struct StaticTenantModuleView {
     #[serde(rename = "moduleSlug")]
     pub module_slug: String,
+    /// Effective enablement: the recorded tenant intent, or the platform
+    /// default when no intent is recorded. Resolved by the control-plane
+    /// owner; transports must not re-derive it.
     pub enabled: bool,
     /// Canonical JSON encoding of the owner-normalized settings object.
     pub settings: String,
@@ -33,7 +36,10 @@ pub struct StaticTenantModuleView {
 /// truth and must not be inferred from the presence of settings.
 #[derive(Clone, Debug, PartialEq)]
 pub struct StaticModuleSettingsSnapshot {
-    pub enabled: bool,
+    /// Recorded tenant enablement intent, or `None` when the tenant has
+    /// recorded no intent and the module inherits the platform default
+    /// (tri-state `tenant_modules.enabled`).
+    pub enabled: Option<bool>,
     pub settings: Value,
 }
 

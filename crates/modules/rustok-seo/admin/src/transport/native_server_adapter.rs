@@ -747,7 +747,7 @@ mod tests {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
             module_slug: Set(MODULE_SLUG.to_string()),
-            enabled: Set(enabled),
+            enabled: Set(Some(enabled)),
             settings: Set(settings),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),

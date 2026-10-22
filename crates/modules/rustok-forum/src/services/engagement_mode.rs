@@ -110,7 +110,7 @@ fn settings_from_snapshot(
     snapshot: Option<StaticModuleSettingsSnapshot>,
 ) -> ForumResult<ForumSettings> {
     match snapshot {
-        Some(snapshot) if snapshot.enabled => {
+        Some(snapshot) if snapshot.enabled == Some(true) => {
             Ok(parse_forum_settings(&snapshot.settings)?.unwrap_or_default())
         }
         _ => Ok(ForumSettings::default()),
@@ -136,7 +136,7 @@ impl ForumEngagementMode {
 
         let forum_settings = if forum_snapshot
             .as_ref()
-            .is_some_and(|snapshot| snapshot.enabled)
+            .is_some_and(|snapshot| snapshot.enabled == Some(true))
         {
             forum_snapshot
                 .as_ref()
@@ -156,7 +156,7 @@ impl ForumEngagementMode {
             .settings(tenant_id, FORUM_REACTIONS_MODULE_SLUG)
             .await
             .map_err(map_port_error)?
-            .is_some_and(|snapshot| snapshot.enabled);
+            .is_some_and(|snapshot| snapshot.enabled == Some(true));
 
         Self::from_parts(true, reactions_enabled)
     }
@@ -179,7 +179,7 @@ impl ForumEngagementMode {
             .settings_in_tx(txn, tenant_id, FORUM_REACTIONS_MODULE_SLUG)
             .await
             .map_err(map_port_error)?
-            .is_some_and(|snapshot| snapshot.enabled);
+            .is_some_and(|snapshot| snapshot.enabled == Some(true));
 
         Self::from_parts(true, reactions_enabled)
     }
@@ -260,7 +260,7 @@ pub(crate) fn providers_without_posting_cooldown() -> ForumSettingsProviders {
 
     fn snapshot(module_slug: &str) -> Option<StaticModuleSettingsSnapshot> {
         Some(StaticModuleSettingsSnapshot {
-            enabled: module_slug == FORUM_MODULE_SLUG,
+            enabled: Some(module_slug == FORUM_MODULE_SLUG),
             settings: serde_json::json!({
                 "rate_limit_new_topic_seconds": 0,
                 "rate_limit_new_reply_seconds": 0,
@@ -368,7 +368,7 @@ mod tests {
         ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
             assert_eq!(module_slug, "forum");
             Ok(Some(StaticModuleSettingsSnapshot {
-                enabled: true,
+                enabled: Some(true),
                 settings: serde_json::json!({ "allow_anonymous_reading": tenant_id != self.closed_tenant }),
             }))
         }

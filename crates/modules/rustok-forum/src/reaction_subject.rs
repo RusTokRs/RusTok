@@ -115,7 +115,7 @@ impl ForumReactionSubjectProvider {
         else {
             return Ok(false);
         };
-        if !snapshot.enabled {
+        if snapshot.enabled != Some(true) {
             return Ok(false);
         }
         let settings = serde_json::from_value::<ForumReactionSettings>(snapshot.settings)
@@ -475,7 +475,7 @@ mod tests {
         ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
             assert_eq!(module_slug, "forum");
             Ok(Some(StaticModuleSettingsSnapshot {
-                enabled: true,
+                enabled: Some(true),
                 settings: serde_json::json!({
                     "use_reactions": true,
                     "allow_anonymous_reading": false

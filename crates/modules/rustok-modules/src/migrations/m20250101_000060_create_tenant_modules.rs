@@ -23,12 +23,11 @@ impl MigrationTrait for Migration {
                             .string_len(64)
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(TenantModules::Enabled)
-                            .boolean()
-                            .not_null()
-                            .default(true),
-                    )
+                    // Tri-state enablement intent: NULL records "no tenant
+                    // intent" (the module inherits the platform default);
+                    // only an explicit toggle stores true/false. A settings
+                    // save must never freeze a default into intent.
+                    .col(ColumnDef::new(TenantModules::Enabled).boolean().null())
                     .col(
                         ColumnDef::new(TenantModules::Settings)
                             .json_binary()

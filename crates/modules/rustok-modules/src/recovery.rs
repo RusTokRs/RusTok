@@ -406,15 +406,21 @@ pub(crate) async fn read_tenant_override_enabled<C: ConnectionTrait>(
             "SELECT enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
         }
     };
-    db.query_one_raw(Statement::from_sql_and_values(
-        backend.db_backend(),
-        sql,
-        vec![backend.uuid_value(tenant_id), module_slug.into()],
-    ))
-    .await
-    .map_err(store_database_error)?
-    .map(|row| row.try_get("", "enabled").map_err(store_database_error))
-    .transpose()
+    let intent = db
+        .query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            sql,
+            vec![backend.uuid_value(tenant_id), module_slug.into()],
+        ))
+        .await
+        .map_err(store_database_error)?
+        .map(|row| {
+            row.try_get::<Option<bool>>("", "enabled")
+                .map_err(store_database_error)
+        })
+        .transpose()?;
+    // No row and a row without recorded intent both mean "no override".
+    Ok(intent.flatten())
 }
 
 pub(crate) async fn apply_tenant_override_enabled<C: ConnectionTrait>(
@@ -427,11 +433,15 @@ pub(crate) async fn apply_tenant_override_enabled<C: ConnectionTrait>(
         let backend =
             SupportedBackend::new(db.get_database_backend()).map_err(store_database_error)?;
         let sql = match backend {
+            // Clearing the override returns the tenant to the platform
+            // default; the row and its settings survive (tri-state intent).
             SupportedBackend::Postgres => {
-                "DELETE FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2"
+                "UPDATE tenant_modules SET enabled = NULL, updated_at = CURRENT_TIMESTAMP \
+                 WHERE tenant_id = $1 AND module_slug = $2"
             }
             SupportedBackend::Sqlite => {
-                "DELETE FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2"
+                "UPDATE tenant_modules SET enabled = NULL, updated_at = CURRENT_TIMESTAMP \
+                 WHERE tenant_id = ?1 AND module_slug = ?2"
             }
         };
         db.execute_raw(Statement::from_sql_and_values(

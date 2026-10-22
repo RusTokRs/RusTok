@@ -91,7 +91,10 @@ pub(crate) async fn persist(
     Ok(TenantModuleSettingsRecord {
         id: installation.settings_instance_id,
         module_slug: module_slug.to_string(),
-        enabled: true,
+        // Artifact enablement is owned by the artifact tenant lifecycle,
+        // not by `tenant_modules`; this path records no tenant_modules
+        // intent (previously this fabricated a constant `true`).
+        enabled: None,
         settings,
     })
 }

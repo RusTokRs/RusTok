@@ -68,7 +68,7 @@ impl StaticModuleSettingsReader for DatabaseStaticModuleSettingsReader {
             return Ok(None);
         };
 
-        let enabled: bool = row.try_get("", "enabled").map_err(|_| {
+        let enabled: Option<bool> = row.try_get("", "enabled").map_err(|_| {
             PortError::invariant_violation(
                 "modules.static_settings_corrupt",
                 "Static module lifecycle state is invalid",
@@ -140,7 +140,7 @@ impl StaticModuleSettingsTransactionReader for DatabaseStaticModuleSettingsReade
             return Ok(None);
         };
 
-        let enabled: bool = row.try_get("", "enabled").map_err(|_| {
+        let enabled: Option<bool> = row.try_get("", "enabled").map_err(|_| {
             PortError::invariant_violation(
                 "modules.static_settings_corrupt",
                 "Static module lifecycle state is invalid",
@@ -182,7 +182,7 @@ mod tests {
             "CREATE TABLE tenant_modules (
                 tenant_id TEXT NOT NULL,
                 module_slug TEXT NOT NULL,
-                enabled BOOLEAN NOT NULL,
+                enabled BOOLEAN NULL,
                 settings TEXT NOT NULL,
                 PRIMARY KEY (tenant_id, module_slug)
             )",
@@ -212,7 +212,7 @@ mod tests {
             .expect("settings read")
             .expect("exact row");
 
-        assert!(!snapshot.enabled);
+        assert_eq!(snapshot.enabled, Some(false));
         assert_eq!(snapshot.settings["sitemap_enabled"], false);
 
         let foreign = reader
@@ -220,7 +220,7 @@ mod tests {
             .await
             .expect("foreign settings read")
             .expect("foreign exact row");
-        assert!(foreign.enabled);
+        assert_eq!(foreign.enabled, Some(true));
         assert_eq!(foreign.settings["sitemap_enabled"], true);
     }
 
@@ -260,7 +260,7 @@ mod tests {
             .await
             .expect("transaction settings read")
             .expect("exact disabled row");
-        assert!(!snapshot.enabled);
+        assert_eq!(snapshot.enabled, Some(false));
         assert_eq!(snapshot.settings["use_reactions"], true);
 
         let foreign = reader
@@ -268,7 +268,7 @@ mod tests {
             .await
             .expect("foreign transaction settings read")
             .expect("foreign exact row");
-        assert!(foreign.enabled);
+        assert_eq!(foreign.enabled, Some(true));
         assert_eq!(foreign.settings["use_reactions"], false);
 
         txn.rollback().await.expect("rollback");

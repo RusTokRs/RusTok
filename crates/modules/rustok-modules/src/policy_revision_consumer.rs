@@ -258,10 +258,12 @@ async fn load_tenant_overrides<C: ConnectionTrait>(
         .map_err(|error| ModuleLifecycleDbWriterError::Database(error.to_string()))?;
     let sql = match backend {
         SupportedBackend::Postgres => {
-            "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = $1"
+            "SELECT module_slug, enabled FROM tenant_modules \
+             WHERE tenant_id = $1 AND enabled IS NOT NULL"
         }
         SupportedBackend::Sqlite => {
-            "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = ?1"
+            "SELECT module_slug, enabled FROM tenant_modules \
+             WHERE tenant_id = ?1 AND enabled IS NOT NULL"
         }
     };
     connection

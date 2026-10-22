@@ -43,7 +43,7 @@ impl StaticModuleSettingsReader for BlogSettingsReader {
     ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
         Ok(
             (module_slug == "blog").then(|| StaticModuleSettingsSnapshot {
-                enabled: true,
+                enabled: Some(true),
                 settings: serde_json::json!({ "comments_mode": self.comments_mode }),
             }),
         )
@@ -66,7 +66,7 @@ impl StaticModuleSettingsReader for ZeroCooldownSettings {
         module_slug: &str,
     ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
         Ok((module_slug == "forum").then(|| StaticModuleSettingsSnapshot {
-            enabled: true,
+            enabled: Some(true),
             settings: serde_json::json!({
                 "rate_limit_new_topic_seconds": 0,
                 "rate_limit_new_reply_seconds": 0,
@@ -84,7 +84,7 @@ impl StaticModuleSettingsTransactionReader for ZeroCooldownSettings {
         module_slug: &str,
     ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
         Ok((module_slug == "forum").then(|| StaticModuleSettingsSnapshot {
-            enabled: true,
+            enabled: Some(true),
             settings: serde_json::json!({
                 "rate_limit_new_topic_seconds": 0,
                 "rate_limit_new_reply_seconds": 0,

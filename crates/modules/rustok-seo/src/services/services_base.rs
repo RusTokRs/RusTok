@@ -277,7 +277,7 @@ impl SeoService {
 
     pub async fn is_enabled(&self, tenant_id: Uuid) -> SeoResult<bool> {
         let snapshot = self.static_settings_snapshot(tenant_id).await?;
-        Ok(snapshot.map(|snapshot| snapshot.enabled).unwrap_or(false))
+        Ok(snapshot.and_then(|snapshot| snapshot.enabled).unwrap_or(false))
     }
 
     /// Standalone library/test services have no host settings reader and historically treat the
@@ -309,7 +309,7 @@ impl SeoService {
             .settings(tenant_id, module_slug)
             .await
             .map_err(map_settings_port_error)?
-            .map(|snapshot| snapshot.enabled)
+            .and_then(|snapshot| snapshot.enabled)
             .unwrap_or(false))
     }
 
