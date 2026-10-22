@@ -48,6 +48,8 @@ impl SocialGraphService {
         target_user_id: Uuid,
         relation_kind: SocialRelationKind,
     ) -> SocialGraphResult<Option<relation::Model>> {
+        validate_tenant(tenant_id)?;
+        validate_pair(source_user_id, target_user_id)?;
         Ok(relation::Entity::find()
             .filter(relation::Column::TenantId.eq(tenant_id))
             .filter(relation::Column::SourceUserId.eq(source_user_id))
@@ -64,7 +66,18 @@ impl SocialGraphService {
         request: SocialGraphCommandReceiptRequest,
         idempotency_key: String,
     ) -> SocialGraphResult<relation::Model> {
+        validate_tenant(tenant_id)?;
         validate_pair(request.source_user_id, request.target_user_id)?;
+        if let Some(expected_revision) = request.expected_revision
+            && expected_revision <= 0
+        {
+            return Err(SocialGraphError::RevisionConflict);
+        }
+        if let Some(actor) = actor_id
+            && actor.is_nil()
+        {
+            return Err(SocialGraphError::InvalidUserId);
+        }
         let event_bus = self
             .event_bus
             .as_ref()
@@ -182,6 +195,7 @@ impl SocialGraphService {
         left_user_id: Uuid,
         right_user_id: Uuid,
     ) -> SocialGraphResult<bool> {
+        validate_tenant(tenant_id)?;
         validate_pair(left_user_id, right_user_id)?;
         Ok(relation::Entity::find()
             .filter(relation::Column::TenantId.eq(tenant_id))
@@ -211,6 +225,7 @@ impl SocialGraphService {
         source_user_id: Uuid,
         target_user_id: Uuid,
     ) -> SocialGraphResult<bool> {
+        validate_tenant(tenant_id)?;
         validate_pair(source_user_id, target_user_id)?;
         Ok(relation::Entity::find()
             .filter(relation::Column::TenantId.eq(tenant_id))
@@ -241,6 +256,7 @@ impl SocialGraphService {
         source_user_id: Uuid,
         target_user_ids: &[Uuid],
     ) -> SocialGraphResult<Vec<Uuid>> {
+        validate_tenant(tenant_id)?;
         let target_user_ids = target_user_ids.iter().copied().collect::<BTreeSet<_>>();
         for target_user_id in &target_user_ids {
             validate_pair(source_user_id, *target_user_id)?;
@@ -267,9 +283,53 @@ impl SocialGraphService {
     }
 }
 
+fn validate_tenant(tenant_id: Uuid) -> SocialGraphResult<()> {
+    if tenant_id.is_nil() {
+        return Err(SocialGraphError::InvalidTenantId);
+    }
+    Ok(())
+}
+
 fn validate_pair(source_user_id: Uuid, target_user_id: Uuid) -> SocialGraphResult<()> {
+    if source_user_id.is_nil() || target_user_id.is_nil() {
+        return Err(SocialGraphError::InvalidUserId);
+    }
     if source_user_id == target_user_id {
         return Err(SocialGraphError::SelfRelation);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_tenant_rejects_nil() {
+        assert!(validate_tenant(Uuid::new_v4()).is_ok());
+        assert!(matches!(
+            validate_tenant(Uuid::nil()),
+            Err(SocialGraphError::InvalidTenantId)
+        ));
+    }
+
+    #[test]
+    fn validate_pair_rejects_nil_and_self_relation() {
+        let u1 = Uuid::new_v4();
+        let u2 = Uuid::new_v4();
+
+        assert!(validate_pair(u1, u2).is_ok());
+        assert!(matches!(
+            validate_pair(Uuid::nil(), u2),
+            Err(SocialGraphError::InvalidUserId)
+        ));
+        assert!(matches!(
+            validate_pair(u1, Uuid::nil()),
+            Err(SocialGraphError::InvalidUserId)
+        ));
+        assert!(matches!(
+            validate_pair(u1, u1),
+            Err(SocialGraphError::SelfRelation)
+        ));
+    }
 }

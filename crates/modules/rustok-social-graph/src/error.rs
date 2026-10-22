@@ -7,6 +7,8 @@ pub type SocialGraphResult<T> = Result<T, SocialGraphError>;
 pub enum SocialGraphError {
     #[error("social graph tenant identifier is invalid")]
     InvalidTenantId,
+    #[error("social graph user identifier is invalid")]
+    InvalidUserId,
     #[error("social graph relation cannot target the source user")]
     SelfRelation,
     #[error("social graph relation revision changed before the command was applied")]

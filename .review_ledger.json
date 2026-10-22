@@ -1372,9 +1372,9 @@
       "category": "modules",
       "files": 36,
       "loc": 8796,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-22 04:26",
+      "notes": "Audited; verified Universal Logic Dimensions across relations, follow reads, maintenance operations, receipts, and GraphQL adapters; fixed SQLite dialect detection in rustok-index::PostgresMutationStore; added InvalidUserId error variant; added input validation on nil UUIDs, negative revisions, self-relations, out-of-range limits, and invalid timestamps to command and request DTOs; hardened parse_tenant_id and validate_source_actor; hardened service layer with validate_tenant and validate_pair; added nil-UUID guards to GraphQL operations; added comprehensive unit tests. 40/40 tests passed (all-features), 12/12 integration tests passed, 0 clippy warnings, remediation gate passed."
     },
     "crates/modules/rustok-social-graph-cli": {
       "name": "rustok-social-graph-cli",

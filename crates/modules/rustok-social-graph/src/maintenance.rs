@@ -14,7 +14,6 @@ use crate::entities::relation;
 use crate::error::SocialGraphError;
 use crate::external_events::event_for_relation;
 use crate::ports::{
-    MAX_SOCIAL_GRAPH_RECEIPT_CLEANUP_BATCH, MAX_SOCIAL_GRAPH_RELATION_EVENT_REPLAY_BATCH,
     SocialGraphReceiptCleanupCommand, SocialGraphReceiptCleanupResult,
     SocialGraphReceiptMaintenancePort, SocialGraphRelationEventMaintenancePort,
     SocialGraphRelationEventReplayCommand, SocialGraphRelationEventReplayResult, map_owner_error,
@@ -70,34 +69,13 @@ impl SocialGraphReceiptMaintenancePort for SocialGraphReceiptMaintenanceService 
             log_cleanup_failure(tenant_id, command, started, &error);
             return Err(error);
         }
-        if command.limit == 0 || command.limit > MAX_SOCIAL_GRAPH_RECEIPT_CLEANUP_BATCH {
-            let error = PortError::validation(
-                "social_graph.receipt_cleanup_limit_invalid",
-                "social graph receipt cleanup limit must be between 1 and 1000",
-            );
+        if let Err(error) = command.validate() {
             log_cleanup_failure(tenant_id, command, started, &error);
             return Err(error);
         }
         let completed_before =
-            match DateTime::<Utc>::from_timestamp(command.completed_before_unix_seconds, 0) {
-                Some(value) => value,
-                None => {
-                    let error = PortError::validation(
-                        "social_graph.receipt_cleanup_cutoff_invalid",
-                        "social graph receipt cleanup cutoff must be a valid Unix timestamp",
-                    );
-                    log_cleanup_failure(tenant_id, command, started, &error);
-                    return Err(error);
-                }
-            };
-        if completed_before >= Utc::now() {
-            let error = PortError::validation(
-                "social_graph.receipt_cleanup_cutoff_future",
-                "social graph receipt cleanup cutoff must be in the past",
-            );
-            log_cleanup_failure(tenant_id, command, started, &error);
-            return Err(error);
-        }
+            DateTime::<Utc>::from_timestamp(command.completed_before_unix_seconds, 0)
+                .expect("command.validate() ensures valid timestamp");
 
         let result = receipts::cleanup_completed(
             &self.db,
@@ -161,11 +139,7 @@ impl SocialGraphRelationEventMaintenancePort for SocialGraphRelationEventMainten
             log_relation_event_replay_failure(tenant_id, command, started, &error);
             return Err(error);
         }
-        if command.limit == 0 || command.limit > MAX_SOCIAL_GRAPH_RELATION_EVENT_REPLAY_BATCH {
-            let error = PortError::validation(
-                "social_graph.relation_event_replay_limit_invalid",
-                "social graph relation event replay limit must be between 1 and 1000",
-            );
+        if let Err(error) = command.validate() {
             log_relation_event_replay_failure(tenant_id, command, started, &error);
             return Err(error);
         }
