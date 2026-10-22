@@ -15,8 +15,9 @@ use rustok_sandbox::{
 
 use crate::{
     ArtifactBindingDispatch, ArtifactBindingDispatchEnvelope, ArtifactBindingDispatchEnvelopeError,
-    ArtifactBindingDispatchError, ArtifactBindingExecutor, ArtifactBlobStore, ArtifactReleaseRef, InstalledModuleArtifact,
-    ModuleArtifactError, ModuleEffectivePolicy, ModuleInstallationError, ModuleRuntimeBinding,
+    ArtifactBindingDispatchError, ArtifactBindingExecutor, ArtifactBlobStore, ArtifactReleaseRef,
+    InstalledModuleArtifact, ModuleArtifactError, ModuleEffectivePolicy, ModuleInstallationError,
+    ModuleRuntimeBinding,
     artifact_schema::{ArtifactSchemaValidationError, ArtifactSchemaValidatorCache},
 };
 
@@ -245,7 +246,6 @@ impl BindingSchemaStage {
         }
     }
 }
-
 
 /// Failure of an [`ArtifactInstallationResolver`] port. `Unavailable` and
 /// `NotActiveSelection` are durable-state denials (no active installation can
@@ -505,11 +505,12 @@ mod tests {
 
     use super::*;
     use crate::{
-    ArtifactModuleKind, ArtifactPayloadKind, ArtifactPermissionDescriptor, ArtifactReleaseRef,
-    ArtifactSchemaDocument, InMemoryArtifactBlobStore, ModuleArtifactDescriptor,
-    ModuleArtifactPackage, ModuleDependencyLockGraph, ModuleInstallationScope,
-    ModuleRuntimeBinding, ModuleRuntimeBindingKind, OciArtifactReference, canonical_schema_digest,
-};
+        ArtifactModuleKind, ArtifactPayloadKind, ArtifactPermissionDescriptor, ArtifactReleaseRef,
+        ArtifactSchemaDocument, InMemoryArtifactBlobStore, ModuleArtifactDescriptor,
+        ModuleArtifactPackage, ModuleDependencyLockGraph, ModuleInstallationScope,
+        ModuleRuntimeBinding, ModuleRuntimeBindingKind, OciArtifactReference,
+        canonical_schema_digest,
+    };
 
     struct DenyBroker;
 
@@ -782,7 +783,12 @@ mod tests {
             .await
             .expect_err("durable policy gate must deny before sandbox execution");
 
-        assert_eq!(error, "durable node assignment is unavailable");
+        assert!(matches!(
+            error,
+            ArtifactBindingDispatchError::EffectivePolicy(
+                ArtifactEffectivePolicyResolveError::NodeNotReady(message)
+            ) if message == "durable node assignment is unavailable"
+        ));
         assert_eq!(
             *observed.lock().expect("effective policy lock"),
             Some(installed.installation_id)

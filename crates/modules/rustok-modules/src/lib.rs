@@ -358,11 +358,11 @@ pub use dispatcher::{
     ARTIFACT_BINDING_DISPATCH_ENVELOPE_VERSION, ArtifactBindingDispatch,
     ArtifactBindingDispatchEnvelope, ArtifactBindingDispatchEnvelopeError,
     ArtifactBindingDispatchError, ArtifactBindingExecutionContext, ArtifactBindingExecutor,
-    ArtifactCommandBindingRequest,
-    ArtifactEventBindingOutcome, ArtifactHttpBindingRequest, ArtifactInstallationTarget,
-    ArtifactLifecycleExecutor, ModuleDispatchError, ModuleExecutionDispatcher,
-    ModuleLifecycleHookPhase, dispatch_artifact_command_binding, dispatch_artifact_http_binding,
-    find_artifact_command_binding, find_artifact_http_binding, find_artifact_ui_action_binding,
+    ArtifactCommandBindingRequest, ArtifactEventBindingOutcome, ArtifactHttpBindingRequest,
+    ArtifactInstallationTarget, ArtifactLifecycleExecutor, ModuleDispatchError,
+    ModuleExecutionDispatcher, ModuleLifecycleHookPhase, dispatch_artifact_command_binding,
+    dispatch_artifact_http_binding, find_artifact_command_binding, find_artifact_http_binding,
+    find_artifact_ui_action_binding,
 };
 pub use distribution::{
     ModuleStaticDistributionAuthorizer, ModuleStaticDistributionBuild,
@@ -591,9 +591,8 @@ pub use resolution::{
 pub use runtime::{
     ArtifactEffectivePolicyResolveError, ArtifactEffectivePolicyResolver,
     ArtifactInstallationResolveError, ArtifactInstallationResolver, ArtifactRuntime,
-    ArtifactRuntimeError, ArtifactRuntimeLifecycleExecutor,
-    ArtifactSandboxPolicyResolveError, ArtifactSandboxPolicyResolver,
-    VerifiedArtifactNodeCache,
+    ArtifactRuntimeError, ArtifactRuntimeLifecycleExecutor, ArtifactSandboxPolicyResolveError,
+    ArtifactSandboxPolicyResolver, VerifiedArtifactNodeCache,
 };
 pub use runtime_handles::{
     ArtifactDeliveryTenantSource, SharedArtifactBindingExecutor, SharedArtifactDeliveryTenantSource,

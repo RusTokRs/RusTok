@@ -586,11 +586,6 @@ impl ExecutorReadinessService {
                     receipt.evaluated_at.to_rfc3339().into(),
                 ],
             ),
-            SupportedBackend::Sqlite => {
-                return Err(ExecutorReadinessError::Store(
-                    "Unsupported database backend".to_string(),
-                ));
-            }
         };
 
         self.db
@@ -646,11 +641,6 @@ impl ExecutorReadinessService {
                     runtime_fingerprint.to_owned().into(),
                 ],
             ),
-            SupportedBackend::Sqlite => {
-                return Err(ExecutorReadinessError::Store(
-                    "Unsupported database backend".to_string(),
-                ));
-            }
         };
 
         let row = self

@@ -24,15 +24,14 @@ use rustok_sandbox::{
 
 use crate::backend::SupportedBackend;
 use crate::{
-    ArtifactDataError, ArtifactDataMigrationCheckpointStore, ArtifactModuleKind,
-    ArtifactInstallationResolveError, ArtifactPayloadKind, ArtifactReleaseRef,
-    ArtifactSandboxPolicyResolveError, ArtifactSandboxPolicyResolver,
-    ArtifactUiContributionContent, ConflictFenceSet, ControlPlaneInfrastructure,
-    ModuleArtifactDescriptor, ModuleArtifactError, ModuleCommandContext, ModuleDependencyLockGraph,
-    ModuleTransitionCheckpoint, ModuleTransitionState, RetentionHoldKind, RetentionHoldRecord,
-    RetentionHoldStore, RetentionTarget, SeaOrmSecurityEpochStore, TransitionCheckpointStore,
-    TrustEvidenceReference, TrustPolicyRevision, TrustVerificationDecision,
-    TrustVerificationRequest, TrustVerifier,
+    ArtifactDataError, ArtifactDataMigrationCheckpointStore, ArtifactInstallationResolveError,
+    ArtifactModuleKind, ArtifactPayloadKind, ArtifactReleaseRef, ArtifactSandboxPolicyResolveError,
+    ArtifactSandboxPolicyResolver, ArtifactUiContributionContent, ConflictFenceSet,
+    ControlPlaneInfrastructure, ModuleArtifactDescriptor, ModuleArtifactError,
+    ModuleCommandContext, ModuleDependencyLockGraph, ModuleTransitionCheckpoint,
+    ModuleTransitionState, RetentionHoldKind, RetentionHoldRecord, RetentionHoldStore,
+    RetentionTarget, SeaOrmSecurityEpochStore, TransitionCheckpointStore, TrustEvidenceReference,
+    TrustPolicyRevision, TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
 };
 
 const MAX_ARTIFACT_MIGRATION_CHECKPOINT_BYTES: usize = 16 * 1024;
@@ -3767,15 +3766,14 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
         let scope = match scope_kind.as_str() {
             "platform" => ModuleInstallationScope::Platform,
             "tenant" => ModuleInstallationScope::Tenant {
-                tenant_id: required_uuid_from_row(&row, "tenant_id", backend)
-                    .map_err(|error| {
-                        ArtifactInstallationResolveError::Invariant(error.to_string())
-                    })?,
+                tenant_id: required_uuid_from_row(&row, "tenant_id", backend).map_err(|error| {
+                    ArtifactInstallationResolveError::Invariant(error.to_string())
+                })?,
             },
             _ => {
                 return Err(ArtifactInstallationResolveError::Invariant(
                     "artifact installation has an invalid scope".to_string(),
-                ))
+                ));
             }
         };
         let reference = OciArtifactReference {
@@ -3789,9 +3787,9 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
                 .try_get("", "manifest_digest")
                 .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
         };
-        reference.validate().map_err(|error| {
-            ArtifactInstallationResolveError::Invariant(error.to_string())
-        })?;
+        reference
+            .validate()
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
         let descriptor: ModuleArtifactDescriptor = serde_json::from_str(
             &row.try_get::<String>("", "descriptor")
                 .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
@@ -3801,13 +3799,11 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
                 "artifact installation descriptor is invalid".to_string(),
             )
         })?;
-        descriptor
-            .validate()
-            .map_err(|_| {
-                ArtifactInstallationResolveError::Invariant(
-                    "artifact installation descriptor is invalid".to_string(),
-                )
-            })?;
+        descriptor.validate().map_err(|_| {
+            ArtifactInstallationResolveError::Invariant(
+                "artifact installation descriptor is invalid".to_string(),
+            )
+        })?;
         let payload_media_type: String = row
             .try_get("", "payload_media_type")
             .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
@@ -3825,13 +3821,11 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
                 "artifact installation dependency lock is invalid".to_string(),
             )
         })?;
-        dependency_lock
-            .validate()
-            .map_err(|_| {
-                ArtifactInstallationResolveError::Invariant(
-                    "artifact installation dependency lock is invalid".to_string(),
-                )
-            })?;
+        dependency_lock.validate().map_err(|_| {
+            ArtifactInstallationResolveError::Invariant(
+                "artifact installation dependency lock is invalid".to_string(),
+            )
+        })?;
         let persisted_graph_revision: i64 = row
             .try_get("", "dependency_graph_revision")
             .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
@@ -3845,18 +3839,17 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
             SupportedBackend::Postgres => row
                 .try_get::<DateTime<Utc>>("", "installed_at")
                 .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
-            SupportedBackend::Sqlite => DateTime::parse_from_rfc3339(
-                &row.try_get::<String>("", "installed_at")
-                    .map_err(|error| {
-                        ArtifactInstallationResolveError::Invariant(error.to_string())
-                    })?,
-            )
-            .map_err(|_| {
-                ArtifactInstallationResolveError::Invariant(
-                    "artifact installation timestamp is invalid".to_string(),
-                )
-            })?
-            .with_timezone(&Utc),
+            SupportedBackend::Sqlite => {
+                DateTime::parse_from_rfc3339(&row.try_get::<String>("", "installed_at").map_err(
+                    |error| ArtifactInstallationResolveError::Invariant(error.to_string()),
+                )?)
+                .map_err(|_| {
+                    ArtifactInstallationResolveError::Invariant(
+                        "artifact installation timestamp is invalid".to_string(),
+                    )
+                })?
+                .with_timezone(&Utc)
+            }
         };
         transaction
             .commit()
@@ -3884,12 +3877,11 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
                     .to_string(),
             ));
         }
-        let capability_grant_revision = u64::try_from(capability_grant_revision)
-            .map_err(|_| {
-                ArtifactInstallationResolveError::Invariant(
-                    "artifact installation capability revision is invalid".to_string(),
-                )
-            })?;
+        let capability_grant_revision = u64::try_from(capability_grant_revision).map_err(|_| {
+            ArtifactInstallationResolveError::Invariant(
+                "artifact installation capability revision is invalid".to_string(),
+            )
+        })?;
         Ok(InstalledModuleArtifact {
             installation_id,
             data_owner_id,
@@ -4003,22 +3995,23 @@ impl ArtifactSandboxPolicyResolver for SeaOrmArtifactSandboxPolicyResolver {
         let revision: i64 = row
             .try_get("", "capability_grant_revision")
             .map_err(|error| ArtifactSandboxPolicyResolveError::Invariant(error.to_string()))?;
-        let revision = u64::try_from(revision)
-            .map_err(|_| {
-                ArtifactSandboxPolicyResolveError::Invariant(
-                    "sandbox policy revision is outside the supported range".to_string(),
-                )
-            })?;
+        let revision = u64::try_from(revision).map_err(|_| {
+            ArtifactSandboxPolicyResolveError::Invariant(
+                "sandbox policy revision is outside the supported range".to_string(),
+            )
+        })?;
         if revision != artifact.capability_grant_revision {
             return Err(ArtifactSandboxPolicyResolveError::RevisionMismatch);
         }
-        let policy: SandboxPolicy = serde_json::from_str(
-            &row.try_get::<String>("", "policy")
-                .map_err(|error| ArtifactSandboxPolicyResolveError::Invariant(error.to_string()))?,
-        )
-        .map_err(|_| {
-            ArtifactSandboxPolicyResolveError::Invariant("sandbox policy is invalid".to_string())
-        })?;
+        let policy: SandboxPolicy =
+            serde_json::from_str(&row.try_get::<String>("", "policy").map_err(|error| {
+                ArtifactSandboxPolicyResolveError::Invariant(error.to_string())
+            })?)
+            .map_err(|_| {
+                ArtifactSandboxPolicyResolveError::Invariant(
+                    "sandbox policy is invalid".to_string(),
+                )
+            })?;
         validate_sandbox_policy(artifact, &policy)?;
         Ok(policy)
     }

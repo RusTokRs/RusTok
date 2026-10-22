@@ -596,7 +596,6 @@ where
     Ok(output)
 }
 
-
 /// Failure of an admitted artifact binding dispatch through
 /// [`ArtifactBindingExecutor`]. Resolution denials are preserved as typed
 /// variants so durable work queues can distinguish terminal causes (the
@@ -633,9 +632,7 @@ impl ArtifactBindingDispatchError {
     /// rationale).
     pub fn is_terminal(&self) -> bool {
         match self {
-            Self::InvalidContext | Self::HttpBindingRequired | Self::DeniedByPolicy { .. } => {
-                true
-            }
+            Self::InvalidContext | Self::HttpBindingRequired | Self::DeniedByPolicy { .. } => true,
             Self::Installation(error) => {
                 !matches!(error, crate::ArtifactInstallationResolveError::Store(_))
             }
@@ -855,9 +852,8 @@ mod tests {
                     )
                 })
                 .and_then(|value| {
-                    serde_json::from_value(value).map_err(|error| {
-                        ArtifactBindingDispatchError::Execution(error.to_string())
-                    })
+                    serde_json::from_value(value)
+                        .map_err(|error| ArtifactBindingDispatchError::Execution(error.to_string()))
                 })?;
             self.0
                 .lock()
