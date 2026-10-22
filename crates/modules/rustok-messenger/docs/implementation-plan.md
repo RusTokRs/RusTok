@@ -54,17 +54,17 @@ Consolidated from platform concepts (`docs/architecture/workplace-collaboration-
 | **MSG-08** | **Decoupled Search Integration** | Multi-backend search seam via `rustok-search` (Meilisearch / PG FTS / Tantivy), membership scoping, and E2EE zero-knowledge exclusion | **Completed** |
 | **MSG-09** | **Matrix Gateway Adapter** | Matrix room bridge, event bridge (`m.room.message` / `m.room.encrypted`), `MatrixGatewayAdapter` | **Completed** |
 | **MSG-10** | **Admin Control Plane (FFA)** | Leptos admin UI package (`rustok-messenger-admin`), 4-tab dashboard, Fluent i18n, framework-agnostic `core/` view-models | **Completed** |
-| **MSG-11** | **Storefront Workplace & Widget UI (FFA)** | Leptos storefront UI package (`rustok-messenger-storefront`), 3-column workstation page, contextual floating chat widget, optimistic state machine, Fluent i18n | **In Progress** |
+| **MSG-11** | **Storefront Workplace & Widget UI (FFA)** | Leptos storefront UI package (`rustok-messenger-storefront`), 3-column workstation page, contextual floating chat widget, optimistic state machine, Fluent i18n, Dual-path GraphQL bridge | **Completed** |
 
 ---
 
 ## Verification
 
-1. **Local Scoped Tests:** Pure Rust unit tests for domain invariants, Snowflake ordering, E2EE prekey pools, Matrix projections, and FFA view-models (`cargo test -p rustok-messenger -p rustok-messenger-admin -p rustok-messenger-storefront`).
+1. **Local Scoped Tests:** Pure Rust unit tests for domain invariants, Snowflake ordering, E2EE prekey pools, Matrix projections, and FFA view-models (`cargo test -p rustok-messenger` [27 tests passing], `cargo test -p rustok-messenger-storefront` [9 tests passing]).
 2. **Multilingual Integrity:** Validation of `messenger_channels_translations` locale resolution and fallback, plus Project Fluent `.ftl` catalog loading tests.
 3. **Module Manifest & Composition:** `cargo xtask module validate messenger` and `cargo xtask validate-manifest`.
-4. **Architecture Guard:** `python scripts/architecture_dependency_guard.py` verifying layer/dependency separation.
-5. **Static Code Analysis:** `cargo clippy -p rustok-messenger -p rustok-messenger-admin` with zero warnings.
+4. **Architecture Guard:** `python scripts/architecture_dependency_guard.py` verifying layer/dependency separation (0 violations).
+5. **Static Code Analysis:** `cargo clippy -p rustok-messenger --lib --features graphql -- -D warnings` and `cargo clippy -p rustok-messenger-storefront --lib --features ssr -- -D warnings` with zero warnings.
 
 ---
 

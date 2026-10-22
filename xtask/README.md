@@ -22,6 +22,7 @@ The tool provides one stable entry point for repository maintenance tasks that a
 Run commands from the repository root:
 
 ```powershell
+cargo xtask module new <slug> [--title <title>] [--description <desc>] [--category <cat>] [--with-db] [--ui <dual|admin|storefront|none>]
 cargo xtask validate-manifest
 cargo xtask module validate
 cargo xtask module validate <slug>
@@ -54,6 +55,37 @@ durable validation detail. It can claim only stages explicitly owned by a
 `remote` runner. Platform compile/test gates are owner-evidence stages and can
 be completed only by a verified durable platform build result; `module publish`
 does not translate local Cargo execution into that evidence.
+
+## Scaffolding (FBA / FFA / i18n / docs.rs)
+
+`cargo xtask scaffold <slug>` (or `cargo xtask module new <slug>`) generates a production-grade, canonical platform module conforming to Fluid Backend Architecture (FBA), Fluid Frontend Architecture (FFA), multilinguality (Fluent i18n), and `docs.rs` metadata.
+
+The command:
+- Generates the backend crate `crates/modules/rustok-<slug>` with normative FBA layout: `src/domain/`, `src/dto/`, `src/services/`, `src/error.rs`, `src/module.rs` (implementing `RusToKModule`), and optional SeaORM `entities/` + `migrations/`.
+- Generates UI crates (`admin/` and `storefront/`) adhering to strict FFA:
+  - `core/`: Pure Rust view-models and validation (no UI framework dependencies, pure unit testable).
+  - `transport/`: Facade for server communications.
+  - `ui/`: Leptos component views.
+  - `i18n.rs` and `locales/` (`en.ftl`, `ru.ftl` Fluent catalogs).
+- Includes docs.rs metadata (`[package.metadata.docs.rs]` with `all-features = true`) and crate doc headers.
+- Automatically registers the new module in:
+  - `Cargo.toml` (`[workspace.dependencies]` and `members`);
+  - `modules.toml` (`[modules.<slug>]`);
+  - `apps/server/Cargo.toml` (`mod-<slug>` feature and dependency wiring);
+  - `crates/modules/rustok-distribution/Cargo.toml` & `src/lib.rs` (`build_registry()` wiring);
+  - Central docs: `docs/modules/registry.md`, `docs/modules/_index.md`, and `docs/modules/UI_PACKAGES_INDEX.md`.
+- Automatically executes `cargo xtask module validate <slug>` at the end to ensure the generated module is valid out-of-the-box.
+
+```powershell
+# Create a collaboration module with dual surface UI and DB migrations:
+cargo xtask scaffold calls --title "WebRTC Calls & Conferencing" --category collaboration
+
+# Create a headless/no-ui ERP module:
+cargo xtask scaffold finance --title "Operational Finance & Banking" --category erp --no-ui
+
+# Dry-run preview:
+cargo xtask scaffold party --dry-run
+```
 
 ## I18n Public API Inventory
 

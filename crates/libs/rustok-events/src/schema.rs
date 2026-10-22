@@ -744,6 +744,11 @@ const MODULE_ARTIFACT_SECURITY_STATE_CHANGED_FIELDS: &[FieldSchema] = &[
     field!("reason_code", "string"),
 ];
 const LOCALE_FIELDS: &[FieldSchema] = &[field!("tenant_id", "uuid"), field!("locale", "string")];
+const MESSENGER_MESSAGE_DISPATCHED_FIELDS: &[FieldSchema] = &[
+    field!("conversation_id", "uuid"),
+    field!("message_id", "int64"),
+    field!("sender_id", "uuid"),
+];
 
 pub const EVENT_SCHEMAS: &[EventSchema] = &[
     EventSchema {
@@ -1812,6 +1817,12 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         version: 1,
         description: "A search rebuild was queued.",
         fields: SEARCH_REBUILD_QUEUED_FIELDS,
+    },
+    EventSchema {
+        event_type: "messenger.message.dispatched",
+        version: 1,
+        description: "A messenger message was dispatched to conversation members.",
+        fields: MESSENGER_MESSAGE_DISPATCHED_FIELDS,
     },
 ];
 

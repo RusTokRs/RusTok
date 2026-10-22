@@ -2023,6 +2023,23 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_nil_uuid("entry_id", entry_id)?;
                 Ok(())
             }
+
+            // MESSENGER EVENTS
+            Self::MessengerMessageDispatched {
+                conversation_id,
+                message_id,
+                sender_id,
+            } => {
+                validators::validate_not_nil_uuid("conversation_id", conversation_id)?;
+                validators::validate_not_nil_uuid("sender_id", sender_id)?;
+                if *message_id <= 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "message_id",
+                        "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
+            }
         }
     }
 }

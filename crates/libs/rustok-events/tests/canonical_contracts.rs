@@ -558,6 +558,11 @@ fn sample_events() -> Vec<DomainEvent> {
             schema_id: id(102),
             entry_id: id(103),
         },
+        DomainEvent::MessengerMessageDispatched {
+            conversation_id: id(104),
+            message_id: 105,
+            sender_id: id(106),
+        },
     ]
 }
 

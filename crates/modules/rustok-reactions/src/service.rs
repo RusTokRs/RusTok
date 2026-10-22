@@ -1084,4 +1084,168 @@ mod tests {
         assert_eq!(next, selected);
         assert!(deltas.is_empty());
     }
+
+    #[test]
+    fn single_selection_same_key_is_an_idempotent_noop() {
+        let selected = vec![key("like")];
+        let (changed, next, deltas) = plan_selection(
+            ReactionSelectionPolicy::Single,
+            &selected,
+            &key("like"),
+            ReactionAction::Add,
+        )
+        .expect("single selection same key");
+
+        assert!(!changed);
+        assert_eq!(next, selected);
+        assert!(deltas.is_empty());
+    }
+
+    #[test]
+    fn multiple_selection_adds_key_and_sorts() {
+        let selected = vec![key("love")];
+        let (changed, next, deltas) = plan_selection(
+            ReactionSelectionPolicy::multiple(3).expect("policy"),
+            &selected,
+            &key("clap"),
+            ReactionAction::Add,
+        )
+        .expect("multiple selection add");
+
+        assert!(changed);
+        assert_eq!(next, vec![key("clap"), key("love")]);
+        assert_eq!(deltas.get(&key("clap")), Some(&1));
+    }
+
+    #[test]
+    fn multiple_selection_duplicate_key_is_noop() {
+        let selected = vec![key("clap"), key("love")];
+        let (changed, next, deltas) = plan_selection(
+            ReactionSelectionPolicy::multiple(3).expect("policy"),
+            &selected,
+            &key("love"),
+            ReactionAction::Add,
+        )
+        .expect("multiple selection duplicate");
+
+        assert!(!changed);
+        assert_eq!(next, selected);
+        assert!(deltas.is_empty());
+    }
+
+    #[test]
+    fn removing_an_existing_key_updates_selected_and_delta() {
+        let selected = vec![key("clap"), key("love")];
+        let (changed, next, deltas) = plan_selection(
+            ReactionSelectionPolicy::multiple(3).expect("policy"),
+            &selected,
+            &key("clap"),
+            ReactionAction::Remove,
+        )
+        .expect("remove existing key");
+
+        assert!(changed);
+        assert_eq!(next, vec![key("love")]);
+        assert_eq!(deltas.get(&key("clap")), Some(&-1));
+    }
+
+    #[test]
+    fn authorize_actor_checks_bounds_and_principals() {
+        use rustok_api::{PortActor, PortContext};
+        use uuid::Uuid;
+        use super::{authorize_actor, ACT_AS_ACTOR_CLAIM};
+
+        let user_id = Uuid::new_v4();
+        let other_id = Uuid::new_v4();
+        let tenant_id = Uuid::new_v4();
+
+        // Nil actor ID is rejected
+        let nil_err = authorize_actor(
+            &PortContext::new(tenant_id.to_string(), PortActor::system(), "en".to_string(), "req".to_string()),
+            Uuid::nil(),
+        );
+        assert_eq!(nil_err.expect_err("nil actor").code, "reactions.actor_id_nil");
+
+        // User actor mismatch
+        let mismatch_ctx = PortContext::new(
+            tenant_id.to_string(),
+            PortActor::user(other_id.to_string()),
+            "en".to_string(),
+            "req".to_string(),
+        );
+        let mismatch_err = authorize_actor(&mismatch_ctx, user_id);
+        assert_eq!(mismatch_err.expect_err("mismatch").code, "reactions.actor_mismatch");
+
+        // User actor match
+        let valid_user_ctx = PortContext::new(
+            tenant_id.to_string(),
+            PortActor::user(user_id.to_string()),
+            "en".to_string(),
+            "req".to_string(),
+        );
+        assert!(authorize_actor(&valid_user_ctx, user_id).is_ok());
+
+        // Service actor without claim
+        let service_ctx = PortContext::new(
+            tenant_id.to_string(),
+            PortActor::service("forum"),
+            "en".to_string(),
+            "req".to_string(),
+        );
+        let svc_err = authorize_actor(&service_ctx, user_id);
+        assert_eq!(svc_err.expect_err("no delegation").code, "reactions.actor_delegation_forbidden");
+
+        // Service actor with claim
+        let authorized_svc_ctx = service_ctx.with_claim(ACT_AS_ACTOR_CLAIM.to_string());
+        assert!(authorize_actor(&authorized_svc_ctx, user_id).is_ok());
+    }
+
+    #[test]
+    fn validate_subject_tenant_enforces_exact_tenant() {
+        use rustok_api::{PortActor, PortContext};
+        use rustok_reactions_api::{ReactionSourceSlug, ReactionSubjectKind, ReactionSubjectRef};
+        use uuid::Uuid;
+        use super::validate_subject_tenant;
+
+        let tenant_id = Uuid::new_v4();
+        let other_tenant = Uuid::new_v4();
+        let subject = ReactionSubjectRef::new(
+            tenant_id,
+            ReactionSourceSlug::new("forum").expect("source"),
+            ReactionSubjectKind::new("post").expect("kind"),
+            Uuid::new_v4(),
+            1,
+        )
+        .expect("subject");
+
+        let valid_ctx = PortContext::new(
+            tenant_id.to_string(),
+            PortActor::system(),
+            "en".to_string(),
+            "req".to_string(),
+        );
+        assert!(validate_subject_tenant(&valid_ctx, &subject).is_ok());
+
+        let mismatch_ctx = PortContext::new(
+            other_tenant.to_string(),
+            PortActor::system(),
+            "en".to_string(),
+            "req".to_string(),
+        );
+        assert_eq!(
+            validate_subject_tenant(&mismatch_ctx, &subject).expect_err("mismatch").code,
+            "reactions.tenant_mismatch"
+        );
+
+        let nil_tenant_ctx = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::system(),
+            "en".to_string(),
+            "req".to_string(),
+        );
+        assert_eq!(
+            validate_subject_tenant(&nil_tenant_ctx, &subject).expect_err("nil tenant").code,
+            "reactions.tenant_id_nil"
+        );
+    }
 }

@@ -1,10 +1,12 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use rustok_api::{AuthContext, TenantContext};
-use sea_orm::DatabaseConnection;
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use uuid::Uuid;
 
 use super::runtime_data::MessengerGraphqlRuntimeData;
 use super::types::{
-    MessengerChannelListItemGql, MessengerE2eeDeviceAuditGql, MessengerOverviewGql,
+    ConversationItemGql, MessageItemGql, MessengerChannelListItemGql, MessengerE2eeDeviceAuditGql,
+    MessengerOverviewGql,
 };
 use crate::controllers::ensure_messenger_module_enabled;
 use crate::domain::ConversationType;
@@ -133,5 +135,133 @@ impl MessengerQuery {
             .collect();
 
         Ok(audits)
+    }
+
+    /// List conversations accessible to the current authenticated user.
+    async fn messenger_conversations(&self, ctx: &Context<'_>) -> Result<Vec<ConversationItemGql>> {
+        let tenant = ctx.data::<TenantContext>()?;
+        let auth = ctx.data::<AuthContext>()?;
+        if auth.tenant_id != tenant.id {
+            return Err(FieldError::new("Permission denied: tenant mismatch"));
+        }
+        let db = ctx.data::<DatabaseConnection>()?;
+        ensure_messenger_module_enabled(db, tenant.id)
+            .await
+            .map_err(|e| FieldError::new(e.message))?;
+
+        let service = MessengerService::new(db.clone(), 1);
+        let convs = service
+            .list_conversations(tenant.id, auth.user_id, 100, 0)
+            .await
+            .map_err(|e| FieldError::new(e.to_string()))?;
+
+        let last_msg_ids: Vec<i64> = convs
+            .iter()
+            .filter_map(|c| c.last_message_id)
+            .collect();
+
+        let message_map: std::collections::HashMap<i64, String> = if last_msg_ids.is_empty() {
+            std::collections::HashMap::new()
+        } else {
+            crate::entities::Message::find()
+                .filter(crate::entities::message::Column::Id.is_in(last_msg_ids))
+                .filter(crate::entities::message::Column::DeletedAt.is_null())
+                .filter(crate::entities::message::Column::IsEncrypted.eq(false))
+                .all(db)
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .map(|m| (m.id, m.content))
+                .collect()
+        };
+
+        let items = convs
+            .into_iter()
+            .map(|c| {
+                let last_content = c.last_message_id.and_then(|id| message_map.get(&id).cloned());
+                ConversationItemGql {
+                    id: c.id,
+                    conversation_type: c.conversation_type.as_str().to_string(),
+                    title: c.title,
+                    topic: None,
+                    last_message_content: last_content,
+                    last_message_at: c.last_message_at,
+                    unread_count: c.unread_count as usize,
+                    is_encrypted: c.is_encrypted,
+                    entity_type: c.entity_type,
+                    entity_id: c.entity_id,
+                }
+            })
+            .collect();
+
+        Ok(items)
+    }
+
+    /// List messages in a conversation with sequence-based cursor pagination.
+    async fn conversation_messages(
+        &self,
+        ctx: &Context<'_>,
+        conversation_id: Uuid,
+        since_seq: Option<i64>,
+        limit: Option<i32>,
+    ) -> Result<Vec<MessageItemGql>> {
+        let tenant = ctx.data::<TenantContext>()?;
+        let auth = ctx.data::<AuthContext>()?;
+        if auth.tenant_id != tenant.id {
+            return Err(FieldError::new("Permission denied: tenant mismatch"));
+        }
+        let db = ctx.data::<DatabaseConnection>()?;
+        ensure_messenger_module_enabled(db, tenant.id)
+            .await
+            .map_err(|e| FieldError::new(e.message))?;
+
+        let service = MessengerService::new(db.clone(), 1);
+        let msgs = if let Some(seq) = since_seq {
+            let sync_res = service
+                .fast_sync(
+                    tenant.id,
+                    auth.user_id,
+                    crate::dto::FastSyncRequest {
+                        conversation_id,
+                        since_seq: seq,
+                        limit: limit.map(|l| l.max(1) as u64),
+                    },
+                )
+                .await
+                .map_err(|e| FieldError::new(e.to_string()))?;
+            sync_res.messages
+        } else {
+            service
+                .list_messages(
+                    tenant.id,
+                    auth.user_id,
+                    crate::dto::ListMessagesQuery {
+                        conversation_id,
+                        limit: limit.map(|l| l.max(1) as u64),
+                        before_id: None,
+                        after_id: None,
+                    },
+                )
+                .await
+                .map_err(|e| FieldError::new(e.to_string()))?
+        };
+
+        let result = msgs
+            .into_iter()
+            .map(|m| MessageItemGql {
+                id: m.id,
+                conversation_id: m.conversation_id,
+                sender_id: m.sender_id,
+                sender_name: None,
+                message_type: m.message_type as i16,
+                content: m.content,
+                blocks_json: m.blocks_json.map(async_graphql::Json),
+                reply_to_id: m.reply_to_id,
+                is_encrypted: m.is_encrypted,
+                created_at: m.created_at,
+            })
+            .collect();
+
+        Ok(result)
     }
 }

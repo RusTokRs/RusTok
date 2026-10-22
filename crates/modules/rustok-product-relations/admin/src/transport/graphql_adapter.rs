@@ -83,14 +83,48 @@ struct ReorderResponse {
     reorder_product_relations: Vec<ProductRelationItem>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum RelationType {
+    CrossSell,
+    UpSell,
+    Related,
+    Accessory,
+    Alternative,
+    Custom(String),
+}
+
+impl RelationType {
+    fn from_str(s: &str) -> Result<Self, String> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "cross_sell" | "cross-sell" | "crosssell" => Ok(RelationType::CrossSell),
+            "up_sell" | "up-sell" | "upsell" => Ok(RelationType::UpSell),
+            "related" => Ok(RelationType::Related),
+            "accessory" | "accessories" => Ok(RelationType::Accessory),
+            "alternative" | "alternatives" => Ok(RelationType::Alternative),
+            other if !other.is_empty() => Ok(RelationType::Custom(other.to_owned())),
+            _ => Err("Invalid product relation type".to_owned()),
+        }
+    }
+}
+
+impl std::str::FromStr for RelationType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::from_str(s)
+    }
+}
+
 fn relation_type_to_gql(rtype: &str) -> Result<&'static str, String> {
-    match rtype.trim().to_ascii_lowercase().as_str() {
-        "cross_sell" => Ok("CROSS_SELL"),
-        "up_sell" => Ok("UP_SELL"),
-        "related" => Ok("RELATED"),
-        "accessory" => Ok("ACCESSORY"),
-        "alternative" => Ok("ALTERNATIVE"),
-        _ => Err("Invalid product relation type or custom type requires the native transport".to_owned()),
+    match RelationType::from_str(rtype).map_err(|_| "Invalid product relation type".to_owned())? {
+        RelationType::CrossSell => Ok("CROSS_SELL"),
+        RelationType::UpSell => Ok("UP_SELL"),
+        RelationType::Related => Ok("RELATED"),
+        RelationType::Accessory => Ok("ACCESSORY"),
+        RelationType::Alternative => Ok("ALTERNATIVE"),
+        RelationType::Custom(_) => {
+            Err("Custom product relation types require the native transport".to_owned())
+        }
     }
 }
 

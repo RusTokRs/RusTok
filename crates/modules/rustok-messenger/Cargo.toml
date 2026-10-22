@@ -22,14 +22,16 @@ anyhow.workspace = true
 axum.workspace = true
 futures-util.workspace = true
 tokio = { workspace = true, features = ["full", "sync"] }
-rustok-events = { workspace = true, optional = true }
+rustok-events.workspace = true
+rustok-notifications-api.workspace = true
+rustok-outbox.workspace = true
 rustok-iggy = { workspace = true, optional = true }
 async-graphql = { workspace = true, optional = true }
 
 [features]
 default = []
 graphql = ["dep:async-graphql", "rustok-api/server"]
-iggy = ["dep:rustok-iggy", "dep:rustok-events"]
+iggy = ["dep:rustok-iggy"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

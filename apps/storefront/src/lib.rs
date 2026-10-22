@@ -769,6 +769,58 @@ pub fn router(runtime: rustok_api::HostRuntimeContext) -> Router {
                 },
             ),
         )
+        .route(
+            "/messages",
+            get(
+                |headers: HeaderMap,
+                 nonce: Option<Extension<CspNonce>>,
+                 axum::extract::Query(params): axum::extract::Query<
+                    std::collections::HashMap<String, String>,
+                >| async move {
+                    let locale = resolve_storefront_locale(None, &params);
+                    let nonce = nonce.as_ref().map(|Extension(value)| value);
+                    let if_none_match = headers
+                        .get(IF_NONE_MATCH)
+                        .and_then(|value| value.to_str().ok());
+                    render_module_page_response(
+                        locale.as_str(),
+                        "messages",
+                        params,
+                        None,
+                        nonce,
+                        if_none_match,
+                    )
+                    .await
+                },
+            ),
+        )
+        .route(
+            "/{locale}/messages",
+            get(
+                |Path(locale_path_prefix): Path<String>,
+                 headers: HeaderMap,
+                 nonce: Option<Extension<CspNonce>>,
+                 axum::extract::Query(params): axum::extract::Query<
+                    std::collections::HashMap<String, String>,
+                >| async move {
+                    let locale =
+                        resolve_storefront_locale(Some(locale_path_prefix.as_str()), &params);
+                    let nonce = nonce.as_ref().map(|Extension(value)| value);
+                    let if_none_match = headers
+                        .get(IF_NONE_MATCH)
+                        .and_then(|value| value.to_str().ok());
+                    render_module_page_response(
+                        locale.as_str(),
+                        "messages",
+                        params,
+                        Some(locale_path_prefix.as_str()),
+                        nonce,
+                        if_none_match,
+                    )
+                    .await
+                },
+            ),
+        )
         .layer(from_fn_with_state(runtime, provide_leptos_request_context))
 }
 

@@ -358,12 +358,10 @@ fn normalize_landing_root_selectors(css: &str) -> String {
             .unwrap_or(false);
 
         if !in_declaration {
-            if chars[i..].starts_with(&['b', 'o', 'd', 'y']) && is_identifier_boundary(&chars, i, 4) {
-                result.push_str(":scope");
-                prelude.push_str(":scope");
-                i += 4;
-                continue;
-            } else if chars[i..].starts_with(&['h', 't', 'm', 'l']) && is_identifier_boundary(&chars, i, 4) {
+            if (chars[i..].starts_with(&['b', 'o', 'd', 'y'])
+                || chars[i..].starts_with(&['h', 't', 'm', 'l']))
+                && is_identifier_boundary(&chars, i, 4)
+            {
                 result.push_str(":scope");
                 prelude.push_str(":scope");
                 i += 4;

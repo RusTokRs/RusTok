@@ -1,7 +1,7 @@
 use axum::{
     Router,
     http::StatusCode,
-    routing::{get, post, put},
+    routing::{delete, get, patch, post, put},
 };
 use rustok_api::HostRuntimeContext;
 use rustok_web::{HttpError, HttpResult};
@@ -88,6 +88,10 @@ pub fn router(runtime: MessengerHttpRuntime) -> Router {
         )
         .route("/api/messenger/messages", post(rest::send_message))
         .route(
+            "/api/messenger/messages/{message_id}",
+            patch(rest::patch_message).delete(rest::delete_message),
+        )
+        .route(
             "/api/messenger/messages/search",
             get(rest::search_messages),
         )
@@ -102,6 +106,14 @@ pub fn router(runtime: MessengerHttpRuntime) -> Router {
         .route(
             "/api/messenger/conversations/{conversation_id}/cursor",
             post(rest::update_cursor),
+        )
+        .route(
+            "/api/messenger/conversations/{conversation_id}/members",
+            post(rest::add_member).get(rest::list_members),
+        )
+        .route(
+            "/api/messenger/conversations/{conversation_id}/members/{user_id}",
+            delete(rest::remove_member),
         )
         .route(
             "/api/messenger/conversations/{conversation_id}/ws",
@@ -128,6 +140,10 @@ pub fn router(runtime: MessengerHttpRuntime) -> Router {
             put(rest::update_channel_translation),
         )
         .route("/messages", post(rest::send_message))
+        .route(
+            "/messages/{message_id}",
+            patch(rest::patch_message).delete(rest::delete_message),
+        )
         .route("/messages/search", get(rest::search_messages))
         .route(
             "/conversations/{conversation_id}/messages",
@@ -140,6 +156,14 @@ pub fn router(runtime: MessengerHttpRuntime) -> Router {
         .route(
             "/conversations/{conversation_id}/cursor",
             post(rest::update_cursor),
+        )
+        .route(
+            "/conversations/{conversation_id}/members",
+            post(rest::add_member).get(rest::list_members),
+        )
+        .route(
+            "/conversations/{conversation_id}/members/{user_id}",
+            delete(rest::remove_member),
         )
         .route(
             "/conversations/{conversation_id}/ws",

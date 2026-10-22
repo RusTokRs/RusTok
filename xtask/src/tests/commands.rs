@@ -1073,3 +1073,243 @@ fn auto_approve_argument_detects_flag() {
         "http://127.0.0.1:5150".to_string(),
     ]));
 }
+
+#[test]
+fn test_scaffold_dry_run() {
+    let opts = ScaffoldOptions {
+        slug: "test-scaffold".to_string(),
+        title: "Test Scaffold".to_string(),
+        description: "Test scaffold capability".to_string(),
+        category: "collaboration".to_string(),
+        with_db: true,
+        ui: ScaffoldUi::Dual,
+        dry_run: true,
+        skip_server_wire: false,
+        skip_validate: true,
+    };
+
+    assert!(scaffold(&opts).is_ok());
+}
+
+#[test]
+fn test_scaffold_no_ui_dry_run() {
+    let opts = ScaffoldOptions {
+        slug: "test-headless".to_string(),
+        title: "Test Headless".to_string(),
+        description: "Headless backend service module".to_string(),
+        category: "erp".to_string(),
+        with_db: false,
+        ui: ScaffoldUi::None,
+        dry_run: true,
+        skip_server_wire: true,
+        skip_validate: true,
+    };
+
+    assert!(scaffold(&opts).is_ok());
+}
+
+#[test]
+fn test_scaffold_slug_validation() {
+    assert!(is_valid_slug("valid-slug"));
+    assert!(is_valid_slug("calls"));
+    assert!(is_valid_slug("digital-wallet-v2"));
+    assert!(is_valid_slug("page_builder"));
+    assert!(is_valid_slug("marketplace_seller"));
+
+    assert!(!is_valid_slug(""));
+    assert!(!is_valid_slug("-leading"));
+    assert!(!is_valid_slug("trailing-"));
+    assert!(!is_valid_slug("_leading"));
+    assert!(!is_valid_slug("trailing_"));
+    assert!(!is_valid_slug("Upper_Case"));
+    assert!(!is_valid_slug("has space"));
+}
+
+#[test]
+fn test_scaffold_parse_options_normalization() {
+    let args = vec![
+        "digital-wallet".to_string(),
+        "--title".to_string(),
+        "Digital Wallet".to_string(),
+        "--description".to_string(),
+        "Digital wallet capability for RusToK platform".to_string(),
+    ];
+    let opts = parse_options(&args).unwrap().unwrap();
+    assert_eq!(opts.slug, "digital_wallet");
+    assert_eq!(opts.kebab_name(), "digital-wallet");
+    assert_eq!(opts.crate_name(), "rustok-digital-wallet");
+
+    let args2 = vec![
+        "page_builder".to_string(),
+        "--description".to_string(),
+        "Visual page builder capability for RusToK platform".to_string(),
+    ];
+    let opts2 = parse_options(&args2).unwrap().unwrap();
+    assert_eq!(opts2.slug, "page_builder");
+    assert_eq!(opts2.kebab_name(), "page-builder");
+    assert_eq!(opts2.crate_name(), "rustok-page-builder");
+    assert_eq!(opts2.title, "Page Builder");
+}
+
+#[test]
+fn test_scaffold_dry_run_events_and_integrations() {
+    let opts = ScaffoldOptions {
+        slug: "video_calls".to_string(),
+        title: "Video Calls".to_string(),
+        description: "Enterprise encrypted video calls capability".to_string(),
+        category: "collaboration".to_string(),
+        with_db: true,
+        ui: ScaffoldUi::Dual,
+        dry_run: true,
+        skip_server_wire: true,
+        skip_validate: true,
+    };
+
+    assert!(scaffold(&opts).is_ok());
+}
+
+#[test]
+fn test_to_pascal_case_handles_hyphens_and_underscores() {
+    use crate::manifest_validation::to_pascal_case;
+
+    assert_eq!(to_pascal_case("blog"), "Blog");
+    assert_eq!(to_pascal_case("page-builder"), "PageBuilder");
+    assert_eq!(to_pascal_case("page_builder"), "PageBuilder");
+    assert_eq!(to_pascal_case("digital-wallet-v2"), "DigitalWalletV2");
+    assert_eq!(to_pascal_case("digital_wallet_v2"), "DigitalWalletV2");
+    assert_eq!(to_pascal_case("marketplace_seller"), "MarketplaceSeller");
+}
+
+#[test]
+fn test_find_closing_bracket_after() {
+    use crate::scaffold::registration::find_closing_bracket_after;
+
+    let lines = vec![
+        "[features]".to_string(),
+        "csr = [".to_string(),
+        "  \"item1\",".to_string(),
+        "  \"item2\",".to_string(),
+        "]".to_string(),
+        "hydrate = [".to_string(),
+        "  \"item3\",".to_string(),
+        "] # end of hydrate".to_string(),
+    ];
+
+    assert_eq!(find_closing_bracket_after(&lines, "csr = ["), Some(4));
+    assert_eq!(find_closing_bracket_after(&lines, "hydrate = ["), Some(7));
+    assert_eq!(find_closing_bracket_after(&lines, "ssr = ["), None);
+}
+
+#[test]
+fn test_register_in_admin_cargo_toml_lifecycle_and_idempotency() {
+    use crate::scaffold::registration::register_in_admin_cargo_toml;
+    use std::env;
+    use std::fs;
+
+    let base = env::temp_dir().join(format!("xtask-admin-cargo-toml-{}", std::process::id()));
+    let admin_dir = base.join("apps").join("admin");
+    fs::create_dir_all(&admin_dir).expect("create admin dir");
+
+    let initial_toml = r#"[package]
+name = "rustok-admin"
+version = "0.1.0"
+
+[features]
+csr = [
+  "leptos/csr",
+]
+hydrate = [
+  "leptos/hydrate",
+]
+ssr = [
+  "leptos/ssr",
+]
+
+[dependencies]
+rustok-blog-admin = { path = "../../crates/modules/rustok-blog/admin", default-features = false }
+
+[package.metadata.cargo-udeps.ignore]
+normal = [
+  "rustok-blog-admin",
+]
+
+[package.metadata.cargo-machete]
+ignored = [
+  "rustok-blog-admin",
+]
+"#;
+    let cargo_path = admin_dir.join("Cargo.toml");
+    fs::write(&cargo_path, initial_toml).expect("write initial toml");
+
+    // First run - registers digital_wallet
+    register_in_admin_cargo_toml(&base, "rustok-digital-wallet").expect("register admin");
+
+    let modified = fs::read_to_string(&cargo_path).expect("read modified toml");
+    assert!(modified.contains(r#""rustok-digital-wallet-admin/csr","#));
+    assert!(modified.contains(r#""rustok-digital-wallet-admin/hydrate","#));
+    assert!(modified.contains(r#""rustok-digital-wallet-admin/ssr","#));
+    assert!(modified.contains(r#"rustok-digital-wallet-admin = { path = "../../crates/modules/rustok-digital-wallet/admin", default-features = false }"#));
+    assert!(modified.contains(r#""rustok-digital-wallet-admin","#));
+
+    // Second run - idempotency test: nothing should duplicate
+    register_in_admin_cargo_toml(&base, "rustok-digital-wallet").expect("second register admin");
+    let second_modified = fs::read_to_string(&cargo_path).expect("read second modified toml");
+    assert_eq!(modified, second_modified);
+
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
+fn test_register_in_storefront_cargo_toml_lifecycle_and_idempotency() {
+    use crate::scaffold::registration::register_in_storefront_cargo_toml;
+    use std::env;
+    use std::fs;
+
+    let base = env::temp_dir().join(format!("xtask-sf-cargo-toml-{}", std::process::id()));
+    let sf_dir = base.join("apps").join("storefront");
+    fs::create_dir_all(&sf_dir).expect("create sf dir");
+
+    let initial_toml = r#"[package]
+name = "rustok-storefront"
+version = "0.1.0"
+
+[features]
+ssr = [
+  "dep:rustok-seo-storefront",
+  "rustok-seo-storefront/ssr",
+]
+
+[dependencies]
+rustok-seo-storefront = { path = "../../crates/modules/rustok-seo/storefront", default-features = false, optional = true }
+
+[package.metadata.cargo-udeps.ignore]
+normal = [
+  "rustok-seo-storefront",
+]
+
+[package.metadata.cargo-machete]
+ignored = [
+  "rustok-seo-storefront",
+]
+"#;
+    let cargo_path = sf_dir.join("Cargo.toml");
+    fs::write(&cargo_path, initial_toml).expect("write initial toml");
+
+    // First run - registers digital_wallet
+    register_in_storefront_cargo_toml(&base, "rustok-digital-wallet").expect("register sf");
+
+    let modified = fs::read_to_string(&cargo_path).expect("read modified toml");
+    assert!(modified.contains(r#""dep:rustok-digital-wallet-storefront","#));
+    assert!(modified.contains(r#""rustok-digital-wallet-storefront/ssr","#));
+    assert!(modified.contains(r#"rustok-digital-wallet-storefront = { path = "../../crates/modules/rustok-digital-wallet/storefront", default-features = false, optional = true }"#));
+    assert!(modified.contains(r#""rustok-digital-wallet-storefront","#));
+
+    // Second run - idempotency test
+    register_in_storefront_cargo_toml(&base, "rustok-digital-wallet").expect("second register sf");
+    let second_modified = fs::read_to_string(&cargo_path).expect("read second modified toml");
+    assert_eq!(modified, second_modified);
+
+    let _ = fs::remove_dir_all(&base);
+}
+
+

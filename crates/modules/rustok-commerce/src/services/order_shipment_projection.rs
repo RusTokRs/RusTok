@@ -42,7 +42,7 @@ const FALLBACK_TRACKING_NUMBER: &str = "unspecified";
 
 /// What the order's live fulfillments say about shipment. Ordered by progress.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum ShipmentTruth {
+pub enum ShipmentTruth {
     /// No live (non-cancelled) fulfillment exists: there is no shipment truth to compare with.
     NoFulfillments,
     /// Some physical quantity is not shipped yet.
@@ -54,7 +54,7 @@ pub(crate) enum ShipmentTruth {
 }
 
 /// Derives [`ShipmentTruth`] from the order lines and its fulfillments.
-pub(crate) fn shipment_truth(
+pub fn shipment_truth(
     order: &OrderResponse,
     fulfillments: &[FulfillmentResponse],
 ) -> ShipmentTruth {
@@ -151,13 +151,13 @@ fn non_blank(value: Option<&str>) -> Option<&str> {
 
 /// Which manual order command is being guarded.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ManualShipmentCommand {
+pub enum ManualShipmentCommand {
     Ship,
     Deliver,
 }
 
 /// Pure guard: may the manual command run given the shipment truth?
-pub(crate) fn manual_command_verdict(
+pub fn manual_command_verdict(
     command: ManualShipmentCommand,
     truth: ShipmentTruth,
 ) -> Result<(), PortError> {

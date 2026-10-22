@@ -27,6 +27,8 @@ const FORUM_SOURCE: &str = "forum";
 const FORUM_TOPIC_CREATED: &str = "forum.topic.created";
 const FORUM_TOPIC_REPLIED: &str = "forum.topic.replied";
 const FORUM_USER_MENTION_ADDED: &str = "forum.mention.user_added";
+const MESSENGER_SOURCE: &str = "messenger";
+const MESSENGER_MESSAGE_DISPATCHED: &str = "messenger.message.dispatched";
 static NOTIFICATION_OUTBOX_INTAKE_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Default)]
@@ -61,6 +63,7 @@ impl NotificationOutboxEnvelopeDecoder for ServerNotificationOutboxEnvelopeDecod
                 }) if record.event_type == FORUM_USER_MENTION_ADDED => source_event_ref(
                     tenant_id,
                     event_id,
+                    FORUM_SOURCE,
                     FORUM_USER_MENTION_ADDED,
                     u64::try_from(source_revision_id)
                         .map_err(|_| NotificationError::InvalidEvent)?,
@@ -83,15 +86,26 @@ impl NotificationOutboxEnvelopeDecoder for ServerNotificationOutboxEnvelopeDecod
             DomainEvent::ForumTopicCreated { topic_id, .. }
                 if record.event_type == FORUM_TOPIC_CREATED =>
             {
-                source_event_ref(envelope.tenant_id, topic_id, FORUM_TOPIC_CREATED, 1)
+                source_event_ref(envelope.tenant_id, topic_id, FORUM_SOURCE, FORUM_TOPIC_CREATED, 1)
             }
             // The reply id is the source event identity: one fan-out per reply, and the
             // provider resolves the topic and the reply's audience from it.
             DomainEvent::ForumTopicReplied { reply_id, .. }
                 if record.event_type == FORUM_TOPIC_REPLIED =>
             {
-                source_event_ref(envelope.tenant_id, reply_id, FORUM_TOPIC_REPLIED, 1)
+                source_event_ref(envelope.tenant_id, reply_id, FORUM_SOURCE, FORUM_TOPIC_REPLIED, 1)
             }
+            DomainEvent::MessengerMessageDispatched {
+                conversation_id,
+                message_id,
+                ..
+            } if record.event_type == MESSENGER_MESSAGE_DISPATCHED => source_event_ref(
+                envelope.tenant_id,
+                conversation_id,
+                MESSENGER_SOURCE,
+                MESSENGER_MESSAGE_DISPATCHED,
+                u64::try_from(message_id).map_err(|_| NotificationError::InvalidEvent)?,
+            ),
             _ => Err(NotificationError::InvalidEvent),
         }
     }
@@ -104,6 +118,7 @@ impl NotificationOutboxEnvelopeDecoder for ServerNotificationOutboxEnvelopeDecod
             FORUM_TOPIC_CREATED.to_string(),
             FORUM_TOPIC_REPLIED.to_string(),
             FORUM_USER_MENTION_ADDED.to_string(),
+            MESSENGER_MESSAGE_DISPATCHED.to_string(),
         ]
     }
 }
@@ -231,13 +246,14 @@ async fn notification_outbox_intake_loop(
 fn source_event_ref(
     tenant_id: Uuid,
     event_id: Uuid,
+    source_slug: &str,
     event_type: &str,
     source_revision: u64,
 ) -> NotificationResult<NotificationSourceEventRef> {
     NotificationSourceEventRef::new(
         tenant_id,
         event_id,
-        NotificationSourceSlug::new(FORUM_SOURCE).map_err(|_| NotificationError::InvalidEvent)?,
+        NotificationSourceSlug::new(source_slug).map_err(|_| NotificationError::InvalidEvent)?,
         NotificationTypeKey::new(event_type).map_err(|_| NotificationError::InvalidEvent)?,
         source_revision,
     )
@@ -378,14 +394,49 @@ mod tests {
     }
 
     #[test]
-    fn intake_claims_exactly_the_decoded_forum_types() {
+    fn intake_claims_exactly_the_decoded_event_types() {
         assert_eq!(
             ServerNotificationOutboxEnvelopeDecoder.accepted_event_types(),
             vec![
                 FORUM_TOPIC_CREATED.to_string(),
                 FORUM_TOPIC_REPLIED.to_string(),
                 FORUM_USER_MENTION_ADDED.to_string(),
+                MESSENGER_MESSAGE_DISPATCHED.to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn decoder_claims_and_decodes_messenger_message_dispatched() {
+        let tenant_id = Uuid::new_v4();
+        let conversation_id = Uuid::new_v4();
+        let sender_id = Uuid::new_v4();
+        let message_id = 42_i64;
+
+        let msg_event = EventEnvelope::new(
+            tenant_id,
+            Some(sender_id),
+            DomainEvent::MessengerMessageDispatched {
+                conversation_id,
+                message_id,
+                sender_id,
+            },
+        );
+
+        let record = NotificationOutboxEnvelopeRecord {
+            outbox_event_id: msg_event.id,
+            event_type: msg_event.event_type.clone(),
+            schema_version: i16::try_from(msg_event.schema_version).expect("schema fits"),
+            payload: serde_json::to_value(msg_event).expect("payload serializes"),
+        };
+
+        let decoded = ServerNotificationOutboxEnvelopeDecoder
+            .decode(&record)
+            .expect("messenger envelope decodes");
+        assert_eq!(decoded.tenant_id(), tenant_id);
+        assert_eq!(decoded.event_id(), conversation_id);
+        assert_eq!(decoded.source().as_str(), MESSENGER_SOURCE);
+        assert_eq!(decoded.event_type().as_str(), MESSENGER_MESSAGE_DISPATCHED);
+        assert_eq!(decoded.source_revision(), 42);
     }
 }

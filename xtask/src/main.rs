@@ -33,7 +33,6 @@ mod module_registry_commands;
 mod module_registry_previews;
 mod module_runner_commands;
 mod module_runtime_contracts;
-mod module_scaffold;
 mod module_semantics;
 mod module_transport_contracts;
 mod module_ui_metadata_contracts;
@@ -53,6 +52,7 @@ mod registry_types;
 mod root_commands;
 mod runtime_event_contracts;
 mod runtime_parsing_helpers;
+mod scaffold;
 mod server_contracts;
 mod server_event_runtime_contracts;
 mod server_feature_contracts;
@@ -88,7 +88,7 @@ use module_registry_commands::*;
 use module_registry_previews::*;
 use module_runner_commands::*;
 use module_runtime_contracts::*;
-use module_scaffold::*;
+use scaffold::*;
 use module_semantics::*;
 use module_transport_contracts::*;
 use module_ui_metadata_contracts::*;
@@ -137,6 +137,7 @@ fn main() -> Result<()> {
         "install-dev" => install_dev(&args[2..])?,
         "list-modules" => list_modules()?,
         "i18n-api-inventory" => i18n_api_inventory(&args[2..])?,
+        "scaffold" => scaffold_command(&args[2..])?,
         "module" => module_command(&args[2..])?,
         _ => {
             eprintln!("Unknown command: {}", args[1]);
@@ -159,6 +160,7 @@ fn print_usage() {
     println!(
         "  i18n-api-inventory  Report workspace usages of compatibility-only rustok-ui-i18n APIs"
     );
+    println!("  scaffold            Scaffold a new module crate with FBA, FFA, and i18n");
     println!("  module validate     Validate module publish-readiness contracts");
     println!("  module test         Run or preview local module smoke checks");
     println!("  module stage-run    Execute a local follow-up validation stage and report it");

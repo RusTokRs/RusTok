@@ -85,7 +85,9 @@ pub fn MessengerWorkstation() -> impl IntoView {
                     let tok = token.get();
                     let ten = tenant.get();
                     leptos::task::spawn_local(async move {
-                        let _ = transport::send_message(tok, ten, payload).await;
+                        if transport::send_message(tok, ten, payload).await.is_ok() {
+                            messages_resource.refetch();
+                        }
                     });
                 }
                 Err(err) => {
@@ -513,13 +515,27 @@ pub fn MessengerFloatingWidget(
                         <div class="flex items-center space-x-2">
                             <span class="text-sm font-bold">{widget_title.clone()}</span>
                         </div>
-                        <button
-                            type="button"
-                            class="rounded-full p-1 text-primary-foreground/80 hover:bg-primary-foreground/20 text-xs"
-                            on:click=move |_| set_is_open.set(false)
-                        >
-                            "✕"
-                        </button>
+                        <div class="flex items-center gap-1">
+                            <a
+                                href=format!("/{}/messages", route_context.locale.as_deref().unwrap_or("en"))
+                                class="rounded-full p-1 text-primary-foreground/80 hover:bg-primary-foreground/20 text-xs inline-flex items-center justify-center"
+                                title="Open full screen / Открыть на весь экран"
+                            >
+                                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="15 3 21 3 21 9"></polyline>
+                                    <polyline points="9 21 3 21 3 15"></polyline>
+                                    <line x1="21" y1="3" x2="14" y2="10"></line>
+                                    <line x1="3" y1="21" x2="10" y2="14"></line>
+                                </svg>
+                            </a>
+                            <button
+                                type="button"
+                                class="rounded-full p-1 text-primary-foreground/80 hover:bg-primary-foreground/20 text-xs"
+                                on:click=move |_| set_is_open.set(false)
+                            >
+                                "✕"
+                            </button>
+                        </div>
                     </header>
 
                     // Message Stream
@@ -548,6 +564,16 @@ pub fn MessengerFloatingWidget(
                     </footer>
                 </div>
             </Show>
+        </div>
+    }
+}
+
+/// Storefront page view mounting the workplace collaboration workstation.
+#[component]
+pub fn MessengerView() -> impl IntoView {
+    view! {
+        <div class="w-full">
+            <MessengerWorkstation />
         </div>
     }
 }

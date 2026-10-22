@@ -8,9 +8,9 @@ use uuid::Uuid;
 
 use crate::domain::{ConversationType, MemberRole, MessageType, SnowflakeGenerator};
 use crate::dto::{
-    ChannelTranslationOutput, ConversationOutput, CreateConversationInput, FastSyncRequest,
-    FastSyncResponse, ListMessagesQuery, MessageOutput, SendMessageInput,
-    UpdateChannelTranslationInput, UpdateCursorInput,
+    AddMemberInput, ChannelTranslationOutput, ConversationOutput, CreateConversationInput,
+    EditMessageInput, FastSyncRequest, FastSyncResponse, ListMessagesQuery, MemberOutput,
+    MessageOutput, SendMessageInput, UpdateChannelTranslationInput, UpdateCursorInput,
 };
 use crate::entities::{
     channel_translation, conversation, cursor, member, message,
@@ -190,8 +190,10 @@ impl MessengerService {
         creator_member.insert(&txn).await?;
 
         // 3. Add other invited participants
+        let mut seen = std::collections::HashSet::new();
+        seen.insert(actor_id);
         for participant_id in input.participant_ids {
-            if participant_id != actor_id {
+            if seen.insert(participant_id) {
                 let p_member = member::ActiveModel {
                     id: Set(Uuid::now_v7()),
                     conversation_id: Set(conv_id),
@@ -200,7 +202,7 @@ impl MessengerService {
                     joined_at: Set(now),
                     muted_until: Set(None),
                 };
-                let _ = p_member.insert(&txn).await;
+                p_member.insert(&txn).await?;
             }
         }
 
@@ -413,6 +415,11 @@ impl MessengerService {
                 max: MAX_MESSAGE_CONTENT_SIZE,
             });
         }
+        if input.content.trim().is_empty() && input.blocks_json.is_none() {
+            return Err(MessengerError::Validation(
+                "Message content cannot be empty".to_string(),
+            ));
+        }
 
         let conv = Conversation::find_by_id(input.conversation_id)
             .filter(conversation::Column::TenantId.eq(tenant_id))
@@ -420,7 +427,7 @@ impl MessengerService {
             .await?
             .ok_or(MessengerError::ConversationNotFound(input.conversation_id))?;
 
-        self.ensure_membership(conv.id, actor_id).await?;
+        self.ensure_active_member(conv.id, actor_id).await?;
 
         // Enforce E2EE invariants: encrypted conversation requires encrypted messages
         let is_encrypted = input.is_encrypted.unwrap_or(conv.is_encrypted);
@@ -480,19 +487,24 @@ impl MessengerService {
         conv_active.updated_at = Set(now);
         conv_active.update(&txn).await?;
 
-        txn.commit().await?;
+        // Monotonically advance sender's cursor automatically within the same transaction
+        Self::update_cursor_in_tx(&txn, input.conversation_id, actor_id, message_id).await?;
 
-        // Monotonically advance sender's cursor automatically
-        let _ = self
-            .update_cursor(
-                tenant_id,
-                actor_id,
-                UpdateCursorInput {
-                    conversation_id: input.conversation_id,
-                    last_read_message_id: message_id,
-                },
-            )
-            .await;
+        // Emit transactional outbox event for notifications & streaming fanout
+        rustok_outbox::TransactionalEventBus::publish_root_in_tx(
+            &txn,
+            tenant_id,
+            Some(actor_id),
+            rustok_events::DomainEvent::MessengerMessageDispatched {
+                conversation_id: input.conversation_id,
+                message_id,
+                sender_id: actor_id,
+            },
+        )
+        .await
+        .map_err(|e| MessengerError::Internal(format!("Failed to emit outbox event: {e}")))?;
+
+        txn.commit().await?;
 
         let res_type = MessageType::try_from(msg_type).unwrap_or(MessageType::Text);
 
@@ -619,6 +631,331 @@ impl MessengerService {
         })
     }
 
+    /// Edit an existing message's text content.
+    /// In accordance with Zero-Knowledge E2EE, encrypted messages cannot be edited into plaintext.
+    pub async fn edit_message(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        message_id: i64,
+        input: EditMessageInput,
+    ) -> MessengerResult<MessageOutput> {
+        let content_len = input.content.len();
+        if content_len > MAX_MESSAGE_CONTENT_SIZE {
+            return Err(MessengerError::PayloadTooLarge {
+                actual: content_len,
+                max: MAX_MESSAGE_CONTENT_SIZE,
+            });
+        }
+        if input.content.trim().is_empty() {
+            return Err(MessengerError::Validation(
+                "Message content cannot be empty".to_string(),
+            ));
+        }
+
+        let msg = Message::find_by_id(message_id)
+            .filter(message::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(MessengerError::MessageNotFound(message_id))?;
+
+        if msg.deleted_at.is_some() {
+            return Err(MessengerError::Validation(
+                "Cannot edit deleted message".to_string(),
+            ));
+        }
+
+        self.ensure_active_member(msg.conversation_id, actor_id).await?;
+
+        if msg.sender_id != actor_id {
+            return Err(MessengerError::ConversationAccessDenied(msg.conversation_id));
+        }
+
+        if msg.is_encrypted {
+            return Err(MessengerError::Validation(
+                "Plaintext editing of end-to-end encrypted message is not permitted".to_string(),
+            ));
+        }
+
+        let mut active: message::ActiveModel = msg.into();
+        active.content = Set(input.content);
+        let updated = active.update(&self.db).await?;
+
+        Ok(Self::to_message_output(updated))
+    }
+
+    /// Soft-delete a message, preserving sequence monotonicity.
+    /// Returns the conversation_id of the deleted message.
+    pub async fn delete_message(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        message_id: i64,
+    ) -> MessengerResult<Uuid> {
+        let msg = Message::find_by_id(message_id)
+            .filter(message::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(MessengerError::MessageNotFound(message_id))?;
+
+        if msg.deleted_at.is_some() {
+            return Ok(msg.conversation_id); // Idempotent
+        }
+
+        self.ensure_membership(msg.conversation_id, actor_id).await?;
+
+        // Author can delete their own message. Channel owner/admin can also delete messages.
+        if msg.sender_id != actor_id {
+            let conv = Conversation::find_by_id(msg.conversation_id)
+                .filter(conversation::Column::TenantId.eq(tenant_id))
+                .one(&self.db)
+                .await?
+                .ok_or(MessengerError::ConversationNotFound(msg.conversation_id))?;
+
+            // In 1-on-1 direct dialogues, counterparties cannot delete the other party's messages
+            if conv.conversation_type == ConversationType::Direct as i16 {
+                return Err(MessengerError::ConversationAccessDenied(msg.conversation_id));
+            }
+
+            let member_record = Member::find()
+                .filter(member::Column::ConversationId.eq(msg.conversation_id))
+                .filter(member::Column::UserId.eq(actor_id))
+                .one(&self.db)
+                .await?
+                .ok_or(MessengerError::ConversationAccessDenied(msg.conversation_id))?;
+
+            if member_record.role != MemberRole::Owner as i16 && member_record.role != MemberRole::Admin as i16 {
+                return Err(MessengerError::ConversationAccessDenied(msg.conversation_id));
+            }
+        }
+
+        let mut active: message::ActiveModel = msg.into();
+        active.deleted_at = Set(Some(Utc::now()));
+        let updated = active.update(&self.db).await?;
+
+        Ok(updated.conversation_id)
+    }
+
+    /// Add a member to a conversation (group or channel).
+    pub async fn add_member(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        conversation_id: Uuid,
+        input: AddMemberInput,
+    ) -> MessengerResult<MemberOutput> {
+        let conv = Conversation::find_by_id(conversation_id)
+            .filter(conversation::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(MessengerError::ConversationNotFound(conversation_id))?;
+
+        if conv.conversation_type == ConversationType::Direct as i16 {
+            return Err(MessengerError::Validation(
+                "Cannot add members to a 1-on-1 direct dialogue".to_string(),
+            ));
+        }
+
+        let actor_member = Member::find()
+            .filter(member::Column::ConversationId.eq(conversation_id))
+            .filter(member::Column::UserId.eq(actor_id))
+            .one(&self.db)
+            .await?
+            .ok_or(MessengerError::ConversationAccessDenied(conversation_id))?;
+
+        if actor_member.role != MemberRole::Owner as i16 && actor_member.role != MemberRole::Admin as i16 {
+            return Err(MessengerError::ConversationAccessDenied(conversation_id));
+        }
+
+        let role = input.role.unwrap_or(MemberRole::Member);
+        if role == MemberRole::Owner && actor_member.role != MemberRole::Owner as i16 {
+            return Err(MessengerError::ConversationAccessDenied(conversation_id));
+        }
+
+        let existing = Member::find()
+            .filter(member::Column::ConversationId.eq(conversation_id))
+            .filter(member::Column::UserId.eq(input.user_id))
+            .one(&self.db)
+            .await?;
+
+        if existing.is_some() {
+            return Err(MessengerError::MemberAlreadyExists {
+                conversation_id,
+                user_id: input.user_id,
+            });
+        }
+        let now = Utc::now();
+        let new_id = Uuid::now_v7();
+        let new_member = member::ActiveModel {
+            id: Set(new_id),
+            conversation_id: Set(conversation_id),
+            user_id: Set(input.user_id),
+            role: Set(role as i16),
+            joined_at: Set(now),
+            muted_until: Set(None),
+        };
+        new_member.insert(&self.db).await?;
+
+        Ok(MemberOutput {
+            id: new_id,
+            conversation_id,
+            user_id: input.user_id,
+            role,
+            joined_at: now,
+            muted_until: None,
+        })
+    }
+
+    /// Remove a member from a conversation or leave the conversation.
+    pub async fn remove_member(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        conversation_id: Uuid,
+        target_user_id: Uuid,
+    ) -> MessengerResult<()> {
+        let conv = Conversation::find_by_id(conversation_id)
+            .filter(conversation::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(MessengerError::ConversationNotFound(conversation_id))?;
+
+        if conv.conversation_type == ConversationType::Direct as i16 {
+            return Err(MessengerError::Validation(
+                "Cannot remove members from a 1-on-1 direct dialogue".to_string(),
+            ));
+        }
+
+        let target_member = Member::find()
+            .filter(member::Column::ConversationId.eq(conversation_id))
+            .filter(member::Column::UserId.eq(target_user_id))
+            .one(&self.db)
+            .await?
+            .ok_or(MessengerError::MemberNotFound {
+                conversation_id,
+                user_id: target_user_id,
+            })?;
+
+        // If removing someone else, actor must be owner or admin
+        if actor_id != target_user_id {
+            let actor_member = Member::find()
+                .filter(member::Column::ConversationId.eq(conversation_id))
+                .filter(member::Column::UserId.eq(actor_id))
+                .one(&self.db)
+                .await?
+                .ok_or(MessengerError::ConversationAccessDenied(conversation_id))?;
+
+            if actor_member.role != MemberRole::Owner as i16 && actor_member.role != MemberRole::Admin as i16 {
+                return Err(MessengerError::ConversationAccessDenied(conversation_id));
+            }
+            if target_member.role == MemberRole::Owner as i16 && actor_member.role != MemberRole::Owner as i16 {
+                return Err(MessengerError::ConversationAccessDenied(conversation_id));
+            }
+        } else if target_member.role == MemberRole::Owner as i16 {
+            // Owner leaving must ensure another owner exists or cannot leave as sole owner
+            let other_owners = Member::find()
+                .filter(member::Column::ConversationId.eq(conversation_id))
+                .filter(member::Column::Role.eq(MemberRole::Owner as i16))
+                .filter(member::Column::UserId.ne(actor_id))
+                .count(&self.db)
+                .await?;
+            if other_owners == 0 {
+                return Err(MessengerError::Validation(
+                    "Conversation owner cannot leave without transferring ownership".to_string(),
+                ));
+            }
+        }
+
+        Member::delete_by_id(target_member.id).exec(&self.db).await?;
+        Ok(())
+    }
+
+    /// List members of a conversation.
+    pub async fn list_members(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        conversation_id: Uuid,
+    ) -> MessengerResult<Vec<MemberOutput>> {
+        let _conv = Conversation::find_by_id(conversation_id)
+            .filter(conversation::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(MessengerError::ConversationNotFound(conversation_id))?;
+
+        self.ensure_membership(conversation_id, actor_id).await?;
+
+        let members = Member::find()
+            .filter(member::Column::ConversationId.eq(conversation_id))
+            .order_by_asc(member::Column::JoinedAt)
+            .all(&self.db)
+            .await?;
+
+        let outputs = members
+            .into_iter()
+            .map(|m| {
+                let role = MemberRole::try_from(m.role).unwrap_or(MemberRole::Member);
+                MemberOutput {
+                    id: m.id,
+                    conversation_id: m.conversation_id,
+                    user_id: m.user_id,
+                    role,
+                    joined_at: m.joined_at,
+                    muted_until: m.muted_until,
+                }
+            })
+            .collect();
+
+        Ok(outputs)
+    }
+
+    /// Internal transactional helper for monotonic cursor progression.
+    pub async fn update_cursor_in_tx<C>(
+        txn: &C,
+        conversation_id: Uuid,
+        actor_id: Uuid,
+        last_read_message_id: i64,
+    ) -> MessengerResult<crate::dto::CursorOutput>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
+        let existing = Cursor::find()
+            .filter(cursor::Column::ConversationId.eq(conversation_id))
+            .filter(cursor::Column::UserId.eq(actor_id))
+            .one(txn)
+            .await?;
+
+        let now = Utc::now();
+
+        if let Some(c) = existing {
+            if last_read_message_id < c.last_read_message_id {
+                return Err(MessengerError::CursorRegression {
+                    target_seq: last_read_message_id,
+                    current_seq: c.last_read_message_id,
+                });
+            }
+            let mut active: cursor::ActiveModel = c.into();
+            active.last_read_message_id = Set(last_read_message_id);
+            active.last_read_at = Set(now);
+            active.update(txn).await?;
+        } else {
+            let new_cursor = cursor::ActiveModel {
+                id: Set(Uuid::now_v7()),
+                conversation_id: Set(conversation_id),
+                user_id: Set(actor_id),
+                last_read_message_id: Set(last_read_message_id),
+                last_read_at: Set(now),
+            };
+            new_cursor.insert(txn).await?;
+        }
+
+        Ok(crate::dto::CursorOutput {
+            conversation_id,
+            user_id: actor_id,
+            last_read_message_id,
+        })
+    }
+
     /// Monotonically advance user read cursor.
     pub async fn update_cursor(
         &self,
@@ -627,42 +964,7 @@ impl MessengerService {
         input: UpdateCursorInput,
     ) -> MessengerResult<crate::dto::CursorOutput> {
         self.ensure_membership(input.conversation_id, actor_id).await?;
-
-        let existing = Cursor::find()
-            .filter(cursor::Column::ConversationId.eq(input.conversation_id))
-            .filter(cursor::Column::UserId.eq(actor_id))
-            .one(&self.db)
-            .await?;
-
-        let now = Utc::now();
-
-        if let Some(c) = existing {
-            if input.last_read_message_id < c.last_read_message_id {
-                return Err(MessengerError::CursorRegression {
-                    target_seq: input.last_read_message_id,
-                    current_seq: c.last_read_message_id,
-                });
-            }
-            let mut active: cursor::ActiveModel = c.into();
-            active.last_read_message_id = Set(input.last_read_message_id);
-            active.last_read_at = Set(now);
-            active.update(&self.db).await?;
-        } else {
-            let new_cursor = cursor::ActiveModel {
-                id: Set(Uuid::now_v7()),
-                conversation_id: Set(input.conversation_id),
-                user_id: Set(actor_id),
-                last_read_message_id: Set(input.last_read_message_id),
-                last_read_at: Set(now),
-            };
-            new_cursor.insert(&self.db).await?;
-        }
-
-        Ok(crate::dto::CursorOutput {
-            conversation_id: input.conversation_id,
-            user_id: actor_id,
-            last_read_message_id: input.last_read_message_id,
-        })
+        Self::update_cursor_in_tx(&self.db, input.conversation_id, actor_id, input.last_read_message_id).await
     }
 
     pub async fn ensure_membership(&self, conversation_id: Uuid, user_id: Uuid) -> MessengerResult<()> {
@@ -677,6 +979,22 @@ impl MessengerService {
             return Err(MessengerError::ConversationAccessDenied(conversation_id));
         }
         Ok(())
+    }
+
+    pub async fn ensure_active_member(&self, conversation_id: Uuid, user_id: Uuid) -> MessengerResult<member::Model> {
+        let m = Member::find()
+            .filter(member::Column::ConversationId.eq(conversation_id))
+            .filter(member::Column::UserId.eq(user_id))
+            .one(&self.db)
+            .await?
+            .ok_or(MessengerError::ConversationAccessDenied(conversation_id))?;
+
+        if m.muted_until.is_some_and(|until| until > Utc::now()) {
+            return Err(MessengerError::Validation(
+                "User is currently muted in this conversation".to_string(),
+            ));
+        }
+        Ok(m)
     }
 
     async fn calculate_unread_count(&self, conversation_id: Uuid, user_id: Uuid) -> MessengerResult<i64> {

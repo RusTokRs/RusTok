@@ -84,6 +84,8 @@ ssr = [
   "rustok-region-storefront/ssr",
   "dep:rustok-search-storefront",
   "rustok-search-storefront/ssr",
+  "dep:rustok-messenger-storefront",
+  "rustok-messenger-storefront/ssr",
 ]
 
 [dependencies]
@@ -138,6 +140,7 @@ rustok-product-storefront = { path = "../../crates/modules/rustok-product/storef
 rustok-profiles-storefront = { path = "../../crates/modules/rustok-profiles/storefront", default-features = false, optional = true }
 rustok-region-storefront = { path = "../../crates/modules/rustok-region/storefront", default-features = false, optional = true }
 rustok-search-storefront = { path = "../../crates/modules/rustok-search/storefront", default-features = false, optional = true }
+rustok-messenger-storefront = { path = "../../crates/modules/rustok-messenger/storefront", default-features = false, optional = true }
 console_error_panic_hook = "0.1"
 wasm-bindgen = { version = "0.2", optional = true }
 web-sys = { version = "0.3", features = ["Document", "Element", "HtmlElement", "Location", "Window"] }
@@ -185,6 +188,7 @@ normal = [
   "rustok-profiles-storefront",
   "rustok-region-storefront",
   "rustok-search-storefront",
+  "rustok-messenger-storefront",
 ]
 
 [package.metadata.cargo-machete]
@@ -204,4 +208,5 @@ ignored = [
   "rustok-pricing-storefront",
   "rustok-profiles-storefront",
   "rustok-region-storefront",
+  "rustok-messenger-storefront",
 ]

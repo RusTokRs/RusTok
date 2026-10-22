@@ -16,6 +16,11 @@ pub struct SendMessageInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EditMessageInput {
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageOutput {
     pub id: i64,
     pub tenant_id: Uuid,

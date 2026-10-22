@@ -1,4 +1,4 @@
-use async_graphql::{InputObject, SimpleObject};
+use async_graphql::{InputObject, Json, SimpleObject};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
@@ -94,4 +94,56 @@ pub struct PrekeyBundleGql {
     pub identity_key: String,
     pub curve25519_key: String,
     pub one_time_prekey: Option<OneTimePrekeyGql>,
+}
+
+/// Representation of a conversation in the client messenger list.
+#[derive(Debug, Clone, SimpleObject)]
+pub struct ConversationItemGql {
+    pub id: Uuid,
+    pub conversation_type: String,
+    pub title: Option<String>,
+    pub topic: Option<String>,
+    pub last_message_content: Option<String>,
+    pub last_message_at: Option<DateTime<Utc>>,
+    pub unread_count: usize,
+    pub is_encrypted: bool,
+    pub entity_type: Option<i16>,
+    pub entity_id: Option<Uuid>,
+}
+
+/// Representation of an individual message in a chat history.
+#[derive(Debug, Clone, SimpleObject)]
+pub struct MessageItemGql {
+    pub id: i64,
+    pub conversation_id: Uuid,
+    pub sender_id: Uuid,
+    pub sender_name: Option<String>,
+    pub message_type: i16,
+    pub content: String,
+    pub blocks_json: Option<Json<serde_json::Value>>,
+    pub reply_to_id: Option<i64>,
+    pub is_encrypted: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Input payload for sending a chat message from GraphQL clients.
+#[derive(Debug, Clone, InputObject)]
+pub struct SendMessageInputGql {
+    pub conversation_id: Uuid,
+    pub content: String,
+    pub reply_to_id: Option<i64>,
+}
+
+/// Input payload for advancing read cursor from GraphQL clients.
+#[derive(Debug, Clone, InputObject)]
+pub struct UpdateCursorInputGql {
+    pub conversation_id: Uuid,
+    pub last_read_message_id: i64,
+}
+
+/// Output payload from updating read cursor.
+#[derive(Debug, Clone, SimpleObject)]
+pub struct UpdateCursorOutputGql {
+    pub conversation_id: Uuid,
+    pub last_read_message_id: i64,
 }

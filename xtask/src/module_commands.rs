@@ -8,7 +8,7 @@ pub(crate) fn module_command(args: &[String]) -> Result<()> {
     }
 
     match args[0].as_str() {
-        "new" | "scaffold" => module_scaffold_command(&args[1..]),
+        "new" | "scaffold" => scaffold_command(&args[1..]),
         "validate" => module_validate_command(&args[1..]),
         "test" => module_test_command(&args[1..]),
         "stage-run" => module_stage_run_command(&args[1..]),

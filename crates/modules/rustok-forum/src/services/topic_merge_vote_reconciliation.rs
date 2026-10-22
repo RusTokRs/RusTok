@@ -301,7 +301,7 @@ impl ForumTopicMergeVoteReconciliationService {
 
         let now = Utc::now();
         let payload = reconciliation_payload(
-            input.operation_id,
+            operation_id,
             merge_operation_id,
             merge.source_topic_id,
             merge.target_topic_id,

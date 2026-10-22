@@ -10,9 +10,10 @@ use uuid::Uuid;
 
 use super::{MessengerHttpRuntime, ensure_messenger_module_enabled};
 use crate::dto::{
-    ChannelTranslationOutput, ConversationOutput, CreateConversationInput, CursorOutput,
-    FastSyncRequest, FastSyncResponse, ListMessagesQuery, MessageOutput, SearchMessagesQuery,
-    SendMessageInput, UpdateChannelTranslationInput, UpdateCursorInput,
+    AddMemberInput, ChannelTranslationOutput, ConversationOutput, CreateConversationInput,
+    CursorOutput, EditMessageInput, FastSyncRequest, FastSyncResponse, ListMessagesQuery,
+    MemberOutput, MessageOutput, SearchMessagesQuery, SendMessageInput,
+    UpdateChannelTranslationInput, UpdateCursorInput,
 };
 
 #[derive(Debug, Clone, Deserialize)]
@@ -293,4 +294,113 @@ pub async fn claim_prekey_bundle(
         .map_err(|e| HttpError::not_found("DEVICE_NOT_FOUND", e.to_string()))?;
 
     Ok(Json(bundle))
+}
+
+pub async fn patch_message(
+    State(runtime): State<MessengerHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(message_id): Path<i64>,
+    Json(input): Json<EditMessageInput>,
+) -> HttpResult<Json<MessageOutput>> {
+    let tenant_id = tenant.id;
+    ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
+
+    let actor_id = auth.user_id;
+
+    let output = runtime
+        .service
+        .edit_message(tenant_id, actor_id, message_id, input)
+        .await?;
+
+    runtime.room_hub.broadcast(
+        tenant_id,
+        output.conversation_id,
+        super::MessengerServerMessage::MessageEdited(output.clone()),
+    );
+
+    Ok(Json(output))
+}
+
+pub async fn delete_message(
+    State(runtime): State<MessengerHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(message_id): Path<i64>,
+) -> HttpResult<StatusCode> {
+    let tenant_id = tenant.id;
+    ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
+
+    let actor_id = auth.user_id;
+
+    let conv_id = runtime
+        .service
+        .delete_message(tenant_id, actor_id, message_id)
+        .await?;
+
+    runtime.room_hub.broadcast(
+        tenant_id,
+        conv_id,
+        super::MessengerServerMessage::MessageDeleted { message_id },
+    );
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn add_member(
+    State(runtime): State<MessengerHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(conversation_id): Path<Uuid>,
+    Json(input): Json<AddMemberInput>,
+) -> HttpResult<(StatusCode, Json<MemberOutput>)> {
+    let tenant_id = tenant.id;
+    ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
+
+    let actor_id = auth.user_id;
+
+    let output = runtime
+        .service
+        .add_member(tenant_id, actor_id, conversation_id, input)
+        .await?;
+
+    Ok((StatusCode::CREATED, Json(output)))
+}
+
+pub async fn remove_member(
+    State(runtime): State<MessengerHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path((conversation_id, target_user_id)): Path<(Uuid, Uuid)>,
+) -> HttpResult<StatusCode> {
+    let tenant_id = tenant.id;
+    ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
+
+    let actor_id = auth.user_id;
+
+    runtime
+        .service
+        .remove_member(tenant_id, actor_id, conversation_id, target_user_id)
+        .await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn list_members(
+    State(runtime): State<MessengerHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(conversation_id): Path<Uuid>,
+) -> HttpResult<Json<Vec<MemberOutput>>> {
+    let tenant_id = tenant.id;
+    ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
+
+    let actor_id = auth.user_id;
+
+    let output = runtime
+        .service
+        .list_members(tenant_id, actor_id, conversation_id)
+        .await?;
+
+    Ok(Json(output))
 }

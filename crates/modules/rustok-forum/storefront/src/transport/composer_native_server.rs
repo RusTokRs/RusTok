@@ -14,6 +14,8 @@ use crate::model::{
     CreateStorefrontForumReplyDraft, CreateStorefrontForumTopicDraft, StorefrontForumCreatedReply,
     StorefrontForumCreatedTopic,
 };
+#[cfg(feature = "ssr")]
+use crate::model::StorefrontForumComposerQuote;
 
 pub async fn create_storefront_topic_server(
     draft: CreateStorefrontForumTopicDraft,

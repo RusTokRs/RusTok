@@ -136,9 +136,10 @@ pub use services::{
     inventory_shipment_stock_port,
 };
 pub use services::{
-    OrchestratedOrderAdminCommandPort, OrderCancellationOrchestrator, OrderShipmentProjector,
-    ProjectingFulfillmentAdminCommandPort, orchestrated_order_admin_command_runtime,
-    projecting_fulfillment_admin_command_runtime,
+    ManualShipmentCommand, OrchestratedOrderAdminCommandPort, OrderCancellationOrchestrator,
+    OrderShipmentProjector, ProjectingFulfillmentAdminCommandPort, ShipmentTruth,
+    orchestrated_order_admin_command_runtime, projecting_fulfillment_admin_command_runtime,
+    shipment_truth,
 };
 pub(crate) use storefront_checkout_pricing::StorefrontCheckoutPricingResolver;
 
