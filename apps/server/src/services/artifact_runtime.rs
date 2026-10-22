@@ -205,7 +205,7 @@ pub async fn compose_artifact_binding_executor(
         .and_then(|router| {
             router.route(
                 http_capability,
-                Arc::new(control_plane.artifact_http_capability()),
+                Arc::new(control_plane.artifact_http_capability()?),
             )
         })
         .and_then(|router| {

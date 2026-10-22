@@ -2,6 +2,7 @@ use sea_orm::DatabaseConnection;
 use std::{collections::HashSet, sync::Arc};
 
 use rustok_core::ModuleRegistry;
+use rustok_sandbox::SandboxResult;
 use rustok_secrets::SecretResolverRegistry;
 
 use crate::{
@@ -530,7 +531,9 @@ impl ModuleControlPlane {
 
     /// Returns the owner-scoped outbound HTTP capability resolver for exact
     /// admitted artifact executions under `platform.http`.
-    pub fn artifact_http_capability(&self) -> SeaOrmArtifactHttpCapabilityBrokerResolver {
+    pub fn artifact_http_capability(
+        &self,
+    ) -> SandboxResult<SeaOrmArtifactHttpCapabilityBrokerResolver> {
         SeaOrmArtifactHttpCapabilityBrokerResolver::new(self.db.clone())
     }
 
@@ -538,7 +541,7 @@ impl ModuleControlPlane {
     pub fn artifact_http_capability_with_timeout(
         &self,
         timeout: std::time::Duration,
-    ) -> SeaOrmArtifactHttpCapabilityBrokerResolver {
+    ) -> SandboxResult<SeaOrmArtifactHttpCapabilityBrokerResolver> {
         SeaOrmArtifactHttpCapabilityBrokerResolver::with_timeout(self.db.clone(), timeout)
     }
 
