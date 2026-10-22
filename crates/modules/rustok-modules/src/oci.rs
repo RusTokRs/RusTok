@@ -162,7 +162,7 @@ impl OciArtifactPublicationTarget {
 
     fn tag_reference(&self, tag: String) -> Result<RegistryReference, OciArtifactPublicationError> {
         RegistryReference::new(self.registry.clone(), self.repository.clone(), tag)
-            .map_err(OciArtifactPublicationError::InvalidTarget)
+            .map_err(|error| OciArtifactPublicationError::InvalidTarget(error.to_string()))
     }
 
     fn digest_reference(&self, digest: String) -> OciArtifactReference {
@@ -988,7 +988,8 @@ impl OciDistributionArtifactRegistry {
         infrastructure: ControlPlaneInfrastructure,
     ) -> Result<Self, ModuleInstallationError> {
         Ok(Self {
-            client: strict_oci_registry_transport().map_err(ModuleInstallationError::Registry)?,
+            client: strict_oci_registry_transport()
+                .map_err(|error| ModuleInstallationError::Registry(error.to_string()))?,
             auth,
             infrastructure,
         })
@@ -1015,7 +1016,7 @@ impl OciDistributionArtifactRegistry {
             reference.repository.clone(),
             reference.digest.clone(),
         )
-        .map_err(ModuleInstallationError::Registry)
+        .map_err(|error| ModuleInstallationError::Registry(error.to_string()))
     }
 }
 

@@ -33,9 +33,6 @@ const OCI_BLOB_MEDIA_TYPE: &str = "application/octet-stream";
 const TOKEN_RESPONSE_MAXIMUM_BYTES: u64 = 1024 * 1024;
 const RETRY_BACKOFF_BASE: Duration = Duration::from_millis(100);
 
-/// A registry/repository/reference tuple safe to place in an OCI Distribution
-/// API path. It stays crate-private so callers cannot bypass owner validation.
-#[derive(Clone, Debug)]
 /// Failure of the strict OCI registry transport. `Rejected` preserves the
 /// registry's HTTP status so callers can distinguish absence (404) and
 /// authorization failures (401/403) from registry faults (5xx);
@@ -62,6 +59,9 @@ pub enum OciTransportError {
     Unavailable(String),
 }
 
+/// A registry/repository/reference tuple safe to place in an OCI Distribution
+/// API path. It stays crate-private so callers cannot bypass owner validation.
+#[derive(Clone, Debug)]
 pub(crate) struct RegistryReference {
     registry: String,
     repository: String,
@@ -126,7 +126,9 @@ impl RegistryReference {
 
     fn blob_url(&self, digest: &str) -> Result<Url, OciTransportError> {
         if !valid_digest(digest) {
-            return Err(OciTransportError::InvalidRequest("OCI blob digest is invalid".to_string()));
+            return Err(OciTransportError::InvalidRequest(
+                "OCI blob digest is invalid".to_string(),
+            ));
         }
         self.api_url(&format!("blobs/{digest}"))
     }
@@ -1018,9 +1020,7 @@ fn parse_bearer_challenge(value: &str) -> Result<BearerChallenge, OciTransportEr
     }
     let parameters = parse_challenge_parameters(parameters.trim())?;
     let realm = parameters.get("realm").ok_or_else(|| {
-        OciTransportError::InvalidResponse(
-            "OCI bearer challenge has no token realm".to_string(),
-        )
+        OciTransportError::InvalidResponse("OCI bearer challenge has no token realm".to_string())
     })?;
     let realm = Url::parse(realm).map_err(|_| {
         OciTransportError::InvalidResponse("OCI bearer token realm is invalid".to_string())
@@ -1074,11 +1074,13 @@ fn parse_challenge_parameters(value: &str) -> Result<HashMap<String, String>, Oc
         if rest.is_empty() {
             break;
         }
-        rest = rest.strip_prefix(',').ok_or_else(|| {
-            OciTransportError::InvalidResponse(
-                "OCI bearer challenge has malformed parameters".to_string(),
-            )
-        })?
+        rest = rest
+            .strip_prefix(',')
+            .ok_or_else(|| {
+                OciTransportError::InvalidResponse(
+                    "OCI bearer challenge has malformed parameters".to_string(),
+                )
+            })?
             .trim_start();
     }
     Ok(values)
