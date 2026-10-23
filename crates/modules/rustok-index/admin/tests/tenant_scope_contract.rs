@@ -34,9 +34,17 @@ fn index_admin_binds_authenticated_authority_to_the_resolved_tenant() {
         4,
         "all four native server endpoints must enforce require_index_admin_tenant_scope"
     );
+    assert!(SOURCE.contains("if auth_tenant_id.is_nil() || resolved_tenant_id.is_nil()"));
     assert!(SOURCE.contains("if auth_tenant_id == resolved_tenant_id"));
     assert!(SOURCE.contains("Index admin access is denied"));
+    assert!(SOURCE.contains("index.admin_tenant_scope_invalid"));
     assert!(SOURCE.contains("index.admin_tenant_scope_mismatch"));
     assert!(SOURCE.contains("auth_tenant_id = %auth_tenant_id"));
     assert!(SOURCE.contains("resolved_tenant_id = %resolved_tenant_id"));
+    assert_eq!(
+        SOURCE.matches("if job_uuid.is_nil() {").count(),
+        2,
+        "both cancel and retry endpoints must reject nil job_uuid"
+    );
 }
+

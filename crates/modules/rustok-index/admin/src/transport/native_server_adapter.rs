@@ -16,6 +16,17 @@ fn require_index_admin_tenant_scope(
     auth_tenant_id: uuid::Uuid,
     resolved_tenant_id: uuid::Uuid,
 ) -> Result<(), ServerFnError> {
+    if auth_tenant_id.is_nil() || resolved_tenant_id.is_nil() {
+        tracing::warn!(
+            auth_tenant_id = %auth_tenant_id,
+            resolved_tenant_id = %resolved_tenant_id,
+            code = "index.admin_tenant_scope_invalid",
+            boundary = "index_admin_native_transport",
+            "index admin requires non-nil tenant scope"
+        );
+        return Err(ServerFnError::new("Index admin access is denied"));
+    }
+
     if auth_tenant_id == resolved_tenant_id {
         return Ok(());
     }
@@ -407,15 +418,20 @@ pub async fn trigger_replay_native(
         }
 
         let schema_ref = rustok_index::SchemaRef {
-            module: rustok_index::ModuleName::new(input.schema_module)
+            module: rustok_index::ModuleName::new(input.schema_module.trim())
                 .map_err(|e| ServerFnError::new(format!("invalid schema module: {e}")))?,
-            entity: rustok_index::EntityName::new(input.schema_entity)
+            entity: rustok_index::EntityName::new(input.schema_entity.trim())
                 .map_err(|e| ServerFnError::new(format!("invalid schema entity: {e}")))?,
             version: rustok_index::SchemaVersion::new(input.schema_version),
         };
 
         let worker_id = format!("admin-replay-{}", uuid::Uuid::new_v4().simple());
-        let request = if let Some(loc) = input.locale {
+        let request = if let Some(loc) = input
+            .locale
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
             let locale_key = rustok_index::LocaleKey::new(loc)
                 .map_err(|e| ServerFnError::new(format!("invalid locale: {e}")))?;
             rustok_index::IndexReplayRunRequest::for_locale(
@@ -501,8 +517,11 @@ pub async fn cancel_job_native(input: CancelJobInput) -> Result<CancelActionResu
             ));
         }
 
-        let job_uuid = uuid::Uuid::parse_str(&input.job_id)
+        let job_uuid = uuid::Uuid::parse_str(input.job_id.trim())
             .map_err(|_| ServerFnError::new("invalid job_id: must be a valid UUID"))?;
+        if job_uuid.is_nil() {
+            return Err(ServerFnError::new("invalid job_id: must not be nil"));
+        }
 
         let runtime = leptos::prelude::use_context::<rustok_index::SharedIndexReplayRuntime>()
             .or_else(|| {
@@ -574,8 +593,11 @@ pub async fn retry_job_native(input: RetryJobInput) -> Result<RetryActionResult,
             ));
         }
 
-        let job_uuid = uuid::Uuid::parse_str(&input.job_id)
+        let job_uuid = uuid::Uuid::parse_str(input.job_id.trim())
             .map_err(|_| ServerFnError::new("invalid job_id: must be a valid UUID"))?;
+        if job_uuid.is_nil() {
+            return Err(ServerFnError::new("invalid job_id: must not be nil"));
+        }
 
         let db = leptos::prelude::use_context::<HostRuntimeContext>()
             .map(|ctx| ctx.db_clone())
