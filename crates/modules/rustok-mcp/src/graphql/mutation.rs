@@ -25,6 +25,11 @@ impl McpMutation {
         input: CreateMcpClientInput,
     ) -> Result<CreateMcpClientResultGql> {
         let auth = managed_auth(ctx)?;
+        if input.delegated_user_id.is_some_and(|id| id.is_nil()) {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Delegated user ID cannot be empty (nil UUID)",
+            ));
+        }
         let result = runtime(ctx)?
             .port()
             .create_client(
@@ -66,6 +71,11 @@ impl McpMutation {
         input: RotateMcpTokenInput,
     ) -> Result<RotateMcpTokenResultGql> {
         let auth = managed_auth(ctx)?;
+        if client_id.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Client ID cannot be empty (nil UUID)",
+            ));
+        }
         let result = runtime(ctx)?
             .port()
             .rotate_token(
@@ -94,6 +104,11 @@ impl McpMutation {
         input: UpdateMcpPolicyInput,
     ) -> Result<McpPolicyGql> {
         let auth = managed_auth(ctx)?;
+        if client_id.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Client ID cannot be empty (nil UUID)",
+            ));
+        }
         runtime(ctx)?
             .port()
             .update_policy(
@@ -119,6 +134,11 @@ impl McpMutation {
         reason: Option<String>,
     ) -> Result<bool> {
         let auth = managed_auth(ctx)?;
+        if token_id.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Token ID cannot be empty (nil UUID)",
+            ));
+        }
         runtime(ctx)?
             .port()
             .revoke_token(&management_context(auth), token_id, reason)
@@ -134,6 +154,11 @@ impl McpMutation {
         reason: Option<String>,
     ) -> Result<bool> {
         let auth = managed_auth(ctx)?;
+        if client_id.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Client ID cannot be empty (nil UUID)",
+            ));
+        }
         runtime(ctx)?
             .port()
             .deactivate_client(&management_context(auth), client_id, reason)
@@ -148,6 +173,11 @@ impl McpMutation {
         input: StageMcpModuleScaffoldDraftInput,
     ) -> Result<McpModuleScaffoldDraftGql> {
         let auth = managed_auth(ctx)?;
+        if input.client_id.is_some_and(|id| id.is_nil()) {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Client ID cannot be empty (nil UUID)",
+            ));
+        }
         runtime(ctx)?
             .port()
             .stage_scaffold_draft(
@@ -177,6 +207,11 @@ impl McpMutation {
         input: ApplyMcpModuleScaffoldDraftInput,
     ) -> Result<McpModuleScaffoldDraftGql> {
         let auth = managed_auth(ctx)?;
+        if draft_id.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Draft ID cannot be empty (nil UUID)",
+            ));
+        }
         runtime(ctx)?
             .port()
             .apply_scaffold_draft(

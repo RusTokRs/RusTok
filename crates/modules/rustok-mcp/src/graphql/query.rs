@@ -1,5 +1,5 @@
-use async_graphql::{Context, Object, Result};
-use rustok_api::Permission;
+use async_graphql::{Context, FieldError, Object, Result};
+use rustok_api::{Permission, graphql::GraphQLError};
 use uuid::Uuid;
 
 use super::{
@@ -38,6 +38,11 @@ impl McpQuery {
             Permission::MCP_READ,
             "Permission denied: mcp:read required",
         )?;
+        if id.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Client ID cannot be empty (nil UUID)",
+            ));
+        }
         runtime(ctx)?
             .port()
             .get_client(&management_context(auth), id)
@@ -60,6 +65,11 @@ impl McpQuery {
             Permission::MCP_READ,
             "Permission denied: mcp:read required",
         )?;
+        if client_id.is_some_and(|id| id.is_nil()) {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Client ID cannot be empty (nil UUID)",
+            ));
+        }
         runtime(ctx)?
             .port()
             .list_audit_events(
@@ -105,6 +115,11 @@ impl McpQuery {
             Permission::MCP_MANAGE,
             "Permission denied: mcp:manage required",
         )?;
+        if id.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Draft ID cannot be empty (nil UUID)",
+            ));
+        }
         runtime(ctx)?
             .port()
             .get_scaffold_draft(&management_context(auth), id)

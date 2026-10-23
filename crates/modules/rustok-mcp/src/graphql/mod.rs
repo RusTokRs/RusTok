@@ -15,8 +15,13 @@ pub use query::McpQuery;
 pub use types::*;
 
 fn require_auth_context<'a>(ctx: &'a Context<'a>) -> Result<&'a AuthContext> {
-    ctx.data::<AuthContext>()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())
+    let auth = ctx
+        .data::<AuthContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+    if auth.tenant_id.is_nil() || auth.user_id.is_nil() {
+        return Err(<FieldError as GraphQLError>::unauthenticated());
+    }
+    Ok(auth)
 }
 
 fn ensure_permission(auth: &AuthContext, permission: Permission, message: &str) -> Result<()> {

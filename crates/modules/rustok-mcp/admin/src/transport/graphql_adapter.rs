@@ -290,13 +290,21 @@ pub fn client_details_request(id: String) -> McpGraphqlRequest<McpClientDetailsV
     McpGraphqlRequest {
         operation_name: MCP_CLIENT_DETAILS_OPERATION,
         query: MCP_CLIENT_DETAILS_QUERY,
-        variables: McpClientDetailsVariables { id },
+        variables: McpClientDetailsVariables {
+            id: id.trim().to_string(),
+        },
     }
 }
 
 pub fn create_client_request(
-    input: CreateMcpClientPayload,
+    mut input: CreateMcpClientPayload,
 ) -> McpGraphqlRequest<CreateMcpClientVariables> {
+    input.slug = input.slug.trim().to_string();
+    input.display_name = input.display_name.trim().to_string();
+    input.description = input.description.trim().to_string();
+    input.actor_type = input.actor_type.trim().to_string();
+    input.token_name = input.token_name.trim().to_string();
+    input.token_expires_at = input.token_expires_at.trim().to_string();
     McpGraphqlRequest {
         operation_name: CREATE_MCP_CLIENT_OPERATION,
         query: CREATE_MCP_CLIENT_MUTATION,
@@ -311,7 +319,7 @@ pub fn rotate_token_request(
         operation_name: ROTATE_MCP_TOKEN_OPERATION,
         query: ROTATE_MCP_TOKEN_MUTATION,
         variables: RotateMcpTokenVariables {
-            client_id: input.client_id.clone(),
+            client_id: input.client_id.trim().to_string(),
             input: RotateMcpTokenGraphqlInput {
                 token_name: optional_graphql_string(input.token_name),
                 expires_at: optional_graphql_string(input.expires_at),
@@ -328,7 +336,7 @@ pub fn update_policy_request(
         operation_name: UPDATE_MCP_POLICY_OPERATION,
         query: UPDATE_MCP_POLICY_MUTATION,
         variables: UpdateMcpPolicyVariables {
-            client_id: input.client_id.clone(),
+            client_id: input.client_id.trim().to_string(),
             input: UpdateMcpPolicyGraphqlInput {
                 allowed_tools: input.allowed_tools,
                 denied_tools: input.denied_tools,
@@ -351,7 +359,10 @@ pub fn revoke_token_request(
     McpGraphqlRequest {
         operation_name: REVOKE_MCP_TOKEN_OPERATION,
         query: REVOKE_MCP_TOKEN_MUTATION,
-        variables: RevokeMcpTokenVariables { token_id, reason },
+        variables: RevokeMcpTokenVariables {
+            token_id: token_id.trim().to_string(),
+            reason: reason.and_then(optional_graphql_string),
+        },
     }
 }
 
@@ -362,13 +373,20 @@ pub fn deactivate_client_request(
     McpGraphqlRequest {
         operation_name: DEACTIVATE_MCP_CLIENT_OPERATION,
         query: DEACTIVATE_MCP_CLIENT_MUTATION,
-        variables: DeactivateMcpClientVariables { client_id, reason },
+        variables: DeactivateMcpClientVariables {
+            client_id: client_id.trim().to_string(),
+            reason: reason.and_then(optional_graphql_string),
+        },
     }
 }
 
 pub fn stage_scaffold_draft_request(
-    input: StageMcpScaffoldDraftPayload,
+    mut input: StageMcpScaffoldDraftPayload,
 ) -> McpGraphqlRequest<StageMcpScaffoldDraftVariables> {
+    input.client_id = input.client_id.and_then(optional_graphql_string);
+    input.slug = input.slug.trim().to_string();
+    input.name = input.name.trim().to_string();
+    input.description = input.description.trim().to_string();
     McpGraphqlRequest {
         operation_name: STAGE_MCP_SCAFFOLD_DRAFT_OPERATION,
         query: STAGE_MCP_SCAFFOLD_DRAFT_MUTATION,
@@ -377,8 +395,10 @@ pub fn stage_scaffold_draft_request(
 }
 
 pub fn apply_scaffold_draft_request(
-    input: ApplyMcpScaffoldDraftPayload,
+    mut input: ApplyMcpScaffoldDraftPayload,
 ) -> McpGraphqlRequest<ApplyMcpScaffoldDraftVariables> {
+    input.draft_id = input.draft_id.trim().to_string();
+    input.workspace_root = input.workspace_root.trim().to_string();
     McpGraphqlRequest {
         operation_name: APPLY_MCP_SCAFFOLD_DRAFT_OPERATION,
         query: APPLY_MCP_SCAFFOLD_DRAFT_MUTATION,
@@ -396,9 +416,9 @@ mod tests {
     #[test]
     fn rotate_token_variables_keep_client_id_outside_input() {
         let request = rotate_token_request(RotateMcpTokenPayload {
-            client_id: "client-1".to_string(),
-            token_name: "rotated".to_string(),
-            expires_at: String::new(),
+            client_id: "  client-1  ".to_string(),
+            token_name: "  rotated  ".to_string(),
+            expires_at: "   ".to_string(),
             revoke_existing_tokens: true,
         });
         let json = serde_json::to_value(request.variables).expect("variables serialize");
@@ -426,5 +446,27 @@ mod tests {
         assert_eq!(json["input"]["allowedTools"][0], "modules.list");
         assert_eq!(json["input"]["grantedPermissions"][0], "mcp:read");
         assert_eq!(json["input"]["grantedScopes"][0], "tenant");
+    }
+
+    #[test]
+    fn requests_trim_string_parameters() {
+        let details = client_details_request("  test-id  ".to_string());
+        assert_eq!(details.variables.id, "test-id");
+
+        let revoke = revoke_token_request("  token-123  ".to_string(), Some("  lost token  ".to_string()));
+        assert_eq!(revoke.variables.token_id, "token-123");
+        assert_eq!(revoke.variables.reason, Some("lost token".to_string()));
+
+        let deactivate = deactivate_client_request("  client-456  ".to_string(), Some("   ".to_string()));
+        assert_eq!(deactivate.variables.client_id, "client-456");
+        assert_eq!(deactivate.variables.reason, None);
+
+        let apply = apply_scaffold_draft_request(ApplyMcpScaffoldDraftPayload {
+            draft_id: "  draft-1  ".to_string(),
+            workspace_root: "  /path/to/root  ".to_string(),
+            confirm: true,
+        });
+        assert_eq!(apply.variables.draft_id, "draft-1");
+        assert_eq!(apply.variables.input.workspace_root, "/path/to/root");
     }
 }
