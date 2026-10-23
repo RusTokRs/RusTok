@@ -283,6 +283,74 @@ where
             ))
             .await
             .map_err(storage_error)?;
+
+        // Open/completing uploads own staged object bytes outside the main
+        // object catalog. Queue every chunk before removing its durable row,
+        // then clear those sessions in the same purge transaction so a
+        // terminal namespace cannot retain inaccessible staging data until
+        // the ordinary expiry reaper runs.
+        let upload_chunk_keys = transaction
+            .query_all_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "SELECT chunk.storage_key
+                     FROM module_artifact_data_object_upload_chunks chunk
+                     JOIN module_artifact_data_object_upload_sessions session
+                       ON session.tenant_id = chunk.tenant_id
+                      AND session.session_id = chunk.session_id
+                     WHERE session.tenant_id = {} AND session.data_owner_id = {}
+                       AND session.namespace_instance_id = {}",
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                ),
+                namespace_values(scope, backend)?,
+            ))
+            .await
+            .map_err(storage_error)?;
+        for row in upload_chunk_keys {
+            let storage_key: String = row.try_get("", "storage_key").map_err(storage_error)?;
+            queue_artifact_data_object_gc_candidate(
+                &transaction,
+                &self.infrastructure,
+                scope,
+                &storage_key,
+            )
+            .await?;
+        }
+        transaction
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "DELETE FROM module_artifact_data_object_upload_chunks
+                     WHERE tenant_id = {} AND session_id IN (
+                         SELECT session_id FROM module_artifact_data_object_upload_sessions
+                         WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
+                     )",
+                    backend.placeholder(1),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                ),
+                namespace_values(scope, backend)?,
+            ))
+            .await
+            .map_err(storage_error)?;
+        transaction
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "DELETE FROM module_artifact_data_object_upload_sessions
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                ),
+                namespace_values(scope, backend)?,
+            ))
+            .await
+            .map_err(storage_error)?;
+
         let next_revision = u64::try_from(current_revision)
             .ok()
             .and_then(|value| value.checked_add(1))
