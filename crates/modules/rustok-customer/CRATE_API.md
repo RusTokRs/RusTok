@@ -1,5 +1,14 @@
 # rustok-customer / CRATE_API
 
+## Public Modules
+- `dto`: Input and response transfer objects for customer operations.
+- `entities`: SeaORM entity models for customer database storage.
+- `error`: Customer domain errors and result aliases.
+- `migrations`: SeaORM migration definitions for customer schemas.
+- `module`: Core `CustomerModule` definition and platform registration.
+- `ports`: Transport-neutral read projection traits and query requests.
+- `services`: Domain business logic and mutation services.
+
 ## Platform Capability Bindings
 - `CustomerModule` implements `rustok_core::module::RusToKModule` and `MigrationSource`.
 - Declared as `ModuleKind::Optional`.

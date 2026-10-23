@@ -42,4 +42,4 @@ No-compile customer boundary checks for source/evidence-only iterations:
 
 Compiled module gates (`cargo xtask module validate customer`, `cargo xtask module test customer`, and targeted `cargo test -p rustok-customer ...`) remain required before promoting FBA beyond `in_progress`, but are intentionally not part of no-compile iterations.
 
-See also `docs/README.md`.
+See also `docs/README.md` and [CRATE_API.md](CRATE_API.md).

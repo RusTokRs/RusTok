@@ -31,7 +31,7 @@
     "forum_audience_provider_acl": "GroupMembershipEnforcementReadPort via ServerForumAudienceGroupFactsPort",
     "moderation_subject_adapter": [
       "crates/modules/rustok-groups/src/moderation_subject.rs",
-      "crates/modules/rustok-moderation-api/src/model.rs",
+      "crates/modules/rustok-moderation/src/model.rs",
       "crates/modules/rustok-moderation/src/application_dispatch.rs"
     ]
   },
