@@ -78,7 +78,7 @@ impl MarketplaceLedgerDirectoryService {
                 context,
                 ReadMarketplaceSellerBalanceRequest {
                     seller_id,
-                    currency_code: currency,
+                    currency_code: trimmed.to_ascii_uppercase(),
                 },
             )
             .await
