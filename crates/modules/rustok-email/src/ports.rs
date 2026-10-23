@@ -113,6 +113,12 @@ fn validate_delivery_request(request: &EmailDeliveryRequest) -> Result<(), PortE
             "email delivery recipient is not a valid email address",
         ));
     }
+    if !request.vars.is_null() && !request.vars.is_object() {
+        return Err(PortError::validation(
+            "email.vars_invalid",
+            "email delivery template vars must be a JSON object or null",
+        ));
+    }
     Ok(())
 }
 
@@ -242,5 +248,18 @@ mod tests {
         .await
         .expect_err("crlf injection must be rejected");
         assert_eq!(error.code, "email.recipient_invalid");
+
+        // Test non-object/non-null vars rejection
+        let mut request = delivery_request();
+        request.vars = serde_json::json!(["not", "an", "object"]);
+        let error = EmailDeliveryPort::send_transactional_email(
+            &crate::EmailService::Disabled,
+            write_context(),
+            request,
+        )
+        .await
+        .expect_err("array vars must be rejected as validation error");
+        assert_eq!(error.code, "email.vars_invalid");
+        assert_eq!(error.kind, PortErrorKind::Validation);
     }
 }
