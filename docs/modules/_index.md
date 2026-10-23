@@ -151,6 +151,9 @@ Module local documentation lives inside the crates themselves at
 | `rustok-deal` | [docs](../../crates/modules/rustok-deal/docs/README.md) | [plan](../../crates/modules/rustok-deal/docs/implementation-plan.md) |
 | `rustok-billing` | [docs](../../crates/modules/rustok-billing/docs/README.md) | [plan](../../crates/modules/rustok-billing/docs/implementation-plan.md) |
 | `rustok-finance` | [docs](../../crates/modules/rustok-finance/docs/README.md) | [plan](../../crates/modules/rustok-finance/docs/implementation-plan.md) |
+| `rustok-calls` | [docs](../../crates/modules/rustok-calls/docs/README.md) | [plan](../../crates/modules/rustok-calls/docs/implementation-plan.md) |
+| `rustok-calendar` | [docs](../../crates/modules/rustok-calendar/docs/README.md) | [plan](../../crates/modules/rustok-calendar/docs/implementation-plan.md) |
+| `rustok-tasks` | [docs](../../crates/modules/rustok-tasks/docs/README.md) | [plan](../../crates/modules/rustok-tasks/docs/implementation-plan.md) |
 ## Module UI Packages
 
 ### Optional/Admin Surfaces
@@ -178,6 +181,9 @@ Module local documentation lives inside the crates themselves at
 - `rustok-deal`: [README](../../crates/modules/rustok-deal/admin/README.md)
 - `rustok-billing`: [README](../../crates/modules/rustok-billing/admin/README.md)
 - `rustok-finance`: [README](../../crates/modules/rustok-finance/admin/README.md)
+- `rustok-calls`: [README](../../crates/modules/rustok-calls/admin/README.md)
+- `rustok-calendar`: [README](../../crates/modules/rustok-calendar/admin/README.md)
+- `rustok-tasks`: [README](../../crates/modules/rustok-tasks/admin/README.md)
 ### Optional/Storefront Surfaces
 
 - `rustok-groups`: [README](../../crates/modules/rustok-groups/storefront/README.md)
@@ -188,6 +194,8 @@ Module local documentation lives inside the crates themselves at
 - `rustok-pages`: [README](../../crates/modules/rustok-pages/storefront/README.md)
 - Additional owner packages are listed in [UI Packages Index](./UI_PACKAGES_INDEX.md).
 
+- `rustok-calls`: [README](../../crates/modules/rustok-calls/storefront/README.md)
+- `rustok-calendar`: [README](../../crates/modules/rustok-calendar/storefront/README.md)
 ## Related Documents
 
 - [Module Platform Overview](./overview.md)

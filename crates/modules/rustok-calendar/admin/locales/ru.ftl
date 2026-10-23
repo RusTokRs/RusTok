@@ -1,0 +1,15 @@
+calendar-title = Calendar & Appointment Scheduling
+calendar-description = Управление настройками и рабочими процессами Calendar & Appointment Scheduling
+calendar-empty = Записи не найдены
+calendar-save = Сохранить
+calendar-cancel = Отмена
+calendar-success = Операция успешно выполнена
+calendar-error = Произошла ошибка
+calendar-search-placeholder = Поиск записей Calendar & Appointment Scheduling...
+calendar-col-title = Название
+calendar-col-status = Статус
+calendar-col-created = Дата создания
+calendar-col-actions = Действия
+calendar-action-create = Создать
+calendar-action-edit = Изменить
+calendar-action-delete = Удалить

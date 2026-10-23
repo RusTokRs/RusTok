@@ -88,6 +88,11 @@ members = [
     "crates/modules/rustok-deal/admin",
     "crates/modules/rustok-billing/admin",
     "crates/modules/rustok-finance/admin",
+    "crates/modules/rustok-calls/admin",
+    "crates/modules/rustok-calls/storefront",
+    "crates/modules/rustok-calendar/admin",
+    "crates/modules/rustok-calendar/storefront",
+    "crates/modules/rustok-tasks/admin",
     "tests/e2e-rust",
     "UI/leptos",
     "ops/benches",
@@ -134,6 +139,9 @@ description = "High-performance, modular headless CMS and e-commerce platform bu
 repository = "https://github.com/RusTokRs/RusTok"
 
 [workspace.dependencies]
+rustok-tasks = { path = "crates/modules/rustok-tasks" }
+rustok-calendar = { path = "crates/modules/rustok-calendar" }
+rustok-calls = { path = "crates/modules/rustok-calls" }
 rustok-finance = { path = "crates/modules/rustok-finance" }
 rustok-billing = { path = "crates/modules/rustok-billing" }
 rustok-deal = { path = "crates/modules/rustok-deal" }

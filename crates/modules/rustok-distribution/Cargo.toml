@@ -34,6 +34,9 @@ mod-accounting = ["dep:rustok-accounting"]
 mod-moderation = ["dep:rustok-moderation"]
 mod-content = ["dep:rustok-content", "rustok-content/graphql", "rustok-content-orchestration/mod-content"]
 mod-blog = ["dep:rustok-blog", "dep:rustok-content", "mod-content", "mod-taxonomy", "rustok-content-orchestration/mod-blog"]
+mod-tasks = ["dep:rustok-tasks"]
+mod-calendar = ["dep:rustok-calendar"]
+mod-calls = ["dep:rustok-calls"]
 mod-finance = ["dep:rustok-finance"]
 mod-billing = ["dep:rustok-billing"]
 mod-deal = ["dep:rustok-deal"]
@@ -60,6 +63,9 @@ mod-ai = ["dep:rustok-ai", "rustok-ai/server"]
 ai-translation = ["mod-ai", "mod-translation", "dep:rustok-ai-translation"]
 
 [dependencies]
+rustok-tasks = { workspace = true, optional = true }
+rustok-calendar = { workspace = true, optional = true }
+rustok-calls = { workspace = true, optional = true }
 rustok-finance = { workspace = true, optional = true }
 rustok-billing = { workspace = true, optional = true }
 rustok-deal = { workspace = true, optional = true }

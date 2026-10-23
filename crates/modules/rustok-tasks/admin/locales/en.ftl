@@ -1,0 +1,15 @@
+tasks-title = Team Issues & Tasks
+tasks-description = Manage Team Issues & Tasks configuration and operational workflows
+tasks-empty = No records found
+tasks-save = Save
+tasks-cancel = Cancel
+tasks-success = Operation completed successfully
+tasks-error = An error occurred
+tasks-search-placeholder = Search Team Issues & Tasks records...
+tasks-col-title = Title
+tasks-col-status = Status
+tasks-col-created = Created At
+tasks-col-actions = Actions
+tasks-action-create = Create New
+tasks-action-edit = Edit
+tasks-action-delete = Delete

@@ -236,6 +236,12 @@ pub fn build_registry() -> ModuleRegistry {
     let registry = registry.register(rustok_billing::BillingModule);
     #[cfg(feature = "mod-finance")]
     let registry = registry.register(rustok_finance::FinanceModule);
+    #[cfg(feature = "mod-calls")]
+    let registry = registry.register(rustok_calls::CallsModule);
+    #[cfg(feature = "mod-calendar")]
+    let registry = registry.register(rustok_calendar::CalendarModule);
+    #[cfg(feature = "mod-tasks")]
+    let registry = registry.register(rustok_tasks::TasksModule);
     generated_promotions::register_promoted_modules(registry)
 }
 

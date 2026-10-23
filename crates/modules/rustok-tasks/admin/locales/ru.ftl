@@ -1,0 +1,15 @@
+tasks-title = Team Issues & Tasks
+tasks-description = Управление настройками и рабочими процессами Team Issues & Tasks
+tasks-empty = Записи не найдены
+tasks-save = Сохранить
+tasks-cancel = Отмена
+tasks-success = Операция успешно выполнена
+tasks-error = Произошла ошибка
+tasks-search-placeholder = Поиск записей Team Issues & Tasks...
+tasks-col-title = Название
+tasks-col-status = Статус
+tasks-col-created = Дата создания
+tasks-col-actions = Действия
+tasks-action-create = Создать
+tasks-action-edit = Изменить
+tasks-action-delete = Удалить

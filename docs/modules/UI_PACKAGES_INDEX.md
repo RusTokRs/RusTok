@@ -139,6 +139,9 @@ integration. The canonical source of truth here is only manifest wiring.
 - `rustok-deal` admin UI: [README](../../crates/modules/rustok-deal/admin/README.md)
 - `rustok-billing` admin UI: [README](../../crates/modules/rustok-billing/admin/README.md)
 - `rustok-finance` admin UI: [README](../../crates/modules/rustok-finance/admin/README.md)
+- `rustok-calls` admin UI: [README](../../crates/modules/rustok-calls/admin/README.md)
+- `rustok-calendar` admin UI: [README](../../crates/modules/rustok-calendar/admin/README.md)
+- `rustok-tasks` admin UI: [README](../../crates/modules/rustok-tasks/admin/README.md)
 ### Optional/Storefront Surfaces
 
 - `rustok-notifications` storefront UI: [README](../../crates/modules/rustok-notifications/storefront/README.md)
@@ -168,6 +171,8 @@ integration. The canonical source of truth here is only manifest wiring.
 - Reusable owner-side SEO widgets and transport helpers live in the support crate
   `rustok-seo-panel`, not in host application code.
 
+- `rustok-calls` storefront UI: [README](../../crates/modules/rustok-calls/storefront/README.md)
+- `rustok-calendar` storefront UI: [README](../../crates/modules/rustok-calendar/storefront/README.md)
 ### Large Capability/Admin Surfaces
 
 These entries are visibility/scaffold references for large capability work. They are not

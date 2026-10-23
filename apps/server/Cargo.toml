@@ -110,6 +110,9 @@ mod-alloy     = ["dep:alloy", "dep:rustok-translation-targets", "rustok-distribu
 mod-flex      = ["dep:rustok-translation-targets", "rustok-distribution/mod-flex"]
 mod-docs      = ["dep:rustok-docs", "mod-flex", "rustok-distribution/mod-docs"]
 mod-messenger = ["dep:rustok-messenger", "rustok-messenger/graphql", "rustok-distribution/mod-messenger"]
+mod-tasks = ["dep:rustok-tasks", "rustok-distribution/mod-tasks"]
+mod-calendar = ["dep:rustok-calendar", "rustok-distribution/mod-calendar"]
+mod-calls = ["dep:rustok-calls", "rustok-distribution/mod-calls"]
 mod-finance = ["dep:rustok-finance", "rustok-distribution/mod-finance"]
 mod-billing = ["dep:rustok-billing", "rustok-distribution/mod-billing"]
 mod-deal = ["dep:rustok-deal", "rustok-distribution/mod-deal"]
@@ -185,6 +188,9 @@ rustok-notifications = { workspace = true, optional = true }
 rustok-pages     = { workspace = true, optional = true }
 rustok-docs      = { workspace = true, optional = true }
 rustok-messenger = { workspace = true, optional = true }
+rustok-tasks = { workspace = true, optional = true }
+rustok-calendar = { workspace = true, optional = true }
+rustok-calls = { workspace = true, optional = true }
 rustok-finance = { workspace = true, optional = true }
 rustok-billing = { workspace = true, optional = true }
 rustok-deal = { workspace = true, optional = true }
@@ -290,5 +296,5 @@ rustok-manifest = { workspace = true, default-features = false }
 
 [package.metadata.cargo-udeps.ignore]
 development = ["serial_test"]
-normal = ["rustok-rbac", "rustok-tenant", "rustok-docs", "rustok-party", "rustok-deal", "rustok-billing", "rustok-finance"]
+normal = ["rustok-rbac", "rustok-tenant", "rustok-docs", "rustok-party", "rustok-deal", "rustok-billing", "rustok-finance", "rustok-calls", "rustok-calendar", "rustok-tasks"]
 

@@ -13581,6 +13581,8 @@ dependencies = [
  "rustok-build",
  "rustok-cache",
  "rustok-cache-admin",
+ "rustok-calendar-admin",
+ "rustok-calls-admin",
  "rustok-channel-admin",
  "rustok-comments",
  "rustok-comments-admin",
@@ -13627,6 +13629,7 @@ dependencies = [
  "rustok-seo",
  "rustok-seo-admin",
  "rustok-storage",
+ "rustok-tasks-admin",
  "rustok-tenant",
  "rustok-tenant-admin",
  "rustok-translation-admin",
@@ -14267,6 +14270,148 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-calendar"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "rustok-core",
+ "rustok-outbox",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-calendar-admin"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos",
+ "leptos-auth",
+ "leptos-ui",
+ "leptos-ui-routing",
+ "leptos_axum",
+ "leptos_router",
+ "rustok-api",
+ "rustok-calendar",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-grid",
+ "rustok-grid-leptos",
+ "rustok-ui-core",
+ "rustok-ui-i18n",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-calendar-storefront"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos",
+ "leptos-auth",
+ "leptos-ui",
+ "leptos-ui-routing",
+ "leptos_axum",
+ "leptos_router",
+ "rustok-api",
+ "rustok-calendar",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-ui-core",
+ "rustok-ui-i18n",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-calls"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "rustok-core",
+ "rustok-outbox",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-calls-admin"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos",
+ "leptos-auth",
+ "leptos-ui",
+ "leptos-ui-routing",
+ "leptos_axum",
+ "leptos_router",
+ "rustok-api",
+ "rustok-calls",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-grid",
+ "rustok-grid-leptos",
+ "rustok-ui-core",
+ "rustok-ui-i18n",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-calls-storefront"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos",
+ "leptos-auth",
+ "leptos-ui",
+ "leptos-ui-routing",
+ "leptos_axum",
+ "leptos_router",
+ "rustok-api",
+ "rustok-calls",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-ui-core",
+ "rustok-ui-i18n",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-cart"
 version = "0.1.0"
 dependencies = [
@@ -14829,6 +14974,8 @@ dependencies = [
  "rustok-blog",
  "rustok-brand",
  "rustok-cache",
+ "rustok-calendar",
+ "rustok-calls",
  "rustok-cart",
  "rustok-channel",
  "rustok-comments",
@@ -14880,6 +15027,7 @@ dependencies = [
  "rustok-search",
  "rustok-seo",
  "rustok-social-graph",
+ "rustok-tasks",
  "rustok-taxonomy",
  "rustok-tenant",
  "rustok-translation",
@@ -17640,6 +17788,8 @@ dependencies = [
  "rustok-brand",
  "rustok-build",
  "rustok-cache",
+ "rustok-calendar",
+ "rustok-calls",
  "rustok-cart",
  "rustok-channel",
  "rustok-comments",
@@ -17709,6 +17859,7 @@ dependencies = [
  "rustok-starter",
  "rustok-storage",
  "rustok-storefront",
+ "rustok-tasks",
  "rustok-taxonomy",
  "rustok-telemetry",
  "rustok-tenant",
@@ -17867,6 +18018,8 @@ dependencies = [
  "leptos_router",
  "rustok-api",
  "rustok-blog-storefront",
+ "rustok-calendar-storefront",
+ "rustok-calls-storefront",
  "rustok-cart-storefront",
  "rustok-commerce-storefront",
  "rustok-content",
@@ -17908,6 +18061,52 @@ dependencies = [
  "uuid",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "rustok-tasks"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "rustok-core",
+ "rustok-outbox",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-tasks-admin"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos",
+ "leptos-auth",
+ "leptos-ui",
+ "leptos-ui-routing",
+ "leptos_axum",
+ "leptos_router",
+ "rustok-api",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-grid",
+ "rustok-grid-leptos",
+ "rustok-tasks",
+ "rustok-ui-core",
+ "rustok-ui-i18n",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

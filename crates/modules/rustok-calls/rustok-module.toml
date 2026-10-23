@@ -1,0 +1,40 @@
+[module]
+slug = "calls"
+name = "WebRTC Calls & Conferencing"
+version = "0.1.0"
+description = "WebRTC Calls & Conferencing capability module for RusToK"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "dual_surface"
+recommended_admin_surfaces = ["leptos-admin"]
+
+[marketplace]
+category = "collaboration"
+tags = ["calls"]
+
+[dependencies]
+outbox = { version_req = ">=0.1.0" }
+
+[crate]
+entry_type = "CallsModule"
+
+[provides.admin_ui]
+leptos_crate = "rustok-calls-admin"
+route_segment = "calls"
+nav_label = "WebRTC Calls & Conferencing"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-calls-storefront"
+slot = "home_after_catalog"
+route_segment = "calls"
+page_title = "WebRTC Calls & Conferencing"
+
+[provides.storefront_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"
