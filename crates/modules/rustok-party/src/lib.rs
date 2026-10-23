@@ -33,7 +33,11 @@ mod contract_tests;
 pub mod entities;
 pub mod migrations;
 
-pub use domain::PartyStatus;
+pub use domain::{
+    validate_account_number, validate_bik, validate_inn_10, validate_inn_12, validate_kpp,
+    validate_ogrn_13, validate_ogrnip_15, BankAccount, Contract, ContractStatus, Party,
+    PartyKind, PartyStatus, TaxDetails,
+};
 pub use error::{PartyError, PartyResult};
 pub use events::{
     PartyCreatedEvent, PartyDeletedEvent, PartyDomainEvent, PartyUpdatedEvent,
