@@ -100,8 +100,13 @@ pub(super) async fn upload_media_rest(
     if let Some(token) = token.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         request = request.header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"));
     }
-    if let Some(tenant_slug) = tenant_slug.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        request = request.header("X-Tenant-ID", tenant_slug);
+    if let Some(slug) = tenant_slug.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        if let Ok(tenant_uuid) = uuid::Uuid::parse_str(slug)
+            && tenant_uuid.is_nil()
+        {
+            return Err(ApiError::Validation("tenant id cannot be nil".to_string()));
+        }
+        request = request.header("X-Tenant-ID", slug);
     }
 
     let response = request

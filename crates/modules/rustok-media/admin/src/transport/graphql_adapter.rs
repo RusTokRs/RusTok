@@ -181,18 +181,28 @@ where
 }
 
 fn required_tenant_id(tenant_slug: &Option<String>) -> Result<String, ApiError> {
-    tenant_slug
+    let slug = tenant_slug
         .as_deref()
         .map(str::trim)
         .filter(|slug| !slug.is_empty())
-        .map(str::to_string)
-        .ok_or_else(|| ApiError::Validation("tenant slug is required".to_string()))
+        .ok_or_else(|| ApiError::Validation("tenant slug is required".to_string()))?;
+    if let Ok(tenant_uuid) = uuid::Uuid::parse_str(slug)
+        && tenant_uuid.is_nil()
+    {
+        return Err(ApiError::Validation("tenant id cannot be nil".to_string()));
+    }
+    Ok(slug.to_string())
 }
 
 fn required_media_id(media_id: &str) -> Result<String, ApiError> {
     let trimmed = media_id.trim();
     if trimmed.is_empty() {
         return Err(ApiError::Validation("media id cannot be empty".to_string()));
+    }
+    if let Ok(id) = uuid::Uuid::parse_str(trimmed)
+        && id.is_nil()
+    {
+        return Err(ApiError::Validation("media id cannot be nil".to_string()));
     }
     Ok(trimmed.to_string())
 }
@@ -420,6 +430,7 @@ mod tests {
         assert!(required_tenant_id(&None).is_err());
         assert!(required_tenant_id(&Some("".to_string())).is_err());
         assert!(required_tenant_id(&Some("   ".to_string())).is_err());
+        assert!(required_tenant_id(&Some(uuid::Uuid::nil().to_string())).is_err());
     }
 
     #[test]
@@ -434,5 +445,6 @@ mod tests {
     fn required_media_id_rejects_empty_or_whitespace() {
         assert!(required_media_id("").is_err());
         assert!(required_media_id("   ").is_err());
+        assert!(required_media_id(&uuid::Uuid::nil().to_string()).is_err());
     }
 }

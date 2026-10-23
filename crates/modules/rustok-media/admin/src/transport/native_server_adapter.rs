@@ -58,8 +58,8 @@ pub(super) async fn media_library_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        if tenant.id.is_nil() {
-            return Err(ServerFnError::new("tenant ID cannot be nil"));
+        if tenant.id.is_nil() || auth.tenant_id.is_nil() || auth.user_id.is_nil() {
+            return Err(ServerFnError::new("tenant ID or user ID cannot be nil"));
         }
 
         require_permission(&auth, Permission::new(Resource::Media, Action::List))?;
@@ -116,8 +116,8 @@ pub(super) async fn media_detail_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        if tenant.id.is_nil() {
-            return Err(ServerFnError::new("tenant ID cannot be nil"));
+        if tenant.id.is_nil() || auth.tenant_id.is_nil() || auth.user_id.is_nil() {
+            return Err(ServerFnError::new("tenant ID or user ID cannot be nil"));
         }
 
         require_permission(&auth, Permission::new(Resource::Media, Action::Read))?;
@@ -165,8 +165,8 @@ pub(super) async fn media_translations_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        if tenant.id.is_nil() {
-            return Err(ServerFnError::new("tenant ID cannot be nil"));
+        if tenant.id.is_nil() || auth.tenant_id.is_nil() || auth.user_id.is_nil() {
+            return Err(ServerFnError::new("tenant ID or user ID cannot be nil"));
         }
 
         require_permission(&auth, Permission::new(Resource::Media, Action::Read))?;
@@ -212,8 +212,8 @@ pub(super) async fn media_upsert_translation_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        if tenant.id.is_nil() {
-            return Err(ServerFnError::new("tenant ID cannot be nil"));
+        if tenant.id.is_nil() || auth.tenant_id.is_nil() || auth.user_id.is_nil() {
+            return Err(ServerFnError::new("tenant ID or user ID cannot be nil"));
         }
 
         let locale = payload.locale.trim().to_string();
@@ -267,8 +267,8 @@ pub(super) async fn media_delete_native(media_id: String) -> Result<bool, Server
             .await
             .map_err(ServerFnError::new)?;
 
-        if tenant.id.is_nil() {
-            return Err(ServerFnError::new("tenant ID cannot be nil"));
+        if tenant.id.is_nil() || auth.tenant_id.is_nil() || auth.user_id.is_nil() {
+            return Err(ServerFnError::new("tenant ID or user ID cannot be nil"));
         }
 
         require_permission(&auth, Permission::new(Resource::Media, Action::Delete))?;
@@ -301,8 +301,8 @@ pub(super) async fn media_usage_native() -> Result<MediaUsageSnapshot, ServerFnE
             .await
             .map_err(ServerFnError::new)?;
 
-        if tenant.id.is_nil() {
-            return Err(ServerFnError::new("tenant ID cannot be nil"));
+        if tenant.id.is_nil() || auth.tenant_id.is_nil() || auth.user_id.is_nil() {
+            return Err(ServerFnError::new("tenant ID or user ID cannot be nil"));
         }
 
         require_permission(&auth, Permission::new(Resource::Media, Action::List))?;
