@@ -579,45 +579,132 @@ impl ModuleOperatorService {
             });
         };
 
-        let (work_generation, retired) = self.work_generation(latest.installation_id).await?;
+        // The serving release is the newest `active` installation; the
+        // newest installation overall may instead be a staged candidate,
+        // an inactive preparation, or a rolled-back candidate. Projecting
+        // only the newest row mislabels a healthy serving predecessor
+        // whenever a newer candidate exists, and any admission status
+        // outside the real vocabulary (admitted, installed, inactive,
+        // active, rolled_back) must surface as recovery-required rather
+        // than a silent in-flight state.
+        let serving_index = chain
+            .iter()
+            .position(|row| row.admission_status == "active");
+        let basis = serving_index.map_or(latest, |index| &chain[index]);
+        let (work_generation, retired) = self.work_generation(basis.installation_id).await?;
 
-        let (presentation_state, containment_outcome, diagnostics, recovery_action) = if retired {
+        let (
+            presentation_state,
+            containment_outcome,
+            diagnostics,
+            recovery_action,
+            current_index,
+            candidate_index,
+        ) = if retired {
             (
                 CanonicalPresentationState::Cancelled,
                 Some(ContainmentOutcome::Stopped),
                 vec!["Installation is retired".to_string()],
                 Some("Reinstall or purge data".to_string()),
+                None,
+                None,
             )
         } else {
             match latest.admission_status.as_str() {
-                "active" => (CanonicalPresentationState::Accepted, None, Vec::new(), None),
-                "inactive" => (
-                    CanonicalPresentationState::Ready,
-                    None,
-                    vec!["Inactive installation prepared".to_string()],
-                    Some("Enable when ready".to_string()),
-                ),
-                "failed" => (
-                    CanonicalPresentationState::RecoveryRequired,
-                    Some(ContainmentOutcome::Fenced),
-                    vec!["Installation failed preflight or activation".to_string()],
-                    Some("Investigate diagnostics and trigger recovery".to_string()),
-                ),
-                _ => (
-                    CanonicalPresentationState::Observing,
+                "active" => (
+                    CanonicalPresentationState::Accepted,
                     None,
                     Vec::new(),
+                    None,
+                    Some(0),
+                    None,
+                ),
+                "inactive" => match serving_index {
+                    Some(index) => (
+                        CanonicalPresentationState::Accepted,
+                        None,
+                        vec!["Newer inactive installation prepared".to_string()],
+                        None,
+                        Some(index),
+                        Some(0),
+                    ),
+                    None => (
+                        CanonicalPresentationState::Ready,
+                        None,
+                        vec!["Inactive installation prepared".to_string()],
+                        Some("Enable when ready".to_string()),
+                        None,
+                        Some(0),
+                    ),
+                },
+                "admitted" | "installed" => (
+                    CanonicalPresentationState::Running,
+                    None,
+                    Vec::new(),
+                    None,
+                    serving_index,
+                    Some(0),
+                ),
+                "rolled_back" => match serving_index {
+                    Some(index) => (
+                        CanonicalPresentationState::Recovered,
+                        None,
+                        vec!["Candidate was rolled back; predecessor is serving".to_string()],
+                        None,
+                        Some(index),
+                        None,
+                    ),
+                    None => (
+                        CanonicalPresentationState::RecoveryRequired,
+                        Some(ContainmentOutcome::Fenced),
+                        vec![
+                            "Installation was rolled back with no serving predecessor"
+                                .to_string(),
+                        ],
+                        Some("Investigate diagnostics and trigger recovery".to_string()),
+                        None,
+                        None,
+                    ),
+                },
+                other => (
+                    CanonicalPresentationState::RecoveryRequired,
+                    Some(ContainmentOutcome::Fenced),
+                    vec![format!("Unknown admission status '{other}'")],
+                    Some("Investigate diagnostics and trigger recovery".to_string()),
+                    serving_index,
                     None,
                 ),
             }
         };
 
-        let coordinate = self.dynamic_coordinate(slug, latest).await?;
-        let predecessor_identity = match chain.get(1) {
-            Some(row) => Some(self.dynamic_coordinate(slug, row).await?),
+        // A retired newest installation (uninstalled candidate) is not a
+        // pending candidate even while an older release keeps serving.
+        let candidate_index = match candidate_index {
+            Some(0) if serving_index.is_some() => {
+                let (_, latest_retired) =
+                    self.work_generation(latest.installation_id).await?;
+                if latest_retired { None } else { Some(0) }
+            }
+            other => other,
+        };
+
+        let current_identity = match current_index {
+            Some(index) => Some(self.dynamic_coordinate(slug, &chain[index]).await?),
             None => None,
         };
-        let active_retention_holds_count = self.active_holds_for(latest).await?.len();
+        let candidate_identity = match candidate_index {
+            Some(index) => Some(self.dynamic_coordinate(slug, &chain[index]).await?),
+            None => None,
+        };
+        let predecessor_index = match current_index {
+            Some(index) => (index + 1 < chain.len()).then_some(index + 1),
+            None => (chain.len() > 1).then_some(1),
+        };
+        let predecessor_identity = match predecessor_index {
+            Some(index) => Some(self.dynamic_coordinate(slug, &chain[index]).await?),
+            None => None,
+        };
+        let active_retention_holds_count = self.active_holds_for(basis).await?.len();
 
         Ok(ModuleStatusProjection {
             module_slug: slug.to_string(),
@@ -626,16 +713,8 @@ impl ModuleOperatorService {
             presentation_state,
             display_label: presentation_state.display_label().to_string(),
             containment_outcome,
-            current_identity: if presentation_state == CanonicalPresentationState::Accepted {
-                Some(coordinate.clone())
-            } else {
-                None
-            },
-            candidate_identity: if presentation_state != CanonicalPresentationState::Accepted {
-                Some(coordinate)
-            } else {
-                None
-            },
+            current_identity,
+            candidate_identity,
             predecessor_identity,
             work_generation,
             retired,
