@@ -134,7 +134,7 @@ impl MarketplaceLedgerReadPort for crate::MarketplaceLedgerService {
     async fn read_seller_balance(
         &self,
         context: PortContext,
-        request: ReadMarketplaceSellerBalanceRequest,
+        mut request: ReadMarketplaceSellerBalanceRequest,
     ) -> Result<MarketplaceSellerBalanceResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         if request.seller_id.is_nil() {
@@ -150,6 +150,7 @@ impl MarketplaceLedgerReadPort for crate::MarketplaceLedgerService {
                 "currency_code must be an ASCII 3-letter currency code",
             ));
         }
+        request.currency_code = currency.to_ascii_uppercase();
         self.read_seller_balance_projection(parse_tenant_id(&context)?, request)
             .await
             .map_err(map_owner_error)
@@ -244,7 +245,7 @@ impl MarketplaceLedgerCommandPort for crate::MarketplaceLedgerService {
     async fn rebuild_seller_balance(
         &self,
         context: PortContext,
-        request: RebuildMarketplaceSellerBalanceInput,
+        mut request: RebuildMarketplaceSellerBalanceInput,
     ) -> Result<MarketplaceSellerBalanceResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         if request.seller_id.is_nil() {
@@ -260,6 +261,7 @@ impl MarketplaceLedgerCommandPort for crate::MarketplaceLedgerService {
                 "currency_code must be an ASCII 3-letter currency code",
             ));
         }
+        request.currency_code = currency.to_ascii_uppercase();
         let tenant_id = parse_tenant_id(&context)?;
         parse_actor_id(&context)?;
         parse_idempotency_key(&context)?;
