@@ -429,7 +429,9 @@ pub(crate) fn stored_artifact_data_object_from_row(
         digest_sha256: row.try_get("", "digest_sha256").map_err(storage_error)?,
         revision: u64::try_from(revision).map_err(|_| ArtifactDataError::ObjectIntegrity)?,
     };
-    object.validate()?;
+    object
+        .validate()
+        .map_err(|_| ArtifactDataError::ObjectIntegrity)?;
     Ok(StoredArtifactDataObject {
         object,
         storage_key: row.try_get("", "storage_key").map_err(storage_error)?,

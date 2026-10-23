@@ -38,7 +38,7 @@ impl MigrationTrait for Migration {
                 "CREATE TABLE module_artifact_data_object_upload_chunks (\
                     tenant_id UUID NOT NULL,\
                     session_id UUID NOT NULL REFERENCES module_artifact_data_object_upload_sessions (session_id) ON DELETE CASCADE,\
-                    sequence BIGINT NOT NULL CHECK (sequence >= 0),\
+                    sequence BIGINT NOT NULL CHECK (sequence >= 0 AND sequence < 1024),\
                     storage_key TEXT NOT NULL UNIQUE,\
                     size_bytes BIGINT NOT NULL CHECK (size_bytes > 0 AND size_bytes <= 45056),\
                     digest_sha256 TEXT NOT NULL CHECK (digest_sha256 ~ '^sha256:[0-9a-f]{64}$'),\
@@ -81,7 +81,7 @@ impl MigrationTrait for Migration {
                 "CREATE TABLE module_artifact_data_object_upload_chunks (\
                     tenant_id TEXT NOT NULL,\
                     session_id TEXT NOT NULL REFERENCES module_artifact_data_object_upload_sessions (session_id) ON DELETE CASCADE,\
-                    sequence INTEGER NOT NULL CHECK (sequence >= 0),\
+                    sequence INTEGER NOT NULL CHECK (sequence >= 0 AND sequence < 1024),\
                     storage_key TEXT NOT NULL UNIQUE,\
                     size_bytes INTEGER NOT NULL CHECK (size_bytes > 0 AND size_bytes <= 45056),\
                     digest_sha256 TEXT NOT NULL CHECK (length(digest_sha256) = 71 AND substr(digest_sha256, 1, 7) = 'sha256:' AND substr(digest_sha256, 8) NOT GLOB '*[^0-9a-f]*'),\

@@ -196,13 +196,7 @@ where
         chunk: ArtifactDataObjectUploadChunk,
     ) -> Result<(), ArtifactDataError> {
         scope.validate()?;
-        if chunk.session_id.is_nil()
-            || chunk.data.is_empty()
-            || chunk.data.len() > MAX_SANDBOX_ARTIFACT_OBJECT_BYTES
-        {
-            return Err(ArtifactDataError::InvalidObject);
-        }
-        let _ = revision_value(chunk.sequence)?;
+        validate_upload_chunk_request(&chunk)?;
         let session = self.find_open_session(scope, chunk.session_id).await?;
         self.authorizer
             .authorize_data(
@@ -260,8 +254,11 @@ where
             .await
             .map_err(storage_error)?;
         if active.rows_affected() != 1 {
-            let _ = transaction.rollback().await;
-            return Err(ArtifactDataError::NamespacePurged);
+            return Err(rollback_artifact_data_error(
+                transaction,
+                ArtifactDataError::NamespacePurged,
+            )
+            .await);
         }
         if let Some(row) = transaction.query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -289,8 +286,11 @@ where
             .filter(|size| *size <= MAX_ARTIFACT_OBJECT_BYTES)
             .is_none()
         {
-            let _ = transaction.rollback().await;
-            return Err(ArtifactDataError::InvalidObject);
+            return Err(rollback_artifact_data_error(
+                transaction,
+                ArtifactDataError::InvalidObject,
+            )
+            .await);
         }
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
@@ -355,9 +355,10 @@ where
             vec![backend.uuid_value(scope.tenant_id), backend.uuid_value(chunk.session_id), revision_value(chunk.sequence)?, stored_path.clone().into(), i64::try_from(stored_size).map_err(|_| ArtifactDataError::InvalidObject)?.into(), digest_sha256.into()],
         )).await;
         if let Err(error) = inserted {
-            let _ = transaction.rollback().await;
+            let primary = storage_error(error);
+            let error = rollback_artifact_data_error(transaction, primary).await;
             delete_uploaded_object_best_effort(&self.storage, &Path::from(stored_path)).await;
-            return Err(storage_error(error));
+            return Err(error);
         }
         transaction.commit().await.map_err(storage_error)?;
         Ok(())
@@ -408,12 +409,33 @@ where
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
-        let rows = transaction.query_all_raw(Statement::from_sql_and_values(
-            backend.db_backend(),
-            format!("SELECT sequence, storage_key, size_bytes, digest_sha256 FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {} ORDER BY sequence ASC", backend.placeholder(1), backend.placeholder(2)),
-            vec![backend.uuid_value(scope.tenant_id), backend.uuid_value(request.session_id)],
-        )).await.map_err(storage_error)?;
+        let max_chunk_count = usize::try_from(MAX_ARTIFACT_OBJECT_UPLOAD_CHUNKS_PER_SESSION)
+            .map_err(|_| ArtifactDataError::ObjectIntegrity)?;
+        let query_limit = i64::try_from(MAX_ARTIFACT_OBJECT_UPLOAD_CHUNKS_PER_SESSION + 1)
+            .map_err(|_| ArtifactDataError::ObjectIntegrity)?;
+        let rows = transaction
+            .query_all_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "SELECT sequence, storage_key, size_bytes, digest_sha256
+                     FROM module_artifact_data_object_upload_chunks
+                     WHERE tenant_id = {} AND session_id = {} ORDER BY sequence ASC LIMIT {}",
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                ),
+                vec![
+                    backend.uuid_value(scope.tenant_id),
+                    backend.uuid_value(request.session_id),
+                    query_limit.into(),
+                ],
+            ))
+            .await
+            .map_err(storage_error)?;
         transaction.commit().await.map_err(storage_error)?;
+        if rows.len() > max_chunk_count {
+            return Err(ArtifactDataError::ObjectIntegrity);
+        }
         let mut payload = Vec::with_capacity(
             usize::try_from(request.size_bytes).map_err(|_| ArtifactDataError::InvalidObject)?,
         );
@@ -489,5 +511,46 @@ where
         transaction.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!("DELETE FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {}", backend.placeholder(1), backend.placeholder(2)), vec![backend.uuid_value(scope.tenant_id), backend.uuid_value(request.session_id)])).await.map_err(storage_error)?;
         transaction.commit().await.map_err(storage_error)?;
         Ok(object)
+    }
+}
+
+fn validate_upload_chunk_request(
+    chunk: &ArtifactDataObjectUploadChunk,
+) -> Result<(), ArtifactDataError> {
+    if chunk.session_id.is_nil()
+        || chunk.sequence >= MAX_ARTIFACT_OBJECT_UPLOAD_CHUNKS_PER_SESSION
+        || chunk.data.is_empty()
+        || chunk.data.len() > MAX_SANDBOX_ARTIFACT_OBJECT_BYTES
+    {
+        return Err(ArtifactDataError::InvalidObject);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn chunk(sequence: u64) -> ArtifactDataObjectUploadChunk {
+        ArtifactDataObjectUploadChunk {
+            session_id: Uuid::new_v4(),
+            sequence,
+            data: Bytes::from_static(b"x"),
+        }
+    }
+
+    #[test]
+    fn upload_chunk_sequence_has_a_finite_per_session_bound() {
+        assert!(validate_upload_chunk_request(&chunk(0)).is_ok());
+        assert!(validate_upload_chunk_request(&chunk(
+            MAX_ARTIFACT_OBJECT_UPLOAD_CHUNKS_PER_SESSION - 1
+        ))
+        .is_ok());
+        assert_eq!(
+            validate_upload_chunk_request(&chunk(
+                MAX_ARTIFACT_OBJECT_UPLOAD_CHUNKS_PER_SESSION
+            )),
+            Err(ArtifactDataError::InvalidObject),
+        );
     }
 }

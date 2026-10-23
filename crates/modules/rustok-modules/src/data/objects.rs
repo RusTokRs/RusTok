@@ -250,8 +250,11 @@ where
     ) -> Result<ArtifactDataObjectDeleteResult, ArtifactDataError> {
         scope.validate()?;
         validate_artifact_data_key(&request.name)?;
-        if request.expected_revision == 0 || request.idempotency_key.is_nil() {
-            return Err(ArtifactDataError::InvalidObject);
+        if request.idempotency_key.is_nil() {
+            return Err(ArtifactDataError::InvalidIdempotencyKey);
+        }
+        if request.expected_revision == 0 {
+            return Err(ArtifactDataError::RevisionConflict);
         }
         self.authorizer
             .authorize_data(

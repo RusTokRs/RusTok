@@ -511,13 +511,19 @@ pub(crate) fn data_capability_error(
                     .to_string(),
             }
         }
-        ArtifactDataError::InvalidScope
-        | ArtifactDataError::InvalidKey
+        error @ (ArtifactDataError::InvalidKey
         | ArtifactDataError::InvalidObject
         | ArtifactDataError::InvalidPage
         | ArtifactDataError::InvalidIndexQuery
-        | ArtifactDataError::IndexQueryUnavailable
         | ArtifactDataError::InvalidBatch
+        | ArtifactDataError::InvalidIdempotencyKey
+        | ArtifactDataError::DataContractSchemaViolation) => {
+            SandboxError::CapabilityConstraintDenied {
+                capability: capability.clone(),
+                reason: error.to_string(),
+            }
+        }
+        ArtifactDataError::InvalidScope
         | ArtifactDataError::NamespacePurged
         | ArtifactDataError::PurgePrecondition
         | ArtifactDataError::NamespaceHeld
@@ -527,10 +533,9 @@ pub(crate) fn data_capability_error(
         | ArtifactDataError::RestorePrecondition
         | ArtifactDataError::SnapshotRetentionPrecondition
         | ArtifactDataError::SnapshotCollectionPrecondition
-        | ArtifactDataError::InvalidIdempotencyKey
-        | ArtifactDataError::DataContractSchemaViolation
         | ArtifactDataError::PolicyDenied => SandboxError::CapabilityDenied(capability.clone()),
-        ArtifactDataError::InvalidUpgrade
+        ArtifactDataError::IndexQueryUnavailable
+        | ArtifactDataError::InvalidUpgrade
         | ArtifactDataError::UpgradeHook(_)
         | ArtifactDataError::StaleUpgradePlan
         | ArtifactDataError::MigrationCheckpoint(_)
@@ -539,9 +544,44 @@ pub(crate) fn data_capability_error(
         | ArtifactDataError::InvalidQuota
         | ArtifactDataError::ObjectIntegrity
         | ArtifactDataError::SnapshotIntegrity
-        | ArtifactDataError::Storage(_) => SandboxError::HostCapability {
+        | ArtifactDataError::Storage(_)
+        | ArtifactDataError::RollbackFailed { .. } => SandboxError::HostCapability {
             capability: capability.clone(),
             message: "artifact data capability is unavailable".to_string(),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rustok_sandbox::{CapabilityName, SandboxError};
+
+    use super::data_capability_error;
+    use crate::ArtifactDataError;
+
+    #[test]
+    fn data_capability_errors_keep_limits_conflicts_and_host_failures_distinct() {
+        let capability = CapabilityName::new("platform.data").expect("valid capability name");
+        assert_eq!(
+            data_capability_error(
+                &capability,
+                ArtifactDataError::ValueTooLarge {
+                    limit: 1_024,
+                    actual: 2_048,
+                },
+            ),
+            SandboxError::LimitExceeded {
+                resource: "artifact_data_value_bytes".to_string(),
+                limit: 1_024,
+            },
+        );
+        assert!(matches!(
+            data_capability_error(&capability, ArtifactDataError::RevisionConflict),
+            SandboxError::CapabilityConstraintDenied { .. }
+        ));
+        assert!(matches!(
+            data_capability_error(&capability, ArtifactDataError::Storage("db".to_string())),
+            SandboxError::HostCapability { .. }
+        ));
     }
 }

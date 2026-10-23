@@ -318,8 +318,11 @@ pub(crate) enum ArtifactDataObjectUploadCompletion {
 pub(crate) fn validate_upload_session_request(
     request: &ArtifactDataObjectUploadSessionRequest,
 ) -> Result<(), ArtifactDataError> {
-    if request.idempotency_key.is_nil() || request.expected_revision == Some(0) {
+    if request.idempotency_key.is_nil() {
         return Err(ArtifactDataError::InvalidIdempotencyKey);
+    }
+    if request.expected_revision == Some(0) {
+        return Err(ArtifactDataError::RevisionConflict);
     }
     ArtifactDataObject {
         name: request.name.clone(),

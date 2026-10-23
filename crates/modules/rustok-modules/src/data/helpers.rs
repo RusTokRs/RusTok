@@ -60,6 +60,22 @@ pub(crate) async fn delete_uploaded_object_best_effort(storage: &StorageRuntime,
     let _ = storage.objects.delete(path).await;
 }
 
+/// Rolls back a failed data operation while preserving its typed primary
+/// error. If rollback also fails, retain both causes rather than hiding the
+/// cleanup failure or replacing the operation's result.
+pub(crate) async fn rollback_artifact_data_error(
+    transaction: DatabaseTransaction,
+    primary: ArtifactDataError,
+) -> ArtifactDataError {
+    match transaction.rollback().await {
+        Ok(()) => primary,
+        Err(rollback) => ArtifactDataError::RollbackFailed {
+            primary: Box::new(primary),
+            rollback: rollback.to_string(),
+        },
+    }
+}
+
 /// Resolve the tenant's single owner reference, initializing its first empty
 /// instance only from the exact admitted serving installation allocation.
 /// A retained tombstone or another contract never becomes an initial instance.
