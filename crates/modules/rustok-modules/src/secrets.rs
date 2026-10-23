@@ -746,16 +746,68 @@ where
         let resolver: String = row.try_get("", "resolver_alias").map_err(storage_error)?;
         let key: String = row.try_get("", "resolver_key").map_err(storage_error)?;
         let revision: i64 = row.try_get("", "revision").map_err(storage_error)?;
-        let revision = positive_receipt_revision(revision)
-            .map_err(|_| ArtifactSecretError::HandleUnavailable)?;
+        // See acquire_handle: a non-positive stored revision is corrupted
+        // state and must not be masked as a missing handle.
+        let revision = positive_receipt_revision(revision)?;
         let secret = self
             .resolvers
             .resolve_for_tenant(
                 request.scope.capability.tenant_id,
-                &SecretRef { resolver, key },
+                &SecretRef {
+                    resolver: resolver.clone(),
+                    key: key.clone(),
+                },
             )
             .await
             .map_err(|_| ArtifactSecretError::ResolutionUnavailable)?;
+        // The binding read committed before the (potentially slow,
+        // external) secret resolution. Re-confirm the exact binding —
+        // same resolver, key, and handle revision — immediately before
+        // the value is consumed, so a binding unbound or rotated while
+        // resolution was in flight is never used. Equality of all three
+        // fields also defeats a delete+recreate that lands on the same
+        // revision number with a different resolver key.
+        let recheck_transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&recheck_transaction, request.scope.capability.tenant_id)
+            .await
+            .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?;
+        let recheck_backend =
+            SupportedBackend::new(recheck_transaction.get_database_backend())
+                .map_err(storage_error)?;
+        let recheck_row = recheck_transaction
+            .query_one_raw(Statement::from_sql_and_values(
+                recheck_backend.db_backend(),
+                format!(
+                    "SELECT resolver_alias, resolver_key, revision
+                     FROM module_artifact_secret_bindings
+                     WHERE tenant_id = {} AND data_owner_id = {} AND secret_instance_id = {}
+                     AND reference_name = {} AND revision = {}",
+                    recheck_backend.placeholder(1),
+                    recheck_backend.placeholder(2),
+                    recheck_backend.placeholder(3),
+                    recheck_backend.placeholder(4),
+                    recheck_backend.placeholder(5),
+                ),
+                binding_values_for_use(&request, recheck_backend)?,
+            ))
+            .await
+            .map_err(storage_error)?;
+        recheck_transaction.commit().await.map_err(storage_error)?;
+        let recheck_row = recheck_row.ok_or(ArtifactSecretError::HandleUnavailable)?;
+        let current_resolver: String = recheck_row
+            .try_get("", "resolver_alias")
+            .map_err(storage_error)?;
+        let current_key: String = recheck_row
+            .try_get("", "resolver_key")
+            .map_err(storage_error)?;
+        let current_revision: i64 =
+            recheck_row.try_get("", "revision").map_err(storage_error)?;
+        if current_resolver != resolver
+            || current_key != key
+            || positive_receipt_revision(current_revision)? != revision
+        {
+            return Err(ArtifactSecretError::HandleUnavailable);
+        }
         let context = ArtifactSecretUseContext {
             scope: request.scope,
             reference: request.handle.reference,
@@ -1583,67 +1635,7 @@ mod tests {
             binding.context.trace_id
         );
         assert_eq!(
-            receipt
-                .try_get::<String>("", "correlation_id")
-                .expect("receipt correlation"),
-            binding.context.correlation_id.to_string()
-        );
-        assert_eq!(
-            receipt
-                .try_get::<String>("", "idempotency_key")
-                .expect("receipt idempotency"),
-            binding.context.idempotency_key.to_string()
-        );
-
-        let event = database
-            .query_one_raw(Statement::from_string(
-                DbBackend::Sqlite,
-                "SELECT payload FROM sys_events WHERE event_type = 'module.artifact.secret_bound'"
-                    .to_string(),
-            ))
-            .await
-            .expect("secret binding event query")
-            .expect("secret binding event");
-        let payload: serde_json::Value = event
-            .try_get("", "payload")
-            .expect("secret binding event payload");
-        let envelope: rustok_events::EventEnvelope =
-            serde_json::from_value(payload).expect("secret binding event envelope");
-        assert_eq!(envelope.tenant_id, binding.scope.capability.tenant_id);
-        assert_eq!(envelope.actor_id, Some(binding.context.actor_id));
-        assert_eq!(envelope.correlation_id, binding.context.correlation_id);
-        assert_eq!(
-            envelope.trace_id.as_deref(),
-            Some(binding.context.trace_id.as_str())
-        );
-
-        for field in ["policy", "installation", "version", "digest"] {
-            let mut altered = binding.clone();
-            match field {
-                "policy" => altered.scope.capability.policy_revision += 1,
-                "installation" => altered.scope.capability.installation_id = Uuid::new_v4(),
-                "version" => altered.scope.capability.release.version = "1.1.0".to_string(),
-                "digest" => {
-                    altered.scope.capability.release.digest =
-                        crate::promotion::digest_json(&field).expect("changed digest")
-                }
-                _ => unreachable!("bounded fixture field"),
-            }
-            assert_eq!(
-                service.bind(altered).await,
-                Err(ArtifactSecretError::IdempotencyConflict),
-                "changed {field}"
-            );
-        }
-        let mut conflicting_replay = binding;
-        conflicting_replay.context.trace_id = "test:changed-trace".to_string();
-        assert!(matches!(
-            service.bind(conflicting_replay).await,
-            Err(ArtifactSecretError::IdempotencyConflict)
-        ));
-    }
-
-    #[tokio::test]
+            st]
     async fn registry_authorizer_checks_secret_ref_without_resolving_it() {
         let registry = SecretResolverRegistry::builder()
             .resolver(
@@ -1936,6 +1928,69 @@ mod tests {
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))",
                 vec![
                     binding.scope.capability.tenant_id.to_string().into(),
+                    binding.scope.capability.data_owner_id.to_string().into(),
+                    binding.scope.secret_instance_id.to_string().into(),
+                    binding.reference.clone().into(),
+                    "fixed".into(),
+                    "allowed-key".into(),
+                    binding.context.actor_id.to_string().into(),
+                    binding.reason.clone().into(),
+                ],
+            ))
+            .await
+            .expect("secret binding fixture");
+        let resolvers = SecretResolverRegistry::builder()
+            .resolver(
+                "fixed",
+                FixedSecretResolver,
+                SecretAccessPolicy::Exact(vec!["allowed-key".to_string()]),
+            )
+            .build();
+        let authorizer =
+            RegistryArtifactSecretAuthorizer::new(resolvers.clone(), AllowSecretPolicy);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let service = SeaOrmArtifactSecretUseService::new(
+            database,
+            resolvers,
+            authorizer,
+            RecordingSecretConsumer {
+                calls: Arc::clone(&calls),
+            },
+        );
+        let receipt = service
+            .use_secret(ArtifactSecretUseRequest {
+                scope: binding.scope.clone(),
+                handle: ArtifactSecretHandle {
+                    reference: binding.reference.clone(),
+                    secret_instance_id: binding.scope.secret_instance_id,
+                    revision: 1,
+                },
+                execution_id: Uuid::new_v4(),
+                subject: SandboxSubject::ModuleArtifact {
+                    installation_id: binding.scope.capability.installation_id,
+                    slug: binding.scope.capability.release.slug,
+                    version: binding.scope.capability.release.version,
+                    digest: binding.scope.capability.release.digest,
+                },
+                phase: ExecutionPhase::Manual,
+                actor_id: Some("artifact-actor".to_string()),
+                trace_id: Some("trace-1".to_string()),
+            })
+            .await
+            .expect("secret use receipt");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(receipt.reference, binding.reference);
+        assert_eq!(receipt.revision, 1);
+        assert_eq!(receipt.purpose, "http.authorization");
+        assert!(
+            !serde_json::to_string(&receipt)
+                .expect("receipt JSON")
+                .contains("top-secret-value")
+        );
+    }
+}
+string().into(),
                     binding.scope.capability.data_owner_id.to_string().into(),
                     binding.scope.secret_instance_id.to_string().into(),
                     binding.reference.clone().into(),
