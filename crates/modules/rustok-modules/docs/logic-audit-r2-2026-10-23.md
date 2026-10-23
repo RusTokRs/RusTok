@@ -139,5 +139,112 @@ existing tests are unchanged.
 
 ### R2-10. Conflict fences were documented as enforcement — `bc5acc9`
 `ConflictFenceSet` values are derived, ordered, and recorded on transition
-checkpo
-...[truncated 3740 chars]
+checkpoints/receipts; they are descriptive evidence, not a mutual-exclusion
+mechanism. `has_conflict_with` is test-only and `start_transition` is an
+unwired constructor. Real durable exclusion remains the per-installation
+admission-revision CAS and the tenant-lifecycle same-transaction active
+transition check keyed by tenant and slug. Documentation now says this
+honestly; no partial cross-transition fence lock was introduced.
+
+### R2-11. Resolver caret bound and infallible trait boundary — `92367b6`
+The custom PubGrub range conversion mapped bare `^0` to `<0.1.0`, while
+semver admits all `0.x` versions (`<1.0.0`); candidates could pass
+`VersionReq::matches` but be rejected by the solver, producing false
+conflicts. Fixed the bound and added cases for `^0`, `^0.0`, and `^0.0.3`.
+A parse-valid requirement whose upper bound overflows `u64` also reached an
+`expect` inside PubGrub's infallible `get_dependencies` trait method. Snapshot
+validation now proves every dependency range is representable and reports a
+typed error before solving; the trait adapter returns `Unavailable` rather
+than panicking. Provider request de-duplication now uses a `(slug, req)` tuple
+instead of a delimiter-concatenated string, eliminating key collisions.
+
+## 2. Continued adversarial review after the initial R2 pass
+
+The follow-up deep read covered `mcp.rs`, `secrets.rs`, OCI transport and
+publication, the structured/binary data brokers, resumable uploads, namespace
+purge, and the snapshot/restore/collection paths. Findings below were fixed
+in the same crate; the user runs tests/checks because this sandbox has no
+Rust toolchain.
+
+### R2-12. Secret binding could rotate after resolution but before use — `be0026da`, `340141fc`
+`use_secret` read the exact bound revision, committed, then awaited an
+external resolver and passed the resulting `SecretString` to its consumer
+without rechecking the binding. A concurrent unbind/rotation during that
+await could consume a value after its authorization basis had changed. It
+now takes a tenant-scoped write lock on the exact binding revision before
+resolution and holds it through the fixed trusted consumer, preventing a
+rotation between the final revision check and use. Stored non-positive
+revisions are reported as corrupted/conflicting state, not disguised as a
+missing handle. Plain handle serialization failure is an internal host
+error, not a guest denial.
+
+### R2-13. Object-only capability skipped shared namespace resolution — `0789b030`
+`platform.data.objects` derived the installation's namespace ID directly,
+while `platform.data` first resolved the tenant's serving owner reference
+(and initializes the first active namespace). Object-only grants could not
+write until an unrelated structured-data call initialized that namespace,
+and later installations could receive a stale namespace ID. The object
+resolver now calls the same serving-scope resolver before quota and broker
+construction.
+
+### R2-14. Upload chunk sequence allowed unbounded row amplification — `0789b030`
+A one-byte chunk was valid, and the byte quota therefore still allowed tens
+of millions of chunk rows; an arbitrary large sequence could also poison a
+session that completion requires to be contiguous from zero. Added one
+canonical 1,024-chunk/session bound at request validation and in the
+unreleased upload-chunk migration. Completion reads at most 1,025 rows and
+fails closed if stored metadata exceeds the bound. A boundary test covers
+sequence 1,023 versus 1,024.
+
+### R2-15. Namespace purge left staged upload bytes unreachable — `0b0151f3`
+The irreversible namespace purge removed structured records and completed
+object metadata but did not retire open/completing upload sessions or their
+external chunk objects. Those bytes were inaccessible after purge and only
+queued for GC after ordinary session expiry. Purge now queues every staged
+chunk key as a retention-aware GC candidate, then deletes chunks and sessions
+inside the same tenant-scoped purge transaction. The existing SQLite purge
+test now seeds a live session/chunk and asserts session/chunk removal plus
+one durable GC candidate.
+
+### R2-16. Data broker errors conflated guest constraints with grant denial — `0789b030`
+Value/quota limits, revision conflicts, idempotency conflicts, malformed
+keys/pages/objects, and schema violations had been mapped to generic
+`CapabilityDenied`, making normal guest correction indistinguishable from a
+missing grant. They now map to `LimitExceeded` or
+`CapabilityConstraintDenied`; purged/held namespace state is a constraint,
+not a missing grant; storage/integrity/index-contract failures map to host
+capability failure; actual policy/scope denial stays denied. Zero expected
+revisions and nil idempotency keys are classified separately.
+Rollback errors in chunk writes are no longer silently discarded: a typed
+`RollbackFailed` retains both the primary operation error and rollback cause.
+
+## 3. Adjudicated clean paths and explicit residuals
+
+- `capability_events.rs` and `mcp.rs`: input fields are allowlisted, execution
+  and tenant/subject scope are checked, event constraints are enforced by the
+  sandbox before broker invocation, and MCP routes only logical aliases to a
+  host-owned invoker; MCP output is bounded.
+- `oci.rs` and `oci_transport.rs`: digest-pinned identity, TLS/no-proxy/no-
+  redirect policy, bearer challenge origin handling, transfer bounds,
+  streamed payload hashing, and publication evidence validation were read
+  through; no new defect was found in this continuation.
+- Snapshot restore/collection use durable copy intents, exact metadata and
+  byte receipts, namespace/snapshot locks, active restore holds, and
+  resumable `collecting` state. No new state-transition defect was found in
+  the reviewed paths. Snapshot holds and external retention policy remain
+  independent policy inputs as designed.
+- Existing review findings remain: conflict fences are descriptive rather
+  than enforcement; GC coordinator in `gc.rs` is design-accepted/in-memory;
+  Phase F FORCE RLS remains blocked on role separation and PostgreSQL
+  evidence; DDL timestamp defaults and already-applied historical migrations
+  retain the documented parse-safe space-form residual; raw snapshots can
+  differ from effective policy; execution-audit RLS breadth and hand-written
+  DDL test fixtures remain in the Phase F inventory.
+
+## 4. Verification boundary
+
+No `cargo`, `rustc`, or `rustfmt` is installed in this sandbox. I did not
+claim tests, type-checking, Clippy, or rustfmt evidence. The author verifies
+this branch. Manual verification was limited to source/call-site sweeps,
+SQL bind/placeholder review, migration ordering, `git diff --check`, and
+line-level review. The added regression tests are present but unexecuted.

@@ -517,16 +517,16 @@ pub(crate) fn data_capability_error(
         | ArtifactDataError::InvalidIndexQuery
         | ArtifactDataError::InvalidBatch
         | ArtifactDataError::InvalidIdempotencyKey
-        | ArtifactDataError::DataContractSchemaViolation) => {
+        | ArtifactDataError::DataContractSchemaViolation
+        | ArtifactDataError::NamespacePurged
+        | ArtifactDataError::NamespaceHeld) => {
             SandboxError::CapabilityConstraintDenied {
                 capability: capability.clone(),
                 reason: error.to_string(),
             }
         }
         ArtifactDataError::InvalidScope
-        | ArtifactDataError::NamespacePurged
         | ArtifactDataError::PurgePrecondition
-        | ArtifactDataError::NamespaceHeld
         | ArtifactDataError::ExportPrecondition
         | ArtifactDataError::SnapshotPrecondition
         | ArtifactDataError::SnapshotLimitExceeded
@@ -577,6 +577,10 @@ mod tests {
         );
         assert!(matches!(
             data_capability_error(&capability, ArtifactDataError::RevisionConflict),
+            SandboxError::CapabilityConstraintDenied { .. }
+        ));
+        assert!(matches!(
+            data_capability_error(&capability, ArtifactDataError::NamespacePurged),
             SandboxError::CapabilityConstraintDenied { .. }
         ));
         assert!(matches!(
