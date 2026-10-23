@@ -809,5 +809,53 @@ async fn system_message_dispatch_bypasses_membership() {
     );
 }
 
+#[tokio::test]
+async fn test_messenger_nil_uuid_and_bounds_guards() {
+    let db = sea_orm::Database::connect("sqlite::memory:")
+        .await
+        .expect("db connect");
+
+    // ensure_messenger_module_enabled nil tenant guard
+    let res = rustok_messenger::controllers::ensure_messenger_module_enabled(&db, Uuid::nil()).await;
+    assert!(res.is_err());
+    let err = res.unwrap_err();
+    assert_eq!(err.code, "INVALID_TENANT");
+
+    let service = rustok_messenger::services::MessengerService::new(db.clone(), 1);
+
+    // nil tenant in get_overview_counts
+    assert!(service.get_overview_counts(Uuid::nil()).await.is_err());
+
+    // nil tenant in list_channels_summary
+    assert!(service.list_channels_summary(Uuid::nil(), 10, 0).await.is_err());
+
+    // nil tenant or actor in create_conversation
+    let input = rustok_messenger::dto::CreateConversationInput {
+        conversation_type: ConversationType::Group,
+        title: Some("Group Chat".into()),
+        entity_type: None,
+        entity_id: None,
+        participant_ids: vec![],
+        is_encrypted: Some(false),
+        initial_locale: None,
+        initial_channel_description: None,
+    };
+    assert!(service.create_conversation(Uuid::nil(), Uuid::now_v7(), input.clone()).await.is_err());
+    assert!(service.create_conversation(Uuid::now_v7(), Uuid::nil(), input).await.is_err());
+
+    // nil tenant or actor in send_message
+    let send_input = rustok_messenger::dto::SendMessageInput {
+        conversation_id: Uuid::now_v7(),
+        message_type: Some(MessageType::Text),
+        content: "Test message".into(),
+        blocks_json: None,
+        reply_to_id: None,
+        is_encrypted: None,
+        encryption_algo: None,
+    };
+    assert!(service.send_message(Uuid::nil(), Uuid::now_v7(), send_input.clone()).await.is_err());
+    assert!(service.send_message(Uuid::now_v7(), Uuid::nil(), send_input).await.is_err());
+}
+
 
 

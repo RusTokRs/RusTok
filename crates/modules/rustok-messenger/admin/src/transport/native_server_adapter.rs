@@ -2,6 +2,23 @@
 use crate::model::*;
 
 #[cfg(feature = "ssr")]
+fn validate_contexts(
+    tenant: &rustok_api::TenantContext,
+    auth: &rustok_api::AuthContext,
+) -> Result<(), String> {
+    if tenant.id.is_nil() {
+        return Err("Invalid tenant context: nil UUID is not permitted".to_string());
+    }
+    if auth.user_id.is_nil() {
+        return Err("Invalid auth context: nil user UUID is not permitted".to_string());
+    }
+    if auth.tenant_id != tenant.id {
+        return Err("Permission denied: tenant mismatch".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(feature = "ssr")]
 pub async fn fetch_overview(
     _token: Option<String>,
     _tenant_slug: Option<String>,
@@ -17,9 +34,7 @@ pub async fn fetch_overview(
         .await
         .map_err(|e| e.to_string())?;
 
-    if auth.tenant_id != tenant.id {
-        return Err("Permission denied: tenant mismatch".to_string());
-    }
+    validate_contexts(&tenant, &auth)?;
 
     let runtime_ctx = expect_context::<HostRuntimeContext>();
     let service = MessengerService::new(runtime_ctx.db_clone(), 1);
@@ -56,9 +71,7 @@ pub async fn fetch_channels(
         .await
         .map_err(|e| e.to_string())?;
 
-    if auth.tenant_id != tenant.id {
-        return Err("Permission denied: tenant mismatch".to_string());
-    }
+    validate_contexts(&tenant, &auth)?;
 
     let runtime_ctx = expect_context::<HostRuntimeContext>();
     let service = MessengerService::new(runtime_ctx.db_clone(), 1);
@@ -104,9 +117,7 @@ pub async fn fetch_e2ee_devices(
         .await
         .map_err(|e| e.to_string())?;
 
-    if auth.tenant_id != tenant.id {
-        return Err("Permission denied: tenant mismatch".to_string());
-    }
+    validate_contexts(&tenant, &auth)?;
 
     let runtime_ctx = expect_context::<HostRuntimeContext>();
     let device_keys = runtime_ctx

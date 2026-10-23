@@ -1,15 +1,13 @@
 use async_graphql::{Context, FieldError, Object, Result};
-use rustok_api::{AuthContext, TenantContext};
-use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
+use super::require_auth_context;
 use super::runtime_data::MessengerGraphqlRuntimeData;
 use super::types::{
     CreateMessengerChannelGqlInput, DeviceKeyGql, MessageItemGql, MessengerChannelListItemGql,
     OneTimePrekeyGql, PrekeyBundleGql, SendMessageInputGql, UpdateCursorInputGql,
     UpdateCursorOutputGql, UploadDeviceKeysGqlInput,
 };
-use crate::controllers::ensure_messenger_module_enabled;
 use crate::domain::ConversationType;
 use crate::dto::CreateConversationInput;
 use crate::e2ee::{OneTimePrekeyInput, UploadDeviceKeysInput};
@@ -27,15 +25,12 @@ impl MessengerMutation {
         ctx: &Context<'_>,
         input: CreateMessengerChannelGqlInput,
     ) -> Result<MessengerChannelListItemGql> {
-        let tenant = ctx.data::<TenantContext>()?;
-        let auth = ctx.data::<AuthContext>()?;
-        if auth.tenant_id != tenant.id {
-            return Err(FieldError::new("Permission denied: tenant mismatch"));
+        let (tenant, auth, db) = require_auth_context(ctx).await?;
+
+        let trimmed_title = input.title.trim();
+        if trimmed_title.is_empty() {
+            return Err(FieldError::new("Channel title cannot be empty"));
         }
-        let db = ctx.data::<DatabaseConnection>()?;
-        ensure_messenger_module_enabled(db, tenant.id)
-            .await
-            .map_err(|e| FieldError::new(e.message))?;
 
         let conv_type = match input.conversation_type.trim().to_lowercase().as_str() {
             "channel" => ConversationType::Channel,
@@ -56,7 +51,7 @@ impl MessengerMutation {
                 auth.user_id,
                 CreateConversationInput {
                     conversation_type: conv_type,
-                    title: Some(input.title.clone()),
+                    title: Some(trimmed_title.to_string()),
                     entity_type: None,
                     entity_id: None,
                     participant_ids: vec![],
@@ -84,15 +79,7 @@ impl MessengerMutation {
         ctx: &Context<'_>,
         input: UploadDeviceKeysGqlInput,
     ) -> Result<DeviceKeyGql> {
-        let tenant = ctx.data::<TenantContext>()?;
-        let auth = ctx.data::<AuthContext>()?;
-        if auth.tenant_id != tenant.id {
-            return Err(FieldError::new("Permission denied: tenant mismatch"));
-        }
-        let db = ctx.data::<DatabaseConnection>()?;
-        ensure_messenger_module_enabled(db, tenant.id)
-            .await
-            .map_err(|e| FieldError::new(e.message))?;
+        let (_tenant, auth, _db) = require_auth_context(ctx).await?;
 
         let runtime_data = ctx.data_opt::<MessengerGraphqlRuntimeData>();
         let device_registry = runtime_data
@@ -137,15 +124,15 @@ impl MessengerMutation {
         target_user_id: Uuid,
         device_id: String,
     ) -> Result<PrekeyBundleGql> {
-        let tenant = ctx.data::<TenantContext>()?;
-        let auth = ctx.data::<AuthContext>()?;
-        if auth.tenant_id != tenant.id {
-            return Err(FieldError::new("Permission denied: tenant mismatch"));
+        let (_tenant, _auth, _db) = require_auth_context(ctx).await?;
+
+        if target_user_id.is_nil() {
+            return Err(FieldError::new("target_user_id must not be nil"));
         }
-        let db = ctx.data::<DatabaseConnection>()?;
-        ensure_messenger_module_enabled(db, tenant.id)
-            .await
-            .map_err(|e| FieldError::new(e.message))?;
+        let trimmed_device = device_id.trim();
+        if trimmed_device.is_empty() {
+            return Err(FieldError::new("device_id must not be empty"));
+        }
 
         let runtime_data = ctx.data_opt::<MessengerGraphqlRuntimeData>();
         let device_registry = runtime_data
@@ -153,7 +140,7 @@ impl MessengerMutation {
             .unwrap_or_default();
 
         let bundle = device_registry
-            .claim_prekey_bundle(target_user_id, &device_id)
+            .claim_prekey_bundle(target_user_id, trimmed_device)
             .map_err(|e| FieldError::new(e.to_string()))?;
 
         Ok(PrekeyBundleGql {
@@ -177,15 +164,11 @@ impl MessengerMutation {
         ctx: &Context<'_>,
         input: SendMessageInputGql,
     ) -> Result<MessageItemGql> {
-        let tenant = ctx.data::<TenantContext>()?;
-        let auth = ctx.data::<AuthContext>()?;
-        if auth.tenant_id != tenant.id {
-            return Err(FieldError::new("Permission denied: tenant mismatch"));
+        let (tenant, auth, db) = require_auth_context(ctx).await?;
+
+        if input.conversation_id.is_nil() {
+            return Err(FieldError::new("conversation_id cannot be nil UUID"));
         }
-        let db = ctx.data::<DatabaseConnection>()?;
-        ensure_messenger_module_enabled(db, tenant.id)
-            .await
-            .map_err(|e| FieldError::new(e.message))?;
 
         let service = MessengerService::new(db.clone(), 1);
         let out = service
@@ -233,15 +216,14 @@ impl MessengerMutation {
         ctx: &Context<'_>,
         input: UpdateCursorInputGql,
     ) -> Result<UpdateCursorOutputGql> {
-        let tenant = ctx.data::<TenantContext>()?;
-        let auth = ctx.data::<AuthContext>()?;
-        if auth.tenant_id != tenant.id {
-            return Err(FieldError::new("Permission denied: tenant mismatch"));
+        let (tenant, auth, db) = require_auth_context(ctx).await?;
+
+        if input.conversation_id.is_nil() {
+            return Err(FieldError::new("conversation_id cannot be nil UUID"));
         }
-        let db = ctx.data::<DatabaseConnection>()?;
-        ensure_messenger_module_enabled(db, tenant.id)
-            .await
-            .map_err(|e| FieldError::new(e.message))?;
+        if input.last_read_message_id < 0 {
+            return Err(FieldError::new("last_read_message_id cannot be negative"));
+        }
 
         let service = MessengerService::new(db.clone(), 1);
         let out = service
@@ -277,15 +259,15 @@ impl MessengerMutation {
         message_id: i64,
         content: String,
     ) -> Result<MessageItemGql> {
-        let tenant = ctx.data::<TenantContext>()?;
-        let auth = ctx.data::<AuthContext>()?;
-        if auth.tenant_id != tenant.id {
-            return Err(FieldError::new("Permission denied: tenant mismatch"));
+        let (tenant, auth, db) = require_auth_context(ctx).await?;
+
+        if message_id <= 0 {
+            return Err(FieldError::new("message_id must be a positive Snowflake ID"));
         }
-        let db = ctx.data::<DatabaseConnection>()?;
-        ensure_messenger_module_enabled(db, tenant.id)
-            .await
-            .map_err(|e| FieldError::new(e.message))?;
+        let trimmed = content.trim();
+        if trimmed.is_empty() {
+            return Err(FieldError::new("content cannot be empty"));
+        }
 
         let service = MessengerService::new(db.clone(), 1);
         let out = service
@@ -326,15 +308,11 @@ impl MessengerMutation {
         ctx: &Context<'_>,
         message_id: i64,
     ) -> Result<bool> {
-        let tenant = ctx.data::<TenantContext>()?;
-        let auth = ctx.data::<AuthContext>()?;
-        if auth.tenant_id != tenant.id {
-            return Err(FieldError::new("Permission denied: tenant mismatch"));
+        let (tenant, auth, db) = require_auth_context(ctx).await?;
+
+        if message_id <= 0 {
+            return Err(FieldError::new("message_id must be a positive Snowflake ID"));
         }
-        let db = ctx.data::<DatabaseConnection>()?;
-        ensure_messenger_module_enabled(db, tenant.id)
-            .await
-            .map_err(|e| FieldError::new(e.message))?;
 
         let service = MessengerService::new(db.clone(), 1);
         let conv_id = service

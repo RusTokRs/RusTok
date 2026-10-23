@@ -30,6 +30,14 @@ fn graphql_url() -> String {
     "/api/graphql".to_string()
 }
 
+fn sanitize_token(token: Option<String>) -> Option<String> {
+    token.map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+}
+
+fn sanitize_tenant_slug(tenant_slug: Option<String>) -> Option<String> {
+    tenant_slug.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
 const LIST_CONVERSATIONS_QUERY: &str = r#"
 query ListStorefrontConversations {
     messengerConversations {
@@ -60,8 +68,8 @@ pub async fn fetch_conversations(
     let response: ListConversationsResponse = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(LIST_CONVERSATIONS_QUERY, None::<serde_json::Value>),
-        token,
-        tenant_slug,
+        sanitize_token(token),
+        sanitize_tenant_slug(tenant_slug),
         None::<String>,
     )
     .await?;
@@ -99,6 +107,20 @@ pub async fn fetch_messages(
     since_seq: Option<i64>,
     limit: Option<i32>,
 ) -> Result<Vec<MessageItemPayload>, ApiError> {
+    if conversation_id.is_nil() {
+        return Err(ApiError::Graphql("conversation_id cannot be nil UUID".into()));
+    }
+    if let Some(seq) = since_seq {
+        if seq < 0 {
+            return Err(ApiError::Graphql("since_seq cannot be negative".into()));
+        }
+    }
+    if let Some(l) = limit {
+        if l <= 0 {
+            return Err(ApiError::Graphql("limit must be positive".into()));
+        }
+    }
+
     let variables = serde_json::json!({
         "conversationId": conversation_id,
         "sinceSeq": since_seq,
@@ -108,8 +130,8 @@ pub async fn fetch_messages(
     let response: ListMessagesResponse = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(LIST_MESSAGES_QUERY, Some(variables)),
-        token,
-        tenant_slug,
+        sanitize_token(token),
+        sanitize_tenant_slug(tenant_slug),
         None::<String>,
     )
     .await?;
@@ -140,10 +162,18 @@ pub async fn send_message(
     tenant_slug: Option<String>,
     input: SendMessagePayload,
 ) -> Result<MessageItemPayload, ApiError> {
+    if input.conversation_id.is_nil() {
+        return Err(ApiError::Graphql("conversation_id cannot be nil UUID".into()));
+    }
+    let trimmed_content = input.content.trim();
+    if trimmed_content.is_empty() {
+        return Err(ApiError::Graphql("content cannot be empty".into()));
+    }
+
     let variables = serde_json::json!({
         "input": {
             "conversationId": input.conversation_id,
-            "content": input.content,
+            "content": trimmed_content,
             "replyToId": input.reply_to_id,
         }
     });
@@ -151,8 +181,8 @@ pub async fn send_message(
     let response: SendMessageResponse = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(SEND_MESSAGE_MUTATION, Some(variables)),
-        token,
-        tenant_slug,
+        sanitize_token(token),
+        sanitize_tenant_slug(tenant_slug),
         None::<String>,
     )
     .await?;
@@ -176,6 +206,13 @@ pub async fn update_cursor(
     tenant_slug: Option<String>,
     input: UpdateCursorPayload,
 ) -> Result<(), ApiError> {
+    if input.conversation_id.is_nil() {
+        return Err(ApiError::Graphql("conversation_id cannot be nil UUID".into()));
+    }
+    if input.last_read_message_id < 0 {
+        return Err(ApiError::Graphql("last_read_message_id cannot be negative".into()));
+    }
+
     let variables = serde_json::json!({
         "input": {
             "conversationId": input.conversation_id,
@@ -186,8 +223,8 @@ pub async fn update_cursor(
     let _response: serde_json::Value = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(UPDATE_CURSOR_MUTATION, Some(variables)),
-        token,
-        tenant_slug,
+        sanitize_token(token),
+        sanitize_tenant_slug(tenant_slug),
         None::<String>,
     )
     .await?;
