@@ -155,6 +155,8 @@ pub enum GcError {
     PhysicalPurgeFailed(String),
     #[error("Live artifact data object cannot be tombstoned or purged")]
     LiveArtifactDataProhibited,
+    #[error("Tombstone `{0}` in status `{1:?}` cannot perform this transition")]
+    InvalidTombstoneTransition(Uuid, GcTombstoneStatus),
 }
 
 /// Common trait implemented by independent owner-driven retention and GC adapters.
@@ -885,7 +887,9 @@ impl GcCoordinator {
             && let Some(tombstone) = self.tombstones.get(existing_id)
             && matches!(
                 tombstone.status,
-                GcTombstoneStatus::ActiveGrace | GcTombstoneStatus::GraceExpired
+                GcTombstoneStatus::ActiveGrace
+                    | GcTombstoneStatus::GraceExpired
+                    | GcTombstoneStatus::FinalRecheckPassed
             )
         {
             return Err(GcError::AlreadyTombstoned(target, *existing_id));
@@ -932,9 +936,24 @@ impl GcCoordinator {
             .get_mut(&tombstone_id)
             .ok_or(GcError::TombstoneNotFound(tombstone_id))?;
 
+        match tombstone.status {
+            // A collected asset is already purged; revoking it would
+            // rewrite the collection history the receipt attests to.
+            GcTombstoneStatus::Collected => {
+                return Err(GcError::InvalidTombstoneTransition(
+                    tombstone_id,
+                    tombstone.status.clone(),
+                ));
+            }
+            GcTombstoneStatus::Revoked { .. } => return Ok(()),
+            _ => {}
+        }
         tombstone.status = GcTombstoneStatus::Revoked {
             reason: reason.into(),
         };
+        // A revoked tombstone must not leave a live execution token behind.
+        self.issued_tokens
+            .retain(|_, issued| issued.tombstone_id != tombstone_id);
         Ok(())
     }
 
@@ -1070,8 +1089,15 @@ impl GcCoordinator {
             )));
         }
 
-        // Execute physical deletion via adapter
-        adapter.execute_physical_purge(&token.target)?;
+        // Execute physical deletion via adapter. A failed purge restores
+        // the token: burning it here would strand the tombstone in
+        // `FinalRecheckPassed` forever, since recheck requires an active
+        // grace status and could never issue a replacement token.
+        if let Err(error) = adapter.execute_physical_purge(&token.target) {
+            self.issued_tokens
+                .insert(recorded_token.token_id, recorded_token);
+            return Err(error);
+        }
 
         // Transition tombstone to Collected
         tombstone.status = GcTombstoneStatus::Collected;
