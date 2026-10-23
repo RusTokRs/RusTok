@@ -682,8 +682,8 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [rustok-modules](../../crates/modules/rustok-modules) | `modules` | 242 | 131,685 | 2026-10-17 10:45 | Audited and cleaned. |
 | [x] | [rustok-modules-translation](../../crates/modules/rustok-modules-translation) | `modules` | 1 | 822 | 2026-10-17 12:32 | Audited and cleaned. |
 | [x] | [cli](../../crates/modules/rustok-modules/cli) | `modules` | 1 | 1,813 | 2026-10-17 11:44 | Audited and cleaned. |
-| [ ] | [rustok-navigation](../../crates/modules/rustok-navigation) | `modules` | 40 | 5,286 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-navigation/storefront) | `modules` | 9 | 495 | None |  |
+| [x] | [rustok-navigation](../../crates/modules/rustok-navigation) | `modules` | 40 | 5,286 | 2026-10-23 18:55 | Audited and hardened: enforced non-nil UUID and cross-tenant checks in controllers (get_menu, get_active_menu, create_menu, bind_active_menu) and MenuBindingService; added bounds check on translations count (<=50), items count (<=1000), position (non-negative), and maximum tree recursion depth (<=16) in MenuService; enforced non-nil UUIDs and actor validation in GraphQL queries/mutations and Translation Target provider; added test_navigation_nil_uuid_and_bounds_guards; 19/19 tests passed, zero defects. |
+| [x] | [storefront](../../crates/modules/rustok-navigation/storefront) | `modules` | 9 | 495 | 2026-10-23 18:55 | Audited and hardened: enforced non-nil UUID validation on channel_id, tenant context, and resolved tenant ID in native_server_adapter; sanitized locale and tenant slug inputs across native and GraphQL adapters; verified all SSR and hydrate transport flows; 3/3 tests passed (both default and --features ssr), zero defects. |
 | [ ] | [rustok-newsletter](../../crates/modules/rustok-newsletter) | `modules` | 23 | 2,474 | None |  |
 | [ ] | [rustok-newsletter-api](../../crates/modules/rustok-newsletter-api) | `modules` | 4 | 445 | None |  |
 | [ ] | [rustok-notifications](../../crates/modules/rustok-notifications) | `modules` | 75 | 22,202 | None |  |
