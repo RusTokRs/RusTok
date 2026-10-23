@@ -110,4 +110,4 @@ disabled. See
 - `dto::*`
 - `entities::*`
 
-See also `docs/README.md`.
+See also `docs/README.md` and [CRATE_API.md](CRATE_API.md).

@@ -8,12 +8,13 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-#![deny(clippy::float_arithmetic)]
+//! # RusToK Order
+//!
+//! Order domain module extracted from commerce.
+//! Provides order lifecycle state machines, staged checkout compensation,
+//! checkout recovery adapters, post-order command execution, and read projections.
 
-use async_trait::async_trait;
-use rustok_api::Permission;
-use rustok_core::{MigrationSource, RusToKModule};
-use sea_orm_migration::MigrationTrait;
+#![deny(clippy::float_arithmetic)]
 
 mod admin_command;
 pub mod analytics;
@@ -28,11 +29,15 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod migrations;
+pub mod module;
 mod order_read;
 pub mod ports;
 mod post_order_command;
 pub mod services;
 pub mod status;
+
+#[cfg(test)]
+mod contract_tests;
 
 pub mod checkout_owner_context {
     pub use crate::checkout_compensation_local_context::{
@@ -57,70 +62,50 @@ pub use checkout_compensation::{
 pub use checkout_compensation_local_context::{
     InProcessCheckoutOrderCompensationPort, in_process_checkout_order_compensation_port,
 };
-pub use checkout_order_recovery::*;
+pub use checkout_order_recovery::{
+    CheckoutOrderRecoveryAdapter, ReadCheckoutOrderProjectionRequest,
+    RecoverExistingCheckoutOrderRequest, in_process_checkout_order_recovery_adapter,
+};
 pub use checkout_owner_context_impl::{
     InProcessCheckoutOrderPaymentSettlementPort, in_process_checkout_order_payment_settlement_port,
 };
 pub use checkout_payment_settlement::{
     CheckoutOrderPaymentSettlementPort, SettleCheckoutOrderPaymentRequest,
 };
-pub use dto::*;
-pub use entities::*;
+pub use dto::{
+    ApplyOrderChangeInput, CancelOrderChangeInput, CancelOrderInput, CancelOrderReturnInput,
+    CompleteOrderReturnInput, CreateOrderAdjustmentInput, CreateOrderChangeInput, CreateOrderInput,
+    CreateOrderLineItemInput, CreateOrderReturnInput, CreateOrderReturnItemInput,
+    CreateOrderTaxLineInput, DeliverOrderInput, ListOrderChangesInput, ListOrderReturnsInput,
+    ListOrdersInput, MarkPaidOrderInput, OrderAdjustmentResponse, OrderChangeResponse,
+    OrderLineFulfillmentRequirement, OrderLineItemResponse, OrderResponse, OrderReturnItemResponse,
+    OrderReturnResponse, OrderTaxLineResponse, ShipOrderInput,
+};
+pub use entities::order as order_entity;
+pub use error::{OrderError, OrderResult};
+pub use module::OrderModule;
 pub use order_read::{
     InProcessOrderReadPort, ListOrderChangeProjectionsRequest, ListOrderProjectionsRequest,
     ListOrderReturnProjectionsRequest, OrderChangeProjectionPage, OrderProjectionPage,
     OrderReadPort, OrderReturnProjectionPage, ReadOrderChangeProjectionRequest,
     ReadOrderProjectionRequest, ReadOrderReturnProjectionRequest, in_process_order_read_port,
 };
-pub use ports::*;
+pub use ports::{
+    BindCheckoutOrderIdentityRequest, CheckoutCompletionPort, CheckoutCompletionSnapshot,
+    CheckoutOrderIdentityPort, CheckoutOrderIdentitySnapshot, CheckoutResultByOperationRequest,
+    CheckoutResultRequest, CompleteCheckoutPortRequest, InProcessCheckoutCompletionPort,
+    InProcessCheckoutOrderIdentityPort, OrderStatusRequest, OrderStatusSnapshot,
+    ReadCheckoutOrderIdentityByCartRequest, ReadCheckoutOrderIdentityByOperationRequest,
+    in_process_checkout_completion_port, in_process_checkout_order_identity_port,
+};
 pub use post_order_command::{
     ApplyOrderChangeRequest, CancelOrderChangeRequest, CancelOrderReturnRequest,
     CompleteOrderReturnRequest, CreateOrderChangeRequest, CreateOrderReturnRequest,
     InProcessOrderPostOrderCommandPort, OrderPostOrderCommandPort, OrderPostOrderCommandRuntime,
     in_process_order_post_order_command_port,
 };
-pub use status::*;
-
-pub use error::{OrderError, OrderResult};
 pub use services::{
     CreateCheckoutOrderIdentityInput, OrderCheckoutIdentityError, OrderCheckoutIdentityJournal,
     OrderCheckoutIdentityResult, OrderService, RecordOrderCheckoutIdentity,
 };
-
-pub struct OrderModule;
-
-#[async_trait]
-impl RusToKModule for OrderModule {
-    fn slug(&self) -> &'static str {
-        "order"
-    }
-
-    fn name(&self) -> &'static str {
-        "Order"
-    }
-
-    fn description(&self) -> &'static str {
-        "Default order submodule in the ecommerce family"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::ORDERS_CREATE,
-            Permission::ORDERS_READ,
-            Permission::ORDERS_UPDATE,
-            Permission::ORDERS_DELETE,
-            Permission::ORDERS_LIST,
-            Permission::ORDERS_MANAGE,
-        ]
-    }
-}
-
-impl MigrationSource for OrderModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-}
+pub use status::{OrderChangeStatusKind, OrderReturnStatusKind, OrderStatusKind};
