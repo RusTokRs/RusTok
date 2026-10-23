@@ -246,6 +246,8 @@ pub async fn append_deltas(
         "Permission denied: pages:update required",
     )?;
 
+    dto.validate()?;
+
     let latest_seq_id =
         DocumentService::append_updates(&runtime.db, tenant.id, page_id, dto.deltas.clone())
             .await?;
