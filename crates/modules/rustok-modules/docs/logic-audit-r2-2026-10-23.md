@@ -13,7 +13,7 @@ remediated in-crate in the same change set (AGENTS.md §6); suspicious code
 proven sound is recorded as adjudicated so it is not "re-fixed" later.
 
 Base: `dd7ac39` (tip of the remediation + internal-quality repair series).
-Change set: 11 commits, 39 files, +765/−467.
+Change set after the initial pass and continued review: 15 fix commits plus 4 documentation commits; 51 files, +1,478/−571.
 
 Evidence status: the authoring sandbox has no Rust toolchain; no local
 `cargo` evidence is claimed. All changes were verified by full-source
