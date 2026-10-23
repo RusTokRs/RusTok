@@ -73,6 +73,9 @@ pub async fn set_form_submission_state(
     id: Uuid,
     state: &str,
 ) -> Result<FormSubmission, ApiError> {
+    if id.is_nil() {
+        return Err(ApiError::Graphql("submission id must not be nil".to_string()));
+    }
     let response: UpdateFormSubmissionStateResponse = request(
         UPDATE_FORM_SUBMISSION_STATE_MUTATION,
         UpdateFormSubmissionStateVariables {

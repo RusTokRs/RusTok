@@ -254,6 +254,74 @@ async fn triage_state_machine_enforces_allowed_transitions() -> TestResult<()> {
     Ok(())
 }
 
+#[tokio::test]
+async fn nil_uuid_validation_is_enforced() -> TestResult<()> {
+    let tenant_id = Uuid::new_v4();
+    let db = setup_db().await?;
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    let service = FormsService::new(db.clone(), event_bus, None);
+
+    // Nil tenant_id rejected in submit
+    let err = service
+        .submit(
+            Uuid::nil(),
+            "contact",
+            None,
+            None,
+            test_fields(),
+            "ip",
+            None,
+        )
+        .await
+        .expect_err("nil tenant_id in submit must fail");
+    assert!(err.to_string().contains("tenant_id must not be nil"));
+
+    // Nil page_id rejected in submit
+    let err = service
+        .submit(
+            tenant_id,
+            "contact",
+            Some(Uuid::nil()),
+            None,
+            test_fields(),
+            "ip",
+            None,
+        )
+        .await
+        .expect_err("nil page_id in submit must fail");
+    assert!(err.to_string().contains("page_id must not be nil"));
+
+    // Nil tenant_id rejected in list
+    let err = service
+        .list(
+            Uuid::nil(),
+            read_security(),
+            ListFormSubmissionsFilter {
+                form_id: None,
+                state: None,
+                page: 1,
+                per_page: 20,
+            },
+        )
+        .await
+        .expect_err("nil tenant_id in list must fail");
+    assert!(err.to_string().contains("tenant_id must not be nil"));
+
+    // Nil submission id rejected in set_state
+    let err = service
+        .set_state(
+            tenant_id,
+            manage_security(Uuid::new_v4()),
+            Uuid::nil(),
+            FormSubmissionState::Read,
+        )
+        .await
+        .expect_err("nil submission id in set_state must fail");
+    assert!(err.to_string().contains("id must not be nil"));
+
+    Ok(())
+}
+
 fn read_security() -> SecurityContext {
     SecurityContext::from_permissions(
         UserRole::Manager,

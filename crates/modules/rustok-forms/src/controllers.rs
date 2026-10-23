@@ -87,9 +87,14 @@ fn split_reserved_fields(
     mut fields: Map<String, Value>,
 ) -> FormsResult<(Option<Uuid>, Option<String>, Map<String, Value>)> {
     let page_id = match fields.remove("page_id") {
-        Some(Value::String(value)) => Some(
-            Uuid::parse_str(value.trim()).map_err(|_| invalid_request("page_id must be a UUID"))?,
-        ),
+        Some(Value::String(value)) => {
+            let parsed = Uuid::parse_str(value.trim())
+                .map_err(|_| invalid_request("page_id must be a UUID"))?;
+            if parsed.is_nil() {
+                return Err(invalid_request("page_id must not be nil"));
+            }
+            Some(parsed)
+        }
         Some(Value::Null) | None => None,
         Some(_) => return Err(invalid_request("page_id must be a UUID string")),
     };
@@ -166,6 +171,12 @@ async fn submit_form_fields(
     headers: HeaderMap,
     fields: Map<String, Value>,
 ) -> HttpResult<impl IntoResponse> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant",
+            "tenant_id must not be nil",
+        ));
+    }
     let (page_id, locale, fields) = split_reserved_fields(fields).map_err(HttpError::from)?;
     let identity = request_identity(&headers);
     let user_agent = request_user_agent(&headers);
@@ -215,6 +226,12 @@ pub async fn list_form_submissions(
     auth: AuthContext,
     axum::extract::Query(filter): axum::extract::Query<ListFormSubmissionsFilter>,
 ) -> HttpResult<Json<Vec<FormSubmissionResponse>>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant",
+            "tenant_id must not be nil",
+        ));
+    }
     ensure_forms_permission(&auth, Permission::FORMS_READ)?;
     runtime
         .service()
@@ -244,6 +261,18 @@ pub async fn update_form_submission_state(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateFormSubmissionStateInput>,
 ) -> HttpResult<Json<FormSubmissionResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant",
+            "tenant_id must not be nil",
+        ));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_id",
+            "submission id must not be nil",
+        ));
+    }
     ensure_forms_permission(&auth, Permission::FORMS_MANAGE)?;
     runtime
         .service()

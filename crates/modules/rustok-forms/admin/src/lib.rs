@@ -1,23 +1,25 @@
 //! Leptos admin surface for the forms module: submission triage inbox.
 
+pub mod core;
 mod i18n;
 mod model;
 mod transport;
 
+pub use core::*;
 pub use i18n::*;
+pub use model::FormSubmission;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use uuid::Uuid;
 
-pub use model::FormSubmission;
-
 /// Inbox listing form submissions with triage actions.
 #[component]
 pub fn FormsAdmin() -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
+    let labels = FormsAdminLabels::from_locale(None);
     let busy = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);
     let fetch_token = token;
@@ -51,9 +53,9 @@ pub fn FormsAdmin() -> impl IntoView {
     view! {
         <section class="space-y-4">
             <div class="flex flex-wrap items-center justify-between gap-3">
-                <h1 class="text-xl font-semibold text-card-foreground">"Form submissions"</h1>
+                <h1 class="text-xl font-semibold text-card-foreground">{labels.title.clone()}</h1>
                 <span class="text-xs text-muted-foreground">
-                    "newest first; honeypot captures are stored as spam"
+                    {labels.subtitle.clone()}
                 </span>
             </div>
             {move || error.get().map(|message| view! {
@@ -67,51 +69,65 @@ pub fn FormsAdmin() -> impl IntoView {
                     <div class="h-12 animate-pulse rounded-lg bg-muted"></div>
                 </div>
             }>
-                {move || {
-                    submissions.get().map(|result| match result {
-                        Ok(rows) if rows.is_empty() => view! {
-                            <p class="text-sm text-muted-foreground">
-                                "No form submissions yet."
-                            </p>
-                        }.into_any(),
-                        Ok(rows) => view! {
-                            <ul class="space-y-2">
-                                {rows
-                                    .into_iter()
-                                    .map(|row| {
-                                        let id = row.id;
-                                        let summary = summarize(&row);
-                                        let pending = row.state == "new" || row.state == "read";
-                                        view! {
-                                            <li class="rounded-lg bg-muted/40 px-3 py-2 text-sm">
-                                                <div class="flex flex-wrap items-center justify-between gap-3">
-                                                    <div class="min-w-0">
-                                                        <div class="truncate font-medium text-foreground">
-                                                            {format!("{} · {} · {}", row.form_id, row.state, row.created_at)}
+                {
+                    let empty_text = labels.empty.clone();
+                    move || {
+                        let empty_text = empty_text.clone();
+                        submissions.get().map(|result| match result {
+                            Ok(rows) if rows.is_empty() => view! {
+                                <p class="text-sm text-muted-foreground">
+                                    {empty_text}
+                                </p>
+                            }.into_any(),
+                            Ok(rows) => view! {
+                                <ul class="space-y-2">
+                                    {rows
+                                        .into_iter()
+                                        .map(|row| {
+                                            let id = row.id;
+                                            let summary = summarize_submission(&row);
+                                            let status = state_label(&row.state, None);
+                                            let actions = allowed_transitions(&row.state, None);
+                                            view! {
+                                                <li class="rounded-lg bg-muted/40 px-3 py-2 text-sm">
+                                                    <div class="flex flex-wrap items-center justify-between gap-3">
+                                                        <div class="min-w-0">
+                                                            <div class="truncate font-medium text-foreground">
+                                                                {format!("{} · {} · {}", row.form_id, status, row.created_at)}
+                                                            </div>
+                                                            <div class="truncate text-xs text-muted-foreground">{summary}</div>
                                                         </div>
-                                                        <div class="truncate text-xs text-muted-foreground">{summary}</div>
-                                                    </div>
-                                                    <Show when=move || pending>
                                                         <div class="flex flex-wrap gap-2">
-                                                            <ActionButton label="Mark read" state="read" id transition busy />
-                                                            <ActionButton label="Mark handled" state="handled" id transition busy />
-                                                            <ActionButton label="Mark spam" state="spam" id transition busy />
+                                                            {actions
+                                                                .into_iter()
+                                                                .map(|action| {
+                                                                    view! {
+                                                                        <ActionButton
+                                                                            label=action.label
+                                                                            state=action.target_state
+                                                                            id
+                                                                            transition
+                                                                            busy
+                                                                        />
+                                                                    }
+                                                                })
+                                                                .collect_view()}
                                                         </div>
-                                                    </Show>
-                                                </div>
-                                            </li>
-                                        }
-                                    })
-                                    .collect_view()}
-                            </ul>
-                        }.into_any(),
-                        Err(message) => view! {
-                            <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
-                                {message}
-                            </div>
-                        }.into_any(),
-                    })
-                }}
+                                                    </div>
+                                                </li>
+                                            }
+                                        })
+                                        .collect_view()}
+                                </ul>
+                            }.into_any(),
+                            Err(message) => view! {
+                                <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+                                    {message}
+                                </div>
+                            }.into_any(),
+                        })
+                    }
+                }
             </Suspense>
         </section>
     }
@@ -119,7 +135,7 @@ pub fn FormsAdmin() -> impl IntoView {
 
 #[component]
 fn ActionButton(
-    label: &'static str,
+    label: String,
     state: &'static str,
     id: Uuid,
     transition: Callback<(Uuid, String), ()>,
@@ -134,29 +150,5 @@ fn ActionButton(
         >
             {label}
         </button>
-    }
-}
-
-fn summarize(row: &FormSubmission) -> String {
-    let mut parts = Vec::new();
-    if let Some(page_id) = row.page_id {
-        parts.push(format!("page {page_id}"));
-    }
-    if let Some(value) = row.payload.as_object() {
-        for (name, field) in value.iter().take(6) {
-            let text = match field {
-                serde_json::Value::String(text) => text.clone(),
-                other => other.to_string(),
-            };
-            parts.push(format!(
-                "{name}={}",
-                text.chars().take(40).collect::<String>()
-            ));
-        }
-    }
-    if parts.is_empty() {
-        "(no fields)".to_string()
-    } else {
-        parts.join(" · ")
     }
 }
