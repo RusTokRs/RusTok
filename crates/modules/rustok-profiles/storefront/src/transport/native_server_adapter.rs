@@ -2,9 +2,10 @@ use leptos::prelude::*;
 use std::fmt::{Display, Formatter};
 
 use crate::model::{
-    ProfilesStorefrontFollowState, ProfilesStorefrontImage, ProfilesStorefrontPage,
-    ProfilesStorefrontProfile, SetProfilesStorefrontFollowCommand,
+    ProfilesStorefrontFollowState, ProfilesStorefrontPage, SetProfilesStorefrontFollowCommand,
 };
+#[cfg(feature = "ssr")]
+use crate::model::{ProfilesStorefrontImage, ProfilesStorefrontProfile};
 
 #[derive(Debug, Clone)]
 pub struct NativeProfilesStorefrontError(pub String);

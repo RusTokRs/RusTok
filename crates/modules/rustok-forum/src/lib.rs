@@ -290,7 +290,8 @@ pub use topic_read_transport::{
     topic_read_audience_port_context, ForumTopicReadOperation, ForumTopicReadTransport,
 };
 pub use entities::{
-    forum_category, forum_reply, forum_topic, forum_topic_tag, forum_topic_translation,
+    forum_category, forum_reply, forum_reply_body, forum_topic, forum_topic_tag,
+    forum_topic_translation,
 };
 pub use visibility::ForumCategoryVisibility;
 
