@@ -3301,7 +3301,7 @@ fn validate_retention(
     now: DateTime<Utc>,
 ) -> Result<(), ArtifactSettingsRecoveryError> {
     if !valid_policy_snapshot_id(&retention.policy_snapshot_id)
-        || !valid_sha256_digest(&retention.secret_handle_digest)
+        || !crate::trust::is_sha256_digest(&retention.secret_handle_digest)
         || retention.retain_until <= now
     {
         return Err(ArtifactSettingsRecoveryError::PolicyDenied);
@@ -3365,14 +3365,6 @@ fn settings_digest(settings: &Value) -> Result<String, ArtifactSettingsRecoveryE
 fn request_digest<T: Serialize>(request: &T) -> Result<String, ArtifactSettingsRecoveryError> {
     let value = serde_json::to_value(request).map_err(storage_error)?;
     settings_digest(&value)
-}
-
-fn valid_sha256_digest(value: &str) -> bool {
-    value.len() == 71
-        && value.starts_with("sha256:")
-        && value[7..]
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 fn map_validation_error(error: ArtifactSchemaValidationError) -> ArtifactSettingsRecoveryError {

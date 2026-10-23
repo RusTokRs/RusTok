@@ -75,7 +75,7 @@ impl ExternalLineageEvidence {
                 "lineage source reference must be non-empty, trimmed, and <= 512 chars without control characters".to_string(),
             ));
         }
-        if !valid_sha256_digest(&self.source_digest) {
+        if !crate::trust::is_sha256_digest(&self.source_digest) {
             return Err(ExternalPrebuiltIngressError::InvalidLineage(format!(
                 "lineage source digest `{}` is not a valid sha256 digest",
                 self.source_digest
@@ -120,7 +120,7 @@ impl ExternalSignatureEvidence {
                 "signature reference must be non-empty, trimmed, and <= 512 chars without control characters".to_string(),
             ));
         }
-        if !valid_sha256_digest(&self.signature_digest) {
+        if !crate::trust::is_sha256_digest(&self.signature_digest) {
             return Err(ExternalPrebuiltIngressError::InvalidSignature(format!(
                 "signature digest `{}` is not a valid sha256 digest",
                 self.signature_digest
@@ -156,7 +156,7 @@ impl ExternalSbomEvidence {
                 "SBOM reference must be non-empty, trimmed, and <= 512 chars without control characters".to_string(),
             ));
         }
-        if !valid_sha256_digest(&self.sbom_digest) {
+        if !crate::trust::is_sha256_digest(&self.sbom_digest) {
             return Err(ExternalPrebuiltIngressError::InvalidSbom(format!(
                 "SBOM digest `{}` is not a valid sha256 digest",
                 self.sbom_digest
@@ -197,7 +197,7 @@ impl ExternalProvenanceEvidence {
                 "provenance reference must be non-empty, trimmed, and <= 512 chars without control characters".to_string(),
             ));
         }
-        if !valid_sha256_digest(&self.provenance_digest) {
+        if !crate::trust::is_sha256_digest(&self.provenance_digest) {
             return Err(ExternalPrebuiltIngressError::InvalidProvenance(format!(
                 "provenance digest `{}` is not a valid sha256 digest",
                 self.provenance_digest
@@ -421,17 +421,6 @@ pub struct ExternalPrebuiltIngressService {
     infrastructure: ControlPlaneInfrastructure,
 }
 
-fn valid_sha256_digest(digest: &str) -> bool {
-    if !digest.starts_with("sha256:") {
-        return false;
-    }
-    let hex = &digest[7..];
-    hex.len() == 64
-        && hex
-            .chars()
-            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
-}
-
 impl ExternalPrebuiltIngressService {
     pub fn new(
         db: DatabaseConnection,
@@ -520,7 +509,7 @@ impl ExternalPrebuiltIngressService {
             .validate()
             .map_err(|e| ExternalPrebuiltIngressError::InvalidReference(e.to_string()))?;
 
-        if !valid_sha256_digest(&command.reference.digest) {
+        if !crate::trust::is_sha256_digest(&command.reference.digest) {
             return Err(ExternalPrebuiltIngressError::UnpinnedReference(
                 command.reference.canonical(),
             ));

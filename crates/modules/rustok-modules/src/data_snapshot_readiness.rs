@@ -175,9 +175,8 @@ impl ArtifactDataRecoveryReadinessService {
         let is_within_sla = age >= chrono::Duration::zero() && age <= max_chrono_duration;
         let not_expired = retain_until > now;
         let has_valid_manifest = manifest_digest
-            .as_ref()
-            .map(|d| d.starts_with("sha256:"))
-            .unwrap_or(false);
+            .as_deref()
+            .is_some_and(crate::trust::is_sha256_digest);
 
         let ready = is_within_sla && not_expired && has_valid_manifest;
 

@@ -107,14 +107,6 @@ pub struct OciReleaseAdmissionService {
     infrastructure: ControlPlaneInfrastructure,
 }
 
-fn valid_sha256_digest(digest: &str) -> bool {
-    if !digest.starts_with("sha256:") {
-        return false;
-    }
-    let hex = &digest[7..];
-    hex.len() == 64 && hex.chars().all(|c| c.is_ascii_hexdigit())
-}
-
 impl OciReleaseAdmissionService {
     pub fn new(
         db: DatabaseConnection,
@@ -201,7 +193,7 @@ impl OciReleaseAdmissionService {
             .validate()
             .map_err(|e| OciReleaseAdmissionError::InvalidReference(e.to_string()))?;
 
-        if !valid_sha256_digest(&command.reference.digest) {
+        if !crate::installation::valid_digest(&command.reference.digest) {
             return Err(OciReleaseAdmissionError::UnpinnedReference(
                 command.reference.canonical(),
             ));

@@ -282,19 +282,11 @@ fn validate_request(
         || request.installation_id.is_nil()
         || request.binding_id.trim().is_empty()
         || request.binding_id.len() > 256
-        || !is_digest(&request.request_digest)
+        || !crate::installation::valid_digest(&request.request_digest)
     {
         return Err(ArtifactBindingIdempotencyError::InvalidRequest);
     }
     Ok(tenant_id)
-}
-
-fn is_digest(value: &str) -> bool {
-    value.len() == 71
-        && value.starts_with("sha256:")
-        && value[7..]
-            .chars()
-            .all(|character| character.is_ascii_hexdigit())
 }
 
 fn request_values(
