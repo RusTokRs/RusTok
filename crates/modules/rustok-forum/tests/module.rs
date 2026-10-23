@@ -1,8 +1,8 @@
 use rustok_core::{MigrationSource, RusToKModule};
 use rustok_forum::ForumModule;
 
-#[test]
-fn module_metadata() {
+#[tokio::test]
+async fn module_metadata() {
     let module = ForumModule;
     assert_eq!(module.slug(), "forum");
     assert_eq!(module.name(), "Forum");
@@ -11,6 +11,8 @@ fn module_metadata() {
         "Forum categories, topics, replies, and moderation workflows"
     );
     assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
+    assert_eq!(module.kind(), rustok_core::ModuleKind::Optional);
+    assert_eq!(module.health().await, rustok_core::HealthStatus::Healthy);
     assert_eq!(module.dependencies(), &["content", "media", "taxonomy"]);
 }
 

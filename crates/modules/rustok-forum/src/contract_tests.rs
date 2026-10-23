@@ -48,3 +48,13 @@ fn forum_error_converts_to_core_error() {
     assert!(matches!(err, rustok_core::Error::Validation(_)));
 }
 
+#[test]
+fn module_contract_metadata_matches() {
+    use rustok_core::RusToKModule;
+    let module = crate::ForumModule;
+    assert_eq!(module.slug(), "forum");
+    assert_eq!(module.name(), "Forum");
+    assert_eq!(module.kind(), rustok_core::ModuleKind::Optional);
+    assert_eq!(module.dependencies(), &["content", "media", "taxonomy"]);
+}
+

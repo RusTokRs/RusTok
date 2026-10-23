@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use rustok_api::Permission;
 use rustok_core::search_projection::register_search_projection_source;
+use rustok_core::module::{HealthStatus, ModuleKind};
 use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
 use rustok_moderation::register_moderation_subject_adapter_factory;
 use rustok_notifications_api::register_notification_source_provider_factory;
@@ -32,6 +33,14 @@ impl RusToKModule for ForumModule {
 
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
+    }
+
+    fn kind(&self) -> ModuleKind {
+        ModuleKind::Optional
+    }
+
+    async fn health(&self) -> HealthStatus {
+        HealthStatus::Healthy
     }
 
     fn dependencies(&self) -> &[&'static str] {
@@ -146,11 +155,13 @@ impl MigrationSource for ForumModule {
 mod tests {
     use super::*;
 
-    #[test]
-    fn forum_module_metadata() {
+    #[tokio::test]
+    async fn forum_module_metadata() {
         let module = ForumModule;
         assert_eq!(module.slug(), "forum");
         assert_eq!(module.name(), "Forum");
+        assert_eq!(module.kind(), ModuleKind::Optional);
+        assert_eq!(module.health().await, HealthStatus::Healthy);
         assert_eq!(module.dependencies(), &["content", "media", "taxonomy"]);
         assert!(!module.permissions().is_empty());
     }
