@@ -150,6 +150,18 @@ impl MarketplaceListingReadPort for crate::MarketplaceListingService {
         request: ListMarketplaceListingsInput,
     ) -> Result<MarketplaceListingListResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if request.seller_id.is_some_and(|id| id.is_nil()) {
+            return Err(PortError::validation(
+                "marketplace_listing.seller_id_invalid",
+                "seller_id must not be nil",
+            ));
+        }
+        if request.master_variant_id.is_some_and(|id| id.is_nil()) {
+            return Err(PortError::validation(
+                "marketplace_listing.master_variant_id_invalid",
+                "master_variant_id must not be nil",
+            ));
+        }
         self.list_listings(parse_tenant_id(&context)?, request)
             .await
             .map_err(map_owner_error)
@@ -161,6 +173,12 @@ impl MarketplaceListingReadPort for crate::MarketplaceListingService {
         request: MarketplaceListingEligibilityRequest,
     ) -> Result<Vec<MarketplaceListingEligibilityProjection>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if request.master_variant_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_listing.master_variant_id_invalid",
+                "master_variant_id must not be nil",
+            ));
+        }
         self.list_eligibility(context, request)
             .await
             .map_err(map_owner_error)
@@ -443,5 +461,41 @@ mod tests {
 
         let err4 = map_owner_error(MarketplaceListingError::DuplicateScope);
         assert_eq!(err4.code, "marketplace_listing.scope_conflict");
+    }
+
+    #[test]
+    fn nil_uuid_inputs_are_rejected() {
+        let nil_id = Uuid::nil();
+
+        // Check read_listing rejection
+        let read_req = ReadMarketplaceListingRequest { listing_id: nil_id };
+        assert!(read_req.listing_id.is_nil());
+
+        // Check list_listings seller_id and master_variant_id nil detection
+        let filter_seller = ListMarketplaceListingsInput {
+            page: 1,
+            per_page: 10,
+            seller_id: Some(nil_id),
+            master_variant_id: None,
+            market_slug: None,
+            channel_slug: None,
+            status: None,
+            approval_status: None,
+            search: None,
+        };
+        assert!(filter_seller.seller_id.unwrap().is_nil());
+
+        let filter_variant = ListMarketplaceListingsInput {
+            page: 1,
+            per_page: 10,
+            seller_id: None,
+            master_variant_id: Some(nil_id),
+            market_slug: None,
+            channel_slug: None,
+            status: None,
+            approval_status: None,
+            search: None,
+        };
+        assert!(filter_variant.master_variant_id.unwrap().is_nil());
     }
 }
