@@ -50,6 +50,8 @@ impl MediaAssetReadPort for GrpcMediaProvider {
         context: PortContext,
         media_id: Uuid,
     ) -> Result<MediaItem, PortError> {
+        validate_context(&context)?;
+        validate_non_nil_id(media_id, "media_id")?;
         let payload = IdRequest {
             context_json: encode(&context)?,
             id: media_id.to_string(),
@@ -69,6 +71,8 @@ impl MediaAssetReadPort for GrpcMediaProvider {
         context: PortContext,
         media_id: Uuid,
     ) -> Result<MediaAssetReferenceAdmission, PortError> {
+        validate_context(&context)?;
+        validate_non_nil_id(media_id, "media_id")?;
         let payload = IdRequest {
             context_json: encode(&context)?,
             id: media_id.to_string(),
@@ -88,6 +92,7 @@ impl MediaAssetReadPort for GrpcMediaProvider {
         context: PortContext,
         request: rustok_media::MediaAssetReferenceLookupRequest,
     ) -> Result<rustok_media::MediaAssetReferenceLookupResult, PortError> {
+        validate_context(&context)?;
         let payload = JsonRequest {
             context_json: encode(&context)?,
             input_json: encode(&request)?,
@@ -107,6 +112,7 @@ impl MediaAssetReadPort for GrpcMediaProvider {
         context: PortContext,
         request: rustok_media::MediaAssetReferenceListRequest,
     ) -> Result<rustok_media::MediaAssetReferenceListPage, PortError> {
+        validate_context(&context)?;
         let payload = JsonRequest {
             context_json: encode(&context)?,
             input_json: encode(&request)?,
@@ -127,6 +133,7 @@ impl MediaAssetReadPort for GrpcMediaProvider {
         limit: u64,
         offset: u64,
     ) -> Result<(Vec<MediaItem>, u64), PortError> {
+        validate_context(&context)?;
         let payload = ListRequest {
             context_json: encode(&context)?,
             limit,
@@ -148,6 +155,8 @@ impl MediaAssetReadPort for GrpcMediaProvider {
         media_id: Uuid,
         alt: Option<String>,
     ) -> Result<Option<MediaImageDescriptor>, PortError> {
+        validate_context(&context)?;
+        validate_non_nil_id(media_id, "media_id")?;
         let payload = ImageDescriptorRequest {
             context_json: encode(&context)?,
             id: media_id.to_string(),
@@ -168,6 +177,8 @@ impl MediaAssetReadPort for GrpcMediaProvider {
         context: PortContext,
         media_id: Uuid,
     ) -> Result<Vec<MediaTranslationItem>, PortError> {
+        validate_context(&context)?;
+        validate_non_nil_id(media_id, "media_id")?;
         let payload = IdRequest {
             context_json: encode(&context)?,
             id: media_id.to_string(),
@@ -191,6 +202,8 @@ impl MediaPublicImageReadPort for GrpcMediaProvider {
         media_id: Uuid,
         alt: Option<String>,
     ) -> Result<MediaPublicImageAsset, PortError> {
+        validate_context(&context)?;
+        validate_non_nil_id(media_id, "media_id")?;
         let payload = ImageDescriptorRequest {
             context_json: encode(&context)?,
             id: media_id.to_string(),
@@ -214,6 +227,7 @@ impl MediaAssetWritePort for GrpcMediaProvider {
         context: PortContext,
         request: MediaUploadRequest,
     ) -> Result<MediaUploadTarget, PortError> {
+        validate_context(&context)?;
         let payload = JsonRequest {
             context_json: encode(&context)?,
             input_json: encode(&request)?,
@@ -233,6 +247,8 @@ impl MediaAssetWritePort for GrpcMediaProvider {
         context: PortContext,
         session_id: Uuid,
     ) -> Result<MediaItem, PortError> {
+        validate_context(&context)?;
+        validate_non_nil_id(session_id, "session_id")?;
         let payload = IdRequest {
             context_json: encode(&context)?,
             id: session_id.to_string(),
@@ -248,6 +264,8 @@ impl MediaAssetWritePort for GrpcMediaProvider {
     }
 
     async fn delete_asset(&self, context: PortContext, media_id: Uuid) -> Result<(), PortError> {
+        validate_context(&context)?;
+        validate_non_nil_id(media_id, "media_id")?;
         let payload = IdRequest {
             context_json: encode(&context)?,
             id: media_id.to_string(),
@@ -266,6 +284,8 @@ impl MediaAssetWritePort for GrpcMediaProvider {
         media_id: Uuid,
         input: MediaAssetReferenceInput,
     ) -> Result<MediaAssetReference, PortError> {
+        validate_context(&context)?;
+        validate_non_nil_id(media_id, "media_id")?;
         let payload = IdJsonRequest {
             context_json: encode(&context)?,
             id: media_id.to_string(),
@@ -287,6 +307,8 @@ impl MediaAssetWritePort for GrpcMediaProvider {
         media_id: Uuid,
         input: MediaAssetReferenceInput,
     ) -> Result<(), PortError> {
+        validate_context(&context)?;
+        validate_non_nil_id(media_id, "media_id")?;
         let payload = IdJsonRequest {
             context_json: encode(&context)?,
             id: media_id.to_string(),
@@ -306,6 +328,8 @@ impl MediaAssetWritePort for GrpcMediaProvider {
         media_id: Uuid,
         input: UpsertTranslationInput,
     ) -> Result<MediaTranslationItem, PortError> {
+        validate_context(&context)?;
+        validate_non_nil_id(media_id, "media_id")?;
         let payload = IdJsonRequest {
             context_json: encode(&context)?,
             id: media_id.to_string(),
@@ -326,6 +350,7 @@ impl MediaAssetWritePort for GrpcMediaProvider {
         context: PortContext,
         request: MediaReconciliationRequest,
     ) -> Result<MediaReconciliationReport, PortError> {
+        validate_context(&context)?;
         let payload = JsonRequest {
             context_json: encode(&context)?,
             input_json: encode(&request)?,
@@ -339,6 +364,35 @@ impl MediaAssetWritePort for GrpcMediaProvider {
             .into_inner();
         decode(&response.output_json)
     }
+}
+
+fn validate_non_nil_id(id: Uuid, field: &'static str) -> Result<(), PortError> {
+    if id.is_nil() {
+        return Err(PortError::validation(
+            "media.transport_nil_id",
+            format!("{field} cannot be nil UUID"),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_context(context: &PortContext) -> Result<(), PortError> {
+    let tenant_id = context.tenant_id.trim();
+    if tenant_id.is_empty() {
+        return Err(PortError::forbidden(
+            "media.unauthenticated",
+            "tenant_id cannot be empty",
+        ));
+    }
+    if let Ok(tenant_uuid) = Uuid::parse_str(tenant_id)
+        && tenant_uuid.is_nil()
+    {
+        return Err(PortError::forbidden(
+            "media.unauthenticated",
+            "tenant_id cannot be nil UUID",
+        ));
+    }
+    Ok(())
 }
 
 fn with_deadline<T>(payload: T, context: &PortContext) -> Request<T> {
@@ -396,9 +450,10 @@ fn status_to_port_error(status: Status) -> PortError {
 
 #[cfg(test)]
 mod tests {
-    use super::status_to_port_error;
-    use rustok_api::{PortError, PortErrorKind};
+    use super::{status_to_port_error, validate_context, validate_non_nil_id};
+    use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
     use tonic::{Code, Status};
+    use uuid::Uuid;
 
     #[test]
     fn typed_error_details_override_lossy_grpc_status_mapping() {
@@ -442,5 +497,35 @@ mod tests {
         );
         assert_eq!(error.message, "access denied");
         assert!(!error.retryable);
+    }
+
+    #[test]
+    fn nil_uuid_and_invalid_context_are_rejected() {
+        assert!(validate_non_nil_id(Uuid::nil(), "media_id").is_err());
+        assert!(validate_non_nil_id(Uuid::new_v4(), "media_id").is_ok());
+
+        let empty_ctx = PortContext::new(
+            "",
+            PortActor::service("test"),
+            "en",
+            "corr-1",
+        );
+        assert!(validate_context(&empty_ctx).is_err());
+
+        let nil_tenant_ctx = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::service("test"),
+            "en",
+            "corr-1",
+        );
+        assert!(validate_context(&nil_tenant_ctx).is_err());
+
+        let valid_ctx = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::service("test"),
+            "en",
+            "corr-1",
+        );
+        assert!(validate_context(&valid_ctx).is_ok());
     }
 }

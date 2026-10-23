@@ -422,9 +422,23 @@ fn trusted_context<T>(
             "trusted media authority tenant cannot be empty",
         ));
     }
+    if let Ok(tenant_uuid) = Uuid::parse_str(authority.tenant_id.trim())
+        && tenant_uuid.is_nil()
+    {
+        return Err(Status::unauthenticated(
+            "trusted media authority tenant cannot be nil UUID",
+        ));
+    }
     if authority.actor.id.trim().is_empty() {
         return Err(Status::unauthenticated(
             "trusted media authority actor id cannot be empty",
+        ));
+    }
+    if let Ok(actor_uuid) = Uuid::parse_str(authority.actor.id.trim())
+        && actor_uuid.is_nil()
+    {
+        return Err(Status::unauthenticated(
+            "trusted media authority actor id cannot be nil UUID",
         ));
     }
     if claimed.tenant_id.trim().is_empty()
@@ -687,6 +701,36 @@ mod tests {
 
         let error = trusted_context(&request, claimed, MediaGrpcOperation::GetAsset)
             .expect_err("empty authority actor must be rejected");
+
+        assert_eq!(error.code(), Code::Unauthenticated);
+    }
+
+    #[test]
+    fn remote_context_rejects_nil_authority_tenant() {
+        let mut request = Request::new(());
+        request.extensions_mut().insert(
+            TrustedMediaAuthority::new(Uuid::nil().to_string(), PortActor::service("verified-service"))
+                .allow_operation(MediaGrpcOperation::GetAsset),
+        );
+        let claimed = PortContext::new(Uuid::nil().to_string(), PortActor::service("verified-service"), "en", "corr");
+
+        let error = trusted_context(&request, claimed, MediaGrpcOperation::GetAsset)
+            .expect_err("nil authority tenant must be rejected");
+
+        assert_eq!(error.code(), Code::Unauthenticated);
+    }
+
+    #[test]
+    fn remote_context_rejects_nil_authority_actor() {
+        let mut request = Request::new(());
+        request.extensions_mut().insert(
+            TrustedMediaAuthority::new("tenant-a", PortActor::service(Uuid::nil().to_string()))
+                .allow_operation(MediaGrpcOperation::GetAsset),
+        );
+        let claimed = PortContext::new("tenant-a", PortActor::service(Uuid::nil().to_string()), "en", "corr");
+
+        let error = trusted_context(&request, claimed, MediaGrpcOperation::GetAsset)
+            .expect_err("nil authority actor must be rejected");
 
         assert_eq!(error.code(), Code::Unauthenticated);
     }
