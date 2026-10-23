@@ -189,7 +189,7 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
                     backend.placeholder(4),
                     backend.placeholder(5),
                     backend.placeholder(6),
-                    backend.now_sql(),
+                    backend.placeholder(7),
                     backend.now_sql(),
                 ),
                 vec![
@@ -198,6 +198,11 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
                     backend.uuid_value(request.installation_id),
                     request.binding_id.clone().into(),
                     schedule_digest.clone().into(),
+                    backend.datetime_value(request.scheduled_for),
+                    // A slot becomes claimable at its scheduled instant, not
+                    // at enqueue time: available_at gates claiming, so it
+                    // must start at scheduled_for even when a caller
+                    // enqueues ahead of the slot.
                     backend.datetime_value(request.scheduled_for),
                 ],
             ))
