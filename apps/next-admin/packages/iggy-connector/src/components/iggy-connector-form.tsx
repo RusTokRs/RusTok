@@ -19,12 +19,10 @@ interface IggyConnectorFormProps {
   tenantSlug: string | null;
 }
 
-function parseAddresses(value: string): string[] {
-  return value
-    .split(/[\n,]/)
-    .map((address) => address.trim())
-    .filter(Boolean);
-}
+import {
+  formatSaveOutcome,
+  parseAddresses
+} from './iggy-connector-model';
 
 export function IggyConnectorForm({
   configuration,
@@ -70,9 +68,7 @@ export function IggyConnectorForm({
         );
         setResult({
           ok: true,
-          message: outcome.restartRequired
-            ? 'Saved. Restart the server to activate this connector mode.'
-            : 'Saved. This connector mode is already active.'
+          message: formatSaveOutcome(outcome.restartRequired)
         });
       } catch (error) {
         setResult({ ok: false, message: String(error) });

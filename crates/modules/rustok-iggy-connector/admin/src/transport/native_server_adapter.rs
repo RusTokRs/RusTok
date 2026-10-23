@@ -99,7 +99,7 @@ pub async fn update_iggy_connector_configuration_native(
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(|_| ServerFnError::new("Iggy connector update is denied"))?;
-        if auth.tenant_id != tenant.id {
+        if auth.tenant_id != tenant.id || auth.tenant_id.is_nil() || authority.actor_id().is_nil() {
             return Err(ServerFnError::new("Iggy connector update is denied"));
         }
         let control = runtime

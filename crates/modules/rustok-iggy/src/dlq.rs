@@ -103,6 +103,11 @@ impl DlqManager {
     }
 
     pub async fn move_to_dlq(&self, connector: &dyn IggyConnector, entry: DlqEntry) -> Result<()> {
+        if entry.event_id.is_nil() {
+            return Err(rustok_core::Error::Validation(
+                "DLQ entry event_id must not be nil".to_string(),
+            ));
+        }
         let stream = self.stream.read().await.clone();
         let topic = self.topic.read().await.clone();
         let publish_event_id = entry.broker_message_id.unwrap_or(entry.event_id);
@@ -142,6 +147,11 @@ impl DlqManager {
         entry: DlqEntry,
         target_topic: String,
     ) -> Result<()> {
+        if entry.event_id.is_nil() {
+            return Err(rustok_core::Error::Validation(
+                "DLQ entry event_id must not be nil".to_string(),
+            ));
+        }
         let max_retries = *self.max_retries.read().await;
         if entry.retry_count >= max_retries {
             return Err(rustok_core::Error::External(format!(
@@ -215,5 +225,39 @@ mod tests {
         .with_broker_message_id(broker_message_id);
 
         assert_eq!(entry.broker_message_id(), Some(broker_message_id));
+    }
+
+    struct DummyConnector;
+
+    #[async_trait::async_trait]
+    impl IggyConnector for DummyConnector {
+        async fn connect(&self, _config: &rustok_iggy_connector::ConnectorConfig) -> std::result::Result<(), rustok_iggy_connector::ConnectorError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn publish(&self, _request: PublishRequest) -> std::result::Result<(), rustok_iggy_connector::ConnectorError> {
+            Ok(())
+        }
+        async fn subscribe(&self, _s: &str, _t: &str, _p: u32) -> std::result::Result<Box<dyn rustok_iggy_connector::MessageSubscriber>, rustok_iggy_connector::ConnectorError> {
+            Err(rustok_iggy_connector::ConnectorError::NotConnected)
+        }
+        async fn shutdown(&self) -> std::result::Result<(), rustok_iggy_connector::ConnectorError> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn dlq_manager_rejects_nil_event_id() {
+        let manager = DlqManager::new();
+        let connector = DummyConnector;
+        let entry = DlqEntry::new(Uuid::nil(), "domain", vec![1], "error", 0);
+
+        let result = manager.move_to_dlq(&connector, entry.clone()).await;
+        assert!(matches!(result, Err(rustok_core::Error::Validation(_))));
+
+        let result = manager.retry_entry(&connector, entry, "domain".to_string()).await;
+        assert!(matches!(result, Err(rustok_core::Error::Validation(_))));
     }
 }
