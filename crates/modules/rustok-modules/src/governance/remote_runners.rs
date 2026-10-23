@@ -451,11 +451,7 @@ impl SeaOrmModuleGovernanceService {
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
             let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
             let mark = |n| backend.placeholder(n);
-            let now = if backend == SupportedBackend::Postgres {
-                "NOW()"
-            } else {
-                "datetime('now')"
-            };
+            let now = backend.now_sql();
             let Some(stage) = tx.query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!("SELECT s.stage_key, s.attempt_number, s.queue_reason, s.claim_id, s.claimed_by, r.id AS request_id, r.revision AS request_revision, r.slug, r.version, r.status AS request_status FROM registry_validation_stages s JOIN registry_publish_requests r ON r.id = s.request_id WHERE s.id = {}", mark(1)),

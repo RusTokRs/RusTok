@@ -90,11 +90,7 @@ pub(crate) async fn terminalize_invalid_validation_work_item(
         queue_reason,
     } = item;
     let mark = |n| backend.placeholder(n);
-    let now = if backend == SupportedBackend::Postgres {
-        "NOW()"
-    } else {
-        "datetime('now')"
-    };
+    let now = backend.now_sql();
     let errors = serde_json::json!([VALIDATION_WORK_ITEM_INVALID_ERROR]);
     let request_updated = tx
         .execute_raw(Statement::from_sql_and_values(

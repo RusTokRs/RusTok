@@ -1417,7 +1417,7 @@ impl SeaOrmArtifactInstallationStore {
         let operation_id = self.infrastructure.new_id();
         let operation_placeholders = match backend {
             SupportedBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW()",
-            SupportedBackend::Sqlite => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,datetime('now')",
+            SupportedBackend::Sqlite => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')",
         };
         let claimed = transaction
             .execute_raw(Statement::from_sql_and_values(
@@ -1985,7 +1985,7 @@ impl SeaOrmArtifactInstallationStore {
         let operation_id = self.infrastructure.new_id();
         let values = match backend {
             SupportedBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW()",
-            SupportedBackend::Sqlite => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,datetime('now')",
+            SupportedBackend::Sqlite => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')",
         };
         transaction
             .execute_raw(Statement::from_sql_and_values(
@@ -2249,7 +2249,7 @@ impl SeaOrmArtifactInstallationStore {
         let operation_id = self.infrastructure.new_id();
         let placeholders = match backend {
             SupportedBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,NOW()",
-            SupportedBackend::Sqlite => "?1,?2,?3,?4,?5,?6,?7,?8,datetime('now')",
+            SupportedBackend::Sqlite => "?1,?2,?3,?4,?5,?6,?7,?8,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')",
         };
         transaction
             .execute_raw(Statement::from_sql_and_values(
@@ -2662,7 +2662,7 @@ impl SeaOrmArtifactInstallationStore {
                 SupportedBackend::Sqlite => format!(
                     "INSERT INTO module_artifact_tenant_lifecycle \
                      (installation_id, tenant_id, enabled, revision, expected_revision, actor_id, trace_id, correlation_id, reason, updated_at) \
-                     VALUES (?1, ?2, {enabled}, 1, ?3, ?4, ?5, ?6, ?7, datetime('now')) \
+                     VALUES (?1, ?2, {enabled}, 1, ?3, ?4, ?5, ?6, ?7, strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')) \
                      ON CONFLICT (installation_id, tenant_id) DO NOTHING"
                 ),
             };
@@ -2903,7 +2903,7 @@ impl SeaOrmArtifactInstallationStore {
         let p = if backend == SupportedBackend::Postgres {
             "$1,$2,$3,$4,$5,$6,$7,$8,NOW()"
         } else {
-            "?1,?2,?3,?4,?5,?6,?7,?8,datetime('now')"
+            "?1,?2,?3,?4,?5,?6,?7,?8,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')"
         };
         transaction.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!("INSERT INTO module_artifact_uninstall_operations (operation_id, installation_id, expected_revision, actor_id, trace_id, correlation_id, reason, idempotency_key, committed_at) VALUES ({p})"), vec![backend.uuid_value(operation_id), backend.uuid_value(request.installation_id), revision.into(), backend.uuid_value(request.context.actor_id), request.context.trace_id.clone().into(), backend.uuid_value(request.context.correlation_id), request.reason.into(), backend.uuid_value(request.context.idempotency_key)])).await.map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
         let updated = transaction.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!("UPDATE module_artifact_admissions SET revision = revision + 1 WHERE installation_id = {} AND revision = {} AND status = 'inactive'", if backend == SupportedBackend::Postgres { "$1" } else { "?1" }, if backend == SupportedBackend::Postgres { "$2" } else { "?2" }), vec![backend.uuid_value(request.installation_id), revision.into()])).await.map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
@@ -3309,7 +3309,7 @@ impl SeaOrmArtifactInstallationStore {
             backend.db_backend(),
             match backend {
                 SupportedBackend::Postgres => "INSERT INTO module_artifact_rollback_operations (operation_id, installation_id, target_installation_id, expected_revision, actor_id, trace_id, correlation_id, reason, idempotency_key, target_capability_grant_revision, migration_rollback_mode, source_revision, target_revision, committed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())",
-                SupportedBackend::Sqlite => "INSERT INTO module_artifact_rollback_operations (operation_id, installation_id, target_installation_id, expected_revision, actor_id, trace_id, correlation_id, reason, idempotency_key, target_capability_grant_revision, migration_rollback_mode, source_revision, target_revision, committed_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,datetime('now'))",
+                SupportedBackend::Sqlite => "INSERT INTO module_artifact_rollback_operations (operation_id, installation_id, target_installation_id, expected_revision, actor_id, trace_id, correlation_id, reason, idempotency_key, target_capability_grant_revision, migration_rollback_mode, source_revision, target_revision, committed_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))",
             }.to_string(),
             vec![
                 backend.uuid_value(operation_id),
@@ -4535,7 +4535,7 @@ async fn record_artifact_tenant_lifecycle_operation<C: ConnectionTrait>(
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     let values = match backend {
         SupportedBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW()",
-        SupportedBackend::Sqlite => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,datetime('now')",
+        SupportedBackend::Sqlite => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')",
     };
     let recorded = connection
         .execute_raw(Statement::from_sql_and_values(
@@ -4619,7 +4619,7 @@ fn work_generation_insert_sql(backend: SupportedBackend) -> String {
 fn work_generation_retire_sql(backend: SupportedBackend) -> String {
     match backend {
         SupportedBackend::Postgres => "INSERT INTO module_artifact_work_generations (installation_id, work_generation, retired, retired_at, updated_at) VALUES ($1, 2, TRUE, NOW(), NOW()) ON CONFLICT (installation_id) DO UPDATE SET work_generation = module_artifact_work_generations.work_generation + 1, retired = TRUE, retired_at = NOW(), updated_at = NOW()".to_string(),
-        SupportedBackend::Sqlite => "INSERT INTO module_artifact_work_generations (installation_id, work_generation, retired, retired_at, updated_at) VALUES (?1, 2, 1, datetime('now'), datetime('now')) ON CONFLICT (installation_id) DO UPDATE SET work_generation = work_generation + 1, retired = 1, retired_at = datetime('now'), updated_at = datetime('now')".to_string(),
+        SupportedBackend::Sqlite => "INSERT INTO module_artifact_work_generations (installation_id, work_generation, retired, retired_at, updated_at) VALUES (?1, 2, 1, strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')) ON CONFLICT (installation_id) DO UPDATE SET work_generation = work_generation + 1, retired = 1, retired_at = strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'), updated_at = strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')".to_string(),
     }
 }
 
@@ -4735,10 +4735,7 @@ fn installation_values(
         })?;
     let installation_id = backend.uuid_value(artifact.installation_id);
     let tenant_id = backend.optional_uuid_value(tenant_id);
-    let installed_at = match backend {
-        SupportedBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(artifact.installed_at)),
-        SupportedBackend::Sqlite => artifact.installed_at.to_rfc3339().into(),
-    };
+    let installed_at = backend.datetime_value(artifact.installed_at);
     Ok(vec![
         installation_id,
         scope_kind.into(),

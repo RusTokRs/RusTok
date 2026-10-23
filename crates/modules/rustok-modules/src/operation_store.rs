@@ -472,7 +472,7 @@ impl ModuleOperationJournal {
             Some(error_message) => (
                 format!(
                     "UPDATE module_operations SET status = {{1}}, error_message = {{2}}, \
-                     updated_at = CURRENT_TIMESTAMP WHERE id = {{3}} AND status IN ({allowed_from_sql})"
+                     updated_at = {{now}} WHERE id = {{3}} AND status IN ({allowed_from_sql})"
                 ),
                 vec![
                     status.as_str().into(),
@@ -482,7 +482,7 @@ impl ModuleOperationJournal {
             ),
             None => (
                 format!(
-                    "UPDATE module_operations SET status = {{1}}, updated_at = CURRENT_TIMESTAMP \
+                    "UPDATE module_operations SET status = {{1}}, updated_at = {{now}} \
                      WHERE id = {{2}} AND status IN ({allowed_from_sql})"
                 ),
                 vec![status.as_str().into(), operation_id.into()],
@@ -688,12 +688,12 @@ impl StaticTenantLifecycleStore {
                         SupportedBackend::Postgres => {
                             "INSERT INTO module_static_tenant_lifecycle \
                              (tenant_id, module_slug, revision, active_idempotency_key, active_claimed_at) \
-                             VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)"
+                             VALUES ($1, $2, $3, $4, NOW())"
                         }
                         SupportedBackend::Sqlite => {
                             "INSERT INTO module_static_tenant_lifecycle \
                              (tenant_id, module_slug, revision, active_idempotency_key, active_claimed_at) \
-                             VALUES (?1, ?2, ?3, ?4, CURRENT_TIMESTAMP)"
+                             VALUES (?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"
                         }
                     },
                     vec![
@@ -752,8 +752,8 @@ impl StaticTenantLifecycleStore {
                 backend.db_backend(),
                 render_parameters(
                     "UPDATE module_static_tenant_lifecycle \
-                     SET active_idempotency_key = {1}, active_claimed_at = CURRENT_TIMESTAMP, \
-                         updated_at = CURRENT_TIMESTAMP \
+                     SET active_idempotency_key = {1}, active_claimed_at = {now}, \
+                         updated_at = {now} \
                      WHERE tenant_id = {2} AND module_slug = {3} \
                        AND revision = {4} AND active_idempotency_key IS NULL",
                     backend,
@@ -828,8 +828,8 @@ impl StaticTenantLifecycleStore {
                 render_parameters(
                     &format!(
                         "UPDATE module_static_tenant_lifecycle \
-                         SET active_idempotency_key = {{1}}, active_claimed_at = CURRENT_TIMESTAMP, \
-                             updated_at = CURRENT_TIMESTAMP \
+                         SET active_idempotency_key = {{1}}, active_claimed_at = {{now}}, \
+                             updated_at = {{now}} \
                          WHERE tenant_id = {{2}} AND module_slug = {{3}} \
                            AND revision = {{4}} AND active_idempotency_key = {{5}} \
                            AND {claim_expired}"
@@ -875,7 +875,7 @@ impl StaticTenantLifecycleStore {
                 backend.db_backend(),
                 render_parameters(
                     "UPDATE module_static_tenant_lifecycle \
-                     SET revision = {1}, updated_at = CURRENT_TIMESTAMP \
+                     SET revision = {1}, updated_at = {now} \
                      WHERE tenant_id = {2} AND module_slug = {3} \
                        AND revision = {4} AND active_idempotency_key = {5}",
                     backend,
@@ -926,7 +926,7 @@ impl StaticTenantLifecycleStore {
                 render_parameters(
                     "UPDATE module_static_tenant_lifecycle \
                      SET active_idempotency_key = NULL, active_claimed_at = NULL, \
-                         updated_at = CURRENT_TIMESTAMP \
+                         updated_at = {now} \
                      WHERE tenant_id = {1} AND module_slug = {2} \
                        AND active_idempotency_key = {3}",
                     backend,
@@ -1114,7 +1114,7 @@ impl TenantModuleStateStore {
             if previous_enabled != Some(request.enabled) {
                 execute(
                     db,
-                    "UPDATE tenant_modules SET enabled = {1}, updated_at = CURRENT_TIMESTAMP WHERE id = {2}",
+                    "UPDATE tenant_modules SET enabled = {1}, updated_at = {now} WHERE id = {2}",
                     vec![request.enabled.into(), id.into()],
                 )
                 .await?;
@@ -1191,7 +1191,7 @@ impl TenantModuleStateStore {
             // the column is not part of this UPDATE at all.
             execute(
                 db,
-                "UPDATE tenant_modules SET settings = {1}, updated_at = CURRENT_TIMESTAMP WHERE id = {2}",
+                "UPDATE tenant_modules SET settings = {1}, updated_at = {now} WHERE id = {2}",
                 vec![json_value(request.settings), id.into()],
             )
             .await?;
@@ -1249,10 +1249,13 @@ async fn execute<C: ConnectionTrait>(
 }
 
 fn render_parameters(sql_template: &str, backend: SupportedBackend) -> String {
-    (1..=11).fold(sql_template.to_string(), |sql, index| {
+    let rendered = (1..=11).fold(sql_template.to_string(), |sql, index| {
         let parameter = backend.placeholder(index);
         sql.replace(format!("{{{index}}}").as_str(), parameter.as_str())
-    })
+    });
+    // `{now}` renders the backend's canonical SQL-side clock expression
+    // so templates never spell a backend-specific timestamp literal.
+    rendered.replace("{now}", backend.now_sql())
 }
 
 #[cfg(test)]

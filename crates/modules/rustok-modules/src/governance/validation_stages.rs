@@ -26,11 +26,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
         let mark = |n| backend.placeholder(n);
-        let now = if backend == SupportedBackend::Postgres {
-            "NOW()"
-        } else {
-            "datetime('now')"
-        };
+        let now = backend.now_sql();
         let receipt = ValidationStageReportReceipt {
             request_id: &command.request_id,
             expected_revision: command.expected_revision,
@@ -386,11 +382,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
         let mark = |n| backend.placeholder(n);
-        let now = if backend == SupportedBackend::Postgres {
-            "NOW()"
-        } else {
-            "datetime('now')"
-        };
+        let now = backend.now_sql();
         let row = tx.query_one_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
             "SELECT s.id, s.stage_key, s.status, s.claimed_by, s.runner_kind, s.attempt_number, s.queue_reason, r.id AS request_id, r.revision AS request_revision, r.slug, r.version, r.status AS request_status \
              FROM registry_validation_stages s JOIN registry_publish_requests r ON r.id = s.request_id WHERE s.claim_id = {}", mark(1)), vec![command.claim_id.clone().into()]))

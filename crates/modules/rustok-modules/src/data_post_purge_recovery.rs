@@ -293,7 +293,7 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
                     number(restored.restored_records)?,
                     number(restored.restored_objects)?,
                     fingerprint.into(),
-                    timestamp(self.infrastructure.now(), backend),
+                    backend.datetime_value(self.infrastructure.now()),
                     backend.uuid_value(tenant_id),
                     backend.uuid_value(operation.recovery_id),
                 ],
@@ -370,7 +370,7 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
              VALUES ({1},{2},{3},{4},{5},{6},'staging',1,NULL,NULL,{7},{7})",
             vec![backend.uuid_value(tenant_id),backend.uuid_value(target.data_owner_id),backend.uuid_value(namespace_instance_id),
                  target.module_slug.clone().into(),number(target.data_contract_revision)?,target.data_contract_digest.clone().into(),
-                 timestamp(self.infrastructure.now(),backend)])).await.map_err(storage_error)?;
+                 backend.datetime_value(self.infrastructure.now())])).await.map_err(storage_error)?;
         db.execute_raw(statement(backend,
             "INSERT INTO module_artifact_data_namespace_recovery_operations
              (recovery_id,tenant_id,installation_id,data_owner_id,source_namespace_instance_id,namespace_instance_id,
@@ -387,7 +387,7 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
                  number(operation.tombstone_namespace_revision)?,operation.source_manifest_digest.clone().into(),
                  request_digest.to_owned().into(),serde_json::to_string(request).map_err(storage_error)?.into(),
                  serde_json::to_string(&operation.original).map_err(storage_error)?.into(),
-                 backend.uuid_value(request.context.idempotency_key),timestamp(self.infrastructure.now(),backend)])
+                 backend.uuid_value(request.context.idempotency_key),backend.datetime_value(self.infrastructure.now())])
         ).await.map_err(storage_error)?;
         db.execute_raw(statement(backend,
             "INSERT INTO module_artifact_data_snapshot_holds
@@ -395,7 +395,7 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
              VALUES ({1},{2},'recovery',{3},{4},{5},{6},{7},NULL)",
             vec![backend.uuid_value(tenant_id),backend.uuid_value(request.source_snapshot_id),backend.uuid_value(recovery_id),
                  backend.uuid_value(target.data_owner_id),backend.uuid_value(namespace_instance_id),request_digest.to_owned().into(),
-                 timestamp(self.infrastructure.now(),backend)])).await.map_err(storage_error)?;
+                 backend.datetime_value(self.infrastructure.now())])).await.map_err(storage_error)?;
         Ok(operation)
     }
 
@@ -521,7 +521,7 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
             "UPDATE module_artifact_data_namespaces SET state='serving',namespace_revision={1},updated_at={2}
              WHERE tenant_id={3} AND data_owner_id={4} AND namespace_instance_id={5} AND state='verified'
               AND namespace_revision={6} AND verified_manifest_digest={7} AND purged_at IS NULL",
-            vec![number(namespace_revision)?,timestamp(self.infrastructure.now(),backend),backend.uuid_value(tenant_id),
+            vec![number(namespace_revision)?,backend.datetime_value(self.infrastructure.now()),backend.uuid_value(tenant_id),
                  backend.uuid_value(target.data_owner_id),backend.uuid_value(target.namespace_instance_id),
                  number(request.expected_target_namespace_revision)?,fingerprint.into()])).await.map_err(storage_error)?;
         if updated.rows_affected() != 1 {
@@ -531,7 +531,7 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
             "UPDATE module_artifact_data_namespace_recovery_operations SET status='cutover',cutover_at={1},
              cutover_request_digest={2},cutover_request_json={3},active_reference_revision={4},active_namespace_revision={5}
              WHERE tenant_id={6} AND recovery_id={7} AND status='verified'",
-            vec![timestamp(self.infrastructure.now(),backend),request_digest.into(),serde_json::to_string(&request).map_err(storage_error)?.into(),
+            vec![backend.datetime_value(self.infrastructure.now()),request_digest.into(),serde_json::to_string(&request).map_err(storage_error)?.into(),
                  number(reference_revision)?,number(namespace_revision)?,backend.uuid_value(tenant_id),backend.uuid_value(request.recovery_id)])
         ).await.map_err(storage_error)?;
         if updated.rows_affected() != 1 {
@@ -544,7 +544,7 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
              WHERE tenant_id={2} AND snapshot_id={3} AND holder_kind='recovery' AND holder_id={4}
               AND request_digest={5} AND released_at IS NULL",
                 vec![
-                    timestamp(self.infrastructure.now(), backend),
+                    backend.datetime_value(self.infrastructure.now()),
                     backend.uuid_value(tenant_id),
                     backend.uuid_value(operation.source_snapshot_id),
                     backend.uuid_value(operation.recovery_id),
@@ -892,13 +892,6 @@ fn statement(backend: SupportedBackend, sql: &str, values: Vec<SqlValue>) -> Sta
 }
 fn number(value: u64) -> Result<SqlValue, PostPurgeRecoveryError> {
     revision_value(value).map_err(storage_error)
-}
-fn timestamp(value: DateTime<Utc>, backend: SupportedBackend) -> SqlValue {
-    if backend == SupportedBackend::Postgres {
-        SqlValue::ChronoDateTimeUtc(Some(value))
-    } else {
-        value.to_rfc3339().into()
-    }
 }
 fn storage_error(error: impl std::fmt::Display) -> PostPurgeRecoveryError {
     PostPurgeRecoveryError::Storage(error.to_string())

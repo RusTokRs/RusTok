@@ -250,10 +250,7 @@ impl SeaOrmSecurityEpochStore {
 
         let backend = SupportedBackend::new(db.get_database_backend())
             .map_err(|e| SecurityEpochStoreError::Persistence(e.to_string()))?;
-        let updated_at: sea_orm::Value = match backend {
-            SupportedBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(now)),
-            SupportedBackend::Sqlite => now.to_rfc3339().into(),
-        };
+        let updated_at: sea_orm::Value = backend.datetime_value(now);
         let p1 = backend.placeholder(1);
         let p2 = backend.placeholder(2);
         let result = db

@@ -746,7 +746,7 @@ where
                     backend.placeholder(7), backend.placeholder(8), backend.placeholder(9),
                     backend.placeholder(10), backend.placeholder(11), backend.placeholder(12),
                     backend.placeholder(13), backend.placeholder(14), backend.placeholder(15),
-                    backend.placeholder(16), backend.placeholder(17), backend.now_rfc3339_sql(),
+                    backend.placeholder(16), backend.placeholder(17), backend.now_sql(),
                 ),
                 vec![
                     backend.uuid_value(recovery_point_id),
@@ -778,7 +778,7 @@ where
                     backend.placeholder(1), backend.placeholder(2), backend.placeholder(3),
                     backend.placeholder(4), backend.placeholder(5), backend.placeholder(6),
                     backend.placeholder(7), backend.placeholder(8), backend.placeholder(9),
-                    backend.placeholder(10), backend.placeholder(11), backend.now_rfc3339_sql(),
+                    backend.placeholder(10), backend.placeholder(11), backend.now_sql(),
                 ),
                 vec![
                     backend.uuid_value(self.infrastructure.new_id()),
@@ -937,7 +937,7 @@ where
                     backend.placeholder(7),
                     backend.placeholder(8),
                     backend.placeholder(9), backend.placeholder(10), backend.placeholder(11),
-                    backend.placeholder(12), backend.now_rfc3339_sql(),
+                    backend.placeholder(12), backend.now_sql(),
                 ),
                 vec![
                     backend.uuid_value(purge_operation_id),
@@ -963,7 +963,7 @@ where
                     "INSERT INTO module_artifact_settings_tombstones (tenant_id, data_owner_id, settings_instance_id, tombstone_revision, recovery_point_id, purge_operation_id, purged_at) VALUES ({}, {}, {}, {}, {}, {}, {})",
                     backend.placeholder(1), backend.placeholder(2), backend.placeholder(3),
                     backend.placeholder(4), backend.placeholder(5), backend.placeholder(6),
-                    backend.now_rfc3339_sql(),
+                    backend.now_sql(),
                 ),
                 vec![
                     backend.uuid_value(request.tenant_id),
@@ -1114,7 +1114,7 @@ where
                     backend.placeholder(2),
                     backend.placeholder(3),
                     backend.placeholder(4),
-                    backend.placeholder(5), backend.now_rfc3339_sql(), backend.now_rfc3339_sql(),
+                    backend.placeholder(5), backend.now_sql(), backend.now_sql(),
                 ),
                 vec![
                     backend.uuid_value(request.tenant_id),
@@ -1132,7 +1132,7 @@ where
                 backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_settings_recovery_points SET restored_at = {}, restored_installation_id = {}, restored_settings_instance_id = {} WHERE recovery_point_id = {} AND tenant_id = {} AND restored_at IS NULL",
-                    backend.now_rfc3339_sql(), backend.placeholder(1), backend.placeholder(2),
+                    backend.now_sql(), backend.placeholder(1), backend.placeholder(2),
                     backend.placeholder(3), backend.placeholder(4),
                 ),
                 vec![
@@ -1161,7 +1161,7 @@ where
                     backend.placeholder(7),
                     backend.placeholder(8),
                     backend.placeholder(9), backend.placeholder(10), backend.placeholder(11),
-                    backend.now_rfc3339_sql(),
+                    backend.now_sql(),
                 ),
                 vec![
                     backend.uuid_value(restore_operation_id),
@@ -1309,7 +1309,7 @@ where
                     backend.placeholder(14),
                     backend.placeholder(15),
                     backend.placeholder(16),
-                    backend.now_rfc3339_sql(),
+                    backend.now_sql(),
                 ),
                 vec![
                     backend.uuid_value(self.infrastructure.new_id()),
@@ -1445,7 +1445,7 @@ where
                     backend.placeholder(8),
                     backend.placeholder(9),
                     backend.placeholder(10),
-                    backend.now_rfc3339_sql(),
+                    backend.now_sql(),
                 ),
                 vec![
                     backend.uuid_value(rewrap_operation_id),
@@ -1670,7 +1670,7 @@ where
                     backend.placeholder(9),
                     backend.placeholder(10),
                     backend.placeholder(11),
-                    backend.now_rfc3339_sql(),
+                    backend.now_sql(),
                 ),
                 vec![
                     backend.uuid_value(bind_operation_id),
@@ -1798,7 +1798,7 @@ where
                     backend.placeholder(7),
                     backend.placeholder(8),
                     backend.placeholder(9),
-                    backend.now_rfc3339_sql(),
+                    backend.now_sql(),
                 ),
                 vec![
                     backend.uuid_value(collection_id),
@@ -1872,7 +1872,7 @@ where
                 backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_settings_recovery_collections SET completed_at = {} WHERE tenant_id = {} AND recovery_point_id = {} AND collection_id = {} AND completed_at IS NULL",
-                    backend.now_rfc3339_sql(),
+                    backend.now_sql(),
                     backend.placeholder(1),
                     backend.placeholder(2),
                     backend.placeholder(3),
@@ -1894,7 +1894,7 @@ where
                 format!(
                     "UPDATE module_artifact_settings_recovery_points SET state = 'collected', ciphertext = {}, collected_at = {} WHERE tenant_id = {} AND recovery_point_id = {} AND state = 'collecting'",
                     null_bytes_value(),
-                    backend.now_rfc3339_sql(),
+                    backend.now_sql(),
                     backend.placeholder(1),
                     backend.placeholder(2),
                 ),

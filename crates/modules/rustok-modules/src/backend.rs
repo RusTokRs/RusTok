@@ -69,37 +69,33 @@ impl SupportedBackend {
         }
     }
 
-    /// SQL expression for the database's current timestamp in the
-    /// representation most of this crate persists: native `NOW()` on
-    /// PostgreSQL, `datetime('now')` text (`YYYY-MM-DD HH:MM:SS`) on
-    /// SQLite.
+    /// SQL expression for the database's current timestamp: native
+    /// `NOW()` on PostgreSQL, RFC 3339 text on SQLite.
+    ///
+    /// SQLite has exactly one canonical timestamp text representation in
+    /// this crate — RFC 3339 with millisecond precision and a `+00:00`
+    /// offset — because that is the representation sqlx binds for
+    /// `DateTime<Utc>` values (see [`Self::datetime_value`]). SQL-side
+    /// timestamps must share it: the space-separated text produced by
+    /// `datetime('now')`/`CURRENT_TIMESTAMP` sorts before every RFC 3339
+    /// value of the same calendar day (`' ' < 'T'`), so lexical
+    /// comparisons across the two representations (lease expiry,
+    /// availability, retention cutoffs) silently evaluate as if the
+    /// RFC 3339 side were up to a day in the future. Every SQL-side
+    /// timestamp producer goes through this owner or a `strftime` call
+    /// with the same format string; [`parse_sqlite_datetime`] still
+    /// accepts the legacy space-separated form when reading.
     pub(crate) fn now_sql(self) -> &'static str {
         match self {
             Self::Postgres => "NOW()",
-            Self::Sqlite => "datetime('now')",
+            Self::Sqlite => "strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')",
         }
     }
 
-    /// SQL expression for the database's current timestamp in the RFC3339
-    /// representation the artifact-settings-recovery family persists and
-    /// parses back with `DateTime::parse_from_rfc3339`: native `NOW()` on
-    /// PostgreSQL, `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')` text on SQLite.
-    ///
-    /// The two representations must never be mixed within one column:
-    /// `now_sql` text is not RFC3339-parseable, and lexical comparison
-    /// across the formats does not order chronologically.
-    pub(crate) fn now_rfc3339_sql(self) -> &'static str {
-        match self {
-            Self::Postgres => "NOW()",
-            Self::Sqlite => "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
-        }
-    }
-
-    /// UUID bind value in the persisted representation: native `uuid` on
-    /// PostgreSQL, hyphenated text on SQLite.
     /// Bind representation for a timestamp: native `timestamptz` on
-    /// PostgreSQL, RFC 3339 text on SQLite (the representation this
-    /// crate's text-column readers parse back).
+    /// PostgreSQL, RFC 3339 text on SQLite (the canonical text
+    /// representation this crate's readers parse back; see
+    /// [`Self::now_sql`]).
     pub(crate) fn datetime_value(self, value: chrono::DateTime<chrono::Utc>) -> Value {
         match self {
             Self::Postgres => Value::ChronoDateTimeUtc(Some(value)),
@@ -136,13 +132,12 @@ impl SupportedBackend {
     }
 }
 
-/// Parse a SQLite text timestamp written by this crate: binds are
-/// RFC 3339 ([`SupportedBackend::datetime_value`]), while SQL-side
-/// `datetime('now')`/`CURRENT_TIMESTAMP` expressions produce the
-/// space-separated form. Readers accept both until the writer-side
-/// format audit collapses the two representations; the fallback only
-/// runs when RFC 3339 parsing fails, so it cannot reinterpret a valid
-/// RFC 3339 value.
+/// Parse a SQLite text timestamp written by this crate. The canonical
+/// representation is RFC 3339 ([`SupportedBackend::datetime_value`] and
+/// [`SupportedBackend::now_sql`]); the space-separated fallback only
+/// reads rows written before the representations were unified (and by
+/// `CURRENT_TIMESTAMP` column defaults). It runs only when RFC 3339
+/// parsing fails, so it cannot reinterpret a valid RFC 3339 value.
 pub(crate) fn parse_sqlite_datetime(
     value: &str,
 ) -> Result<chrono::DateTime<chrono::Utc>, chrono::ParseError> {

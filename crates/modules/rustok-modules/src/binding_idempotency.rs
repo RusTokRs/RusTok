@@ -346,8 +346,9 @@ fn insert_operation_sql(backend: SupportedBackend) -> String {
 
 fn complete_operation_sql(backend: SupportedBackend) -> String {
     let prefix = backend.placeholder_prefix();
+    let now = backend.now_sql();
     format!(
-        "UPDATE module_artifact_binding_operations SET status = 'completed', response = {prefix}1, completed_at = CURRENT_TIMESTAMP WHERE operation_id = {prefix}2 AND tenant_id = {prefix}3 AND actor_id = {prefix}4 AND installation_id = {prefix}5 AND binding_id = {prefix}6 AND idempotency_key = {prefix}7 AND request_digest = {prefix}8 AND trace_id = {prefix}9 AND correlation_id = {prefix}10 AND status = 'pending'"
+        "UPDATE module_artifact_binding_operations SET status = 'completed', response = {prefix}1, completed_at = {now} WHERE operation_id = {prefix}2 AND tenant_id = {prefix}3 AND actor_id = {prefix}4 AND installation_id = {prefix}5 AND binding_id = {prefix}6 AND idempotency_key = {prefix}7 AND request_digest = {prefix}8 AND trace_id = {prefix}9 AND correlation_id = {prefix}10 AND status = 'pending'"
     )
 }
 

@@ -280,7 +280,7 @@ async fn persist_settings_instance<C: ConnectionTrait>(
                      SET settings = {}, revision = revision + 1, updated_at = {} \
                      WHERE tenant_id = {} AND data_owner_id = {} AND settings_instance_id = {}",
                     backend.placeholder(1),
-                    now_expression(backend),
+                    backend.now_sql(),
                     backend.placeholder(2),
                     backend.placeholder(3),
                     backend.placeholder(4),
@@ -309,8 +309,8 @@ async fn persist_settings_instance<C: ConnectionTrait>(
                 backend.placeholder(3),
                 backend.placeholder(4),
                 backend.placeholder(5),
-                now_expression(backend),
-                now_expression(backend),
+                backend.now_sql(),
+                backend.now_sql(),
             ),
             vec![
                 backend.uuid_value(tenant_id),
@@ -368,13 +368,6 @@ fn map_validation_error(error: ArtifactSchemaValidationError) -> ArtifactSetting
         ArtifactSchemaValidationError::CachePoisoned => {
             ArtifactSettingsStoreError::ValidatorUnavailable
         }
-    }
-}
-
-fn now_expression(backend: SupportedBackend) -> &'static str {
-    match backend {
-        SupportedBackend::Postgres => "NOW()",
-        SupportedBackend::Sqlite => "CURRENT_TIMESTAMP",
     }
 }
 

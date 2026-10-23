@@ -26,11 +26,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
         let mark = |n| backend.placeholder(n);
-        let now = if backend == SupportedBackend::Postgres {
-            "NOW()"
-        } else {
-            "datetime('now')"
-        };
+        let now = backend.now_sql();
         let receipt = PublishRequestReviewReceipt {
             operation_kind: "reject",
             request_id: &command.request_id,
@@ -202,11 +198,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
         let mark = |n| backend.placeholder(n);
-        let now = if backend == SupportedBackend::Postgres {
-            "NOW()"
-        } else {
-            "datetime('now')"
-        };
+        let now = backend.now_sql();
         let receipt = PublishRequestReviewReceipt {
             operation_kind: "request_changes",
             request_id: &command.request_id,
@@ -360,11 +352,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
         let mark = |n| backend.placeholder(n);
-        let now = if backend == SupportedBackend::Postgres {
-            "NOW()"
-        } else {
-            "datetime('now')"
-        };
+        let now = backend.now_sql();
         let receipt = PublishRequestReviewReceipt {
             operation_kind: "hold",
             request_id: &command.request_id,
@@ -522,11 +510,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
         let mark = |n| backend.placeholder(n);
-        let now = if backend == SupportedBackend::Postgres {
-            "NOW()"
-        } else {
-            "datetime('now')"
-        };
+        let now = backend.now_sql();
         let receipt = PublishRequestReviewReceipt {
             operation_kind: "resume",
             request_id: &command.request_id,

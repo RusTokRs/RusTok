@@ -296,9 +296,8 @@ impl OciReleaseAdmissionService {
                     let ts_str: String = row
                         .try_get("", "admitted_at")
                         .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
-                    DateTime::parse_from_rfc3339(&ts_str)
+                    crate::backend::parse_sqlite_datetime(&ts_str)
                         .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?
-                        .with_timezone(&Utc)
                 }
             };
 
@@ -483,10 +482,7 @@ impl OciReleaseAdmissionService {
                     command.context.trace_id.into(),
                     backend.uuid_value(command.context.correlation_id),
                     request_digest.into(),
-                    match backend {
-                        SupportedBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(now)),
-                        SupportedBackend::Sqlite => now.to_rfc3339().into(),
-                    },
+                    backend.datetime_value(now),
                 ],
             ))
             .await
@@ -556,9 +552,8 @@ impl OciReleaseAdmissionService {
                 let ts_str: String = row
                     .try_get("", "admitted_at")
                     .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
-                DateTime::parse_from_rfc3339(&ts_str)
+                crate::backend::parse_sqlite_datetime(&ts_str)
                     .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?
-                    .with_timezone(&Utc)
             }
         };
 

@@ -342,6 +342,6 @@ pub(crate) fn upload_session_request_digest(
 pub(crate) fn upload_expiry_expression(backend: SupportedBackend) -> &'static str {
     match backend {
         SupportedBackend::Postgres => "NOW() + INTERVAL '3600 seconds'",
-        SupportedBackend::Sqlite => "datetime('now', '+3600 seconds')",
+        SupportedBackend::Sqlite => "strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now', '+3600 seconds')",
     }
 }

@@ -428,7 +428,7 @@ pub(crate) fn retry_available_at_expression(
             backend.placeholder(base_parameter),
         ),
         SupportedBackend::Sqlite => format!(
-            "datetime('now', '+' || MIN({}, {} * (1 << MIN(MAX(attempt - 1, 0), 16))) || ' seconds')",
+            "strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now', '+' || MIN({}, {} * (1 << MIN(MAX(attempt - 1, 0), 16))) || ' seconds')",
             backend.placeholder(max_parameter),
             backend.placeholder(base_parameter),
         ),

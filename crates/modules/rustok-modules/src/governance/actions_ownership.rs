@@ -155,11 +155,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
         let mark = |n| backend.placeholder(n);
-        let now = if backend == SupportedBackend::Postgres {
-            "NOW()"
-        } else {
-            "datetime('now')"
-        };
+        let now = backend.now_sql();
         let previous_owner = governance_owner_principal_for_slug(&tx, backend, &command.slug, true)
             .await?
             .ok_or(ModuleGovernanceError::OwnerBindingNotFound)?;

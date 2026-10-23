@@ -947,7 +947,7 @@ fn lease_expression(backend: SupportedBackend, parameter: usize) -> String {
             backend.placeholder(parameter)
         ),
         SupportedBackend::Sqlite => format!(
-            "datetime('now', '+' || {} || ' seconds')",
+            "strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now', '+' || {} || ' seconds')",
             backend.placeholder(parameter)
         ),
     }

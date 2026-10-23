@@ -29,11 +29,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
         let mark = |n| backend.placeholder(n);
-        let now = if backend == SupportedBackend::Postgres {
-            "NOW()"
-        } else {
-            "datetime('now')"
-        };
+        let now = backend.now_sql();
         let job = tx.query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!("SELECT j.status AS job_status, j.request_id, j.attempt_number, j.queue_reason, r.slug, r.version, r.artifact_origin, r.status AS request_status, r.revision AS request_revision FROM registry_validation_jobs j JOIN registry_publish_requests r ON r.id = j.request_id WHERE j.id = {}", mark(1)),
@@ -311,11 +307,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
         let mark = |n| backend.placeholder(n);
-        let now = if backend == SupportedBackend::Postgres {
-            "NOW()"
-        } else {
-            "datetime('now')"
-        };
+        let now = backend.now_sql();
         let job = tx.query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!("SELECT j.status, j.attempt_number, r.id AS request_id, r.slug, r.version, r.status AS request_status FROM registry_validation_jobs j JOIN registry_publish_requests r ON r.id = j.request_id WHERE j.id = {}", mark(1)),

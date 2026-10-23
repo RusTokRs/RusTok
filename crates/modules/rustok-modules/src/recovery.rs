@@ -444,11 +444,11 @@ pub(crate) async fn apply_tenant_override_enabled<C: ConnectionTrait>(
             // Clearing the override returns the tenant to the platform
             // default; the row and its settings survive (tri-state intent).
             SupportedBackend::Postgres => {
-                "UPDATE tenant_modules SET enabled = NULL, updated_at = CURRENT_TIMESTAMP \
+                "UPDATE tenant_modules SET enabled = NULL, updated_at = NOW() \
                  WHERE tenant_id = $1 AND module_slug = $2"
             }
             SupportedBackend::Sqlite => {
-                "UPDATE tenant_modules SET enabled = NULL, updated_at = CURRENT_TIMESTAMP \
+                "UPDATE tenant_modules SET enabled = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now') \
                  WHERE tenant_id = ?1 AND module_slug = ?2"
             }
         };

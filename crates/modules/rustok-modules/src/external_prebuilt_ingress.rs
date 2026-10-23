@@ -624,9 +624,8 @@ impl ExternalPrebuiltIngressService {
                     let ts_str: String = row
                         .try_get("", "ingress_at")
                         .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
-                    DateTime::parse_from_rfc3339(&ts_str)
+                    crate::backend::parse_sqlite_datetime(&ts_str)
                         .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?
-                        .with_timezone(&Utc)
                 }
             };
 
@@ -828,10 +827,7 @@ impl ExternalPrebuiltIngressService {
                 command.context.trace_id.into(),
                 backend.uuid_value(command.context.correlation_id),
                 request_digest.into(),
-                match backend {
-                    SupportedBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(now)),
-                    SupportedBackend::Sqlite => now.to_rfc3339().into(),
-                },
+                backend.datetime_value(now),
             ],
         ))
         .await
@@ -898,10 +894,7 @@ impl ExternalPrebuiltIngressService {
                     SupportedBackend::Postgres => sea_orm::Value::Bool(Some(true)),
                     SupportedBackend::Sqlite => 1i32.into(),
                 },
-                match backend {
-                    SupportedBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(now)),
-                    SupportedBackend::Sqlite => now.to_rfc3339().into(),
-                },
+                backend.datetime_value(now),
             ],
         ))
         .await
@@ -983,9 +976,8 @@ impl ExternalPrebuiltIngressService {
                 let ts_str: String = row
                     .try_get("", "ingress_at")
                     .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
-                DateTime::parse_from_rfc3339(&ts_str)
+                crate::backend::parse_sqlite_datetime(&ts_str)
                     .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?
-                    .with_timezone(&Utc)
             }
         };
 

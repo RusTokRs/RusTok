@@ -1933,7 +1933,7 @@ mod tests {
                 "INSERT INTO module_artifact_secret_bindings
                  (tenant_id, data_owner_id, secret_instance_id, reference_name, resolver_alias,
                   resolver_key, revision, actor_id, reason, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, datetime('now'), datetime('now'))",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))",
                 vec![
                     binding.scope.capability.tenant_id.to_string().into(),
                     binding.scope.capability.data_owner_id.to_string().into(),

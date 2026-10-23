@@ -276,7 +276,7 @@ fn audit_timestamp(
             .try_get::<Option<String>>("", column)
             .map_err(storage_error)?
             .map(|value| {
-                crate::backend::parse_sqlite_datetime(&value, column)
+                crate::backend::parse_sqlite_datetime(&value)
                     .map(|timestamp| timestamp.to_rfc3339())
                     .map_err(storage_error)
             })
