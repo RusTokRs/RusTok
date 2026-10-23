@@ -209,8 +209,14 @@ where
     ) -> Result<ArtifactDataDeleteResult, ArtifactDataError> {
         scope.validate()?;
         validate_artifact_data_key(&request.key)?;
-        if request.expected_revision == 0 || request.idempotency_key.is_nil() {
+        if request.idempotency_key.is_nil() {
             return Err(ArtifactDataError::InvalidIdempotencyKey);
+        }
+        // Stored revisions start at 1, so a zero expectation can never
+        // match a live row; report it as the conflict it is instead of
+        // blaming the idempotency key.
+        if request.expected_revision == 0 {
+            return Err(ArtifactDataError::RevisionConflict);
         }
         self.authorizer
             .authorize_data(

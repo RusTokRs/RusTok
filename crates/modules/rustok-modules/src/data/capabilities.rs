@@ -484,6 +484,33 @@ pub(crate) fn data_capability_error(
     error: ArtifactDataError,
 ) -> SandboxError {
     match error {
+        // Limits and optimistic-concurrency conflicts are actionable by
+        // the guest (shrink the value, re-read, retry); masking them as
+        // an undifferentiated denial makes correct guest behavior
+        // impossible to distinguish from a policy refusal.
+        ArtifactDataError::ValueTooLarge { limit, .. } => SandboxError::LimitExceeded {
+            resource: "artifact_data_value_bytes".to_string(),
+            limit: limit as u64,
+        },
+        ArtifactDataError::QuotaExceeded {
+            resource, limit, ..
+        } => SandboxError::LimitExceeded {
+            resource: format!("artifact_data_{resource}"),
+            limit,
+        },
+        ArtifactDataError::RevisionConflict => {
+            SandboxError::CapabilityConstraintDenied {
+                capability: capability.clone(),
+                reason: "artifact data revision conflict; re-read and retry".to_string(),
+            }
+        }
+        ArtifactDataError::IdempotencyConflict => {
+            SandboxError::CapabilityConstraintDenied {
+                capability: capability.clone(),
+                reason: "artifact data idempotency key was reused for a different write"
+                    .to_string(),
+            }
+        }
         ArtifactDataError::InvalidScope
         | ArtifactDataError::InvalidKey
         | ArtifactDataError::InvalidObject
@@ -491,7 +518,6 @@ pub(crate) fn data_capability_error(
         | ArtifactDataError::InvalidIndexQuery
         | ArtifactDataError::IndexQueryUnavailable
         | ArtifactDataError::InvalidBatch
-        | ArtifactDataError::RevisionConflict
         | ArtifactDataError::NamespacePurged
         | ArtifactDataError::PurgePrecondition
         | ArtifactDataError::NamespaceHeld
@@ -502,9 +528,6 @@ pub(crate) fn data_capability_error(
         | ArtifactDataError::SnapshotRetentionPrecondition
         | ArtifactDataError::SnapshotCollectionPrecondition
         | ArtifactDataError::InvalidIdempotencyKey
-        | ArtifactDataError::IdempotencyConflict
-        | ArtifactDataError::ValueTooLarge { .. }
-        | ArtifactDataError::QuotaExceeded { .. }
         | ArtifactDataError::DataContractSchemaViolation
         | ArtifactDataError::PolicyDenied => SandboxError::CapabilityDenied(capability.clone()),
         ArtifactDataError::InvalidUpgrade
