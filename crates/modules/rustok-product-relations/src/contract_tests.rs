@@ -1,18 +1,18 @@
 #[test]
-fn crate_api_defines_minimal_contract_sections() {
+fn product_relations_module_matches_canonical_contract() {
     let api = include_str!("../CRATE_API.md");
-    for marker in [
-        "## Platform Capability Bindings",
-        "## Domain Collaborations",
-        "## Minimum Contract Set",
-        "### Input DTOs/Commands",
-        "### Domain Invariants",
-        "### Events / Outbox Side Effects",
-        "### Errors / Failure Codes",
-    ] {
-        assert!(
-            api.contains(marker),
-            "CRATE_API.md must contain section: {marker}"
-        );
-    }
+    assert!(api.contains("## Platform Capability Bindings"));
+    assert!(api.contains("## Domain Collaborations"));
+    assert!(api.contains("## Minimum Contract Set"));
+    assert!(api.contains("### Input DTOs/Commands"));
+    assert!(api.contains("### Domain Invariants"));
+    assert!(api.contains("### Events / Outbox Side Effects"));
+    assert!(api.contains("### Errors / Failure Codes"));
+
+    use rustok_core::{ModuleKind, RusToKModule};
+    let module = crate::ProductRelationsModule;
+    assert_eq!(module.slug(), "product_relations");
+    assert_eq!(module.name(), "Product Relations");
+    assert_eq!(module.kind(), ModuleKind::Optional);
+    assert_eq!(module.dependencies(), &["product"]);
 }
