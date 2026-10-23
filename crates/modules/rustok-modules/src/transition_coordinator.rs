@@ -27,7 +27,8 @@ use crate::{
 pub enum ModuleTransitionState {
     /// Initial phase: validating DDL safety, settings compatibility, and epoch.
     Preflighting,
-    /// Conflict fences successfully acquired.
+    /// Deterministic conflict-fence set derived and recorded on the
+    /// checkpoint (recorded contract; see `conflict_fences` module docs).
     Fenced,
     /// Candidate payload is pre-staged on the node's non-serving standby slot.
     PreStaging,
@@ -163,7 +164,9 @@ impl ModuleTransitionCoordinator {
         &self.checkpoint.state
     }
 
-    /// Evaluates preflight, validates security epoch, acquires conflict fences, and starts the transition.
+    /// Evaluates preflight, validates the security epoch, derives and
+    /// records the deterministic conflict-fence set, and starts the
+    /// transition.
     pub fn start_transition(
         input: StartTransitionInput,
         security_registry: &SecurityEpochRegistry,

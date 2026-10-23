@@ -1,9 +1,13 @@
-//! Deterministic conflict-key fences and cross-scope concurrency coordinator.
+//! Deterministic conflict-key fences for module lifecycle operations.
 //!
-//! Enforces a strict hierarchical ordering across all operation types to eliminate
-//! distributed deadlocks:
-//!
-//! `ReleaseUnit < DataMigrationOwner < Namespace < Topology`
+//! Fence sets are derived deterministically, ordered by a strict scope
+//! hierarchy (`ReleaseUnit < DataMigrationOwner < Namespace < Topology`),
+//! and recorded on transition checkpoints and receipts as the conflict
+//! contract of an operation. They are descriptive evidence today: durable
+//! cross-operation exclusion is enforced by the admission revision CAS and
+//! the tenant-lifecycle active-transition lock, and no production path
+//! compares the fence sets of two in-flight operations yet
+//! (`has_conflict_with` is the comparison primitive for that future gate).
 
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
