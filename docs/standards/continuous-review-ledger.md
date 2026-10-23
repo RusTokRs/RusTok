@@ -677,7 +677,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-messenger](../../crates/modules/rustok-messenger) | `modules` | 49 | 6,244 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-messenger/admin) | `modules` | 9 | 1,189 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-messenger/storefront) | `modules` | 8 | 1,480 | None |  |
-| [ ] | [rustok-moderation](../../crates/modules/rustok-moderation) | `modules` | 36 | 9,292 | None |  |
+| [x] | [rustok-moderation](../../crates/modules/rustok-moderation) | `modules` | 38 | 9,850 | 2026-10-23 05:46 | Self-contained model/provider architecture with feature-gated server runtime; verified CRATE_API.md and contract tests; 28/28 tests passed, 0 clippy warnings, zero defects. |
 | [ ] | [rustok-moderation-api](../../crates/modules/rustok-moderation-api) | `modules` | 3 | 835 | None |  |
 | [x] | [rustok-modules](../../crates/modules/rustok-modules) | `modules` | 242 | 131,685 | 2026-10-17 10:45 | Audited and cleaned. |
 | [x] | [rustok-modules-translation](../../crates/modules/rustok-modules-translation) | `modules` | 1 | 822 | 2026-10-17 12:32 | Audited and cleaned. |
@@ -709,10 +709,10 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [admin](../../crates/modules/rustok-pricing/admin) | `modules` | 14 | 8,045 | 2026-10-19 22:15 | Audited; non-nil UUID validation, alphabetic currency normalization, SSR channel fixtures. 49/49 tests passed. |
 | [x] | [storefront](../../crates/modules/rustok-pricing/storefront) | `modules` | 10 | 2,554 | 2026-10-19 22:43 | Audited; enforced non-nil UUID validation in core resolution context, filtered nil UUIDs in native transport, feature-gated transport profile tests. 12/12 tests passed (default + SSR). |
 | [x] | [rustok-product](../../crates/modules/rustok-product) | `modules` | 197 | 85,389 | 2026-10-23 04:30 | Standardized ProductModule in src/module.rs with ModuleKind::Optional and health check; created canonical CRATE_API.md with 7 mandatory contract sections; updated contract_tests.rs; 142/142 tests passed, 0 clippy warnings, zero defects. |
-| [ ] | [rustok-product-bundles](../../crates/modules/rustok-product-bundles) | `modules` | 25 | 6,983 | None |  |
+| [x] | [rustok-product-bundles](../../crates/modules/rustok-product-bundles) | `modules` | 27 | 7,200 | 2026-10-23 06:10 | Standardized ProductBundlesModule in src/module.rs with ModuleKind::Optional and health check; created canonical CRATE_API.md with 7 contract sections; created contract_tests.rs; 13/13 tests passed, 0 clippy warnings, zero defects. |
 | [ ] | [admin](../../crates/modules/rustok-product-bundles/admin) | `modules` | 9 | 2,922 | None |  |
 | [ ] | [rustok-product-catalog-service](../../crates/modules/rustok-product-catalog-service) | `modules` | 1 | 508 | None |  |
-| [ ] | [rustok-product-relations](../../crates/modules/rustok-product-relations) | `modules` | 25 | 4,177 | None |  |
+| [x] | [rustok-product-relations](../../crates/modules/rustok-product-relations) | `modules` | 26 | 4,350 | 2026-10-23 06:10 | Standardized ProductRelationsModule in src/module.rs with ModuleKind::Optional and health check; verified CRATE_API.md and contract_tests.rs; 8/8 tests passed, 0 clippy warnings, zero defects. |
 | [ ] | [admin](../../crates/modules/rustok-product-relations/admin) | `modules` | 9 | 1,678 | None |  |
 | [ ] | [rustok-product-transport](../../crates/modules/rustok-product-transport) | `modules` | 8 | 1,704 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-product/admin) | `modules` | 29 | 21,048 | None |  |
