@@ -328,7 +328,7 @@ impl ModuleOperationJournal {
         request: ModuleOperationRequest,
     ) -> Result<ModuleOperationRecord, ModuleOperationStoreError> {
         let id = rustok_core::generate_id();
-        execute(
+        execute_one(
             db,
             "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, trace_id, correlation_id, idempotency_key, expected_revision, error_message) VALUES ({1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, NULL)",
             vec![
@@ -1112,7 +1112,7 @@ impl TenantModuleStateStore {
                 .try_get("", "enabled")
                 .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?;
             if previous_enabled != Some(request.enabled) {
-                execute(
+                execute_one(
                     db,
                     "UPDATE tenant_modules SET enabled = {1}, updated_at = {now} WHERE id = {2}",
                     vec![request.enabled.into(), id.into()],
@@ -1128,7 +1128,7 @@ impl TenantModuleStateStore {
         }
 
         let id = rustok_core::generate_id();
-        execute(
+        execute_one(
             db,
             "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings) VALUES ({1}, {2}, {3}, {4}, '{}')",
             vec![
@@ -1189,7 +1189,7 @@ impl TenantModuleStateStore {
             let enabled: Option<bool> = row.try_get("", "enabled").map_err(database_error)?;
             // A settings save never changes recorded enablement intent:
             // the column is not part of this UPDATE at all.
-            execute(
+            execute_one(
                 db,
                 "UPDATE tenant_modules SET settings = {1}, updated_at = {now} WHERE id = {2}",
                 vec![json_value(request.settings), id.into()],
@@ -1207,7 +1207,7 @@ impl TenantModuleStateStore {
         // A first row created by a settings save records no enablement
         // intent (NULL): the platform default keeps applying until the
         // tenant explicitly toggles the module.
-        execute(
+        execute_one(
             db,
             "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings) VALUES ({1}, {2}, {3}, {4}, {5})",
             vec![
@@ -1232,19 +1232,32 @@ fn json_value(value: serde_json::Value) -> sea_orm::Value {
     sea_orm::Value::Json(Some(Box::new(value)))
 }
 
-async fn execute<C: ConnectionTrait>(
+/// Executes a statement that must affect exactly one row.
+///
+/// The tenant-module writes select the target row first and then update it
+/// by id; silently accepting zero affected rows would report a persisted
+/// record for a row that no longer exists (concurrently purged), so the
+/// affected-row count is part of the success contract.
+async fn execute_one<C: ConnectionTrait>(
     db: &C,
     sql_template: &str,
     values: Vec<sea_orm::Value>,
 ) -> Result<(), ModuleOperationStoreError> {
     let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
-    db.execute_raw(Statement::from_sql_and_values(
-        backend.db_backend(),
-        render_parameters(sql_template, backend),
-        values,
-    ))
-    .await
-    .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?;
+    let affected = db
+        .execute_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            render_parameters(sql_template, backend),
+            values,
+        ))
+        .await
+        .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?
+        .rows_affected();
+    if affected != 1 {
+        return Err(ModuleOperationStoreError::Database(format!(
+            "expected statement to affect exactly one row, affected {affected}"
+        )));
+    }
     Ok(())
 }
 
