@@ -621,7 +621,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 18 | 4,697 | 2026-10-19 15:55 | Audited and cleaned. Enforced FFA boundaries: feature-gated transport profile tests between GraphQL and NativeServer SSR; extracted CheckoutHandoffFormInput validation and unicode-safe order reference generation from Leptos view into framework-agnostic core policy; moved badge counting and item quantity aggregation into core view_model; verified dual-path transport (ServerFn / GraphQL), all 4 error safety and boundary scripts passed, 21/21 tests passed (default + SSR), 0 clippy warnings, gate passed. |
 | [x] | [rustok-channel](../../crates/modules/rustok-channel) | `modules` | 47 | 11,482 | 2026-10-17 05:23 | Audited and cleaned. |
 | [x] | [admin](../../crates/modules/rustok-channel/admin) | `modules` | 14 | 5,212 | 2026-10-17 06:59 | Audited and cleaned. |
-| [ ] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 39 | 9,823 | None |  |
+| [x] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 39 | 9,823 | 2026-10-23 06:28 | Standardized CommentsModule in src/module.rs with ModuleKind::Optional and health check; verified CRATE_API.md and contract_tests.rs; 23/23 tests passed, 0 clippy warnings, zero defects. |
 | [ ] | [rustok-comments-api](../../crates/modules/rustok-comments-api) | `modules` | 3 | 154 | None |  |
 | [ ] | [rustok-comments-storefront-support](../../crates/modules/rustok-comments-storefront-support) | `modules` | 3 | 171 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 8 | 1,382 | None |  |
