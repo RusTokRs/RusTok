@@ -361,6 +361,9 @@ pub enum ExternalPrebuiltIngressError {
     #[error("Trust verification decision rejected external prebuilt admission")]
     VerificationRejected,
 
+    #[error("External prebuilt admission requires non-zero trust and capability policy revisions")]
+    MissingPolicyRevision,
+
     #[error("Platform CAS storage error: {0}")]
     CasStorage(String),
 
@@ -388,8 +391,8 @@ pub struct ExternalPrebuiltIngressCommand {
     pub scope: ModuleInstallationScope,
     pub context: ModuleCommandContext,
     pub evidence: ExternalPrebuiltIngressEvidence,
-    pub trust_policy_revision: Option<u64>,
-    pub capability_policy_revision: Option<u64>,
+    pub trust_policy_revision: u64,
+    pub capability_policy_revision: u64,
 }
 
 /// Immutable admission receipt certifying that an external prebuilt artifact has been
@@ -460,6 +463,36 @@ impl ExternalPrebuiltIngressService {
         self
     }
 
+    /// Runs the configured trust verifier, when present, and requires the
+    /// decision to be admitted under exactly the policy revisions selected
+    /// by the command. Applied on both the fresh-admission and
+    /// already-admitted paths so a previously admitted release cannot be
+    /// reused under a policy it was never evaluated against.
+    async fn verify_trust_policy(
+        &self,
+        reference: &OciArtifactReference,
+        descriptor: &ModuleArtifactDescriptor,
+        command: &ExternalPrebuiltIngressCommand,
+    ) -> Result<(), ExternalPrebuiltIngressError> {
+        if let Some(verifier) = &self.verifier {
+            let request = TrustVerificationRequest {
+                reference: reference.clone(),
+                descriptor: descriptor.clone(),
+                trust_policy_revision: command.trust_policy_revision,
+                capability_policy_revision: command.capability_policy_revision,
+                expected_alloy_workspace_provenance: None,
+            };
+            let decision = verifier
+                .verify(request.clone())
+                .await
+                .map_err(ExternalPrebuiltIngressError::TrustVerification)?;
+            if !decision.admitted_for(&request) {
+                return Err(ExternalPrebuiltIngressError::VerificationRejected);
+            }
+        }
+        Ok(())
+    }
+
     /// Admits an external prebuilt package into platform CAS and the platform catalog
     /// after independently verifying all required evidence.
     ///
@@ -476,6 +509,9 @@ impl ExternalPrebuiltIngressService {
         // mutate.
         if !command.scope.matches_command_context(&command.context) {
             return Err(ExternalPrebuiltIngressError::InvalidCommandContext);
+        }
+        if command.trust_policy_revision == 0 || command.capability_policy_revision == 0 {
+            return Err(ExternalPrebuiltIngressError::MissingPolicyRevision);
         }
 
         // 2. Validate digest-pinned reference
@@ -600,6 +636,12 @@ impl ExternalPrebuiltIngressService {
                 .await
                 .map_err(|e| ExternalPrebuiltIngressError::CasStorage(e.to_string()))?;
 
+            // The stored admission predates this command and records no
+            // policy basis; re-verify against the revisions this command
+            // selected before certifying the release to it.
+            self.verify_trust_policy(&command.reference, &descriptor, &command)
+                .await?;
+
             return Ok(ExternalPrebuiltIngressReceipt {
                 reference: command.reference.clone(),
                 descriptor: descriptor.clone(),
@@ -674,24 +716,9 @@ impl ExternalPrebuiltIngressService {
             )));
         }
 
-        // 9. Optional trust policy verification
-        if let Some(ref verifier) = self.verifier {
-            let req = TrustVerificationRequest {
-                reference: package.reference.clone(),
-                descriptor: package.descriptor.clone(),
-                trust_policy_revision: command.trust_policy_revision.unwrap_or(0),
-                capability_policy_revision: command.capability_policy_revision.unwrap_or(0),
-                expected_alloy_workspace_provenance: None,
-            };
-            let decision = verifier
-                .verify(req)
-                .await
-                .map_err(ExternalPrebuiltIngressError::TrustVerification)?;
-
-            if !decision.admitted() {
-                return Err(ExternalPrebuiltIngressError::VerificationRejected);
-            }
-        }
+        // 9. Trust policy verification under the revisions selected by the command
+        self.verify_trust_policy(&package.reference, &package.descriptor, &command)
+            .await?;
 
         // 10. Stream payload into platform CAS staging and publish create-if-absent
         let (payload_size, cas_published) = match package.payload {

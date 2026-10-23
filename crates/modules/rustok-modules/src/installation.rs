@@ -5232,11 +5232,7 @@ where
             .verify(verification_request.clone())
             .await
             .map_err(ModuleInstallationError::TrustVerification)?;
-        if decision.trust_policy_revision != verification_request.trust_policy_revision
-            || decision.capability_policy_revision
-                != verification_request.capability_policy_revision
-            || !decision.admitted()
-        {
+        if !decision.admitted_for(&verification_request) {
             return Err(ModuleInstallationError::VerificationMismatch(
                 "verification decision is not admitted for the requested policy revisions".into(),
             ));

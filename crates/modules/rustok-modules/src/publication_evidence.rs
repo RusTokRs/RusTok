@@ -328,10 +328,7 @@ async fn verify_fetched_published_artifact(
         .verify(verification_request.clone())
         .await
         .map_err(PublishedArtifactVerificationError::Verification)?;
-    if decision.trust_policy_revision != verification_request.trust_policy_revision
-        || decision.capability_policy_revision != verification_request.capability_policy_revision
-        || decision.signer_identity.trim().is_empty()
-        || !decision.admitted()
+    if decision.signer_identity.trim().is_empty() || !decision.admitted_for(&verification_request)
     {
         return Err(PublishedArtifactVerificationError::Rejected);
     }

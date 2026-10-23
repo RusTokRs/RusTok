@@ -169,6 +169,16 @@ impl TrustVerificationDecision {
             .into_iter()
             .all(|kind| evidence_kinds.contains(&kind))
     }
+
+    /// True when this decision both admits the artifact and was produced
+    /// against exactly the policy revisions selected in `request`. Admission
+    /// paths must use this check: `admitted` alone accepts a decision made
+    /// under any (possibly stale) policy revision.
+    pub fn admitted_for(&self, request: &TrustVerificationRequest) -> bool {
+        self.trust_policy_revision == request.trust_policy_revision
+            && self.capability_policy_revision == request.capability_policy_revision
+            && self.admitted()
+    }
 }
 
 /// Failure of a [`TrustVerifier`] port. A verifier that could evaluate the
@@ -223,6 +233,60 @@ mod tests {
             })
             .collect(),
         }
+    }
+
+    #[test]
+    fn admitted_for_rejects_decisions_under_other_policy_revisions() {
+        use super::TrustVerificationRequest;
+        use crate::{
+            ArtifactModuleKind, ArtifactPayloadKind, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+            ModuleArtifactDescriptor, OciArtifactReference,
+        };
+
+        let request = TrustVerificationRequest {
+            reference: OciArtifactReference {
+                registry: "registry.example".to_string(),
+                repository: "modules/trust-fixture".to_string(),
+                digest: format!("sha256:{}", "b".repeat(64)),
+            },
+            descriptor: ModuleArtifactDescriptor {
+                schema_version: MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+                slug: "trust_fixture".to_string(),
+                version: "1.0.0".to_string(),
+                payload_kind: ArtifactPayloadKind::Rhai,
+                module_kind: ArtifactModuleKind::Optional,
+                runtime_abi: "rustok:module/runtime@1".to_string(),
+                platform_compatibility: "^0.1".to_string(),
+                required_features: vec![],
+                artifact_digest: format!("sha256:{}", "a".repeat(64)),
+                entrypoint: "main".to_string(),
+                capabilities: vec![],
+                bindings: vec![],
+                dependencies: vec![],
+                permissions: vec![],
+                schema_documents: vec![],
+                settings_schema_digest: None,
+                data_schema_digest: None,
+                localization_catalogs: vec![],
+                ui_contributions: vec![],
+                persistence_contract: None,
+            },
+            trust_policy_revision: 7,
+            capability_policy_revision: 9,
+            expected_alloy_workspace_provenance: None,
+        };
+
+        let decision = admitted_decision();
+        assert!(decision.admitted_for(&request));
+
+        let mut stale_trust = decision.clone();
+        stale_trust.trust_policy_revision = 6;
+        assert!(stale_trust.admitted());
+        assert!(!stale_trust.admitted_for(&request));
+
+        let mut stale_capability = decision;
+        stale_capability.capability_policy_revision = 10;
+        assert!(!stale_capability.admitted_for(&request));
     }
 
     #[test]

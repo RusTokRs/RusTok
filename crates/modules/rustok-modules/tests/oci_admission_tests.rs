@@ -261,8 +261,8 @@ async fn test_digest_pinned_oci_validation_and_streamed_cas_publication() {
         reference: reference.clone(),
         scope: ModuleInstallationScope::Platform,
         context,
-        trust_policy_revision: None,
-        capability_policy_revision: None,
+        trust_policy_revision: 1,
+        capability_policy_revision: 1,
     };
 
     // 1. Execute admission
@@ -331,8 +331,8 @@ async fn test_rejection_of_unpinned_reference() {
             reference: unpinned_ref,
             scope: ModuleInstallationScope::Platform,
             context: context.clone(),
-            trust_policy_revision: None,
-            capability_policy_revision: None,
+            trust_policy_revision: 1,
+            capability_policy_revision: 1,
         })
         .await;
 
@@ -357,8 +357,8 @@ async fn test_rejection_of_unpinned_reference() {
             reference: short_hex_ref,
             scope: ModuleInstallationScope::Platform,
             context,
-            trust_policy_revision: None,
-            capability_policy_revision: None,
+            trust_policy_revision: 1,
+            capability_policy_revision: 1,
         })
         .await;
 
@@ -397,8 +397,8 @@ async fn test_oci_admission_context_must_match_requested_scope() {
                 correlation_id: Uuid::new_v4(),
                 idempotency_key: Uuid::new_v4(),
             },
-            trust_policy_revision: None,
-            capability_policy_revision: None,
+            trust_policy_revision: 1,
+            capability_policy_revision: 1,
         })
         .await
         .expect_err("a platform admission cannot carry tenant command context");
@@ -450,8 +450,8 @@ async fn test_rejection_of_descriptor_layer_digest_mismatch() {
             reference,
             scope: ModuleInstallationScope::Platform,
             context,
-            trust_policy_revision: None,
-            capability_policy_revision: None,
+            trust_policy_revision: 1,
+            capability_policy_revision: 1,
         })
         .await;
 
@@ -499,8 +499,8 @@ async fn test_idempotent_readmission_and_conflict_handling() {
             trace_id: "trace-1".to_string(),
             correlation_id: Uuid::new_v4(),
         },
-        trust_policy_revision: None,
-        capability_policy_revision: None,
+        trust_policy_revision: 1,
+        capability_policy_revision: 1,
     };
 
     // First attempt succeeds and publishes to CAS
@@ -530,7 +530,7 @@ async fn test_idempotent_readmission_and_conflict_handling() {
 
     // Policy revisions are immutable command facts as well.
     let mut changed_policy = command1.clone();
-    changed_policy.trust_policy_revision = Some(7);
+    changed_policy.trust_policy_revision = 7;
     assert!(matches!(
         admission.admit_release(changed_policy).await,
         Err(OciReleaseAdmissionError::IdempotencyConflict(key, _)) if key == idempotency_key
@@ -548,8 +548,8 @@ async fn test_idempotent_readmission_and_conflict_handling() {
         reference: different_ref,
         scope: ModuleInstallationScope::Platform,
         context: command1.context.clone(),
-        trust_policy_revision: None,
-        capability_policy_revision: None,
+        trust_policy_revision: 1,
+        capability_policy_revision: 1,
     };
 
     let conflict_result = admission.admit_release(conflict_command).await;
@@ -597,8 +597,8 @@ async fn test_runtime_reads_cas_only_and_never_falls_back_to_oci() {
             trace_id: "trace-runtime".to_string(),
             correlation_id: Uuid::new_v4(),
         },
-        trust_policy_revision: None,
-        capability_policy_revision: None,
+        trust_policy_revision: 1,
+        capability_policy_revision: 1,
     };
 
     // 1. Admit release into CAS
