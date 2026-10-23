@@ -57,8 +57,26 @@ pub async fn get_menu(
     Path(id): Path<Uuid>,
     Query(params): Query<GetMenuParams>,
 ) -> HttpResult<Json<MenuResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_menu_id",
+            "Menu ID must not be nil",
+        ));
+    }
     ensure_enabled(&runtime, &request).await?;
-    let locale = params.locale.unwrap_or_else(|| request.locale.clone());
+    let locale = params
+        .locale
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| request.locale.trim().to_string());
     MenuService::new(runtime.db.clone())
         .get(
             tenant.id,
@@ -81,11 +99,29 @@ pub async fn get_active_menu(
     Path(location): Path<MenuLocation>,
     Query(params): Query<GetMenuParams>,
 ) -> HttpResult<Json<MenuResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
     let channel_id = request.channel_id.ok_or_else(|| {
         HttpError::not_found("active_menu_not_found", "Active menu was not found")
     })?;
+    if channel_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_channel_id",
+            "Channel ID must not be nil",
+        ));
+    }
     ensure_enabled(&runtime, &request).await?;
-    let locale = params.locale.unwrap_or_else(|| request.locale.clone());
+    let locale = params
+        .locale
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| request.locale.trim().to_string());
     MenuBindingService::new(runtime.db.clone())
         .get_active(
             tenant.id,
@@ -111,7 +147,31 @@ pub async fn create_menu(
     Json(input): Json<CreateMenuInput>,
 ) -> HttpResult<(StatusCode, Json<MenuResponse>)> {
     require_permission(&auth, Permission::NAVIGATION_CREATE)?;
-    let locale = params.locale.unwrap_or_else(|| request.locale.clone());
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::unauthorized(
+            "authentication_required",
+            "Actor user ID must not be nil",
+        ));
+    }
+    if auth.tenant_id != tenant.id {
+        return Err(HttpError::forbidden(
+            "tenant_mismatch",
+            "Authenticated tenant mismatch",
+        ));
+    }
+    let locale = params
+        .locale
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| request.locale.trim().to_string());
     let menu = MenuService::new(runtime.db.clone())
         .create(tenant.id, security(&auth), &locale, input)
         .await
@@ -131,12 +191,42 @@ pub async fn bind_active_menu(
     Json(input): Json<BindActiveMenuInput>,
 ) -> HttpResult<Json<ActiveMenuBindingResponse>> {
     require_permission(&auth, Permission::NAVIGATION_UPDATE)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::unauthorized(
+            "authentication_required",
+            "Actor user ID must not be nil",
+        ));
+    }
+    if auth.tenant_id != tenant.id {
+        return Err(HttpError::forbidden(
+            "tenant_mismatch",
+            "Authenticated tenant mismatch",
+        ));
+    }
     let channel_id = request.channel_id.ok_or_else(|| {
         HttpError::bad_request(
             "channel_context_required",
             "Active menu binding requires a resolved current channel",
         )
     })?;
+    if channel_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_channel_id",
+            "Channel ID must not be nil",
+        ));
+    }
+    if input.menu_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_menu_id",
+            "Menu ID must not be nil",
+        ));
+    }
     MenuBindingService::new(runtime.db.clone())
         .bind(
             tenant.id,
@@ -173,6 +263,9 @@ async fn ensure_enabled(
     let Some(channel_id) = request.channel_id else {
         return Ok(());
     };
+    if channel_id.is_nil() {
+        return Ok(());
+    }
     let enabled = ChannelService::new(runtime.db.clone())
         .is_module_enabled(channel_id, "navigation")
         .await

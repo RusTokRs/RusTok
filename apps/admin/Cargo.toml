@@ -33,6 +33,10 @@ csr = [
   "rustok-page-builder-admin/csr",
   "rustok-blog-admin/csr",
   "rustok-forum-admin/csr",
+  "rustok-party-admin/csr",
+  "rustok-deal-admin/csr",
+  "rustok-billing-admin/csr",
+  "rustok-finance-admin/csr",
 ]
 hydrate = [
   "leptos/hydrate",
@@ -80,6 +84,10 @@ hydrate = [
   "rustok-auth-admin/hydrate",
   "rustok-blog-admin/hydrate",
   "rustok-grid-leptos/hydrate",
+  "rustok-party-admin/hydrate",
+  "rustok-deal-admin/hydrate",
+  "rustok-billing-admin/hydrate",
+  "rustok-finance-admin/hydrate",
 ]
 ssr = [
   "leptos/ssr",
@@ -142,6 +150,10 @@ ssr = [
   "rustok-auth-admin/ssr",
   "rustok-blog-admin/ssr",
   "rustok-grid-leptos/ssr",
+  "rustok-party-admin/ssr",
+  "rustok-deal-admin/ssr",
+  "rustok-billing-admin/ssr",
+  "rustok-finance-admin/ssr",
 ]
 
 [dependencies]
@@ -192,6 +204,10 @@ rustok-tenant = { workspace = true, optional = true }
 rustok-web = { workspace = true, optional = true }
 rustok-workflow = { workspace = true, optional = true }
 rustok-blog-admin = { path = "../../crates/modules/rustok-blog/admin", default-features = false }
+rustok-finance-admin = { path = "../../crates/modules/rustok-finance/admin", default-features = false }
+rustok-billing-admin = { path = "../../crates/modules/rustok-billing/admin", default-features = false }
+rustok-deal-admin = { path = "../../crates/modules/rustok-deal/admin", default-features = false }
+rustok-party-admin = { path = "../../crates/modules/rustok-party/admin", default-features = false }
 rustok-ai-admin = { path = "../../crates/modules/rustok-ai/admin", default-features = false }
 rustok-channel-admin = { path = "../../crates/modules/rustok-channel/admin", default-features = false }
 rustok-comments-admin = { path = "../../crates/modules/rustok-comments/admin", default-features = false }
@@ -308,6 +324,10 @@ normal = [
   "rustok-translation-admin",
   "rustok-workflow-admin",
   "rustok-auth-admin",
+  "rustok-party-admin",
+  "rustok-deal-admin",
+  "rustok-billing-admin",
+  "rustok-finance-admin",
 ]
 
 [package.metadata.cargo-machete]
@@ -342,4 +362,8 @@ ignored = [
   "rustok-tenant-admin",
   "rustok-translation-admin",
   "rustok-workflow-admin",
+  "rustok-party-admin",
+  "rustok-deal-admin",
+  "rustok-billing-admin",
+  "rustok-finance-admin",
 ]

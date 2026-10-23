@@ -1,0 +1,15 @@
+deal-title = CRM Deals & Pipelines
+deal-description = Manage CRM Deals & Pipelines configuration and operational workflows
+deal-empty = No records found
+deal-save = Save
+deal-cancel = Cancel
+deal-success = Operation completed successfully
+deal-error = An error occurred
+deal-search-placeholder = Search CRM Deals & Pipelines records...
+deal-col-title = Title
+deal-col-status = Status
+deal-col-created = Created At
+deal-col-actions = Actions
+deal-action-create = Create New
+deal-action-edit = Edit
+deal-action-delete = Delete

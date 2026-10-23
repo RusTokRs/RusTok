@@ -1,0 +1,33 @@
+[package]
+name = "rustok-party"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Counterparty & Legal Entities capability module for RusToK"
+repository.workspace = true
+readme = "README.md"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[dependencies]
+async-trait.workspace = true
+chrono = { workspace = true, features = ["serde"] }
+rustok-api = { workspace = true }
+rustok-core.workspace = true
+rustok-outbox.workspace = true
+sea-orm-migration = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+tracing.workspace = true
+uuid = { workspace = true, features = ["serde", "v4"] }
+sea-orm = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "macros"] }
+
+[features]
+default = []

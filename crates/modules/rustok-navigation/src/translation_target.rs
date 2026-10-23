@@ -96,6 +96,12 @@ impl NavigationMenuTranslationTargetProvider {
         tenant_id: Uuid,
         request: &ReadTranslationResourceRequest,
     ) -> Result<TranslationResourceSnapshot, PortError> {
+        if tenant_id.is_nil() {
+            return Err(PortError::validation(
+                "navigation.translation_tenant_id_invalid",
+                "Tenant ID must not be nil",
+            ));
+        }
         let menu_id = parse_identity(&request.identity)?;
         let menu = MenuEntity::find_by_id(menu_id)
             .filter(MenuColumn::TenantId.eq(tenant_id))
@@ -669,12 +675,19 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<Uuid, PortEr
             "Navigation translation identity must address navigation/menu without a subresource",
         ));
     }
-    Uuid::parse_str(identity.resource_id.as_str()).map_err(|_| {
+    let id = Uuid::parse_str(identity.resource_id.as_str()).map_err(|_| {
         PortError::validation(
             "navigation.translation_resource_id_invalid",
             "Navigation menu translation resource id must be a UUID",
         )
-    })
+    })?;
+    if id.is_nil() {
+        return Err(PortError::validation(
+            "navigation.translation_resource_id_invalid",
+            "Navigation menu translation resource id must not be nil",
+        ));
+    }
+    Ok(id)
 }
 
 fn summary_from_aggregate(
@@ -956,12 +969,19 @@ fn parse_menu_item_title_field_key(key: &str) -> Result<Uuid, PortError> {
                 "Navigation translation snapshot exposed an unsupported field key",
             )
         })?;
-    Uuid::parse_str(item_id).map_err(|_| {
+    let id = Uuid::parse_str(item_id).map_err(|_| {
         PortError::invariant_violation(
             "navigation.translation_item_field_key_invalid",
             "Navigation translation snapshot exposed a non-UUID menu item field key",
         )
-    })
+    })?;
+    if id.is_nil() {
+        return Err(PortError::invariant_violation(
+            "navigation.translation_item_field_key_invalid",
+            "Navigation translation snapshot exposed a nil menu item field key",
+        ));
+    }
+    Ok(id)
 }
 
 fn change_from_model(change: TranslationChangeModel) -> Result<TranslationTargetChange, PortError> {

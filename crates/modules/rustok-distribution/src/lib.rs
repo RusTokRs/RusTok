@@ -228,6 +228,14 @@ pub fn build_registry() -> ModuleRegistry {
     #[cfg(feature = "mod-messenger")]
     let registry = registry.register(rustok_messenger::MessengerModule);
 
+    #[cfg(feature = "mod-party")]
+    let registry = registry.register(rustok_party::PartyModule);
+    #[cfg(feature = "mod-deal")]
+    let registry = registry.register(rustok_deal::DealModule);
+    #[cfg(feature = "mod-billing")]
+    let registry = registry.register(rustok_billing::BillingModule);
+    #[cfg(feature = "mod-finance")]
+    let registry = registry.register(rustok_finance::FinanceModule);
     generated_promotions::register_promoted_modules(registry)
 }
 

@@ -147,6 +147,10 @@ Module local documentation lives inside the crates themselves at
 | `rustok-docs` | [docs](../../crates/modules/rustok-docs/docs/README.md) | [plan](../../crates/modules/rustok-docs/docs/implementation-plan.md) |
 | `rustok-messenger` | [docs](../../crates/modules/rustok-messenger/docs/README.md) | [plan](../../crates/modules/rustok-messenger/docs/implementation-plan.md) |
 
+| `rustok-party` | [docs](../../crates/modules/rustok-party/docs/README.md) | [plan](../../crates/modules/rustok-party/docs/implementation-plan.md) |
+| `rustok-deal` | [docs](../../crates/modules/rustok-deal/docs/README.md) | [plan](../../crates/modules/rustok-deal/docs/implementation-plan.md) |
+| `rustok-billing` | [docs](../../crates/modules/rustok-billing/docs/README.md) | [plan](../../crates/modules/rustok-billing/docs/implementation-plan.md) |
+| `rustok-finance` | [docs](../../crates/modules/rustok-finance/docs/README.md) | [plan](../../crates/modules/rustok-finance/docs/implementation-plan.md) |
 ## Module UI Packages
 
 ### Optional/Admin Surfaces
@@ -170,6 +174,10 @@ Module local documentation lives inside the crates themselves at
   [`admin/`](../../crates/modules/rustok-marketplace-listing/admin/)
 - Additional owner packages are listed in [UI Packages Index](./UI_PACKAGES_INDEX.md).
 
+- `rustok-party`: [README](../../crates/modules/rustok-party/admin/README.md)
+- `rustok-deal`: [README](../../crates/modules/rustok-deal/admin/README.md)
+- `rustok-billing`: [README](../../crates/modules/rustok-billing/admin/README.md)
+- `rustok-finance`: [README](../../crates/modules/rustok-finance/admin/README.md)
 ### Optional/Storefront Surfaces
 
 - `rustok-groups`: [README](../../crates/modules/rustok-groups/storefront/README.md)

@@ -110,6 +110,10 @@ mod-alloy     = ["dep:alloy", "dep:rustok-translation-targets", "rustok-distribu
 mod-flex      = ["dep:rustok-translation-targets", "rustok-distribution/mod-flex"]
 mod-docs      = ["dep:rustok-docs", "mod-flex", "rustok-distribution/mod-docs"]
 mod-messenger = ["dep:rustok-messenger", "rustok-messenger/graphql", "rustok-distribution/mod-messenger"]
+mod-finance = ["dep:rustok-finance", "rustok-distribution/mod-finance"]
+mod-billing = ["dep:rustok-billing", "rustok-distribution/mod-billing"]
+mod-deal = ["dep:rustok-deal", "rustok-distribution/mod-deal"]
+mod-party = ["dep:rustok-party", "rustok-distribution/mod-party"]
 mod-media     = ["dep:rustok-media", "dep:rustok-translation-targets", "rustok-distribution/mod-media"]
 # Whole-owner Media control ports must not require the unrelated Profiles module.
 media-grpc = ["mod-media", "dep:rustok-media-transport"]
@@ -181,6 +185,10 @@ rustok-notifications = { workspace = true, optional = true }
 rustok-pages     = { workspace = true, optional = true }
 rustok-docs      = { workspace = true, optional = true }
 rustok-messenger = { workspace = true, optional = true }
+rustok-finance = { workspace = true, optional = true }
+rustok-billing = { workspace = true, optional = true }
+rustok-deal = { workspace = true, optional = true }
+rustok-party = { workspace = true, optional = true }
 rustok-forms-module = { workspace = true, optional = true }
 rustok-newsletter = { workspace = true, optional = true }
 rustok-navigation = { workspace = true, optional = true }
@@ -282,5 +290,5 @@ rustok-manifest = { workspace = true, default-features = false }
 
 [package.metadata.cargo-udeps.ignore]
 development = ["serial_test"]
-normal = ["rustok-rbac", "rustok-tenant", "rustok-docs"]
+normal = ["rustok-rbac", "rustok-tenant", "rustok-docs", "rustok-party", "rustok-deal", "rustok-billing", "rustok-finance"]
 

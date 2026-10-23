@@ -13575,6 +13575,7 @@ dependencies = [
  "rustok-ai-admin",
  "rustok-api",
  "rustok-auth-admin",
+ "rustok-billing-admin",
  "rustok-blog-admin",
  "rustok-brand-admin",
  "rustok-build",
@@ -13586,7 +13587,9 @@ dependencies = [
  "rustok-commerce-admin",
  "rustok-core",
  "rustok-customer-admin",
+ "rustok-deal-admin",
  "rustok-events-admin",
+ "rustok-finance-admin",
  "rustok-forms",
  "rustok-forms-admin",
  "rustok-forum-admin",
@@ -13611,6 +13614,7 @@ dependencies = [
  "rustok-outbox-admin",
  "rustok-page-builder-admin",
  "rustok-pages-admin",
+ "rustok-party-admin",
  "rustok-pricing-admin",
  "rustok-product-admin",
  "rustok-product-bundles-admin",
@@ -13986,6 +13990,52 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-billing"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "rustok-core",
+ "rustok-outbox",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-billing-admin"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos",
+ "leptos-auth",
+ "leptos-ui",
+ "leptos-ui-routing",
+ "leptos_axum",
+ "leptos_router",
+ "rustok-api",
+ "rustok-billing",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-grid",
+ "rustok-grid-leptos",
+ "rustok-ui-core",
+ "rustok-ui-i18n",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
  "uuid",
 ]
 
@@ -14715,6 +14765,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-deal"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "rustok-core",
+ "rustok-outbox",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-deal-admin"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos",
+ "leptos-auth",
+ "leptos-ui",
+ "leptos-ui-routing",
+ "leptos_axum",
+ "leptos_router",
+ "rustok-api",
+ "rustok-core",
+ "rustok-deal",
+ "rustok-graphql",
+ "rustok-grid",
+ "rustok-grid-leptos",
+ "rustok-ui-core",
+ "rustok-ui-i18n",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-distribution"
 version = "0.1.0"
 dependencies = [
@@ -14729,6 +14825,7 @@ dependencies = [
  "rustok-ai-translation",
  "rustok-api",
  "rustok-auth",
+ "rustok-billing",
  "rustok-blog",
  "rustok-brand",
  "rustok-cache",
@@ -14740,9 +14837,11 @@ dependencies = [
  "rustok-content-orchestration",
  "rustok-core",
  "rustok-customer",
+ "rustok-deal",
  "rustok-docs",
  "rustok-email",
  "rustok-events-module",
+ "rustok-finance",
  "rustok-forms-module",
  "rustok-forum",
  "rustok-fulfillment",
@@ -14767,6 +14866,7 @@ dependencies = [
  "rustok-outbox",
  "rustok-page-builder",
  "rustok-pages",
+ "rustok-party",
  "rustok-payment",
  "rustok-pricing",
  "rustok-product",
@@ -14892,6 +14992,52 @@ dependencies = [
  "rustok-api",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "rustok-finance"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "rustok-core",
+ "rustok-outbox",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-finance-admin"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos",
+ "leptos-auth",
+ "leptos-ui",
+ "leptos-ui-routing",
+ "leptos_axum",
+ "leptos_router",
+ "rustok-api",
+ "rustok-core",
+ "rustok-finance",
+ "rustok-graphql",
+ "rustok-grid",
+ "rustok-grid-leptos",
+ "rustok-ui-core",
+ "rustok-ui-i18n",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -16521,6 +16667,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-party"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "rustok-core",
+ "rustok-outbox",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-party-admin"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos",
+ "leptos-auth",
+ "leptos-ui",
+ "leptos-ui-routing",
+ "leptos_axum",
+ "leptos_router",
+ "rustok-api",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-grid",
+ "rustok-grid-leptos",
+ "rustok-party",
+ "rustok-ui-core",
+ "rustok-ui-i18n",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-payment"
 version = "0.1.0"
 dependencies = [
@@ -17443,6 +17635,7 @@ dependencies = [
  "rustok-ai",
  "rustok-api",
  "rustok-auth",
+ "rustok-billing",
  "rustok-blog",
  "rustok-brand",
  "rustok-build",
@@ -17455,10 +17648,12 @@ dependencies = [
  "rustok-content-orchestration",
  "rustok-core",
  "rustok-customer",
+ "rustok-deal",
  "rustok-distribution",
  "rustok-docs",
  "rustok-email",
  "rustok-events",
+ "rustok-finance",
  "rustok-forms-module",
  "rustok-forum",
  "rustok-fulfillment",
@@ -17493,6 +17688,7 @@ dependencies = [
  "rustok-page-builder",
  "rustok-pages",
  "rustok-pages-storefront",
+ "rustok-party",
  "rustok-payment",
  "rustok-pricing",
  "rustok-product",

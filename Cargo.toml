@@ -84,6 +84,10 @@ members = [
     "crates/modules/rustok-cache/admin",
     "crates/modules/rustok-product-relations/admin",
     "crates/modules/rustok-product-bundles/admin",
+    "crates/modules/rustok-party/admin",
+    "crates/modules/rustok-deal/admin",
+    "crates/modules/rustok-billing/admin",
+    "crates/modules/rustok-finance/admin",
     "tests/e2e-rust",
     "UI/leptos",
     "ops/benches",
@@ -130,6 +134,10 @@ description = "High-performance, modular headless CMS and e-commerce platform bu
 repository = "https://github.com/RusTokRs/RusTok"
 
 [workspace.dependencies]
+rustok-finance = { path = "crates/modules/rustok-finance" }
+rustok-billing = { path = "crates/modules/rustok-billing" }
+rustok-deal = { path = "crates/modules/rustok-deal" }
+rustok-party = { path = "crates/modules/rustok-party" }
 # Async Runtime
 tokio = { version = "1.52", features = ["full"] }
 

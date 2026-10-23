@@ -135,6 +135,10 @@ integration. The canonical source of truth here is only manifest wiring.
   Translation Memory workflows, and URL-owned `tab`, `glossary_id`, and
   `memory_entry_id` selection.
 
+- `rustok-party` admin UI: [README](../../crates/modules/rustok-party/admin/README.md)
+- `rustok-deal` admin UI: [README](../../crates/modules/rustok-deal/admin/README.md)
+- `rustok-billing` admin UI: [README](../../crates/modules/rustok-billing/admin/README.md)
+- `rustok-finance` admin UI: [README](../../crates/modules/rustok-finance/admin/README.md)
 ### Optional/Storefront Surfaces
 
 - `rustok-notifications` storefront UI: [README](../../crates/modules/rustok-notifications/storefront/README.md)

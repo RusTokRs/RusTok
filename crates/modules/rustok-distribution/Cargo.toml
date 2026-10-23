@@ -34,6 +34,10 @@ mod-accounting = ["dep:rustok-accounting"]
 mod-moderation = ["dep:rustok-moderation"]
 mod-content = ["dep:rustok-content", "rustok-content/graphql", "rustok-content-orchestration/mod-content"]
 mod-blog = ["dep:rustok-blog", "dep:rustok-content", "mod-content", "mod-taxonomy", "rustok-content-orchestration/mod-blog"]
+mod-finance = ["dep:rustok-finance"]
+mod-billing = ["dep:rustok-billing"]
+mod-deal = ["dep:rustok-deal"]
+mod-party = ["dep:rustok-party"]
 mod-reactions = ["dep:rustok-reactions"]
 mod-forum = ["dep:rustok-forum", "mod-content", "mod-taxonomy", "mod-page_builder", "rustok-content-orchestration/mod-forum"]
 mod-notifications = ["dep:rustok-notifications"]
@@ -56,6 +60,10 @@ mod-ai = ["dep:rustok-ai", "rustok-ai/server"]
 ai-translation = ["mod-ai", "mod-translation", "dep:rustok-ai-translation"]
 
 [dependencies]
+rustok-finance = { workspace = true, optional = true }
+rustok-billing = { workspace = true, optional = true }
+rustok-deal = { workspace = true, optional = true }
+rustok-party = { workspace = true, optional = true }
 async-trait.workspace = true
 chrono = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }

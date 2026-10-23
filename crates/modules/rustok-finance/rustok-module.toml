@@ -1,0 +1,29 @@
+[module]
+slug = "finance"
+name = "Operational Finance & Cash Desks"
+version = "0.1.0"
+description = "Operational Finance & Cash Desks capability module for RusToK"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "admin_only"
+recommended_admin_surfaces = ["leptos-admin"]
+
+[marketplace]
+category = "fintech"
+tags = ["finance"]
+
+[dependencies]
+outbox = { version_req = ">=0.1.0" }
+
+[crate]
+entry_type = "FinanceModule"
+
+[provides.admin_ui]
+leptos_crate = "rustok-finance-admin"
+route_segment = "finance"
+nav_label = "Operational Finance & Cash Desks"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"

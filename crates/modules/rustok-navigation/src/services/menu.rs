@@ -26,6 +26,7 @@ pub const MENU_TRANSLATION_INTEGRITY_ERROR_CODE: &str = "MENU_TRANSLATION_INTEGR
 
 const MAX_MENU_NAME_CHARS: usize = 255;
 const MAX_MENU_ITEM_TITLE_CHARS: usize = 255;
+const MAX_MENU_DEPTH: usize = 16;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ApplyExactMenuTranslationInput {
@@ -64,6 +65,19 @@ impl MenuService {
         effective_locale: &str,
         input: CreateMenuInput,
     ) -> NavigationResult<MenuResponse> {
+        if tenant_id.is_nil() {
+            return Err(NavigationError::validation("Tenant ID must not be nil"));
+        }
+        if input.translations.len() > 50 {
+            return Err(NavigationError::validation(
+                "Menu cannot have more than 50 translation locales",
+            ));
+        }
+        if input.items.len() > 1000 {
+            return Err(NavigationError::validation(
+                "Menu cannot have more than 1000 top-level items",
+            ));
+        }
         enforce_scope(&security, Resource::Navigation, Action::Create)?;
         let effective_locale = normalize_effective_locale(effective_locale)?;
         let translations = normalize_menu_translations(input.translations)?;
@@ -189,6 +203,12 @@ impl MenuService {
         menu_id: Uuid,
         input: ApplyExactMenuTranslationInput,
     ) -> NavigationResult<MenuTranslationApplyResult> {
+        if tenant_id.is_nil() {
+            return Err(NavigationError::validation("Tenant ID must not be nil"));
+        }
+        if menu_id.is_nil() {
+            return Err(NavigationError::validation("Menu ID must not be nil"));
+        }
         if input.source_locale == input.target_locale {
             return Err(NavigationError::validation(
                 "Source and target locales must differ for an exact menu translation",
@@ -414,6 +434,12 @@ impl MenuService {
         menu_id: Uuid,
         effective_locale: &str,
     ) -> NavigationResult<MenuResponse> {
+        if tenant_id.is_nil() {
+            return Err(NavigationError::validation("Tenant ID must not be nil"));
+        }
+        if menu_id.is_nil() {
+            return Err(NavigationError::validation("Menu ID must not be nil"));
+        }
         enforce_scope(&security, Resource::Navigation, Action::Read)?;
         let effective_locale = normalize_effective_locale(effective_locale)?;
         let menu = menu::Entity::find_by_id(menu_id)
@@ -457,6 +483,12 @@ impl MenuService {
         menu_id: Uuid,
         effective_locale: &str,
     ) -> NavigationResult<Vec<MenuItemResponse>> {
+        if tenant_id.is_nil() {
+            return Err(NavigationError::validation("Tenant ID must not be nil"));
+        }
+        if menu_id.is_nil() {
+            return Err(NavigationError::validation("Menu ID must not be nil"));
+        }
         let items = menu_item::Entity::find()
             .filter(menu_item::Column::TenantId.eq(tenant_id))
             .filter(menu_item::Column::MenuId.eq(menu_id))
@@ -552,6 +584,24 @@ fn normalize_menu_item(
     input: MenuItemInput,
     menu_locales: &BTreeSet<String>,
 ) -> NavigationResult<PreparedMenuItem> {
+    normalize_menu_item_with_depth(input, menu_locales, 1)
+}
+
+fn normalize_menu_item_with_depth(
+    input: MenuItemInput,
+    menu_locales: &BTreeSet<String>,
+    depth: usize,
+) -> NavigationResult<PreparedMenuItem> {
+    if depth > MAX_MENU_DEPTH {
+        return Err(NavigationError::validation(format!(
+            "Menu item hierarchy exceeds maximum allowed depth of {MAX_MENU_DEPTH}"
+        )));
+    }
+    if input.position < 0 {
+        return Err(NavigationError::validation(
+            "Menu item position cannot be negative",
+        ));
+    }
     if input.translations.is_empty() {
         return Err(NavigationError::validation(
             "Every menu item requires translations",
@@ -599,7 +649,7 @@ fn normalize_menu_item(
         .children
         .unwrap_or_default()
         .into_iter()
-        .map(|child| normalize_menu_item(child, menu_locales))
+        .map(|child| normalize_menu_item_with_depth(child, menu_locales, depth + 1))
         .collect::<NavigationResult<Vec<_>>>()?;
 
     Ok(PreparedMenuItem {
