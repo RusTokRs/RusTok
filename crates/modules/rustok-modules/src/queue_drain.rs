@@ -168,13 +168,20 @@ impl ArtifactQueueDrainService {
             .await
             .map_err(storage_error)?;
 
+        // A COUNT(*) probe always yields exactly one row; a missing row or
+        // failed decode is a storage defect, never evidence that the queue
+        // is empty. Masking it as 0 would certify a drained queue that may
+        // still hold pending work.
         let remaining_events: i64 = remaining_events_row
-            .and_then(|r| r.try_get("", "count").ok())
-            .unwrap_or(0);
+            .ok_or_else(|| storage_error("remaining event count query returned no row"))?
+            .try_get("", "count")
+            .map_err(storage_error)?;
         let remaining_schedules: i64 = remaining_schedules_row
-            .and_then(|r| r.try_get("", "count").ok())
-            .unwrap_or(0);
-        let remaining_pending = (remaining_events + remaining_schedules) as u64;
+            .ok_or_else(|| storage_error("remaining schedule count query returned no row"))?
+            .try_get("", "count")
+            .map_err(storage_error)?;
+        let remaining_pending =
+            u64::try_from(remaining_events + remaining_schedules).map_err(storage_error)?;
 
         transaction.commit().await.map_err(storage_error)?;
 

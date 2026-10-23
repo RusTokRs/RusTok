@@ -107,6 +107,18 @@ impl SupportedBackend {
         }
     }
 
+    /// [`Self::datetime_value`] for nullable timestamp columns.
+    pub(crate) fn optional_datetime_value(
+        self,
+        value: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Value {
+        match (self, value) {
+            (Self::Postgres, value) => Value::ChronoDateTimeUtc(value),
+            (Self::Sqlite, Some(value)) => value.to_rfc3339().into(),
+            (Self::Sqlite, None) => Value::String(None),
+        }
+    }
+
     pub(crate) fn uuid_value(self, value: Uuid) -> Value {
         match self {
             Self::Postgres => Value::Uuid(Some(value)),

@@ -73,8 +73,7 @@ impl SeaOrmArtifactBindingExecutionAuditReader {
                 backend.db_backend(),
                 format!(
                     "SELECT CAST(execution_id AS TEXT) AS execution_id, status, \
-                     CAST(started_at AS TEXT) AS started_at, \
-                     CAST(finished_at AS TEXT) AS finished_at, duration_ms, error_code \
+                     started_at, finished_at, duration_ms, error_code \
                      FROM module_artifact_execution_audit \
                      WHERE tenant_id = {} AND installation_id = {} AND binding_id = {} \
                      ORDER BY started_at DESC, execution_id DESC LIMIT {}",
@@ -93,7 +92,9 @@ impl SeaOrmArtifactBindingExecutionAuditReader {
             .await
             .map_err(storage_error)?;
         transaction.commit().await.map_err(storage_error)?;
-        rows.into_iter().map(audit_entry_from_row).collect()
+        rows.into_iter()
+            .map(|row| audit_entry_from_row(row, backend))
+            .collect()
     }
 }
 
@@ -102,9 +103,9 @@ impl SeaOrmArtifactExecutionObserver {
         Self { db }
     }
 
-    async fn persist(&self, record: &ExecutionRecord) -> Result<(), ()> {
+    async fn persist(&self, record: &ExecutionRecord) -> SandboxResult<()> {
         if record.execution_id.is_nil() || record.context.execution_id != record.execution_id {
-            return Err(());
+            return Err(audit_error("execution id is nil or inconsistent"));
         }
         let SandboxSubject::ModuleArtifact {
             installation_id,
@@ -113,7 +114,7 @@ impl SeaOrmArtifactExecutionObserver {
             digest,
         } = &record.subject
         else {
-            return Err(());
+            return Err(audit_error("execution subject is not a module artifact"));
         };
         if installation_id.is_nil()
             || slug.trim().is_empty()
@@ -137,16 +138,24 @@ impl SeaOrmArtifactExecutionObserver {
                 .as_ref()
                 .is_some_and(|code| code.len() > 96)
         {
-            return Err(());
+            return Err(audit_error("execution record identity or labels are invalid"));
         }
 
-        let transaction = self.db.begin().await.map_err(|_| ())?;
-        if let Some(tenant_id) = record.context.tenant_id {
-            configure_tenant_scope(&transaction, tenant_id)
-                .await
-                .map_err(|_| ())?;
+        let transaction = self.db.begin().await.map_err(audit_error)?;
+        match record.context.tenant_id {
+            Some(tenant_id) => {
+                configure_tenant_scope(&transaction, tenant_id)
+                    .await
+                    .map_err(audit_error)?;
+            }
+            None => {
+                crate::backend::set_platform_scope(&transaction)
+                    .await
+                    .map_err(audit_error)?;
+            }
         }
-        let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(|_| ())?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(audit_error)?;
         match record.status {
             ExecutionStatus::Started => {
                 let columns = "execution_id, tenant_id, installation_id, module_slug, module_version, artifact_digest, executor, phase, actor_id, trace_id, binding_id, status, started_at";
@@ -174,11 +183,11 @@ impl SeaOrmArtifactExecutionObserver {
                             optional_string_value(record.context.trace_id.clone()),
                             optional_string_value(record.context.audit_label.clone()),
                             "started".into(),
-                            record.started_at.to_rfc3339().into(),
+                            backend.datetime_value(record.started_at),
                         ],
                     ))
                     .await
-                    .map_err(|_| ())?;
+                    .map_err(audit_error)?;
             }
             ExecutionStatus::Succeeded | ExecutionStatus::Failed => {
                 let updated = transaction
@@ -204,7 +213,7 @@ impl SeaOrmArtifactExecutionObserver {
                         ),
                         vec![
                             status_name(record).into(),
-                            optional_timestamp_value(record.finished_at),
+                            backend.optional_datetime_value(record.finished_at),
                             optional_metric_value(
                                 record.metrics.as_ref().map(|value| value.queue_time_ms),
                             )?,
@@ -237,19 +246,47 @@ impl SeaOrmArtifactExecutionObserver {
                         ],
                     ))
                     .await
-                    .map_err(|_| ())?;
+                    .map_err(audit_error)?;
                 if updated.rows_affected() != 1 {
-                    return Err(());
+                    return Err(audit_error(
+                        "execution finish did not match a started audit row",
+                    ));
                 }
             }
         }
-        transaction.commit().await.map_err(|_| ())?;
+        transaction.commit().await.map_err(audit_error)?;
         Ok(())
+    }
+}
+
+/// Decodes an audit timestamp in its backend-native representation and
+/// re-emits canonical RFC 3339, so the wire value does not depend on the
+/// backend's text casting of timestamps.
+fn audit_timestamp(
+    row: &sea_orm::QueryResult,
+    backend: SupportedBackend,
+    column: &str,
+) -> Result<Option<String>, ArtifactBindingExecutionAuditError> {
+    match backend {
+        SupportedBackend::Postgres => row
+            .try_get::<Option<chrono::DateTime<chrono::Utc>>>("", column)
+            .map(|value| value.map(|timestamp| timestamp.to_rfc3339()))
+            .map_err(storage_error),
+        SupportedBackend::Sqlite => row
+            .try_get::<Option<String>>("", column)
+            .map_err(storage_error)?
+            .map(|value| {
+                crate::backend::parse_sqlite_datetime(&value, column)
+                    .map(|timestamp| timestamp.to_rfc3339())
+                    .map_err(storage_error)
+            })
+            .transpose(),
     }
 }
 
 fn audit_entry_from_row(
     row: sea_orm::QueryResult,
+    backend: SupportedBackend,
 ) -> Result<ArtifactBindingExecutionAuditEntry, ArtifactBindingExecutionAuditError> {
     let execution_id = row
         .try_get::<String>("", "execution_id")
@@ -263,8 +300,10 @@ fn audit_entry_from_row(
     Ok(ArtifactBindingExecutionAuditEntry {
         execution_id,
         status: row.try_get("", "status").map_err(storage_error)?,
-        started_at: row.try_get("", "started_at").map_err(storage_error)?,
-        finished_at: row.try_get("", "finished_at").map_err(storage_error)?,
+        started_at: audit_timestamp(&row, backend, "started_at")?.ok_or_else(|| {
+            storage_error("execution audit row is missing its start timestamp")
+        })?,
+        finished_at: audit_timestamp(&row, backend, "finished_at")?,
         duration_ms,
         error_code: row.try_get("", "error_code").map_err(storage_error)?,
     })
@@ -273,11 +312,7 @@ fn audit_entry_from_row(
 #[async_trait]
 impl ExecutionObserver for SeaOrmArtifactExecutionObserver {
     async fn observe(&self, record: &ExecutionRecord) -> SandboxResult<()> {
-        self.persist(record).await.map_err(|_| {
-            SandboxError::AuditUnavailable(
-                "artifact execution audit persistence failed".to_string(),
-            )
-        })
+        self.persist(record).await
     }
 }
 
@@ -315,17 +350,15 @@ fn optional_string_value(value: Option<String>) -> SqlValue {
     value.map_or(SqlValue::String(None), Into::into)
 }
 
-fn optional_timestamp_value(value: Option<chrono::DateTime<chrono::Utc>>) -> SqlValue {
-    value.map_or(SqlValue::String(None), |timestamp| {
-        timestamp.to_rfc3339().into()
-    })
-}
-
-fn optional_metric_value(value: Option<u64>) -> Result<SqlValue, ()> {
+fn optional_metric_value(value: Option<u64>) -> SandboxResult<SqlValue> {
     match value {
-        Some(value) => i64::try_from(value).map(SqlValue::from).map_err(|_| ()),
+        Some(value) => i64::try_from(value).map(SqlValue::from).map_err(audit_error),
         None => Ok(SqlValue::BigInt(None)),
     }
+}
+
+fn audit_error<E: std::fmt::Display>(error: E) -> SandboxError {
+    SandboxError::AuditUnavailable(error.to_string())
 }
 
 fn storage_error(error: impl std::fmt::Display) -> ArtifactBindingExecutionAuditError {
