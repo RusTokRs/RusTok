@@ -21,6 +21,12 @@ impl NewsletterQuery {
     ) -> Result<GqlSubscriber> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
         let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
+        if tenant_id.is_nil() {
+            return Err(Error::new("tenant_id must not be nil"));
+        }
+        if id.is_nil() {
+            return Err(Error::new("id must not be nil"));
+        }
 
         let service = SubscriberService::new(runtime.db.clone());
         let response = service
@@ -43,10 +49,13 @@ impl NewsletterQuery {
     ) -> Result<GqlSubscriberList> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
         let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
+        if tenant_id.is_nil() {
+            return Err(Error::new("tenant_id must not be nil"));
+        }
 
         let query = SubscriberListQuery {
-            page: page.map(|p| p as u64),
-            per_page: per_page.map(|p| p as u64),
+            page: page.filter(|&p| p > 0).map(|p| p as u64),
+            per_page: per_page.filter(|&p| p > 0).map(|p| p as u64),
             status: status.map(Into::into),
             search,
         };
@@ -74,6 +83,12 @@ impl NewsletterQuery {
     ) -> Result<GqlCampaign> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
         let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
+        if tenant_id.is_nil() {
+            return Err(Error::new("tenant_id must not be nil"));
+        }
+        if id.is_nil() {
+            return Err(Error::new("id must not be nil"));
+        }
 
         let service = CampaignService::new(runtime.db.clone());
         let response = service
@@ -95,10 +110,13 @@ impl NewsletterQuery {
     ) -> Result<GqlCampaignList> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
         let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
+        if tenant_id.is_nil() {
+            return Err(Error::new("tenant_id must not be nil"));
+        }
 
         let query = CampaignListQuery {
-            page: page.map(|p| p as u64),
-            per_page: per_page.map(|p| p as u64),
+            page: page.filter(|&p| p > 0).map(|p| p as u64),
+            per_page: per_page.filter(|&p| p > 0).map(|p| p as u64),
             status: status.map(Into::into),
         };
 
