@@ -1,5 +1,12 @@
 # rustok-pricing / CRATE_API
 
+## Public Modules
+- `entities`: SeaORM entity re-exports for prices and price lists.
+- `migrations`: SeaORM migration definitions for pricing schemas.
+- `module`: Core `PricingModule` definition and platform registration.
+- `ports`: Pricing read and write port traits and request snapshots.
+- `services`: Domain services for pricing calculation, price lists, and translations.
+
 ## Platform Capability Bindings
 - `PricingModule` implements `rustok_core::module::RusToKModule` and `MigrationSource`.
 - Declared as `ModuleKind::Optional`.

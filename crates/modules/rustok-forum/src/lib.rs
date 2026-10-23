@@ -289,6 +289,9 @@ pub use topic_create_transport::{topic_create_audience_port_context, ForumTopicC
 pub use topic_read_transport::{
     topic_read_audience_port_context, ForumTopicReadOperation, ForumTopicReadTransport,
 };
+pub use entities::{
+    forum_category, forum_reply, forum_topic, forum_topic_tag, forum_topic_translation,
+};
 pub use visibility::ForumCategoryVisibility;
 
 #[cfg(test)]

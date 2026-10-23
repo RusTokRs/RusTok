@@ -85,72 +85,9 @@ pub use reader::ProfilesReader;
 pub use services::{MAX_PROFILE_HANDLE_BATCH, ProfileBackfillResult, ProfileService};
 
 #[cfg(feature = "server")]
-pub struct ProfilesModule;
-
+pub mod module;
 #[cfg(feature = "server")]
-#[async_trait::async_trait]
-impl rustok_core::RusToKModule for ProfilesModule {
-    fn slug(&self) -> &'static str {
-        "profiles"
-    }
-
-    fn name(&self) -> &'static str {
-        "Profiles"
-    }
-
-    fn description(&self) -> &'static str {
-        "Universal public profile domain for platform users"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn dependencies(&self) -> &[&'static str] {
-        &["media", "social_graph", "taxonomy"]
-    }
-
-    fn permissions(&self) -> Vec<rustok_api::Permission> {
-        vec![
-            rustok_api::Permission::PROFILES_CREATE,
-            rustok_api::Permission::PROFILES_READ,
-            rustok_api::Permission::PROFILES_UPDATE,
-            rustok_api::Permission::PROFILES_DELETE,
-            rustok_api::Permission::PROFILES_LIST,
-            rustok_api::Permission::PROFILES_MANAGE,
-        ]
-    }
-}
-
-#[cfg(feature = "server")]
-impl rustok_core::MigrationSource for ProfilesModule {
-    fn migrations(&self) -> Vec<Box<dyn sea_orm_migration::MigrationTrait>> {
-        migrations::migrations()
-    }
-
-    fn migration_dependencies(&self) -> Vec<rustok_core::MigrationDependencyDescriptor> {
-        migrations::migration_dependencies()
-    }
-}
+pub use module::ProfilesModule;
 
 #[cfg(all(test, feature = "server"))]
-mod tests {
-    use super::*;
-    use rustok_api::{Action, Permission, Resource};
-    use rustok_core::RusToKModule;
-
-    #[test]
-    fn profiles_permissions_cover_crud_and_list() {
-        let permissions = ProfilesModule.permissions();
-        for action in [
-            Action::Create,
-            Action::Read,
-            Action::Update,
-            Action::Delete,
-            Action::List,
-            Action::Manage,
-        ] {
-            assert!(permissions.contains(&Permission::new(Resource::Profiles, action)));
-        }
-    }
-}
+mod contract_tests;

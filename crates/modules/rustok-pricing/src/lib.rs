@@ -1,3 +1,9 @@
+//! # RusToK Pricing
+//!
+//! Pricing domain module extracted from commerce.
+//! Provides price resolution, currency rules, discount calculation, price list management,
+//! and transactional translation change tracking.
+
 #![deny(clippy::float_arithmetic)]
 
 pub mod entities {

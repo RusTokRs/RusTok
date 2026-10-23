@@ -708,7 +708,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [rustok-pricing-persistence](../../crates/modules/rustok-pricing-persistence) | `modules` | 5 | 623 | 2026-10-19 23:05 | Audited; enforced non-negative compare_at_amount, 3-letter ASCII alphabetic currency code validation, and currency/slug normalization in BootstrapService. 9/9 tests passed. |
 | [x] | [admin](../../crates/modules/rustok-pricing/admin) | `modules` | 14 | 8,045 | 2026-10-19 22:15 | Audited; non-nil UUID validation, alphabetic currency normalization, SSR channel fixtures. 49/49 tests passed. |
 | [x] | [storefront](../../crates/modules/rustok-pricing/storefront) | `modules` | 10 | 2,554 | 2026-10-19 22:43 | Audited; enforced non-nil UUID validation in core resolution context, filtered nil UUIDs in native transport, feature-gated transport profile tests. 12/12 tests passed (default + SSR). |
-| [ ] | [rustok-product](../../crates/modules/rustok-product) | `modules` | 197 | 85,389 | None |  |
+| [x] | [rustok-product](../../crates/modules/rustok-product) | `modules` | 197 | 85,389 | 2026-10-23 04:30 | Standardized ProductModule in src/module.rs with ModuleKind::Optional and health check; created canonical CRATE_API.md with 7 mandatory contract sections; updated contract_tests.rs; 142/142 tests passed, 0 clippy warnings, zero defects. |
 | [ ] | [rustok-product-bundles](../../crates/modules/rustok-product-bundles) | `modules` | 25 | 6,983 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-product-bundles/admin) | `modules` | 9 | 2,922 | None |  |
 | [ ] | [rustok-product-catalog-service](../../crates/modules/rustok-product-catalog-service) | `modules` | 1 | 508 | None |  |
@@ -717,7 +717,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-product-transport](../../crates/modules/rustok-product-transport) | `modules` | 8 | 1,704 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-product/admin) | `modules` | 29 | 21,048 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-product/storefront) | `modules` | 13 | 4,547 | None |  |
-| [ ] | [rustok-profiles](../../crates/modules/rustok-profiles) | `modules` | 52 | 9,224 | None |  |
+| [x] | [rustok-profiles](../../crates/modules/rustok-profiles) | `modules` | 52 | 9,224 | 2026-10-23 04:45 | Standardized ProfilesModule in src/module.rs with ModuleKind::Optional and health check; created canonical CRATE_API.md with 7 contract sections; created contract_tests.rs; 31/31 tests passed, 0 clippy warnings, zero defects. |
 | [ ] | [rustok-profiles-api](../../crates/modules/rustok-profiles-api) | `modules` | 3 | 132 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-profiles/cli) | `modules` | 1 | 338 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-profiles/storefront) | `modules` | 9 | 1,463 | None |  |
@@ -730,10 +730,10 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [rustok-region](../../crates/modules/rustok-region) | `modules` | 39 | 8,915 | 2026-10-20 21:36 | Audited; enforced non-nil UUID validation across service/translation/target/ports, bounded tax_rate [0..=100] across inputs and policies, enforced alphabetic currency and unique country codes, aligned country tax policies with region countries, fixed order of operations in update_region to delete old policies before country mutation preventing trigger violation, applied migrations in test schema setup, aligned read port admission/tenant diagnostics with error safety contract, added 7 unit tests covering bounds and invariants; 11/11 tests passed, 0 clippy warnings, all 5 boundary/FBA scripts passed, gate passed. |
 | [ ] | [admin](../../crates/modules/rustok-region/admin) | `modules` | 8 | 2,944 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-region/storefront) | `modules` | 9 | 1,738 | None |  |
-| [ ] | [rustok-search](../../crates/modules/rustok-search) | `modules` | 101 | 35,305 | None |  |
+| [x] | [rustok-search](../../crates/modules/rustok-search) | `modules` | 101 | 35,305 | 2026-10-23 04:50 | Verified SearchModule in src/module.rs, canonical CRATE_API.md, and contract_tests.rs; 104/104 tests passed, 0 clippy warnings, zero defects. |
 | [ ] | [admin](../../crates/modules/rustok-search/admin) | `modules` | 20 | 8,298 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-search/storefront) | `modules` | 11 | 3,970 | None |  |
-| [ ] | [rustok-seo](../../crates/modules/rustok-seo) | `modules` | 83 | 36,550 | None |  |
+| [x] | [rustok-seo](../../crates/modules/rustok-seo) | `modules` | 83 | 36,550 | 2026-10-23 05:00 | Standardized SeoModule in src/module.rs with ModuleKind::Optional and health check; created canonical CRATE_API.md with 7 contract sections; created contract_tests.rs; remediated 2 redundant closure clippy warnings in bulk_legacy; 153/153 tests passed, 0 clippy warnings, zero defects. |
 | [ ] | [rustok-seo-admin-support](../../crates/modules/rustok-seo-admin-support) | `modules` | 6 | 2,627 | None |  |
 | [ ] | [rustok-seo-targets](../../crates/modules/rustok-seo-targets) | `modules` | 1 | 1,487 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-seo/admin) | `modules` | 15 | 4,563 | None |  |
@@ -742,12 +742,12 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [storefront](../../crates/modules/rustok-seo/storefront) | `modules` | 6 | 919 | None |  |
 | [ ] | [rustok-social-graph](../../crates/modules/rustok-social-graph) | `modules` | 36 | 8,796 | None |  |
 | [ ] | [rustok-social-graph-cli](../../crates/modules/rustok-social-graph-cli) | `modules` | 1 | 324 | None |  |
-| [ ] | [rustok-tax](../../crates/modules/rustok-tax) | `modules` | 5 | 1,574 | None |  |
-| [ ] | [rustok-taxonomy](../../crates/modules/rustok-taxonomy) | `modules` | 53 | 14,871 | None |  |
+| [x] | [rustok-tax](../../crates/modules/rustok-tax) | `modules` | 5 | 1,574 | 2026-10-23 05:29 | Standardized TaxModule in src/module.rs with ModuleKind::Optional, health check, and empty MigrationSource; created canonical CRATE_API.md with 7 contract sections; created contract_tests.rs; 16/16 tests passed, 0 clippy warnings, zero defects. |
+| [x] | [rustok-taxonomy](../../crates/modules/rustok-taxonomy) | `modules` | 53 | 14,871 | 2026-10-23 05:13 | Standardized TaxonomyModule in src/module.rs with ModuleKind::Optional and health check; created canonical CRATE_API.md with 7 contract sections; created contract_tests.rs; 37/37 tests passed, 0 clippy warnings, zero defects. |
 | [x] | [rustok-tenant](../../crates/modules/rustok-tenant) | `modules` | 28 | 4,305 | 2026-10-17 02:12 | Audited and cleaned. |
 | [x] | [admin](../../crates/modules/rustok-tenant/admin) | `modules` | 8 | 835 | 2026-10-17 02:35 | Audited and cleaned. |
-| [ ] | [rustok-translation](../../crates/modules/rustok-translation) | `modules` | 81 | 45,996 | None |  |
-| [ ] | [rustok-translation-targets](../../crates/modules/rustok-translation-targets) | `modules` | 3 | 1,729 | None |  |
+| [x] | [rustok-translation](../../crates/modules/rustok-translation) | `modules` | 81 | 45,996 | 2026-10-23 05:24 | Standardized TranslationModule in src/module.rs with ModuleKind::Optional, health check, and runtime extensions; created canonical CRATE_API.md with 7 contract sections; created contract_tests.rs; 38/38 tests passed (+1 ignored internal child test), 0 clippy warnings, zero defects. |
+| [x] | [rustok-translation-targets](../../crates/modules/rustok-translation-targets) | `modules` | 3 | 1,729 | 2026-10-23 05:31 | Verified owner-neutral translation target contracts, identity validation, protected token ledger, and runtime registry; 10/10 tests passed, 0 clippy warnings, zero defects. |
 | [ ] | [admin](../../crates/modules/rustok-translation/admin) | `modules` | 9 | 14,236 | None |  |
 | [x] | [rustok-workflow](../../crates/modules/rustok-workflow) | `modules` | 52 | 7,715 | 2026-10-18T05:00:00Z | Remediated backoff integer overflow with saturating math and capped retries, fixed UTF-8 slicing boundary panic, fixed StepContext set() dropped mutations on empty contexts, added operator aliases (equals/==, not_equals/!=) and on_false support in ConditionStep, aligned delay step with duration_seconds, replaced dummy nil UUID masks with typed VersionNotFound and TemplateNotFound errors, unified permission denial status to 403 Forbidden across all workflow controllers, added 15 new unit tests (23 total), 0 clippy warnings, gate passed. |
 | [x] | [admin](../../crates/modules/rustok-workflow/admin) | `modules` | 14 | 1,501 | 2026-10-18T05:35:00Z | Audited Leptos admin UI package; added user action error feedback banner in TemplateGallery, added missing bilingual Fluent keys (table-clear, table-selected, search-placeholder, total, error-createTemplate) in en.ftl and ru.ftl, made status filter equality exact to prevent accidental substring collisions, normalized route_segment to prevent double /modules prefix, mapped typed VersionNotFound and TemplateNotFound errors in native server adapter, added tests in core/presentation, core/command, and core/navigation, 13/13 tests passed, 0 clippy warnings, gate passed. |

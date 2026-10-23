@@ -20,4 +20,4 @@ This owner-local support crate holds Pricing ORM entities and the transaction-aw
 - `BootstrapService`
 - `InitialPrice`
 
-See the [Pricing module documentation](../rustok-pricing/docs/README.md).
+See also `docs/README.md` and [CRATE_API.md](CRATE_API.md).

@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Pricing-owned ORM entities and transaction-aware persistence bootstrap"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 rustok-core.workspace = true
 rust_decimal.workspace = true
