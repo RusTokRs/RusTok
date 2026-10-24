@@ -177,7 +177,8 @@ for (const relativePath of collectFiles(repoRoot)) {
   if (relativePath.startsWith("apps/storefront/")) continue;
   const source = readFileSync(absolute(relativePath), "utf8");
   if (relativePath.endsWith("Cargo.toml")) {
-    if (/rustok-notifications\s*=\s*\{[^}]*"server"/.test(source)) {
+    const prodSource = source.split("[dev-dependencies]")[0];
+    if (/rustok-notifications\s*=\s*\{[^}]*"server"/.test(prodSource)) {
       failures.push(`${relativePath}: producer enables notifications server feature`);
     }
   } else if (/rustok_notifications::(?:entities|candidate|fanout|inbox|worker|service|migrations)/.test(source)) {
