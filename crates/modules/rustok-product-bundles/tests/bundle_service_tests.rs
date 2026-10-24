@@ -158,12 +158,25 @@ async fn insert_test_variant(
     product_id: Uuid,
     variant_id: Uuid,
 ) {
-    db.execute_unprepared(&format!(
-        "INSERT INTO product_variants (id, product_id, tenant_id, created_at, updated_at) \
-         VALUES ('{variant_id}', '{product_id}', '{tenant_id}', 'now', 'now')"
-    ))
-    .await
-    .expect("Failed to insert test variant");
+    use rustok_product::entities::product_variant;
+    use sea_orm::{ActiveModelTrait, Set};
+
+    let variant = product_variant::ActiveModel {
+        id: Set(variant_id),
+        product_id: Set(product_id),
+        tenant_id: Set(tenant_id),
+        inventory_policy: Set("deny".to_string()),
+        inventory_management: Set("manual".to_string()),
+        inventory_quantity: Set(0),
+        position: Set(0),
+        created_at: Set(chrono::Utc::now().into()),
+        updated_at: Set(chrono::Utc::now().into()),
+        ..Default::default()
+    };
+    variant
+        .insert(db)
+        .await
+        .expect("Failed to insert test variant");
 }
 
 #[tokio::test]

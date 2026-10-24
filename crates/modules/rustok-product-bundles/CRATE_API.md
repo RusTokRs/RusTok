@@ -1,6 +1,8 @@
 # Product Bundles Crate API Specification
 
-## Public Modules
+## Public surface
+
+### Primary Public Modules
 - `dto`: Input and output data transfer objects (`CreateBundleInput`, `BundleItemInput`, `BundleDto`).
 - `entities`: SeaORM entity definitions for bundles, items, and translations.
 - `error`: Strongly typed domain error variants (`BundleError`, `BundleResult`).
