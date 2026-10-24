@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Profiles storefront page and follow controls"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [features]
 default = []
 hydrate = ["leptos/hydrate"]

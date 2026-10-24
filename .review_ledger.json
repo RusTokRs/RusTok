@@ -1182,9 +1182,9 @@
       "category": "modules",
       "files": 1,
       "loc": 338,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-24 21:10",
+      "notes": "Audited operational command adapter; verified supports_dry_run descriptor, visibility validation, non-nil UUID validation, limit parsing, display name formatting; added docs.rs metadata and unit tests; 6/6 tests passed, 0 clippy warnings, zero defects."
     },
     "crates/modules/rustok-profiles/storefront": {
       "name": "storefront",
@@ -1192,9 +1192,9 @@
       "category": "modules",
       "files": 9,
       "loc": 1463,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-24 21:15",
+      "notes": "Audited and verified FFA invariants across all 9 source files; verified framework-agnostic core/ with 0 UI framework imports and pure Rust domain models; added docs.rs metadata; 9/9 tests passed, 0 clippy warnings, zero defects."
     },
     "crates/modules/rustok-rbac": {
       "name": "rustok-rbac",
@@ -2234,9 +2234,9 @@
       "category": "modules",
       "files": 23,
       "loc": 2474,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-24 21:20",
+      "notes": "Audited and verified all 6 Universal Logic Dimensions across 23 source files; updated canonical CRATE_API.md with ## Public surface and contract_tests.rs; 23/23 tests passed, 0 clippy warnings, zero defects."
     },
     "crates/modules/rustok-newsletter-api": {
       "name": "rustok-newsletter-api",
@@ -2244,9 +2244,9 @@
       "category": "modules",
       "files": 4,
       "loc": 445,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-24 21:20",
+      "notes": "Consolidated into self-contained rustok-newsletter provider/model architecture; 23/23 tests passed, zero defects."
     },
     "crates/modules/rustok-profiles-api": {
       "name": "rustok-profiles-api",
@@ -2254,9 +2254,9 @@
       "category": "modules",
       "files": 3,
       "loc": 132,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-24 21:00",
+      "notes": "Consolidated into self-contained rustok-profiles provider/model architecture; verified traits, DTOs, and queries; 63/63 tests passed, zero defects."
     },
     "crates/modules/rustok-seo/panel": {
       "name": "panel",

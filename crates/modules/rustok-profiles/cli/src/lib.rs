@@ -336,3 +336,123 @@ fn command_failed(error: impl std::fmt::Display) -> CliCoreError {
         message: error.to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_customer::CustomerProfileEnrichment;
+    use serde_json::json;
+
+    #[test]
+    fn test_command_descriptor() {
+        let provider = ProfilesCommandProvider {
+            runtime: RuntimeComposition::without_database(json!({})),
+        };
+        let commands = provider.commands();
+        assert_eq!(commands.len(), 1);
+        let cmd = &commands[0];
+        assert_eq!(cmd.namespace, "profiles");
+        assert_eq!(cmd.name, "backfill");
+        assert!(cmd.supports_dry_run);
+    }
+
+    #[test]
+    fn test_flag_parsing() {
+        let map: serde_json::Map<String, serde_json::Value> = [
+            ("enabled_true".to_string(), json!("true")),
+            ("enabled_1".to_string(), json!("1")),
+            ("enabled_yes".to_string(), json!("yes")),
+            ("enabled_on".to_string(), json!("on")),
+            ("disabled_false".to_string(), json!("false")),
+            ("disabled_0".to_string(), json!("0")),
+        ]
+        .into_iter()
+        .collect();
+
+        assert!(flag(&map, "enabled_true"));
+        assert!(flag(&map, "enabled_1"));
+        assert!(flag(&map, "enabled_yes"));
+        assert!(flag(&map, "enabled_on"));
+        assert!(!flag(&map, "disabled_false"));
+        assert!(!flag(&map, "disabled_0"));
+        assert!(!flag(&map, "nonexistent"));
+    }
+
+    #[test]
+    fn test_visibility_parsing() {
+        let mut map = serde_json::Map::new();
+        assert_eq!(visibility(&map).unwrap(), ProfileVisibility::Authenticated);
+
+        map.insert("visibility".to_string(), json!("public"));
+        assert_eq!(visibility(&map).unwrap(), ProfileVisibility::Public);
+
+        map.insert("visibility".to_string(), json!("followers_only"));
+        assert_eq!(visibility(&map).unwrap(), ProfileVisibility::FollowersOnly);
+
+        map.insert("visibility".to_string(), json!("private"));
+        assert_eq!(visibility(&map).unwrap(), ProfileVisibility::Private);
+
+        map.insert("visibility".to_string(), json!("invalid"));
+        assert!(visibility(&map).is_err());
+    }
+
+    #[test]
+    fn test_required_uuid_parsing() {
+        let mut map = serde_json::Map::new();
+        assert!(required_uuid(&map, "tenant_id").is_err());
+
+        map.insert("tenant_id".to_string(), json!("not-a-uuid"));
+        assert!(required_uuid(&map, "tenant_id").is_err());
+
+        let id = Uuid::new_v4();
+        map.insert("tenant_id".to_string(), json!(id.to_string()));
+        assert_eq!(required_uuid(&map, "tenant_id").unwrap(), id);
+    }
+
+    #[test]
+    fn test_optional_u64_parsing() {
+        let mut map = serde_json::Map::new();
+        assert_eq!(optional_u64(&map, "limit").unwrap(), None);
+
+        map.insert("limit".to_string(), json!("100"));
+        assert_eq!(optional_u64(&map, "limit").unwrap(), Some(100));
+
+        map.insert("limit".to_string(), json!("not-a-number"));
+        assert!(optional_u64(&map, "limit").is_err());
+    }
+
+    #[test]
+    fn test_display_name_formatting() {
+        let item = CustomerProfileEnrichment {
+            user_id: Uuid::new_v4(),
+            first_name: Some(" Jane ".to_string()),
+            last_name: Some(" Doe ".to_string()),
+            preferred_locale: Some("en".to_string()),
+        };
+        assert_eq!(display_name(&item), Some("Jane Doe".to_string()));
+
+        let item_first_only = CustomerProfileEnrichment {
+            user_id: Uuid::new_v4(),
+            first_name: Some("Jane".to_string()),
+            last_name: None,
+            preferred_locale: None,
+        };
+        assert_eq!(display_name(&item_first_only), Some("Jane".to_string()));
+
+        let item_last_only = CustomerProfileEnrichment {
+            user_id: Uuid::new_v4(),
+            first_name: None,
+            last_name: Some("Doe".to_string()),
+            preferred_locale: None,
+        };
+        assert_eq!(display_name(&item_last_only), Some("Doe".to_string()));
+
+        let item_empty = CustomerProfileEnrichment {
+            user_id: Uuid::new_v4(),
+            first_name: Some("   ".to_string()),
+            last_name: None,
+            preferred_locale: None,
+        };
+        assert_eq!(display_name(&item_empty), None);
+    }
+}

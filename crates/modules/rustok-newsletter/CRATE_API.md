@@ -1,7 +1,10 @@
 # rustok-newsletter / CRATE_API
 
-## Public Modules
-`domain`, `dto`, `entities`, `error`, `graphql`, `migrations`, `module`, `ports`, `services`.
+## Public surface
+
+- Modules: `domain`, `dto`, `entities`, `error`, `graphql`, `migrations`, `model`, `module`, `ports`, `provider`, `services`.
+- Types: `NewsletterModule`, `SubscriberService`, `CampaignService`, `SubscriberPortImpl`, `CampaignPortImpl`, `ContentProviderRegistry`, `NewsletterError`, `NewsletterResult<T>`.
+- Core DTOs & Models: `SubscriberStatus`, `CampaignStatus`, `SubscribeInput`, `CreateCampaignInput`, `ScheduleCampaignInput`, `NewsletterContentItem`, `ContentFetchRequest`.
 
 ## Platform Capability Bindings
 - **Core Module Registration**: Exposes `NewsletterModule` implementing `RusToKModule` (slug `"newsletter"`, kind `ModuleKind::Optional`, dependencies `["email", "outbox"]`) and `MigrationSource`.
@@ -12,39 +15,12 @@
   - `CampaignService`: Campaign creation, content assembly, scheduling, dispatch, cancellation, and metrics.
   - `NewsletterCampaignPort`: Cross-module campaign scheduling and management.
 - **Content Aggregation**:
-  - Consumes `ContentProviderRegistry` from `rustok-newsletter-api` to pull dynamic digest content from Blog, Forum, and Products.
+  - `ContentProviderRegistry` / `NewsletterContentProvider`: Dynamic digest content aggregator for Blog, Forum, and Products.
 
 ## Domain Collaborations
 - **Core Platform**: Integrates with `rustok-core` module system and `rustok-api` port context and errors.
 - **`rustok-email`**: Transports confirmation emails, unsubscribe notices, and batched newsletter deliveries.
 - **`rustok-outbox`**: Emits transactional outbox events on subscriber status and campaign progression.
-- **`rustok-newsletter-api`**: Implements the neutral port and provider contracts for subscriber/campaign operations.
-
-## Primary Public Types and Signatures
-- `pub struct NewsletterModule`
-- `pub struct SubscriberService`
-- `pub struct CampaignService`
-- `pub struct SubscriberPortImpl`
-- `pub struct CampaignPortImpl`
-- `pub enum SubscriberStatus`
-- `pub enum CampaignStatus`
-- `pub struct SubscribeInput`
-- `pub struct CreateCampaignInput`
-- `pub struct ScheduleCampaignInput`
-- `pub enum NewsletterError`
-
-## Dependencies on Other RusToK Crates
-- `rustok-core`
-- `rustok-api`
-- `rustok-email`
-- `rustok-outbox`
-- `rustok-newsletter-api`
-
-## Common AI Mistakes
-- Permitting campaign editing after state has moved beyond `Draft` — only `Draft` campaigns are editable.
-- Allowing direct jumps from `Pending` to `Suppressed` or skipping confirmation token validation.
-- Sending unbatched mass emails synchronously in HTTP request threads instead of worker scheduling.
-- Missing tenant isolation on subscriber lookup or campaign dispatch.
 
 ## Minimum Contract Set
 

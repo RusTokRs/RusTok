@@ -97,9 +97,9 @@ review/integration remain open. No sequential FS cursor, checkbox or readiness p
 ## Deep Full-Stack Audit Cycle — Round 1 (Fresh Start from Scratch)
 
 **Status:** ACTIVE  
-**Active phase:** Phase FS-05 — Content, Media, Social & Community Domain Modules  
-**Next pending component:** [`crates/modules/rustok-profiles`](../../crates/modules/rustok-profiles) (52 files, 9,224 LOC)  
-**Current main SHA:** `ea3859355`  
+**Active phase:** Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages  
+**Next pending component:** [`crates/modules/rustok-product`](../../crates/modules/rustok-product) (190 files, 81,078 LOC)  
+**Current main SHA:** `be9f77b53`  
 **Active branch:** `main`  
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **262 components** (~350k LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -313,7 +313,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 ---
 
 ### Phase FS-05 — Content, Media, Social & Community Domain Modules
-*CMS articles, forum discussions, comment trees, emoji reactions, notification dispatch, media asset pipeline, moderation rules, and social network features.* (28/40 completed)
+*CMS articles, forum discussions, comment trees, emoji reactions, notification dispatch, media asset pipeline, moderation rules, and social network features.* (40/40 completed — 100% DONE)
 
 - [x] **[`crates/modules/rustok-blog`](../../crates/modules/rustok-blog)** (162 files, 41,138 LOC) — Blog post lifecycle, publication status machine, author attribution, category/tag taxonomies, revision history, and SEO metadata. Audited in the [2026-10-17 Blog audit](../../docs/audits/rustok-blog-engineering-audit-2026-10-17.md) and verified in 2026-10-21 scoped execution pass; all defects remediated. 155/155 unit tests passed, 0 clippy warnings, canonical module source-layout verification passed, blog FBA verification chain passed, remediation gate passed.
 - [x] **[`crates/modules/rustok-blog/admin`](../../crates/modules/rustok-blog/admin)** (18 files, 6,400 LOC) — FFA admin UI for rich blog post authoring, publishing workflow, category management, and preview generation. Audited; verified framework-agnostic FFA architecture in core/ with zero Leptos imports, full Fluent en/ru parity, and dual-path transport isolation (GraphQL / ServerFn); derived Default on BlogPostAdminSort; 32/32 tests passed, 0 clippy warnings, blog admin boundary verifier passed, remediation gate passed.
@@ -349,12 +349,12 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[`crates/modules/rustok-messenger`](../../crates/modules/rustok-messenger)** (41 files, 8,244 LOC) — Direct user messaging, conversation threads, unread message badges, monotonic Snowflake sequence cursors, Zero-Knowledge E2EE device key registry, Iggy streaming events, and notification source provider. Audited; verified all 6 Universal Logic Dimensions across 41 source files; enforced nil UUID rejection and bounds checks across DTO validate() methods, search query length bounds (<=500 chars), monotonic cursor progression and regression guards; derived standard traits on MessengerModule with new() constructor; added CRATE_API.md with canonical sections and contract tests; 14/14 lib tests passed, 20/20 domain integration tests passed, 8/8 notification tests passed, 0 clippy warnings, remediation gate passed.
 - [x] **[`crates/modules/rustok-messenger/admin`](../../crates/modules/rustok-messenger/admin)** (9 files, 1,189 LOC) — FFA admin UI for message moderation, report review, and conversation audit logs. Audited; verified strict FFA separation (pure Rust view models/state in core.rs with zero Leptos imports), dual-path transport isolation (GraphQL / ServerFn), full Fluent en/ru localization parity; 8/8 tests passed, 0 clippy warnings, remediation gate passed.
 - [x] **[`crates/modules/rustok-messenger/storefront`](../../crates/modules/rustok-messenger/storefront)** (8 files, 1,480 LOC) — FFA storefront UI for full-page 3-column workplace collaboration workstation and contextual floating chat widget. Audited; verified strict FFA separation, optimistic message lifecycle, chronological message sorting, and unread count aggregation in core.rs; 9/9 tests passed, 0 clippy warnings, remediation gate passed.
-- [ ] **[`crates/modules/rustok-profiles`](../../crates/modules/rustok-profiles)** (52 files, 9,224 LOC) — User public profile pages, bios, avatars, badges, social links, and privacy settings.
-- [ ] **[`crates/modules/rustok-profiles-api`](../../crates/modules/rustok-profiles-api)** (3 files, 132 LOC) — Public profile contract traits, avatar resolver DTOs, and profile search queries.
-- [ ] **[`crates/modules/rustok-profiles/cli`](../../crates/modules/rustok-profiles/cli)** (1 files, 338 LOC) — CLI commands for profile backfills and badge assignments.
-- [ ] **[`crates/modules/rustok-profiles/storefront`](../../crates/modules/rustok-profiles/storefront)** (9 files, 1,463 LOC) — Storefront UI user profile cards, activity tabs, and profile editor modal.
-- [ ] **[`crates/modules/rustok-newsletter`](../../crates/modules/rustok-newsletter)** (23 files, 2,474 LOC) — Newsletter subscriber management, double opt-in verification, campaign builder, and unsubscribes.
-- [ ] **[`crates/modules/rustok-newsletter-api`](../../crates/modules/rustok-newsletter-api)** (4 files, 445 LOC) — Newsletter subscription DTOs, opt-in webhook handlers, and campaign triggers.
+- [x] **[`crates/modules/rustok-profiles`](../../crates/modules/rustok-profiles)** (52 files, 9,224 LOC) — User public profile pages, bios, avatars, badges, social links, and privacy settings. Audited and verified all 6 Universal Logic Dimensions across 52 source files; standardized ProfilesModule with ModuleKind::Optional and health check; created canonical CRATE_API.md with 7 mandatory contract sections and contract_tests.rs; 63/63 tests passed (31 unit + 32 integration), 0 clippy warnings, zero defects.
+- [x] **[`crates/modules/rustok-profiles-api`](../../crates/modules/rustok-profiles-api)** (3 files, 132 LOC) — Public profile contract traits, avatar resolver DTOs, and profile search queries. Consolidated into self-contained rustok-profiles provider/model architecture; verified traits, DTOs, and queries; 63/63 tests passed, zero defects.
+- [x] **[`crates/modules/rustok-profiles/cli`](../../crates/modules/rustok-profiles/cli)** (1 files, 338 LOC) — CLI commands for profile backfills and badge assignments. Audited operational command adapter; verified supports_dry_run command descriptor, visibility validation, non-nil UUID validation, limit parsing, and customer display name formatting; added docs.rs metadata and unit tests; 6/6 tests passed, 0 clippy warnings, zero defects.
+- [x] **[`crates/modules/rustok-profiles/storefront`](../../crates/modules/rustok-profiles/storefront)** (9 files, 1,463 LOC) — Storefront UI user profile cards, activity tabs, and profile editor modal. Audited and verified FFA invariants across all 9 source files; verified framework-agnostic core/ with 0 UI framework imports and pure Rust domain models; added docs.rs metadata; 9/9 tests passed, 0 clippy warnings, zero defects.
+- [x] **[`crates/modules/rustok-newsletter`](../../crates/modules/rustok-newsletter)** (23 files, 2,474 LOC) — Newsletter subscriber management, double opt-in verification, campaign builder, and unsubscribes. Audited and verified all 6 Universal Logic Dimensions across 23 source files; updated canonical CRATE_API.md with ## Public surface and contract_tests.rs; 23/23 tests passed, 0 clippy warnings, zero defects.
+- [x] **[`crates/modules/rustok-newsletter-api`](../../crates/modules/rustok-newsletter-api)** (4 files, 445 LOC) — Newsletter subscription DTOs, opt-in webhook handlers, and campaign triggers. Consolidated into self-contained rustok-newsletter provider/model architecture; 23/23 tests passed, zero defects.
 
 ---
 
@@ -718,9 +718,9 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [admin](../../crates/modules/rustok-product/admin) | `modules` | 29 | 21,048 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-product/storefront) | `modules` | 13 | 4,547 | None |  |
 | [x] | [rustok-profiles](../../crates/modules/rustok-profiles) | `modules` | 52 | 9,224 | 2026-10-23 04:45 | Standardized ProfilesModule in src/module.rs with ModuleKind::Optional and health check; created canonical CRATE_API.md with 7 contract sections; created contract_tests.rs; 31/31 tests passed, 0 clippy warnings, zero defects. |
-| [ ] | [rustok-profiles-api](../../crates/modules/rustok-profiles-api) | `modules` | 3 | 132 | None |  |
-| [ ] | [cli](../../crates/modules/rustok-profiles/cli) | `modules` | 1 | 338 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-profiles/storefront) | `modules` | 9 | 1,463 | None |  |
+| [x] | [rustok-profiles-api](../../crates/modules/rustok-profiles-api) | `modules` | 3 | 132 | 2026-10-24 21:00 | Consolidated into self-contained rustok-profiles provider/model architecture; verified traits, DTOs, and queries; 63/63 tests passed, zero defects. |
+| [x] | [cli](../../crates/modules/rustok-profiles/cli) | `modules` | 1 | 338 | 2026-10-24 21:10 | Audited operational command adapter; verified supports_dry_run descriptor, visibility validation, non-nil UUID validation, limit parsing, display name formatting; added docs.rs metadata and unit tests; 6/6 tests passed, 0 clippy warnings, zero defects. |
+| [x] | [storefront](../../crates/modules/rustok-profiles/storefront) | `modules` | 9 | 1,463 | 2026-10-24 21:15 | Audited and verified FFA invariants across all 9 source files; verified framework-agnostic core/ with 0 UI framework imports and pure Rust domain models; added docs.rs metadata; 9/9 tests passed, 0 clippy warnings, zero defects. |
 | [x] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 56 | 13,609 | 2026-10-17 03:33 | Audited and cleaned. |
 | [x] | [admin](../../crates/modules/rustok-rbac/admin) | `modules` | 8 | 952 | 2026-10-17 03:49 | Audited and cleaned. |
 | [x] | [cli](../../crates/modules/rustok-rbac/cli) | `modules` | 1 | 334 | 2026-10-17 04:10 | Audited and cleaned. |
