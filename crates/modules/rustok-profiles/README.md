@@ -74,4 +74,10 @@
 - `migrations::*`
 - `storefront/` package exporting `ProfilesView`
 
-See also `docs/README.md` and `storefront/README.md`.
+## Docs
+
+- [Public Contract Reference (CRATE_API.md)](./CRATE_API.md)
+- [Module docs](./docs/README.md)
+- [Platform docs index](../../../docs/index.md)
+- [Storefront docs](./storefront/README.md)
+

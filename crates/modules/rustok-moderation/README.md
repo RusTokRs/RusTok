@@ -127,3 +127,10 @@ Forum effects remain fail-closed until exact owner semantics are accepted. Deplo
 promotion and release evidence belong to the final production-validation phase rather than
 keeping completed implementation slices open. See `docs/implementation-plan.md` for canonical
 order and evidence gates.
+
+## Docs
+
+- [Public Contract Reference (CRATE_API.md)](./CRATE_API.md)
+- [Module docs](./docs/README.md)
+- [Platform docs index](../../../docs/index.md)
+

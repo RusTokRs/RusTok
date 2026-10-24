@@ -1,3 +1,10 @@
+//! # rustok-profiles
+//!
+//! Universal public profile domain module for RusToK platform users.
+//!
+//! Provides public profile data, presentation mappings, privacy evaluation,
+//! and batched summary loading across downstream domain surfaces.
+
 pub mod api;
 
 pub use api::{

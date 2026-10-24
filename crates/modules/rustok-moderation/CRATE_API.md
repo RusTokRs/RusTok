@@ -1,6 +1,12 @@
 # rustok-moderation / CRATE_API
 
-## Public Modules
+## Public surface
+
+- Modules: `api`, `application`, `application_dispatch`, `application_recovery`, `domain`, `entities`, `error`, `migrations`, `model`, `module`, `ports`, `provider`, `service`.
+- Types: `ModerationModule`, `ModerationService`, `ModerationSubjectCommandPort`, `ModerationSubjectAdapterRegistry`, `ModerationSubjectAdapterKey`, `ModerationCommandPort`, `ModerationRecoveryCommandPort`, `ModerationReadPort`, `ModerationError`, `ModerationResult<T>`.
+- Core DTOs: `SubmitModerationReportCommand`, `OpenModerationCaseCommand`, `AssignModerationCaseCommand`, `DecideModerationCaseCommand`, `ApplyModerationDecisionCommand`, `ModerationDecisionApplication`.
+
+## Public modules
 `api`, `application`, `application_dispatch`, `application_recovery`, `domain`, `entities`, `error`, `migrations`, `model`, `module`, `ports`, `provider`, `service`.
 
 ## Platform Capability Bindings

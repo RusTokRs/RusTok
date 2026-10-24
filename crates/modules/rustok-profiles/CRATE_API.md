@@ -1,4 +1,10 @@
-# Profiles Crate API Specification
+# rustok-profiles / CRATE_API
+
+## Public surface
+
+- Modules: `api`, `dto`, `entities`, `error`, `graphql`, `loader`, `media`, `migrations`, `mutations`, `observability`, `presentation`, `privacy`, `reader`, `services`, `module`.
+- Types: `ProfilesModule`, `ProfileService`, `ProfileMutationService`, `ProfilesReader`, `ProfilePrivacyService`, `ProfileSummaryLoader`, `ProfileError`, `ProfileResult<T>`.
+- Core DTOs: `UpsertProfileInput`, `ProfileSummary`, `ProfileVisibility`, `ProfileStatus`, `ProfileAccessAudience`.
 
 ## Platform Capability Bindings
 - **RusToKModule Implementation**: `ProfilesModule` in `src/module.rs`

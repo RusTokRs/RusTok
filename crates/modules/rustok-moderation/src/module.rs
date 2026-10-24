@@ -14,6 +14,12 @@ use crate::{application_scheduler, migrations};
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ModerationModule;
 
+impl ModerationModule {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
 #[async_trait]
 impl RusToKModule for ModerationModule {
     fn slug(&self) -> &'static str {
