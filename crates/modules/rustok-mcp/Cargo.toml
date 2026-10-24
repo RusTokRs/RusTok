@@ -3,8 +3,13 @@ name = "rustok-mcp"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-
+repository.workspace = true
+readme = "README.md"
 description = "MCP adapter server for RusToK modules"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 rustok-api.workspace = true

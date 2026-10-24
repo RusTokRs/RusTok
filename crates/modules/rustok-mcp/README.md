@@ -229,6 +229,7 @@ persisted drafts from `apps/server` instead of process-local in-memory state.
 
 ## Docs
 
+- Public API contract: [CRATE_API.md](./CRATE_API.md)
 - [Module docs](./docs/README.md)
 - RusToK MCP implementation plan: [`./docs/implementation-plan.md`](./docs/implementation-plan.md)
 - Central MCP reference index: [`../../docs/references/mcp/README.md`](../../../docs/references/mcp/README.md)

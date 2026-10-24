@@ -1,3 +1,11 @@
+//! # rustok-seo-targets
+//!
+//! Runtime SEO target capability registry and schema helpers for owner modules.
+//!
+//! This crate defines the canonical `SeoTargetSlug` contract, runtime registry,
+//! schema builders, and provider traits used by modules such as `rustok-pages`,
+//! `rustok-product`, `rustok-blog`, and `rustok-forum`.
+
 use std::collections::BTreeMap;
 use std::fmt;
 #[cfg(feature = "server")]
@@ -1485,3 +1493,6 @@ mod tests {
         assert!(validate_seo_metadata_payload(&invalid).is_err());
     }
 }
+
+#[cfg(test)]
+mod contract_tests;

@@ -33,3 +33,7 @@
 - `populate_image_template_fields`
 - `register_seo_target_provider`
 - `seo_target_registry_from_extensions`
+
+## Documentation
+
+- Public API contract: [CRATE_API.md](./CRATE_API.md)

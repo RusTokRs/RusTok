@@ -8,7 +8,9 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-//! RusToK MCP Server
+//! # rustok-mcp
+//!
+//! Model Context Protocol (MCP) server adapter and tools for RusToK modules.
 //!
 //! This crate provides a Model Context Protocol (MCP) server for exploring
 //! and interacting with RusToK modules, including Alloy scaffold assistance.
@@ -20,7 +22,16 @@ mod alloy_scaffold;
 #[path = "alloy_tools.rs"]
 mod alloy_tools_unchecked;
 pub mod alloy_tools {
-    pub use super::alloy_tools_unchecked::*;
+    pub use super::alloy_tools_unchecked::{
+        ALL_ALLOY_TOOLS, AlloyScaffoldState, ApplyModuleScaffoldRequest,
+        ApplyModuleScaffoldResponse, ModuleScaffoldDraftStatus, ReviewModuleScaffoldRequest,
+        ReviewModuleScaffoldResponse, ScaffoldModulePreview, ScaffoldModuleRequest,
+        ScriptHelperInfo, ScriptHelpersResponse, StageModuleScaffoldResponse, StagedModuleScaffold,
+        TOOL_ALLOY_APPLY_MODULE_SCAFFOLD, TOOL_ALLOY_LIST_ENTITY_TYPES,
+        TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD, TOOL_ALLOY_SCAFFOLD_MODULE, TOOL_ALLOY_SCRIPT_HELPERS,
+        alloy_list_entity_types, alloy_review_module_scaffold, alloy_scaffold_module,
+        alloy_script_helpers,
+    };
 
     pub async fn alloy_apply_module_scaffold(
         state: &AlloyScaffoldState,
