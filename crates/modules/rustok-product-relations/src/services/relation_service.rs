@@ -4,9 +4,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rustok_product::entities::product;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, Order, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, Order,
+    QueryFilter, QueryOrder, Set, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -25,32 +24,23 @@ pub struct ProductRelationService {
     db: DatabaseConnection,
 }
 
-async fn lock_product_for_update(
+async fn verify_product_exists(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     product_id: Uuid,
-) -> ProductRelationResult<product::Model> {
-    let query =
-        product::Entity::find_by_id(product_id).filter(product::Column::TenantId.eq(tenant_id));
-    let model = match txn.get_database_backend() {
-        DatabaseBackend::Postgres | DatabaseBackend::MySql => {
-            query.lock_exclusive().one(txn).await?
-        }
-        DatabaseBackend::Sqlite => {
-            let statement = Statement::from_sql_and_values(
-                DatabaseBackend::Sqlite,
-                "UPDATE products SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
-                [tenant_id.into(), product_id.into()],
-            );
-            txn.execute_raw(statement).await?;
-            query.one(txn).await?
-        }
-        _ => query.one(txn).await?,
-    };
-    model.ok_or(ProductRelationError::ProductNotFound(product_id))
+) -> ProductRelationResult<()> {
+    let exists = product::Entity::find_by_id(product_id)
+        .filter(product::Column::TenantId.eq(tenant_id))
+        .one(txn)
+        .await?
+        .is_some();
+    if !exists {
+        return Err(ProductRelationError::ProductNotFound(product_id));
+    }
+    Ok(())
 }
 
-async fn lock_products_in_order(
+async fn verify_products_exist_in_order(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     first_product_id: Uuid,
@@ -66,8 +56,8 @@ async fn lock_products_in_order(
     } else {
         (second_product_id, first_product_id)
     };
-    lock_product_for_update(txn, tenant_id, left).await?;
-    lock_product_for_update(txn, tenant_id, right).await?;
+    verify_product_exists(txn, tenant_id, left).await?;
+    verify_product_exists(txn, tenant_id, right).await?;
     Ok(())
 }
 
@@ -99,12 +89,6 @@ async fn lock_relation_for_mutation(
     tenant_id: Uuid,
     relation_id: Uuid,
 ) -> ProductRelationResult<ProductRelationModel> {
-    let relation = ProductRelation::find_by_id(relation_id)
-        .filter(Column::TenantId.eq(tenant_id))
-        .one(txn)
-        .await?
-        .ok_or(ProductRelationError::RelationNotFound(relation_id))?;
-    lock_product_for_update(txn, tenant_id, relation.product_id).await?;
     ProductRelation::find_by_id(relation_id)
         .filter(Column::TenantId.eq(tenant_id))
         .one(txn)
@@ -251,7 +235,7 @@ pub(crate) async fn create_relation_in_tx(
     let rel_type_str = relation_type.storage_key()?;
     let metadata = metadata.unwrap_or_else(|| serde_json::json!({}));
     validate_relation_metadata(&metadata)?;
-    lock_products_in_order(txn, tenant_id, product_id, related_product_id).await?;
+    verify_products_exist_in_order(txn, tenant_id, product_id, related_product_id).await?;
 
     let exists = ProductRelation::find()
         .filter(Column::TenantId.eq(tenant_id))
@@ -421,7 +405,7 @@ pub(crate) async fn reorder_relations_in_tx(
     } = input;
     let rel_type_str = relation_type.storage_key()?;
 
-    lock_product_for_update(txn, tenant_id, product_id).await?;
+    verify_product_exists(txn, tenant_id, product_id).await?;
     let existing = relation_group_in_tx(txn, tenant_id, product_id, rel_type_str.as_str()).await?;
 
     let expected_ids: HashSet<Uuid> = existing.iter().map(|model| model.id).collect();

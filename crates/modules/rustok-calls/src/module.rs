@@ -16,7 +16,15 @@ use rustok_core::module::{
 };
 use sea_orm_migration::MigrationTrait;
 
+/// WebRTC Calls & Conferencing capability module for RusToK.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CallsModule;
+
+impl CallsModule {
+    pub fn new() -> Self {
+        Self
+    }
+}
 
 #[async_trait]
 impl RusToKModule for CallsModule {
