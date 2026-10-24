@@ -98,8 +98,8 @@ review/integration remain open. No sequential FS cursor, checkbox or readiness p
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages  
-**Next pending component:** [`crates/modules/rustok-product/admin`](../../crates/modules/rustok-product/admin) (29 files, 21,028 LOC)  
-**Current main SHA:** `101f636d7`  
+**Next pending component:** [`crates/modules/rustok-product-bundles`](../../crates/modules/rustok-product-bundles) (23 files, 4,602 LOC)  
+**Current main SHA:** `17f37d8a9`  
 **Active branch:** `main`  
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **262 components** (~350k LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -359,11 +359,11 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 ---
 
 ### Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages
-*Product catalog, variants, EAV attributes, categories tree closure, brand taxonomy, navigation menus, dynamic page builder, CMS pages, forms, and docs.* (1/26 completed)
+*Product catalog, variants, EAV attributes, categories tree closure, brand taxonomy, navigation menus, dynamic page builder, CMS pages, forms, and docs.* (4/26 completed)
 
 - [x] **[`crates/modules/rustok-product`](../../crates/modules/rustok-product)** (190 files, 81,078 LOC) — Core product catalog, variant matrix, SKU generation, published state machine, category bindings, and EAV attributes. Audited and verified all 6 Universal Logic Dimensions across 190 source files; verified ProductModule in src/module.rs with ModuleKind::Optional, health check, and runtime extension registration; verified canonical CRATE_API.md with mandatory contract sections and contract_tests.rs; added repository and readme metadata to Cargo.toml; 142/142 lib unit tests passed, 6/6 integration tests passed (module, category taxonomy same-id cutover, media reference protocol), 0 clippy warnings, remediation gate passed, zero defects.
-- [ ] **[`crates/modules/rustok-product/admin`](../../crates/modules/rustok-product/admin)** (29 files, 21,028 LOC) — FFA admin UI for comprehensive product management, variant matrix editor, image gallery, and price rules.
-- [ ] **[`crates/modules/rustok-product/storefront`](../../crates/modules/rustok-product/storefront)** (13 files, 4,612 LOC) — Storefront UI product cards, product detail page (PDP), gallery, variant selectors, and stock badges.
+- [x] **[`crates/modules/rustok-product/admin`](../../crates/modules/rustok-product/admin)** (29 files, 21,028 LOC) — FFA admin UI for comprehensive product management, variant matrix editor, image gallery, and price rules. Audited Leptos admin UI package; verified strict FFA separation (pure Rust models, view-model computations, dirty-field tracking in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn); added docs.rs and repository metadata; 68/68 unit tests and 68/68 SSR tests passed, 0 clippy warnings, zero defects.
+- [x] **[`crates/modules/rustok-product/storefront`](../../crates/modules/rustok-product/storefront)** (13 files, 4,612 LOC) — Storefront UI product cards, product detail page (PDP), gallery, variant selectors, and stock badges. Audited Leptos storefront UI package; verified strict FFA separation; resolved trailing whitespace in Fluent translations en.ftl and ru.ftl; verified facet toggle query controls; added docs.rs and repository metadata; 26/26 unit tests and 26/26 SSR tests passed, 0 clippy warnings, zero defects.
 - [ ] **[`crates/modules/rustok-product-bundles`](../../crates/modules/rustok-product-bundles)** (23 files, 4,602 LOC) — Product bundle configurations, bundle discounts, component item pricing, and inventory constraints.
 - [ ] **[`crates/modules/rustok-product-bundles/admin`](../../crates/modules/rustok-product-bundles/admin)** (9 files, 2,617 LOC) — FFA admin UI for creating and managing bundle sets and discount formulas.
 - [ ] **[`crates/modules/rustok-product-relations`](../../crates/modules/rustok-product-relations)** (22 files, 2,720 LOC) — Cross-sell, up-sell, and related product associations with rule-based recommendations.
@@ -375,7 +375,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [ ] **[`crates/modules/rustok-brand/admin`](../../crates/modules/rustok-brand/admin)** (9 files, 2,081 LOC) — FFA admin UI for brand catalog management, logo upload, and brand metadata.
 - [ ] **[`crates/modules/rustok-navigation`](../../crates/modules/rustok-navigation)** (40 files, 5,286 LOC) — Hierarchical site menus, header/footer navigation trees, custom URL redirects, and menu item ordering.
 - [ ] **[`crates/modules/rustok-navigation/storefront`](../../crates/modules/rustok-navigation/storefront)** (9 files, 495 LOC) — Storefront UI mega-menu, mobile navigation drawer, breadcrumbs, and footer links.
-- [ ] **[`crates/modules/alloy`](../../crates/modules/alloy)** (77 files, 25,206 LOC) — Dynamic schema engine, custom entity definitions, relational schemas, and runtime entity validation.
+- [x] **[`crates/modules/alloy`](../../crates/modules/alloy)** (77 files, 25,206 LOC) — Dynamic schema engine, custom entity definitions, relational schemas, and runtime entity validation. Audited and verified all 6 Universal Logic Dimensions across 77 source files; standardized AlloyModule with RusToKModule/MigrationSource; verified canonical CRATE_API.md with mandatory contract sections and contract_tests.rs; added repository, readme, and docs.rs metadata; 126/126 unit tests passed, 0 clippy warnings, remediation gate passed, zero defects.
 - [ ] **[`crates/modules/flex`](../../crates/modules/flex)** (51 files, 17,159 LOC) — Dynamic custom fields (Flex fields), EAV storage backend, type validation (JSON, text, numbers, relations), and REST endpoints.
 - [ ] **[`crates/modules/rustok-page-builder`](../../crates/modules/rustok-page-builder)** (116 files, 35,885 LOC) — Visual page builder layout schema, component tree composition, block configuration, and dynamic block rendering.
 - [ ] **[`crates/modules/rustok-page-builder/admin`](../../crates/modules/rustok-page-builder/admin)** (66 files, 19,006 LOC) — FFA admin UI visual drag-and-drop page builder canvas, component palette, and property inspector.
@@ -595,7 +595,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [rustok-runtime](../../crates/libs/rustok-runtime) | `libs` | 4 | 2,423 | 2026-10-17 00:58 | Audited and cleaned. |
 | [x] | [rustok-telemetry](../../crates/libs/rustok-telemetry) | `libs` | 15 | 3,340 | 2026-10-17 01:15 | Audited and cleaned. |
 | [x] | [rustok-web](../../crates/libs/rustok-web) | `libs` | 2 | 742 | 2026-10-17 01:44 | Audited and cleaned. |
-| [ ] | [alloy](../../crates/modules/alloy) | `modules` | 77 | 25,206 | None |  |
+| [x] | [alloy](../../crates/modules/alloy) | `modules` | 77 | 25,206 | 2026-10-25 01:03 | Audited and verified 6 Universal Logic Dimensions across 77 files; standardized AlloyModule with RusToKModule/MigrationSource; verified CRATE_API.md and contract_tests.rs; added docs.rs and repository metadata; 126/126 tests passed, zero defects. |
 | [ ] | [flex](../../crates/modules/flex) | `modules` | 51 | 17,159 | None |  |
 | [x] | [rustok-accounting](../../crates/modules/rustok-accounting) | `modules` | 14 | 1,726 | 2026-10-18 20:00 | Audited and cleaned. Standard chart of accounts, bounds and character validation, 1000 lines limit, storno generation, multi-currency trial balance, outbox events, 27/27 tests passed. |
 | [ ] | [rustok-ai](../../crates/modules/rustok-ai) | `modules` | 74 | 42,419 | None |  |
@@ -715,8 +715,8 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [rustok-product-relations](../../crates/modules/rustok-product-relations) | `modules` | 26 | 4,350 | 2026-10-23 06:10 | Standardized ProductRelationsModule in src/module.rs with ModuleKind::Optional and health check; verified CRATE_API.md and contract_tests.rs; 8/8 tests passed, 0 clippy warnings, zero defects. |
 | [ ] | [admin](../../crates/modules/rustok-product-relations/admin) | `modules` | 9 | 1,678 | None |  |
 | [ ] | [rustok-product-transport](../../crates/modules/rustok-product-transport) | `modules` | 8 | 1,704 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-product/admin) | `modules` | 29 | 21,048 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-product/storefront) | `modules` | 13 | 4,547 | None |  |
+| [x] | [admin](../../crates/modules/rustok-product/admin) | `modules` | 29 | 21,048 | 2026-10-25 01:04 | Audited Leptos admin UI package; verified strict FFA separation (pure Rust models, view-model computations, dirty-field tracking in core.rs with zero UI imports); verified dual-path transport; added docs.rs and repository metadata; 68/68 unit tests and 68/68 SSR tests passed, zero defects. |
+| [x] | [storefront](../../crates/modules/rustok-product/storefront) | `modules` | 13 | 4,547 | 2026-10-25 01:15 | Audited Leptos storefront UI package; verified strict FFA separation; resolved trailing whitespace in Fluent translations en.ftl and ru.ftl; verified facet toggle query controls; added docs.rs and repository metadata; 26/26 unit tests and 26/26 SSR tests passed, zero defects. |
 | [x] | [rustok-profiles](../../crates/modules/rustok-profiles) | `modules` | 52 | 9,224 | 2026-10-23 04:45 | Standardized ProfilesModule in src/module.rs with ModuleKind::Optional and health check; created canonical CRATE_API.md with 7 contract sections; created contract_tests.rs; 31/31 tests passed, 0 clippy warnings, zero defects. |
 | [x] | [rustok-profiles-api](../../crates/modules/rustok-profiles-api) | `modules` | 3 | 132 | 2026-10-24 21:00 | Consolidated into self-contained rustok-profiles provider/model architecture; verified traits, DTOs, and queries; 63/63 tests passed, zero defects. |
 | [x] | [cli](../../crates/modules/rustok-profiles/cli) | `modules` | 1 | 338 | 2026-10-24 21:10 | Audited operational command adapter; verified supports_dry_run descriptor, visibility validation, non-nil UUID validation, limit parsing, display name formatting; added docs.rs metadata and unit tests; 6/6 tests passed, 0 clippy warnings, zero defects. |
