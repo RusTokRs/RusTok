@@ -53,8 +53,17 @@ mod worker;
 #[cfg(test)]
 mod contract_tests;
 
-pub use keys::*;
+pub use keys::{
+    NotificationAudienceCursor, NotificationKeyError, NotificationSourceSlug,
+    NotificationTargetKind, NotificationTargetRoute, NotificationTemplateKey, NotificationTypeKey,
+};
 pub use model::*;
+pub use provider::{
+    AuthorizeNotificationTargetRequest, DescribeNotificationRequest, NotificationProviderError,
+    NotificationProviderResult, NotificationSourceProvider, NotificationSourceProviderFactory,
+    NotificationSourceRegistry, NotificationSourceRegistryEntry, ResolveNotificationAudienceRequest,
+    ensure_notification_source_registry, notification_source_registry_from_extensions,
+};
 pub use provider::*;
 pub use reconciliation::*;
 

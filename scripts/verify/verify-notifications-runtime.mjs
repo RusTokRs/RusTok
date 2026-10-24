@@ -114,7 +114,7 @@ reject(keys, /url::Url|reqwest/, `${keysPath}: safe internal route validation mu
 
 const forumProductionCargo = forumCargo.split("[dev-dependencies]")[0];
 requireText(forumProductionCargo, "rustok-notifications.workspace = true", `${forumCargoPath}: Forum must depend on the neutral API`);
-reject(forumProductionCargo, /features\s*=\s*\[[^\]]*"server"[^\]]*\]/, `${forumCargoPath}: Forum production code depends on the notifications server feature`);
+reject(forumProductionCargo, /rustok-notifications\s*=\s*\{[^}]*features\s*=\s*\[[^\]]*"server"/, `${forumCargoPath}: Forum production code depends on the notifications server feature`);
 requireText(forumLib, "register_notification_source_provider_factory", `${forumLibPath}: Forum does not publish its source factory`);
 
 for (const marker of [
@@ -135,7 +135,7 @@ for (const marker of [
 ]) {
   requireText(forumSource, marker, `${forumSourcePath}: missing source-provider invariant ${marker}`);
 }
-reject(forumSource, /entities::|source_inbox|fanout_job/, `${forumSourcePath}: Forum imports notifications persistence`);
+reject(forumSource, /rustok_notifications::(?:entities|candidate|fanout|inbox|worker|service|migrations)|source_inbox|fanout_job/, `${forumSourcePath}: Forum imports the notifications owner persistence`);
 reject(forumSource, /email_address|phone_number|smtp|rendered_html/i, `${forumSourcePath}: Forum source leaks channel/contact/rendered data`);
 
 for (const marker of [

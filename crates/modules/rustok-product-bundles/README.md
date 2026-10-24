@@ -6,6 +6,8 @@ Product bundles, kits, configurable sets, and package discounts for the RusToK p
 
 The `rustok-product-bundles` module manages product bundles and kits (fixed composition or flexible/configurable sets), bundle-level and item-level discounts, localized names and descriptions, and product/variant item associations.
 
+See [CRATE_API.md](CRATE_API.md) for the verified public crate API specification and platform capability bindings.
+
 ## Responsibility Zone
 
 The module boundary strictly owns:

@@ -6,6 +6,8 @@ Brand catalog, manufacturers, media presentation, and product associations for t
 
 The `rustok-brand` module provides dedicated brand/manufacturer management (slug, logo media ID, banner media ID, localized names and descriptions, website URL, and custom metadata) and associates products with their respective brands.
 
+See [CRATE_API.md](CRATE_API.md) for the verified public crate API specification and platform capability bindings.
+
 ## Responsibility Zone
 
 The module boundary strictly owns:

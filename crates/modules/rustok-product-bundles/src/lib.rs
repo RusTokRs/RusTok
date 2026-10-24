@@ -1,3 +1,8 @@
+//! # RusToK Product Bundles Module
+//!
+//! Provides product bundles, kits, configurable sets, item-level discounts,
+//! localized translations, and durable caller idempotency derivations.
+
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -8,7 +13,11 @@ pub mod migrations;
 pub mod ports;
 pub mod services;
 
-pub use dto::*;
+pub use dto::{
+    BundleDto, BundleFilter, BundleItemDto, BundleItemInput, BundleListResponse,
+    BundleTranslationDto, BundleTranslationInput, BundleTranslationUpdateInput, CreateBundleInput,
+    UpdateBundleInput,
+};
 pub use error::{BundleError, BundleResult};
 pub use ports::BundlePort;
 pub use services::{

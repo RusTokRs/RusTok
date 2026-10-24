@@ -16514,19 +16514,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustok-notifications-api"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "rustok-api",
- "rustok-core",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "uuid",
-]
-
-[[package]]
 name = "rustok-notifications-storefront"
 version = "0.1.0"
 dependencies = [

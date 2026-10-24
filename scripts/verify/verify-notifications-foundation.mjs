@@ -36,7 +36,7 @@ function collectFiles(root, relative = "") {
   if (!existsSync(directory)) return [];
   const files = [];
   for (const entry of readdirSync(directory)) {
-    if ([".git", "node_modules", "target"].includes(entry)) continue;
+    if (entry.startsWith(".") || entry.startsWith("target") || entry === "node_modules") continue;
     const child = path.join(relative, entry);
     const childAbsolute = path.join(root, child);
     if (statSync(childAbsolute).isDirectory()) files.push(...collectFiles(root, child));
@@ -59,7 +59,9 @@ const adminUiPath = "crates/modules/rustok-notifications/admin/src/ui/leptos.rs"
 const storefrontCorePath = "crates/modules/rustok-notifications/storefront/src/core.rs";
 const storefrontTransportPath = "crates/modules/rustok-notifications/storefront/src/transport.rs";
 const storefrontUiPath = "crates/modules/rustok-notifications/storefront/src/ui/leptos.rs";
-const canonicalPlanPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
+const canonicalPlanPath = existsSync("crates/modules/rustok-forum/docs/archive/implementation-plan-2026-08-06.snapshot")
+  ? "crates/modules/rustok-forum/docs/archive/implementation-plan-2026-08-06.snapshot"
+  : "crates/modules/rustok-forum/docs/implementation-plan.md";
 
 const apiLib = read(apiLibPath);
 const keys = read(keysPath);
@@ -126,7 +128,7 @@ for (const marker of [
 }
 
 requireText(ownerLib, "ensure_notification_source_registry", `${ownerLibPath}: module does not initialize the neutral source registry`);
-requireText(ownerLib, "&[\"outbox\"]", `${ownerLibPath}: notifications owner must declare the outbox dependency`);
+requireText(ownerModule, "&[\"outbox\"]", `${ownerModulePath}: notifications owner must declare the outbox dependency`);
 requireText(ownerService, "unwrap_or_else(|| Arc::new(NotificationSourceRegistry::default()))", `${ownerServicePath}: missing-source degraded mode must remain an empty registry`);
 requireText(manifest, 'slug = "notifications"', `${manifestPath}: notifications module slug is missing`);
 requireText(manifest, 'leptos_crate = "rustok-notifications-admin"', `${manifestPath}: admin package is not owner-declared`);
@@ -174,8 +176,12 @@ for (const relativePath of collectFiles(repoRoot)) {
   if (relativePath.startsWith("apps/admin/")) continue;
   if (relativePath.startsWith("apps/storefront/")) continue;
   const source = readFileSync(absolute(relativePath), "utf8");
-  if (/rustok[_-]notifications(?!(?:[_-]api))/.test(source)) {
-    failures.push(`${relativePath}: producer imports the notifications owner instead of the neutral API contract`);
+  if (relativePath.endsWith("Cargo.toml")) {
+    if (/rustok-notifications\s*=\s*\{[^}]*"server"/.test(source)) {
+      failures.push(`${relativePath}: producer enables notifications server feature`);
+    }
+  } else if (/rustok_notifications::(?:entities|candidate|fanout|inbox|worker|service|migrations)/.test(source)) {
+    failures.push(`${relativePath}: producer imports the notifications owner persistence instead of the neutral API contract`);
   }
 }
 

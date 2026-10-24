@@ -1,5 +1,14 @@
 # Product Bundles Crate API Specification
 
+## Public Modules
+- `dto`: Input and output data transfer objects (`CreateBundleInput`, `BundleItemInput`, `BundleDto`).
+- `entities`: SeaORM entity definitions for bundles, items, and translations.
+- `error`: Strongly typed domain error variants (`BundleError`, `BundleResult`).
+- `migrations`: SeaORM migration chain for bundle schemas.
+- `module`: Lifecycle descriptor `ProductBundlesModule` implementing `RusToKModule`.
+- `ports`: Owner-defined cross-boundary port `BundlePort`.
+- `services`: Domain service layer (`BundleService`) for bundle lifecycle and items.
+
 ## Platform Capability Bindings
 - **RusToKModule Implementation**: `ProductBundlesModule` in `src/module.rs`
 - **Module Slug**: `product_bundles`

@@ -4,7 +4,16 @@ Canonical public contract and domain architecture specification for `rustok-bran
 
 ---
 
-## 1. Platform Capability Bindings
+## Public Modules
+- `dto`: Input and output data transfer objects (`BrandDto`, `CreateBrandInput`, `UpdateBrandInput`).
+- `entities`: SeaORM entity definitions for brands, translations, and product links.
+- `error`: Strongly typed domain error variants (`BrandError`, `BrandResult`).
+- `migrations`: SeaORM migration chain for brand schemas.
+- `module`: Lifecycle descriptor `BrandModule` implementing `RusToKModule`.
+- `ports`: Owner-defined cross-boundary port `BrandPort`.
+- `services`: Domain service layer (`BrandService`).
+
+## Platform Capability Bindings
 
 - **Module Identifier:** `brand`
 - **Module Name:** `Brand`
@@ -19,7 +28,7 @@ Canonical public contract and domain architecture specification for `rustok-bran
 
 ---
 
-## 2. Domain Collaborations
+## Domain Collaborations
 
 - **Upstream Modules:**
   - `rustok-core`: Common module lifecycle traits (`RusToKModule`, `MigrationSource`, `ModuleKind`, `ModuleHealth`).
@@ -31,7 +40,7 @@ Canonical public contract and domain architecture specification for `rustok-bran
 
 ---
 
-## 3. Minimum Contract Set
+## Minimum Contract Set
 
 - **`BrandPort` Trait:**
   ```rust
@@ -51,7 +60,7 @@ Canonical public contract and domain architecture specification for `rustok-bran
 
 ---
 
-## 4. Input DTOs / Commands
+### Input DTOs/Commands
 
 - `CreateBrandInput`: Slug (trimmed/lowercased), optional logo and banner media UUIDs, website URL, active status flag, metadata JSON, and localized translations (`BrandTranslationInput`).
 - `UpdateBrandInput`: Optional replacement fields for slug, logo, banner, website, active status, metadata, and localized translations.
@@ -62,7 +71,7 @@ Canonical public contract and domain architecture specification for `rustok-bran
 
 ---
 
-## 5. Domain Invariants
+### Domain Invariants
 
 - **Tenant Scoping:** Every brand, translation, and brand-product association is partitioned by `tenant_id`.
 - **Slug Uniqueness:** Brand slugs must be unique within a given tenant. Slugs are trimmed and normalized to lowercase.
@@ -72,14 +81,14 @@ Canonical public contract and domain architecture specification for `rustok-bran
 
 ---
 
-## 6. Events / Outbox Side Effects
+### Events / Outbox Side Effects
 
 - Brand mutations (creation, update, deletion) are atomically transacted in PostgreSQL/SQLite.
 - Outbox integration reserved for brand publication and catalog index synchronization events.
 
 ---
 
-## 7. Errors / Failure Codes
+### Errors / Failure Codes
 
 - `BrandError::NotFound(Uuid)`: Brand not found by UUID for the given tenant.
 - `BrandError::SlugNotFound(String)`: Brand not found by slug for the given tenant.

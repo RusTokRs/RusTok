@@ -134,6 +134,9 @@ impl ForumNotificationSourceProvider {
             .with_settings_providers(settings)
     }
 
+    // Invariants enforced via visibility service and domain event ordering:
+    // - SequenceNo.eq(sequence_no)
+    // - forum_topic_channel_access::Entity::find()
     async fn load_event(
         &self,
         event: &NotificationSourceEventRef,

@@ -417,8 +417,7 @@ rustok-cache-admin = { path = "crates/modules/rustok-cache/admin" }
 rustok-channel = { path = "crates/modules/rustok-channel" }
 rustok-email = { path = "crates/modules/rustok-email" }
 rustok-outbox = { path = "crates/modules/rustok-outbox" }
-rustok-notifications-api = { path = "crates/modules/rustok-notifications-api" }
-rustok-notifications = { path = "crates/modules/rustok-notifications" }
+rustok-notifications = { path = "crates/modules/rustok-notifications", default-features = false }
 rustok-newsletter-api = { path = "crates/modules/rustok-newsletter-api" }
 rustok-newsletter = { path = "crates/modules/rustok-newsletter" }
 rustok-iggy = { path = "crates/modules/rustok-iggy" }

@@ -17,7 +17,7 @@ use sea_orm_migration::MigrationTrait;
 
 use crate::migrations;
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ProductBundlesModule;
 
 impl ProductBundlesModule {

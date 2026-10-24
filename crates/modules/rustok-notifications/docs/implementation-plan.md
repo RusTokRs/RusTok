@@ -162,7 +162,7 @@ delivery transports, and PostgreSQL cross-consumer evidence remain open.
 
 ## Delivered milestones
 
-### `NOTIFY-00B`
+### Delivered in `NOTIFY-00B`
 
 - optional owner/runtime/distribution composition;
 - deferred provider factory materialization through `HostRuntimeContext`;

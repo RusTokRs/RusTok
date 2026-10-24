@@ -40,7 +40,7 @@ if (JSON.stringify(contract.catalog.keys) !== JSON.stringify(["like"])) {
 for (const relativePath of contract.required_files) read(relativePath);
 
 const provider = read("crates/modules/rustok-forum/src/reaction_subject.rs");
-const forumLib = read("crates/modules/rustok-forum/src/lib.rs");
+const forumLib = read("crates/modules/rustok-forum/src/lib.rs") + "\n" + read("crates/modules/rustok-forum/src/module.rs");
 const forumCargo = read("crates/modules/rustok-forum/Cargo.toml");
 const modules = read("modules.toml");
 const forumPlan = compact(read("crates/modules/rustok-forum/docs/implementation-plan.md"));
