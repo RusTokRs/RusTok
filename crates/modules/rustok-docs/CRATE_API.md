@@ -1,5 +1,18 @@
 # rustok-docs / CRATE_API
 
+## Public surface
+
+### Public modules
+- `controllers`
+- `domain`
+- `dto`
+- `entities`
+- `error`
+- `migrations`
+- `module`
+- `search_projection`
+- `services`
+
 ## Platform Capability Bindings
 - `DocsModule` implements `rustok_core::module::RusToKModule` and `MigrationSource`.
 - Declared as `ModuleKind::Optional`.

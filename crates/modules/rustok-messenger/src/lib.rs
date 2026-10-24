@@ -63,3 +63,6 @@ pub use graphql::{
     MessengerMutation, MessengerOverviewGql, MessengerQuery, OneTimePrekeyGql, PrekeyBundleGql,
     UploadDeviceKeysGqlInput,
 };
+
+#[cfg(test)]
+mod contract_tests;

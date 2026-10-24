@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Highload distributed team messaging, channels, threads, and E2EE engine for RusToK"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

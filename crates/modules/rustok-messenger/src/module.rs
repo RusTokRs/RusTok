@@ -7,7 +7,14 @@ use sea_orm_migration::MigrationTrait;
 use crate::migrations;
 use crate::notification_source::MessengerNotificationSourceProviderFactory;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct MessengerModule;
+
+impl MessengerModule {
+    pub fn new() -> Self {
+        Self
+    }
+}
 
 #[async_trait]
 impl RusToKModule for MessengerModule {
@@ -99,5 +106,13 @@ mod tests {
     fn module_has_owned_migrations() {
         let module = MessengerModule;
         assert!(!module.migrations().is_empty());
+    }
+
+    #[test]
+    fn module_constructor_and_default() {
+        let m1 = MessengerModule::new();
+        let m2 = MessengerModule::default();
+        assert_eq!(m1, m2);
+        assert_eq!(m1, MessengerModule);
     }
 }

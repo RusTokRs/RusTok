@@ -27,3 +27,7 @@ Sovereign collaborative documents, wiki, and knowledge base module for the RusTo
 - **`rustok-grid`:** Renders multi-view presentations (Table, Kanban, Calendar, Gallery) over document collections.
 - **`rustok-api`:** Supplies canonical permission constants (`Permission::PAGES_*`) and tenant authority.
 - **`rustok-core`:** Provides module extension contracts and migration dependency tracking.
+
+## Documentation
+
+- [CRATE_API.md](CRATE_API.md) — Public API contract, module registration, capability bindings, and domain invariants.

@@ -165,6 +165,12 @@ impl SearchMessagesQuery {
             ));
         }
 
+        if self.query.trim().len() > 500 {
+            return Err(MessengerError::Validation(
+                "Search query cannot exceed 500 characters".to_string(),
+            ));
+        }
+
         Ok(())
     }
 }

@@ -63,5 +63,6 @@ crates/modules/rustok-messenger/
 
 ## Documentation
 
+- [CRATE_API.md](CRATE_API.md) — Public API contract, module registration, capability bindings, and domain invariants.
 - [Architecture & Integration Guide](docs/README.md)
 - [Implementation Plan & Milestones](docs/implementation-plan.md)
