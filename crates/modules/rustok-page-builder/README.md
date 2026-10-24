@@ -16,6 +16,7 @@
 - `src/adapters.rs` — canonical transport adapters and Fly project inspection;
 - `admin/src/lib.rs` — no-prop generated host entrypoint plus explicit consumer-owned controller entrypoint;
 - `rustok-module.toml` — FBA provider and manifest-backed admin UI contract;
+- [Public Contract Reference (CRATE_API.md)](./CRATE_API.md) — live API and platform capability contracts;
 - [`docs/README.md`](./docs/README.md) — live runtime and integration contract;
 - [`docs/implementation-plan.md`](./docs/implementation-plan.md) — module-local delivery plan.
 

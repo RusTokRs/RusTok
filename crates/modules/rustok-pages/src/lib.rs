@@ -70,7 +70,17 @@ pub use cache_invalidation::{
     PagesCacheInvalidationRuntime, PagesCacheReadPort, PagesCacheReadRuntime, page_cache_key,
     page_cache_namespace, storefront_pages_cache_key,
 };
-pub use dto::*;
+pub use dto::{
+    ActivateRebuiltPageArtifactTransportResult, CreatePageInput, ListPagesFilter, PageBodyInput,
+    PageBodyResponse, PageBodyRevisionInput, PageBodyRevisionResponse, PageBodyRevisionSource,
+    PageBodyState, PageListItem, PagePublishJobState, PagePublishScheduleResponse, PageResponse,
+    PageTranslationInput, PageTranslationResponse, PatchPageMetadataInput, PublishPageInput,
+    PublishPageResult, RebuildPageArtifactInput, RebuildPageArtifactResult,
+    RebuildPageArtifactTransportResult, ReplacePageArtifactBindingInput,
+    ReplacePageArtifactBindingResult, RestorePageBodyRevisionInput,
+    ReviewedPagePublishRuntimeInput, RollbackPageInput, RollbackPageResult, SavePageDocumentInput,
+    SchedulePagePublishInput,
+};
 pub use entities::{
     Page, PageArtifactBindingReplacementOperation, PageArtifactRebuildOperation,
     PageBuilderScenarioBaseline, PagePublishOperation, PagePublishOperationArtifact,

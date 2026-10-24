@@ -1,5 +1,11 @@
 # rustok-pages / CRATE_API
 
+## Public surface
+
+- Modules: `controllers`, `dto`, `entities`, `error`, `graphql`, `http`, `migrations`, `openapi`, `provider_health_binding`, `search_projection`, `services`, `module`.
+- Types: `PagesModule`, `PageService`, `PageBuilderArtifactService`, `PageBuilderScenarioBaselineService`, `PageRouteService`, `PageRouteHistoryImportService`, `PagesProviderHealthAuthority`, `PageCacheInvalidationEventHandler`, `PageSearchProjectionSource`, `PagesError`, `PagesResult<T>`.
+- Core DTOs: `CreatePageInput`, `PageBodyInput`, `PageTranslationInput`, `PublishPageInput`, `RollbackPageInput`, `SavePageDocumentInput`.
+
 ## Public modules
 
 `controllers`, `dto`, `entities`, `error`, `graphql`, `http`, `migrations`, `openapi`, `provider_health_binding`, `search_projection`, `services`, `module`.

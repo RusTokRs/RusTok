@@ -164,6 +164,8 @@ These are gaps in what the runtime actually does, not accepted design:
 
 ## Docs
 
+- [Public Contract Reference (CRATE_API.md)](./CRATE_API.md)
 - [Module docs](./docs/README.md)
 - [Implementation plan](./docs/implementation-plan.md)
 - [Platform docs index](../../../docs/index.md)
+

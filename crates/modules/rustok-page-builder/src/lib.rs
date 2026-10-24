@@ -1,3 +1,10 @@
+//! # rustok-page-builder
+//!
+//! Standalone FBA-first visual page builder reference module for RusToK.
+//!
+//! Provides visual page-building contracts, Fly project validation, deterministic
+//! static landing rendering, and integration capability adapters.
+
 pub mod adapters;
 pub mod browser_host;
 #[cfg(feature = "server")]

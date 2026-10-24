@@ -1,5 +1,11 @@
 # rustok-page-builder / CRATE_API
 
+## Public surface
+
+- Modules: `adapters`, `browser_host`, `composition`, `document`, `domain`, `dto`, `health`, `interaction_providers`, `landing`, `landing_service`, `locale`, `module`, `preview_port`, `publish_runtime`, `publish_sanitization`, `render`, `rollout`, `runtime_context`, `runtime_context_compatibility`, `runtime_context_dependency`, `runtime_context_migration`, `runtime_scenario_release`, `runtime_scenario_render`, `runtime_scenario_snapshot`, `runtime_telemetry`, `service`, `static_landing`, `static_landing_materialization`, `static_publish_policy`, `transport`.
+- Core Types: `PageBuilderModule`, `PageBuilderService`, `FlyHtmlLandingRenderer`, `PageBuilderReviewedPublishRuntime`, `StaticLandingArtifact`.
+- Core DTOs: `PublishPageBuilderInput`, `PreviewPageBuilderInput`, `BuilderNodePropertiesInput`, `PageBuilderCapabilityRequest`, `PageBuilderCapabilityResponse`.
+
 ## Platform Capability Bindings
 - `PageBuilderModule` implements `rustok_core::module::RusToKModule` and `MigrationSource`.
 - Declared as `ModuleKind::Optional`.
