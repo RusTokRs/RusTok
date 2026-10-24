@@ -15,7 +15,9 @@ const productManifest = read('crates/modules/rustok-product/rustok-module.toml')
 const inventoryManifest = read('crates/modules/rustok-inventory/rustok-module.toml');
 const pricingManifest = read('crates/modules/rustok-pricing/rustok-module.toml');
 const productCargo = read('crates/modules/rustok-product/Cargo.toml');
-const productRuntime = read('crates/modules/rustok-product/src/lib.rs');
+const productRuntime =
+  read('crates/modules/rustok-product/src/lib.rs') +
+  read('crates/modules/rustok-product/src/module.rs');
 const catalog = read('crates/modules/rustok-product/src/services/catalog.rs');
 const commands = read('crates/modules/rustok-product/src/services/catalog/commands.rs');
 const inventoryBootstrap = read('crates/modules/rustok-inventory/src/services/bootstrap.rs');

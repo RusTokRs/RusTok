@@ -1,4 +1,3 @@
-гкуц
 const SOURCE: &str = include_str!("../src/transport/native_server_adapter.rs");
 
 #[test]
