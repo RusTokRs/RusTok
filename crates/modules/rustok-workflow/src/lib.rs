@@ -1,4 +1,6 @@
-//! Workflow module for RusToK platform
+//! # rustok-workflow
+//!
+//! Visual workflow automation module for the RusToK platform.
 //!
 //! Provides visual workflow automation — an n8n/Directus Flows-style
 //! orchestrator that integrates with the platform's event infrastructure.
@@ -8,15 +10,6 @@
 //! Workflows are triggered by domain events, cron schedules, webhooks, or
 //! manually. Each workflow is a linear chain of steps (Phase 1). Steps can
 //! perform actions, evaluate conditions, emit new domain events, etc.
-//!
-//! # Phase 1 (this implementation)
-//!
-//! - Data model: `workflows`, `workflow_steps`, `workflow_executions`,
-//!   `workflow_step_executions`
-//! - CRUD API via `WorkflowService`
-//! - Linear step execution via `WorkflowEngine`
-//! - Event trigger via `WorkflowTriggerHandler`
-//! - Basic steps: `action`, `emit_event`, `condition`
 
 pub mod controllers;
 pub mod dto;
@@ -31,12 +24,17 @@ pub mod services;
 pub mod steps;
 pub mod templates;
 
-pub use dto::*;
+pub use dto::{
+    CreateWorkflowInput, CreateWorkflowStepInput, TriggerConfig, UpdateWorkflowInput,
+    UpdateWorkflowStepInput, WorkflowExecutionResponse, WorkflowResponse,
+    WorkflowStepExecutionResponse, WorkflowStepResponse, WorkflowSummary,
+    WorkflowVersionDetail, WorkflowVersionSummary,
+};
 pub use error::{WorkflowError, WorkflowResult};
 pub use graphql::{WorkflowMutation, WorkflowQuery};
 pub use migration::{WorkflowPhase4Migration, WorkflowsMigration};
 pub use module::WorkflowModule;
-pub use ports::*;
+pub use ports::WorkflowReadPort;
 pub use services::{
     WorkflowCronScheduler, WorkflowEngine, WorkflowService, WorkflowTriggerHandler,
 };

@@ -1,3 +1,10 @@
+//! # rustok-translation
+//!
+//! Owner-safe translation workflow and inventory control plane for RusToK.
+//!
+//! Provides translation memory, glossaries, reviewer queues, interchange artifacts,
+//! and provider-safe translation application.
+
 mod collaboration;
 pub mod entities;
 mod error;

@@ -199,5 +199,8 @@ machine-translation orchestration.
   resolution-revision-guarded, and never enter Translation Memory, machine
   requests, owner application, or event bodies.
 
-See the [local module contract](docs/README.md) and
-[implementation plan](docs/implementation-plan.md).
+## Documentation
+
+- [CRATE_API.md](CRATE_API.md) — Public API contract, module registration, capability bindings, and domain invariants.
+- [Local Module Contract](docs/README.md)
+- [Implementation Plan](docs/implementation-plan.md)

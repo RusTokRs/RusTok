@@ -1,8 +1,10 @@
 # rustok-workflow / CRATE_API
 
-## Public Modules
+## Public surface
 
-`controllers`, `dto`, `entities`, `error`, `graphql`, `migration`, `migrations`, `ports`, `services`, `steps`, `templates`, `module`.
+### Public modules
+
+- `controllers`, `dto`, `entities`, `error`, `graphql`, `migration`, `migrations`, `ports`, `services`, `steps`, `templates`, `module`
 
 ## Platform Capability Bindings
 

@@ -1,5 +1,14 @@
 # Translation Crate API Specification
 
+## Public surface
+
+### Public modules
+- `entities`
+- `graphql` (behind feature `graphql`)
+- `graphql_runtime` (behind feature `graphql`)
+- `migrations`
+- `module`
+
 ## Platform Capability Bindings
 - **RusToKModule Implementation**: `TranslationModule` in `src/module.rs`
 - **Module Slug**: `translation`

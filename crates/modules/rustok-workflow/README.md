@@ -47,5 +47,6 @@
 
 ## Docs
 
+- [CRATE_API.md](CRATE_API.md) — Public API contract, module registration, capability bindings, and domain invariants.
 - [Module docs](./docs/README.md)
 - [Platform docs index](../../../docs/index.md)
