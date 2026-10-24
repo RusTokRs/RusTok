@@ -1,5 +1,7 @@
 # Product Crate API Specification
 
+## Public surface
+
 ## Public Modules
 - `dto`: Product, variant, translation, and catalog data transfer objects.
 - `entities`: SeaORM entity models for products, variants, and translations.
