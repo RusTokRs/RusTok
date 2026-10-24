@@ -16,4 +16,8 @@ The crate consumes `rustok-modules` metadata and implements `rustok-translation-
 
 - `src/lib.rs` — adapter types, validation, and public exports.
 
-See the [Modules documentation](../rustok-modules/docs/README.md) and the [Translation documentation](../rustok-translation/docs/README.md).
+## Documentation
+
+- [CRATE_API.md](CRATE_API.md) — Public API contract, adapter boundary, capability bindings, and domain invariants.
+- [Modules Documentation](../rustok-modules/docs/README.md)
+- [Translation Documentation](../rustok-translation/docs/README.md)

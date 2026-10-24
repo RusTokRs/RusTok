@@ -70,3 +70,7 @@ node scripts/evidence/capture-product-catalog-separate-process-runtime.mjs
 The capture starts the standalone provider and `rustok-server` as separate processes under an explicit local-loopback profile, runs the authenticated probe, and retains only source hashes, readiness markers, output hashes, byte counts, toolchain versions, and command metadata. Raw database URLs, bearer credentials, fixture identifiers, and process output are not persisted. This capture does not prove Commerce or AI business requests through the consumer server.
 
 The implementation agent does not claim the runtime capture command was executed. Product remains `boundary_ready` until retained provider/consumer runtime evidence and separate-process Commerce/AI business-request evidence exist.
+
+## Documentation
+
+- [CRATE_API.md](CRATE_API.md) — Public API contract, transport framing, capability bindings, and domain invariants.

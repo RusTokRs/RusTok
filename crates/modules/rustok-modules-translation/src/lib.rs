@@ -1,3 +1,5 @@
+//! # rustok-modules-translation
+//!
 //! Owner adapter boundary between static module Settings and the neutral
 //! Translation target SPI.
 //!
@@ -820,3 +822,6 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+mod contract_tests;

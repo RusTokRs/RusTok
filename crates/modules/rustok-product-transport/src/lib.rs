@@ -1,3 +1,5 @@
+//! # rustok-product-transport
+//!
 //! Tonic gRPC framing for the Product-owned catalog read port.
 //!
 //! Canonical DTOs and policy remain in `rustok-product`. This crate supplies a
@@ -23,3 +25,6 @@ pub use server::{
     ProductCatalogGrpcOperation, ProductCatalogGrpcService, TrustedProductCatalogAuthority,
 };
 pub use tonic::transport::ClientTlsConfig;
+
+#[cfg(test)]
+mod contract_tests;
