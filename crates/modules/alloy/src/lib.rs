@@ -1,9 +1,12 @@
-use async_trait::async_trait;
-use rustok_api::Permission;
-use rustok_core::{MigrationSource, RusToKModule};
+//! # alloy
+//!
+//! Alloy runtime and scripting capability module for RusToK.
+//!
+//! This crate owns script/source storage, authoring contracts, scheduler,
+//! execution log projections, and runtime scripting capabilities.
+
 #[cfg(test)]
 use rustok_sandbox::{CapabilityBrokerRouter, ExecutorRegistry, SandboxRuntime};
-use sea_orm_migration::MigrationTrait;
 
 pub mod api;
 mod artifact;
@@ -19,12 +22,15 @@ pub mod integration;
 pub mod migration;
 pub mod migrations;
 pub mod model;
+pub mod module;
 pub mod runner;
 pub mod runtime;
 pub mod sandbox_request;
 pub mod scheduler;
 pub mod storage;
 pub mod utils;
+
+pub use module::AlloyModule;
 
 pub use authoring::{
     AlloyAuthoringError, AlloyAuthoringService, AlloyExecutionOutcome, AlloyScriptLifecycleAction,
@@ -87,8 +93,6 @@ pub use sandbox_request::{
 pub use scheduler::{ScheduledJob, Scheduler};
 pub use storage::{InMemoryStorage, ScriptPage, ScriptQuery, ScriptRegistry, SeaOrmStorage};
 
-pub struct AlloyModule;
-
 pub fn create_default_engine() -> ScriptEngine {
     let config = RhaiConfig::default();
     create_engine_with_config(config)
@@ -145,47 +149,12 @@ pub fn create_orchestrator_with_sandbox<R: ScriptRegistry>(
     ScriptOrchestrator::new(runtime, registry)
 }
 
-impl MigrationSource for AlloyModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-}
-
-#[async_trait]
-impl RusToKModule for AlloyModule {
-    fn slug(&self) -> &'static str {
-        "alloy"
-    }
-
-    fn name(&self) -> &'static str {
-        "Alloy"
-    }
-
-    fn description(&self) -> &'static str {
-        "Alloy runtime and scripting capability"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::SCRIPTS_CREATE,
-            Permission::SCRIPTS_READ,
-            Permission::SCRIPTS_UPDATE,
-            Permission::SCRIPTS_DELETE,
-            Permission::SCRIPTS_LIST,
-            Permission::SCRIPTS_EXECUTE,
-            Permission::SCRIPTS_MANAGE,
-        ]
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use rhai::Dynamic;
+    use rustok_api::Permission;
+    use rustok_core::RusToKModule;
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -685,3 +654,6 @@ mod tests {
         assert!(module.permissions().contains(&Permission::SCRIPTS_MANAGE));
     }
 }
+
+#[cfg(test)]
+mod contract_tests;

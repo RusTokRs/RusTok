@@ -3,7 +3,13 @@ name = "alloy"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+readme = "README.md"
 description = "Alloy runtime and scripting capability"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 axum.workspace = true
