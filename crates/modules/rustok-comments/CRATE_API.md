@@ -1,5 +1,17 @@
 # rustok-comments / CRATE_API
 
+## Public surface
+
+Deliberate public modules and exports:
+
+- `dto`: Owner DTOs, request/response models (`CommentRecord`, `CommentListItem`, `CreateCommentInput`, `UpdateCommentInput`, etc.)
+- `error`: `CommentsError`, `CommentsResult`
+- `module`: `CommentsModule` implementation of `RusToKModule` and `MigrationSource`
+- `ports`: `CommentsThreadPort` boundary and `in_process_comments_thread_port`
+- `remote`: Wire requests and transport bridges (`CommentsThreadRequest`, `CommentsThreadTransport`, `RemoteCommentsThreadPort`)
+- `services`: `CommentsService`
+- `tcp_auth`, `tcp_channel`, `tcp_delegation`, `tcp_server`, `tcp_transport`: TCP transport and delegation adapters (optional feature)
+
 ## Platform Capability Bindings
 - `CommentsModule` implements `rustok_core::module::RusToKModule` and `MigrationSource`.
 - Declared as `ModuleKind::Optional`.

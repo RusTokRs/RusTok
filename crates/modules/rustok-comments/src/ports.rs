@@ -761,4 +761,5 @@ mod in_process {
 }
 
 #[cfg(feature = "server")]
-pub use in_process::*;
+pub use in_process::in_process_comments_thread_port;
+

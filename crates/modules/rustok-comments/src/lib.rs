@@ -1,4 +1,24 @@
+/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok.
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
+
+//! Canonical platform owner of generic comment threads and non-forum discussion surfaces in RusToK.
+//!
+//! # Architecture and Guidelines
+//!
+//! This crate follows Fluid Backend Architecture (FBA).
+//! For design and implementation standards, see:
+//! - [Backend Module Implementation Guide](https://github.com/RusTokRs/RusTok/blob/main/docs/backend/module-backend-implementation.md)
+//! - [Module Platform Overview](https://github.com/RusTokRs/RusTok/blob/main/docs/modules/overview.md)
+
 pub mod dto;
+
 #[cfg(feature = "server")]
 pub mod entities;
 #[cfg(feature = "server")]
@@ -45,15 +65,21 @@ pub use dto::{
     ListThreadsFilter, SetCommentStatusRequest, UpdateCommentInput,
 };
 #[cfg(feature = "server")]
-pub use entities::*;
+pub use entities::{comment, comment_body, comment_thread, comment_thread_identity_lock};
 #[cfg(feature = "server")]
 pub use error::{CommentsError, CommentsResult};
 #[cfg(feature = "ports")]
-pub use ports::*;
+pub use ports::CommentsThreadPort;
+#[cfg(all(feature = "ports", feature = "server"))]
+pub use ports::in_process_comments_thread_port;
 #[cfg(feature = "server")]
-pub use remote::*;
+pub use remote::{
+    remote_comments_thread_port, CommentsThreadRequest, CommentsThreadResponse,
+    CommentsThreadTransport, CommentsThreadTransportReply, RemoteCommentsThreadPort,
+};
 #[cfg(feature = "server")]
 pub use services::CommentsService;
+
 #[cfg(feature = "tcp-transport")]
 pub use tcp_auth::{
     COMMENTS_TCP_PROTOCOL_VERSION, CommentsTcpAuthenticationConfigError,

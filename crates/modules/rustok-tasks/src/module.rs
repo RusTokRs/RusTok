@@ -16,7 +16,16 @@ use rustok_core::module::{
 };
 use sea_orm_migration::MigrationTrait;
 
+/// Team Issues & Tasks capability module for RusToK.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct TasksModule;
+
+impl TasksModule {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
 
 #[async_trait]
 impl RusToKModule for TasksModule {

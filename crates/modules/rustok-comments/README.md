@@ -91,4 +91,8 @@ remains distinct from tenant lifecycle independence.
 - `CommentsThreadPort`
 - `rustok-comments-admin`
 
-See also `docs/README.md`.
+## Docs
+
+- [Public Contract Reference (CRATE_API.md)](./CRATE_API.md)
+- [Module Architecture Contract](./docs/README.md)
+
