@@ -1,4 +1,4 @@
-use rustok_newsletter_api::SubscriberStatus;
+use crate::model::SubscriberStatus;
 
 /// Subscriber lifecycle state machine.
 ///

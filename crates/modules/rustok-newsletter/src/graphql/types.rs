@@ -1,5 +1,5 @@
 use async_graphql::*;
-use rustok_newsletter_api::{
+use crate::model::{
     CampaignStatus as ApiCampaignStatus, SubscriberStatus as ApiSubscriberStatus,
 };
 use uuid::Uuid;

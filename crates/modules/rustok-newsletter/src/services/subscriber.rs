@@ -1,5 +1,5 @@
 use chrono::Utc;
-use rustok_newsletter_api::SubscriberStatus;
+use crate::model::{NewsletterApiError, SubscriberStatus};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
     ModelTrait, QueryFilter, QueryOrder, QuerySelect,
@@ -336,7 +336,7 @@ impl SubscriberService {
 fn parse_status(value: &str) -> NewsletterResult<SubscriberStatus> {
     value
         .parse()
-        .map_err(|e: rustok_newsletter_api::NewsletterApiError| {
+        .map_err(|e: NewsletterApiError| {
             NewsletterError::validation(e.to_string())
         })
 }

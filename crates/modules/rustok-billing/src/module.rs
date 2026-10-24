@@ -16,7 +16,15 @@ use rustok_core::module::{
 };
 use sea_orm_migration::MigrationTrait;
 
+/// B2B Billing & Settlements capability module for RusToK.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct BillingModule;
+
+impl BillingModule {
+    pub fn new() -> Self {
+        Self
+    }
+}
 
 #[async_trait]
 impl RusToKModule for BillingModule {

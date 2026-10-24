@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use rustok_newsletter_api::CampaignStatus;
+use crate::model::CampaignStatus;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;

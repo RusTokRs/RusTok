@@ -16457,7 +16457,6 @@ dependencies = [
  "rustok-core",
  "rustok-email",
  "rustok-events",
- "rustok-newsletter-api",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -16465,21 +16464,6 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tracing",
- "utoipa",
- "uuid",
-]
-
-[[package]]
-name = "rustok-newsletter-api"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "rustok-api",
- "rustok-core",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
  "utoipa",
  "uuid",
 ]

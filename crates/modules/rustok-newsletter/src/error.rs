@@ -1,9 +1,10 @@
-use rustok_newsletter_api::NewsletterApiError;
+use crate::model::NewsletterApiError;
 use thiserror::Error;
 
 /// Domain errors for the newsletter module.
 #[derive(Debug, Error)]
 pub enum NewsletterError {
+    #[cfg(feature = "server")]
     #[error("database error: {0}")]
     Database(#[from] sea_orm::DbErr),
 

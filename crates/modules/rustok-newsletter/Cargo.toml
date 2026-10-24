@@ -6,24 +6,33 @@ license.workspace = true
 description = "Newsletter subscriber management, campaign lifecycle, and delivery orchestration"
 
 [features]
-default = []
-server = ["rustok-api/server", "dep:async-graphql"]
+default = ["server"]
+server = [
+    "dep:async-graphql",
+    "dep:async-trait",
+    "dep:rustok-api",
+    "dep:rustok-core",
+    "dep:rustok-email",
+    "dep:rustok-events",
+    "dep:sea-orm",
+    "dep:sea-orm-migration",
+    "dep:tracing",
+]
 
 [dependencies]
 async-graphql = { workspace = true, optional = true }
-async-trait.workspace = true
+async-trait = { workspace = true, optional = true }
 chrono.workspace = true
-rustok-api.workspace = true
-rustok-core.workspace = true
-rustok-email.workspace = true
-rustok-events.workspace = true
-rustok-newsletter-api.workspace = true
-sea-orm.workspace = true
-sea-orm-migration.workspace = true
+rustok-api = { workspace = true, optional = true, features = ["server"] }
+rustok-core = { workspace = true, optional = true }
+rustok-email = { workspace = true, optional = true }
+rustok-events = { workspace = true, optional = true }
+sea-orm = { workspace = true, optional = true }
+sea-orm-migration = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
-tracing.workspace = true
+tracing = { workspace = true, optional = true }
 utoipa = { workspace = true, features = ["uuid", "chrono"] }
 uuid.workspace = true
 

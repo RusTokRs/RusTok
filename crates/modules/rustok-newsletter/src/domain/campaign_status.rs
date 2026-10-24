@@ -1,4 +1,4 @@
-use rustok_newsletter_api::CampaignStatus;
+use crate::model::CampaignStatus;
 
 /// Campaign lifecycle state machine.
 ///
