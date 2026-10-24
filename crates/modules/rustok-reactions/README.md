@@ -78,5 +78,9 @@ declared policy; consumers must not fabricate a zero count. See
 - `RepairReactionSubjectCommand`
 - `migrations::migrations()`
 
-See [module contract](docs/README.md) and
-[implementation plan](docs/implementation-plan.md).
+## Docs
+
+- [Public Contract Reference (CRATE_API.md)](./CRATE_API.md)
+- [Module Architecture Contract](docs/README.md)
+- [Implementation Plan](docs/implementation-plan.md)
+

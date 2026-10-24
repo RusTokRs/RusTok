@@ -1,5 +1,16 @@
 # Reactions Crate API Specification
 
+## Public surface
+
+Deliberate public modules and exports:
+
+- `model`: Core domain types (`ReactionCatalog`, `ReactionSubjectRef`, `ApplyReactionCommand`, `ReactionSnapshot`, `ReactionActorState`, `ReactionAggregate`, etc.)
+- `provider`: Reaction provider interfaces, registries, and ports (`ReactionSubjectProvider`, `ReactionSubjectRegistry`, `ReactionReadPort`, `ReactionWritePort`, etc.)
+- `module`: `ReactionsModule` implementing `RusToKModule` and `MigrationSource`
+- `reconciliation`: Aggregate reconciliation types (`ReactionReconciliationRequest`, `ReactionReconciliationReport`, `RepairReactionSubjectCommand`, etc.)
+- `service`: `ReactionsService`
+- `graphql`: Optional GraphQL schema attachment and resolvers (`ReactionsQuery`, `ReactionsMutation`)
+
 ## Platform Capability Bindings
 - **RusToKModule Implementation**: `ReactionsModule` in `src/module.rs`
 - **Module Slug**: `reactions`

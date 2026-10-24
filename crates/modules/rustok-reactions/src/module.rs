@@ -23,7 +23,16 @@ use crate::provider::{
 };
 use crate::target_lifecycle;
 
+/// Shared bounded reactions with source-owned subject authorization.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ReactionsModule;
+
+impl ReactionsModule {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
 
 #[async_trait]
 impl RusToKModule for ReactionsModule {
