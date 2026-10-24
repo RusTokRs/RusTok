@@ -137,3 +137,10 @@ Tracked from [`docs/audits/seo-module-product-logic-audit-2026-10-18.md`](../../
   `cargo check -p rustok-seo` / `cargo test -p rustok-seo` (see `docs/verification/README.md`).
   Static verification for this module runs via `npm run verify:seo:admin-boundary`,
   `npm run verify:seo:fba`, and `scripts/verify/verify-seo-*.mjs`.
+
+## Docs
+
+- [Public Contract Reference (CRATE_API.md)](./CRATE_API.md)
+- [Module Architecture Contract](docs/README.md)
+- [Implementation Plan](docs/implementation-plan.md)
+

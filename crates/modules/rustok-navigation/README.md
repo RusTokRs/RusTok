@@ -45,4 +45,8 @@ content-free cursor-repair journal. Navigation does not claim a generic menu
 outbox event; provider apply commits the locale aggregate, the journal entry,
 and its durable owner receipt in one transaction.
 
-See [module documentation](docs/README.md).
+## Docs
+
+- [Public Contract Reference (CRATE_API.md)](./CRATE_API.md)
+- [Module Architecture Contract](docs/README.md)
+

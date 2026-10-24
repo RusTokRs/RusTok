@@ -19,7 +19,16 @@ use sea_orm_migration::MigrationTrait;
 use crate::migrations;
 use crate::services;
 
+/// SEO runtime, metadata, redirects, sitemaps, and robots module.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SeoModule;
+
+impl SeoModule {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
 
 #[async_trait]
 impl RusToKModule for SeoModule {

@@ -1,5 +1,16 @@
 # SEO Crate API Specification
 
+## Public surface
+
+Deliberate public modules and exports:
+
+- `dto`: SEO DTOs and view models (`SeoDocument`, `SeoMetaRecord`, `SeoRedirectRecord`, `SeoBulkItem`, etc.)
+- `error`: `SeoError`, `SeoFailure`, `SeoResult`
+- `graphql`: Schema resolvers (`SeoMutation`, `SeoQuery`)
+- `module`: `SeoModule` implementing `RusToKModule` and `MigrationSource`
+- `services`: Application services (`SeoApplicationServices`, `SeoMetadataService`, `SeoRedirectService`, `SeoSitemapService`, `SeoRoutingService`, `SeoBulkService`, `SeoTranslationTargetProvider`, etc.)
+- `controllers`: REST routes and handlers (`routes`)
+
 ## Platform Capability Bindings
 - **RusToKModule Implementation**: `SeoModule` in `src/module.rs`
 - **Module Slug**: `seo`

@@ -1,6 +1,7 @@
 #[test]
 fn seo_module_matches_canonical_contract() {
     let api = include_str!("../CRATE_API.md");
+    assert!(api.contains("## Public surface"));
     assert!(api.contains("## Platform Capability Bindings"));
     assert!(api.contains("## Domain Collaborations"));
     assert!(api.contains("## Minimum Contract Set"));
@@ -10,7 +11,8 @@ fn seo_module_matches_canonical_contract() {
     assert!(api.contains("### Errors / Failure Codes"));
 
     use rustok_core::{ModuleKind, RusToKModule};
-    let module = crate::SeoModule;
+    let module = crate::SeoModule::new();
+
     assert_eq!(module.slug(), "seo");
     assert_eq!(module.name(), "SEO");
     assert_eq!(module.kind(), ModuleKind::Optional);

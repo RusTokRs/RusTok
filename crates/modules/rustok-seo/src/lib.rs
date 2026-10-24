@@ -1,5 +1,25 @@
+/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok.
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
+
+//! Canonical platform owner of SEO runtime, metadata, redirects, sitemaps, and robots in RusToK.
+//!
+//! # Architecture and Guidelines
+//!
+//! This crate follows Fluid Backend Architecture (FBA).
+//! For design and implementation standards, see:
+//! - [Backend Module Implementation Guide](https://github.com/RusTokRs/RusTok/blob/main/docs/backend/module-backend-implementation.md)
+//! - [Module Platform Overview](https://github.com/RusTokRs/RusTok/blob/main/docs/modules/overview.md)
+
 #[cfg(feature = "server")]
 mod authorization;
+
 #[cfg(feature = "server")]
 pub mod controllers;
 pub mod dto;

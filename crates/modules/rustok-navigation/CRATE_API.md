@@ -1,5 +1,17 @@
 # rustok-navigation / CRATE_API
 
+## Public surface
+
+Deliberate public modules and exports:
+
+- `dto`: Navigation DTOs (`ActiveMenuBindingResponse`, `BindActiveMenuInput`, `CreateMenuInput`, `MenuItemInput`, `MenuItemResponse`, `MenuItemTranslationInput`, `MenuLocation`, `MenuResponse`, `MenuTranslationInput`)
+- `entities`: SeaORM entities (`Menu`, `MenuBinding`, `MenuItem`)
+- `error`: `NavigationError`, `NavigationResult`
+- `graphql`: Schema resolvers (`NavigationMutation`, `NavigationQuery`)
+- `module`: `NavigationModule` implementation of `RusToKModule` and `MigrationSource`
+- `services`: `MenuService`, `MenuBindingService`, and translation error code constants
+- `translation_target`: `NavigationMenuTranslationTargetProvider` for platform translation integration
+
 ## Platform Capability Bindings
 - `NavigationModule` implements `rustok_core::module::RusToKModule` and `MigrationSource`.
 - Declared as `ModuleKind::Optional`.
