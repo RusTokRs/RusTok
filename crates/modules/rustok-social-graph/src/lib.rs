@@ -1,3 +1,9 @@
+//! # rustok-social-graph
+//!
+//! Tenant-scoped social relation owner for blocks, mutes, follows, and friendship policy.
+//!
+//! Exposes neutral command, privacy read, revision-bearing follow-state read,
+//! and maintenance ports for idempotency receipts and relation event replay.
 
 pub mod entities;
 pub mod error;

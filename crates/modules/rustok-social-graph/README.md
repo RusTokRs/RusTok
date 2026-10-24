@@ -128,3 +128,7 @@ node scripts/verify/verify-social-graph-relation-event-replay.mjs
 node scripts/verify/verify-profiles-storefront-boundary.mjs
 rustok-cli social_graph receipt-cleanup --tenant-id <uuid> --retention-days 30 --limit 100 --dry-run
 ```
+
+## Documentation
+
+- [CRATE_API.md](CRATE_API.md) — Public API contract, module registration, capability bindings, and domain invariants.

@@ -1,11 +1,12 @@
-use async_trait::async_trait;
-use rustok_api::Permission;
-use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
-use rustok_moderation::register_moderation_subject_adapter_factory;
-use rustok_notifications::register_notification_source_provider_factory;
-use sea_orm_migration::MigrationTrait;
+//! # rustok-groups
+//!
+//! Social groups, memberships, local roles, privacy, and feature bindings.
+//!
+//! Provides social group identity, multilingual presentation, group memberships,
+//! invitations, application policies, and group-level enforcement state.
 
 pub mod application_entities;
+
 mod applications_legacy_module {
     include!("applications.rs");
     include!("applications_transactional.rs");
@@ -55,6 +56,7 @@ mod membership_enforcement_command;
 pub mod membership_enforcement_entities;
 mod membership_enforcement_transaction;
 pub mod migrations;
+pub mod module;
 mod moderation_subject;
 mod notification_source;
 pub mod policy_history;
@@ -114,13 +116,55 @@ pub mod targeted_invitations {
     };
 }
 
-pub use applications::*;
-pub use domain::*;
-pub use dto::*;
+pub use applications::{
+    BulkReviewGroupMembershipApplicationItemResult,
+    BulkReviewGroupMembershipApplicationsRequest, BulkReviewGroupMembershipApplicationsResult,
+    CancelGroupMembershipApplicationRequest, GroupApplicationBulkReviewCommandPort,
+    GroupApplicationCasCommandPort, GroupApplicationCommandPort,
+    GroupApplicationLifecycleCommandPort, GroupApplicationLifecycleReadPort,
+    GroupApplicationLifecycleResult, GroupApplicationPolicy, GroupApplicationPolicyLocaleCatalog,
+    GroupApplicationPolicyManagementReadPort, GroupApplicationPolicyManagementView,
+    GroupApplicationPolicyPrecondition, GroupApplicationQuestion, GroupApplicationReadPort,
+    GroupApplicationReviewCommandPort, GroupApplicationReviewDecision, GroupApplicationRule,
+    GroupApplicationService, GroupApplicationStatus, GroupMembershipApplication,
+    GroupMembershipApplicationConnection, ListGroupApplicationPolicyLocalesRequest,
+    ListGroupMembershipApplicationsRequest, ReadGroupApplicationPolicyForManagementRequest,
+    ReadGroupApplicationPolicyRequest, ReadMyGroupMembershipApplicationRequest,
+    ReopenGroupMembershipApplicationRequest, ReviewGroupMembershipApplicationRequest,
+    ReviewGroupMembershipApplicationResult, SubmitGroupMembershipApplicationIfCurrentRequest,
+    SubmitGroupMembershipApplicationRequest, SubmitGroupMembershipApplicationResult,
+    UpsertGroupApplicationPolicyIfCurrentRequest, UpsertGroupApplicationPolicyRequest,
+    UpsertGroupApplicationPolicyResult, GROUP_APPLICATION_POLICY_CHANGED_CODE,
+};
+pub use domain::{
+    normalize_feature_key, normalize_group_handle, GroupAction, GroupFeatureStatus,
+    GroupJoinPolicy, GroupMembershipEffectiveStatus, GroupMembershipEnforcementSourceKind,
+    GroupMembershipEnforcementState, GroupMembershipStatus, GroupRole, GroupStatus,
+    GroupVisibility,
+};
+pub use dto::{
+    CreateGroupInput, DeleteGroupTranslationRequest, DeleteGroupTranslationResult,
+    GroupAccessDecision, GroupAccessRequest, GroupConnection, GroupDetails, GroupFeatureBinding,
+    GroupMembership, GroupMembershipConnection, GroupMembershipEffectiveState,
+    GroupMembershipEnforcementSummary, GroupSummary, GroupTranslation,
+    GroupTranslationMutationResult, JoinGroupRequest, LeaveGroupRequest,
+    ListGroupMembershipsRequest, ListGroupTranslationsRequest, ListGroupsRequest,
+    ReadGroupMembershipEnforcementRequest, ReadGroupMembershipRequest, ReadGroupRequest,
+    SetGroupFeatureRequest, UpsertGroupTranslationRequest,
+};
 pub use effective_service::GroupsService;
 pub use error::{GroupsError, GroupsResult};
-pub use governance::*;
-pub use invitations::*;
+pub use governance::{
+    ChangeGroupRoleRequest, GroupGovernanceCommandPort, GroupGovernanceResult,
+    GroupGovernanceService, TransferGroupOwnershipRequest,
+};
+pub use invitations::{
+    AcceptGroupInvitationRequest, AcceptGroupInvitationResult, CreateGroupInvitationRequest,
+    CreateGroupInvitationResult, GroupInvitation, GroupInvitationCommandPort,
+    GroupInvitationConnection, GroupInvitationReadPort, GroupInvitationService,
+    GroupInvitationStatus, ListGroupInvitationsRequest, RevokeGroupInvitationRequest,
+    RevokeGroupInvitationResult,
+};
 pub use localization::GroupLocalizationService;
 pub use membership_enforcement::GroupMembershipEnforcementService;
 pub use membership_enforcement_command::{
@@ -128,89 +172,33 @@ pub use membership_enforcement_command::{
     RevokeGroupMembershipSuspensionRequest, SuspendGroupMembershipRequest,
 };
 pub use moderation_subject::GroupsModerationSubjectAdapterFactory;
-pub use policy_history::*;
-pub use ports::*;
-pub use targeted_invitations::*;
+pub use policy_history::{
+    GroupApplicationPolicyHistoryReadPort, GroupApplicationPolicyHistoryService,
+    GroupApplicationPolicyRevision, GroupApplicationPolicyRevisionConnection,
+    ListGroupApplicationPolicyRevisionsRequest,
+};
+pub use ports::{
+    GroupAccessReadPort, GroupCapabilityDescriptor, GroupCommandPort,
+    GroupLocalizationCommandPort, GroupLocalizationReadPort,
+    GroupMembershipEnforcementCommandPort, GroupMembershipEnforcementReadPort,
+    GroupMembershipReadPort, GroupSummaryReadPort, SharedGroupAccessReadPort,
+    SharedGroupCommandPort, SharedGroupLocalizationCommandPort, SharedGroupLocalizationReadPort,
+    SharedGroupMembershipEnforcementCommandPort, SharedGroupMembershipEnforcementReadPort,
+    SharedGroupMembershipReadPort, SharedGroupSummaryReadPort,
+};
+pub use targeted_invitations::{
+    AcceptTargetedGroupInvitationRequest, GroupTargetedInvitationCommandPort,
+    GroupTargetedInvitationService,
+};
 
-/// Social group identity, membership, privacy, and modular feature owner.
-pub struct GroupsModule;
+pub use module::GroupsModule;
 
-#[async_trait]
-impl RusToKModule for GroupsModule {
-    fn slug(&self) -> &'static str {
-        "groups"
-    }
-
-    fn name(&self) -> &'static str {
-        "Groups"
-    }
-
-    fn description(&self) -> &'static str {
-        "Social groups, memberships, local roles, privacy, and feature bindings"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::GROUPS_CREATE,
-            Permission::GROUPS_READ,
-            Permission::GROUPS_UPDATE,
-            Permission::GROUPS_DELETE,
-            Permission::GROUPS_LIST,
-            Permission::GROUPS_MODERATE,
-            Permission::GROUPS_MANAGE,
-        ]
-    }
-
-    fn register_runtime_extensions(
-        &self,
-        extensions: &mut ModuleRuntimeExtensions,
-    ) -> rustok_core::Result<()> {
-        extensions.insert(GroupCapabilityDescriptor::default());
-        register_notification_source_provider_factory(
-            extensions,
-            notification_source::GroupsNotificationSourceProviderFactory,
-        )
-        .map_err(|error| {
-            rustok_core::Error::Validation(format!(
-                "groups notification source factory registration failed: {error}"
-            ))
-        })?;
-        register_moderation_subject_adapter_factory(
-            extensions,
-            moderation_subject::GroupsModerationSubjectAdapterFactory,
-        )
-        .map_err(|error| {
-            rustok_core::Error::Validation(format!(
-                "groups moderation subject factory registration failed: {error}"
-            ))
-        })?;
-        Ok(())
-    }
-}
-
-impl MigrationSource for GroupsModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-}
+#[cfg(test)]
+mod contract_tests;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn module_metadata_matches_manifest_contract() {
-        let module = GroupsModule;
-        assert_eq!(module.slug(), "groups");
-        assert_eq!(module.name(), "Groups");
-        assert!(module.dependencies().is_empty());
-        assert_eq!(module.migrations().len(), 9);
-        assert_eq!(module.permissions().len(), 7);
-    }
 
     #[test]
     fn capability_descriptor_fails_closed() {
@@ -230,3 +218,4 @@ mod tests {
         );
     }
 }
+

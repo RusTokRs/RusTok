@@ -1,5 +1,7 @@
 # rustok-social-graph / CRATE_API
 
+## Public surface
+
 ## Public modules
 
 - `entities`

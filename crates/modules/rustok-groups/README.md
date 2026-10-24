@@ -204,8 +204,10 @@ adapter are source-complete, but runtime evidence and remaining provider/owner p
 
 ## Documentation
 
+- [Public Contract Reference (CRATE_API.md)](./CRATE_API.md)
 - [Live module contract](docs/README.md)
 - [Canonical implementation plan](docs/implementation-plan.md)
+
 - [Membership enforcement command contract](docs/membership-enforcement-command-contract.md)
 - [Bulk review contract](docs/bulk-review-contract.md)
 - [FBA registry](contracts/groups-fba-registry.json)
