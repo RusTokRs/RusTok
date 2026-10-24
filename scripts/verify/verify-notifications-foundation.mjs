@@ -59,7 +59,7 @@ const adminUiPath = "crates/modules/rustok-notifications/admin/src/ui/leptos.rs"
 const storefrontCorePath = "crates/modules/rustok-notifications/storefront/src/core.rs";
 const storefrontTransportPath = "crates/modules/rustok-notifications/storefront/src/transport.rs";
 const storefrontUiPath = "crates/modules/rustok-notifications/storefront/src/ui/leptos.rs";
-const canonicalPlanPath = existsSync("crates/modules/rustok-forum/docs/archive/implementation-plan-2026-08-06.snapshot")
+const canonicalPlanPath = existsSync(absolute("crates/modules/rustok-forum/docs/archive/implementation-plan-2026-08-06.snapshot"))
   ? "crates/modules/rustok-forum/docs/archive/implementation-plan-2026-08-06.snapshot"
   : "crates/modules/rustok-forum/docs/implementation-plan.md";
 
@@ -169,7 +169,6 @@ for (const relativePath of collectFiles(repoRoot)) {
   if (relativePath === "Cargo.toml") continue;
   if (!relativePath.endsWith(".rs") && !relativePath.endsWith("Cargo.toml")) continue;
   if (relativePath.startsWith("crates/modules/rustok-notifications/")) continue;
-  if (relativePath.startsWith("crates/modules/rustok-notifications-api/")) continue;
   if (relativePath.startsWith("crates/modules/rustok-distribution/")) continue;
   if (relativePath.startsWith("crates/utils/rustok-migrations/")) continue;
   if (relativePath.startsWith("apps/server/")) continue;
@@ -181,7 +180,7 @@ for (const relativePath of collectFiles(repoRoot)) {
     if (/rustok-notifications\s*=\s*\{[^}]*"server"/.test(prodSource)) {
       failures.push(`${relativePath}: producer enables notifications server feature`);
     }
-  } else if (/rustok_notifications::(?:entities|candidate|fanout|inbox|worker|service|migrations)/.test(source)) {
+  } else if (/rustok_notifications::(?:entities|candidate|fanout|inbox|worker|service|migrations|Notification[s]?Service)/.test(source)) {
     failures.push(`${relativePath}: producer imports the notifications owner persistence instead of the neutral API contract`);
   }
 }

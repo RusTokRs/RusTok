@@ -135,7 +135,7 @@ for (const marker of [
 ]) {
   requireText(forumSource, marker, `${forumSourcePath}: missing source-provider invariant ${marker}`);
 }
-reject(forumSource, /rustok_notifications::(?:entities|candidate|fanout|inbox|worker|service|migrations)|source_inbox|fanout_job/, `${forumSourcePath}: Forum imports the notifications owner persistence`);
+reject(forumSource, /rustok_notifications::(?:entities|candidate|fanout|inbox|worker|service|migrations|Notification[s]?Service)|source_inbox|fanout_job/i, `${forumSourcePath}: Forum imports the notifications owner persistence`);
 reject(forumSource, /email_address|phone_number|smtp|rendered_html/i, `${forumSourcePath}: Forum source leaks channel/contact/rendered data`);
 
 for (const marker of [

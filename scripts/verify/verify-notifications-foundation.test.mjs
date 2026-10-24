@@ -36,13 +36,17 @@ const validModel = `
 `;
 
 const files = {
-  "crates/modules/rustok-notifications-api/src/lib.rs": `
+  "crates/modules/rustok-notifications/src/lib.rs": `
     pub struct NotificationSourceSlug;
     pub struct NotificationTypeKey;
     pub struct NotificationTemplateKey;
     pub struct NotificationTargetRoute;
+    fn register() { ensure_notification_source_registry(); }
   `,
-  "crates/modules/rustok-notifications-api/src/keys.rs": `
+  "crates/modules/rustok-notifications/src/module.rs": `
+    fn dependencies() -> &'static [&'static str] { &["outbox"] }
+  `,
+  "crates/modules/rustok-notifications/src/keys.rs": `
     const SOURCE_SLUG_MAX_BYTES: usize = 64;
     const SEMANTIC_KEY_MAX_BYTES: usize = 96;
     const AUDIENCE_CURSOR_MAX_BYTES: usize = 512;
@@ -50,8 +54,8 @@ const files = {
     enum NotificationKeyError { InvalidRoute }
     fn safe(segment: &str) -> bool { segment != "." && segment != ".." }
   `,
-  "crates/modules/rustok-notifications-api/src/model.rs": validModel,
-  "crates/modules/rustok-notifications-api/src/provider.rs": `
+  "crates/modules/rustok-notifications/src/model.rs": validModel,
+  "crates/modules/rustok-notifications/src/provider.rs": `
     trait NotificationSourceProvider {
       fn describe_event();
       fn resolve_audience();
@@ -61,10 +65,6 @@ const files = {
     fn register_notification_source_provider() {}
     fn notification_source_registry_from_extensions() {}
     enum Error { DuplicateSource }
-  `,
-  "crates/modules/rustok-notifications/src/lib.rs": `
-    fn dependencies() -> &'static [&'static str] { &["outbox"] }
-    fn register() { ensure_notification_source_registry(); }
   `,
   "crates/modules/rustok-notifications/src/service.rs": `
     let registry = value.unwrap_or_else(|| Arc::new(NotificationSourceRegistry::default()));
@@ -118,7 +118,7 @@ try {
   );
 
   write(
-    "crates/modules/rustok-notifications-api/src/model.rs",
+    "crates/modules/rustok-notifications/src/model.rs",
     `${validModel}\nstruct Event { pub source_revision: u64 }`,
   );
   const publicRevision = run();
@@ -127,7 +127,7 @@ try {
   }
 
   write(
-    "crates/modules/rustok-notifications-api/src/model.rs",
+    "crates/modules/rustok-notifications/src/model.rs",
     `${validModel}\nstruct Page { pub recipients: Vec<u64> }`,
   );
   const publicRecipients = run();

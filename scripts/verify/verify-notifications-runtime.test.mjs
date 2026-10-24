@@ -67,22 +67,22 @@ const files = {
   `,
   "apps/admin/Cargo.toml": `rustok-notifications-admin = { path = "../../crates/modules/rustok-notifications/admin" }`,
   "apps/storefront/Cargo.toml": `rustok-notifications-storefront = { path = "../../crates/modules/rustok-notifications/storefront" }`,
-  "crates/modules/rustok-notifications-api/Cargo.toml": `server = ["dep:rustok-api"]`,
-  "crates/modules/rustok-notifications-api/src/provider.rs": `
+  "crates/modules/rustok-notifications/Cargo.toml": `rustok-api = { path = "../../libs/rustok-api" }`,
+  "crates/modules/rustok-notifications/src/provider.rs": `
     trait NotificationSourceProviderFactory {}
     struct NotificationSourceFactoryRegistry;
     fn register_notification_source_provider_factory() {}
     fn materialize_notification_source_registry() {}
     enum Error { FactorySourceMismatch, FactoryBuild }
   `,
-  "crates/modules/rustok-notifications-api/src/keys.rs": `fn safe_route_query() {}`,
+  "crates/modules/rustok-notifications/src/keys.rs": `fn safe_route_query() {}`,
   "crates/modules/rustok-forum/Cargo.toml": `
     [dependencies]
-    rustok-notifications-api.workspace = true
+    rustok-notifications.workspace = true
     [dev-dependencies]
     rustok-notifications.workspace = true
   `,
-  "crates/modules/rustok-forum/src/lib.rs": `fn register() { register_notification_source_provider_factory(); }`,
+  "crates/modules/rustok-forum/src/module.rs": `fn register() { register_notification_source_provider_factory(); }`,
   "crates/modules/rustok-forum/src/notification_source.rs": validForumSource,
   "crates/modules/rustok-forum/tests/notification_source_sqlite.rs": `
     // notifications owner is absent
