@@ -1,3 +1,5 @@
+//! # rustok-content-orchestration
+//!
 //! Owner-owned cross-module content orchestration bridge for blog/forum/content workflows.
 //!
 //! Provides the runtime bridge implementation for content conversion workflows that span
@@ -54,3 +56,6 @@ pub use route_resolver::OwnerCanonicalRouteResolver;
     feature = "mod-comments"
 ))]
 mod tests;
+
+#[cfg(test)]
+mod contract_tests;

@@ -30,3 +30,9 @@ The real bridge is compiled only when the crate features `mod-content`, `mod-blo
 - Uses `rustok-outbox::TransactionalEventBus` supplied by the host.
 - Is initialized by `apps/server`, but `apps/server` must not own the bridge implementation.
 - Uses no host-framework runtime types; host wiring passes explicit DB, event bus and GraphQL data handles.
+
+## Docs
+
+- [Public Contract Reference (CRATE_API.md)](./CRATE_API.md)
+- [Platform docs index](../../../docs/index.md)
+

@@ -8,6 +8,11 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # rustok-content
+//!
+//! Shared content helpers, richtext validation, locale resolution, and cross-domain
+//! content orchestration core for RusToK.
+
 pub mod analytics;
 pub mod dto;
 pub mod entities;
@@ -27,7 +32,10 @@ pub mod state_machine;
 mod state_machine_proptest;
 
 pub use analytics::{ContentCountSnapshot, load_post_stats_snapshot};
-pub use dto::*;
+pub use dto::{
+    CreateTagInput, ListTagsFilter, TagListItem, TagResponse, UpdateTagInput, format_single_error,
+    format_validation_errors,
+};
 pub use entities::{Body, Node, NodeTranslation};
 pub use error::{ContentError, ContentResult};
 pub use locale::{

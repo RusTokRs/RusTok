@@ -85,5 +85,7 @@ canonical and their corrective migration/conversion artifacts are absent.
 
 ## Docs
 
+- [Public Contract Reference (CRATE_API.md)](./CRATE_API.md)
 - [Module docs](./docs/README.md)
 - [Platform docs index](../../../docs/index.md)
+

@@ -1,6 +1,12 @@
 # rustok-content / CRATE_API
 
-## Public Modules
+## Public surface
+
+- Modules: `analytics`, `dto`, `entities`, `error`, `locale`, `richtext`, `services`, `state_machine`, `module`.
+- Types: `ContentModule`, `ContentOrchestrationService`, `ContentOrchestrationBridge`, `ContentCountSnapshot`, `ContentError`, `ContentResult<T>`, `Draft`, `Published`, `Archived`.
+- Core DTOs: `PromoteTopicToPostInput`, `DemotePostToTopicInput`, `SplitTopicInput`, `MergeTopicsInput`, `OrchestrationResult`.
+
+## Public modules
 
 `analytics`, `dto`, `entities`, `error`, `locale`, `richtext`, `services`, `state_machine`, `module`.
 
