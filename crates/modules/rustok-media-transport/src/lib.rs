@@ -1,3 +1,5 @@
+//! # rustok-media-transport
+//!
 //! Tonic gRPC framing for the Media-owned read and write ports.
 //!
 //! The domain DTOs and policy remain in `rustok-media`. This crate is a
@@ -18,3 +20,6 @@ pub use public_image_client::{
 };
 pub use server::{MediaGrpcOperation, MediaGrpcService, TrustedMediaAuthority};
 pub use tonic::transport::ClientTlsConfig;
+
+#[cfg(test)]
+mod contract_tests;

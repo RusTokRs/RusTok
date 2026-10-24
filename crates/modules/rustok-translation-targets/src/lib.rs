@@ -1,3 +1,10 @@
+//! # rustok-translation-targets
+//!
+//! Owner-neutral translation target provider contracts and runtime registry.
+//!
+//! Defines the SPI through which domain modules expose translatable resources
+//! to the Translation control plane.
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
@@ -1062,3 +1069,6 @@ mod tests {
             .unwrap();
     }
 }
+
+#[cfg(test)]
+mod contract_tests;

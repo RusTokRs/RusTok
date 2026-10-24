@@ -49,4 +49,7 @@ reads or returns the image body.
 - `MediaGrpcOperation::GetPublicImageAsset`
 - generated `proto::media_service_client` and `proto::media_service_server`
 
-See [transport documentation](docs/README.md).
+## Documentation
+
+- [CRATE_API.md](CRATE_API.md) — Public API contract, transport framing, capability bindings, and domain invariants.
+- [Transport Documentation](docs/README.md)

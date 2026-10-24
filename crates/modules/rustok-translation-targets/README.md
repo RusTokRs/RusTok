@@ -62,6 +62,7 @@ same-key/different-payload rejection.
 
 ## Docs
 
+- [CRATE_API.md](CRATE_API.md) — Public API contract, module registration, capability bindings, and domain invariants.
 - [Contract documentation](./docs/README.md)
 - [Translation implementation plan](../../../docs/modules/translation-implementation-plan.md)
 - [Platform documentation map](../../../docs/index.md)
