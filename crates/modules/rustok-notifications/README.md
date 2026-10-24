@@ -470,7 +470,9 @@ continue to succeed when the module is absent or disabled.
 
 ## Documentation
 
+- [Public Contract Reference (CRATE_API.md)](./CRATE_API.md)
 - [Live contract](docs/README.md)
+
 - [Implementation gates](docs/implementation-plan.md)
 - [Outbox intake contract](contracts/notifications-outbox-intake.json)
 - [Fanout worker contract](contracts/notifications-fanout-worker.json)

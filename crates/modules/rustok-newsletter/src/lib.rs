@@ -1,8 +1,23 @@
-//! Newsletter module — subscriber management, campaign lifecycle, and delivery orchestration.
+/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok.
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
+
+//! # rustok-newsletter
 //!
-//! This crate owns the newsletter bounded context: subscriber lists, segments,
-//! campaigns, content aggregation from source modules, and email delivery
-//! through `rustok-email`.
+//! Canonical platform owner of newsletter subscriber management, campaign lifecycle, and delivery orchestration in RusToK.
+//!
+//! # Architecture and Guidelines
+//!
+//! This crate follows Fluid Backend Architecture (FBA).
+//! For design and implementation standards, see:
+//! - [Backend Module Implementation Guide](https://github.com/RusTokRs/RusTok/blob/main/docs/backend/module-backend-implementation.md)
+//! - [Module Platform Overview](https://github.com/RusTokRs/RusTok/blob/main/docs/modules/overview.md)
 
 pub mod error;
 pub mod model;
@@ -32,7 +47,11 @@ mod contract_tests;
 
 // Deliberate public re-exports for crate consumers.
 pub use error::{NewsletterError, NewsletterResult};
-pub use model::*;
+pub use model::{
+    CampaignStatus, ContentFetchRequest, ContentSourceSlug, NewsletterApiError,
+    NewsletterContentItem, SubscriberStatus,
+};
+
 
 #[cfg(feature = "server")]
 pub use graphql::NewsletterGraphqlRuntimeData;

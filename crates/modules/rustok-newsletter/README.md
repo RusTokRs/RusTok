@@ -55,6 +55,11 @@ src/
   graphql/            GraphQL adapters
 ```
 
+## Docs
+
+- [Public Contract Reference (CRATE_API.md)](./CRATE_API.md)
+
 ## License
 
 Workspace license applies.
+

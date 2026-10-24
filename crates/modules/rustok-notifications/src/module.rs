@@ -10,7 +10,15 @@ use crate::inbox_reconcile::NotificationInboxReconciliationInspectPortFactoryImp
 use crate::migrations;
 
 /// Notification inbox, preferences, bounded fan-out, grouping, digests, and delivery orchestration.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct NotificationsModule;
+
+impl NotificationsModule {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
 
 #[async_trait]
 impl RusToKModule for NotificationsModule {

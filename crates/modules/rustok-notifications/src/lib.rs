@@ -1,4 +1,24 @@
+/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok.
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
+
+//! Canonical platform owner of notification inbox, preferences, fan-out, and delivery orchestration in RusToK.
+//!
+//! # Architecture and Guidelines
+//!
+//! This crate follows Fluid Backend Architecture (FBA).
+//! For design and implementation standards, see:
+//! - [Backend Module Implementation Guide](https://github.com/RusTokRs/RusTok/blob/main/docs/backend/module-backend-implementation.md)
+//! - [Module Platform Overview](https://github.com/RusTokRs/RusTok/blob/main/docs/modules/overview.md)
+
 pub mod keys;
+
 pub mod model;
 pub mod provider;
 pub mod reconciliation;
@@ -57,23 +77,66 @@ pub use keys::{
     NotificationAudienceCursor, NotificationKeyError, NotificationSourceSlug,
     NotificationTargetKind, NotificationTargetRoute, NotificationTemplateKey, NotificationTypeKey,
 };
-pub use model::*;
-pub use provider::{
-    AuthorizeNotificationTargetRequest, DescribeNotificationRequest, NotificationProviderError,
-    NotificationProviderResult, NotificationSourceProvider, NotificationSourceProviderFactory,
-    NotificationSourceRegistry, NotificationSourceRegistryEntry, ResolveNotificationAudienceRequest,
-    ensure_notification_source_registry, notification_source_registry_from_extensions,
+pub use model::{
+    NotificationAudienceCandidate, NotificationAudiencePage, NotificationContractError,
+    NotificationOpenAuthorization, NotificationPriority, NotificationSemanticDescriptor,
+    NotificationSourceEventRef, NotificationTargetRef, NotificationTemplateData,
+    MAX_NOTIFICATION_AUDIENCE_PAGE_SIZE, MAX_NOTIFICATION_TEMPLATE_DATA_BYTES,
+    MAX_NOTIFICATION_TEMPLATE_FIELDS, MAX_NOTIFICATION_TEMPLATE_KEY_BYTES,
+    MAX_NOTIFICATION_TEMPLATE_VALUE_BYTES,
 };
-pub use provider::*;
-pub use reconciliation::*;
+pub use provider::{
+    ensure_notification_source_factory_registry, ensure_notification_source_registry,
+    materialize_notification_source_registry,
+    notification_source_factory_registry_from_extensions,
+    notification_source_registry_from_extensions, register_notification_source_provider,
+    register_notification_source_provider_factory, AuthorizeNotificationTargetRequest,
+    DescribeNotificationRequest, NotificationProviderError, NotificationProviderResult,
+    NotificationSourceFactoryRegistry, NotificationSourceProvider,
+    NotificationSourceProviderFactory, NotificationSourceRegistry,
+    NotificationSourceRegistryEntry, NotificationSourceRegistryError,
+    ResolveNotificationAudienceRequest,
+};
+pub use reconciliation::{
+    NotificationInboxReconciliationInspectPage, NotificationInboxReconciliationInspectPort,
+    NotificationInboxReconciliationInspectPortFactory,
+    NotificationInboxReconciliationInspectRequest,
+};
 
 pub mod api {
-    pub use crate::keys::*;
-    pub use crate::model::*;
-    pub use crate::provider::*;
-    pub use crate::reconciliation::*;
+    pub use crate::keys::{
+        NotificationAudienceCursor, NotificationKeyError, NotificationSourceSlug,
+        NotificationTargetKind, NotificationTargetRoute, NotificationTemplateKey,
+        NotificationTypeKey,
+    };
+    pub use crate::model::{
+        NotificationAudienceCandidate, NotificationAudiencePage, NotificationContractError,
+        NotificationOpenAuthorization, NotificationPriority, NotificationSemanticDescriptor,
+        NotificationSourceEventRef, NotificationTargetRef, NotificationTemplateData,
+        MAX_NOTIFICATION_AUDIENCE_PAGE_SIZE, MAX_NOTIFICATION_TEMPLATE_DATA_BYTES,
+        MAX_NOTIFICATION_TEMPLATE_FIELDS, MAX_NOTIFICATION_TEMPLATE_KEY_BYTES,
+        MAX_NOTIFICATION_TEMPLATE_VALUE_BYTES,
+    };
+    pub use crate::provider::{
+        ensure_notification_source_factory_registry, ensure_notification_source_registry,
+        materialize_notification_source_registry,
+        notification_source_factory_registry_from_extensions,
+        notification_source_registry_from_extensions, register_notification_source_provider,
+        register_notification_source_provider_factory, AuthorizeNotificationTargetRequest,
+        DescribeNotificationRequest, NotificationProviderError, NotificationProviderResult,
+        NotificationSourceFactoryRegistry, NotificationSourceProvider,
+        NotificationSourceProviderFactory, NotificationSourceRegistry,
+        NotificationSourceRegistryEntry, NotificationSourceRegistryError,
+        ResolveNotificationAudienceRequest,
+    };
+    pub use crate::reconciliation::{
+        NotificationInboxReconciliationInspectPage, NotificationInboxReconciliationInspectPort,
+        NotificationInboxReconciliationInspectPortFactory,
+        NotificationInboxReconciliationInspectRequest,
+    };
     pub use rustok_api::{PortContext, PortError};
 }
+
 
 #[cfg(feature = "server")]
 pub use candidate::{

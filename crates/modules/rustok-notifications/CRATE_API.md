@@ -1,6 +1,6 @@
 # rustok-notifications / CRATE_API
 
-## Public types
+## Public surface
 
 ### Module and source registry
 

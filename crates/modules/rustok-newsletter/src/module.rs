@@ -5,7 +5,15 @@ use sea_orm_migration::MigrationTrait;
 use crate::migrations;
 
 /// Newsletter module — subscriber management, campaign lifecycle, delivery.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct NewsletterModule;
+
+impl NewsletterModule {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
 
 impl MigrationSource for NewsletterModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
