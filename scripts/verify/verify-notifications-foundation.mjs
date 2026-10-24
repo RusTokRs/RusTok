@@ -45,11 +45,12 @@ function collectFiles(root, relative = "") {
   return files;
 }
 
-const apiLibPath = "crates/modules/rustok-notifications-api/src/lib.rs";
-const keysPath = "crates/modules/rustok-notifications-api/src/keys.rs";
-const modelPath = "crates/modules/rustok-notifications-api/src/model.rs";
-const providerPath = "crates/modules/rustok-notifications-api/src/provider.rs";
+const apiLibPath = "crates/modules/rustok-notifications/src/lib.rs";
+const keysPath = "crates/modules/rustok-notifications/src/keys.rs";
+const modelPath = "crates/modules/rustok-notifications/src/model.rs";
+const providerPath = "crates/modules/rustok-notifications/src/provider.rs";
 const ownerLibPath = "crates/modules/rustok-notifications/src/lib.rs";
+const ownerModulePath = "crates/modules/rustok-notifications/src/module.rs";
 const ownerServicePath = "crates/modules/rustok-notifications/src/service.rs";
 const manifestPath = "crates/modules/rustok-notifications/rustok-module.toml";
 const adminCorePath = "crates/modules/rustok-notifications/admin/src/core.rs";
@@ -65,6 +66,7 @@ const keys = read(keysPath);
 const model = read(modelPath);
 const provider = read(providerPath);
 const ownerLib = read(ownerLibPath);
+const ownerModule = read(ownerModulePath);
 const ownerService = read(ownerServicePath);
 const manifest = read(manifestPath);
 const adminCore = read(adminCorePath);

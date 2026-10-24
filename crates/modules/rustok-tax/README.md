@@ -4,6 +4,8 @@
 
 `rustok-tax` is the default tax-domain foundation for the commerce family.
 
+See [CRATE_API.md](CRATE_API.md) for the verified public crate API specification and platform capability bindings.
+
 ## Responsibilities
 
 - Own the tax calculation contract and provider seam instead of leaving tax

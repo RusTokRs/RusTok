@@ -1,5 +1,11 @@
 # Tax Crate API Specification
 
+## Public Modules
+- `error`: Strongly typed tax domain error variants (`TaxError`, `TaxResult`).
+- `module`: Lifecycle descriptor `TaxModule` implementing `RusToKModule`.
+- `ports`: Provider seam and traits for tax calculation (`TaxCalculationPort`).
+- `services`: Tax calculation services, policy snapshots, and domain rules.
+
 ## Platform Capability Bindings
 - **RusToKModule Implementation**: `TaxModule` in `src/module.rs`
 - **Module Slug**: `tax`

@@ -40,7 +40,7 @@ pub struct NotificationsGraphqlRuntimeData {
 pub fn attach_schema_data(
     inputs: &rustok_api::graphql::GraphqlRuntimeInputs,
 ) -> std::result::Result<NotificationsGraphqlRuntimeData, String> {
-    use rustok_notifications_api::NotificationSourceRegistry;
+    use crate::NotificationSourceRegistry;
 
     use crate::NotificationRecipientPolicyRuntime;
 

@@ -6,20 +6,26 @@ license.workspace = true
 description = "Notification inbox, preference, fan-out, and delivery orchestration owner"
 
 [features]
-default = []
-server = ["rustok-api/server", "dep:async-graphql"]
+default = ["server"]
+server = [
+  "dep:async-graphql",
+  "dep:chrono",
+  "dep:sea-orm",
+  "dep:sea-orm-migration",
+  "dep:serde_json",
+  "rustok-api/server",
+]
 
 [dependencies]
 async-graphql = { workspace = true, optional = true }
 async-trait.workspace = true
-chrono.workspace = true
-rustok-api.workspace = true
+chrono = { workspace = true, optional = true }
+rustok-api = { workspace = true, features = ["runtime"] }
 rustok-core.workspace = true
-rustok-notifications-api.workspace = true
-sea-orm.workspace = true
-sea-orm-migration.workspace = true
-serde.workspace = true
-serde_json.workspace = true
+sea-orm = { workspace = true, optional = true }
+sea-orm-migration = { workspace = true, optional = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, optional = true }
 thiserror.workspace = true
 uuid.workspace = true
 

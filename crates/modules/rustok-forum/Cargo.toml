@@ -34,7 +34,7 @@ rustok-content.workspace = true
 rustok-core = { workspace = true, features = ["server"] }
 rustok-events.workspace = true
 rustok-moderation.workspace = true
-rustok-notifications-api.workspace = true
+rustok-notifications.workspace = true
 rustok-outbox.workspace = true
 rustok-profiles = { workspace = true, features = ["server"] }
 rustok-reactions = { workspace = true, default-features = false }

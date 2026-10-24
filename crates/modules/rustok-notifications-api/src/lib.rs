@@ -440,6 +440,13 @@ mod tests {
                 limit: 10,
             };
             assert!(valid_reconcile.validate().is_ok());
+
+            let invalid_cursor_reconcile = NotificationInboxReconciliationInspectRequest {
+                recipient_id: Uuid::new_v4(),
+                cursor: Some("invalid\ncursor".to_string()),
+                limit: 10,
+            };
+            assert!(invalid_cursor_reconcile.validate().is_err());
         }
     }
 }

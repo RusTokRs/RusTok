@@ -1,5 +1,16 @@
 # Taxonomy Crate API Specification
 
+## Public Modules
+- `dto`: Input and output data transfer objects (`CreateTaxonomyTermInput`, `TaxonomyTermResponse`).
+- `entities`: SeaORM entity definitions for taxonomy terms, categories, and translations.
+- `error`: Strongly typed domain error variants (`TaxonomyError`, `TaxonomyResult`).
+- `migrations`: SeaORM migration chain for taxonomy schemas and route keys.
+- `module`: Lifecycle descriptor `TaxonomyModule` implementing `RusToKModule`.
+- `module_term_mutation`: Transactional mutations for module-scoped taxonomy terms.
+- `seo_targets`: SEO target provider implementations for taxonomy categories.
+- `services`: Domain service layer (`TaxonomyService`) for taxonomy management.
+- `translation_target`: Registration and provider for multi-locale term translation.
+
 ## Platform Capability Bindings
 - **RusToKModule Implementation**: `TaxonomyModule` in `src/module.rs`
 - **Module Slug**: `taxonomy`

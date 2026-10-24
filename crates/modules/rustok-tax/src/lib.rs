@@ -1,3 +1,8 @@
+//! # RusToK Tax Module
+//!
+//! Provides tax calculation primitives, country and regional tax policy rules,
+//! taxable amount valuations, and provider seams for external tax engines.
+
 #![deny(clippy::float_arithmetic)]
 
 

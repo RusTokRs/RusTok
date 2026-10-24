@@ -385,6 +385,9 @@ pub async fn authorize_open(
     tenant_slug: Option<String>,
     request: NotificationStorefrontOpenRequest,
 ) -> Result<NotificationStorefrontOpenDecision, GraphqlNotificationStorefrontError> {
+    if request.notification_id.trim().is_empty() {
+        return Err("notification_id must not be empty".to_string());
+    }
     let response: OpenAuthorizationResponse = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(
@@ -415,6 +418,12 @@ pub async fn apply_group_state(
     tenant_slug: Option<String>,
     command: NotificationStorefrontGroupStateCommand,
 ) -> Result<NotificationStorefrontGroupStatePage, GraphqlNotificationStorefrontError> {
+    if command.group_key.trim().is_empty() || command.group_key.len() > 191 {
+        return Err("group_key is invalid".to_string());
+    }
+    if command.idempotency_key.trim().is_empty() || command.idempotency_key.len() > 128 {
+        return Err("idempotency_key is invalid".to_string());
+    }
     let response: GroupStateResponse = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(

@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Tax domain foundation and provider seam for commerce"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [lints]
 workspace = true
 

@@ -6,7 +6,7 @@ use rustok_api::{
     graphql::GraphqlRuntimeInputs,
 };
 use rustok_media::MediaAssetReadPort;
-use rustok_notifications_api::{
+use rustok_notifications::{
     NotificationInboxReconciliationInspectPort, NotificationInboxReconciliationInspectPortFactory,
 };
 use rustok_outbox::TransactionalEventBus;

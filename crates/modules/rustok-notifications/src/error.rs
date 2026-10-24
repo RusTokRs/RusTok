@@ -1,4 +1,4 @@
-use rustok_notifications_api::NotificationProviderError;
+use crate::NotificationProviderError;
 use thiserror::Error;
 
 pub type NotificationResult<T> = Result<T, NotificationError>;

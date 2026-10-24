@@ -16,7 +16,7 @@ use rustok_forum::{
     SetForumTopicAudiencePolicyInput, SharedForumNotificationRecipientContextPort, TopicService,
 };
 use rustok_notifications::NotificationsModule;
-use rustok_notifications_api::{
+use rustok_notifications::{
     AuthorizeNotificationTargetRequest, NotificationOpenAuthorization, NotificationSourceSlug,
     NotificationTargetKind, NotificationTargetRef, materialize_notification_source_registry,
 };

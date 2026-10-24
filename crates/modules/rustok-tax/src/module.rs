@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use rustok_core::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct TaxModule;
 
 impl TaxModule {

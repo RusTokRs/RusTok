@@ -57,4 +57,4 @@ operator-selected returned units back on the shelf and owns the idempotency ledg
 - public-channel inventory visibility/projection helpers exported from `services::public_channel`
 - `rustok-inventory-admin`
 
-See also `docs/README.md`.
+See also `docs/README.md` and [CRATE_API.md](CRATE_API.md).

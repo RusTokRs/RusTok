@@ -1,5 +1,16 @@
 # Region Crate API Specification
 
+## Public Modules
+- `dto`: Input and output DTOs (`CreateRegionInput`, `UpdateRegionInput`, `RegionResponse`).
+- `entities`: SeaORM entity models for regions, countries, and country tax policies.
+- `error`: Strongly typed domain error variants (`RegionError`, `RegionResult`).
+- `migrations`: SeaORM migration chain for region persistence.
+- `module`: Lifecycle descriptor `RegionModule` implementing `RusToKModule`.
+- `ports`: Owner-defined cross-boundary read port (`RegionReadPort`, `RegionReadProjection`).
+- `services`: Domain services for region management and translation lifecycle.
+- `translation_changes`: Translation journal change records and lifecycle.
+- `translation_target`: Registration and provider for the translation engine.
+
 ## Platform Capability Bindings
 - **RusToKModule Implementation**: `RegionModule` in `src/module.rs`
 - **Module Slug**: `region`

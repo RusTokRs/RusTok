@@ -1,5 +1,15 @@
 # Product Crate API Specification
 
+## Public Modules
+- `dto`: Product, variant, translation, and catalog data transfer objects.
+- `entities`: SeaORM entity models for products, variants, and translations.
+- `error`: Strongly typed commerce error variants (`CommerceError`, `CommerceResult`).
+- `fulfillment`: Product shipping and fulfillment requirement definitions.
+- `migrations`: SeaORM database migrations for product schema and variant definitions.
+- `module`: Lifecycle descriptor `ProductModule` implementing `RusToKModule`.
+- `ports`: Owner-defined cross-boundary read ports and projection request types.
+- `services`: Domain services for catalog operations, schema handling, and media references.
+
 ## Platform Capability Bindings
 - **RusToKModule Implementation**: `ProductModule` in `src/module.rs`
 - **Module Slug**: `product`

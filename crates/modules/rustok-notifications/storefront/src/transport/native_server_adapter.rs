@@ -188,6 +188,9 @@ async fn notification_storefront_open_native(
         let (runtime, context) = authenticated_context("open", None).await?;
         let notification_id = Uuid::parse_str(request.notification_id.as_str())
             .map_err(|_| ServerFnError::new("notification_id must be a UUID"))?;
+        if notification_id.is_nil() {
+            return Err(ServerFnError::new("notification_id must not be nil"));
+        }
         let decision = storefront_service(&runtime)?
             .authorize_open(
                 context,
@@ -232,6 +235,12 @@ async fn notification_storefront_group_state_native(
             limit,
             idempotency_key,
         } = command;
+        if group_key.trim().is_empty() || group_key.len() > 191 {
+            return Err(ServerFnError::new("group_key is invalid"));
+        }
+        if idempotency_key.trim().is_empty() || idempotency_key.len() > 128 {
+            return Err(ServerFnError::new("idempotency_key is invalid"));
+        }
         let (runtime, context) =
             authenticated_context("group-state", Some(idempotency_key)).await?;
         let page = storefront_service(&runtime)?
@@ -285,12 +294,17 @@ async fn authenticated_context(
     let request = leptos_axum::extract::<RequestContext>()
         .await
         .map_err(ServerFnError::new)?;
+    if tenant.id.is_nil() || auth.tenant_id.is_nil() {
+        return Err(ServerFnError::new(
+            "notification storefront tenant context is invalid",
+        ));
+    }
     if auth.tenant_id != tenant.id {
         return Err(ServerFnError::new(
             "notification storefront tenant mismatch",
         ));
     }
-    if !auth.is_human_user_principal() {
+    if !auth.is_human_user_principal() || auth.user_id.is_nil() {
         return Err(ServerFnError::new(
             "notification inbox access requires an authenticated user",
         ));

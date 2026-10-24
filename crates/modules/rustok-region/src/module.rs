@@ -15,7 +15,15 @@ use sea_orm_migration::MigrationTrait;
 
 use crate::migrations;
 
+/// Geographical jurisdiction boundaries, country-to-region mapping, and tax policy rules.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RegionModule;
+
+impl RegionModule {
+    pub fn new() -> Self {
+        Self
+    }
+}
 
 #[async_trait]
 impl RusToKModule for RegionModule {

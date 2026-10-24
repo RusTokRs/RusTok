@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use rustok_notifications_api::{
+use crate::{
     NotificationPriority, NotificationSourceRegistry, NotificationSourceSlug,
     NotificationTemplateData, NotificationTemplateKey, NotificationTypeKey,
 };

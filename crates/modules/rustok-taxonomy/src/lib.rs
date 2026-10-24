@@ -1,4 +1,9 @@
 
+//! # RusToK Taxonomy Module
+//!
+//! Provides scope-aware hierarchical taxonomy dictionaries, shared and module-local terms,
+//! slug normalization, SEO targets, and multi-locale term translations.
+
 mod category_delete;
 mod category_hierarchy;
 mod category_presentation;

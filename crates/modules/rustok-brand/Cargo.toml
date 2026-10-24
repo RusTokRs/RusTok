@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Brand catalog, manufacturers, media presentation, and product associations for RusToK"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true

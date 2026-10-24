@@ -7,7 +7,7 @@ use rustok_messenger::notification_source::{
     message_dispatched_type, messenger_conversation_target_kind, messenger_source_slug,
 };
 use rustok_messenger::module::MessengerModule;
-use rustok_notifications_api::{
+use rustok_notifications::{
     AuthorizeNotificationTargetRequest, DescribeNotificationRequest,
     NotificationOpenAuthorization, NotificationPriority, NotificationSemanticDescriptor,
     NotificationSourceEventRef, NotificationSourceProvider, NotificationSourceSlug,

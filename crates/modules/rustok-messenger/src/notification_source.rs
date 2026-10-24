@@ -4,7 +4,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::HostRuntimeContext;
-use rustok_notifications_api::{
+use rustok_notifications::{
     AuthorizeNotificationTargetRequest, DescribeNotificationRequest, NotificationAudienceCandidate,
     NotificationAudienceCursor, NotificationAudiencePage, NotificationOpenAuthorization,
     NotificationPriority, NotificationProviderError, NotificationProviderResult,

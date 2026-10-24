@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Duration, FixedOffset, Utc};
 use rustok_core::ModuleRuntimeExtensions;
-use rustok_notifications_api::{
+use crate::{
     DescribeNotificationRequest, NotificationAudienceCursor, NotificationSemanticDescriptor,
     NotificationSourceEventRef, NotificationSourceProvider, NotificationSourceRegistry,
     NotificationSourceSlug, NotificationTypeKey, ResolveNotificationAudienceRequest,
@@ -654,7 +654,7 @@ impl NotificationFanoutService {
         &self,
         claimed: &fanout_job::Model,
         worker_id: &str,
-        recipients: &[rustok_notifications_api::NotificationAudienceCandidate],
+        recipients: &[crate::NotificationAudienceCandidate],
         next_cursor: Option<String>,
     ) -> NotificationResult<usize> {
         let txn = self.db.begin().await?;

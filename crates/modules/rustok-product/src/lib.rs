@@ -8,6 +8,11 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # RusToK Product Module
+//!
+//! Provides canonical product catalog management, variant lifecycle handling,
+//! custom attribute schemas, faceted search projections, and media attachments.
+
 pub use async_trait::async_trait;
 
 mod catalog_command_port;
@@ -53,7 +58,14 @@ pub use media_reference::{
     ProductMediaReferencePolicy, ProductMediaReferencePort, ProductMediaReleasePage,
     ProductMediaReleaseReport, ProductMediaReleaseStatus, process_product_media_releases,
 };
-pub use ports::*;
+pub use ports::{
+    AdminCatalogFacetsRequest, AdminProductsRequest, FilteredPublishedProductsRequest,
+    LegacyAdminProductsRequest, LegacyStorefrontProductList, LegacyStorefrontProductListItem,
+    LegacyStorefrontProductsRequest, ProductCatalogReadPort, ProductProjectionRequest,
+    PublishedProductsRequest, StorefrontCatalogFacetsRequest, StorefrontProductProjectionRequest,
+    StorefrontProductProjectionSubject, StorefrontVariantProductProjectionRequest,
+    VariantProductProjectionRequest, MAX_ADMIN_PRODUCTS_PER_PAGE, MAX_PUBLISHED_PRODUCTS_PER_PAGE,
+};
 pub use public_error::{ProductPublicError, map_product_public_error};
 pub use runtime::{
     ProductCatalogCommandProfile, ProductCatalogCommandRuntime, ProductCatalogReadProfile,

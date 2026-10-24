@@ -18,7 +18,15 @@ use sea_orm_migration::MigrationTrait;
 
 use crate::{migrations, seo_targets};
 
+/// Scope-aware taxonomy dictionary for shared and module-local terms.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct TaxonomyModule;
+
+impl TaxonomyModule {
+    pub fn new() -> Self {
+        Self
+    }
+}
 
 #[async_trait]
 impl RusToKModule for TaxonomyModule {

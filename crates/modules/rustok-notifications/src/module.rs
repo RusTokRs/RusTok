@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
 use rustok_core::ModuleRuntimeExtensions;
-use rustok_notifications_api::ensure_notification_source_registry;
+use crate::ensure_notification_source_registry;
 use sea_orm_migration::MigrationTrait;
 
 use crate::inbox_reconcile::NotificationInboxReconciliationInspectPortFactoryImpl;
@@ -44,7 +44,7 @@ impl RusToKModule for NotificationsModule {
     ) -> rustok_core::Result<()> {
         let _ = ensure_notification_source_registry(extensions);
         if extensions.contains::<
-            Arc<dyn rustok_notifications_api::NotificationInboxReconciliationInspectPortFactory>,
+            Arc<dyn crate::NotificationInboxReconciliationInspectPortFactory>,
         >() {
             return Err(rustok_core::Error::Validation(
                 "notifications reconciliation inspection port factory is already registered"
@@ -52,7 +52,7 @@ impl RusToKModule for NotificationsModule {
             ));
         }
         let factory: Arc<
-            dyn rustok_notifications_api::NotificationInboxReconciliationInspectPortFactory,
+            dyn crate::NotificationInboxReconciliationInspectPortFactory,
         > = Arc::new(NotificationInboxReconciliationInspectPortFactoryImpl);
         extensions.insert(factory);
         Ok(())
@@ -79,7 +79,7 @@ mod tests {
 
     use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
     use rustok_core::ModuleRuntimeExtensions;
-    use rustok_notifications_api::{
+    use crate::{
         NotificationInboxReconciliationInspectPortFactory,
         notification_source_registry_from_extensions,
     };

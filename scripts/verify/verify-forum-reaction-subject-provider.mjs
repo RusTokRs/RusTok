@@ -55,7 +55,7 @@ for (const fragment of contract.forbidden_source_fragments) {
 
 for (const fragment of [
   'rustok-reactions = { workspace = true, default-features = false }',
-  "rustok-notifications-api.workspace = true",
+  "rustok-notifications.workspace = true",
 ]) {
   if (!forumCargo.includes(fragment)) fail(`Forum Cargo boundary is missing ${fragment}`);
 }

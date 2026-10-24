@@ -1,3 +1,8 @@
+//! # RusToK Region Module
+//!
+//! Provides geographical jurisdiction boundaries, country-to-region mapping,
+//! currency codes, localized region naming, and regional tax policy definitions.
+
 pub mod dto;
 pub mod entities;
 pub mod error;
@@ -8,10 +13,16 @@ pub mod services;
 pub mod translation_changes;
 pub mod translation_target;
 
-pub use dto::*;
+pub use dto::{
+    CreateRegionInput, RegionCountryTaxPolicyInput, RegionCountryTaxPolicyResponse, RegionResponse,
+    RegionTranslationInput, RegionTranslationResponse, UpdateRegionInput,
+};
 pub use error::{RegionError, RegionResult};
 pub use module::RegionModule;
-pub use ports::*;
+pub use ports::{
+    RegionListRequest, RegionReadPort, RegionReadProjection, RegionReadRequest, RegionReadSelector,
+    in_process_region_read_port,
+};
 pub use services::{
     RegionService, RegionTranslationExactLocaleApply, RegionTranslationExactLocaleApplyReceipt,
     RegionTranslationExactLocaleError, RegionTranslationExactLocaleRecord,

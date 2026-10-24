@@ -23,7 +23,15 @@ use crate::{migrations, seo_targets};
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ProductRuntimeSelected;
 
+/// Product catalog, variants, translations, options, and publication lifecycle.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ProductModule;
+
+impl ProductModule {
+    pub fn new() -> Self {
+        Self
+    }
+}
 
 #[async_trait]
 impl RusToKModule for ProductModule {

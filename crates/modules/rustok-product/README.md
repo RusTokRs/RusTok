@@ -4,6 +4,7 @@
 > See [docs/reference-hardening-current.md](docs/reference-hardening-current.md) for the current
 > Blog-v1 parity cursor. Existing Product capability/evidence documents remain authoritative for
 > their own runtime and feature scopes.
+> See [CRATE_API.md](CRATE_API.md) for the verified public crate API specification and platform capability bindings.
 >
 ## Purpose
 

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, FixedOffset, Utc};
-use rustok_notifications_api::{
+use crate::{
     AuthorizeNotificationTargetRequest, NotificationOpenAuthorization, NotificationPriority,
     NotificationSemanticDescriptor, NotificationSourceRegistry, NotificationSourceSlug,
     NotificationTargetRef,
@@ -943,7 +943,7 @@ fn truncate(value: &str, max_bytes: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustok_notifications_api::{NotificationSourceSlug, NotificationTargetKind};
+    use crate::{NotificationSourceSlug, NotificationTargetKind};
 
     #[test]
     fn recipient_policy_request_validation_enforces_bounds() {
