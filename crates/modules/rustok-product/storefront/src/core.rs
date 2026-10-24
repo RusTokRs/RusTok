@@ -1119,7 +1119,7 @@ mod tests {
                 values: Vec::new(),
             },
         ];
-        let controls = catalog_controls_with_attribute_filters(&["color=red"]);
+        let controls = catalog_controls_with_attribute_filters(&["color=red", "size=m"]);
         let view_model = build_catalog_facet_filters_view_model(
             "/products",
             facets.as_slice(),

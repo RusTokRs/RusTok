@@ -30,7 +30,7 @@ product-list-title = Published products
 # plural-exempt: adjectival 'N total' is invariant in English
 product-list-total = { $count } total
 product-list-vendorFallback = Independent label
-product-list-imageAlt = Product image: 
+product-list-imageAlt = {"Product image: "}
 product-list-noPrice = Price on request
 product-list-priceFrom = from { $value }
 product-selected-catalog = catalog
