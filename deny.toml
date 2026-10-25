@@ -7,6 +7,10 @@ git-fetch-with-cli = true
 # docs/security/advisory-exceptions.md.
 ignore = [
     "RUSTSEC-2026-0253",
+    # smartstring is archived/unmaintained; only rhai pulls it in, and rhai
+    # 1.27 already runs the RusToK data plane on compact_str. Removal is
+    # scheduled with rhai 2.0. Time-bounded in docs/security/advisory-exceptions.md.
+    "RUSTSEC-2026-0249",
 ]
 
 [licenses]

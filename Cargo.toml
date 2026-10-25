@@ -282,7 +282,9 @@ rust_decimal = "1.42"
 utoipa = "5.5"
 utoipa-swagger-ui = { version = "7.0", features = ["vendored"] }
 moka = { version = "0.12", features = ["future"] }
-rhai = "1.25.0"
+# compact_str prepares for rhai 2.0, where it replaces the archived
+# smartstring dependency (RUSTSEC-2026-0249) as the default string type.
+rhai = { version = "1.27.0", features = ["compact_str"] }
 argon2 = "0.6"
 jsonwebtoken = { version = "11.0.0", features = ["aws_lc_rs"] }
 rand = "0.10.1"
