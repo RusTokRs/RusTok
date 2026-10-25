@@ -33,7 +33,13 @@ macro_rules! string_identity {
             pub fn new(value: impl Into<String>) -> Result<Self, TranslationTargetContractError> {
                 let value = value.into();
                 let normalized = value.trim();
-                if normalized.is_empty() || normalized.len() > $max {
+                if normalized.is_empty() || normalized.len() > $max || normalized != value {
+                    return Err(TranslationTargetContractError::InvalidIdentity {
+                        field: $label,
+                        max: $max,
+                    });
+                }
+                if normalized.bytes().any(|b| b < 0x20 || b == 0x7f) {
                     return Err(TranslationTargetContractError::InvalidIdentity {
                         field: $label,
                         max: $max,

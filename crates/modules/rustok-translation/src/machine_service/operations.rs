@@ -308,11 +308,15 @@ pub(crate) async fn register_operation(
 ) -> TranslationResult<(machine_operation::Model, bool)> {
     let now = Utc::now().fixed_offset();
     let id = generate_id();
-    let idempotency_key = registration
-        .context
-        .idempotency_key
-        .clone()
-        .unwrap_or_default();
+    let idempotency_key = {
+        let key = registration.context.idempotency_key.as_deref().unwrap_or_default();
+        if key.is_empty() || key.len() > 191 || key.trim() != key {
+            return Err(crate::TranslationError::InvalidRequest(
+                "translation machine operation idempotency key must contain 1..=191 trimmed non-empty bytes".to_string(),
+            ));
+        }
+        key.to_string()
+    };
     let transaction = database.begin().await?;
     machine_operation::Entity::insert(machine_operation::ActiveModel {
         id: Set(id),

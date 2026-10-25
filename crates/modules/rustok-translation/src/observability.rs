@@ -718,10 +718,11 @@ fn freshness_label(freshness: ProviderProjectionFreshness) -> &'static str {
 }
 
 fn checkpoint_age(timestamp: DateTime<FixedOffset>) -> Option<Duration> {
-    Utc::now()
-        .signed_duration_since(timestamp.with_timezone(&Utc))
-        .to_std()
-        .ok()
+    let age = Utc::now().signed_duration_since(timestamp.with_timezone(&Utc));
+    if age.num_seconds() < 0 {
+        return Some(Duration::from_secs(0));
+    }
+    age.to_std().ok()
 }
 
 fn error_category(error: &TranslationError) -> &'static str {

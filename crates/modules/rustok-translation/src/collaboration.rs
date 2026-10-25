@@ -124,7 +124,11 @@ impl TranslationCollaborationService {
         }
 
         let transaction = self.database.begin().await?;
-        ensure_job(&transaction, tenant_id, input.job_id).await?;
+        let job = ensure_job(&transaction, tenant_id, input.job_id).await?;
+        // Job-level notes inherit job writability: cancelled jobs are not annotatable.
+        if input.item_id.is_none() && !matches!(job.status.as_str(), "open" | "in_progress") {
+            return Err(TranslationError::JobNotWritable(job.status));
+        }
         if let Some(item_id) = input.item_id {
             let item = ensure_item(&transaction, tenant_id, input.job_id, item_id).await?;
             ensure_item_note_writer(&security, &context.actor, &item)?;

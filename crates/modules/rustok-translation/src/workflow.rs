@@ -2146,6 +2146,12 @@ fn enforce_assignment(item: &job_item::Model, context: &PortContext) -> Translat
     if assignee == context.actor {
         return Ok(());
     }
+    // System actor (scheduler/recovered machine proposals) is explicitly allowed to bypass
+    // assignment when called via `save_recovered_machine_proposal` with enforce_current_assignment=false.
+    // For direct workflow writes, Manage scope is still required.
+    if context.actor.kind == PortActorKind::System {
+        return Err(TranslationError::ItemAssignedToAnotherActor);
+    }
     let security = SecurityContext::try_from_port_context(context)?;
     if security.get_scope(Resource::Translations, Action::Manage) != PermissionScope::None {
         return Ok(());
