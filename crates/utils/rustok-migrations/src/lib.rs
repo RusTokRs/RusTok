@@ -778,6 +778,8 @@ mod tests {
                 "cart",
                 "customer",
                 "product",
+                "product_relations",
+                "product_bundles",
                 "region",
                 "pricing",
                 "inventory",

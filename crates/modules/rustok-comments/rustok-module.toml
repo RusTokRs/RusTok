@@ -21,6 +21,9 @@ default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "admin/locales"
 
+[provides.storefront_ui]
+leptos_crate = "rustok-comments-storefront-support"
+
 [fba.provider]
 registry = "contracts/comments-fba-registry.json"
 contract_version = "comments.thread.v1"
