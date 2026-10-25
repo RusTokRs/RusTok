@@ -393,7 +393,7 @@ impl TranslationWorkflowService {
                 ReadTranslationResourceRequest {
                     identity: input.identity.clone(),
                     source_locale,
-                    target_locale,
+                    target_locale: target_locale.clone(),
                 },
             )
             .await?;
