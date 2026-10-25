@@ -29,6 +29,7 @@ pub mod migrations;
 pub mod module;
 pub mod oauth_app_translation;
 pub mod rest;
+pub mod validation;
 
 #[cfg(test)]
 mod contract_tests;

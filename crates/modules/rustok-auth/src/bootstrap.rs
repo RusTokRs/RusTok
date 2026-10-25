@@ -1,7 +1,17 @@
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use uuid::Uuid;
 
-use crate::{AuthLifecycleMutationError, hash_password};
+use crate::{
+    AuthError, AuthLifecycleMutationError, DEFAULT_MIN_PASSWORD_LENGTH_CHARS, hash_password,
+    normalize_display_name, normalize_email, validate_password_policy,
+};
+
+fn bootstrap_validation_error(error: AuthError) -> AuthLifecycleMutationError {
+    match error {
+        AuthError::Validation(message) => AuthLifecycleMutationError::Validation(message),
+        other => internal_bootstrap_error(other),
+    }
+}
 
 fn internal_bootstrap_error<E>(error: E) -> AuthLifecycleMutationError
 where

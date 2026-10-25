@@ -50,6 +50,10 @@ pub struct AuthConfig {
     pub rsa_private_key_pem: Option<String>,
     /// RSA public key in PEM format. Required when `algorithm = RS256` for token decoding.
     pub rsa_public_key_pem: Option<String>,
+    /// Minimum password length (in chars) enforced for new credentials.
+    /// Hosts may raise it via settings; bounded by
+    /// `MIN_PASSWORD_LENGTH_FLOOR_CHARS..=MAX_MIN_PASSWORD_LENGTH_CHARS`.
+    pub min_password_length: usize,
 }
 
 impl std::fmt::Debug for AuthConfig {
@@ -70,6 +74,7 @@ impl std::fmt::Debug for AuthConfig {
                 "rsa_public_key_pem",
                 &self.rsa_public_key_pem.as_ref().map(|_| "<redacted>"),
             )
+            .field("min_password_length", &self.min_password_length)
             .finish()
     }
 }
@@ -85,6 +90,7 @@ impl AuthConfig {
             algorithm: JwtAlgorithm::HS256,
             rsa_private_key_pem: None,
             rsa_public_key_pem: None,
+            min_password_length: DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
         }
     }
 
@@ -132,6 +138,7 @@ pub struct AuthSettingsOverrides {
     pub rsa_public_key_pem: Option<String>,
     pub rsa_private_key_env: Option<String>,
     pub rsa_public_key_env: Option<String>,
+    pub min_password_length: Option<usize>,
 }
 
 impl std::fmt::Debug for AuthSettingsOverrides {
@@ -178,6 +185,9 @@ impl AuthSettingsOverrides {
         if let Some(v) = self.rsa_public_key_pem {
             config.rsa_public_key_pem = Some(v);
         }
+        if let Some(v) = self.min_password_length {
+            config.min_password_length = v;
+        }
     }
 }
 
@@ -222,6 +232,9 @@ where
     }
     if let Some(algorithm) = auth_settings.algorithm {
         config.algorithm = algorithm;
+    }
+    if let Some(min_password_length) = auth_settings.min_password_length {
+        config = config.with_min_password_length(min_password_length);
     }
 
     config.rsa_private_key_pem = resolve_key_material(
@@ -296,6 +309,13 @@ pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
         return Err(AuthError::Internal(
             "JWT refresh_expiration must be greater than or equal to access_expiration".to_string(),
         ));
+    }
+    if !(MIN_PASSWORD_LENGTH_FLOOR_CHARS..=MAX_MIN_PASSWORD_LENGTH_CHARS)
+        .contains(&config.min_password_length)
+    {
+        return Err(AuthError::Internal(format!(
+            "min_password_length must be between {MIN_PASSWORD_LENGTH_FLOOR_CHARS} and {MAX_MIN_PASSWORD_LENGTH_CHARS} chars"
+        )));
     }
 
     match config.algorithm {
