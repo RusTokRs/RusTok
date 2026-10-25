@@ -98,7 +98,7 @@ review/integration remain open. No sequential FS cursor, checkbox or readiness p
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages  
-**Next pending component:** [`crates/modules/rustok-pages/admin`](../../crates/modules/rustok-pages/admin) (27 files, 8,723 LOC)  
+**Next pending component:** [`crates/modules/rustok-forms`](../../crates/modules/rustok-forms) (17 files, 1,877 LOC)  
 **Current main SHA:** `44bdce083`  
 **Active branch:** `main`  
 
