@@ -4,13 +4,17 @@
 // exercised by the Forum SQLite tests; this guard does not replace cargo test.
 import { readFileSync } from 'node:fs';
 
+import { containsMarker } from './lib/forum-source-verification.mjs';
+
 function source(path) {
   return readFileSync(path, 'utf8');
 }
+// Markers are compared on a layout-normalized copy: rustfmt wraps method chains and
+// `impl Trait for Type`, and that is a formatting fact, not a contract change.
 function includes(path, ...markers) {
   const text = source(path);
   for (const marker of markers) {
-    if (!text.includes(marker)) throw new Error(`${path}: missing ${marker}`);
+    if (!containsMarker(text, marker)) throw new Error(`${path}: missing ${marker}`);
   }
   return text;
 }
@@ -74,20 +78,31 @@ for (const path of [
     throw new Error(`${path}: an authenticated Search caller was downgraded to public`);
   }
 }
-includes('crates/modules/rustok-search/src/storefront_result_eligibility.rs',
-  '"forum_category" => Some(Self::ForumCategory)');
-includes('crates/modules/rustok-search/src/forum_storefront_execution.rs',
-  'result_candidate(item).is_some_and(|candidate| allowed.contains(&candidate))',
-  'build_forum_result_facets(&visible_items)',
-  '.public_forum_discovery_allowed(',
-  'SearchDictionaryService::apply_authorized_storefront_query_rules(');
+// The retired Forum-only execution pipeline must stay retired: no storefront Search
+// document may be authorized outside the declared-corpus executor.
+for (const retiredPath of [
+  'crates/modules/rustok-search/src/forum_storefront_execution.rs',
+  'crates/modules/rustok-search/src/forum_storefront_execution_public.rs',
+  'crates/modules/rustok-search/src/storefront_result_eligibility.rs',
+]) {
+  let exists = true;
+  try {
+    source(retiredPath);
+  } catch (error) {
+    exists = false;
+  }
+  if (exists) throw new Error(`${retiredPath}: retired file must not exist`);
+}
+includes('crates/modules/rustok-search/src/audience_security.rs',
+  'public_discovery_allowed(module, tenant_id)',
+  'SearchDictionaryService::apply_storefront_query_rules(',
+  'execute_audience_eligible_search');
 // Search never hardcodes a module as gated: the audience scope is the only place a
 // module is restricted, and it is applied inside the SQL filter so totals, facets,
 // ordering and pagination stay authorized.
 includes('crates/modules/rustok-search/src/pg_engine.rs',
   'sd.document_id AS document_id',
-  '(source_module NOT IN ({gated_params}) OR document_id IN ({authorized_params}))',
-  'pub(crate) async fn search_forum_storefront_candidates(');
+  '(source_module NOT IN ({gated_params}) OR document_id IN ({authorized_params}))');
 includes('crates/modules/rustok-search/src/audience_security.rs',
   'SearchAudienceClass',
   'pub fn declared_source_modules(&self) -> Vec<String>',

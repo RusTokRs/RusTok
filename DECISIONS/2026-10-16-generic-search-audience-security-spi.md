@@ -39,8 +39,14 @@ A platform-level, module-agnostic Service Provider Interface (SPI) is required s
    - Groups candidates by `source_module` and dispatches batch filtering to corresponding `SearchAudiencePolicyPort` implementations concurrently.
    - Re-aggregates facets, totals, and pagination offsets strictly over authorized documents.
 
-3. **Backward-Compatible Bridge for Forum:**
-   Existing `StorefrontSearchResultEligibilityPort` and `execute_forum_storefront_search` are retained as an adapter layer over the generic SPI, ensuring 100% binary, signature, and verification compatibility with existing contracts and test suites.
+3. **Backward-Compatible Bridge for Forum (removed 2026-10-25):**
+   At the time of this decision, `StorefrontSearchResultEligibilityPort` and
+   `execute_forum_storefront_search` were retained as an adapter layer over the generic
+   SPI so existing contracts and test suites kept working. Phase 4 of
+   `2026-10-25-search-audience-declared-corpus.md` deleted that bridge together with its
+   files, GraphQL field, storefront adapters and contract verifiers; the generic
+   `execute_audience_eligible_search` + `SearchAudiencePolicyPort` path is now the only
+   one.
 
 ## Sources of truth and ownership
 
