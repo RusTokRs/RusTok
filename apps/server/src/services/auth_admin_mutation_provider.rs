@@ -514,6 +514,8 @@ mod tests {
             status: rustok_core::UserStatus::Active,
             email_verified_at: None,
             last_login_at: None,
+            failed_login_count: 0,
+            locked_until: None,
             metadata: json!({"team": "platform"}),
             created_at: chrono::Utc::now().into(),
             updated_at: chrono::Utc::now().into(),

@@ -135,6 +135,9 @@ fn map_auth_lifecycle_error(ctx: &Context<'_>, error: AuthLifecycleMutationError
         AuthLifecycleMutationError::UserInactive => {
             unauthenticated_auth_error(&t("auth.user_inactive"))
         }
+        AuthLifecycleMutationError::AccountLocked => {
+            unauthenticated_auth_error(&t("auth.account_locked"))
+        }
         AuthLifecycleMutationError::InvalidRefreshToken => {
             unauthenticated_auth_error(&t("auth.invalid_refresh_token"))
         }

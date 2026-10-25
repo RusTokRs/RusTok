@@ -431,7 +431,10 @@ pub struct BuildRuntimeSettings {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RateLimitSettings {
-    #[serde(default)]
+    // Fail closed: rate limiting is on unless an operator explicitly
+    // disables it. Login/registration endpoints are internet-facing
+    // credential surfaces and must never ship unthrottled by default.
+    #[serde(default = "default_true")]
     pub enabled: bool,
     #[serde(default)]
     pub backend: RateLimitBackendKind,
@@ -699,7 +702,7 @@ impl Default for SearchReindexSettings {
 impl Default for RateLimitSettings {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,
             backend: RateLimitBackendKind::Memory,
             redis_key_prefix: default_rate_limit_redis_key_prefix(),
             requests_per_minute: default_requests_per_minute(),

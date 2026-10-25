@@ -1,5 +1,8 @@
 use chrono::Utc;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, TransactionTrait, sea_query::Expr};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait,
+    sea_query::Expr,
+};
 
 use crate::auth::{
     AuthConfig, decode_password_reset_token, hash_password_async, password_reset_credential_matches,
@@ -78,6 +81,18 @@ impl AuthLifecycleService {
             .exec(&tx)
             .await
             .map_err(AuthLifecycleError::from)?;
+
+        // A successful reset proves mailbox control: clear any brute-force
+        // lockout so the legitimate owner is not kept out afterwards.
+        users::ActiveModel {
+            id: Set(user.id),
+            failed_login_count: Set(0),
+            locked_until: Set(None),
+            ..Default::default()
+        }
+        .update(&tx)
+        .await
+        .map_err(AuthLifecycleError::from)?;
 
         tx.commit().await.map_err(AuthLifecycleError::from)?;
         Ok(())

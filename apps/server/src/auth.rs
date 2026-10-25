@@ -235,6 +235,19 @@ pub fn hash_refresh_token(token: &str) -> String {
     rustok_auth::hash_refresh_token(token)
 }
 
+/// A valid Argon2id hash of a non-credential constant, generated once per
+/// process. Verifying a candidate password against it costs the same as
+/// verifying against a real stored hash, which keeps unknown-email logins
+/// indistinguishable by latency from wrong-password logins.
+pub fn dummy_password_hash() -> String {
+    static DUMMY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    DUMMY
+        .get_or_init(|| {
+            rustok_auth::hash_password("rustok-timing-equalization-dummy").unwrap_or_default()
+        })
+        .clone()
+}
+
 // ─── Error conversion ────────────────────────────────────────────────
 
 /// Convert `AuthError` to the server error bridge.

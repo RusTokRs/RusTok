@@ -16,6 +16,8 @@ pub struct Model {
     pub status: UserStatus,
     pub email_verified_at: Option<DateTimeWithTimeZone>,
     pub last_login_at: Option<DateTimeWithTimeZone>,
+    pub failed_login_count: i32,
+    pub locked_until: Option<DateTimeWithTimeZone>,
     pub metadata: Json,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

@@ -7,7 +7,8 @@ use chrono::{Duration, Utc};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
     DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
-    TransactionTrait, sea_query::Expr,
+    TransactionTrait,
+    sea_query::{Expr, ExprTrait},
 };
 
 use crate::auth::{
@@ -35,6 +36,7 @@ pub enum AuthLifecycleError {
     EmailAlreadyExists,
     InvalidCredentials,
     UserInactive,
+    AccountLocked,
     InvalidRefreshToken,
     SessionExpired,
     UserNotFound,
@@ -74,6 +76,9 @@ impl From<AuthLifecycleError> for Error {
                 Error::Unauthorized("Invalid credentials".into())
             }
             AuthLifecycleError::UserInactive => Error::Unauthorized("User is inactive".into()),
+            AuthLifecycleError::AccountLocked => {
+                Error::Unauthorized("Account is temporarily locked".into())
+            }
             AuthLifecycleError::InvalidRefreshToken => {
                 Error::Unauthorized("Invalid refresh token".into())
             }
@@ -103,6 +108,15 @@ static AUTH_FLOW_INCONSISTENCY_TOTAL: AtomicU64 = AtomicU64::new(0);
 static AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL: AtomicU64 = AtomicU64::new(0);
 
 const MAX_SESSION_LIST_LIMIT: u64 = 100;
+
+/// Consecutive failed credential checks after which an account locks.
+/// Combined with Argon2 cost and IP rate limiting, this bounds online
+/// guessing per account across every transport and source address.
+const MAX_FAILED_LOGIN_ATTEMPTS: i32 = 10;
+
+/// How long an account stays locked once the failure threshold is hit.
+/// A successful password reset or password change clears the lock early.
+const LOGIN_LOCKOUT_MINUTES: i64 = 15;
 
 impl AuthLifecycleService {
     pub fn metrics_snapshot() -> AuthLifecycleMetricsSnapshot {
@@ -397,16 +411,34 @@ impl AuthLifecycleService {
         // enumeration oracle), it simply finds no user and fails as
         // InvalidCredentials below.
         let email = email.trim().to_lowercase();
-        let user = users::Entity::find_by_email(db, tenant_id, &email)
+        let user = match users::Entity::find_by_email(db, tenant_id, &email)
             .await
             .map_err(AuthLifecycleError::from)?
-            .ok_or(AuthLifecycleError::InvalidCredentials)?;
+        {
+            Some(user) => user,
+            None => {
+                // Run a full Argon2 verification against a dummy hash so
+                // an unknown email takes as long as a wrong password:
+                // without this, login latency enumerates accounts.
+                let _ = verify_password_async(
+                    password.to_string(),
+                    crate::auth::dummy_password_hash(),
+                )
+                .await;
+                return Err(AuthLifecycleError::InvalidCredentials);
+            }
+        };
 
         if !verify_password_async(password.to_string(), user.password_hash.clone())
             .await
             .map_err(AuthLifecycleError::from)?
         {
+            Self::register_failed_login_attempt(db, tenant_id, user.id).await;
             return Err(AuthLifecycleError::InvalidCredentials);
+        }
+
+        if Self::is_login_locked(&user) {
+            return Err(AuthLifecycleError::AccountLocked);
         }
 
         if !user.is_active() {
@@ -422,6 +454,9 @@ impl AuthLifecycleService {
         if locked_user.password_hash != user.password_hash {
             return Err(AuthLifecycleError::InvalidCredentials);
         }
+        if Self::is_login_locked(&locked_user) {
+            return Err(AuthLifecycleError::AccountLocked);
+        }
         if !locked_user.is_active() {
             AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL.fetch_add(1, Ordering::Relaxed);
             return Err(AuthLifecycleError::UserInactive);
@@ -430,6 +465,8 @@ impl AuthLifecycleService {
         let now = Utc::now();
         let mut user_active: users::ActiveModel = locked_user.into();
         user_active.last_login_at = Set(Some(now.into()));
+        user_active.failed_login_count = Set(0);
+        user_active.locked_until = Set(None);
         let user = user_active
             .update(&txn)
             .await
@@ -442,6 +479,50 @@ impl AuthLifecycleService {
         txn.commit().await.map_err(AuthLifecycleError::from)?;
 
         Ok((user, tokens))
+    }
+
+    fn is_login_locked(user: &users::Model) -> bool {
+        user.locked_until
+            .is_some_and(|locked_until| locked_until.timestamp() > Utc::now().timestamp())
+    }
+
+    /// Persist one failed credential check and lock the account once the
+    /// consecutive-failure threshold is reached. Best-effort by design:
+    /// the caller still returns InvalidCredentials either way, and a
+    /// persistence failure is logged rather than leaked to the client.
+    async fn register_failed_login_attempt(
+        db: &DatabaseConnection,
+        tenant_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+    ) {
+        let increment = users::Entity::update_many()
+            .col_expr(
+                users::Column::FailedLoginCount,
+                Expr::col(users::Column::FailedLoginCount).add(1),
+            )
+            .filter(users::Column::TenantId.eq(tenant_id))
+            .filter(users::Column::Id.eq(user_id))
+            .exec(db)
+            .await;
+        if let Err(error) = increment {
+            tracing::error!(%error, %user_id, "failed to persist failed-login counter");
+            return;
+        }
+
+        let lock = users::Entity::update_many()
+            .col_expr(users::Column::FailedLoginCount, Expr::value(0))
+            .col_expr(
+                users::Column::LockedUntil,
+                Expr::value(Utc::now() + Duration::minutes(LOGIN_LOCKOUT_MINUTES)),
+            )
+            .filter(users::Column::TenantId.eq(tenant_id))
+            .filter(users::Column::Id.eq(user_id))
+            .filter(users::Column::FailedLoginCount.gte(MAX_FAILED_LOGIN_ATTEMPTS))
+            .exec(db)
+            .await;
+        if let Err(error) = lock {
+            tracing::error!(%error, %user_id, "failed to persist login lockout");
+        }
     }
 
     pub async fn refresh_runtime(
@@ -778,6 +859,8 @@ impl AuthLifecycleService {
 
         let mut user_active: users::ActiveModel = user.into();
         user_active.password_hash = Set(new_password_hash);
+        user_active.failed_login_count = Set(0);
+        user_active.locked_until = Set(None);
         user_active
             .update(&txn)
             .await
