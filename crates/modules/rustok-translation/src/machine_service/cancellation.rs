@@ -36,7 +36,7 @@ pub async fn cancel_machine_operation(
         return Err(TranslationError::Forbidden);
     }
     let request_hash = hash_manifest(&input)?;
-    let idempotency_key = context.idempotency_key.clone().unwrap_or_default();
+    let idempotency_key = require_idempotency_key(&context)?;
     if let Some(existing) =
         find_cancellation_by_idempotency(database, tenant_id, &idempotency_key).await?
     {
@@ -260,7 +260,7 @@ pub(crate) fn validate_machine_cancellation_replay(
     context: &PortContext,
     request_hash: &str,
 ) -> TranslationResult<()> {
-    if model.idempotency_key != context.idempotency_key.as_deref().unwrap_or_default() {
+    if model.idempotency_key != require_idempotency_key(&context)? {
         return Err(TranslationError::MachineOperationTerminal(
             "cancelled".to_string(),
         ));
@@ -410,4 +410,12 @@ pub(crate) async fn refresh_machine_cancellation_provider_evidence(
         .await?
         .map(machine_cancellation_record)
         .ok_or(TranslationError::WorkflowRevisionConflict)
+}
+
+fn require_idempotency_key(context: &PortContext) -> TranslationResult<String> {
+    let key = context.idempotency_key.as_deref().unwrap_or_default();
+    if key.is_empty() || key.len() > 191 || key.trim() != key {
+        return Err(TranslationError::InvalidRequest("translation machine cancellation idempotency key must contain 1..=191 trimmed non-empty bytes".to_string()));
+    }
+    Ok(key.to_string())
 }

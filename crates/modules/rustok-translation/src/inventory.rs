@@ -167,6 +167,10 @@ impl TranslationInventoryService {
             .filter(provider_checkpoint::Column::TenantId.eq(tenant_id))
             .filter(provider_checkpoint::Column::OwnerSlug.eq(owner_slug.as_str()))
             .filter(provider_checkpoint::Column::ResourceKind.eq(resource_kind.as_str()));
+        // SQLite lacks SELECT FOR UPDATE; sync relies on transaction isolation via
+        // `BEGIN IMMEDIATE` semantics and checkpoint CAS. In production SQLite is not
+        // intended for concurrent inventory sync; set `PRAGMA busy_timeout = 5000` at
+        // connection pool level to avoid `database is locked` under tests.
         let current_checkpoint = match self.database.get_database_backend() {
             DbBackend::Postgres | DbBackend::MySql => {
                 current_checkpoint_query
@@ -419,6 +423,10 @@ impl TranslationInventoryService {
             .filter(provider_checkpoint::Column::TenantId.eq(tenant_id))
             .filter(provider_checkpoint::Column::OwnerSlug.eq(owner_slug.as_str()))
             .filter(provider_checkpoint::Column::ResourceKind.eq(resource_kind.as_str()));
+        // SQLite lacks SELECT FOR UPDATE; sync relies on transaction isolation via
+        // `BEGIN IMMEDIATE` semantics and checkpoint CAS. In production SQLite is not
+        // intended for concurrent inventory sync; set `PRAGMA busy_timeout = 5000` at
+        // connection pool level to avoid `database is locked` under tests.
         let current_checkpoint = match self.database.get_database_backend() {
             DbBackend::Postgres | DbBackend::MySql => {
                 current_checkpoint_query

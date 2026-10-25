@@ -9,6 +9,7 @@ mod m20260729_000008_create_translation_memory;
 mod m20260729_000009_create_translation_machine_operations;
 mod m20260809_000010_create_translation_workflow_notes;
 mod m20260809_000011_create_translation_exchange_jobs;
+mod m20261025_000012_add_memory_classification;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -26,6 +27,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260729_000009_create_translation_machine_operations::Migration),
         Box::new(m20260809_000010_create_translation_workflow_notes::Migration),
         Box::new(m20260809_000011_create_translation_exchange_jobs::Migration),
+        Box::new(m20261025_000012_add_memory_classification::Migration),
     ]
 }
 
@@ -74,6 +76,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260809_000011_create_translation_exchange_jobs",
             vec!["m20260809_000010_create_translation_workflow_notes"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20261025_000012_add_memory_classification",
+            vec!["m20260809_000011_create_translation_exchange_jobs"],
         ),
     ]
 }

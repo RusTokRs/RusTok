@@ -280,7 +280,7 @@ impl TranslationMemoryService {
         validate_retention(input.policy, input.retain_until.as_ref())?;
         let request_hash = hash_manifest(&input)?;
         if let Some(receipt) =
-            find_receipt(&self.database, tenant_id, idempotency_key(&context)).await?
+            find_receipt(&self.database, tenant_id, &idempotency_key(&context)?).await?
         {
             return replay_receipt(receipt, &context, "set_retention", &request_hash);
         }
@@ -344,7 +344,7 @@ impl TranslationMemoryService {
         validate_expected_revision(input.expected_revision)?;
         let request_hash = hash_manifest(&input)?;
         if let Some(receipt) =
-            find_receipt(&self.database, tenant_id, idempotency_key(&context)).await?
+            find_receipt(&self.database, tenant_id, &idempotency_key(&context)?).await?
         {
             return replay_receipt(receipt, &context, "tombstone", &request_hash);
         }
@@ -410,7 +410,7 @@ impl TranslationMemoryService {
         validate_expected_revision(input.expected_revision)?;
         let request_hash = hash_manifest(&input)?;
         if let Some(receipt) =
-            find_receipt(&self.database, tenant_id, idempotency_key(&context)).await?
+            find_receipt(&self.database, tenant_id, &idempotency_key(&context)?).await?
         {
             return replay_receipt(receipt, &context, "purge", &request_hash);
         }
@@ -567,6 +567,7 @@ where
             owner_lifecycle_revision: Set(None),
             owner_deleted_at: Set(None),
             tombstoned_at: Set(None),
+            data_classification: Set(classification_label(segment.classification).to_string()),
             revision: Set(1),
             created_at: Set(created_at),
             updated_at: Set(created_at),
@@ -768,7 +769,7 @@ where
         tenant_id: Set(tenant_id),
         entry_id: Set(response.entry_id),
         operation: Set(operation.to_string()),
-        idempotency_key: Set(idempotency_key(context).to_string()),
+        idempotency_key: Set(idempotency_key(context)?),
         request_hash: Set(request_hash.to_string()),
         requested_by_actor_kind: Set(actor_kind(context).to_string()),
         requested_by_actor_id: Set(context.actor.id.clone()),
@@ -786,7 +787,7 @@ where
     )
     .exec_without_returning(database)
     .await?;
-    let receipt = find_receipt(database, tenant_id, idempotency_key(context))
+    let receipt = find_receipt(database, tenant_id, &idempotency_key(context)?)
         .await?
         .ok_or_else(|| {
             TranslationError::MemoryInvariant("memory receipt did not persist".to_string())
@@ -976,8 +977,14 @@ fn authorize(
     Uuid::parse_str(&context.tenant_id).map_err(|_| TranslationError::InvalidTenantId)
 }
 
-fn idempotency_key(context: &PortContext) -> &str {
-    context.idempotency_key.as_deref().unwrap_or_default()
+fn idempotency_key(context: &PortContext) -> TranslationResult<String> {
+    let key = context.idempotency_key.as_deref().unwrap_or_default();
+    if key.is_empty() || key.len() > 191 || key.trim() != key {
+        return Err(TranslationError::InvalidRequest(
+            "translation memory idempotency key must contain 1..=191 trimmed non-empty bytes".to_string(),
+        ));
+    }
+    Ok(key.to_string())
 }
 
 fn actor_kind(context: &PortContext) -> &'static str {
@@ -1006,5 +1013,16 @@ mod tests {
         );
         assert_eq!(token_dice_similarity("hero returns", "hero arrives"), 5_000);
         assert_eq!(token_dice_similarity("hero", "villain"), 0);
+    }
+}
+
+fn classification_label(classification: TranslationDataClassification) -> &'static str {
+    match classification {
+        TranslationDataClassification::Public => "public",
+        TranslationDataClassification::TenantPrivate => "tenant_private",
+        TranslationDataClassification::Personal => "personal",
+        TranslationDataClassification::Sensitive => "sensitive",
+        TranslationDataClassification::Secret => "secret",
+        TranslationDataClassification::ImmutableTransaction => "immutable_transaction",
     }
 }

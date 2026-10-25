@@ -99,7 +99,7 @@ impl TranslationPolicyService {
         }
         normalize_required_target_locales(&mut input.required_target_locales)?;
         let request_hash = hash_manifest(&input)?;
-        let idempotency_key = context.idempotency_key.clone().unwrap_or_default();
+        let idempotency_key = require_idempotency_key(&context)?;
         if let Some(receipt) =
             find_policy_receipt(&self.database, tenant_id, &idempotency_key).await?
         {
@@ -460,4 +460,15 @@ fn actor_kind(context: &PortContext) -> &'static str {
         PortActorKind::Service => "service",
         PortActorKind::System => "system",
     }
+}
+
+fn require_idempotency_key(context: &PortContext) -> TranslationResult<String> {
+    let key = context.idempotency_key.as_deref().unwrap_or_default();
+    if key.is_empty() || key.len() > 191 || key.trim() != key {
+        return Err(TranslationError::InvalidRequest(
+            "translation policy idempotency key must contain 1..=191 trimmed non-empty bytes"
+                .to_string(),
+        ));
+    }
+    Ok(key.to_string())
 }

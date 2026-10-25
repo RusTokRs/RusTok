@@ -768,6 +768,11 @@ fn count_item(
 
     let applied_keys = match (item.status.as_str(), receipt) {
         ("applied", Some(receipt)) => {
+            if receipt.proposal_id != item.current_proposal_id.unwrap_or(receipt.proposal_id) {
+                return Err(TranslationError::InvalidProgressSource(
+                    "applied job item receipt proposal does not match current proposal".to_string(),
+                ));
+            }
             serde_json::from_value::<Vec<FieldKey>>(receipt.applied_field_keys.clone())?
                 .into_iter()
                 .collect::<BTreeSet<_>>()

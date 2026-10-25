@@ -33,6 +33,16 @@ pub(crate) use cancellation::*;
 pub(crate) use helpers::*;
 pub(crate) use operations::*;
 
+fn require_idempotency_key(context: &PortContext) -> crate::TranslationResult<String> {
+    let key = context.idempotency_key.as_deref().unwrap_or_default();
+    if key.is_empty() || key.len() > 191 || key.trim() != key {
+        return Err(crate::TranslationError::InvalidRequest(
+            "translation machine idempotency key must contain 1..=191 trimmed non-empty bytes".to_string(),
+        ));
+    }
+    Ok(key.to_string())
+}
+
 pub struct TranslationMachineControlService {
     database: DatabaseConnection,
     machine_port: Option<Arc<dyn MachineTranslationPort>>,
@@ -107,7 +117,7 @@ impl TranslationMachineService {
     ) -> TranslationResult<MachineProposalOutcome> {
         let tenant_id = authorize_machine_generation(&context)?;
         validate_generation_input(&input)?;
-        let idempotency_key = context.idempotency_key.clone().unwrap_or_default();
+        let idempotency_key = require_idempotency_key(&context)?;
         let command_hash = hash_manifest(&input)?;
 
         let existing_operation =
@@ -299,7 +309,7 @@ impl TranslationMachineService {
         let tenant_id = authorize_machine_recovery(&context)?;
         validate_machine_recovery_reason(&input.reason)?;
         validate_generation_input(&input.proposal)?;
-        let idempotency_key = context.idempotency_key.clone().unwrap_or_default();
+        let idempotency_key = require_idempotency_key(&context)?;
         let request_hash = hash_manifest(&input)?;
 
         if let Some(existing) =

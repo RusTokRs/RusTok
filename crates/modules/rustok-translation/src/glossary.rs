@@ -223,7 +223,7 @@ impl TranslationGlossaryService {
         validate_job_locales(&tenant_policy, &input.source_locale, &input.target_locale)?;
         let request_hash = operation_hash("create", &input)?;
         if let Some(receipt) =
-            find_receipt(&self.database, tenant_id, idempotency_key(&context)).await?
+            find_receipt(&self.database, tenant_id, &idempotency_key(&context)?).await?
         {
             return replay_receipt(receipt, &context, "create", &request_hash);
         }
@@ -246,7 +246,7 @@ impl TranslationGlossaryService {
             field_key: Set(scope_value(input.scope.field_key.as_ref())),
             is_active: Set(true),
             revision: Set(1),
-            last_idempotency_key: Set(idempotency_key(&context).to_string()),
+            last_idempotency_key: Set(idempotency_key(&context)?),
             last_request_hash: Set(request_hash.clone()),
             created_by_actor_kind: Set(actor_kind.clone()),
             created_by_actor_id: Set(context.actor.id.clone()),
@@ -304,7 +304,7 @@ impl TranslationGlossaryService {
         normalize_update_input(&mut input)?;
         let request_hash = operation_hash("update", &input)?;
         if let Some(receipt) =
-            find_receipt(&self.database, tenant_id, idempotency_key(&context)).await?
+            find_receipt(&self.database, tenant_id, &idempotency_key(&context)?).await?
         {
             return replay_receipt(receipt, &context, "update", &request_hash);
         }
@@ -376,7 +376,7 @@ impl TranslationGlossaryService {
         normalize_concepts(&mut input.concepts)?;
         let request_hash = operation_hash("replace_terms", &input)?;
         if let Some(receipt) =
-            find_receipt(&self.database, tenant_id, idempotency_key(&context)).await?
+            find_receipt(&self.database, tenant_id, &idempotency_key(&context)?).await?
         {
             return replay_receipt(receipt, &context, "replace_terms", &request_hash);
         }
@@ -456,7 +456,7 @@ impl TranslationGlossaryService {
         let tenant_id = authorize(&context, Action::Manage, PortCallPolicy::write())?;
         let request_hash = operation_hash("set_active", &input)?;
         if let Some(receipt) =
-            find_receipt(&self.database, tenant_id, idempotency_key(&context)).await?
+            find_receipt(&self.database, tenant_id, &idempotency_key(&context)?).await?
         {
             return replay_receipt(receipt, &context, "set_active", &request_hash);
         }
@@ -889,7 +889,7 @@ where
         )
         .col_expr(
             glossary::Column::LastIdempotencyKey,
-            Expr::value(idempotency_key(binding.context).to_string()),
+            Expr::value(idempotency_key(binding.context)?),
         )
         .col_expr(
             glossary::Column::LastRequestHash,
@@ -939,7 +939,7 @@ where
         tenant_id: Set(tenant_id),
         glossary_id: Set(record.id),
         operation: Set(operation.to_string()),
-        idempotency_key: Set(idempotency_key(context).to_string()),
+        idempotency_key: Set(idempotency_key(context)?),
         request_hash: Set(request_hash.to_string()),
         requested_by_actor_kind: Set(actor_kind(context).to_string()),
         requested_by_actor_id: Set(context.actor.id.clone()),
@@ -957,7 +957,7 @@ where
     )
     .exec_without_returning(database)
     .await?;
-    let receipt = find_receipt(database, tenant_id, idempotency_key(context))
+    let receipt = find_receipt(database, tenant_id, &idempotency_key(context)?)
         .await?
         .ok_or_else(|| {
             TranslationError::GlossaryInvariant("glossary receipt did not persist".to_string())
@@ -1082,8 +1082,14 @@ fn scope_value<T: ToString>(value: Option<&T>) -> String {
     value.map(ToString::to_string).unwrap_or_default()
 }
 
-fn idempotency_key(context: &PortContext) -> &str {
-    context.idempotency_key.as_deref().unwrap_or_default()
+fn idempotency_key(context: &PortContext) -> TranslationResult<String> {
+    let key = context.idempotency_key.as_deref().unwrap_or_default();
+    if key.is_empty() || key.len() > 191 || key.trim() != key {
+        return Err(TranslationError::InvalidRequest(
+            "translation glossary idempotency key must contain 1..=191 trimmed non-empty bytes".to_string(),
+        ));
+    }
+    Ok(key.to_string())
 }
 
 fn actor_kind(context: &PortContext) -> &'static str {
