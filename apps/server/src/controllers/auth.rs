@@ -29,8 +29,8 @@ use crate::models::{
 };
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::email::{
-    EMAIL_VERIFICATION_TOKEN_TTL_SECS, EmailVerificationEmail, PasswordResetEmail,
-    email_service_from_ctx, password_reset_url, spawn_email_verification,
+    EMAIL_VERIFICATION_TOKEN_TTL_SECS, EmailVerificationEmail, PASSWORD_RESET_TOKEN_TTL_SECS,
+    PasswordResetEmail, email_service_from_ctx, password_reset_url, spawn_email_verification,
 };
 use crate::services::server_runtime_context::ServerAuthRuntime;
 pub use rustok_auth::{
@@ -41,7 +41,6 @@ pub use rustok_auth::{
     UserInfo, UserResponse, VerificationRequestResponse,
 };
 
-const DEFAULT_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
 
 fn user_info_from_model(user: users::Model, role: rustok_core::UserRole) -> UserInfo {
     UserInfo {
@@ -298,7 +297,7 @@ async fn request_reset(
                 tenant.id,
                 &record.email,
                 &record.password_hash,
-                DEFAULT_RESET_TOKEN_TTL_SECS,
+                PASSWORD_RESET_TOKEN_TTL_SECS,
             )
         })
         .transpose()?;

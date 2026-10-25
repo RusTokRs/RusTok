@@ -287,6 +287,9 @@ impl BuiltInAuthEmailSender for TemplatedSmtpMailerAdapter {
 /// Verification-token lifetime shared by registration and resend flows.
 pub const EMAIL_VERIFICATION_TOKEN_TTL_SECS: u64 = 24 * 60 * 60;
 
+/// Password-reset token lifetime shared by REST and GraphQL flows.
+pub const PASSWORD_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
+
 /// Best-effort verification email used by registration flows when the
 /// platform requires verified addresses. Failures are logged, never
 /// surfaced: the account exists and the resend endpoint stays available.

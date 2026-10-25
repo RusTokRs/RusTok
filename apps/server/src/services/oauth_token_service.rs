@@ -1,5 +1,4 @@
 use axum::http::StatusCode;
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::Utc;
 use rustok_api::context::scope_matches;
 use rustok_auth::{TokenRequest, TokenResponse};
@@ -8,7 +7,6 @@ use sea_orm::{
     Set, TransactionTrait, sea_query::Expr,
 };
 use sha2::{Digest, Sha256};
-use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
 use crate::auth::{self, AuthConfig};
@@ -341,8 +339,7 @@ async fn validate_authorization_code(
         ));
     }
 
-    let expected = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
-    if !bool::from(expected.as_bytes().ct_eq(code.code_challenge.as_bytes())) {
+    if !OAuthAppService::verify_pkce(&code.code_challenge, verifier) {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "PKCE verification failed",
         ));

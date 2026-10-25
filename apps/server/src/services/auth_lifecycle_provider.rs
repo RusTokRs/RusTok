@@ -14,7 +14,8 @@ use crate::models::users;
 use crate::services::auth_invite::InviteAcceptanceError;
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService, AuthTokens};
 use crate::services::email::{
-    PasswordResetEmail, email_service_from_ctx, password_reset_url, spawn_email_verification,
+    PASSWORD_RESET_TOKEN_TTL_SECS, PasswordResetEmail, email_service_from_ctx, password_reset_url,
+    spawn_email_verification,
 };
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -65,7 +66,6 @@ fn map_invite_error(error: InviteAcceptanceError) -> AuthLifecycleMutationError 
     }
 }
 
-const DEFAULT_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
 
 pub struct ServerAuthLifecycleProvider {
     runtime_ctx: ServerRuntimeContext,
@@ -362,7 +362,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
             context.tenant_id,
             &user.email,
             &user.password_hash,
-            DEFAULT_RESET_TOKEN_TTL_SECS,
+            PASSWORD_RESET_TOKEN_TTL_SECS,
         ) {
             Ok(token) => token,
             Err(_) => {

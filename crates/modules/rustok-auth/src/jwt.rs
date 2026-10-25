@@ -382,7 +382,10 @@ fn decoding_key(config: &AuthConfig) -> Result<DecodingKey> {
 fn strict_jwt_validation(config: &AuthConfig) -> Validation {
     let mut validation = Validation::new(jwt_algorithm(config));
     validation.validate_exp = true;
-    validation.leeway = 0;
+    // Small allowance for clock skew between issuer and verifier nodes;
+    // zero leeway rejects otherwise-valid tokens across machines whose
+    // clocks differ by a second.
+    validation.leeway = 30;
     // RFC 7519: token MUST NOT be accepted on or after `exp`.
     validation.reject_tokens_expiring_in_less_than = 1;
     validation.set_issuer(&[config.issuer.as_str()]);
