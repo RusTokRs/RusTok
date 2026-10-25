@@ -169,8 +169,12 @@ for (const marker of [
   "SearchModule.migrations()",
   "SearchIngestionHandler::with_all_projection_sources",
   "ContractEventEnvelope::new",
-  'SET search_path TO "{schema_name}", public',
+  // The harness cannot rely on one `SET search_path`: the driver's transaction and the
+  // owner source's queries use different pooled connections. It sets the path as a
+  // startup option for the whole pool and then proves the option took effect.
   "options=-c%20search_path%3D",
+  "assert_schema_resolves(",
+  "SELECT current_setting('search_path') AS search_path",
   "full_blog_reindex_replaces_only_current_tenant_blog_documents",
   "blog_events_upsert_publish_archive_and_delete_search_document",
   "blog_reindex_projects_attached_taxonomy_tags_not_metadata_snapshot",

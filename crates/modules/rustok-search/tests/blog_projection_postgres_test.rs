@@ -13,6 +13,7 @@
 
 use std::collections::HashMap;
 use std::error::Error;
+use std::io;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -61,7 +62,7 @@ impl PostgresSearchTestDb {
             .await?;
 
         let db = connect_in_schema(&database_url, &schema_name).await?;
-        set_search_path(&db, &schema_name).await?;
+        assert_schema_resolves(&db, &schema_name).await?;
 
         let setup_result = async {
             let manager = SchemaManager::new(&db);
@@ -1121,7 +1122,7 @@ async fn connect(database_url: &str) -> TestResult<DatabaseConnection> {
 /// Connects with the test schema already on the server startup `search_path`.
 ///
 /// The projection driver replaces a scope inside a transaction while the owner source
-/// answers its queries on another pooled connection, so a single `SET search_path` on
+/// answers its queries on its own pooled connection, so a single `SET search_path` on
 /// one checkout is not enough: every connection of the pool has to resolve the test
 /// schema. `options` is a libpq-style startup parameter, and setting it here is the only
 /// pool-wide way to do that without a per-statement prefix.
@@ -1131,14 +1132,36 @@ async fn connect_in_schema(
 ) -> TestResult<DatabaseConnection> {
     let separator = if database_url.contains('?') { '&' } else { '?' };
     connect(&format!(
-        "{database_url}{separator}options=-c%20search_path%3D{schema_name},public"
+        "{database_url}{separator}options=-c%20search_path%3D{schema_name}%2Cpublic"
     ))
     .await
 }
 
-async fn set_search_path(db: &DatabaseConnection, schema_name: &str) -> TestResult<()> {
-    db.execute_unprepared(&format!(r#"SET search_path TO "{schema_name}", public"#))
-        .await?;
+/// Fails the harness when the startup `search_path` did not take effect.
+///
+/// Without this check a pool that silently ignored the option fails much later, as a
+/// confusing "relation blog_posts does not exist" inside the owner source.
+async fn assert_schema_resolves(
+    db: &DatabaseConnection,
+    schema_name: &str,
+) -> TestResult<()> {
+    let row = db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT current_setting('search_path') AS search_path".to_string(),
+        ))
+        .await?
+        .ok_or_else(|| io::Error::other("search_path query returned no row"))?;
+    let search_path: String = row.try_get("", "search_path")?;
+    if !search_path
+        .split(',')
+        .any(|entry| entry.trim().trim_matches('"') == schema_name)
+    {
+        return Err(io::Error::other(format!(
+            "test connection does not resolve the `{schema_name}` schema (search_path = `{search_path}`)"
+        ))
+        .into());
+    }
     Ok(())
 }
 

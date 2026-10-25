@@ -72,6 +72,34 @@ would force every module to reimplement the same transactional replacement.
 - A bounded page that returns a non-advancing cursor fails closed.
 - A document whose entity type is blank or longer than 64 bytes fails closed.
 
+### Public corpus only, for every source
+
+Search stores exactly what the owner publishes to anonymous readers, and
+`validate_document` rejects anything else. This is a storage invariant rather than a
+per-module policy, because `search_documents` is read by both the storefront query
+(`published_only = true`) and the admin query (`published_only = false`). As long as
+the table contains only public documents, forgetting a filter cannot disclose a draft:
+the filter is defence in depth, not the only gate. As soon as one row is allowed to be
+non-public, `is_public` and `published_only` become load-bearing for confidentiality,
+and a single query that passes the wrong flag leaks it.
+
+The Blog cutover is where the last exception disappeared. `blog_projector` stored
+drafts as `is_public = false` rows so that admin global search could find them. After
+the cutover:
+
+- a draft, an unpublished post or an archived post has no `search_documents` row;
+- the admin global search in `apps/admin` and the Search admin `read_bootstrap`
+  therefore return no Blog drafts, because the corpus they query is the public one;
+- drafts and archived posts stay discoverable in the Blog owner's own admin listing,
+  which reads the Blog tables and is not a Search surface.
+
+Accepted, with the reasoning above: re-admitting non-public rows would make every
+storefront query's flag a security control, would need a second corpus in the same
+index, and would force every guard that asserts "a source never hands the storefront a
+document it is not allowed to discover" to be weakened. A module that genuinely needs
+draft search must expose it as its own owner-side read (its own tables and query), not
+as a second visibility class inside Search storage.
+
 ### Allowed states
 
 - `Entity` refresh: exactly the documents returned for the changed entity are
@@ -267,6 +295,12 @@ crate.
 - The Forum-named orchestration files remain the largest remaining
   module-specific surface in `rustok-search`; this ADR records that explicitly
   instead of hiding it.
+- Admin global search narrows: it returns no Blog drafts after this cutover, because
+  the stored corpus is the public one. That is a deliberate product decision recorded
+  above, not a regression to be fixed by re-adding non-public rows.
+- `rustok-search` now has `rustok-blog` and `rustok-profiles` as *dev*-dependencies
+  only, for the PostgreSQL lifecycle harness. The published crate still depends on no
+  module crate, which keeps the driver module-neutral by construction.
 
 ## References
 
