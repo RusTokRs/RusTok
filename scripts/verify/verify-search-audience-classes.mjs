@@ -193,6 +193,9 @@ if (serverServices.includes("let _ = audience_registry.register(")) {
 //    come back through the public API.
 forbid(paths.lib, [
   "build_authorized_facets",
+  // The Forum module slug belongs to the owner: `rustok-search` must not export a
+  // constant that names one module's corpus entry.
+  "FORUM_SEARCH_SOURCE_MODULE",
   "StorefrontSearchResultEligibilityPort",
   "execute_forum_storefront_search",
   "forum_storefront_execution",

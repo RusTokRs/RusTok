@@ -6,10 +6,10 @@ use rustok_forum::{
     ForumSearchCategoryAudienceScopeService, ForumSettingsProviders, SharedForumAudienceFactsPort,
     category_read_audience_port_context,
 };
+use rustok_forum::FORUM_MODULE_SLUG;
 use rustok_search::{
-    FORUM_SEARCH_SOURCE_MODULE, SharedStorefrontSearchCategoryScopePort,
-    StorefrontSearchCategoryScopePort, StorefrontSearchCategoryScopeRequest,
-    StorefrontSearchTransport, scope_is_exactly,
+    SharedStorefrontSearchCategoryScopePort, StorefrontSearchCategoryScopePort,
+    StorefrontSearchCategoryScopeRequest, StorefrontSearchTransport, scope_is_exactly,
 };
 use sea_orm::DatabaseConnection;
 
@@ -47,7 +47,7 @@ impl ServerForumSearchCategoryScopePort {
 #[async_trait]
 impl StorefrontSearchCategoryScopePort for ServerForumSearchCategoryScopePort {
     fn source_module(&self) -> &'static str {
-        FORUM_SEARCH_SOURCE_MODULE
+        FORUM_MODULE_SLUG
     }
 
     async fn expand_category_scope(
@@ -81,7 +81,7 @@ impl StorefrontSearchCategoryScopePort for ServerForumSearchCategoryScopePort {
         }
 
         let forum_enabled =
-            is_tenant_module_enabled(&self.db, request.tenant_id, FORUM_SEARCH_SOURCE_MODULE)
+            is_tenant_module_enabled(&self.db, request.tenant_id, FORUM_MODULE_SLUG)
                 .await
                 .map_err(|error| {
                     tracing::error!(

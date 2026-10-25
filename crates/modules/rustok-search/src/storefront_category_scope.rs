@@ -4,8 +4,6 @@ use async_trait::async_trait;
 use rustok_api::{AuthContext, PortError, RequestContext};
 use uuid::Uuid;
 
-pub const FORUM_SEARCH_SOURCE_MODULE: &str = "forum";
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StorefrontSearchTransport {
     Graphql,
@@ -90,7 +88,7 @@ mod tests {
     #[async_trait]
     impl StorefrontSearchCategoryScopePort for CountingScopePort {
         fn source_module(&self) -> &'static str {
-            FORUM_SEARCH_SOURCE_MODULE
+            "forum"
         }
 
         async fn expand_category_scope(
@@ -124,7 +122,7 @@ mod tests {
 
         resolve_storefront_search_category_ids(Some(port), request(vec!["forum"]))
             .await
-            .expect("Forum-only scope should resolve");
+            .expect("declaring-module scope should resolve");
 
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }

@@ -104,9 +104,9 @@ pub use projector::SearchProjector;
 pub use ranking::SearchRankingProfile;
 pub use search_settings::SearchSettingsService;
 pub use storefront_category_scope::{
-    FORUM_SEARCH_SOURCE_MODULE, SharedStorefrontSearchCategoryScopePort,
-    StorefrontSearchCategoryScopePort, StorefrontSearchCategoryScopeRequest,
-    StorefrontSearchTransport, resolve_storefront_search_category_ids, scope_is_exactly,
+    SharedStorefrontSearchCategoryScopePort, StorefrontSearchCategoryScopePort,
+    StorefrontSearchCategoryScopeRequest, StorefrontSearchTransport,
+    resolve_storefront_search_category_ids, scope_is_exactly,
 };
 pub use storefront_channel_authority::{
     StorefrontChannelAuthorityError, TrustedStorefrontChannel, resolve_trusted_storefront_channel,

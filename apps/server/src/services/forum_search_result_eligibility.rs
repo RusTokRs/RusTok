@@ -6,9 +6,9 @@ use rustok_forum::{
     ForumSearchResultCandidateKind, ForumSearchResultEligibilityService, ForumSettingsProviders,
     SharedForumAudienceFactsPort, category_read_audience_port_context,
 };
+use rustok_forum::FORUM_MODULE_SLUG;
 use rustok_search::{
-    FORUM_SEARCH_SOURCE_MODULE, SearchAudiencePolicyPort, SearchAudienceRequest,
-    StorefrontSearchTransport,
+    SearchAudiencePolicyPort, SearchAudienceRequest, StorefrontSearchTransport,
 };
 use sea_orm::DatabaseConnection;
 
@@ -152,7 +152,7 @@ impl ServerForumSearchResultEligibilityPort {
 #[async_trait]
 impl SearchAudiencePolicyPort for ServerForumSearchResultEligibilityPort {
     fn source_module(&self) -> &'static str {
-        FORUM_SEARCH_SOURCE_MODULE
+        FORUM_MODULE_SLUG
     }
 
     async fn public_discovery_allowed(&self, tenant_id: uuid::Uuid) -> Result<bool, PortError> {
@@ -171,7 +171,7 @@ async fn ensure_forum_enabled(
     db: &DatabaseConnection,
     tenant_id: uuid::Uuid,
 ) -> Result<(), PortError> {
-    let enabled = is_tenant_module_enabled(db, tenant_id, FORUM_SEARCH_SOURCE_MODULE)
+    let enabled = is_tenant_module_enabled(db, tenant_id, FORUM_MODULE_SLUG)
         .await
         .map_err(|error| {
             tracing::error!(

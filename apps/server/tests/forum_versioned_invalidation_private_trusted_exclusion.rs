@@ -219,7 +219,7 @@ struct ExactCategoryScopePort;
 #[async_trait]
 impl StorefrontSearchCategoryScopePort for ExactCategoryScopePort {
     fn source_module(&self) -> &'static str {
-        rustok_search::FORUM_SEARCH_SOURCE_MODULE
+        rustok_forum::FORUM_MODULE_SLUG
     }
 
     async fn expand_category_scope(
@@ -330,7 +330,7 @@ impl ExactForumEligibilityPort {
 #[async_trait]
 impl SearchAudiencePolicyPort for ExactForumEligibilityPort {
     fn source_module(&self) -> &'static str {
-        rustok_search::FORUM_SEARCH_SOURCE_MODULE
+        rustok_forum::FORUM_MODULE_SLUG
     }
 
     async fn public_discovery_allowed(&self, tenant_id: Uuid) -> Result<bool, PortError> {
