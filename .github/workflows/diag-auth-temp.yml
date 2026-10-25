@@ -70,27 +70,23 @@ jobs:
         with:
           toolchain: "1.96.0"
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
-      - name: Regenerate and push if changed
+      - name: Generate and post artifact JSON
         shell: bash {0}
         env:
           RUSTFLAGS: ""
           CARGO_ENCODED_RUSTFLAGS: ""
+          GH_TOKEN: ${{ github.token }}
         run: |
-          cargo run -q -p rustok-events --example event_contract_digests -- --write \
+          cargo run -q -p rustok-events --example event_contract_digests > /tmp/artifact.json \
             || echo "::error::event digest generator failed"
-          if git diff --quiet -- crates/libs/rustok-events/contracts/event-contract-digests.json; then
-            echo "::notice::event artifact already up to date"
-            exit 0
-          fi
-          git config user.name "diag-artifact"
-          git config user.email "diag-artifact@users.noreply.github.com"
-          git add crates/libs/rustok-events/contracts/event-contract-digests.json
-          git commit -m "chore(events): regenerate event contract digests for auth audit events"
-          for i in 1 2 3; do
-            git pull --rebase origin arena/551d146c-rustok && git push origin HEAD:arena/551d146c-rustok && break
-            sleep 5
-          done
-          echo "::notice::event artifact regen done"
+          {
+            echo "### EVENT_ARTIFACT_JSON for ${GITHUB_SHA:0:8}"
+            echo '```json'
+            cat /tmp/artifact.json
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment 4646 --body-file /tmp/comment.md
+          echo "::notice::event artifact posted"
 
   diagnose-check:
     name: Diagnose check/clippy/fmt/wasm
