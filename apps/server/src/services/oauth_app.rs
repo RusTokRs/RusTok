@@ -419,7 +419,16 @@ impl OAuthAppService {
         }
     }
 
-    /// Grant or update user consent for an application
+    /// Grant user consent for an application, replacing any previously
+    /// consented scope set with exactly the approved one.
+    ///
+    /// Re-granting after a revoke revives the soft-deleted consent row in
+    /// place instead of inserting a second row: with the historical full
+    /// unique index that insert failed forever (the index is now partial
+    /// over active rows, and revive-in-place keeps a single row per
+    /// (app, user, tenant) regardless). Scope narrowing is possible by
+    /// re-granting a narrower set; the previous merge-only behavior made
+    /// consent monotonically grow.
     pub async fn grant_consent(
         db: &DatabaseConnection,
         app_id: Uuid,
@@ -427,45 +436,64 @@ impl OAuthAppService {
         tenant_id: Uuid,
         scopes: Vec<String>,
     ) -> Result<()> {
-        let existing = OAuthConsents::find_active_consent(db, app_id, user_id, tenant_id)
+        let app = OAuthApps::find_by_id(app_id)
+            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+            .one(db)
             .await
-            .map_err(|_| Error::InternalServerError)?;
+            .map_err(|_| Error::InternalServerError)?
+            .filter(|app| app.is_active())
+            .ok_or(Error::NotFound)?;
 
-        if let Some(consent) = existing {
-            // Merge scopes
-            let mut current_scopes = consent.scopes_list();
-            for new_scope in scopes {
-                if !current_scopes.contains(&new_scope) {
-                    // simplified array merge
-                    current_scopes.push(new_scope);
-                }
-            }
-
-            let mut active: OAuthConsentActiveModel = consent.into();
-            active.scopes =
-                Set(serde_json::to_value(&current_scopes)
-                    .map_err(|_| Error::InternalServerError)?);
-            active.granted_at = Set(Utc::now().into());
-            active
-                .update(db)
-                .await
-                .map_err(|_| Error::InternalServerError)?;
-        } else {
-            // Create new consent
-            OAuthConsentActiveModel {
-                id: Set(Uuid::new_v4()),
-                app_id: Set(app_id),
-                user_id: Set(user_id),
-                tenant_id: Set(tenant_id),
-                scopes: Set(serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?),
-                granted_at: Set(Utc::now().into()),
-                revoked_at: Set(None),
-            }
-            .insert(db)
-            .await
-            .map_err(|_| Error::InternalServerError)?;
+        let app_scopes = app.scopes_list();
+        if scopes
+            .iter()
+            .any(|scope| !scope_matches(&app_scopes, scope))
+        {
+            return Err(Error::BadRequest(
+                "Requested scopes exceed the application's registered scopes".to_string(),
+            ));
         }
 
+        let scopes_json =
+            serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?;
+
+        let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
+        let existing = OAuthConsents::find()
+            .filter(crate::models::oauth_consents::Column::AppId.eq(app_id))
+            .filter(crate::models::oauth_consents::Column::UserId.eq(user_id))
+            .filter(crate::models::oauth_consents::Column::TenantId.eq(tenant_id))
+            .one(&tx)
+            .await
+            .map_err(|_| Error::InternalServerError)?;
+
+        match existing {
+            Some(consent) => {
+                let mut active: OAuthConsentActiveModel = consent.into();
+                active.scopes = Set(scopes_json);
+                active.granted_at = Set(Utc::now().into());
+                active.revoked_at = Set(None);
+                active
+                    .update(&tx)
+                    .await
+                    .map_err(|_| Error::InternalServerError)?;
+            }
+            None => {
+                OAuthConsentActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    app_id: Set(app_id),
+                    user_id: Set(user_id),
+                    tenant_id: Set(tenant_id),
+                    scopes: Set(scopes_json),
+                    granted_at: Set(Utc::now().into()),
+                    revoked_at: Set(None),
+                }
+                .insert(&tx)
+                .await
+                .map_err(|_| Error::InternalServerError)?;
+            }
+        }
+
+        tx.commit().await.map_err(|_| Error::InternalServerError)?;
         Ok(())
     }
 

@@ -445,16 +445,11 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         scopes: Vec<String>,
     ) -> Result<(), AuthAdminMutationError> {
         require_direct_user_context(context)?;
-        let app = oauth_apps::Entity::find_by_id(app_id)
-            .filter(oauth_apps::Column::TenantId.eq(context.tenant_id))
-            .one(&self.db)
-            .await
-            .map_err(internal_admin_error)?
-            .filter(|app| app.is_active())
-            .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
-        OAuthAppService::grant_consent(
+        // Strict boundary: validates tenant/app/subject activity and that
+        // every granted scope is inside the application's registered set.
+        OAuthAppService::grant_consent_strict(
             &self.db,
-            app.id,
+            app_id,
             context.actor_id,
             context.tenant_id,
             scopes,

@@ -471,7 +471,7 @@ pub(crate) async fn consent_handler(
         });
     }
 
-    if OAuthAppService::grant_consent(
+    if OAuthAppService::grant_consent_strict(
         runtime_ctx.db(),
         validated.app.id,
         current_user.user.id,
