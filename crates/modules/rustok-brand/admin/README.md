@@ -19,4 +19,6 @@ The package calls Brand owner contracts and shared UI transport libraries. Admin
 - `src/transport.rs` — owner transport adapters.
 - `src/ui/leptos.rs` — Leptos UI components and `BrandAdmin` root view.
 
+For the formal Rust API contract and guarantees, see [`CRATE_API.md`](CRATE_API.md).
 See the [Brand documentation](../docs/README.md) and the [module UI guide](../../../../docs/UI/module-package-implementation.md).
+
