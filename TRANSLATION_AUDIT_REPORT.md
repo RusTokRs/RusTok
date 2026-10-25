@@ -344,4 +344,7 @@ node scripts/verify/verify-db-multilingual-contract.mjs
 ### Итерация 9 — паритет busy_timeout для памяти (70b70ef)
 * `memory.rs:set_retention/tombstone/purge` — после `begin()` добавлен `PRAGMA busy_timeout = 5000` best-effort с `tracing::debug!` при `Err` только для `DbBackend::Sqlite` — паритет с `inventory.rs` (P0-2), устраняет `database is locked` в параллельных тестах `cargo test -p rustok-translation -- --test-threads=1` и в `scheduler` retention worker (tombstone→purge).
 * Верификация: `grep -rn busy_timeout -- memory.rs` — 3 точки; `git diff --stat` 1 file 24 ins; pushed 70b70ef.
+### Итерация 10 — паритет busy_timeout для глоссариев/политик (64fc981)
+* `glossary.rs` (4 транзакции: create/update/replace_terms/set_active) и `policy.rs:replace_required_target_locales` (1) — добавлен `PRAGMA busy_timeout = 5000` best-effort только для `DbBackend::Sqlite` после `begin()` — унификация с `inventory`/`memory` (P0-2). Теперь все CAS-пути Translation (inventory, memory, glossary, policy, workflow) устойчивы к `database is locked` в `cargo test -- --test-threads=1` и в `scheduler` tombstone пути.
+* Верификация: `grep -rn busy_timeout -- glossary.rs` — 4 точки, `policy.rs` — 1; `git diff --stat` 2 files 40 ins; pushed 64fc981.
 
