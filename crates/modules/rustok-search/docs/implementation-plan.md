@@ -31,11 +31,34 @@ only storefront Search path. No compatibility bridge remains.
 - [x] The five `apps/server/tests/forum_versioned_invalidation_*` integration tests were
       migrated to `execute_audience_eligible_search` with a locally composed
       `SearchAudienceRegistry`, not deleted and not re-pointed at a bridge.
+- [x] `execute_audience_eligible_search` now takes its transport boundary as
+      `StorefrontSearchAudienceContext` (registry, optional owner category-scope
+      capability, auth, request context, transport). A caller can no longer forget one
+      security input by miscounting positional arguments, and a future capability is a
+      field instead of a sixth parameter.
+- [x] Category scope became a real part of the generic path instead of a legacy-only
+      feature: the executor consults it after the discovery preflight, uses the locale
+      the request actually runs in (explicit query locale, else the host-resolved request
+      locale) and never invents a default. An owner that resolves a requested root to no
+      visible category short-circuits to an empty result — previously the empty
+      `category_ids` fell through to "no category predicate", i.e. the whole corpus.
+      `audience_security.rs` regression test:
+      `category_scope_resolved_to_nothing_returns_empty_result`.
+- [x] `FORUM_SEARCH_SOURCE_MODULE` moved out of `rustok-search` to its owner
+      (`rustok_forum::FORUM_MODULE_SLUG`), so the engine crate exports no per-module named
+      constant.
 - [x] Nine `scripts/verify/verify-forum-search-*.mjs` guards that pinned the deleted
-      surface were removed together with their contract JSONs; five surviving Forum
-      contracts point at the generic owner and `verify-search-audience-classes.mjs`, and
-      that verifier now fails when any retired file or symbol reappears.
-
+      surface were removed together with their contract JSONs; four contracts that
+      described only the deleted pipeline were deleted as well; the survivors point at the
+      generic owner and `verify-search-audience-classes.mjs`, and that verifier now fails
+      when any retired file or symbol reappears, when a Forum Search contract names a
+      missing path or a retired symbol, or when the category-scope capability loses its
+      `source_module` gate.
+- [x] Guards that pinned the same legacy markers were moved to the durable spelling:
+      `verify-forum-anonymous-discovery`, the three LINK-FORUM-03 proofs, the two
+      versioned-invalidation proofs (`deletion_acl_ordering`, `normal_delivery`), the
+      rebuild scope-preservation guard (now pinning one projector instead of the retired
+      `projector_legacy` name) and the projection-reconciliation status guard.
 
 ## 2026-10-25 Declared Search audience corpus
 

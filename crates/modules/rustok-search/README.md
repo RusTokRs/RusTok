@@ -82,7 +82,8 @@ transport-local Blog route builder, or compatibility URL implementation.
 - `SearchSuggestionPort`
 - `SearchAudiencePolicyPort` / `SearchAudienceRegistry` / `SearchAudienceClass`
 - `SearchCandidateDescriptor` / `resolve_audience_eligible_candidates`
-- `execute_audience_eligible_search` / `SearchAudienceDocumentScope`
+- `execute_audience_eligible_search` / `StorefrontSearchAudienceContext`
+- `SearchAudienceDocumentScope`
 - `StorefrontSuggestionAudience`
 - `canonical_search_result_url`
 - `graphql::SearchQueryRoot` / `graphql::SearchMutationRoot`
