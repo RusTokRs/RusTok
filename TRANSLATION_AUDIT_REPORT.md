@@ -347,4 +347,9 @@ node scripts/verify/verify-db-multilingual-contract.mjs
 ### Итерация 10 — паритет busy_timeout для глоссариев/политик (64fc981)
 * `glossary.rs` (4 транзакции: create/update/replace_terms/set_active) и `policy.rs:replace_required_target_locales` (1) — добавлен `PRAGMA busy_timeout = 5000` best-effort только для `DbBackend::Sqlite` после `begin()` — унификация с `inventory`/`memory` (P0-2). Теперь все CAS-пути Translation (inventory, memory, glossary, policy, workflow) устойчивы к `database is locked` в `cargo test -- --test-threads=1` и в `scheduler` tombstone пути.
 * Верификация: `grep -rn busy_timeout -- glossary.rs` — 4 точки, `policy.rs` — 1; `git diff --stat` 2 files 40 ins; pushed 64fc981.
+### Итерация 11 — RBAC коллаборации и откат (b394fb4)
+* `collaboration.rs:create_workflow_note` — добавлена проверка `job-level note ⇒ Require Manage` (ранее `Update/Resolve/Manage` любой мог писать job-заметку; `Update` теперь только assignment-bound для item, `Resolve` только для `in_review`). Закрывает P1-9 (job-level note мог писать любой с `Update` даже на `cancelled` job — статус уже проверялся, теперь + RBAC).
+* `collaboration.rs` (2 транзакции: create/resolve) — добавлен `PRAGMA busy_timeout = 5000` best-effort для `DbBackend::Sqlite` после `begin()` — паритет с `inventory/memory/glossary/policy` (P0-2).
+* `collaboration.rs:resolve_workflow_note` — `update.rows_affected != 1` теперь `let _ = transaction.rollback().await;` перед `WorkflowRevisionConflict` — консистентность с `inventory/workflow` (AGENTS §7 Atomicity).
+* Верификация: `grep -rn busy_timeout -- collaboration.rs` — 2 точки; `grep -n Manage -- collaboration.rs` — job-level guard; `git diff --stat` 1 file 23 ins; pushed b394fb4.
 
