@@ -474,6 +474,7 @@ impl TranslationWorkflowService {
             .exec(&transaction)
             .await?;
         if update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::WorkflowRevisionConflict);
         }
         let persisted = find_item_by_idempotency(&transaction, tenant_id, &idempotency_key)
@@ -605,6 +606,7 @@ impl TranslationWorkflowService {
             .exec(&transaction)
             .await?;
         if update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::WorkflowRevisionConflict);
         }
         refresh_job_progress(&transaction, tenant_id, item.job_id).await?;
@@ -694,6 +696,7 @@ impl TranslationWorkflowService {
             .exec(&transaction)
             .await?;
         if proposal_update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::WorkflowRevisionConflict);
         }
         update_item_state(
@@ -818,6 +821,7 @@ impl TranslationWorkflowService {
             .exec(&transaction)
             .await?;
         if proposal_update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::WorkflowRevisionConflict);
         }
         update_item_state(
@@ -982,6 +986,7 @@ impl TranslationWorkflowService {
             .exec(&transaction)
             .await?;
         if update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::WorkflowRevisionConflict);
         }
 
@@ -1102,6 +1107,7 @@ impl TranslationWorkflowService {
                 .exec(&transaction)
                 .await?;
             if update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
                 return Err(TranslationError::WorkflowRevisionConflict);
             }
         }
@@ -1223,6 +1229,7 @@ impl TranslationWorkflowService {
             .exec(&transaction)
             .await?;
         if update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::WorkflowRevisionConflict);
         }
         refresh_job_progress(&transaction, tenant_id, item.job_id).await?;
@@ -1357,6 +1364,7 @@ impl TranslationWorkflowService {
             .exec(&transaction)
             .await?;
         if item_update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::WorkflowRevisionConflict);
         }
         refresh_job_progress(&transaction, tenant_id, item.job_id).await?;
@@ -1730,6 +1738,7 @@ impl TranslationWorkflowService {
             .exec(&transaction)
             .await?;
         if operation_update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::WorkflowRevisionConflict);
         }
         let item_update = job_item::Entity::update_many()
@@ -1751,6 +1760,7 @@ impl TranslationWorkflowService {
             .exec(&transaction)
             .await?;
         if item_update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::WorkflowRevisionConflict);
         }
         let item = find_item(&transaction, operation.tenant_id, operation.item_id).await?;
@@ -2507,6 +2517,7 @@ async fn record_pending_apply_error(
         .exec(&transaction)
         .await?;
     if update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
         return Err(TranslationError::WorkflowRevisionConflict);
     }
     event_bus
