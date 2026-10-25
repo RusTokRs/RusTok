@@ -115,8 +115,8 @@ for (const [value, label] of [
   ['cause,', 'internal cause log'],
   ['code = MANUAL_RECONCILIATION_CODE', 'stable code log'],
   ['PortError::conflict(', 'typed conflict envelope'],
-  ['MANUAL_RECONCILIATION_CODE,', 'public code use'],
-  ['MANUAL_RECONCILIATION_MESSAGE,', 'static public message use'],
+  ['MANUAL_RECONCILIATION_CODE', 'public code use'],
+  ['MANUAL_RECONCILIATION_MESSAGE', 'static public message use'],
 ]) requireText(reconciliationMapper, value, label);
 
 for (const value of [
