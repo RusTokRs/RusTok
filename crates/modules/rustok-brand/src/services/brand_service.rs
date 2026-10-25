@@ -94,6 +94,13 @@ impl BrandPort for BrandService {
         id: Uuid,
         locale: Option<&str>,
     ) -> BrandResult<BrandDto> {
+        if tenant_id.is_nil() {
+            return Err(BrandError::InvalidInput("Tenant ID cannot be nil".to_string()));
+        }
+        if id.is_nil() {
+            return Err(BrandError::InvalidInput("Brand ID cannot be nil".to_string()));
+        }
+
         let brand = Brand::find_by_id(id)
             .filter(BrandColumn::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -114,9 +121,17 @@ impl BrandPort for BrandService {
         slug: &str,
         locale: Option<&str>,
     ) -> BrandResult<BrandDto> {
+        if tenant_id.is_nil() {
+            return Err(BrandError::InvalidInput("Tenant ID cannot be nil".to_string()));
+        }
+        let clean_slug = slug.trim().to_lowercase();
+        if clean_slug.is_empty() {
+            return Err(BrandError::InvalidInput("Slug cannot be empty".to_string()));
+        }
+
         let brand = Brand::find()
             .filter(BrandColumn::TenantId.eq(tenant_id))
-            .filter(BrandColumn::Slug.eq(slug))
+            .filter(BrandColumn::Slug.eq(&clean_slug))
             .one(&self.db)
             .await?
             .ok_or_else(|| BrandError::SlugNotFound(slug.to_string()))?;
@@ -137,8 +152,15 @@ impl BrandPort for BrandService {
         per_page: u64,
         locale: Option<&str>,
     ) -> BrandResult<BrandListResponse> {
+        if tenant_id.is_nil() {
+            return Err(BrandError::InvalidInput("Tenant ID cannot be nil".to_string()));
+        }
         let page = if page == 0 { 1 } else { page };
-        let per_page = if per_page == 0 { 20 } else { per_page };
+        let per_page = if per_page == 0 {
+            20
+        } else {
+            std::cmp::min(per_page, 100)
+        };
 
         let mut query = Brand::find().filter(BrandColumn::TenantId.eq(tenant_id));
 
@@ -149,7 +171,8 @@ impl BrandPort for BrandService {
         if let Some(ref search) = filter.search {
             let s = search.trim();
             if !s.is_empty() {
-                query = query.filter(BrandColumn::Slug.contains(s));
+                let bounded_s = if s.len() > 100 { &s[..100] } else { s };
+                query = query.filter(BrandColumn::Slug.contains(bounded_s));
             }
         }
 
@@ -181,9 +204,46 @@ impl BrandPort for BrandService {
         tenant_id: Uuid,
         input: CreateBrandInput,
     ) -> BrandResult<BrandDto> {
+        if tenant_id.is_nil() {
+            return Err(BrandError::InvalidInput("Tenant ID cannot be nil".to_string()));
+        }
         let slug = input.slug.trim().to_lowercase();
         if slug.is_empty() {
             return Err(BrandError::InvalidInput("Slug cannot be empty".to_string()));
+        }
+        if slug.len() > 100 {
+            return Err(BrandError::InvalidInput(
+                "Slug exceeds maximum length of 100 characters".to_string(),
+            ));
+        }
+        if let Some(ref url) = input.website_url {
+            if url.len() > 512 {
+                return Err(BrandError::InvalidInput(
+                    "Website URL exceeds maximum length of 512 characters".to_string(),
+                ));
+            }
+        }
+        for t in &input.translations {
+            if t.locale.trim().is_empty() {
+                return Err(BrandError::InvalidInput(
+                    "Translation locale cannot be empty".to_string(),
+                ));
+            }
+            if t.locale.len() > 16 {
+                return Err(BrandError::InvalidInput(
+                    "Translation locale exceeds maximum length of 16 characters".to_string(),
+                ));
+            }
+            if t.name.trim().is_empty() {
+                return Err(BrandError::InvalidInput(
+                    "Translation name cannot be empty".to_string(),
+                ));
+            }
+            if t.name.len() > 255 {
+                return Err(BrandError::InvalidInput(
+                    "Translation name exceeds maximum length of 255 characters".to_string(),
+                ));
+            }
         }
 
         // Verify uniqueness
@@ -222,8 +282,8 @@ impl BrandPort for BrandService {
             let trans_model = BrandTranslationActiveModel {
                 id: Set(Uuid::new_v4()),
                 brand_id: Set(brand_id),
-                locale: Set(t.locale.to_lowercase()),
-                name: Set(t.name),
+                locale: Set(t.locale.trim().to_lowercase()),
+                name: Set(t.name.trim().to_string()),
                 description: Set(t.description),
                 created_at: Set(now.into()),
                 updated_at: Set(now.into()),
@@ -244,6 +304,13 @@ impl BrandPort for BrandService {
         id: Uuid,
         input: UpdateBrandInput,
     ) -> BrandResult<BrandDto> {
+        if tenant_id.is_nil() {
+            return Err(BrandError::InvalidInput("Tenant ID cannot be nil".to_string()));
+        }
+        if id.is_nil() {
+            return Err(BrandError::InvalidInput("Brand ID cannot be nil".to_string()));
+        }
+
         let brand = Brand::find_by_id(id)
             .filter(BrandColumn::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -260,6 +327,11 @@ impl BrandPort for BrandService {
             let clean_slug = slug.trim().to_lowercase();
             if clean_slug.is_empty() {
                 return Err(BrandError::InvalidInput("Slug cannot be empty".to_string()));
+            }
+            if clean_slug.len() > 100 {
+                return Err(BrandError::InvalidInput(
+                    "Slug exceeds maximum length of 100 characters".to_string(),
+                ));
             }
             let duplicate = Brand::find()
                 .filter(BrandColumn::TenantId.eq(tenant_id))
@@ -280,6 +352,13 @@ impl BrandPort for BrandService {
             active.banner_media_id = Set(banner);
         }
         if let Some(url) = input.website_url {
+            if let Some(ref u) = url {
+                if u.len() > 512 {
+                    return Err(BrandError::InvalidInput(
+                        "Website URL exceeds maximum length of 512 characters".to_string(),
+                    ));
+                }
+            }
             active.website_url = Set(url);
         }
         if let Some(is_active) = input.is_active {
@@ -293,7 +372,29 @@ impl BrandPort for BrandService {
 
         if let Some(translations) = input.translations {
             for t in translations {
-                let loc = t.locale.to_lowercase();
+                let loc = t.locale.trim().to_lowercase();
+                if loc.is_empty() {
+                    return Err(BrandError::InvalidInput(
+                        "Translation locale cannot be empty".to_string(),
+                    ));
+                }
+                if loc.len() > 16 {
+                    return Err(BrandError::InvalidInput(
+                        "Translation locale exceeds maximum length of 16 characters".to_string(),
+                    ));
+                }
+                let name = t.name.trim().to_string();
+                if name.is_empty() {
+                    return Err(BrandError::InvalidInput(
+                        "Translation name cannot be empty".to_string(),
+                    ));
+                }
+                if name.len() > 255 {
+                    return Err(BrandError::InvalidInput(
+                        "Translation name exceeds maximum length of 255 characters".to_string(),
+                    ));
+                }
+
                 let existing_trans = BrandTranslation::find()
                     .filter(BrandTranslationColumn::BrandId.eq(id))
                     .filter(BrandTranslationColumn::Locale.eq(&loc))
@@ -302,7 +403,7 @@ impl BrandPort for BrandService {
 
                 if let Some(existing) = existing_trans {
                     let mut trans_active: BrandTranslationActiveModel = existing.into();
-                    trans_active.name = Set(t.name);
+                    trans_active.name = Set(name);
                     trans_active.description = Set(t.description);
                     trans_active.updated_at = Set(now.into());
                     trans_active.update(&txn).await?;
@@ -311,7 +412,7 @@ impl BrandPort for BrandService {
                         id: Set(Uuid::new_v4()),
                         brand_id: Set(id),
                         locale: Set(loc),
-                        name: Set(t.name),
+                        name: Set(name),
                         description: Set(t.description),
                         created_at: Set(now.into()),
                         updated_at: Set(now.into()),
@@ -337,13 +438,34 @@ impl BrandPort for BrandService {
     }
 
     async fn delete_brand(&self, tenant_id: Uuid, id: Uuid) -> BrandResult<()> {
+        if tenant_id.is_nil() {
+            return Err(BrandError::InvalidInput("Tenant ID cannot be nil".to_string()));
+        }
+        if id.is_nil() {
+            return Err(BrandError::InvalidInput("Brand ID cannot be nil".to_string()));
+        }
+
         let brand = Brand::find_by_id(id)
             .filter(BrandColumn::TenantId.eq(tenant_id))
             .one(&self.db)
             .await?
             .ok_or(BrandError::NotFound(id))?;
 
-        Brand::delete_by_id(brand.id).exec(&self.db).await?;
+        let txn = self.db.begin().await?;
+
+        BrandProduct::delete_many()
+            .filter(BrandProductColumn::BrandId.eq(brand.id))
+            .exec(&txn)
+            .await?;
+
+        BrandTranslation::delete_many()
+            .filter(BrandTranslationColumn::BrandId.eq(brand.id))
+            .exec(&txn)
+            .await?;
+
+        Brand::delete_by_id(brand.id).exec(&txn).await?;
+
+        txn.commit().await?;
         Ok(())
     }
 
@@ -353,6 +475,13 @@ impl BrandPort for BrandService {
         product_id: Uuid,
         locale: Option<&str>,
     ) -> BrandResult<Option<BrandDto>> {
+        if tenant_id.is_nil() {
+            return Err(BrandError::InvalidInput("Tenant ID cannot be nil".to_string()));
+        }
+        if product_id.is_nil() {
+            return Err(BrandError::InvalidInput("Product ID cannot be nil".to_string()));
+        }
+
         let link = BrandProduct::find()
             .filter(BrandProductColumn::TenantId.eq(tenant_id))
             .filter(BrandProductColumn::ProductId.eq(product_id))
@@ -375,6 +504,16 @@ impl BrandPort for BrandService {
         product_id: Uuid,
         is_primary: bool,
     ) -> BrandResult<()> {
+        if tenant_id.is_nil() {
+            return Err(BrandError::InvalidInput("Tenant ID cannot be nil".to_string()));
+        }
+        if brand_id.is_nil() {
+            return Err(BrandError::InvalidInput("Brand ID cannot be nil".to_string()));
+        }
+        if product_id.is_nil() {
+            return Err(BrandError::InvalidInput("Product ID cannot be nil".to_string()));
+        }
+
         // Ensure brand exists for tenant
         let _ = self.get_brand(tenant_id, brand_id, None).await?;
 
@@ -411,6 +550,16 @@ impl BrandPort for BrandService {
         brand_id: Uuid,
         product_id: Uuid,
     ) -> BrandResult<()> {
+        if tenant_id.is_nil() {
+            return Err(BrandError::InvalidInput("Tenant ID cannot be nil".to_string()));
+        }
+        if brand_id.is_nil() {
+            return Err(BrandError::InvalidInput("Brand ID cannot be nil".to_string()));
+        }
+        if product_id.is_nil() {
+            return Err(BrandError::InvalidInput("Product ID cannot be nil".to_string()));
+        }
+
         let link = BrandProduct::find()
             .filter(BrandProductColumn::TenantId.eq(tenant_id))
             .filter(BrandProductColumn::BrandId.eq(brand_id))

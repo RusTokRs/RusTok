@@ -387,3 +387,197 @@ async fn lists_brands_with_filter() {
     assert_eq!(searched.total, 1);
     assert_eq!(searched.items[0].slug, "alpha");
 }
+
+#[tokio::test]
+async fn deletes_brand_with_cascading_associations() {
+    let db = setup_test_db().await;
+    let service = BrandService::new(db);
+    let tenant_id = Uuid::new_v4();
+    let product_id = Uuid::new_v4();
+
+    let brand = service
+        .create_brand(
+            tenant_id,
+            CreateBrandInput {
+                slug: "cascading-test".to_string(),
+                logo_media_id: None,
+                banner_media_id: None,
+                website_url: None,
+                is_active: Some(true),
+                metadata: None,
+                translations: vec![BrandTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Cascading Test".to_string(),
+                    description: None,
+                }],
+            },
+        )
+        .await
+        .unwrap();
+
+    // Assign to product
+    service
+        .assign_product_brand(tenant_id, brand.id, product_id, true)
+        .await
+        .unwrap();
+
+    // Verify brand exists and is linked
+    assert!(service
+        .get_brand(tenant_id, brand.id, None)
+        .await
+        .is_ok());
+    assert!(service
+        .get_brand_for_product(tenant_id, product_id, None)
+        .await
+        .unwrap()
+        .is_some());
+
+    // Delete brand
+    service
+        .delete_brand(tenant_id, brand.id)
+        .await
+        .expect("Deletion should succeed");
+
+    // Brand should not exist
+    let get_err = service
+        .get_brand(tenant_id, brand.id, None)
+        .await
+        .expect_err("Brand should be deleted");
+    assert!(matches!(get_err, BrandError::NotFound(_)));
+
+    // Product should no longer have brand
+    let product_brand = service
+        .get_brand_for_product(tenant_id, product_id, None)
+        .await
+        .unwrap();
+    assert!(product_brand.is_none());
+}
+
+#[tokio::test]
+async fn rejects_nil_uuids() {
+    let db = setup_test_db().await;
+    let service = BrandService::new(db);
+    let valid_id = Uuid::new_v4();
+
+    // Nil tenant_id in get_brand
+    let err = service
+        .get_brand(Uuid::nil(), valid_id, None)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, BrandError::InvalidInput(_)));
+
+    // Nil brand_id in get_brand
+    let err = service
+        .get_brand(valid_id, Uuid::nil(), None)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, BrandError::InvalidInput(_)));
+
+    // Nil tenant_id in create_brand
+    let err = service
+        .create_brand(
+            Uuid::nil(),
+            CreateBrandInput {
+                slug: "valid".to_string(),
+                logo_media_id: None,
+                banner_media_id: None,
+                website_url: None,
+                is_active: None,
+                metadata: None,
+                translations: vec![],
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, BrandError::InvalidInput(_)));
+
+    // Nil tenant_id in assign_product_brand
+    let err = service
+        .assign_product_brand(Uuid::nil(), valid_id, valid_id, true)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, BrandError::InvalidInput(_)));
+}
+
+#[tokio::test]
+async fn rejects_invalid_bounds_and_lengths() {
+    let db = setup_test_db().await;
+    let service = BrandService::new(db);
+    let tenant_id = Uuid::new_v4();
+
+    // Empty slug
+    let err = service
+        .create_brand(
+            tenant_id,
+            CreateBrandInput {
+                slug: "   ".to_string(),
+                logo_media_id: None,
+                banner_media_id: None,
+                website_url: None,
+                is_active: None,
+                metadata: None,
+                translations: vec![],
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, BrandError::InvalidInput(_)));
+
+    // Overlong slug (> 100)
+    let err = service
+        .create_brand(
+            tenant_id,
+            CreateBrandInput {
+                slug: "a".repeat(101),
+                logo_media_id: None,
+                banner_media_id: None,
+                website_url: None,
+                is_active: None,
+                metadata: None,
+                translations: vec![],
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, BrandError::InvalidInput(_)));
+
+    // Overlong website_url (> 512)
+    let err = service
+        .create_brand(
+            tenant_id,
+            CreateBrandInput {
+                slug: "valid-slug".to_string(),
+                logo_media_id: None,
+                banner_media_id: None,
+                website_url: Some("https://".to_string() + &"a".repeat(506)),
+                is_active: None,
+                metadata: None,
+                translations: vec![],
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, BrandError::InvalidInput(_)));
+
+    // Empty translation name
+    let err = service
+        .create_brand(
+            tenant_id,
+            CreateBrandInput {
+                slug: "valid-slug-2".to_string(),
+                logo_media_id: None,
+                banner_media_id: None,
+                website_url: None,
+                is_active: None,
+                metadata: None,
+                translations: vec![BrandTranslationInput {
+                    locale: "en".to_string(),
+                    name: "   ".to_string(),
+                    description: None,
+                }],
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, BrandError::InvalidInput(_)));
+}
