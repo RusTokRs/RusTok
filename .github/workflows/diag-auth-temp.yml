@@ -158,6 +158,30 @@ jobs:
           cargo clippy --workspace --all-targets --no-deps --keep-going --message-format=json -- -D warnings 2>/dev/null \
             | python3 /tmp/extract.py /tmp/clippy_errors.txt
           tail -1 /tmp/clippy_errors.txt || true
+      - name: wasm check UI crates
+        shell: bash {0}
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo check -p leptos-auth --features csr --target wasm32-unknown-unknown --message-format=json 2>/dev/null \
+            | python3 /tmp/extract.py /tmp/wasm_errors.txt
+          tail -1 /tmp/wasm_errors.txt || true
+      - name: cargo test (touched crates)
+        shell: bash {0}
+        run: |
+          run_tests() {
+            echo "=== cargo test $* ==="
+            cargo test "$@" 2>&1 | tail -n 600 | grep -E "^test .* FAILED|panicked at|assertion .* failed|^failures:|test result:|error\[|^error:" | head -100
+          }
+          {
+            run_tests -p rustok-auth --lib --tests
+            run_tests -p rustok-rbac --lib --tests
+            run_tests -p rustok-events --lib --tests
+            run_tests -p leptos-auth --lib
+            run_tests -p rustok-ui-auth --lib
+            run_tests -p rustok-migrations --lib --tests
+            run_tests -p rustok-server --lib auth
+          } > /tmp/test_results.txt 2>&1
+          wc -l /tmp/test_results.txt
       - name: Post PR comment with results
         env:
           GH_TOKEN: ${{ github.token }}
@@ -182,6 +206,14 @@ jobs:
             echo '```'
             grep '^TOUCHED' /tmp/clippy_errors.txt 2>/dev/null | head -c 12000
             echo "-- foreign clippy total: $(grep -c '^FOREIGN' /tmp/clippy_errors.txt 2>/dev/null || echo 0)"
+            echo '```'
+            echo "#### wasm check (leptos-auth csr)"
+            echo '```'
+            head -c 8000 /tmp/wasm_errors.txt 2>/dev/null
+            echo '```'
+            echo "#### cargo test (touched crates; failures + result lines)"
+            echo '```'
+            head -c 20000 /tmp/test_results.txt 2>/dev/null
             echo '```'
           } > /tmp/comment.md
           gh pr comment 4646 --body-file /tmp/comment.md
