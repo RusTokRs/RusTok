@@ -20,7 +20,7 @@ use crate::auth::{
     decode_email_verification_token, encode_email_verification_token, encode_password_reset_token,
 };
 use crate::common::{
-    RequestContext, RustokSettings, demo_mode_token_exposure_enabled, is_production_environment,
+    RequestContext, RustokSettings,
 };
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
 use crate::models::{
@@ -265,7 +265,6 @@ async fn request_reset(
 
     let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, email).await?;
 
-    let expose_token = demo_mode_token_exposure_enabled();
 
     let reset_token = user
         .as_ref()
@@ -293,7 +292,6 @@ async fn request_reset(
                 );
                 return Ok(json_response(ResetRequestResponse {
                     status: "ok",
-                    reset_token: if expose_token { reset_token } else { None },
                 }));
             }
         };
@@ -305,7 +303,6 @@ async fn request_reset(
                 );
                 return Ok(json_response(ResetRequestResponse {
                     status: "ok",
-                    reset_token: if expose_token { reset_token } else { None },
                 }));
             }
         };
@@ -329,7 +326,6 @@ async fn request_reset(
 
     Ok(json_response(ResetRequestResponse {
         status: "ok",
-        reset_token: if expose_token { reset_token } else { None },
     }))
 }
 
@@ -377,10 +373,6 @@ async fn request_verification(
 
     let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, email).await?;
 
-    let expose_token = !is_production_environment()
-        && std::env::var("RUSTOK_DEMO_MODE")
-            .map(|value| value == "1")
-            .unwrap_or(false);
 
     let verification_token = if settings.features.email_verification {
         user.filter(|record| record.email_verified_at.is_none())
@@ -411,11 +403,6 @@ async fn request_verification(
                 );
                 return Ok(json_response(VerificationRequestResponse {
                     status: "ok",
-                    verification_token: if expose_token {
-                        verification_token
-                    } else {
-                        None
-                    },
                 }));
             }
         };
@@ -437,11 +424,6 @@ async fn request_verification(
 
     Ok(json_response(VerificationRequestResponse {
         status: "ok",
-        verification_token: if expose_token {
-            verification_token
-        } else {
-            None
-        },
     }))
 }
 

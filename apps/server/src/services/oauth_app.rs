@@ -16,7 +16,7 @@ use rustok_api::context::scope_matches;
 use rustok_core::{Rbac, UserRole};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
-    TransactionTrait,
+    TransactionTrait, sea_query::Expr,
 };
 use std::str::FromStr;
 use subtle::ConstantTimeEq;
@@ -155,24 +155,53 @@ impl OAuthAppService {
             &granted_permissions,
         )?;
 
-        let mut active: OAuthAppActiveModel = app.into();
-        active.name = Set(input.name);
-        active.description = Set(input.description);
-        active.icon_url = Set(input.icon_url);
-        active.redirect_uris =
-            Set(serde_json::to_value(&input.redirect_uris)
-                .map_err(|_| Error::InternalServerError)?);
-        active.scopes =
-            Set(serde_json::to_value(&input.scopes).map_err(|_| Error::InternalServerError)?);
-        active.grant_types =
-            Set(serde_json::to_value(&input.grant_types).map_err(|_| Error::InternalServerError)?);
-        active.granted_permissions = Set(to_json_array(&granted_permissions)?);
-        active.updated_at = Set(Utc::now().into());
-
-        active
-            .update(db)
+        // Column-scoped write: persisting the whole loaded row would also
+        // rewrite client_secret_hash from a stale read and could silently
+        // revert a concurrent secret rotation.
+        oauth_apps::Entity::update_many()
+            .col_expr(oauth_apps::Column::Name, Expr::value(input.name))
+            .col_expr(
+                oauth_apps::Column::Description,
+                Expr::value(input.description),
+            )
+            .col_expr(oauth_apps::Column::IconUrl, Expr::value(input.icon_url))
+            .col_expr(
+                oauth_apps::Column::RedirectUris,
+                Expr::value(
+                    serde_json::to_value(&input.redirect_uris)
+                        .map_err(|_| Error::InternalServerError)?,
+                ),
+            )
+            .col_expr(
+                oauth_apps::Column::Scopes,
+                Expr::value(
+                    serde_json::to_value(&input.scopes)
+                        .map_err(|_| Error::InternalServerError)?,
+                ),
+            )
+            .col_expr(
+                oauth_apps::Column::GrantTypes,
+                Expr::value(
+                    serde_json::to_value(&input.grant_types)
+                        .map_err(|_| Error::InternalServerError)?,
+                ),
+            )
+            .col_expr(
+                oauth_apps::Column::GrantedPermissions,
+                Expr::value(to_json_array(&granted_permissions)?),
+            )
+            .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(Utc::now()))
+            .filter(oauth_apps::Column::Id.eq(app_id))
+            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+            .exec(db)
             .await
-            .map_err(|_| Error::InternalServerError)
+            .map_err(|_| Error::InternalServerError)?;
+
+        OAuthApps::find_by_id(app_id)
+            .one(db)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .ok_or(Error::NotFound)
     }
 
     /// Find an active app by its public client_id
@@ -215,14 +244,24 @@ impl OAuthAppService {
         let new_secret = generate_client_secret()?;
         let new_hash = auth::hash_password_async(new_secret.clone()).await?;
 
-        let mut active: OAuthAppActiveModel = app.into();
-        active.client_secret_hash = Set(Some(new_hash));
-        active.updated_at = Set(Utc::now().into());
-
-        let updated = active
-            .update(db)
+        // Column-scoped write for the same reason as in update_app:
+        // never rewrite unrelated fields from a stale read.
+        oauth_apps::Entity::update_many()
+            .col_expr(
+                oauth_apps::Column::ClientSecretHash,
+                Expr::value(Some(new_hash)),
+            )
+            .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(Utc::now()))
+            .filter(oauth_apps::Column::Id.eq(app_id))
+            .exec(db)
             .await
             .map_err(|_| Error::InternalServerError)?;
+
+        let updated = OAuthApps::find_by_id(app_id)
+            .one(db)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .ok_or_else(|| Error::NotFound)?;
 
         Ok(RotateSecretResult {
             app: updated,
@@ -248,16 +287,21 @@ impl OAuthAppService {
 
         let now = Utc::now();
 
-        // Deactivate the app
-        let mut active: OAuthAppActiveModel = app.into();
-        active.is_active = Set(false);
-        active.revoked_at = Set(Some(now.into()));
-        active.updated_at = Set(now.into());
-
-        let updated = active
-            .update(&tx)
+        // Deactivate the app (column-scoped; see update_app)
+        oauth_apps::Entity::update_many()
+            .col_expr(oauth_apps::Column::IsActive, Expr::value(false))
+            .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Some(now)))
+            .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now))
+            .filter(oauth_apps::Column::Id.eq(app_id))
+            .exec(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?;
+
+        let updated = OAuthApps::find_by_id(app_id)
+            .one(&tx)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .ok_or_else(|| Error::NotFound)?;
 
         // Revoke all active tokens for this app
         use sea_orm::sea_query::Expr;
@@ -287,20 +331,20 @@ impl OAuthAppService {
         auth::verify_password(secret, hash)
     }
 
-    /// Update last_used_at for an app
+    /// Update last_used_at for an app (column-scoped; see update_app)
     pub async fn touch_last_used(db: &DatabaseConnection, app_id: Uuid) -> Result<()> {
-        let app = OAuthApps::find_by_id(app_id)
-            .one(db)
-            .await
-            .map_err(|_| Error::InternalServerError)?
-            .ok_or_else(|| Error::NotFound)?;
-
-        let mut active: OAuthAppActiveModel = app.into();
-        active.last_used_at = Set(Some(Utc::now().into()));
-        active
-            .update(db)
+        let updated = oauth_apps::Entity::update_many()
+            .col_expr(
+                oauth_apps::Column::LastUsedAt,
+                Expr::value(Some(Utc::now())),
+            )
+            .filter(oauth_apps::Column::Id.eq(app_id))
+            .exec(db)
             .await
             .map_err(|_| Error::InternalServerError)?;
+        if updated.rows_affected == 0 {
+            return Err(Error::NotFound);
+        }
 
         Ok(())
     }

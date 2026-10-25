@@ -219,7 +219,7 @@ fn map_user_mutation_error(error: AuthAdminMutationError) -> FieldError {
             <FieldError as GraphQLError>::not_found(&message)
         }
         AuthAdminMutationError::Internal(message) => {
-            <FieldError as GraphQLError>::internal_error(&message)
+            graphql_mutation_internal_error("User mutation failed", message)
         }
     }
 }

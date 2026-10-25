@@ -67,36 +67,19 @@ pub struct UpdateProfileParams {
     pub name: Option<String>,
 }
 
-#[derive(Serialize, ToSchema)]
+/// Password-reset request acknowledgement. Deliberately carries no
+/// token in any mode: reset links are delivered only through the
+/// mailbox, so the response cannot be used to take over an account.
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ResetRequestResponse {
     pub status: &'static str,
-    pub reset_token: Option<String>,
 }
 
-impl std::fmt::Debug for ResetRequestResponse {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("ResetRequestResponse")
-            .field("status", &self.status)
-            .field("reset_token", &self.reset_token.as_ref().map(|_| "<redacted>"))
-            .finish()
-    }
-}
-
-#[derive(Serialize, ToSchema)]
+/// Email-verification request acknowledgement; same no-token contract
+/// as [`ResetRequestResponse`].
+#[derive(Debug, Serialize, ToSchema)]
 pub struct VerificationRequestResponse {
     pub status: &'static str,
-    pub verification_token: Option<String>,
-}
-
-impl std::fmt::Debug for VerificationRequestResponse {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("VerificationRequestResponse")
-            .field("status", &self.status)
-            .field("verification_token", &self.verification_token.as_ref().map(|_| "<redacted>"))
-            .finish()
-    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -321,22 +304,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reset_and_verification_responses_debug_redact_tokens() {
-        let reset = ResetRequestResponse {
-            status: "ok",
-            reset_token: Some("secret-reset-token-123".to_string()),
-        };
-        let reset_dbg = format!("{reset:?}");
-        assert!(!reset_dbg.contains("secret-reset-token-123"));
-        assert!(reset_dbg.contains("<redacted>"));
+    fn reset_and_verification_responses_never_carry_tokens() {
+        let reset = serde_json::to_value(ResetRequestResponse { status: "ok" })
+            .expect("serialize reset response");
+        assert_eq!(reset, serde_json::json!({ "status": "ok" }));
 
-        let verification = VerificationRequestResponse {
-            status: "ok",
-            verification_token: Some("secret-verification-token-456".to_string()),
-        };
-        let verification_dbg = format!("{verification:?}");
-        assert!(!verification_dbg.contains("secret-verification-token-456"));
-        assert!(verification_dbg.contains("<redacted>"));
+        let verification =
+            serde_json::to_value(VerificationRequestResponse { status: "ok" })
+                .expect("serialize verification response");
+        assert_eq!(verification, serde_json::json!({ "status": "ok" }));
     }
 
     #[test]

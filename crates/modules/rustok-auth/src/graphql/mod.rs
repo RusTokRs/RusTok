@@ -108,7 +108,10 @@ fn map_error(error: AuthAdminMutationError) -> FieldError {
             <FieldError as GraphQLError>::not_found(&message)
         }
         AuthAdminMutationError::Internal(message) => {
-            <FieldError as GraphQLError>::internal_error(&message)
+            // Internal detail (database/driver text) is logged, never
+            // returned to the client.
+            tracing::error!(error = %message, "auth admin mutation failed internally");
+            <FieldError as GraphQLError>::internal_error("Internal error")
         }
     }
 }
@@ -157,7 +160,8 @@ fn map_auth_lifecycle_error(ctx: &Context<'_>, error: AuthLifecycleMutationError
             <FieldError as GraphQLError>::bad_user_input(&message)
         }
         AuthLifecycleMutationError::Internal(message) => {
-            <FieldError as GraphQLError>::internal_error(&message)
+            tracing::error!(error = %message, "auth lifecycle mutation failed internally");
+            <FieldError as GraphQLError>::internal_error("Internal error")
         }
     }
 }

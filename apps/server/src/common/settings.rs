@@ -1303,13 +1303,6 @@ pub(crate) fn is_production_environment() -> bool {
         .unwrap_or(!cfg!(debug_assertions))
 }
 
-pub(crate) fn demo_mode_token_exposure_enabled() -> bool {
-    !is_production_environment()
-        && std::env::var("RUSTOK_DEMO_MODE")
-            .map(|value| value == "1")
-            .unwrap_or(false)
-}
-
 fn email_disabled_production_override_enabled() -> bool {
     std::env::var("RUSTOK_EMAIL_ALLOW_DISABLED_IN_PRODUCTION")
         .map(|value| {
@@ -2020,12 +2013,10 @@ mod tests {
         );
     }
     #[test]
-    fn demo_mode_must_not_enable_token_exposure_in_production() {
+    fn production_environment_is_detected_from_rust_env() {
         let _guard = env_lock().lock().expect("env lock");
-        let _demo = EnvVarGuard::set("RUSTOK_DEMO_MODE", "1");
         let _prod = EnvVarGuard::set("RUST_ENV", "production");
 
         assert!(super::is_production_environment());
-        assert!(!super::demo_mode_token_exposure_enabled());
     }
 }
