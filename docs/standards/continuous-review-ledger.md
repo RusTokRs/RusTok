@@ -98,8 +98,8 @@ review/integration remain open. No sequential FS cursor, checkbox or readiness p
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages  
-**Next pending component:** [`crates/modules/rustok-forms`](../../crates/modules/rustok-forms) (17 files, 1,877 LOC)  
-**Current main SHA:** `44bdce083`  
+**Next pending component:** [`crates/modules/rustok-docs`](../../crates/modules/rustok-docs) (22 files, 3,264 LOC)  
+**Current main SHA:** `751a995ab9`  
 **Active branch:** `main`  
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **262 components** (~350k LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -208,7 +208,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (24/24 completed)
 - [x] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (37/37 completed)
 - [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (34/40 completed)
-- [ ] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (20/26 completed)
+- [ ] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (24/26 completed)
 - [ ] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (0/26 completed)
 - [ ] **[Phase FS-08 — Background Workers & Execution Fleet (`crates/workers/*`, `rustok-iggy*`)](#fs-08---background-workers-&-execution-fleet-cratesworkers,-rustok-iggy)** (0/19 completed)
 - [ ] **[Phase FS-09 — Platform Utilities, Storage & Build Tooling (`crates/utils/*`)](#fs-09---platform-utilities,-storage-&-build-tooling-cratesutils)** (0/19 completed)
@@ -359,7 +359,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 ---
 
 ### Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages
-*Product catalog, variants, EAV attributes, categories tree closure, brand taxonomy, navigation menus, dynamic page builder, CMS pages, forms, and docs.* (22/26 completed)
+*Product catalog, variants, EAV attributes, categories tree closure, brand taxonomy, navigation menus, dynamic page builder, CMS pages, forms, and docs.* (24/26 completed)
 
 - [x] **[`crates/modules/rustok-product`](../../crates/modules/rustok-product)** (190 files, 81,078 LOC) — Core product catalog, variant matrix, SKU generation, published state machine, category bindings, and EAV attributes. Audited and verified all 6 Universal Logic Dimensions across 190 source files; verified ProductModule in src/module.rs with ModuleKind::Optional, health check, and runtime extension registration; verified canonical CRATE_API.md with mandatory contract sections and contract_tests.rs; added repository and readme metadata to Cargo.toml; 142/142 lib unit tests passed, 6/6 integration tests passed (module, category taxonomy same-id cutover, media reference protocol), 0 clippy warnings, remediation gate passed, zero defects.
 - [x] **[`crates/modules/rustok-product/admin`](../../crates/modules/rustok-product/admin)** (29 files, 21,028 LOC) — FFA admin UI for comprehensive product management, variant matrix editor, image gallery, and price rules. Audited Leptos admin UI package; verified strict FFA separation (pure Rust models, view-model computations, dirty-field tracking in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn); added docs.rs and repository metadata; 68/68 unit tests and 68/68 SSR tests passed, 0 clippy warnings, zero defects.
@@ -384,8 +384,8 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[`crates/modules/rustok-pages`](../../crates/modules/rustok-pages)** (201 files, 58,660 LOC) — CMS static page management, slug routing, SEO overrides, page revisions, and publish workflow. Audited and verified all 6 Universal Logic Dimensions across 201 source files; verified PagesModule in src/module.rs; verified canonical CRATE_API.md and contract_tests.rs; added H1 crate docs, repository, readme, and docs.rs metadata; 86/86 tests passed, clean rustdoc, zero defects.
 - [x] **[`crates/modules/rustok-pages/admin`](../../crates/modules/rustok-pages/admin)** (25 files, 6,636 LOC) — FFA admin UI for static page editor, metadata fields, and publication scheduling. Audited Leptos admin FFA package across all source files; verified strict FFA separation (pure Rust models, intent dispatcher, session state, and property editor with zero UI imports); verified canonical CRATE_API.md and contract_tests.rs; added repository, readme, and docs.rs metadata; 55/55 lib tests and 55/55 SSR tests passed, zero defects.
 - [x] **[`crates/modules/rustok-pages/storefront`](../../crates/modules/rustok-pages/storefront)** (17 files, 4,935 LOC) — Storefront UI static page renderer, legal pages layout, and about page templates. Audited Leptos storefront package; verified strict FFA separation (pure Rust view models in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn) and Fly artifact rendering; verified canonical CRATE_API.md; added repository, readme, and docs.rs metadata; 18/18 lib tests and 26/26 SSR tests passed, zero defects.
-- [ ] **[`crates/modules/rustok-forms`](../../crates/modules/rustok-forms)** (17 files, 1,877 LOC) — Dynamic form builder, field validations, submission handling, spam protection, and notification webhooks.
-- [ ] **[`crates/modules/rustok-forms/admin`](../../crates/modules/rustok-forms/admin)** (4 files, 274 LOC) — FFA admin UI for form creation, field reordering, and submission inbox review.
+- [x] **[`crates/modules/rustok-forms`](../../crates/modules/rustok-forms)** (17 files, 1,877 LOC) — Dynamic form builder, field validations, submission handling, spam protection, and notification webhooks. Audited and verified all 6 Universal Logic Dimensions across 17 source files; verified strict honeypot silently marking spam without notification leak, validated state machine transitions (new -> read/handled/spam, read -> handled/spam, handled/spam -> read); verified FormsModule in src/module.rs; verified canonical CRATE_API.md and contract_tests.rs; added repository, readme, and docs.rs metadata; 4/4 unit tests and 6/6 integration tests passed, zero defects.
+- [x] **[`crates/modules/rustok-forms/admin`](../../crates/modules/rustok-forms/admin)** (4 files, 274 LOC) — FFA admin UI for form creation, field reordering, and submission inbox review. Audited Leptos admin FFA package; verified strict FFA separation (pure Rust models, view-model summaries, state machine transition validators, and localized label resolvers in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn); added canonical CRATE_API.md, contract_tests.rs, docs.rs, readme, and repository metadata; 11/11 unit tests and 11/11 SSR tests passed, zero defects.
 - [ ] **[`crates/modules/rustok-docs`](../../crates/modules/rustok-docs)** (21 files, 2,957 LOC) — In-platform technical documentation viewer, markdown parsing, versioned documentation, and doc search.
 
 ---
