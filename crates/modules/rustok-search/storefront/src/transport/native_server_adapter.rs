@@ -173,15 +173,21 @@ async fn storefront_search_native(
             .map_err(ServerFnError::new)?
             .0;
 
+        let category_scope = runtime_ctx
+            .shared_get::<rustok_search::SharedStorefrontSearchCategoryScopePort>()
+            .cloned();
         let result = rustok_search::execute_audience_eligible_search(
             &db,
             &engine,
             search_query.clone(),
             &trusted_channel,
-            &registry,
-            auth,
-            Some(request_context.clone()),
-            rustok_search::StorefrontSearchTransport::NativeServer,
+            rustok_search::StorefrontSearchAudienceContext {
+                registry: &registry,
+                category_scope,
+                auth,
+                request_context: Some(request_context.clone()),
+                transport: rustok_search::StorefrontSearchTransport::NativeServer,
+            },
         )
         .await
         .map_err(server_error)?;

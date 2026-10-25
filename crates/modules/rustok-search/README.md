@@ -206,14 +206,27 @@ rejected.
 - The generic engine receives only `SearchAudienceDocumentScope`; `exclude_forum` and
   `source_module <> 'forum'` no longer exist in `pg_engine`.
 
-### Legacy retirement path
+### Retired legacy surface (Phase 4, complete)
 
-- `execute_forum_storefront_search` and `StorefrontSearchResultEligibilityPort` remain
-  `#[deprecated]` adapter bridges over the generic SPI; the generic path no longer calls
-  them and no longer depends on `forum_visible_status`.
-- Full physical removal of the legacy `forum_*.rs` files from `rustok-search` is
-  scheduled for Phase 4, after the remaining external verification scripts and contract
-  JSONs transition to the generic SPI.
+Nothing of the specialized Forum storefront pipeline remains, not even as a
+`#[deprecated]` bridge:
+
+- deleted from `rustok-search`: `forum_storefront_execution.rs`,
+  `forum_storefront_execution_public.rs`, `storefront_result_eligibility.rs`,
+  `forum_document_filters.rs`, `forum_current_channel_filter.rs` and
+  `graphql/forum_storefront.rs`;
+- deleted from `rustok-search-storefront`: `transport/forum_graphql_adapter.rs` and
+  `transport/forum_native_server_adapter.rs`;
+- deleted the matching `forumStorefrontSearch` operation, the
+  `execute_forum_storefront_search` entry point and `StorefrontSearchResultEligibilityPort`
+  in every form (type, shared alias, resolver function, candidate kind).
+
+The generic path is the only path: one `execute_audience_eligible_search` executor over
+`storefrontSearch`, one `SearchAudiencePolicyPort` implementation per gated module
+(`apps/server/src/services/forum_search_result_eligibility.rs` for Forum), and one
+`StorefrontSearchCategoryScopePort` capability that the owner module implements and
+declares with `source_module()`. `npm run verify:search:audience` fails when any retired
+file or symbol reappears.
 
 ## Current architecture
 
@@ -254,14 +267,9 @@ rejected.
 - `node scripts/verify/verify-search-canonical-url-contract.test.mjs`
 - `node scripts/verify/verify-search-blog-projection.mjs`
 - `node scripts/verify/verify-search-blog-projection.test.mjs`
-- `node scripts/verify/verify-forum-search-exact-category-filter.mjs`
-- `node scripts/verify/verify-forum-search-storefront-scope.mjs`
-- `node scripts/verify/verify-forum-search-result-eligibility.mjs`
-- `node scripts/verify/verify-forum-search-author-filter.mjs`
-- `node scripts/verify/verify-forum-search-tag-solved-filter.mjs`
-- `node scripts/verify/verify-forum-search-locale-date-filter.mjs`
+- `node scripts/verify/verify-search-audience-classes.mjs`
 - `cargo test -p rustok-search engine::tests::canonical_url`
-- `cargo test -p rustok-search category_filter_preserves_product_and_adds_exact_forum_scope -- --nocapture`
+- `cargo test -p rustok-search category_filter -- --nocapture`
 - `cargo xtask module validate search`
 
 ## Known Limitations / Pending Implementation
@@ -270,14 +278,13 @@ The items below are verified gaps. They are not hidden behind compatibility wrap
 Each one has a follow-up task in
 [`docs/implementation-plan.md`](./docs/implementation-plan.md).
 
-- The Forum-only Search filters are transport-only. `forumStorefrontSearch` accepts
-  exact author, tag, solved-state, locale, inclusive published-date and trusted
-  current-channel arguments, and both storefront transports can send each family as an
-  additive operation through the single Forum-only execution owner, but no storefront
-  surface renders a control for them yet. The shared `SearchPreviewInput`/`SearchPreviewFilters`
-  model deliberately does not carry these fields, so a caller that has not landed a
-  filter keeps the base `forumStorefrontSearch(input: $input)` operation. Owner plan:
-  `FORUM-23B2F1` to `FORUM-23B2F4`.
+- The Forum-only Search filters are owner-side. `storefrontSearch` accepts no Forum
+  argument: author, tag, solved-state, locale, inclusive published-date and trusted
+  current-channel narrowing are owned by the Forum read surface
+  (`forumStorefrontAudienceTopics` / `forumTopics`) and by the host
+  `SearchAudiencePolicyPort`, so Search never learns a Forum field. No storefront
+  surface renders additional filter controls yet. Owner plan: `FORUM-23B2F1` to
+  `FORUM-23B2F4`, now scoped to the generic surface.
 - Storefront query-text suggestions remain disabled because the aggregate query logs
   cannot be channel-authorized; admin and global query suggestions are unchanged.
   Owner plan: `FORUM-23B2E1`/`FORUM-23B2E2`.

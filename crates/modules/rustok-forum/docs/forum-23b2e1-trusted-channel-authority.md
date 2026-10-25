@@ -1,5 +1,16 @@
 # FORUM-23B2E1 trusted storefront Search channel authority
 
+> **Superseded on 2026-10-25.** The dedicated Forum storefront Search pipeline
+> (`execute_forum_storefront_search`, `forumStorefrontSearch` and the two storefront
+> adapters) is retired. The capability described below now lives on the generic
+> declared-corpus path: `storefrontSearch` plus `SearchAudiencePolicyPort`, with
+> `forumStorefrontAudienceTopics`/`forumTopics` owning Forum-specific filters
+> (author, solved state, tags, ordering). Everything below this notice is the design
+> record of the milestone as delivered and must not be read as current code. See
+> [ADR 2026-10-25](../../../../DECISIONS/2026-10-25-search-audience-declared-corpus.md)
+> and `npm run verify:search:audience`.
+
+
 Canonical task status and remaining scope live in
 [`implementation-plan.md`](implementation-plan.md). This note records the stable
 source boundary delivered by `FORUM-23B2E1`; it is not a second roadmap.
@@ -58,7 +69,7 @@ cargo test -p rustok-search storefront_channel_authority -- --nocapture
 cargo test -p rustok-search --features graphql --lib -- --nocapture
 cargo check -p rustok-search --features graphql --all-targets
 cargo check -p rustok-search-storefront --features ssr --all-targets
-node scripts/verify/verify-forum-search-trusted-channel-authority.mjs
+node scripts/verify/verify-search-audience-classes.mjs
 cargo xtask module validate forum
 cargo xtask module validate search
 ```

@@ -1,5 +1,16 @@
 # FORUM-23B2F1 exact Forum Search author filter
 
+> **Superseded on 2026-10-25.** The dedicated Forum storefront Search pipeline
+> (`execute_forum_storefront_search`, `forumStorefrontSearch` and the two storefront
+> adapters) is retired. The capability described below now lives on the generic
+> declared-corpus path: `storefrontSearch` plus `SearchAudiencePolicyPort`, with
+> `forumStorefrontAudienceTopics`/`forumTopics` owning Forum-specific filters
+> (author, solved state, tags, ordering). Everything below this notice is the design
+> record of the milestone as delivered and must not be read as current code. See
+> [ADR 2026-10-25](../../../../DECISIONS/2026-10-25-search-audience-declared-corpus.md)
+> and `npm run verify:search:audience`.
+
+
 ## Status
 
 `source_complete_execution_pending`
@@ -94,10 +105,9 @@ durable non-Forum projection ordering, deletion/ACL cleanup or runtime evidence.
 The implementation agent did not run these commands:
 
 ```bash
-cargo test -p rustok-search forum_document_filters -- --nocapture
 cargo test -p rustok-search visible_forum_statuses_match_owner_eligibility -- --nocapture
-cargo test -p rustok-search-storefront transport::tests::only_explicit_forum_category_scope_selects_owner_path -- --nocapture
-node scripts/verify/verify-forum-search-author-filter.mjs
+cargo test -p rustok-search storefront_category_scope -- --nocapture
+node scripts/verify/verify-search-audience-classes.mjs
 cargo check -p rustok-search --features graphql --all-targets
 cargo check -p rustok-search-storefront --features ssr --all-targets
 cargo xtask module validate forum

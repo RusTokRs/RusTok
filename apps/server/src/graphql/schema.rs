@@ -62,9 +62,7 @@ use rustok_rbac::graphql::{
     RbacGraphqlRoleWriterHandle, RbacModuleAvailabilityHandle, RbacMutation, RbacQuery,
 };
 #[cfg(feature = "mod-forum")]
-use rustok_search::graphql::{
-    ForumSearchProjectionReconciliationQuery, ForumStorefrontSearchQuery,
-};
+use rustok_search::graphql::ForumSearchProjectionReconciliationQuery;
 use rustok_search::graphql::{SearchGraphqlRateLimiterHandle, SearchMutationRoot, SearchQueryRoot};
 
 /// Slugs used for runtime `tenant_modules.is_enabled()` guards.
@@ -83,7 +81,6 @@ pub struct Query(
     RootQuery,
     SearchQueryRoot,
     #[cfg(feature = "mod-forum")] ForumSearchProjectionReconciliationQuery,
-    #[cfg(feature = "mod-forum")] ForumStorefrontSearchQuery,
     AuthQuery,
     OAuthQuery,
     McpQuery,

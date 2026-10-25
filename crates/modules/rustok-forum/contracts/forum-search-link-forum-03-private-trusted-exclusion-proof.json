@@ -13,7 +13,7 @@
     "host_package": "rustok-server",
     "search_inbox": "search_projection_inbox",
     "projector": "ForumProjectionReconciler",
-    "storefront_execution": "execute_forum_storefront_search"
+    "storefront_execution": "execute_audience_eligible_search"
   },
   "required_owner_trace": [
     "revisions 1 and 2 are the two real category-create forum-scope invalidations",
@@ -31,7 +31,7 @@
     "the production Forum projection source and ForumProjectionReconciler retain only the unrestricted public category and topic documents",
     "the explicit-user private topic and the trusted-channel topic are absent from the legitimate public Search projection",
     "stale Search rows are injected only after projection to exercise current owner reauthorization rather than simulate Forum writes",
-    "the production storefront execution and ForumSearchResultEligibilityService deny public outsider low-trust non-member and wrong-route views",
+    "the production audience-eligible storefront execution and ForumSearchResultEligibilityService deny public outsider low-trust non-member and wrong-route views",
     "the exact explicitly allowed private user and exact high-trust trusted-channel member are allowed from the same stale candidate rows",
     "the trusted-channel decision is a conjunction of exact route channel inherited trust floor and topic channel membership",
     "trusted storefront route contexts carry both a non-nil channel identifier and the matching slug",

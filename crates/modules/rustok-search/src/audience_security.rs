@@ -25,7 +25,9 @@ use crate::engine::{
     SearchResultItem,
 };
 use crate::pg_engine::{PgSearchEngine, SearchAudienceDocumentScope};
-use crate::storefront_category_scope::StorefrontSearchTransport;
+use crate::storefront_category_scope::{
+    SharedStorefrontSearchCategoryScopePort, StorefrontSearchTransport,
+};
 use crate::storefront_channel_authority::TrustedStorefrontChannel;
 
 /// Maximum number of candidate documents a single audience policy call receives.
@@ -411,6 +413,24 @@ pub async fn resolve_audience_eligible_candidates(
     Ok(allowed_ids)
 }
 
+/// Everything a storefront read must carry into the audience-aware executor.
+///
+/// The context is owned by the transport boundary (`apps/server` GraphQL data, the
+/// native SSR adapter, or a test): Search itself never resolves these values, because
+/// doing so would silently reintroduce an implicit corpus.
+pub struct StorefrontSearchAudienceContext<'a> {
+    /// The host-composed declaration of the public and gated Search corpus.
+    pub registry: &'a SearchAudienceRegistry,
+    /// The owner capability that expands storefront category roots into the exact
+    /// document category scope. Applied only for the single-module scope the owner
+    /// declares; absent means exact category semantics (owner not composed).
+    pub category_scope: Option<SharedStorefrontSearchCategoryScopePort>,
+    /// Present when the caller is authenticated.
+    pub auth: Option<AuthContext>,
+    pub request_context: Option<RequestContext>,
+    pub transport: StorefrontSearchTransport,
+}
+
 /// Executes unified storefront search across public and audience-gated source modules.
 ///
 /// Execution model:
@@ -426,11 +446,15 @@ pub async fn execute_audience_eligible_search(
     engine: &PgSearchEngine,
     mut search_query: SearchQuery,
     channel: &TrustedStorefrontChannel,
-    registry: &SearchAudienceRegistry,
-    auth: Option<AuthContext>,
-    request_context: Option<RequestContext>,
-    transport: StorefrontSearchTransport,
+    context: StorefrontSearchAudienceContext<'_>,
 ) -> CoreResult<SearchResult> {
+    let StorefrontSearchAudienceContext {
+        registry,
+        category_scope,
+        auth,
+        request_context,
+        transport,
+    } = context;
     let started_at = Instant::now();
     let tenant_id = search_query.tenant_id.filter(|tenant| !tenant.is_nil()).ok_or_else(|| {
         Error::Validation("storefront search requires a valid tenant ID".to_string())
@@ -502,7 +526,65 @@ pub async fn execute_audience_eligible_search(
         }
     }
 
-    // 3. Bounded, batched post-authorization for gated modules only.
+    // 3. Resolve storefront category roots through the owner capability. The owner
+    //    declares which source module it owns, so a mixed or unrelated scope keeps the
+    //    exact-category semantics and Search never guesses a module's category tree.
+    //    This runs after the preflight so a module closed to public discovery never
+    //    reaches any owner port.
+    if !search_query.category_ids.is_empty() {
+        // The locale the request actually runs in: the explicit query locale, else the
+        // locale the host already resolved for this request. Search invents no default,
+        // because a made-up locale would expand a tree in the wrong translation.
+        let effective_locale = search_query
+            .locale
+            .as_deref()
+            .map(str::trim)
+            .filter(|locale| !locale.is_empty())
+            .map(str::to_string)
+            .or_else(|| {
+                request_context
+                    .as_ref()
+                    .map(|context| context.locale.trim().to_string())
+                    .filter(|locale| !locale.is_empty())
+            });
+        if let Some(effective_locale) = effective_locale {
+            search_query.category_ids = crate::storefront_category_scope::resolve_storefront_search_category_ids(
+                category_scope,
+                crate::storefront_category_scope::StorefrontSearchCategoryScopeRequest {
+                    tenant_id,
+                    locale: effective_locale,
+                    // The generic storefront request carries no separate fallback locale;
+                    // the host resolved `effective_locale` from the request context, so the
+                    // owner sees the same locale the result rows will be read in.
+                    fallback_locale: None,
+                    source_modules: scope_modules.clone(),
+                    category_ids: search_query.category_ids.clone(),
+                    auth: auth.clone(),
+                    request_context: request_context.clone(),
+                    transport,
+                },
+            )
+            .await
+            .map_err(|error| search_audience_error(error, "category scope resolution"))?;
+
+            // An owner that resolved a requested category root to nothing has authorized
+            // no category. Returning the unfiltered scope here would turn "this category
+            // is not visible to you" into "search everything", so the request short
+            // circuits the same way an empty module scope does.
+            if search_query.category_ids.is_empty() {
+                tracing::debug!(
+                    tenant_id = %tenant_id,
+                    "Search storefront request resolved no visible category in scope"
+                );
+                return Ok(empty_storefront_result(
+                    search_query.ranking_profile,
+                    started_at.elapsed().as_millis() as u64,
+                ));
+            }
+        }
+    }
+
+    // 4. Bounded, batched post-authorization for gated modules only.
     let gated_scope = scope_modules
         .iter()
         .filter(|module| registry.is_gated(module))
@@ -526,7 +608,7 @@ pub async fn execute_audience_eligible_search(
         .await?
     };
 
-    // 4. One scoped SQL execution: totals, facets, ordering and pagination are exact.
+    // 5. One scoped SQL execution: totals, facets, ordering and pagination are exact.
     let audience_scope = SearchAudienceDocumentScope::new(gated_scope.clone(), authorized_ids)
         .map_err(|error| Error::Internal(format!("invalid Search audience scope: {error}")))?;
     search_query.source_modules = scope_modules;
@@ -535,7 +617,7 @@ pub async fn execute_audience_eligible_search(
         .search_storefront_scoped(search_query.clone(), channel, &audience_scope)
         .await?;
 
-    // 5. Query rules may reorder the authorized page. They may only inject a pinned
+    // 6. Query rules may reorder the authorized page. They may only inject a pinned
     //    document when no gated module is in scope, because a pin has no owner
     //    authorization.
     SearchDictionaryService::apply_storefront_query_rules(
@@ -1452,10 +1534,13 @@ mod tests {
             &engine,
             storefront_query("confidential roadmap", vec!["private_docs".to_string()]),
             &channel,
-            &registry,
-            None,
-            None,
-            StorefrontSearchTransport::Graphql,
+            StorefrontSearchAudienceContext {
+                registry: &registry,
+                category_scope: None,
+                auth: None,
+                request_context: None,
+                transport: StorefrontSearchTransport::Graphql,
+            },
         )
         .await
         .expect("empty public search");
@@ -1480,10 +1565,13 @@ mod tests {
             &engine,
             storefront_query("anything", vec!["secret_lab".to_string()]),
             &channel,
-            &registry,
-            None,
-            None,
-            StorefrontSearchTransport::Graphql,
+            StorefrontSearchAudienceContext {
+                registry: &registry,
+                category_scope: None,
+                auth: None,
+                request_context: None,
+                transport: StorefrontSearchTransport::Graphql,
+            },
         )
         .await
         .expect("denied module produces an empty result");
@@ -1506,13 +1594,69 @@ mod tests {
             &engine,
             storefront_query("   ", Vec::new()),
             &channel,
-            &registry,
-            None,
-            None,
-            StorefrontSearchTransport::Graphql,
+            StorefrontSearchAudienceContext {
+                registry: &registry,
+                category_scope: None,
+                auth: None,
+                request_context: None,
+                transport: StorefrontSearchTransport::Graphql,
+            },
         )
         .await
         .expect("empty query result");
+
+        assert!(result.items.is_empty());
+        assert_eq!(result.total, 0);
+    }
+
+    /// Owner category capability that reports "no visible category" for every root.
+    struct EmptyCategoryScopePort;
+
+    #[async_trait]
+    impl crate::storefront_category_scope::StorefrontSearchCategoryScopePort for EmptyCategoryScopePort {
+        fn source_module(&self) -> &'static str {
+            "forum"
+        }
+
+        async fn expand_category_scope(
+            &self,
+            _request: crate::storefront_category_scope::StorefrontSearchCategoryScopeRequest,
+        ) -> Result<Vec<Uuid>, PortError> {
+            Ok(Vec::new())
+        }
+    }
+
+    #[tokio::test]
+    async fn category_scope_resolved_to_nothing_returns_empty_result() {
+        let mut registry = SearchAudienceRegistry::new();
+        registry
+            .declare_public_modules(["forum"])
+            .expect("public modules");
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory db");
+        let engine = PgSearchEngine::new(db.clone());
+        let channel = untrusted_channel();
+        let category_scope: crate::SharedStorefrontSearchCategoryScopePort =
+            std::sync::Arc::new(EmptyCategoryScopePort);
+        let mut query = storefront_query("anything", vec!["forum".to_string()]);
+        query.category_ids = vec![Uuid::new_v4()];
+
+        let result = execute_audience_eligible_search(
+            &db,
+            &engine,
+            query,
+            &channel,
+            StorefrontSearchAudienceContext {
+                registry: &registry,
+                category_scope: Some(category_scope),
+                auth: None,
+                request_context: None,
+                transport: StorefrontSearchTransport::Graphql,
+            },
+        )
+        .await
+        .expect("a category with nothing visible must not widen the search");
 
         assert!(result.items.is_empty());
         assert_eq!(result.total, 0);
@@ -1532,10 +1676,13 @@ mod tests {
             &engine,
             storefront_query("anything", Vec::new()),
             &channel,
-            &registry,
-            None,
-            None,
-            StorefrontSearchTransport::Graphql,
+            StorefrontSearchAudienceContext {
+                registry: &registry,
+                category_scope: None,
+                auth: None,
+                request_context: None,
+                transport: StorefrontSearchTransport::Graphql,
+            },
         )
         .await
         .expect("undeclared corpus is not publicly discoverable");

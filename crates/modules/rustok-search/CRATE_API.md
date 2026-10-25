@@ -3,7 +3,7 @@
 ## Public surface
 
 ### Public modules
-`analytics`, `audience_security`, `diagnostics`, `dictionaries`, `engine`, `forum_document_filters`, `forum_storefront_execution`, `ingestion`, `migrations`, `models`, `module`, `pg_engine`, `ports`, `presets`, `projection_source`, `projector`, `ranking`, `search_settings`, `storefront_category_scope`, `storefront_channel_authority`, `storefront_result_eligibility`, `suggestions`.
+`analytics`, `audience_security`, `diagnostics`, `dictionaries`, `engine`, `graphql`, `ingestion`, `migrations`, `models`, `module`, `pg_engine`, `ports`, `presets`, `projection_source`, `projector`, `ranking`, `search_settings`, `storefront_category_scope`, `storefront_channel_authority`, `suggestions`.
 
 ## Platform Capability Bindings
 - **Core Module Registration**: Exposes `SearchModule` implementing `RusToKModule` (slug `"search"`, kind `ModuleKind::Core`) and `MigrationSource`.
@@ -72,7 +72,8 @@
 - Fail-closed boundaries: storefront GraphQL and native SSR reads require a composed `SearchAudienceRegistry` and return an error when it is missing; host composition propagates registration failures.
 - Authorized aggregation: totals, facets, ordering and pagination are computed by PostgreSQL over the authorized row set; facets are never re-aggregated outside the engine.
 - Pinned query rules may reorder an authorized page and may only inject an extra document when no gated module is in scope.
-- Bounded candidate work: one policy call receives at most `MAX_SEARCH_AUDIENCE_CANDIDATES` candidates, scan pages are bounded by `AUDIENCE_CANDIDATE_SCAN_PAGE_SIZE`, and one request scans at most `MAX_SEARCH_AUDIENCE_SCAN_DOCUMENTS` gated documents. Legacy `StorefrontSearchResultEligibilityPort` keeps `MAX_FORUM_SEARCH_RESULT_CANDIDATES`.
+- Owner-declared category scope: `StorefrontSearchCategoryScopePort` declares `source_module()` and `expand_category_scope()`; the resolver consults it only when the request is scoped to exactly that module, and otherwise keeps the caller's exact `category_ids`. The engine has no per-module predicate.
+- Bounded candidate work: one policy call receives at most `MAX_SEARCH_AUDIENCE_CANDIDATES` candidates, scan pages are bounded by `AUDIENCE_CANDIDATE_SCAN_PAGE_SIZE`, and one request scans at most `MAX_SEARCH_AUDIENCE_SCAN_DOCUMENTS` gated documents. There is no second, legacy bound: the retired Forum storefront port kept its own `MAX_FORUM_SEARCH_RESULT_CANDIDATES` constant and it is gone.
 
 ### Events / Outbox Side Effects
 - Event ingestion handlers subscribe to content lifecycle events (`created`, `updated`, `deleted`) to schedule or execute projection updates.

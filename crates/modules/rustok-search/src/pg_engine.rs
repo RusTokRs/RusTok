@@ -107,14 +107,6 @@ impl PgSearchEngine {
             .await
     }
 
-    pub(crate) async fn search_forum_storefront_candidates(
-        &self,
-        query: SearchQuery,
-        channel: &TrustedStorefrontChannel,
-    ) -> Result<SearchResult> {
-        self.search_scoped(query, Some(channel), None).await
-    }
-
     async fn search_scoped(
         &self,
         query: SearchQuery,
@@ -272,16 +264,8 @@ fn build_filter_clause(
                           AND ipc.category_id IN ({category_params})
                     )
                 )
-                OR (
-                    source_module = 'forum'
-                    AND (
-                        (entity_type = 'forum_category' AND id IN ({category_params}))
-                        OR (
-                            entity_type IN ('forum_topic', 'forum_reply')
-                            AND facets ->> 'category_id' IN ({category_facet_params})
-                        )
-                    )
-                )
+                OR id IN ({category_params})
+                OR facets ->> 'category_id' IN ({category_facet_params})
             )"
         ));
     }
@@ -973,7 +957,7 @@ mod tests {
     }
 
     #[test]
-    fn category_filter_preserves_product_and_adds_exact_forum_scope() {
+    fn category_filter_is_module_neutral() {
         let filters = build_filter_clause(
             &query_with_categories(vec![Uuid::from_u128(7)]),
             4,
@@ -981,15 +965,20 @@ mod tests {
             None,
         );
 
+        // Products keep their normalized many-to-many index relation, while every other
+        // module is covered by the two neutral document declarations: the document may be
+        // the category itself, or it may carry the category in its facets. The engine must
+        // not name a domain module, otherwise a new module needs an engine change.
         for marker in [
             "entity_type = 'product'",
             "ipc.category_id IN ($4)",
-            "source_module = 'forum'",
-            "entity_type = 'forum_category' AND id IN ($4)",
-            "entity_type IN ('forum_topic', 'forum_reply')",
-            "facets ->> 'category_id' IN ($5)",
+            "OR id IN ($4)",
+            "OR facets ->> 'category_id' IN ($5)",
         ] {
             assert!(filters.clause.contains(marker), "missing {marker}");
+        }
+        for forbidden in ["'forum'", "forum_category"] {
+            assert!(!filters.clause.contains(forbidden), "leaked {forbidden}");
         }
         assert_eq!(filters.values.len(), 2);
     }

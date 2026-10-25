@@ -12,14 +12,10 @@ pub mod diagnostics;
 pub mod dictionaries;
 pub mod engine;
 mod forum_contract_ingress;
-mod forum_current_channel_filter;
-pub mod forum_document_filters;
 mod forum_inbox;
 mod forum_owner_checkpoint;
 mod forum_projector;
 mod forum_reconciliation;
-pub mod forum_storefront_execution;
-mod forum_storefront_execution_public;
 #[cfg(feature = "graphql")]
 pub mod graphql;
 pub mod ingestion;
@@ -40,7 +36,6 @@ pub mod search_settings;
 pub mod storefront_category_scope;
 pub mod storefront_channel_authority;
 mod storefront_product_channel_visibility;
-pub mod storefront_result_eligibility;
 pub mod suggestions;
 
 #[cfg(test)]
@@ -58,8 +53,8 @@ pub use audience_security::{
     AUDIENCE_CANDIDATE_SCAN_PAGE_SIZE, MAX_SEARCH_AUDIENCE_CANDIDATES,
     MAX_SEARCH_AUDIENCE_SCAN_DOCUMENTS, SearchAudienceClass, SearchAudiencePolicyPort,
     SearchAudienceRegistry, SearchAudienceRequest, SearchCandidateDescriptor,
-    SharedSearchAudiencePolicyPort, empty_storefront_result, execute_audience_eligible_search,
-    resolve_audience_eligible_candidates,
+    SharedSearchAudiencePolicyPort, StorefrontSearchAudienceContext, empty_storefront_result,
+    execute_audience_eligible_search, resolve_audience_eligible_candidates,
 };
 pub use diagnostics::{
     LaggingSearchDocument, SearchConsistencyIssue, SearchDiagnosticsService,
@@ -79,7 +74,6 @@ pub use forum_contract_ingress::{
     FORUM_SEARCH_CONTRACT_TOPIC, ForumSearchContractIngress, ForumSearchContractIngressError,
     ForumSearchContractIngressOutcome,
 };
-pub use forum_document_filters::ForumStorefrontDocumentFilters;
 pub use forum_owner_checkpoint::{
     ForumProjectionOwnerTenantHead, ForumProjectionOwnerTenantPageRequest,
     MAX_FORUM_OWNER_TENANT_PAGE_LIMIT, resolve_forum_projection_owner_tenant_heads,
@@ -91,12 +85,6 @@ pub use forum_reconciliation::{
     ForumProjectionOwnerRevisionSourcePort, ForumProjectionReconciler, ForumProjectionSweepReport,
     MAX_FORUM_OWNER_REVISION_PAGE_LIMIT, SharedForumProjectionOwnerRevisionSourcePort,
     resolve_forum_projection_owner_revisions,
-};
-#[allow(deprecated)]
-pub use forum_storefront_execution::{
-    ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchExecution,
-    ForumStorefrontSearchExecutionError, ForumStorefrontSearchRequest,
-    execute_forum_storefront_search,
 };
 pub use ingestion::SearchIngestionHandler;
 pub use models::SearchSettingsRecord;
@@ -118,18 +106,11 @@ pub use search_settings::SearchSettingsService;
 pub use storefront_category_scope::{
     FORUM_SEARCH_SOURCE_MODULE, SharedStorefrontSearchCategoryScopePort,
     StorefrontSearchCategoryScopePort, StorefrontSearchCategoryScopeRequest,
-    StorefrontSearchTransport, resolve_storefront_search_category_ids,
+    StorefrontSearchTransport, resolve_storefront_search_category_ids, scope_is_exactly,
 };
 pub use storefront_channel_authority::{
     StorefrontChannelAuthorityError, TrustedStorefrontChannel, resolve_trusted_storefront_channel,
     resolve_trusted_storefront_channel_input,
-};
-#[allow(deprecated)]
-pub use storefront_result_eligibility::{
-    MAX_FORUM_SEARCH_RESULT_CANDIDATES, SharedStorefrontSearchResultEligibilityPort,
-    StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
-    StorefrontSearchResultEligibilityPort, StorefrontSearchResultEligibilityRequest,
-    resolve_storefront_search_result_candidates,
 };
 pub use suggestions::{
     SearchSuggestion, SearchSuggestionKind, SearchSuggestionQuery, SearchSuggestionService,

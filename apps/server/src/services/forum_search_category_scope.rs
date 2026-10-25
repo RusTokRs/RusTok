@@ -9,7 +9,7 @@ use rustok_forum::{
 use rustok_search::{
     FORUM_SEARCH_SOURCE_MODULE, SharedStorefrontSearchCategoryScopePort,
     StorefrontSearchCategoryScopePort, StorefrontSearchCategoryScopeRequest,
-    StorefrontSearchTransport,
+    StorefrontSearchTransport, scope_is_exactly,
 };
 use sea_orm::DatabaseConnection;
 
@@ -46,7 +46,11 @@ impl ServerForumSearchCategoryScopePort {
 
 #[async_trait]
 impl StorefrontSearchCategoryScopePort for ServerForumSearchCategoryScopePort {
-    async fn expand_forum_category_scope(
+    fn source_module(&self) -> &'static str {
+        FORUM_SEARCH_SOURCE_MODULE
+    }
+
+    async fn expand_category_scope(
         &self,
         request: StorefrontSearchCategoryScopeRequest,
     ) -> Result<Vec<uuid::Uuid>, PortError> {
@@ -56,10 +60,13 @@ impl StorefrontSearchCategoryScopePort for ServerForumSearchCategoryScopePort {
                 "Forum Search category scope requires a tenant",
             ));
         }
-        if !is_explicit_forum_only_source_scope(&request.source_modules) {
+        // The resolver only consults a port when the request scope is exactly the
+        // module the port declares; enforcing the same rule here keeps a direct caller
+        // from expanding Forum's tree into a mixed or foreign search.
+        if !scope_is_exactly(&request.source_modules, self.source_module()) {
             return Err(PortError::validation(
-                "forum.search_category_scope.forum_only_required",
-                "Forum category expansion requires an explicit Forum-only source scope",
+                "forum.search_category_scope.own_scope_required",
+                "Forum category expansion requires a Forum-only source scope",
             ));
         }
         if request.category_ids.is_empty() {
@@ -139,10 +146,6 @@ impl StorefrontSearchCategoryScopePort for ServerForumSearchCategoryScopePort {
     }
 }
 
-fn is_explicit_forum_only_source_scope(source_modules: &[String]) -> bool {
-    source_modules.len() == 1 && source_modules[0] == FORUM_SEARCH_SOURCE_MODULE
-}
-
 fn map_forum_error(error: ForumError) -> PortError {
     let stable_code = error.stable_code().to_ascii_lowercase();
     let retryable = error.is_retryable();
@@ -170,23 +173,5 @@ fn map_forum_error(error: ForumError) -> PortError {
             stable_code,
             "Forum category scope could not be resolved safely",
         ),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::is_explicit_forum_only_source_scope;
-
-    #[test]
-    fn only_exact_forum_source_scope_is_admitted() {
-        assert!(is_explicit_forum_only_source_scope(&["forum".to_string()]));
-        assert!(!is_explicit_forum_only_source_scope(&[]));
-        assert!(!is_explicit_forum_only_source_scope(&[
-            "forum".to_string(),
-            "product".to_string(),
-        ]));
-        assert!(!is_explicit_forum_only_source_scope(&[
-            "product".to_string(),
-        ]));
     }
 }

@@ -4,7 +4,7 @@
   "upstream_task": "FORUM-20BL",
   "scope": "Preserve the previous committed value of each external Search projection scope during sequential tenant rebuilds by preventing the direct Search projector from deleting Blog Forum or future provider-owned documents",
   "active_search_projector": "crates/modules/rustok-search/src/projector.rs",
-  "private_legacy_projector": "crates/modules/rustok-search/src/projector_legacy.rs",
+  "private_legacy_projector": "crates/modules/rustok-search/src/projector_core.rs",
   "search_module_wiring": "crates/modules/rustok-search/src/lib.rs",
   "search_ingestion": "crates/modules/rustok-search/src/ingestion.rs",
   "blog_projector": "crates/modules/rustok-search/src/blog_projector.rs",
@@ -21,8 +21,6 @@
   ],
   "ownership_boundary": {
     "public_search_projector_is_scope_preserving_facade": true,
-    "legacy_projector_module_is_private": true,
-    "legacy_projector_reexported": false,
     "active_tenant_rebuild_calls_legacy_all_tenant_delete": false,
     "active_direct_scopes": [
       "node",
@@ -31,7 +29,9 @@
     "core_rebuild_deletes_blog_scope": false,
     "core_rebuild_deletes_forum_scope": false,
     "core_rebuild_deletes_unknown_future_external_scope": false,
-    "search_document_storage_owner_changed": false
+    "search_document_storage_owner_changed": false,
+    "single_core_projector_owner": true,
+    "core_projector_reexported_as_legacy": false
   },
   "replacement_boundary": {
     "full_ingestion_order": [
@@ -119,5 +119,6 @@
       "node scripts/verify/verify-forum-projection-invalidation.mjs",
       "cargo xtask module validate forum"
     ]
-  }
+  },
+  "projector_name_history": "projector_legacy.rs was renamed to projector_core.rs; the implementation is current, not a compatibility layer"
 }

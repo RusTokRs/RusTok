@@ -230,14 +230,6 @@ pub mod module_event_dispatcher {
             let forum_eligibility =
                 forum_search_result_eligibility::ServerForumSearchResultEligibilityPort::new(
                     db.clone(),
-                    audience_facts.clone(),
-                    extensions
-                        .get::<rustok_api::SharedStaticModuleSettingsReader>()
-                        .cloned(),
-                );
-            let result_eligibility =
-                forum_search_result_eligibility::ServerForumSearchResultEligibilityPort::shared(
-                    db.clone(),
                     audience_facts,
                     extensions
                         .get::<rustok_api::SharedStaticModuleSettingsReader>()
@@ -252,7 +244,6 @@ pub mod module_event_dispatcher {
                 })?;
             extensions.insert(category_scope);
             extensions.insert(owner_revision);
-            extensions.insert(result_eligibility);
         }
 
         extensions.insert(audience_registry);
@@ -532,10 +523,6 @@ pub mod module_event_dispatcher {
                 extensions
                     .contains::<rustok_search::SharedForumProjectionOwnerRevisionSourcePort>()
             );
-            #[cfg(feature = "mod-forum")]
-            assert!(
-                extensions.contains::<rustok_search::SharedStorefrontSearchResultEligibilityPort>()
-            );
             let audience_registry = extensions
                 .get::<rustok_search::SearchAudienceRegistry>()
                 .expect("Search audience registry should be composed");
@@ -573,11 +560,6 @@ pub mod module_event_dispatcher {
             #[cfg(feature = "mod-forum")]
             assert!(
                 host.shared_get::<rustok_search::SharedForumProjectionOwnerRevisionSourcePort>()
-                    .is_some()
-            );
-            #[cfg(feature = "mod-forum")]
-            assert!(
-                host.shared_get::<rustok_search::SharedStorefrontSearchResultEligibilityPort>()
                     .is_some()
             );
             assert!(

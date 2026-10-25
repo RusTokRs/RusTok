@@ -483,6 +483,15 @@ impl SearchQueryRoot {
         let registry = ctx
             .data::<crate::SearchAudienceRegistry>()
             .map_err(|_| FieldError::new(SEARCH_AUDIENCE_REGISTRY_UNAVAILABLE_MESSAGE))?;
+        // The owner category-scope capability is optional by contract: its absence means
+        // exact category semantics, not an implicit tree expansion by Search itself.
+        let category_scope = ctx
+            .data_opt::<std::sync::Arc<rustok_core::ModuleRuntimeExtensions>>()
+            .and_then(|extensions| {
+                extensions
+                    .get::<crate::SharedStorefrontSearchCategoryScopePort>()
+                    .cloned()
+            });
         let auth = ctx.data_opt::<AuthContext>().cloned();
         let request_context = ctx.data_opt::<RequestContext>().cloned();
         let result = crate::execute_audience_eligible_search(
@@ -490,10 +499,13 @@ impl SearchQueryRoot {
             &engine,
             search_query.clone(),
             &trusted_channel,
-            registry,
-            auth,
-            request_context,
-            crate::StorefrontSearchTransport::Graphql,
+            crate::StorefrontSearchAudienceContext {
+                registry,
+                category_scope,
+                auth,
+                request_context,
+                transport: crate::StorefrontSearchTransport::Graphql,
+            },
         )
         .await;
         finalize_search_result(

@@ -7,7 +7,7 @@
 // Runtime behavior is exercised by the Rust tests; this guard keeps the security
 // invariants from being edited away silently.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 const root = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -27,6 +27,14 @@ const paths = {
   serverServices: "apps/server/src/services/mod.rs",
   lib: "crates/modules/rustok-search/src/lib.rs",
   hostGraphqlSchema: "apps/server/src/graphql/schema.rs",
+  scopePort: "crates/modules/rustok-search/src/storefront_category_scope.rs",
+  hostForumPolicy: "apps/server/src/services/forum_search_result_eligibility.rs",
+  hostForumScope: "apps/server/src/services/forum_search_category_scope.rs",
+  projectors: {
+    blog: "crates/modules/rustok-blog/src/services/search_projection.rs",
+    content: "crates/modules/rustok-search/src/projector_core.rs",
+    forum: "crates/modules/rustok-forum/src/search_projection.rs",
+  },
 };
 
 function read(relativePath) {
@@ -41,6 +49,41 @@ function requireAll(relativePath, markers) {
     }
   }
   return text;
+}
+
+const RETIRED_SEARCH_SYMBOLS = [
+  "execute_forum_storefront_search",
+  "forumStorefrontSearch",
+  "StorefrontSearchResultEligibilityPort",
+  "forum_storefront_execution",
+  "storefront_result_eligibility",
+  "forum_document_filters",
+  "forum_current_channel_filter",
+  "forum_graphql_adapter",
+  "forum_native_server_adapter",
+];
+
+/** Flatten to `dotted.path: string` so a finding names the field it came from. */
+function flattenStrings(value, prefix = "") {
+  const out = {};
+  if (typeof value === "string") {
+    out[prefix || "(root)"] = value;
+  } else if (Array.isArray(value)) {
+    value.forEach((item, index) => Object.assign(out, flattenStrings(item, `${prefix}[${index}]`)));
+  } else if (value && typeof value === "object") {
+    for (const [key, item] of Object.entries(value)) {
+      Object.assign(out, flattenStrings(item, prefix ? `${prefix}.${key}` : key));
+    }
+  }
+  return out;
+}
+
+function forbidMissing(relativePaths, reason) {
+  for (const relativePath of relativePaths) {
+    if (existsSync(path.join(root, relativePath))) {
+      failures.push(`${relativePath}: retired file must not exist (${reason})`);
+    }
+  }
 }
 
 function forbid(relativePath, markers) {
@@ -146,8 +189,16 @@ if (serverServices.includes("let _ = audience_registry.register(")) {
   );
 }
 
-// 7. The retired facet re-aggregation must not come back through the public API.
-forbid(paths.lib, ["build_authorized_facets"]);
+// 7. The retired facet re-aggregation and the retired Forum storefront exports must not
+//    come back through the public API.
+forbid(paths.lib, [
+  "build_authorized_facets",
+  "StorefrontSearchResultEligibilityPort",
+  "execute_forum_storefront_search",
+  "forum_storefront_execution",
+  "forum_document_filters",
+  "storefront_result_eligibility",
+]);
 
 // 8. The corpus inventory must cover everything the Content projector can emit.
 //    `projector_core` keys Content documents by node kind, so the write allowlist and the
@@ -168,6 +219,105 @@ requireAll(paths.serverServices, [
   "rustok_content::CONTENT_NODE_KINDS",
   '"content", "docs", "pages"',
 ]);
+
+// 9. The legacy Forum storefront pipeline is retired, not wrapped. It had its own
+//    executor, its own eligibility port and its own GraphQL field; the generic
+//    audience executor and the host policy replace all three.
+forbidMissing(
+  [
+    "crates/modules/rustok-search/src/forum_storefront_execution.rs",
+    "crates/modules/rustok-search/src/forum_storefront_execution_public.rs",
+    "crates/modules/rustok-search/src/storefront_result_eligibility.rs",
+    "crates/modules/rustok-search/src/forum_document_filters.rs",
+    "crates/modules/rustok-search/src/forum_current_channel_filter.rs",
+    "crates/modules/rustok-search/src/graphql/forum_storefront.rs",
+    "crates/modules/rustok-search/storefront/src/transport/forum_graphql_adapter.rs",
+    "crates/modules/rustok-search/storefront/src/transport/forum_native_server_adapter.rs",
+  ],
+  "replaced by execute_audience_eligible_search and SearchAudiencePolicyPort",
+);
+forbid(paths.audience, [
+  "StorefrontSearchResultEligibilityPort",
+  "resolve_storefront_search_result_candidates",
+]);
+forbid(paths.graphql, ["forum_storefront_search", "ForumStorefrontSearchQuery"]);
+forbid(paths.engine, ["search_forum_storefront_candidates"]);
+
+// 10. The category-scope capability is owner-declared and the engine stays neutral.
+requireAll(paths.scopePort, [
+  "pub trait StorefrontSearchCategoryScopePort",
+  "fn source_module(&self) -> &'static str;",
+  "async fn expand_category_scope(",
+  "if !scope_is_exactly(&request.source_modules, port.source_module())",
+  "pub fn scope_is_exactly(source_modules: &[String], module: &str) -> bool",
+]);
+forbid(paths.scopePort, [
+  "is_explicit_forum_only",
+  "expand_forum_category_scope",
+]);
+requireAll(paths.engine, [
+  "OR id IN ({category_params})",
+  "OR facets ->> 'category_id' IN ({category_facet_params})",
+]);
+forbid(paths.engine, ["source_module = 'forum'", "entity_type = 'forum_category'"]);
+
+// 11. The host Forum policy implements the generic SPI directly.
+requireAll(paths.hostForumScope, [
+  "fn source_module(&self) -> &'static str",
+  "async fn expand_category_scope(",
+  "if !scope_is_exactly(&request.source_modules, self.source_module())",
+]);
+forbid(paths.hostForumScope, [
+  "expand_forum_category_scope",
+  "is_explicit_forum_only_source_scope",
+]);
+requireAll(paths.hostForumPolicy, [
+  "impl SearchAudiencePolicyPort for ServerForumSearchResultEligibilityPort",
+  "fn source_module(&self) -> &'static str",
+  "async fn filter_eligible_candidates(",
+]);
+forbid(paths.hostForumPolicy, [
+  "StorefrontSearchResultEligibilityPort",
+  "StorefrontSearchResultCandidate",
+]);
+
+// 12. Forum Search contracts are documentation of live owners, so every repo path they
+//     name must exist and none of them may still point at a retired symbol. This is one
+//     rule for the whole directory instead of one hand-maintained list per contract.
+const forumContractsDir = path.join(root, "crates/modules/rustok-forum/contracts");
+for (const entry of readdirSync(forumContractsDir).sort()) {
+  if (!entry.startsWith("forum-search-") || !entry.endsWith(".json")) continue;
+  const relativePath = path.posix.join(
+    "crates/modules/rustok-forum/contracts",
+    entry,
+  );
+  const raw = readFileSync(path.join(root, relativePath), "utf8");
+  let contract;
+  try {
+    contract = JSON.parse(raw);
+  } catch (error) {
+    failures.push(`${relativePath}: invalid JSON: ${error.message}`);
+    continue;
+  }
+  for (const [key, value] of Object.entries(flattenStrings(contract))) {
+    if (RETIRED_SEARCH_SYMBOLS.some((symbol) => value.includes(symbol))) {
+      failures.push(`${relativePath}: ${key} still names a retired symbol: ${value}`);
+    }
+    const candidate = value.split(/\s+/)[0];
+    if (!/^(crates|apps|scripts|DECISIONS|docs)\//.test(candidate)) continue;
+    if (!/\.(rs|md|mjs|json|ts|tsx)$/.test(candidate)) continue;
+    // A Rust module also lives as `foo/mod.rs`, so `src/foo.rs` is a valid spelling of it.
+    const moduleDirectory = candidate.endsWith(".rs")
+      ? `${candidate.slice(0, -3)}/mod.rs`
+      : null;
+    if (
+      !existsSync(path.join(root, candidate)) &&
+      !(moduleDirectory && existsSync(path.join(root, moduleDirectory)))
+    ) {
+      failures.push(`${relativePath}: ${key} points at a missing file: ${candidate}`);
+    }
+  }
+}
 
 if (failures.length > 0) {
   console.error("Search audience class verification failed:");

@@ -1,5 +1,16 @@
 # FORUM-23B2F4 trusted current-channel Search filter
 
+> **Superseded on 2026-10-25.** The dedicated Forum storefront Search pipeline
+> (`execute_forum_storefront_search`, `forumStorefrontSearch` and the two storefront
+> adapters) is retired. The capability described below now lives on the generic
+> declared-corpus path: `storefrontSearch` plus `SearchAudiencePolicyPort`, with
+> `forumStorefrontAudienceTopics`/`forumTopics` owning Forum-specific filters
+> (author, solved state, tags, ordering). Everything below this notice is the design
+> record of the milestone as delivered and must not be read as current code. See
+> [ADR 2026-10-25](../../../../DECISIONS/2026-10-25-search-audience-declared-corpus.md)
+> and `npm run verify:search:audience`.
+
+
 ## Status
 
 `source_complete_execution_pending`
@@ -113,8 +124,8 @@ cargo test -p rustok-search forum_current_channel_filter -- --nocapture
 cargo test -p rustok-search current_channel_only -- --nocapture
 cargo test -p rustok-forum topic_update -- --nocapture
 cargo test -p rustok-search forum_projection -- --nocapture
-cargo test -p rustok-search-storefront transport::tests::only_explicit_forum_category_scope_selects_owner_path -- --nocapture
-node scripts/verify/verify-forum-search-current-channel-filter.mjs
+cargo test -p rustok-search storefront_category_scope -- --nocapture
+node scripts/verify/verify-search-audience-classes.mjs
 node scripts/verify/verify-forum-projection-invalidation.mjs
 cargo check -p rustok-forum --all-targets
 cargo check -p rustok-search --features graphql --all-targets

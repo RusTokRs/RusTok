@@ -1,5 +1,16 @@
 # FORUM-23B2A: Forum-owned Search category subtree scope
 
+> **Superseded on 2026-10-25.** The dedicated Forum storefront Search pipeline
+> (`execute_forum_storefront_search`, `forumStorefrontSearch` and the two storefront
+> adapters) is retired. The capability described below now lives on the generic
+> declared-corpus path: `storefrontSearch` plus `SearchAudiencePolicyPort`, with
+> `forumStorefrontAudienceTopics`/`forumTopics` owning Forum-specific filters
+> (author, solved state, tags, ordering). Everything below this notice is the design
+> record of the milestone as delivered and must not be read as current code. See
+> [ADR 2026-10-25](../../../../DECISIONS/2026-10-25-search-audience-declared-corpus.md)
+> and `npm run verify:search:audience`.
+
+
 Date: 2026-07-30
 
 Status: `source_complete_execution_pending`
@@ -65,6 +76,6 @@ Suggested commands:
 ```bash
 cargo test -p rustok-forum category_search_scope -- --nocapture
 node scripts/verify/verify-forum-search-category-subtree-scope.mjs
-node scripts/verify/verify-forum-search-exact-category-filter.mjs
+node scripts/verify/verify-search-audience-classes.mjs
 cargo xtask module validate forum
 ```

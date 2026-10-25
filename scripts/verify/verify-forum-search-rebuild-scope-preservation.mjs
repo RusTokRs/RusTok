@@ -26,7 +26,10 @@ function rejectMarker(source, marker, label) {
 }
 
 const activePath = "crates/modules/rustok-search/src/projector.rs";
-const legacyPath = "crates/modules/rustok-search/src/projector_legacy.rs";
+// `projector_legacy.rs` was renamed to `projector_core.rs`: the code was always the
+// current implementation, not a compatibility layer, and the old name kept being read
+// as "the thing to delete". The guard now pins the real owner instead of the name.
+const corePath = "crates/modules/rustok-search/src/projector_core.rs";
 const libPath = "crates/modules/rustok-search/src/lib.rs";
 const ingestionPath = "crates/modules/rustok-search/src/ingestion.rs";
 const blogPath = "crates/modules/rustok-search/src/blog_projector.rs";
@@ -41,7 +44,7 @@ const approvedReplyPath = "crates/modules/rustok-forum/contracts/forum-approved-
 const notePath = "crates/modules/rustok-forum/docs/forum-20bm-search-rebuild-scope-preservation.md";
 
 const active = read(activePath);
-const legacy = read(legacyPath);
+const core = read(corePath);
 const lib = read(libPath);
 const ingestion = read(ingestionPath);
 const blog = read(blogPath);
@@ -70,17 +73,18 @@ for (const [label, source, assign] of [
 }
 
 for (const marker of [
-  "use crate::projector_legacy;",
+  "use crate::projector_core;",
   "const CORE_SCOPE_COUNT_SQL",
   "entity_type IN ('node', 'product')",
-  "self.legacy.rebuild_content_scope(tenant_id).await?",
-  "self.legacy.rebuild_product_scope(tenant_id).await",
+  "self.core.rebuild_content_scope(tenant_id).await",
+  "self.core.rebuild_product_scope(tenant_id).await",
   '"rebuild_tenant"',
 ]) {
   requireMarker(active, marker, activePath);
 }
 for (const forbidden of [
-  "self.legacy.rebuild_tenant",
+  "projector_legacy",
+  "self.core.rebuild_tenant_deleting_every_scope",
   '"DELETE FROM search_documents WHERE tenant_id = $1"',
 ]) {
   rejectMarker(active, forbidden, activePath);
@@ -94,21 +98,31 @@ for (const forbidden of ["blog_post", "forum_category", "forum_topic", "forum_re
 for (const marker of [
   "pub struct SearchProjector",
   "pub async fn rebuild_tenant",
-  '"DELETE FROM search_documents WHERE tenant_id = $1"',
 ]) {
-  requireMarker(legacy, marker, legacyPath);
+  requireMarker(core, marker, corePath);
+}
+// Every destructive delete the core projector issues names an `entity_type`, so it can
+// only replace its own `node`/`product` scopes and never the whole tenant row set.
+for (const marker of [
+  "DELETE FROM search_documents WHERE tenant_id = $1 AND entity_type = 'node'",
+  "DELETE FROM search_documents WHERE tenant_id = $1 AND entity_type = 'product'",
+]) {
+  requireMarker(core, marker, corePath);
+}
+for (const statement of core.match(/DELETE FROM search_documents[\s\S]*?"#/g) ?? []) {
+  if (!statement.includes("entity_type")) {
+    failures.push(`${corePath}: tenant-wide delete without an entity_type scope`);
+  }
 }
 for (const marker of [
-  "#[allow(dead_code)]",
-  '#[path = "projector_legacy.rs"]',
-  "mod projector_legacy;",
   "pub mod projector;",
   "pub use projector::SearchProjector;",
 ]) {
   requireMarker(lib, marker, libPath);
 }
-rejectMarker(lib, "pub mod projector_legacy;", libPath);
+rejectMarker(lib, "mod projector_legacy;", libPath);
 rejectMarker(lib, "pub use projector_legacy", libPath);
+rejectMarker(lib, "projector_legacy", libPath);
 
 const rebuildSection = ingestion.split("async fn rebuild_tenant")[1] ?? "";
 const rebuild = rebuildSection.split("async fn handle_reindex_request")[0] ?? "";
@@ -138,7 +152,7 @@ for (const marker of [
   requireMarker(forum, marker, forumPath);
 }
 for (const marker of [
-  "active_tenant_rebuild_never_calls_the_destructive_legacy_tenant_rebuild",
+  "active_tenant_rebuild_preserves_external_scopes_and_eliminates_destructive_deletes",
   "full_ingestion_rebuild_keeps_source_order_and_atomic_external_replacements",
   "bootstrap_presence_check_ignores_external_only_documents",
   '.rfind("projector.rebuild_tenant")',
@@ -155,7 +169,7 @@ for (const marker of [
   "FORUM-20BM",
   "source-scoped preservation",
   "not a new cross-source transaction",
-  "previous Forum documents remain",
+  "documents remain",
   "Global all-source atomicity",
   "FORUM-20BN",
 ]) {
@@ -169,12 +183,12 @@ if (contract) {
   if (contract.approved_reply_search_contract !== approvedReplyPath) failures.push(`${contractPath}: approved reply handoff drift`);
   for (const key of [
     "public_search_projector_is_scope_preserving_facade",
-    "legacy_projector_module_is_private",
+    "single_core_projector_owner",
   ]) {
     if (contract.ownership_boundary?.[key] !== true) failures.push(`${contractPath}: ownership ${key} drift`);
   }
   for (const key of [
-    "legacy_projector_reexported",
+    "core_projector_reexported_as_legacy",
     "active_tenant_rebuild_calls_legacy_all_tenant_delete",
     "core_rebuild_deletes_blog_scope",
     "core_rebuild_deletes_forum_scope",

@@ -988,15 +988,24 @@ that may move this row once a maintainer retains the aggregate runtime artifact.
 
 Forum publishes projection documents and owns every authorization decision that a
 Forum-scoped Search result needs; Search owns querying, ranking and pagination. The
-split is enforced by the storefront entrypoint failing closed when a Forum-only
-request arrives without the owner port, never by Search reading Forum tables.
+split is enforced by the host policy registered in the generic
+`SearchAudienceRegistry`, never by Search reading Forum tables.
+
+> **Current state (2026-10-25).** The dedicated Forum storefront Search entrypoint
+> (`forumStorefrontSearch`), its Search-side executor and its two storefront adapters
+> were deleted in Phase 4. The milestones below are kept as delivered history; the live
+> mechanism is `execute_audience_eligible_search` + `SearchAudiencePolicyPort` (host:
+> `apps/server/src/services/forum_search_result_eligibility.rs`) + the module-neutral
+> `StorefrontSearchCategoryScopePort`, guarded by `npm run verify:search:audience`.
 
 ### Delivered in `FORUM-23B1`
 
 The bounded `category_ids` filter of the neutral `SearchQuery` contract selects exact
 Forum category, topic and approved-reply documents without changing product category
 semantics. Forum writes those identities during projection in
-`src/search_projection.rs`. Search filters on them in `forum_document_filters.rs`.
+`src/search_projection.rs`. Search filters on them in the neutral exact-category
+predicate of `pg_engine.rs` (the Forum-specific `forum_document_filters.rs` of this
+milestone no longer exists).
 
 Complete Forum category-subtree filtering is not part of this slice: an exact category
 id is matched as written, so descendants are only reachable through the owner-expanded
@@ -1022,12 +1031,18 @@ and topic-local audience narrowing is applied later, at result eligibility.
 
 ### Delivered in `FORUM-23B2C`
 
-`forumStorefrontSearch` (`crates/modules/rustok-search/src/graphql/forum_storefront.rs`)
-is the explicit Forum-only entrypoint: it requires `source_modules: [forum]`, at least
-one category root and the shared `StorefrontSearchCategoryScopePort`, and it rejects a
-tenant that does not match the authenticated request. `StorefrontSearchResultEligibilityPort`
-applies exact topic-local audience narrowing and reply authorization, so a projected
-`topic_id` is never treated as authorization.
+`forumStorefrontSearch` is the explicit Forum-only entrypoint of this milestone: it
+required `source_modules: [forum]`, at least one category root and the shared
+`StorefrontSearchCategoryScopePort`, and it rejected a tenant that did not match the
+authenticated request. The Search-side eligibility port applied exact topic-local
+audience narrowing and reply authorization, so a projected `topic_id` was never treated
+as authorization.
+
+Both halves were retired on 2026-10-25: the same guarantees are now provided by
+`storefrontSearch` with the generic audience executor (tenant check, declared-module
+scope, `SearchAudiencePolicyPort` per-candidate authorization over topics and replies)
+and by `StorefrontSearchCategoryScopePort::expand_category_scope`, which the resolver
+calls only when the request scope is exactly the declaring module.
 
 ### Delivered in `FORUM-23B2D`
 
@@ -1047,22 +1062,22 @@ Product-bearing response path - rows, totals, facets, query-rule pins and docume
 suggestions - with a bounded Search-side reconciler plus host worker for rows that
 predate the projection. Product channel visibility remains blocked on
 maintainer-executed PostgreSQL and transport evidence only; the source boundary is
-delivered. `verify-forum-search-trusted-channel-authority.mjs` and
-`verify-forum-search-product-channel-visibility.mjs` pin the two halves.
+delivered. `npm run verify:search:audience` pins both halves — the trusted channel
+authority and the neutral audience scope — and fails if either regresses.
 
 ### Delivered in `FORUM-23B2F1` / `FORUM-23B2F2` / `FORUM-23B2F3` / `FORUM-23B2F4`
 
-The storefront Search field accepts the exact bounded Forum author filter, the exact
-bounded Forum tag and solved filters, the locale and inclusive published-date window and
-the trusted current-channel filter as arguments beside `SearchPreviewInput`. Both
-storefront transports carry each family in its own additive operation
-(`forum_graphql_adapter.rs`, `forum_native_server_adapter.rs`, dispatched from
-`transport/mod.rs`), all of them executing in the single
-`execute_forum_storefront_search` owner. The shared `SearchPreviewFilters` model and the
-base `forumStorefrontSearch(input: $input)` document are unchanged, and no storefront UI
-control renders these filters yet. Verifiers:
-`verify-forum-search-author-filter.mjs`, `verify-forum-search-tag-solved-filter.mjs`,
-`verify-forum-search-locale-date-filter.mjs`, `verify-forum-search-current-channel-filter.mjs`.
+Forum owned the exact bounded author filter, the exact bounded tag and solved filters,
+the locale and inclusive published-date window, and the trusted current-channel filter.
+
+> **Retired 2026-10-25.** Those filters lived on the Forum-only Search transport
+> (`forumStorefrontSearch` plus two storefront adapters) which has been deleted. Their
+> durable home is the Forum read surface — `forumStorefrontAudienceTopics` /
+> `forumTopics` in `crates/modules/rustok-forum/src/graphql`, which already carries
+> `solvedOnly`, ordering and category narrowing — and the host
+> `SearchAudiencePolicyPort` for eligibility. Search itself never learns a Forum field.
+> No storefront Search UI control renders these filters, and none is planned on the
+> generic `storefrontSearch` field. Guard: `npm run verify:search:audience`.
 
 ### Delivered in `FORUM-23B2G1` / `FORUM-23B2G1A`
 

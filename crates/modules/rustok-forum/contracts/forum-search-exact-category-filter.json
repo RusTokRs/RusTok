@@ -12,7 +12,7 @@
   "search_readme": "crates/modules/rustok-search/README.md",
   "search_plan": "crates/modules/rustok-search/docs/implementation-plan.md",
   "owner_note": "crates/modules/rustok-forum/docs/forum-23b1-exact-category-filter.md",
-  "verifier": "scripts/verify/verify-forum-search-exact-category-filter.mjs",
+  "verifier": "scripts/verify/verify-search-audience-classes.mjs",
   "query_boundary": {
     "existing_category_ids_input_is_reused": true,
     "graphql_field_added": false,
@@ -71,5 +71,6 @@
     "all_forum_filters_are_complete": true,
     "runtime_verification_was_executed": true
   },
-  "downstream_task": "FORUM-23B2"
+  "downstream_task": "FORUM-23B2",
+  "superseded_by": "DECISIONS/2026-10-25-search-audience-declared-corpus.md"
 }
