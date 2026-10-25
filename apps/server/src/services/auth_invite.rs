@@ -104,10 +104,10 @@ impl AuthLifecycleService {
             .one(&tx)
             .await
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
-        match issued {
-            Some(invite) if invite.revoked_at.is_none() => {}
+        let invite_id = match issued {
+            Some(invite) if invite.revoked_at.is_none() => invite.id,
             _ => return Err(InviteAcceptanceError::InvalidToken),
-        }
+        };
 
         // Reserve the digest first. The unique token_hash constraint is the
         // serialization point, so every concurrent replay is rejected before
@@ -183,6 +183,19 @@ impl AuthLifecycleService {
                 tenant_id,
                 Some(user.id),
                 DomainEvent::UserAccountRegistered { user_id: user.id },
+            )
+            .await
+            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+
+        event_bus
+            .publish_in_tx(
+                &tx,
+                tenant_id,
+                Some(user.id),
+                DomainEvent::UserInviteAccepted {
+                    user_id: user.id,
+                    invite_id,
+                },
             )
             .await
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;

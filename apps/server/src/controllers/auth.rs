@@ -8,17 +8,12 @@ use axum::{
     http::header::USER_AGENT,
     routing::{delete, get, post},
 };
-use chrono::Utc;
 use rustok_telemetry::metrics;
 use rustok_web::json_response;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
-};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use std::net::SocketAddr;
 
-use crate::auth::{
-    decode_email_verification_token, encode_email_verification_token, encode_password_reset_token,
-};
+use crate::auth::{encode_email_verification_token, encode_password_reset_token};
 use crate::common::{
     RequestContext, RustokSettings,
 };
@@ -462,24 +457,14 @@ async fn confirm_verification(
         .auth_config()
         .cloned()
         .ok_or(Error::InternalServerError)?;
-    let claims = decode_email_verification_token(&config, &params.token)?;
-
-    if claims.tenant_id != tenant.id {
-        return Err(Error::Unauthorized("Invalid verification token".into()));
-    }
-
-    let user = Users::find_by_id(claims.user_id)
-        .filter(users::Column::TenantId.eq(tenant.id))
-        .one(ctx.runtime_ctx().db())
-        .await?
-        .filter(|record| record.email.eq_ignore_ascii_case(&claims.sub))
-        .ok_or_else(|| Error::Unauthorized("Invalid verification token".into()))?;
-
-    if user.email_verified_at.is_none() {
-        let mut user_active: users::ActiveModel = user.into();
-        user_active.email_verified_at = Set(Some(Utc::now().into()));
-        user_active.update(ctx.runtime_ctx().db()).await?;
-    }
+    AuthLifecycleService::confirm_email_verification_runtime(
+        ctx.runtime_ctx(),
+        &config,
+        tenant.id,
+        &params.token,
+    )
+    .await
+    .map_err(|error: AuthLifecycleError| Error::from(error))?;
 
     Ok(json_response(GenericStatusResponse { status: "ok" }))
 }

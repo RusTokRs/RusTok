@@ -181,6 +181,25 @@ pub(super) fn map_role_mutation_policy_error(
 }
 
 impl ServerAuthAdminMutationProvider {
+    /// Publish an admin audit event inside the caller's transaction
+    /// (transactional outbox: the event commits exactly with the
+    /// mutation it describes; a publish failure drops the transaction
+    /// and rolls the mutation back).
+    async fn publish_admin_event_in_tx(
+        &self,
+        tx: &sea_orm::DatabaseTransaction,
+        context: &AuthAdminMutationContext,
+        event: DomainEvent,
+    ) -> Result<(), AuthAdminMutationError> {
+        let event_bus = TransactionalEventBus::new(
+            Arc::new(OutboxTransport::new(self.db.clone())) as Arc<dyn EventTransport>,
+        );
+        event_bus
+            .publish_in_tx(tx, context.tenant_id, Some(context.actor_id), event)
+            .await
+            .map_err(super::internal_admin_error)
+    }
+
     async fn actor_role(
         &self,
         context: &AuthAdminMutationContext,
@@ -967,6 +986,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         .map_err(super::internal_admin_error)?;
 
         let now = Utc::now();
+        let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
         let invite = auth_invites::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(context.tenant_id),
@@ -980,9 +1000,20 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             revoked_at: Set(None),
             created_at: Set(now.into()),
         }
-        .insert(&self.db)
+        .insert(&tx)
         .await
         .map_err(super::internal_admin_error)?;
+
+        self.publish_admin_event_in_tx(
+            &tx,
+            context,
+            DomainEvent::UserInviteIssued {
+                invite_id: invite.id,
+                issued_by: Some(context.actor_id),
+            },
+        )
+        .await?;
+        tx.commit().await.map_err(super::internal_admin_error)?;
 
         Ok(IssuedUserInviteResult {
             invite: invite_record(invite),
@@ -1036,12 +1067,24 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             return Ok(invite_record(invite));
         }
 
+        let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
         let mut active: auth_invites::ActiveModel = invite.into();
         active.revoked_at = Set(Some(Utc::now().into()));
         let updated = active
-            .update(&self.db)
+            .update(&tx)
             .await
             .map_err(super::internal_admin_error)?;
+
+        self.publish_admin_event_in_tx(
+            &tx,
+            context,
+            DomainEvent::UserInviteRevoked {
+                invite_id: updated.id,
+                revoked_by: Some(context.actor_id),
+            },
+        )
+        .await?;
+        tx.commit().await.map_err(super::internal_admin_error)?;
 
         Ok(invite_record(updated))
     }

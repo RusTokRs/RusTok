@@ -1,4 +1,5 @@
 use chrono::Utc;
+use rustok_events::DomainEvent;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait,
     sea_query::Expr,
@@ -93,6 +94,15 @@ impl AuthLifecycleService {
         .update(&tx)
         .await
         .map_err(AuthLifecycleError::from)?;
+
+        Self::publish_user_event_in_tx(
+            ctx.db_clone(),
+            &tx,
+            tenant_id,
+            user.id,
+            DomainEvent::UserPasswordResetCompleted { user_id: user.id },
+        )
+        .await?;
 
         tx.commit().await.map_err(AuthLifecycleError::from)?;
         Self::record_password_reset_sessions_revoked(revoked_sessions.rows_affected);

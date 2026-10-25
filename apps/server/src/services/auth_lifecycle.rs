@@ -42,6 +42,7 @@ pub enum AuthLifecycleError {
     SessionExpired,
     UserNotFound,
     InvalidResetToken,
+    InvalidVerificationToken,
     Validation(String),
     Internal(Error),
 }
@@ -90,6 +91,9 @@ impl From<AuthLifecycleError> for Error {
             AuthLifecycleError::UserNotFound => Error::Unauthorized("User not found".into()),
             AuthLifecycleError::InvalidResetToken => {
                 Error::Unauthorized("Invalid reset token".into())
+            }
+            AuthLifecycleError::InvalidVerificationToken => {
+                Error::Unauthorized("Invalid verification token".into())
             }
             AuthLifecycleError::Internal(err) => err,
         }
@@ -167,6 +171,25 @@ impl AuthLifecycleService {
 
     pub fn record_password_reset_sessions_revoked(count: u64) {
         AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL.fetch_add(count, Ordering::Relaxed);
+    }
+
+    /// Publish a user audit event inside the caller's transaction so
+    /// the event is durably recorded exactly when the state change it
+    /// describes commits (transactional outbox).
+    pub(crate) async fn publish_user_event_in_tx(
+        db: DatabaseConnection,
+        tx: &DatabaseTransaction,
+        tenant_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+        event: DomainEvent,
+    ) -> std::result::Result<(), AuthLifecycleError> {
+        let event_bus = TransactionalEventBus::new(
+            Arc::new(OutboxTransport::new(db)) as Arc<dyn EventTransport>,
+        );
+        event_bus
+            .publish_in_tx(tx, tenant_id, Some(user_id), event)
+            .await
+            .map_err(|error| AuthLifecycleError::Internal(error.into()))
     }
 
     #[cfg(test)]
@@ -374,18 +397,14 @@ impl AuthLifecycleService {
             .map_err(AuthLifecycleError::from)?;
 
         if name_changed {
-            let event_bus = TransactionalEventBus::new(
-                Arc::new(OutboxTransport::new(db.clone())) as Arc<dyn EventTransport>
-            );
-            event_bus
-                .publish_in_tx(
-                    &tx,
-                    tenant_id,
-                    Some(user_id),
-                    DomainEvent::UserUpdated { user_id },
-                )
-                .await
-                .map_err(|error| AuthLifecycleError::Internal(error.into()))?;
+            Self::publish_user_event_in_tx(
+                db.clone(),
+                &tx,
+                tenant_id,
+                user_id,
+                DomainEvent::UserUpdated { user_id },
+            )
+            .await?;
         }
 
         tx.commit().await.map_err(AuthLifecycleError::from)?;
@@ -415,18 +434,14 @@ impl AuthLifecycleService {
             Self::create_session_and_tokens_in_tx(&tx, config, tenant_id, &user, None, None)
                 .await?;
 
-        let event_bus = TransactionalEventBus::new(
-            Arc::new(OutboxTransport::new(ctx.db_clone())) as Arc<dyn EventTransport>,
-        );
-        event_bus
-            .publish_in_tx(
-                &tx,
-                tenant_id,
-                Some(user.id),
-                DomainEvent::UserAccountRegistered { user_id: user.id },
-            )
-            .await
-            .map_err(|error| AuthLifecycleError::Internal(error.into()))?;
+        Self::publish_user_event_in_tx(
+            ctx.db_clone(),
+            &tx,
+            tenant_id,
+            user.id,
+            DomainEvent::UserAccountRegistered { user_id: user.id },
+        )
+        .await?;
 
         tx.commit().await.map_err(AuthLifecycleError::from)?;
 
@@ -541,6 +556,14 @@ impl AuthLifecycleService {
 
         let tokens = Self::create_session_and_tokens_in_tx(
             &txn, config, tenant_id, &user, ip_address, user_agent,
+        )
+        .await?;
+        Self::publish_user_event_in_tx(
+            db.clone(),
+            &txn,
+            tenant_id,
+            user.id,
+            DomainEvent::UserLoggedIn { user_id: user.id },
         )
         .await?;
         txn.commit().await.map_err(AuthLifecycleError::from)?;
@@ -1029,6 +1052,14 @@ impl AuthLifecycleService {
             Some(current_session_id),
         )
         .await?;
+        Self::publish_user_event_in_tx(
+            db.clone(),
+            &txn,
+            tenant_id,
+            user_id,
+            DomainEvent::UserPasswordChanged { user_id },
+        )
+        .await?;
         txn.commit().await.map_err(AuthLifecycleError::from)?;
         AUTH_CHANGE_PASSWORD_SESSIONS_REVOKED_TOTAL.fetch_add(revoked_sessions, Ordering::Relaxed);
 
@@ -1055,6 +1086,7 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::InvalidRefreshToken);
         }
 
+        let user_id = session.user_id;
         let now = Utc::now();
         let mut session_model: sessions::ActiveModel = session.into();
         session_model.revoked_at = Set(Some(now.into()));
@@ -1063,6 +1095,14 @@ impl AuthLifecycleService {
             .await
             .map_err(AuthLifecycleError::from)?;
 
+        Self::publish_user_event_in_tx(
+            ctx.db_clone(),
+            &txn,
+            tenant_id,
+            user_id,
+            DomainEvent::UserLoggedOut { user_id },
+        )
+        .await?;
         txn.commit().await.map_err(AuthLifecycleError::from)?;
         Ok(())
     }
@@ -1081,15 +1121,36 @@ impl AuthLifecycleService {
         tenant_id: uuid::Uuid,
         session_id: uuid::Uuid,
     ) -> std::result::Result<(), AuthLifecycleError> {
-        let now = Utc::now();
-        sessions::Entity::update_many()
-            .col_expr(sessions::Column::RevokedAt, Expr::value(now))
+        let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
+        let session = sessions::Entity::find_by_id(session_id)
             .filter(sessions::Column::TenantId.eq(tenant_id))
-            .filter(sessions::Column::Id.eq(session_id))
             .filter(sessions::Column::RevokedAt.is_null())
-            .exec(db)
+            .one(&tx)
             .await
             .map_err(AuthLifecycleError::from)?;
+
+        // Logout stays idempotent: an unknown or already-revoked
+        // session is a successful no-op and emits no event.
+        if let Some(session) = session {
+            let user_id = session.user_id;
+            let now = Utc::now();
+            let mut session_model: sessions::ActiveModel = session.into();
+            session_model.revoked_at = Set(Some(now.into()));
+            session_model
+                .update(&tx)
+                .await
+                .map_err(AuthLifecycleError::from)?;
+            Self::publish_user_event_in_tx(
+                db.clone(),
+                &tx,
+                tenant_id,
+                user_id,
+                DomainEvent::UserLoggedOut { user_id },
+            )
+            .await?;
+        }
+
+        tx.commit().await.map_err(AuthLifecycleError::from)?;
         Ok(())
     }
 

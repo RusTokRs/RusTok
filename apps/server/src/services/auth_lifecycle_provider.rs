@@ -46,6 +46,9 @@ fn map_lifecycle_error(error: AuthLifecycleError) -> AuthLifecycleMutationError 
         AuthLifecycleError::SessionExpired => AuthLifecycleMutationError::SessionExpired,
         AuthLifecycleError::UserNotFound => AuthLifecycleMutationError::UserNotFound,
         AuthLifecycleError::InvalidResetToken => AuthLifecycleMutationError::InvalidResetToken,
+        AuthLifecycleError::InvalidVerificationToken => {
+            AuthLifecycleMutationError::Validation("Invalid verification token".to_string())
+        }
         AuthLifecycleError::Validation(message) => {
             AuthLifecycleMutationError::Validation(message)
         }
