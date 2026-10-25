@@ -123,22 +123,29 @@ does not create a package-local locale fallback.
    compiled or tested. Run the Verification list below plus targeted server
    suites (`auth_lifecycle`, `oauth_app`, `oauth_token_service`,
    `auth_admin_mutation_provider`) and `cargo fmt` before merge.
-   **Remaining risks deferred from the same audit (architectural, need a
-   dedicated change with local verification):** the admin UI still stores
-   tokens in LocalStorage (migration to an httpOnly cookie session needs new
-   server endpoints + CSRF handling + frontend rewrite); per-request
-   role/permission resolution performs duplicate reads (request snapshot in
-   the extractor plus authoritative re-derivation in providers — kept as
-   defense in depth until profiling justifies consolidation); Argon2 hashing
-   runs inside the `create_user_in_tx` transaction (moving it out requires
-   restructuring the register/invite atomic flows); OAuth `oauth_tokens`
-   have no reuse detection comparable to first-party sessions; two
-   concurrent first-time consent grants can race into a unique-violation 500
-   (no data corruption); invite management UI screens are not built yet
-   (admin transports are wired); invites accept built-in roles only, custom
-   role slugs are rejected explicitly; auth audit events beyond
-   `user.account.registered` (login, password reset, invite issued/accepted)
-   are not published yet.
+   **Formerly deferred architectural items, now implemented (same blind
+   verification status):** browser sessions no longer persist credentials —
+   new `POST /api/auth/session/{login,register,refresh,logout}` endpoints
+   keep the refresh token in an HttpOnly cookie for browser-direct mode,
+   SSR/BFF hosts hold it in their own HttpOnly cookie via native server
+   functions, access tokens live in memory only, and the admin's
+   LocalStorage-to-cookie JS bootstrap is replaced by a server-to-server
+   verified snapshot exchange; RBAC permission checks are snapshot-first
+   with authoritative fall-through (OAuth scope narrowing honored);
+   Argon2 hashing and credential validation run before user-creation
+   transactions via `prepare_new_user`; OAuth refresh tokens have lineage
+   families with a 90-day absolute cap and post-grace reuse detection that
+   revokes the whole family (migration `m20261025_000005`); concurrent
+   first-time consent grants retry through the update path instead of
+   returning a unique-violation 500; invites support tenant-defined custom
+   role slugs with the authority ceiling enforced at issuance; invite
+   management and acceptance UI screens are built (Users page panel +
+   `/accept-invite`); `user.session.*`, `user.password.*`,
+   `user.email.verified`, and `user.invite.*` audit events publish inside
+   the mutations' transactions. The admin-mutation port error taxonomy was
+   assessed and is already typed (`AuthAdminMutationError` variants matched
+   exhaustively at the GraphQL boundary); `AuthSettingsOverrides::apply` is
+   live runtime wiring, not dead code.
 
 ## Verification
 
