@@ -426,6 +426,7 @@ struct RateLimitLayers {
 const AUTH_RATE_LIMIT_PREFIXES: &[&str] = &[
     "/api/auth/login",
     "/api/auth/register",
+    "/api/auth/session",
     "/api/auth/reset",
     "/api/auth/verify",
     "/api/auth/invite",

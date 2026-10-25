@@ -22,7 +22,7 @@ use crate::models::{
     sessions,
     users::{self, Entity as Users},
 };
-use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
+use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService, AuthTokens};
 use crate::services::email::{
     EMAIL_VERIFICATION_TOKEN_TTL_SECS, EmailVerificationEmail, PASSWORD_RESET_TOKEN_TTL_SECS,
     PasswordResetEmail, email_service_from_ctx, password_reset_url, spawn_email_verification,
@@ -212,6 +212,278 @@ async fn logout(
 
     Ok(json_response(LogoutResponse { status: "ok" }))
 }
+
+// ─── HttpOnly cookie sessions for first-party browsers ─────────────────────
+//
+// Browser clients (admin/storefront) must never hold the refresh token
+// in JavaScript-readable storage: any XSS would become full session
+// theft with a long-lived lineage. These endpoints keep the refresh
+// token in an HttpOnly, path-scoped, SameSite=Lax cookie and return
+// only the short-lived access token in the JSON body, which the
+// client holds in memory. The cookie-authenticated state changers
+// (refresh/logout) additionally require a custom request header as a
+// CSRF barrier: cross-site forms cannot set it, and SameSite=Lax
+// already withholds the cookie on cross-site POSTs.
+
+const SESSION_COOKIE_NAME: &str = "rustok-session";
+const SESSION_COOKIE_PATH: &str = "/api/auth/session";
+const SESSION_REQUEST_HEADER: &str = "x-rustok-session-request";
+
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub(crate) struct CookieSessionResponse {
+    access_token: String,
+    token_type: &'static str,
+    expires_in: u64,
+    user: UserInfo,
+}
+
+impl std::fmt::Debug for CookieSessionResponse {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CookieSessionResponse")
+            .field("access_token", &"<redacted>")
+            .field("token_type", &self.token_type)
+            .field("expires_in", &self.expires_in)
+            .field("user", &self.user)
+            .finish()
+    }
+}
+
+fn session_cookie_is_secure(
+    headers: &axum::http::HeaderMap,
+    peer_ip: std::net::IpAddr,
+    settings: &RustokSettings,
+) -> bool {
+    crate::common::extract_effective_proto(headers, Some(peer_ip), &settings.runtime.request_trust)
+        .is_some_and(|value| value.eq_ignore_ascii_case("https"))
+}
+
+fn build_session_cookie(refresh_token: &str, max_age_secs: u64, secure: bool) -> String {
+    let mut cookie = format!(
+        "{SESSION_COOKIE_NAME}={refresh_token}; Path={SESSION_COOKIE_PATH}; HttpOnly; SameSite=Lax; Max-Age={max_age_secs}"
+    );
+    if secure {
+        cookie.push_str("; Secure");
+    }
+    cookie
+}
+
+fn parse_session_cookie(headers: &axum::http::HeaderMap) -> Option<String> {
+    headers
+        .get(axum::http::header::COOKIE)?
+        .to_str()
+        .ok()?
+        .split(';')
+        .find_map(|part| {
+            let (name, value) = part.trim().split_once('=')?;
+            (name == SESSION_COOKIE_NAME && !value.trim().is_empty())
+                .then(|| value.trim().to_string())
+        })
+}
+
+fn require_session_request_header(headers: &axum::http::HeaderMap) -> Result<()> {
+    match headers
+        .get(SESSION_REQUEST_HEADER)
+        .and_then(|value| value.to_str().ok())
+    {
+        Some("1") => Ok(()),
+        _ => Err(Error::BadRequest(
+            "Missing session request header".into(),
+        )),
+    }
+}
+
+fn cookie_session_response(
+    user: users::Model,
+    tokens: AuthTokens,
+    cookie: String,
+) -> Response {
+    let user_info = user_info_from_model(user, tokens.effective_role.clone());
+    let mut response = json_response(CookieSessionResponse {
+        access_token: tokens.access_token,
+        token_type: "Bearer",
+        expires_in: tokens.expires_in,
+        user: user_info,
+    });
+    match axum::http::HeaderValue::from_str(&cookie) {
+        Ok(value) => {
+            response
+                .headers_mut()
+                .append(axum::http::header::SET_COOKIE, value);
+        }
+        Err(error) => {
+            tracing::error!(%error, "session cookie header could not be encoded");
+        }
+    }
+    response
+}
+
+#[utoipa::path(post, path = "/api/auth/session/login", tag = "auth", request_body = LoginParams,
+    responses((status = 200, description = "Login successful; refresh token set as HttpOnly cookie", body = CookieSessionResponse),(status = 401, description = "Unauthorized")))]
+async fn session_login(
+    State(ctx): State<ServerAuthRuntime>,
+    CurrentTenant(tenant): CurrentTenant,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
+    Json(params): Json<LoginParams>,
+) -> Result<Response> {
+    let email = params.email.trim();
+    tracing::debug!(email, "auth::session_login entry");
+    let user_agent = headers
+        .get(USER_AGENT)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.to_string());
+
+    let runtime_ctx = ctx.runtime_ctx();
+    let config = ctx
+        .auth_config()
+        .cloned()
+        .ok_or(Error::InternalServerError)?;
+    let (user, tokens) = AuthLifecycleService::login_runtime(
+        runtime_ctx,
+        &config,
+        tenant.id,
+        email,
+        &params.password,
+        Some(addr.ip().to_string()),
+        user_agent,
+        runtime_ctx.settings().features.email_verification,
+    )
+    .await
+    .map_err(|e: AuthLifecycleError| Error::from(e))?;
+
+    let cookie = build_session_cookie(
+        &tokens.refresh_token,
+        config.refresh_expiration,
+        session_cookie_is_secure(&headers, addr.ip(), runtime_ctx.settings()),
+    );
+    Ok(cookie_session_response(user, tokens, cookie))
+}
+
+#[utoipa::path(post, path = "/api/auth/session/register", tag = "auth", request_body = RegisterParams,
+    responses((status = 200, description = "Registration successful; refresh token set as HttpOnly cookie", body = CookieSessionResponse),(status = 400, description = "Email already exists")))]
+async fn session_register(
+    State(ctx): State<ServerAuthRuntime>,
+    CurrentTenant(tenant): CurrentTenant,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
+    request_context: RequestContext,
+    Json(params): Json<RegisterParams>,
+) -> Result<Response> {
+    let email = params.email.trim();
+    tracing::debug!(email, "auth::session_register entry");
+    ensure_registration_enabled(ctx.runtime_ctx().settings())?;
+
+    let runtime_ctx = ctx.runtime_ctx();
+    let config = ctx
+        .auth_config()
+        .cloned()
+        .ok_or(Error::InternalServerError)?;
+    let (user, tokens) = AuthLifecycleService::register_runtime(
+        runtime_ctx,
+        &config,
+        tenant.id,
+        email,
+        &params.password,
+        params.name,
+    )
+    .await
+    .map_err(|e: AuthLifecycleError| Error::from(e))?;
+
+    if runtime_ctx.settings().features.email_verification {
+        spawn_email_verification(
+            runtime_ctx,
+            &config,
+            tenant.id,
+            user.id,
+            &user.email,
+            request_context.locale.as_str(),
+        );
+    }
+
+    let cookie = build_session_cookie(
+        &tokens.refresh_token,
+        config.refresh_expiration,
+        session_cookie_is_secure(&headers, addr.ip(), runtime_ctx.settings()),
+    );
+    Ok(cookie_session_response(user, tokens, cookie))
+}
+
+#[utoipa::path(post, path = "/api/auth/session/refresh", tag = "auth",
+    responses((status = 200, description = "Session refreshed; cookie rotated", body = CookieSessionResponse),(status = 401, description = "Invalid or expired session cookie")))]
+async fn session_refresh(
+    State(ctx): State<ServerAuthRuntime>,
+    CurrentTenant(tenant): CurrentTenant,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
+) -> Result<Response> {
+    tracing::debug!("auth::session_refresh entry");
+    require_session_request_header(&headers)?;
+    let refresh_token = parse_session_cookie(&headers)
+        .ok_or_else(|| Error::Unauthorized("Invalid refresh token".into()))?;
+
+    let runtime_ctx = ctx.runtime_ctx();
+    let config = ctx
+        .auth_config()
+        .cloned()
+        .ok_or(Error::InternalServerError)?;
+    let (user, tokens) = AuthLifecycleService::refresh_runtime(
+        runtime_ctx,
+        &config,
+        tenant.id,
+        &refresh_token,
+        runtime_ctx.settings().features.email_verification,
+    )
+    .await
+    .map_err(|e: AuthLifecycleError| Error::from(e))?;
+
+    let cookie = build_session_cookie(
+        &tokens.refresh_token,
+        config.refresh_expiration,
+        session_cookie_is_secure(&headers, addr.ip(), runtime_ctx.settings()),
+    );
+    Ok(cookie_session_response(user, tokens, cookie))
+}
+
+#[utoipa::path(post, path = "/api/auth/session/logout", tag = "auth",
+    responses((status = 200, description = "Logout successful; session cookie cleared", body = LogoutResponse)))]
+async fn session_logout(
+    State(ctx): State<ServerAuthRuntime>,
+    CurrentTenant(tenant): CurrentTenant,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
+) -> Result<Response> {
+    tracing::debug!("auth::session_logout entry");
+    require_session_request_header(&headers)?;
+
+    // Idempotent: an absent or already-dead cookie still results in a
+    // cleared cookie and a successful logout response.
+    if let Some(refresh_token) = parse_session_cookie(&headers) {
+        if let Err(error) = AuthLifecycleService::logout_by_refresh_token_runtime(
+            ctx.runtime_ctx(),
+            tenant.id,
+            &refresh_token,
+        )
+        .await
+        {
+            tracing::warn!(%error, "cookie session logout revocation failed; clearing cookie anyway");
+        }
+    }
+
+    let cookie = build_session_cookie(
+        "",
+        0,
+        session_cookie_is_secure(&headers, addr.ip(), ctx.runtime_ctx().settings()),
+    );
+    let mut response = json_response(LogoutResponse { status: "ok" });
+    if let Ok(value) = axum::http::HeaderValue::from_str(&cookie) {
+        response
+            .headers_mut()
+            .append(axum::http::header::SET_COOKIE, value);
+    }
+    Ok(response)
+}
+
 #[utoipa::path(get, path = "/api/auth/me", tag = "auth", security(("bearer_auth" = [])),
     responses((status = 200, description = "Current user info", body = UserResponse),(status = 401, description = "Unauthorized")))]
 async fn me(
@@ -672,6 +944,10 @@ pub fn router() -> crate::routes::ServerRouter {
         .route("/api/auth/login", post(login))
         .route("/api/auth/refresh", post(refresh))
         .route("/api/auth/logout", post(logout))
+        .route("/api/auth/session/login", post(session_login))
+        .route("/api/auth/session/register", post(session_register))
+        .route("/api/auth/session/refresh", post(session_refresh))
+        .route("/api/auth/session/logout", post(session_logout))
         .route("/api/auth/me", get(me))
         .route("/api/auth/invite/accept", post(accept_invite))
         .route("/api/auth/reset/request", post(request_reset))
