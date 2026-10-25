@@ -24,9 +24,11 @@ pub(crate) use sea_orm_migration::MigrationTrait;
 pub(crate) use serde_json::{Value, json};
 pub(crate) use uuid::Uuid;
 
+pub(crate) use crate::backend::SupportedBackend;
 pub(crate) use crate::{
-    ArtifactModuleKind, ArtifactPayloadKind, ArtifactPersistenceContract, ArtifactSchemaDocument,
-    ModuleArtifactDescriptor, ModuleBindingIdempotency, ModulesModule, canonical_schema_digest,
+    ArtifactBindingDispatchError, ArtifactModuleKind, ArtifactPayloadKind,
+    ArtifactPersistenceContract, ArtifactSchemaDocument, ModuleArtifactDescriptor,
+    ModuleBindingIdempotency, ModulesModule, canonical_schema_digest,
 };
 
 pub(crate) use super::super::broker::*;
@@ -342,7 +344,7 @@ impl ArtifactBindingExecutor for RecordingUpgradeBindingExecutor {
     async fn dispatch_binding(
         &self,
         dispatch: ArtifactBindingDispatch<'_>,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, ArtifactBindingDispatchError> {
         self.calls.lock().expect("calls lock").push((
             dispatch.release.slug.clone(),
             dispatch.binding.id.clone(),
@@ -483,29 +485,30 @@ pub(crate) async fn setup_test_serving_namespace<C: ConnectionTrait>(
     connection: &C,
     scope: &ArtifactDataScope,
 ) {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).expect("supported test backend");
     connection
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_artifact_data_namespaces
                      (tenant_id, data_owner_id, namespace_instance_id, module_slug,
                       data_contract_revision, data_contract_digest, state,
                       namespace_revision, created_at, updated_at)
                      VALUES ({}, {}, {}, {}, {}, {}, 'serving', 1, {}, {})",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                now_expression(backend),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.now_sql(),
+                backend.now_sql(),
             ),
             vec![
-                uuid_value(scope.tenant_id, backend),
-                uuid_value(scope.data_owner_id, backend),
-                uuid_value(scope.namespace_instance_id, backend),
+                backend.uuid_value(scope.tenant_id),
+                backend.uuid_value(scope.data_owner_id),
+                backend.uuid_value(scope.namespace_instance_id),
                 scope.module_slug.clone().into(),
                 revision_value(scope.data_contract_revision).expect("revision"),
                 scope.data_contract_digest.clone().into(),
@@ -515,19 +518,19 @@ pub(crate) async fn setup_test_serving_namespace<C: ConnectionTrait>(
         .expect("insert test namespace");
     connection
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_artifact_data_owner_references
                      (tenant_id, data_owner_id, namespace_instance_id, reference_revision)
                      VALUES ({}, {}, {}, 1)",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
             ),
             vec![
-                uuid_value(scope.tenant_id, backend),
-                uuid_value(scope.data_owner_id, backend),
-                uuid_value(scope.namespace_instance_id, backend),
+                backend.uuid_value(scope.tenant_id),
+                backend.uuid_value(scope.data_owner_id),
+                backend.uuid_value(scope.namespace_instance_id),
             ],
         ))
         .await

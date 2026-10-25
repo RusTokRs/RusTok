@@ -600,12 +600,12 @@
       "status": "enforced",
       "files": [
         {
-          "path": "crates/utils/rustok-migrations/src/m20260412_000002_split_registry_localized_metadata.rs",
+          "path": "crates/modules/rustok-modules/src/migrations/m20260412_000070_split_registry_localized_metadata.rs",
           "required_markers": [
             "RUNTIME_DEFAULT_REGISTRY_LOCALE",
             "LEGACY_UNDETERMINED_LOCALE",
             "LEGACY_UNDETERMINED_LOCALE.into()",
-            "DbBackend::MySql => \"?\".to_string()"
+            "let placeholder = backend.placeholder(index + 1);"
           ],
           "forbidden_markers": [
             "const DEFAULT_REGISTRY_LOCALE"

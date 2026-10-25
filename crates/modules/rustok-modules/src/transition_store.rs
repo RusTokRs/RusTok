@@ -12,6 +12,7 @@ use sea_orm::{
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ConflictFenceSet, GlobalSecurityEpoch, ModuleTransitionCheckpoint, ModuleTransitionState,
     RetentionHoldKind, RetentionHoldLedger, RetentionHoldRecord, RetentionTarget,
@@ -165,22 +166,23 @@ impl TransitionCheckpointStore {
                     });
                 }
 
-                let backend = db.get_database_backend();
+                let backend = SupportedBackend::new(db.get_database_backend())
+                    .map_err(sea_orm::DbErr::from)?;
                 let result = db
                     .execute_raw(Statement::from_sql_and_values(
-                        backend,
+                        backend.db_backend(),
                         format!(
                             "UPDATE module_transition_checkpoints SET revision = {}, state = {}, \
                              security_epoch = {}, fences = {}, recovery_attempt_count = {}, updated_at = {} \
                              WHERE operation_id = {} AND revision = {}",
-                            crate::data::placeholder(backend, 1),
-                            crate::data::placeholder(backend, 2),
-                            crate::data::placeholder(backend, 3),
-                            crate::data::placeholder(backend, 4),
-                            crate::data::placeholder(backend, 5),
-                            crate::data::placeholder(backend, 6),
-                            crate::data::placeholder(backend, 7),
-                            crate::data::placeholder(backend, 8),
+                            backend.placeholder(1),
+                            backend.placeholder(2),
+                            backend.placeholder(3),
+                            backend.placeholder(4),
+                            backend.placeholder(5),
+                            backend.placeholder(6),
+                            backend.placeholder(7),
+                            backend.placeholder(8),
                         ),
                         vec![
                             revision.into(),

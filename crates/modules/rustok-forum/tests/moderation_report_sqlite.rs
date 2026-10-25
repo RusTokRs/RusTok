@@ -49,7 +49,7 @@ impl StaticModuleSettingsReader for TestForumSettingsReader {
         module_slug: &str,
     ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
         Ok(Some(StaticModuleSettingsSnapshot {
-            enabled: module_slug == "forum",
+            enabled: Some(module_slug == "forum"),
             settings: without_posting_cooldown(serde_json::json!({ "use_reactions": false })),
         }))
     }
@@ -64,7 +64,7 @@ impl StaticModuleSettingsTransactionReader for TestForumSettingsReader {
         module_slug: &str,
     ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
         Ok(Some(StaticModuleSettingsSnapshot {
-            enabled: module_slug == "forum",
+            enabled: Some(module_slug == "forum"),
             settings: without_posting_cooldown(serde_json::json!({ "use_reactions": false })),
         }))
     }

@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 
-use sea_orm::{ConnectionTrait, Database, DbBackend, Statement, TransactionTrait, Value};
+use sea_orm::{ConnectionTrait, Database, Statement, TransactionTrait, Value};
 use semver::Version;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;

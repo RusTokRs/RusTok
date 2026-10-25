@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
+
+use crate::backend::SupportedBackend;
 
 /// Adds one durable execution claim and monotonic revision to each isolated
 /// module-build request. A broker redelivery may recover only an expired claim;
@@ -11,8 +13,9 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let connection = manager.get_connection();
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "ALTER TABLE module_build_requests ADD COLUMN revision BIGINT NOT NULL DEFAULT 1 CHECK (revision > 0)",
                 "ALTER TABLE module_build_requests ADD COLUMN execution_claim_id UUID NULL",
                 "ALTER TABLE module_build_requests ADD COLUMN lease_expires_at TIMESTAMPTZ NULL",
@@ -23,7 +26,7 @@ impl MigrationTrait for Migration {
                 "DROP INDEX module_build_requests_queue_idx",
                 "CREATE INDEX module_build_requests_queue_idx ON module_build_requests (status, lease_expires_at, created_at, request_id)",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "DROP INDEX module_build_requests_queue_idx",
                 "ALTER TABLE module_build_requests RENAME TO module_build_requests_before_execution_claims",
                 "CREATE TABLE module_build_requests (request_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, project_id TEXT NOT NULL CHECK (length(trim(project_id)) BETWEEN 1 AND 256), idempotency_key TEXT NOT NULL CHECK (length(trim(idempotency_key)) BETWEEN 1 AND 256), request_hash TEXT NOT NULL CHECK (length(request_hash) = 71), request JSON NOT NULL, result JSON NULL, result_hash TEXT NULL CHECK (result_hash IS NULL OR length(result_hash) = 71), attempt INTEGER NOT NULL CHECK (attempt > 0), revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0), status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed')), execution_claim_id TEXT NULL, lease_expires_at TEXT NULL, claimed_at TEXT NULL, created_at TEXT NOT NULL, completed_at TEXT NULL, UNIQUE (tenant_id, project_id, idempotency_key), CHECK ((status = 'queued' AND result IS NULL AND result_hash IS NULL AND execution_claim_id IS NULL AND lease_expires_at IS NULL AND claimed_at IS NULL AND completed_at IS NULL) OR (status = 'running' AND result IS NULL AND result_hash IS NULL AND execution_claim_id IS NOT NULL AND lease_expires_at IS NOT NULL AND claimed_at IS NOT NULL AND completed_at IS NULL) OR (status = 'completed' AND result IS NOT NULL AND result_hash IS NOT NULL AND execution_claim_id IS NULL AND lease_expires_at IS NULL AND claimed_at IS NOT NULL AND completed_at IS NOT NULL)))",
@@ -31,17 +34,12 @@ impl MigrationTrait for Migration {
                 "DROP TABLE module_build_requests_before_execution_claims",
                 "CREATE INDEX module_build_requests_queue_idx ON module_build_requests (status, lease_expires_at, created_at, request_id)",
             ],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "module build execution claim migration does not support database backend {backend:?}"
-                )));
-            }
         };
 
         for statement in statements {
             connection
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;
@@ -51,10 +49,10 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let connection = manager.get_connection();
-        let backend = manager.get_database_backend();
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
         if connection
             .query_one_raw(Statement::from_string(
-                backend,
+                backend.db_backend(),
                 "SELECT 1 FROM module_build_requests WHERE status = 'running' LIMIT 1".to_string(),
             ))
             .await?
@@ -67,7 +65,7 @@ impl MigrationTrait for Migration {
         }
 
         let statements: &[&str] = match backend {
-            DbBackend::Postgres => &[
+            SupportedBackend::Postgres => &[
                 "ALTER TABLE module_build_requests DROP CONSTRAINT module_build_requests_state_check",
                 "DROP INDEX module_build_requests_queue_idx",
                 "ALTER TABLE module_build_requests DROP CONSTRAINT module_build_requests_status_check",
@@ -78,7 +76,7 @@ impl MigrationTrait for Migration {
                 "ALTER TABLE module_build_requests ADD CONSTRAINT module_build_requests_status_check CHECK (status IN ('queued', 'completed'))",
                 "CREATE INDEX module_build_requests_queue_idx ON module_build_requests (created_at, request_id)",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "DROP INDEX module_build_requests_queue_idx",
                 "ALTER TABLE module_build_requests RENAME TO module_build_requests_with_execution_claims",
                 "CREATE TABLE module_build_requests (request_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, project_id TEXT NOT NULL CHECK (length(trim(project_id)) BETWEEN 1 AND 256), idempotency_key TEXT NOT NULL CHECK (length(trim(idempotency_key)) BETWEEN 1 AND 256), request_hash TEXT NOT NULL CHECK (length(request_hash) = 71), request JSON NOT NULL, result JSON NULL, result_hash TEXT NULL CHECK (result_hash IS NULL OR length(result_hash) = 71), attempt INTEGER NOT NULL CHECK (attempt > 0), status TEXT NOT NULL CHECK (status IN ('queued', 'completed')), created_at TEXT NOT NULL, completed_at TEXT NULL, UNIQUE (tenant_id, project_id, idempotency_key))",
@@ -86,12 +84,14 @@ impl MigrationTrait for Migration {
                 "DROP TABLE module_build_requests_with_execution_claims",
                 "CREATE INDEX module_build_requests_queue_idx ON module_build_requests (created_at, request_id)",
             ],
-            _ => unreachable!("the backend was validated above"),
         };
 
         for statement in statements {
             connection
-                .execute_raw(Statement::from_string(backend, (*statement).to_string()))
+                .execute_raw(Statement::from_string(
+                    backend.db_backend(),
+                    (*statement).to_string(),
+                ))
                 .await?;
         }
         Ok(())

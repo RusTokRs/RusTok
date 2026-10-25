@@ -1,6 +1,6 @@
 use sea_orm_migration::prelude::*;
 
-use sea_orm_migration::sea_orm::DatabaseBackend;
+use crate::backend::SupportedBackend;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -8,7 +8,8 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let sqlite = manager.get_database_backend() == DatabaseBackend::Sqlite;
+        let sqlite =
+            SupportedBackend::new(manager.get_database_backend())? == SupportedBackend::Sqlite;
         let alter_statements = [
             Table::alter()
                 .table(RegistryPublishRequests::Table)
@@ -146,7 +147,8 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let sqlite = manager.get_database_backend() == DatabaseBackend::Sqlite;
+        let sqlite =
+            SupportedBackend::new(manager.get_database_backend())? == SupportedBackend::Sqlite;
         let alter_statements = [
             Table::alter()
                 .table(RegistryPublishRequests::Table)

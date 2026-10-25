@@ -7,8 +7,8 @@
 
 use rustok_api::{ArtifactBindingExecutionAuditEntry, ArtifactUiContributionView};
 use rustok_modules::{
-    ArtifactUiProjectionError, InstalledModuleArtifact, ModuleControlPlane,
-    find_artifact_ui_action_binding,
+    ArtifactInstallationResolveError, ArtifactUiProjectionError, InstalledModuleArtifact,
+    ModuleControlPlane, find_artifact_ui_action_binding,
 };
 use rustok_rbac::SeaOrmArtifactPermissionAuthorizer;
 use uuid::Uuid;
@@ -31,7 +31,11 @@ pub(crate) async fn resolve_artifact_installation(
         .installation()
         .resolve_routed_installation(installation_id, tenant_id)
         .await
-        .map_err(|_| Error::NotFound)
+        .map_err(|error| match error {
+            ArtifactInstallationResolveError::Unavailable
+            | ArtifactInstallationResolveError::NotActiveSelection => Error::NotFound,
+            other => Error::Message(other.to_string()),
+        })
 }
 
 /// Checks the dynamic, admitted permission required for one artifact surface.

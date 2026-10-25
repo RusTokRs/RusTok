@@ -411,6 +411,7 @@ async fn setup_db() -> DatabaseConnection {
             module_slug TEXT NOT NULL,
             revision INTEGER NOT NULL DEFAULT 0,
             active_idempotency_key TEXT NULL,
+            active_claimed_at TEXT NULL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (tenant_id, module_slug),
@@ -600,7 +601,7 @@ async fn concurrent_toggle_requests_keep_consistent_state() {
         .expect("load state")
         .expect("state row exists");
 
-    assert!(matches!(state.enabled, true | false));
+    assert!(matches!(state.enabled, Some(true) | Some(false)));
     assert!(enable_calls.load(Ordering::SeqCst) <= 1);
     assert!(disable_calls.load(Ordering::SeqCst) <= 1);
 }
@@ -946,8 +947,9 @@ async fn hook_failure_with_actor_records_failed_operation_with_actor() {
         .await
         .expect("load billing state")
         .expect("billing state exists");
-    assert!(
+    assert_eq!(
         state.enabled,
+        Some(true),
         "pre-disable hook failure must keep previous committed state",
     );
 
@@ -1074,8 +1076,9 @@ async fn post_enable_failure_keeps_committed_state_and_marks_failed_operation() 
         .await
         .expect("load state")
         .expect("state row exists");
-    assert!(
+    assert_eq!(
         state.enabled,
+        Some(true),
         "post-hook failure must keep committed enabled state",
     );
 
@@ -1176,8 +1179,9 @@ async fn post_disable_failure_keeps_committed_state_and_marks_failed_operation()
         .await
         .expect("load state")
         .expect("state row exists");
-    assert!(
-        !state.enabled,
+    assert_eq!(
+        state.enabled,
+        Some(false),
         "post-hook failure must keep committed disabled state",
     );
 

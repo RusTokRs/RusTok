@@ -57,7 +57,7 @@ impl StaticModuleSettingsReader for BlogSettingsReader {
     ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
         Ok(
             (module_slug == "blog").then(|| StaticModuleSettingsSnapshot {
-                enabled: true,
+                enabled: Some(true),
                 settings: serde_json::json!({ "comments_mode": self.comments_mode }),
             }),
         )

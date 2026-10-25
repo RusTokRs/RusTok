@@ -259,7 +259,8 @@ async fn test_release_admission_intent_journal_lifecycle_sqlite() {
 
     let bound = ReleaseAdmissionIntentJournal::bind_committed_installation(
         &db,
-        idempotency_key,
+        &scope,
+        &context,
         installation_id,
     )
     .await

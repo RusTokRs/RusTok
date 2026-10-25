@@ -27,7 +27,8 @@ use crate::{
 pub enum ModuleTransitionState {
     /// Initial phase: validating DDL safety, settings compatibility, and epoch.
     Preflighting,
-    /// Conflict fences successfully acquired.
+    /// Deterministic conflict-fence set derived and recorded on the
+    /// checkpoint (recorded contract; see `conflict_fences` module docs).
     Fenced,
     /// Candidate payload is pre-staged on the node's non-serving standby slot.
     PreStaging,
@@ -45,7 +46,10 @@ pub enum ModuleTransitionState {
         failure_reason: String,
         recovered_at: DateTime<Utc>,
     },
-    /// Observation window elapsed and transition converged successfully.
+    /// Explicit, actor-authorized finalize attested the candidate and the
+    /// transition converged. (An elapsed observation window alone never
+    /// converges a transition: no health evidence is recorded while
+    /// observing, so the watchdog fails such checkpoints closed instead.)
     Converged { finalized_at: DateTime<Utc> },
     /// Terminal failure where automatic action is exhausted or forbidden; operator intervention required.
     FailedClosed { failure_reason: String },
@@ -160,7 +164,9 @@ impl ModuleTransitionCoordinator {
         &self.checkpoint.state
     }
 
-    /// Evaluates preflight, validates security epoch, acquires conflict fences, and starts the transition.
+    /// Evaluates preflight, validates the security epoch, derives and
+    /// records the deterministic conflict-fence set, and starts the
+    /// transition.
     pub fn start_transition(
         input: StartTransitionInput,
         security_registry: &SecurityEpochRegistry,

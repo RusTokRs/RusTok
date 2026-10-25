@@ -2,8 +2,8 @@
 
 use rustok_events::DomainEvent;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
-    TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
+    Value as SqlValue,
 };
 use uuid::Uuid;
 
@@ -53,7 +53,8 @@ where
         self.authorizer.authorize_export(&request).await?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, request.scope.tenant_id).await?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let namespace_revision = require_active_namespace(
             &transaction,
             &request.scope,
@@ -70,17 +71,17 @@ where
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND data_key LIKE {} ESCAPE '\\' AND data_key > {}
                      ORDER BY data_key ASC LIMIT {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
                 ),
                 vec![
-                    uuid_value(request.scope.tenant_id, backend),
-                    uuid_value(request.scope.data_owner_id, backend),
-                    uuid_value(request.scope.namespace_instance_id, backend),
+                    backend.uuid_value(request.scope.tenant_id),
+                    backend.uuid_value(request.scope.data_owner_id),
+                    backend.uuid_value(request.scope.namespace_instance_id),
                     prefix_pattern.clone().into(),
                     after_key.to_owned().into(),
                     query_limit.into(),
@@ -92,23 +93,27 @@ where
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND data_key LIKE {} ESCAPE '\\'
                      ORDER BY data_key ASC LIMIT {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
                 ),
                 vec![
-                    uuid_value(request.scope.tenant_id, backend),
-                    uuid_value(request.scope.data_owner_id, backend),
-                    uuid_value(request.scope.namespace_instance_id, backend),
+                    backend.uuid_value(request.scope.tenant_id),
+                    backend.uuid_value(request.scope.data_owner_id),
+                    backend.uuid_value(request.scope.namespace_instance_id),
                     prefix_pattern.into(),
                     query_limit.into(),
                 ],
             ),
         };
         let mut records = transaction
-            .query_all_raw(Statement::from_sql_and_values(backend, query, values))
+            .query_all_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                query,
+                values,
+            ))
             .await
             .map_err(storage_error)?
             .into_iter()
@@ -129,41 +134,41 @@ where
             i64::try_from(page.records.len()).map_err(|_| ArtifactDataError::ExportPrecondition)?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_data_exports
                      (export_id, tenant_id, data_owner_id, namespace_instance_id, policy_revision, namespace_revision,
                       actor_id, trace_id, correlation_id, idempotency_key, prefix, after_key, page_limit, reason,
                       exported_records, completed_at)
                      VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
-                    placeholder(backend, 8),
-                    placeholder(backend, 9),
-                    placeholder(backend, 10),
-                    placeholder(backend, 11),
-                    placeholder(backend, 12),
-                    placeholder(backend, 13),
-                    placeholder(backend, 14),
-                    placeholder(backend, 15),
-                    now_expression(backend),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
+                    backend.placeholder(8),
+                    backend.placeholder(9),
+                    backend.placeholder(10),
+                    backend.placeholder(11),
+                    backend.placeholder(12),
+                    backend.placeholder(13),
+                    backend.placeholder(14),
+                    backend.placeholder(15),
+                    backend.now_sql(),
                 ),
                 vec![
-                    uuid_value(export_id, backend),
-                    uuid_value(request.scope.tenant_id, backend),
-                    uuid_value(request.scope.data_owner_id, backend),
-                    uuid_value(request.scope.namespace_instance_id, backend),
+                    backend.uuid_value(export_id),
+                    backend.uuid_value(request.scope.tenant_id),
+                    backend.uuid_value(request.scope.data_owner_id),
+                    backend.uuid_value(request.scope.namespace_instance_id),
                     revision_value(request.scope.policy_revision)?,
                     revision_value(namespace_revision)?,
-                    uuid_value(request.context.actor_id, backend),
+                    backend.uuid_value(request.context.actor_id),
                     request.context.trace_id.clone().into(),
-                    uuid_value(request.context.correlation_id, backend),
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.context.correlation_id),
+                    backend.uuid_value(request.context.idempotency_key),
                     request.page.prefix.clone().into(),
                     request
                         .page

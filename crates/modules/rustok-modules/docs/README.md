@@ -877,6 +877,7 @@ materializes a downloaded OCI payload as an unbounded in-memory buffer.
 
 ## Related Documents
 
+- [Logic audit 2026-10-21](./logic-audit-2026-10-21.md)
 - [Implementation plan](./implementation-plan.md)
 - [Neutral sandbox ADR](../../../../DECISIONS/2026-07-11-neutral-sandbox-foundation.md)
 - [Module control-plane plan](../../../../docs/modules/module-control-plane-consolidation-plan.md)

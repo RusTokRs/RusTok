@@ -247,6 +247,49 @@ async fn record_delete_is_revisioned_idempotent_and_removes_indexes() {
         Some(export_context.trace_id.as_str())
     );
     let purge_installation_id = seed_retired_data_purge_installation(&database, &next_scope).await;
+    let upload_session_id = Uuid::new_v4();
+    let upload_chunk_key = "module-artifact-data/staging/purge-test-chunk";
+    database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO module_artifact_data_object_upload_sessions (
+                session_id, tenant_id, data_owner_id, namespace_instance_id, policy_revision,
+                object_name, content_type, expected_revision, idempotency_key, request_digest,
+                status, expires_at, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, 'pending.bin', 'application/octet-stream', 1,
+                ?6, ?7, 'open', '2099-01-01T00:00:00Z', '2026-10-23T00:00:00Z',
+                '2026-10-23T00:00:00Z')"
+                .to_string(),
+            vec![
+                upload_session_id.to_string().into(),
+                next_scope.tenant_id.to_string().into(),
+                next_scope.data_owner_id.to_string().into(),
+                next_scope.namespace_instance_id.to_string().into(),
+                i64::try_from(next_scope.policy_revision)
+                    .expect("policy revision fits SQLite integer")
+                    .into(),
+                Uuid::new_v4().to_string().into(),
+                crate::installation::sha256_digest(b"upload request").into(),
+            ],
+        ))
+        .await
+        .expect("pending upload session");
+    database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO module_artifact_data_object_upload_chunks (
+                tenant_id, session_id, sequence, storage_key, size_bytes, digest_sha256, created_at
+             ) VALUES (?1, ?2, 0, ?3, 1, ?4, '2026-10-23T00:00:00Z')"
+                .to_string(),
+            vec![
+                next_scope.tenant_id.to_string().into(),
+                upload_session_id.to_string().into(),
+                upload_chunk_key.to_string().into(),
+                crate::installation::sha256_digest(b"x").into(),
+            ],
+        ))
+        .await
+        .expect("pending upload chunk");
     let purge_request = ArtifactDataPurgeRequest {
         installation_id: purge_installation_id,
         expected_namespace_revision: 1,
@@ -284,6 +327,44 @@ async fn record_delete_is_revisioned_idempotent_and_removes_indexes() {
         .purge(purge_request.clone())
         .await
         .expect("purge data");
+    let upload_purge_state = database
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT
+                (SELECT COUNT(*) FROM module_artifact_data_object_upload_sessions
+                 WHERE tenant_id = ?1 AND session_id = ?2) AS session_count,
+                (SELECT COUNT(*) FROM module_artifact_data_object_upload_chunks
+                 WHERE tenant_id = ?1 AND storage_key = ?3) AS chunk_count,
+                (SELECT COUNT(*) FROM module_artifact_data_object_gc_candidates
+                 WHERE tenant_id = ?1 AND storage_key = ?3) AS gc_candidate_count"
+                .to_string(),
+            vec![
+                next_scope.tenant_id.to_string().into(),
+                upload_session_id.to_string().into(),
+                upload_chunk_key.to_string().into(),
+            ],
+        ))
+        .await
+        .expect("upload purge state query")
+        .expect("upload purge state");
+    assert_eq!(
+        upload_purge_state
+            .try_get::<i64>("", "session_count")
+            .expect("upload session count"),
+        0
+    );
+    assert_eq!(
+        upload_purge_state
+            .try_get::<i64>("", "chunk_count")
+            .expect("upload chunk count"),
+        0
+    );
+    assert_eq!(
+        upload_purge_state
+            .try_get::<i64>("", "gc_candidate_count")
+            .expect("upload GC candidate count"),
+        1
+    );
     assert_eq!(
         purge
             .purge(purge_request.clone())

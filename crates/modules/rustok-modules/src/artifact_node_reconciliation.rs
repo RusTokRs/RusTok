@@ -8,7 +8,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, QueryResult, Statement,
     TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
@@ -17,11 +17,12 @@ use uuid::Uuid;
 
 use rustok_events::DomainEvent;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ArtifactPayloadKind, ControlPlaneInfrastructure, ModuleCommandContext,
-    data::{now_expression, placeholder, uuid_from_row, uuid_value},
-    installation::{InstalledModuleArtifact, ModuleInstallationScope},
-    promotion::{digest_json, valid_digest, valid_reference},
+    data::uuid_from_row,
+    installation::{InstalledModuleArtifact, ModuleInstallationScope, valid_digest},
+    promotion::{digest_json, valid_reference},
     reconciliation::{
         ModuleDesiredObservedState, ModuleReconciliationEvidence, ModuleReconciliationFailure,
         ModuleReconciliationPhase,
@@ -142,12 +143,23 @@ pub struct ModuleArtifactNodeTopologySnapshot {
 /// Trusted owner seam for topology selection. The resolver may use deployment
 /// metadata, but it cannot inject artifact identity because the owner reloads
 /// every installation under its own transaction and locks it before writing.
+/// Failure of a [`ModuleArtifactNodeTopologyResolver`] port.
+#[derive(Debug, Error)]
+pub enum ModuleArtifactNodeTopologyResolveError {
+    #[error("deployment topology resolution is not supported by this port")]
+    Unsupported,
+    #[error("policy revision changed during topology resolution")]
+    PolicyRevisionChanged,
+    #[error("{0}")]
+    Store(String),
+}
+
 #[async_trait]
 pub trait ModuleArtifactNodeTopologyResolver: Send + Sync {
     async fn resolve(
         &self,
         policy_revision: &str,
-    ) -> Result<ModuleArtifactNodeTopologySnapshot, String>;
+    ) -> Result<ModuleArtifactNodeTopologySnapshot, ModuleArtifactNodeTopologyResolveError>;
 }
 
 /// Requests a fresh desired set after a policy, topology, or admitted artifact
@@ -424,8 +436,8 @@ impl ModuleArtifactNodeTopologyResolver for AgentPortOnlyTopologyResolver {
     async fn resolve(
         &self,
         _policy_revision: &str,
-    ) -> Result<ModuleArtifactNodeTopologySnapshot, String> {
-        Err("the artifact node agent port cannot resolve deployment topology".to_string())
+    ) -> Result<ModuleArtifactNodeTopologySnapshot, ModuleArtifactNodeTopologyResolveError> {
+        Err(ModuleArtifactNodeTopologyResolveError::Unsupported)
     }
 }
 
@@ -514,11 +526,11 @@ impl SeaOrmArtifactNodeReadiness {
         identity: &InstallationIdentity,
         policy_revision: &str,
     ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
         let row = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT reconciliation.reconciliation_id \
                      FROM module_artifact_node_reconciliation_state state \
@@ -573,25 +585,25 @@ impl SeaOrmArtifactNodeReadiness {
                            WHERE uninstall.installation_id = installation.installation_id \
                        ) \
                      LIMIT 1",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
-                    placeholder(backend, 8),
-                    placeholder(backend, 9),
-                    placeholder(backend, 10),
-                    placeholder(backend, 11),
-                    placeholder(backend, 12),
-                    placeholder(backend, 13),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
+                    backend.placeholder(8),
+                    backend.placeholder(9),
+                    backend.placeholder(10),
+                    backend.placeholder(11),
+                    backend.placeholder(12),
+                    backend.placeholder(13),
                 ),
                 vec![
                     RECONCILIATION_STATE_ID.into(),
                     policy_revision.to_string().into(),
-                    uuid_value(self.node_id, backend),
-                    uuid_value(installation_id, backend),
+                    backend.uuid_value(self.node_id),
+                    backend.uuid_value(installation_id),
                     identity.installation_scope.as_str().into(),
                     identity.release_digest.clone().into(),
                     identity.payload_digest.clone().into(),
@@ -667,6 +679,9 @@ where
             return Err(ModuleArtifactNodeReconciliationError::TopologyDigestMismatch);
         }
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction)
+            .await
+            .map_err(store_error)?;
         if let Some(operation) = reserve_operation(
             &transaction,
             command.context.idempotency_key,
@@ -799,6 +814,9 @@ where
         validate_assignment_claim(&command)?;
         self.authorizer.authorize_assignment_claim(&command).await?;
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction)
+            .await
+            .map_err(store_error)?;
         let state = load_state(&transaction, true).await?;
         let Some(reconciliation_id) = state.desired_id else {
             transaction.commit().await.map_err(store_error)?;
@@ -881,6 +899,9 @@ where
             ))
             .ok_or(ModuleArtifactNodeReconciliationError::LeaseOverflow)?;
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction)
+            .await
+            .map_err(store_error)?;
         heartbeat_assignment(&transaction, &command, &lease_expires_at, &now).await?;
         transaction.commit().await.map_err(store_error)?;
         Ok(ModuleArtifactNodeAssignmentHeartbeatReceipt {
@@ -913,6 +934,9 @@ where
             return replay_report(&operation);
         }
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction)
+            .await
+            .map_err(store_error)?;
         if let Some(operation) = reserve_operation(
             &transaction,
             command.idempotency_key,
@@ -1281,7 +1305,7 @@ pub enum ModuleArtifactNodeReconciliationError {
     #[error("artifact node reconciliation topology does not match the requested digest")]
     TopologyDigestMismatch,
     #[error("artifact node topology resolution failed: {0}")]
-    TopologyResolution(String),
+    TopologyResolution(#[from] ModuleArtifactNodeTopologyResolveError),
     #[error(
         "artifact node reconciliation state revision conflict: expected {expected}, current {current}"
     )]
@@ -1466,15 +1490,15 @@ async fn load_current_installation_identity(
     installation_id: Uuid,
     lock_row: bool,
 ) -> Result<InstallationIdentity, ModuleArtifactNodeReconciliationError> {
-    let backend = connection.get_database_backend();
-    let lock = if lock_row && backend == DbBackend::Postgres {
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
         ""
     };
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT installation.scope_kind, installation.manifest_digest, installation.payload_digest, \
                         installation.payload_kind, admission.media_type AS payload_media_type, \
@@ -1490,9 +1514,9 @@ async fn load_current_installation_identity(
                        SELECT 1 FROM module_artifact_uninstall_operations uninstall \
                        WHERE uninstall.installation_id = installation.installation_id \
                    ){lock}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(installation_id, backend)],
+            vec![backend.uuid_value(installation_id)],
         ))
         .await
         .map_err(store_error)?
@@ -1539,30 +1563,30 @@ async fn insert_reconciliation(
     topology: &ModuleArtifactNodeTopologySnapshot,
     command: &ModuleArtifactNodeReconciliationRequest,
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_artifact_node_reconciliations \
                  (reconciliation_id, predecessor_reconciliation_id, reconciliation_revision, \
                   topology_reference, topology_digest, policy_revision, target_assignment_count, \
                   status, requested_by, requested_at, status_changed_at) \
                  VALUES ({}, {}, {}, {}, {}, {}, {}, 'preparing', {}, {}, {})",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                now_expression(backend),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.now_sql(),
+                backend.now_sql(),
             ),
             vec![
-                uuid_value(reconciliation_id, backend),
-                optional_uuid_value(predecessor_reconciliation_id, backend),
+                backend.uuid_value(reconciliation_id),
+                backend.optional_uuid_value(predecessor_reconciliation_id),
                 revision_value(reconciliation_revision)?,
                 topology.topology_reference.clone().into(),
                 topology.topology_digest.clone().into(),
@@ -1570,7 +1594,7 @@ async fn insert_reconciliation(
                 i64::try_from(topology.assignments.len())
                     .map_err(|_| ModuleArtifactNodeReconciliationError::InvalidTopology)?
                     .into(),
-                uuid_value(command.context.actor_id, backend),
+                backend.uuid_value(command.context.actor_id),
             ],
         ))
         .await
@@ -1584,11 +1608,11 @@ async fn insert_assignments(
     policy_revision: &str,
     assignments: &[ResolvedAssignment],
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     for (ordinal, assignment) in assignments.iter().enumerate() {
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_node_reconciliation_assignments \
                      (reconciliation_id, node_id, installation_id, installation_scope, \
@@ -1596,26 +1620,26 @@ async fn insert_assignments(
                       dependency_graph_digest, capability_grant_revision, executor_abi, policy_revision, \
                       ordinal, observation_revision, phase) \
                      VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 0, 'pending')",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
-                    placeholder(backend, 8),
-                    placeholder(backend, 9),
-                    placeholder(backend, 10),
-                    placeholder(backend, 11),
-                    placeholder(backend, 12),
-                    placeholder(backend, 13),
-                    placeholder(backend, 14),
-                    placeholder(backend, 15),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
+                    backend.placeholder(8),
+                    backend.placeholder(9),
+                    backend.placeholder(10),
+                    backend.placeholder(11),
+                    backend.placeholder(12),
+                    backend.placeholder(13),
+                    backend.placeholder(14),
+                    backend.placeholder(15),
                 ),
                 vec![
-                    uuid_value(reconciliation_id, backend),
-                    uuid_value(assignment.target.node_id, backend),
-                    uuid_value(assignment.target.installation_id, backend),
+                    backend.uuid_value(reconciliation_id),
+                    backend.uuid_value(assignment.target.node_id),
+                    backend.uuid_value(assignment.target.installation_id),
                     assignment.identity.installation_scope.as_str().into(),
                     assignment.identity.release_digest.clone().into(),
                     assignment.identity.payload_digest.clone().into(),
@@ -1685,7 +1709,7 @@ async fn update_assignment(
     report_digest: &str,
     now: &DateTime<Utc>,
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let health_reference = command
         .health_evidence
         .as_ref()
@@ -1701,7 +1725,7 @@ async fn update_assignment(
         .map(|failure| failure.detail.clone());
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_artifact_node_reconciliation_assignments \
                  SET observation_revision = {}, phase = {}, observed_installation_scope = {}, \
@@ -1717,34 +1741,34 @@ async fn update_assignment(
                  WHERE reconciliation_id = {} AND node_id = {} AND installation_id = {} \
                    AND observation_revision = {} AND active_claim_id = {} \
                    AND claimed_by_agent = {} AND claim_expires_at >= {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                placeholder(backend, 9),
-                placeholder(backend, 10),
-                placeholder(backend, 11),
-                placeholder(backend, 12),
-                placeholder(backend, 13),
-                placeholder(backend, 14),
-                placeholder(backend, 15),
-                placeholder(backend, 16),
-                placeholder(backend, 17),
-                placeholder(backend, 18),
-                placeholder(backend, 19),
-                placeholder(backend, 20),
-                placeholder(backend, 21),
-                placeholder(backend, 22),
-                placeholder(backend, 23),
-                placeholder(backend, 24),
-                placeholder(backend, 25),
-                placeholder(backend, 26),
-                placeholder(backend, 27),
-                placeholder(backend, 28),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.placeholder(9),
+                backend.placeholder(10),
+                backend.placeholder(11),
+                backend.placeholder(12),
+                backend.placeholder(13),
+                backend.placeholder(14),
+                backend.placeholder(15),
+                backend.placeholder(16),
+                backend.placeholder(17),
+                backend.placeholder(18),
+                backend.placeholder(19),
+                backend.placeholder(20),
+                backend.placeholder(21),
+                backend.placeholder(22),
+                backend.placeholder(23),
+                backend.placeholder(24),
+                backend.placeholder(25),
+                backend.placeholder(26),
+                backend.placeholder(27),
+                backend.placeholder(28),
             ),
             vec![
                 revision_value(observation_revision)?,
@@ -1768,11 +1792,11 @@ async fn update_assignment(
                 report_digest.to_owned().into(),
                 now.to_owned().into(),
                 now.to_owned().into(),
-                uuid_value(command.reconciliation_id, backend),
-                uuid_value(command.node_id, backend),
-                uuid_value(command.installation_id, backend),
-                revision_value_allow_zero(command.expected_observation_revision)?,
-                uuid_value(command.claim_id, backend),
+                backend.uuid_value(command.reconciliation_id),
+                backend.uuid_value(command.node_id),
+                backend.uuid_value(command.installation_id),
+                revision_value(command.expected_observation_revision)?,
+                backend.uuid_value(command.claim_id),
                 command.agent_id.clone().into(),
                 now.to_owned().into(),
             ],
@@ -1789,17 +1813,17 @@ async fn load_phase_counts(
     connection: &impl ConnectionTrait,
     reconciliation_id: Uuid,
 ) -> Result<PhaseCounts, ModuleArtifactNodeReconciliationError> {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let rows = connection
         .query_all_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT phase, COUNT(*) AS count \
                  FROM module_artifact_node_reconciliation_assignments \
                  WHERE reconciliation_id = {} GROUP BY phase",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(reconciliation_id, backend)],
+            vec![backend.uuid_value(reconciliation_id)],
         ))
         .await
         .map_err(store_error)?;
@@ -1827,17 +1851,17 @@ async fn activate_healthy_assignments(
     transaction: &DatabaseTransaction,
     reconciliation_id: Uuid,
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_artifact_node_reconciliation_assignments \
                  SET phase = 'active' \
                  WHERE reconciliation_id = {} AND phase = 'healthy'",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(reconciliation_id, backend)],
+            vec![backend.uuid_value(reconciliation_id)],
         ))
         .await
         .map_err(store_error)?;
@@ -1851,37 +1875,37 @@ async fn update_reconciliation_status(
     next_status: ModuleArtifactNodeReconciliationStatus,
     failure: Option<&ModuleReconciliationFailure>,
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let (converged_at, failed_at) = match next_status {
         ModuleArtifactNodeReconciliationStatus::Converged => {
-            (now_expression(backend).to_string(), "NULL".to_string())
+            (backend.now_sql().to_string(), "NULL".to_string())
         }
         ModuleArtifactNodeReconciliationStatus::Failed
         | ModuleArtifactNodeReconciliationStatus::Degraded => {
-            ("NULL".to_string(), now_expression(backend).to_string())
+            ("NULL".to_string(), backend.now_sql().to_string())
         }
         _ => ("NULL".to_string(), "NULL".to_string()),
     };
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_artifact_node_reconciliations \
                  SET status = {}, status_changed_at = {}, converged_at = {converged_at}, \
                      failed_at = {failed_at}, failure_code = {}, failure_detail = {} \
                  WHERE reconciliation_id = {} AND status = {}",
-                placeholder(backend, 1),
-                now_expression(backend),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
+                backend.placeholder(1),
+                backend.now_sql(),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
             ),
             vec![
                 next_status.as_str().into(),
                 failure.map(|failure| failure.code.clone()).into(),
                 failure.map(|failure| failure.detail.clone()).into(),
-                uuid_value(reconciliation_id, backend),
+                backend.uuid_value(reconciliation_id),
                 expected_status.as_str().into(),
             ],
         ))
@@ -1897,18 +1921,18 @@ async fn supersede_reconciliation(
     transaction: &DatabaseTransaction,
     reconciliation_id: Uuid,
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_artifact_node_reconciliations \
                  SET status = 'superseded', status_changed_at = {} \
                  WHERE reconciliation_id = {} AND status = 'converged'",
-                now_expression(backend),
-                placeholder(backend, 1),
+                backend.now_sql(),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(reconciliation_id, backend)],
+            vec![backend.uuid_value(reconciliation_id)],
         ))
         .await
         .map_err(store_error)?;
@@ -1922,20 +1946,20 @@ async fn load_state<C: ConnectionTrait>(
     connection: &C,
     lock_row: bool,
 ) -> Result<ModuleDesiredObservedState, ModuleArtifactNodeReconciliationError> {
-    let backend = connection.get_database_backend();
-    let lock = if lock_row && backend == DbBackend::Postgres {
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
         ""
     };
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT revision, desired_reconciliation_id, observed_reconciliation_id \
                  FROM module_artifact_node_reconciliation_state \
                  WHERE state_id = {}{lock}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
             vec![RECONCILIATION_STATE_ID.into()],
         ))
@@ -1960,28 +1984,28 @@ async fn advance_state(
     desired_reconciliation_id: Option<Uuid>,
     observed_reconciliation_id: Option<Uuid>,
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_artifact_node_reconciliation_state \
                  SET revision = {}, desired_reconciliation_id = {}, observed_reconciliation_id = {}, \
                      updated_at = {} \
                  WHERE state_id = {} AND revision = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                now_expression(backend),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.now_sql(),
+                backend.placeholder(4),
+                backend.placeholder(5),
             ),
             vec![
                 revision_value(next_revision)?,
-                optional_uuid_value(desired_reconciliation_id, backend),
-                optional_uuid_value(observed_reconciliation_id, backend),
+                backend.optional_uuid_value(desired_reconciliation_id),
+                backend.optional_uuid_value(observed_reconciliation_id),
                 RECONCILIATION_STATE_ID.into(),
-                revision_value_allow_zero(expected_revision)?,
+                revision_value(expected_revision)?,
             ],
         ))
         .await
@@ -2001,31 +2025,31 @@ async fn load_reconciliation<C: ConnectionTrait>(
     reconciliation_id: Uuid,
     lock_row: bool,
 ) -> Result<ModuleArtifactNodeReconciliation, ModuleArtifactNodeReconciliationError> {
-    let backend = connection.get_database_backend();
-    let lock = if lock_row && backend == DbBackend::Postgres {
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
         ""
     };
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT reconciliation_id, predecessor_reconciliation_id, reconciliation_revision, \
                         topology_reference, topology_digest, policy_revision, target_assignment_count, \
                         status, requested_by, failure_code, failure_detail \
                  FROM module_artifact_node_reconciliations \
                  WHERE reconciliation_id = {}{lock}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(reconciliation_id, backend)],
+            vec![backend.uuid_value(reconciliation_id)],
         ))
         .await
         .map_err(store_error)?
         .ok_or(ModuleArtifactNodeReconciliationError::ReconciliationNotFound)?;
     let assignment_rows = connection
         .query_all_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT node_id, installation_id, installation_scope, release_digest, payload_digest, \
                         payload_kind, payload_media_type, \
@@ -2041,9 +2065,9 @@ async fn load_reconciliation<C: ConnectionTrait>(
                         active_claim_id, claimed_by_agent, claim_expires_at \
                  FROM module_artifact_node_reconciliation_assignments \
                  WHERE reconciliation_id = {} ORDER BY ordinal",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(reconciliation_id, backend)],
+            vec![backend.uuid_value(reconciliation_id)],
         ))
         .await
         .map_err(store_error)?;
@@ -2094,15 +2118,15 @@ async fn load_assignment<C: ConnectionTrait>(
     installation_id: Uuid,
     lock_row: bool,
 ) -> Result<ModuleArtifactNodeAssignment, ModuleArtifactNodeReconciliationError> {
-    let backend = connection.get_database_backend();
-    let lock = if lock_row && backend == DbBackend::Postgres {
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
         ""
     };
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT node_id, installation_id, installation_scope, release_digest, payload_digest, \
                         payload_kind, payload_media_type, \
@@ -2118,14 +2142,14 @@ async fn load_assignment<C: ConnectionTrait>(
                         active_claim_id, claimed_by_agent, claim_expires_at \
                  FROM module_artifact_node_reconciliation_assignments \
                  WHERE reconciliation_id = {} AND node_id = {} AND installation_id = {}{lock}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
             ),
             vec![
-                uuid_value(reconciliation_id, backend),
-                uuid_value(node_id, backend),
-                uuid_value(installation_id, backend),
+                backend.uuid_value(reconciliation_id),
+                backend.uuid_value(node_id),
+                backend.uuid_value(installation_id),
             ],
         ))
         .await
@@ -2141,15 +2165,15 @@ async fn load_next_assignment_for_node(
     agent_id: &str,
     now: &DateTime<Utc>,
 ) -> Result<Option<ModuleArtifactNodeAssignment>, ModuleArtifactNodeReconciliationError> {
-    let backend = transaction.get_database_backend();
-    let lock = if backend == DbBackend::Postgres {
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let lock = if backend == SupportedBackend::Postgres {
         " FOR UPDATE SKIP LOCKED"
     } else {
         ""
     };
     let row = transaction
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT node_id, installation_id, installation_scope, release_digest, payload_digest, \
                         payload_kind, payload_media_type, \
@@ -2171,17 +2195,17 @@ async fn load_next_assignment_for_node(
                  ORDER BY CASE WHEN claimed_by_agent = {} AND claim_expires_at >= {} THEN 0 ELSE 1 END, \
                           ordinal \
                  LIMIT 1{lock}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
             ),
             vec![
-                uuid_value(reconciliation_id, backend),
-                uuid_value(node_id, backend),
+                backend.uuid_value(reconciliation_id),
+                backend.uuid_value(node_id),
                 now.to_owned().into(),
                 agent_id.to_owned().into(),
                 now.to_owned().into(),
@@ -2204,10 +2228,10 @@ async fn claim_assignment(
     lease_expires_at: &DateTime<Utc>,
     now: &DateTime<Utc>,
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_artifact_node_reconciliation_assignments \
                  SET active_claim_id = {}, claimed_by_agent = {}, claim_expires_at = {} \
@@ -2215,23 +2239,23 @@ async fn claim_assignment(
                    AND phase IN ('pending', 'prepared', 'healthy', 'active') \
                    AND observation_revision = {} \
                    AND (active_claim_id IS NULL OR claim_expires_at < {})",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
             ),
             vec![
-                uuid_value(claim_id, backend),
+                backend.uuid_value(claim_id),
                 agent_id.to_owned().into(),
                 lease_expires_at.to_owned().into(),
-                uuid_value(reconciliation_id, backend),
-                uuid_value(assignment.node_id, backend),
-                uuid_value(assignment.installation_id, backend),
-                revision_value_allow_zero(assignment.observation_revision)?,
+                backend.uuid_value(reconciliation_id),
+                backend.uuid_value(assignment.node_id),
+                backend.uuid_value(assignment.installation_id),
+                revision_value(assignment.observation_revision)?,
                 now.to_owned().into(),
             ],
         ))
@@ -2249,22 +2273,22 @@ async fn heartbeat_assignment(
     lease_expires_at: &DateTime<Utc>,
     now: &DateTime<Utc>,
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_artifact_node_reconciliation_assignments \
                  SET claim_expires_at = {} \
                  WHERE active_claim_id = {} AND claimed_by_agent = {} AND claim_expires_at >= {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
             ),
             vec![
                 lease_expires_at.to_owned().into(),
-                uuid_value(command.claim_id, backend),
+                backend.uuid_value(command.claim_id),
                 command.agent_id.clone().into(),
                 now.to_owned().into(),
             ],
@@ -2279,7 +2303,7 @@ async fn heartbeat_assignment(
 
 fn assignment_from_row(
     row: &QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<ModuleArtifactNodeAssignment, ModuleArtifactNodeReconciliationError> {
     let ordinal: i64 = row.try_get("", "ordinal").map_err(store_error)?;
     let health_evidence = evidence_from_row(row)?;
@@ -2499,29 +2523,29 @@ async fn reserve_operation(
     principal_id: &str,
     context: Option<&ModuleCommandContext>,
 ) -> Result<Option<OperationRecord>, ModuleArtifactNodeReconciliationError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_artifact_node_reconciliation_operations \
                  (idempotency_key, operation_kind, request_digest, principal_id, trace_id, correlation_id, created_at) \
                  VALUES ({}, {}, {}, {}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.now_sql(),
             ),
             vec![
-                uuid_value(idempotency_key, backend),
+                backend.uuid_value(idempotency_key),
                 operation_kind.to_owned().into(),
                 request_digest.to_owned().into(),
                 principal_id.to_owned().into(),
                 context.map(|value| value.trace_id.clone()).into(),
-                optional_uuid_value(context.map(|value| value.correlation_id), backend),
+                backend.optional_uuid_value(context.map(|value| value.correlation_id)),
             ],
         ))
         .await
@@ -2548,10 +2572,10 @@ async fn load_operation<C: ConnectionTrait>(
     principal_id: &str,
     context: Option<&ModuleCommandContext>,
 ) -> Result<Option<OperationRecord>, ModuleArtifactNodeReconciliationError> {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let Some(row) = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT operation_kind, request_digest, principal_id, trace_id, correlation_id, reconciliation_id, \
                         reconciliation_revision, reconciliation_state_revision, reconciliation_status, \
@@ -2559,9 +2583,9 @@ async fn load_operation<C: ConnectionTrait>(
                         CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END AS completed \
                  FROM module_artifact_node_reconciliation_operations \
                  WHERE idempotency_key = {}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(idempotency_key, backend)],
+            vec![backend.uuid_value(idempotency_key)],
         ))
         .await
         .map_err(store_error)?
@@ -2657,10 +2681,10 @@ async fn complete_operation(
     idempotency_key: Uuid,
     completion: OperationCompletion,
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_artifact_node_reconciliation_operations \
                  SET reconciliation_id = {}, reconciliation_revision = {}, \
@@ -2668,30 +2692,30 @@ async fn complete_operation(
                      node_id = {}, installation_id = {}, observation_revision = {}, \
                      assignment_phase = {}, completed_at = {} \
                  WHERE idempotency_key = {} AND completed_at IS NULL",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                now_expression(backend),
-                placeholder(backend, 9),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.now_sql(),
+                backend.placeholder(9),
             ),
             vec![
-                uuid_value(completion.reconciliation_id, backend),
+                backend.uuid_value(completion.reconciliation_id),
                 revision_value(completion.reconciliation_revision)?,
                 revision_value(completion.reconciliation_state_revision)?,
                 completion.reconciliation_status.as_str().into(),
-                optional_uuid_value(completion.node_id, backend),
-                optional_uuid_value(completion.installation_id, backend),
+                backend.optional_uuid_value(completion.node_id),
+                backend.optional_uuid_value(completion.installation_id),
                 optional_revision_value(completion.observation_revision)?,
                 completion
                     .assignment_phase
                     .map(|phase| phase.as_str().to_string())
                     .into(),
-                uuid_value(idempotency_key, backend),
+                backend.uuid_value(idempotency_key),
             ],
         ))
         .await
@@ -2773,22 +2797,14 @@ fn valid_text(value: &str, maximum_bytes: usize) -> bool {
         && !value.chars().any(char::is_control)
 }
 
-fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> sea_orm::Value {
-    match (backend, value) {
-        (DbBackend::Postgres, value) => sea_orm::Value::Uuid(value),
-        (_, Some(value)) => value.to_string().into(),
-        (_, None) => sea_orm::Value::String(None),
-    }
-}
-
 fn optional_uuid_from_row(
     row: &QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Option<Uuid>, ModuleArtifactNodeReconciliationError> {
     match backend {
-        DbBackend::Postgres => row.try_get("", column).map_err(store_error),
-        _ => row
+        SupportedBackend::Postgres => row.try_get("", column).map_err(store_error),
+        SupportedBackend::Sqlite => row
             .try_get::<Option<String>>("", column)
             .map_err(store_error)?
             .map(|value| Uuid::parse_str(&value).map_err(store_error))
@@ -2800,12 +2816,6 @@ fn revision_value(value: u64) -> Result<sea_orm::Value, ModuleArtifactNodeReconc
     i64::try_from(value)
         .map(Into::into)
         .map_err(|_| ModuleArtifactNodeReconciliationError::RevisionOverflow)
-}
-
-fn revision_value_allow_zero(
-    value: u64,
-) -> Result<sea_orm::Value, ModuleArtifactNodeReconciliationError> {
-    revision_value(value)
 }
 
 fn optional_revision_value(
@@ -2912,7 +2922,8 @@ mod tests {
         async fn resolve(
             &self,
             _policy_revision: &str,
-        ) -> Result<ModuleArtifactNodeTopologySnapshot, String> {
+        ) -> Result<ModuleArtifactNodeTopologySnapshot, ModuleArtifactNodeTopologyResolveError>
+        {
             Ok(self.0.clone())
         }
     }

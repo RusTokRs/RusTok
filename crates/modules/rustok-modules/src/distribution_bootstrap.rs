@@ -4,20 +4,20 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::{DateTime, Utc};
 use ed25519_dalek::{Signature, VerifyingKey};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
-    TransactionTrait,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
+use crate::installation::{sha256_digest, valid_digest};
 use crate::{
     ControlPlaneInfrastructure, ModuleCommandContext, ModuleStaticDistributionBuildEvidence,
     ModuleStaticDistributionExecutorMode, ModuleStaticDistributionItem,
     ModuleStaticDistributionReleaseAdmission,
-    data::{now_expression, placeholder, uuid_from_row, uuid_value},
+    data::uuid_from_row,
     distribution::{
         advance_distribution_state, load_distribution_state,
         module_static_distribution_composition_digest,
@@ -28,7 +28,7 @@ use crate::{
         validate_admission,
     },
     promotion::{
-        normalize_native_entry_type, valid_cargo_package, valid_cas_source_reference, valid_digest,
+        normalize_native_entry_type, valid_cargo_package, valid_cas_source_reference,
         valid_reference,
     },
 };
@@ -310,6 +310,9 @@ impl SeaOrmModuleStaticDistributionBootstrapService {
 
         let payload = &command.receipt.payload;
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction)
+            .await
+            .map_err(store_error)?;
         reserve_bootstrap_import_operation(&transaction, &command.context, &request_digest).await?;
         let distribution_state = load_distribution_state(&transaction, true)
             .await
@@ -384,10 +387,10 @@ async fn insert_bootstrap_preparation(
     let preparation = &payload.preparation;
     let role_artifacts_json = serde_json::to_string(&preparation.evidence.roles)
         .map_err(|error| ModuleStaticDistributionReleaseError::Store(error.to_string()))?;
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_static_distribution_builds
                  (distribution_build_id, predecessor_build_id, composition_revision,
@@ -400,33 +403,33 @@ async fn insert_bootstrap_preparation(
                   test_evidence_digest, completion_digest, completed_at)
                  VALUES ({}, NULL, {}, {}, {}, {}, {}, {}, 'signed_bootstrap', {},
                          'succeeded', {}, {}, 0, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                placeholder(backend, 9),
-                placeholder(backend, 10),
-                placeholder(backend, 11),
-                placeholder(backend, 12),
-                placeholder(backend, 13),
-                placeholder(backend, 14),
-                placeholder(backend, 15),
-                placeholder(backend, 16),
-                placeholder(backend, 17),
-                placeholder(backend, 18),
-                placeholder(backend, 19),
-                placeholder(backend, 20),
-                placeholder(backend, 21),
-                placeholder(backend, 22),
-                placeholder(backend, 23),
-                placeholder(backend, 24),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.placeholder(9),
+                backend.placeholder(10),
+                backend.placeholder(11),
+                backend.placeholder(12),
+                backend.placeholder(13),
+                backend.placeholder(14),
+                backend.placeholder(15),
+                backend.placeholder(16),
+                backend.placeholder(17),
+                backend.placeholder(18),
+                backend.placeholder(19),
+                backend.placeholder(20),
+                backend.placeholder(21),
+                backend.placeholder(22),
+                backend.placeholder(23),
+                backend.placeholder(24),
             ),
             vec![
-                uuid_value(payload.preparation_id, backend),
+                backend.uuid_value(payload.preparation_id),
                 revision_value(preparation.composition_revision)?,
                 preparation.composition_digest.clone().into(),
                 preparation.platform_source_reference.clone().into(),
@@ -434,8 +437,8 @@ async fn insert_bootstrap_preparation(
                 preparation.toolchain_digest.clone().into(),
                 preparation.build_target.clone().into(),
                 receipt_digest.to_owned().into(),
-                uuid_value(actor_id, backend),
-                datetime_value(completed_at, backend),
+                backend.uuid_value(actor_id),
+                backend.datetime_value(completed_at),
                 preparation.evidence.bundle_reference.clone().into(),
                 preparation.evidence.bundle_root_digest.clone().into(),
                 preparation.evidence.role_set_digest.clone().into(),
@@ -449,7 +452,7 @@ async fn insert_bootstrap_preparation(
                 preparation.evidence.test_evidence_reference.clone().into(),
                 preparation.evidence.test_evidence_digest.clone().into(),
                 receipt_digest.to_owned().into(),
-                datetime_value(completed_at, backend),
+                backend.datetime_value(completed_at),
             ],
         ))
         .await
@@ -466,10 +469,10 @@ async fn insert_bootstrap_item(
     ordinal: usize,
     item: &ModuleStaticDistributionItem,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_static_distribution_items
                  (distribution_build_id, ordinal, promotion_id, promotion_revision, release_id,
@@ -477,16 +480,16 @@ async fn insert_bootstrap_item(
                   source_digest, dependency_lock_digest, executor_mode)
                  VALUES ({})",
                 (1..=13)
-                    .map(|index| placeholder(backend, index))
+                    .map(|index| backend.placeholder(index))
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
             vec![
-                uuid_value(preparation_id, backend),
+                backend.uuid_value(preparation_id),
                 i64::try_from(ordinal)
                     .map_err(|_| ModuleStaticDistributionReleaseError::InvalidCommand)?
                     .into(),
-                uuid_value(item.promotion_id, backend),
+                backend.uuid_value(item.promotion_id),
                 revision_value(item.promotion_revision)?,
                 item.release_id.clone().into(),
                 item.module_slug.clone().into(),
@@ -534,17 +537,17 @@ async fn load_bootstrap_import_operation<C: ConnectionTrait>(
     Option<ModuleStaticDistributionBootstrapImportReceipt>,
     ModuleStaticDistributionReleaseError,
 > {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT operation_kind, request_digest, actor_id, trace_id, correlation_id
                  FROM module_static_distribution_release_idempotency_keys
                  WHERE idempotency_key = {}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(context.idempotency_key, backend)],
+            vec![backend.uuid_value(context.idempotency_key)],
         ))
         .await
         .map_err(store_error)?;
@@ -603,27 +606,27 @@ async fn reserve_bootstrap_import_operation(
     context: &ModuleCommandContext,
     request_digest: &str,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_static_distribution_release_idempotency_keys
                  (idempotency_key, operation_kind, request_digest, actor_id, trace_id, correlation_id, created_at)
                  VALUES ({}, 'bootstrap_import', {}, {}, {}, {})
                  ON CONFLICT (idempotency_key) DO NOTHING",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.now_sql(),
             ),
             vec![
-                uuid_value(context.idempotency_key, backend),
+                backend.uuid_value(context.idempotency_key),
                 request_digest.to_owned().into(),
-                uuid_value(context.actor_id, backend),
+                backend.uuid_value(context.actor_id),
                 context.trace_id.clone().into(),
-                uuid_value(context.correlation_id, backend),
+                backend.uuid_value(context.correlation_id),
             ],
         ))
         .await
@@ -638,13 +641,6 @@ fn revision_value(value: u64) -> Result<sea_orm::Value, ModuleStaticDistribution
     i64::try_from(value)
         .map(Into::into)
         .map_err(|_| ModuleStaticDistributionReleaseError::RevisionOverflow)
-}
-
-fn datetime_value(value: DateTime<Utc>, backend: DbBackend) -> sea_orm::Value {
-    match backend {
-        DbBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(value)),
-        _ => value.to_rfc3339().into(),
-    }
 }
 
 fn distribution_error(
@@ -670,12 +666,6 @@ fn valid_hex_digest(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-}
-
-fn sha256_digest(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    format!("sha256:{}", hex::encode(hasher.finalize()))
 }
 
 #[cfg(test)]

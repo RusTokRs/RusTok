@@ -9,7 +9,10 @@ pub struct Model {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub module_slug: String,
-    pub enabled: bool,
+    /// Tri-state enablement intent: `None` records "no tenant intent"
+    /// (the module inherits the platform default); only an explicit
+    /// toggle stores `Some(true)`/`Some(false)`.
+    pub enabled: Option<bool>,
     pub settings: Json,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

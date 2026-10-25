@@ -7,6 +7,14 @@
 //!   retain predecessor capacity.
 //! - Wave-by-wave verification gate before widening the cohort.
 //! - Single-attempt wave rollback returning all mutated waves to their exact predecessor assignments.
+//!
+//! Status (2026-10-21): design-accepted, NOT wired into production
+//! composition. This is a pure in-memory coordinator: there is no durable
+//! rollout store, no node transport, and no health-evidence source, and
+//! `verify_wave` records the caller's attestation rather than observed
+//! evidence. A durable store plus real node and evidence adapters are
+//! required before any production claim (see
+//! docs/logic-audit-remediation-2026-10-21.md §5.4).
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

@@ -5,10 +5,9 @@ use bytes::Bytes;
 use object_store::path::Path;
 use rustok_storage::{ObjectKey, ObjectScope, ObjectZone};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
-    TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
+    Value as SqlValue,
 };
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::constants::*;
@@ -137,8 +136,7 @@ where
             .await
             .map_err(storage_error)?;
         if u64::try_from(data.len()).ok() != Some(stored.object.size_bytes)
-            || format!("sha256:{}", hex::encode(Sha256::digest(&data)))
-                != stored.object.digest_sha256
+            || crate::installation::sha256_digest(&data) != stored.object.digest_sha256
         {
             return Err(ArtifactDataError::ObjectIntegrity);
         }
@@ -196,10 +194,7 @@ where
             .map_err(storage_error)?;
         let uploaded_path = generated_key;
         if upload.data.len() as u64 != requested.size_bytes {
-            let _ = self
-                .storage
-                .objects
-                .delete(&Path::from(uploaded_path.as_str()))
+            delete_uploaded_object_best_effort(&self.storage, &Path::from(uploaded_path.as_str()))
                 .await;
             return Err(ArtifactDataError::ObjectIntegrity);
         }
@@ -207,19 +202,16 @@ where
         let transaction = match self.db.begin().await.map_err(storage_error) {
             Ok(transaction) => transaction,
             Err(error) => {
-                let _ = self
-                    .storage
-                    .objects
-                    .delete(&Path::from(uploaded_path.as_str()))
-                    .await;
+                delete_uploaded_object_best_effort(
+                    &self.storage,
+                    &Path::from(uploaded_path.as_str()),
+                )
+                .await;
                 return Err(error);
             }
         };
         if let Err(error) = configure_tenant_scope(&transaction, scope.tenant_id).await {
-            let _ = self
-                .storage
-                .objects
-                .delete(&Path::from(uploaded_path.as_str()))
+            delete_uploaded_object_best_effort(&self.storage, &Path::from(uploaded_path.as_str()))
                 .await;
             return Err(error);
         }
@@ -236,21 +228,17 @@ where
         {
             Ok(stored) => stored,
             Err(error) => {
-                let _ = self
-                    .storage
-                    .objects
-                    .delete(&Path::from(uploaded_path.as_str()))
-                    .await;
+                delete_uploaded_object_best_effort(
+                    &self.storage,
+                    &Path::from(uploaded_path.as_str()),
+                )
+                .await;
                 return Err(error);
             }
         };
         transaction.commit().await.map_err(storage_error)?;
         if stored.storage_key != uploaded_path {
-            let _ = self
-                .storage
-                .objects
-                .delete(&Path::from(uploaded_path))
-                .await;
+            delete_uploaded_object_best_effort(&self.storage, &Path::from(uploaded_path)).await;
         }
         Ok(stored.object)
     }
@@ -262,8 +250,11 @@ where
     ) -> Result<ArtifactDataObjectDeleteResult, ArtifactDataError> {
         scope.validate()?;
         validate_artifact_data_key(&request.name)?;
-        if request.expected_revision == 0 || request.idempotency_key.is_nil() {
-            return Err(ArtifactDataError::InvalidObject);
+        if request.idempotency_key.is_nil() {
+            return Err(ArtifactDataError::InvalidIdempotencyKey);
+        }
+        if request.expected_revision == 0 {
+            return Err(ArtifactDataError::RevisionConflict);
         }
         self.authorizer
             .authorize_data(
@@ -276,7 +267,8 @@ where
 
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         ensure_active_namespace(&transaction, scope, backend).await?;
         if let Some(result) =
             find_artifact_data_object_delete_operation(&transaction, scope, &request).await?
@@ -293,21 +285,21 @@ where
         }
         let deleted = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "DELETE FROM module_artifact_data_objects
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND object_name = {} AND revision = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
                 ),
                 vec![
-                    uuid_value(scope.tenant_id, backend),
-                    uuid_value(scope.data_owner_id, backend),
-                    uuid_value(scope.namespace_instance_id, backend),
+                    backend.uuid_value(scope.tenant_id),
+                    backend.uuid_value(scope.data_owner_id),
+                    backend.uuid_value(scope.namespace_instance_id),
                     request.name.clone().into(),
                     revision_value(request.expected_revision)?,
                 ],
@@ -344,7 +336,8 @@ where
             .await?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let limit = i64::from(page.limit) + 1;
         let prefix = format!("{}%", escape_like_prefix(&page.prefix));
         let (query, values) = match page.after_key {
@@ -355,17 +348,17 @@ where
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND object_name LIKE {} ESCAPE '\\' AND object_name > {}
                      ORDER BY object_name ASC LIMIT {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
                 ),
                 vec![
-                    uuid_value(scope.tenant_id, backend),
-                    uuid_value(scope.data_owner_id, backend),
-                    uuid_value(scope.namespace_instance_id, backend),
+                    backend.uuid_value(scope.tenant_id),
+                    backend.uuid_value(scope.data_owner_id),
+                    backend.uuid_value(scope.namespace_instance_id),
                     prefix.clone().into(),
                     after_name.into(),
                     limit.into(),
@@ -378,23 +371,27 @@ where
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND object_name LIKE {} ESCAPE '\\'
                      ORDER BY object_name ASC LIMIT {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
                 ),
                 vec![
-                    uuid_value(scope.tenant_id, backend),
-                    uuid_value(scope.data_owner_id, backend),
-                    uuid_value(scope.namespace_instance_id, backend),
+                    backend.uuid_value(scope.tenant_id),
+                    backend.uuid_value(scope.data_owner_id),
+                    backend.uuid_value(scope.namespace_instance_id),
                     prefix.into(),
                     limit.into(),
                 ],
             ),
         };
         let mut objects = transaction
-            .query_all_raw(Statement::from_sql_and_values(backend, query, values))
+            .query_all_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                query,
+                values,
+            ))
             .await
             .map_err(storage_error)?
             .into_iter()
@@ -426,7 +423,8 @@ where
     ) -> Result<Option<ArtifactDataObject>, ArtifactDataError> {
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         ensure_active_namespace(&transaction, scope, backend).await?;
         let operation =
             find_artifact_data_object_operation(&transaction, scope, upload.idempotency_key)

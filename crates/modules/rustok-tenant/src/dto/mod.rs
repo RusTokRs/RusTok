@@ -34,6 +34,8 @@ pub struct TenantModuleResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub module_slug: String,
-    pub enabled: bool,
+    /// Recorded tenant enablement intent, or `None` when the platform
+    /// default applies (tri-state `tenant_modules.enabled`).
+    pub enabled: Option<bool>,
     pub settings: serde_json::Value,
 }

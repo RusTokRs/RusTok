@@ -17,6 +17,7 @@ use rustok_api::{
 };
 use rustok_sandbox::{CapabilityName, RHAI_SOURCE_MEDIA_TYPE, SandboxExecutorKind};
 
+use crate::installation::valid_digest;
 use crate::{artifact_schema::validates_ui_contribution, build::ModuleBuildRequest};
 
 /// The current immutable descriptor contract. Schema documents are bundled in
@@ -580,6 +581,13 @@ impl ModuleArtifactDescriptor {
     }
 
     fn validate_declaration(&self) -> Result<(), ModuleArtifactError> {
+        // Core status is granted exclusively by platform composition (the
+        // static registry / composition manifest). An artifact payload must
+        // never be able to assert it: a Core definition is auto-enabled and
+        // cannot be disabled by a tenant.
+        if self.module_kind == ArtifactModuleKind::Core {
+            return Err(ModuleArtifactError::CoreModuleKindNotAllowed);
+        }
         if !is_valid_module_slug(&self.slug) {
             return Err(ModuleArtifactError::InvalidSlug(self.slug.clone()));
         }
@@ -698,6 +706,21 @@ impl ModuleArtifactDescriptor {
                         previous_http.method == http.method && previous_http.path == http.path
                     })
                 })
+            {
+                return Err(ModuleArtifactError::InvalidBinding(binding.id.clone()));
+            }
+            // Lifecycle kinds are resolved by kind alone, so at most one
+            // binding may declare each: a second would be silently shadowed
+            // by the first at dispatch time and never execute.
+            if matches!(
+                binding.kind,
+                ModuleRuntimeBindingKind::PreEnable
+                    | ModuleRuntimeBindingKind::PostEnable
+                    | ModuleRuntimeBindingKind::PreDisable
+                    | ModuleRuntimeBindingKind::PostDisable
+            ) && self.bindings[..index]
+                .iter()
+                .any(|previous| previous.kind == binding.kind)
             {
                 return Err(ModuleArtifactError::InvalidBinding(binding.id.clone()));
             }
@@ -1321,6 +1344,10 @@ impl ArtifactReleaseDraft {
 pub enum ModuleArtifactError {
     #[error("artifact slug `{0}` must be a short snake_case identifier")]
     InvalidSlug(String),
+    #[error(
+        "artifact module kind `core` is reserved for platform composition and cannot be declared by an artifact"
+    )]
+    CoreModuleKindNotAllowed,
     #[error("artifact version is not valid semantic versioning: {0}")]
     InvalidVersion(String),
     #[error("artifact descriptor schema version `{0}` is unsupported")]
@@ -1395,14 +1422,6 @@ pub enum ModuleArtifactError {
     ForkVersionNotIncremented { parent: String, received: String },
     #[error("forked artifact source and payload digests must both change")]
     ForkDigestNotChanged,
-}
-
-fn valid_digest(value: &str) -> bool {
-    value.len() == 71
-        && value.starts_with("sha256:")
-        && value[7..]
-            .chars()
-            .all(|character| character.is_ascii_hexdigit())
 }
 
 /// Validates an admitted event subscription. A terminal wildcard is permitted
@@ -1791,6 +1810,16 @@ mod tests {
         assert!(matches!(
             descriptor.validate(),
             Err(ModuleArtifactError::InvalidDependencyVersionRequirement { .. })
+        ));
+    }
+
+    #[test]
+    fn descriptor_rejects_artifact_asserted_core_kind() {
+        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        descriptor.module_kind = ArtifactModuleKind::Core;
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::CoreModuleKindNotAllowed)
         ));
     }
 
@@ -2347,6 +2376,46 @@ mod tests {
             .as_mut()
             .expect("HTTP contract")
             .path = "/outside-the-platform-route".to_string();
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::InvalidBinding(_))
+        ));
+    }
+
+    #[test]
+    fn duplicate_lifecycle_kind_bindings_are_rejected() {
+        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        descriptor.permissions = vec![ArtifactPermissionDescriptor {
+            key: "sample_module.lifecycle.manage".to_string(),
+            localizations: vec![permission_localization("Manage lifecycle")],
+        }];
+        let input_schema = schema_document("lifecycle_input");
+        let output_schema = schema_document("lifecycle_output");
+        let input_digest = input_schema.digest.clone();
+        let output_digest = output_schema.digest.clone();
+        let lifecycle_binding = |id: &str| ModuleRuntimeBinding {
+            id: id.to_string(),
+            kind: ModuleRuntimeBindingKind::PreEnable,
+            entrypoint: "lifecycle.pre_enable".to_string(),
+            input_schema_digest: input_digest.clone(),
+            output_schema_digest: output_digest.clone(),
+            permission: "sample_module.lifecycle.manage".to_string(),
+            idempotency: ModuleBindingIdempotency::Required,
+            limit_profile: "lifecycle".to_string(),
+            capabilities: Vec::new(),
+            event_topics: Vec::new(),
+            schedule: None,
+            http: None,
+        };
+        descriptor.schema_documents = vec![input_schema, output_schema];
+        descriptor.bindings.push(lifecycle_binding("pre_enable"));
+        assert!(descriptor.validate().is_ok());
+
+        // A second binding for the same lifecycle kind would be resolved by
+        // kind alone at dispatch time and silently never run.
+        descriptor
+            .bindings
+            .push(lifecycle_binding("pre_enable_shadow"));
         assert!(matches!(
             descriptor.validate(),
             Err(ModuleArtifactError::InvalidBinding(_))

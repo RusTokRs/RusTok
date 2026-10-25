@@ -2,8 +2,8 @@
 
 use async_trait::async_trait;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
-    TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
+    Value as SqlValue,
 };
 use uuid::Uuid;
 
@@ -102,17 +102,18 @@ where
             .await?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT data_key, value, revision FROM module_artifact_data
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} AND data_key = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
                 ),
                 scope_values(scope, backend, key)?,
             ))
@@ -208,8 +209,14 @@ where
     ) -> Result<ArtifactDataDeleteResult, ArtifactDataError> {
         scope.validate()?;
         validate_artifact_data_key(&request.key)?;
-        if request.expected_revision == 0 || request.idempotency_key.is_nil() {
+        if request.idempotency_key.is_nil() {
             return Err(ArtifactDataError::InvalidIdempotencyKey);
+        }
+        // Stored revisions start at 1, so a zero expectation can never
+        // match a live row; report it as the conflict it is instead of
+        // blaming the idempotency key.
+        if request.expected_revision == 0 {
+            return Err(ArtifactDataError::RevisionConflict);
         }
         self.authorizer
             .authorize_data(
@@ -222,7 +229,8 @@ where
 
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         ensure_active_namespace(&transaction, scope, backend).await?;
         if let Some(result) =
             find_artifact_data_delete_operation(&transaction, scope, &request).await?
@@ -233,15 +241,15 @@ where
 
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT data_key, value, revision FROM module_artifact_data
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND data_key = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
                 ),
                 scope_values(scope, backend, &request.key)?,
             ))
@@ -254,21 +262,21 @@ where
         }
         let deleted = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "DELETE FROM module_artifact_data
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND data_key = {} AND revision = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
                 ),
                 vec![
-                    uuid_value(scope.tenant_id, backend),
-                    uuid_value(scope.data_owner_id, backend),
-                    uuid_value(scope.namespace_instance_id, backend),
+                    backend.uuid_value(scope.tenant_id),
+                    backend.uuid_value(scope.data_owner_id),
+                    backend.uuid_value(scope.namespace_instance_id),
                     request.key.clone().into(),
                     revision_value(request.expected_revision)?,
                 ],
@@ -299,7 +307,8 @@ where
             .await?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let query_limit = i64::from(page.limit) + 1;
         let prefix_pattern = format!("{}%", escape_like_prefix(&page.prefix));
         let (query, values) = match page.after_key {
@@ -309,17 +318,17 @@ where
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND data_key LIKE {} ESCAPE '\\' AND data_key > {}
                      ORDER BY data_key ASC LIMIT {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
                 ),
                 vec![
-                    uuid_value(scope.tenant_id, backend),
-                    uuid_value(scope.data_owner_id, backend),
-                    uuid_value(scope.namespace_instance_id, backend),
+                    backend.uuid_value(scope.tenant_id),
+                    backend.uuid_value(scope.data_owner_id),
+                    backend.uuid_value(scope.namespace_instance_id),
                     prefix_pattern.clone().into(),
                     after_key.into(),
                     query_limit.into(),
@@ -331,23 +340,27 @@ where
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND data_key LIKE {} ESCAPE '\\'
                      ORDER BY data_key ASC LIMIT {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
                 ),
                 vec![
-                    uuid_value(scope.tenant_id, backend),
-                    uuid_value(scope.data_owner_id, backend),
-                    uuid_value(scope.namespace_instance_id, backend),
+                    backend.uuid_value(scope.tenant_id),
+                    backend.uuid_value(scope.data_owner_id),
+                    backend.uuid_value(scope.namespace_instance_id),
                     prefix_pattern.into(),
                     query_limit.into(),
                 ],
             ),
         };
         let mut records = transaction
-            .query_all_raw(Statement::from_sql_and_values(backend, query, values))
+            .query_all_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                query,
+                values,
+            ))
             .await
             .map_err(storage_error)?
             .into_iter()
@@ -391,7 +404,8 @@ where
             .await?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         validate_artifact_data_index_contract(
             &transaction,
             scope,
@@ -418,19 +432,19 @@ where
                        AND indexed.namespace_instance_id = {} AND indexed.index_name = {}
                        AND indexed.index_value = {} AND data.data_key LIKE {} ESCAPE '\\'
                        AND data.data_key > {} ORDER BY data.data_key ASC LIMIT {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
-                    placeholder(backend, 8),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
+                    backend.placeholder(8),
                 ),
                 vec![
-                    uuid_value(scope.tenant_id, backend),
-                    uuid_value(scope.data_owner_id, backend),
-                    uuid_value(scope.namespace_instance_id, backend),
+                    backend.uuid_value(scope.tenant_id),
+                    backend.uuid_value(scope.data_owner_id),
+                    backend.uuid_value(scope.namespace_instance_id),
                     query.index.into(),
                     index_value.clone().into(),
                     prefix_pattern.clone().into(),
@@ -451,18 +465,18 @@ where
                        AND indexed.namespace_instance_id = {} AND indexed.index_name = {}
                        AND indexed.index_value = {} AND data.data_key LIKE {} ESCAPE '\\'
                      ORDER BY data.data_key ASC LIMIT {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
                 ),
                 vec![
-                    uuid_value(scope.tenant_id, backend),
-                    uuid_value(scope.data_owner_id, backend),
-                    uuid_value(scope.namespace_instance_id, backend),
+                    backend.uuid_value(scope.tenant_id),
+                    backend.uuid_value(scope.data_owner_id),
+                    backend.uuid_value(scope.namespace_instance_id),
                     query.index.into(),
                     index_value.into(),
                     prefix_pattern.into(),
@@ -471,7 +485,11 @@ where
             ),
         };
         let mut records = transaction
-            .query_all_raw(Statement::from_sql_and_values(backend, statement, values))
+            .query_all_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                statement,
+                values,
+            ))
             .await
             .map_err(storage_error)?
             .into_iter()

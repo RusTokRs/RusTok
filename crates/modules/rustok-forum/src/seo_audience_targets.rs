@@ -726,7 +726,7 @@ mod tests {
         ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
             assert_eq!(slug, "forum");
             Ok(Some(StaticModuleSettingsSnapshot {
-                enabled: true,
+                enabled: Some(true),
                 settings: serde_json::json!({"allow_anonymous_reading": self.0}),
             }))
         }

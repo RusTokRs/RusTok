@@ -1,7 +1,8 @@
 use rustok_api::ModuleOperationRecoveryPlanView;
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use thiserror::Error;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ModuleCommandContext, ModuleExecutionDispatcher, ModuleLifecycleHookPhase,
     ModuleOperationIssue, ModuleOperationJournal, ModuleOperationRecord,
@@ -62,6 +63,11 @@ impl ModuleOperationRecoveryPlan {
         override_state: Option<ModuleOperationOverrideState>,
     ) -> Self {
         let issue = match (operation.status, operation.error_message.as_deref()) {
+            // Typed outcome recorded by the executor since the
+            // committed/hook-failed status split.
+            (ModuleOperationStatus::CommittedHookFailed, _) => ModuleOperationIssue::PostHookFailed,
+            // Legacy rows: post-hook failures were recorded as `failed` with
+            // a `post-hook:` message prefix before the status split.
             (ModuleOperationStatus::Failed, Some(message)) if message.starts_with("post-hook:") => {
                 ModuleOperationIssue::PostHookFailed
             }
@@ -272,8 +278,16 @@ pub(crate) async fn retry_failed_post_hook_operation(
             .await
             {
                 let message = format!("recovery-state: {error}");
-                let _ = ModuleOperationJournal::mark_failed(db, operation.id, &message).await;
-                return Err(ModuleOperationRecoveryError::Persistence(error.to_string()));
+                let journal_result =
+                    ModuleOperationJournal::mark_failed(db, operation.id, &message).await;
+                let persistence = match journal_result {
+                    Ok(()) => error.to_string(),
+                    Err(journal_error) => format!(
+                        "{error} (additionally, marking the operation failed did not \
+                         persist: {journal_error})"
+                    ),
+                };
+                return Err(ModuleOperationRecoveryError::Persistence(persistence));
             }
             operation
         }
@@ -307,6 +321,14 @@ pub(crate) async fn retry_failed_post_hook_operation(
     ModuleOperationJournal::mark_committed(db, operation.id)
         .await
         .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
+    if plan.status == crate::ModuleOperationStatus::CommittedHookFailed {
+        // The original operation's state was already committed; the hook has
+        // now succeeded, so resolve it instead of leaving it in the
+        // attention-needed list forever.
+        ModuleOperationJournal::mark_committed(db, plan.operation_id)
+            .await
+            .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
+    }
     Ok(operation)
 }
 
@@ -314,19 +336,19 @@ pub(crate) async fn operation_override_state<C: ConnectionTrait>(
     db: &C,
     operation_id: uuid::Uuid,
 ) -> Result<Option<ModuleOperationOverrideState>, ModuleOperationStoreError> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(store_database_error)?;
     let sql = match backend {
-        DbBackend::Postgres => {
+        SupportedBackend::Postgres => {
             "SELECT previous_override_enabled, requested_override_enabled \
              FROM module_operation_override_states WHERE operation_id = $1 LIMIT 1"
         }
-        _ => {
+        SupportedBackend::Sqlite => {
             "SELECT previous_override_enabled, requested_override_enabled \
              FROM module_operation_override_states WHERE operation_id = ?1 LIMIT 1"
         }
     };
     db.query_one_raw(Statement::from_sql_and_values(
-        backend,
+        backend.db_backend(),
         sql,
         vec![operation_id.into()],
     ))
@@ -351,21 +373,21 @@ pub(crate) async fn record_operation_override_state<C: ConnectionTrait>(
     previous_override_enabled: Option<bool>,
     requested_override_enabled: Option<bool>,
 ) -> Result<(), ModuleOperationStoreError> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(store_database_error)?;
     let sql = match backend {
-        DbBackend::Postgres => {
+        SupportedBackend::Postgres => {
             "INSERT INTO module_operation_override_states \
              (operation_id, previous_override_enabled, requested_override_enabled) \
              VALUES ($1, $2, $3)"
         }
-        _ => {
+        SupportedBackend::Sqlite => {
             "INSERT INTO module_operation_override_states \
              (operation_id, previous_override_enabled, requested_override_enabled) \
              VALUES (?1, ?2, ?3)"
         }
     };
     db.execute_raw(Statement::from_sql_and_values(
-        backend,
+        backend.db_backend(),
         sql,
         vec![
             operation_id.into(),
@@ -383,25 +405,30 @@ pub(crate) async fn read_tenant_override_enabled<C: ConnectionTrait>(
     tenant_id: uuid::Uuid,
     module_slug: &str,
 ) -> Result<Option<bool>, ModuleOperationStoreError> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(store_database_error)?;
     let sql = match backend {
-        DbBackend::Postgres => {
+        SupportedBackend::Postgres => {
             "SELECT enabled FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
         }
-        _ => "SELECT enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1",
+        SupportedBackend::Sqlite => {
+            "SELECT enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
+        }
     };
-    db.query_one_raw(Statement::from_sql_and_values(
-        backend,
-        sql,
-        vec![
-            crate::operation_store::uuid_query_value(backend, tenant_id),
-            module_slug.into(),
-        ],
-    ))
-    .await
-    .map_err(store_database_error)?
-    .map(|row| row.try_get("", "enabled").map_err(store_database_error))
-    .transpose()
+    let intent = db
+        .query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            sql,
+            vec![backend.uuid_value(tenant_id), module_slug.into()],
+        ))
+        .await
+        .map_err(store_database_error)?
+        .map(|row| {
+            row.try_get::<Option<bool>>("", "enabled")
+                .map_err(store_database_error)
+        })
+        .transpose()?;
+    // No row and a row without recorded intent both mean "no override".
+    Ok(intent.flatten())
 }
 
 pub(crate) async fn apply_tenant_override_enabled<C: ConnectionTrait>(
@@ -411,20 +438,24 @@ pub(crate) async fn apply_tenant_override_enabled<C: ConnectionTrait>(
     requested_override_enabled: Option<bool>,
 ) -> Result<Option<TenantModuleStateRecord>, ModuleOperationStoreError> {
     let Some(enabled) = requested_override_enabled else {
-        let backend = db.get_database_backend();
+        let backend =
+            SupportedBackend::new(db.get_database_backend()).map_err(store_database_error)?;
         let sql = match backend {
-            DbBackend::Postgres => {
-                "DELETE FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2"
+            // Clearing the override returns the tenant to the platform
+            // default; the row and its settings survive (tri-state intent).
+            SupportedBackend::Postgres => {
+                "UPDATE tenant_modules SET enabled = NULL, updated_at = NOW() \
+                 WHERE tenant_id = $1 AND module_slug = $2"
             }
-            _ => "DELETE FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2",
+            SupportedBackend::Sqlite => {
+                "UPDATE tenant_modules SET enabled = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now') \
+                 WHERE tenant_id = ?1 AND module_slug = ?2"
+            }
         };
         db.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             sql,
-            vec![
-                crate::operation_store::uuid_query_value(backend, tenant_id),
-                module_slug.into(),
-            ],
+            vec![backend.uuid_value(tenant_id), module_slug.into()],
         ))
         .await
         .map_err(store_database_error)?;

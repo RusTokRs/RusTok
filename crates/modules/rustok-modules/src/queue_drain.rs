@@ -9,10 +9,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::{
-    ModuleCommandContext,
-    data::{configure_tenant_scope, now_expression, placeholder, uuid_value},
-};
+use crate::backend::SupportedBackend;
+use crate::{ModuleCommandContext, data::configure_tenant_scope};
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ArtifactQueueDrainError {
@@ -76,12 +74,13 @@ impl ArtifactQueueDrainService {
             .await
             .map_err(storage_error)?;
 
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
 
         // 1. Drain pending event deliveries
         let drained_events_result = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_event_deliveries \
                      SET status = 'dead_letter', dead_lettered_at = {}, \
@@ -92,14 +91,14 @@ impl ArtifactQueueDrainService {
                          WHERE tenant_id = {} AND installation_id = {} AND status = 'pending' \
                          LIMIT {} \
                      )",
-                    now_expression(backend),
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
+                    backend.now_sql(),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
                     limit,
                 ),
                 vec![
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(request.installation_id),
                 ],
             ))
             .await
@@ -109,7 +108,7 @@ impl ArtifactQueueDrainService {
         // 2. Drain pending schedule deliveries
         let drained_schedules_result = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_schedule_deliveries \
                      SET status = 'cancelled', cancelled_at = {}, \
@@ -120,14 +119,14 @@ impl ArtifactQueueDrainService {
                          WHERE tenant_id = {} AND installation_id = {} AND status = 'pending' \
                          LIMIT {} \
                      )",
-                    now_expression(backend),
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
+                    backend.now_sql(),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
                     limit,
                 ),
                 vec![
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(request.installation_id),
                 ],
             ))
             .await
@@ -137,16 +136,16 @@ impl ArtifactQueueDrainService {
         // 3. Query remaining pending deliveries
         let remaining_events_row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT COUNT(*) AS count FROM module_artifact_event_deliveries \
                      WHERE tenant_id = {} AND installation_id = {} AND status = 'pending'",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
                 ),
                 vec![
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(request.installation_id),
                 ],
             ))
             .await
@@ -154,28 +153,35 @@ impl ArtifactQueueDrainService {
 
         let remaining_schedules_row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT COUNT(*) AS count FROM module_artifact_schedule_deliveries \
                      WHERE tenant_id = {} AND installation_id = {} AND status = 'pending'",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
                 ),
                 vec![
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.installation_id, backend),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(request.installation_id),
                 ],
             ))
             .await
             .map_err(storage_error)?;
 
+        // A COUNT(*) probe always yields exactly one row; a missing row or
+        // failed decode is a storage defect, never evidence that the queue
+        // is empty. Masking it as 0 would certify a drained queue that may
+        // still hold pending work.
         let remaining_events: i64 = remaining_events_row
-            .and_then(|r| r.try_get("", "count").ok())
-            .unwrap_or(0);
+            .ok_or_else(|| storage_error("remaining event count query returned no row"))?
+            .try_get("", "count")
+            .map_err(storage_error)?;
         let remaining_schedules: i64 = remaining_schedules_row
-            .and_then(|r| r.try_get("", "count").ok())
-            .unwrap_or(0);
-        let remaining_pending = (remaining_events + remaining_schedules) as u64;
+            .ok_or_else(|| storage_error("remaining schedule count query returned no row"))?
+            .try_get("", "count")
+            .map_err(storage_error)?;
+        let remaining_pending =
+            u64::try_from(remaining_events + remaining_schedules).map_err(storage_error)?;
 
         transaction.commit().await.map_err(storage_error)?;
 

@@ -1,8 +1,6 @@
 //! Author signature evidence, build attestations, and platform admission recording.
 
-use sea_orm::{
-    ConnectionTrait, DatabaseTransaction, DbBackend, Statement, TransactionTrait, Value,
-};
+use sea_orm::{ConnectionTrait, DatabaseTransaction, Statement, TransactionTrait, Value};
 
 use super::admissions::*;
 use super::helpers::*;
@@ -59,14 +57,14 @@ impl SeaOrmModuleGovernanceService {
         command: ModulePlatformAdmissionCommand,
     ) -> Result<ModulePublicationEvidenceResult, ModuleGovernanceError> {
         command.validate()?;
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
         let artifact_origin = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT artifact_origin FROM registry_publish_requests WHERE id = {}",
-                    placeholder(backend, 1),
+                    backend.placeholder(1),
                 ),
                 vec![command.request_id.clone().into()],
             ))
@@ -89,17 +87,20 @@ impl SeaOrmModuleGovernanceService {
         author_signature: Option<&ModuleAuthorSignatureEvidenceCommand>,
     ) -> Result<ModulePublicationEvidenceResult, ModuleGovernanceError> {
         let tx = self.db.begin().await.map_err(store_error)?;
-        let backend = tx.get_database_backend();
-        let mark = |n| placeholder(backend, n);
-        let now = database_now(backend);
-        let request_lock = if backend == DbBackend::Postgres {
+        crate::backend::set_platform_scope(&tx)
+            .await
+            .map_err(store_error)?;
+        let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
+        let mark = |n| backend.placeholder(n);
+        let now = backend.now_sql();
+        let request_lock = if backend == SupportedBackend::Postgres {
             " FOR UPDATE"
         } else {
             ""
         };
         let request = tx
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT slug, version, revision, status, artifact_origin, artifact_checksum_sha256, \
                             CAST(requested_by_principal AS TEXT) AS requested_by_principal, \
@@ -219,7 +220,7 @@ impl SeaOrmModuleGovernanceService {
         let evidence_id = self.infrastructure.prefixed_id("rpe");
         let inserted = tx
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO registry_publication_evidence \
                  (id, request_id, authority, subject_digest_sha256, evidence_reference, \
@@ -271,7 +272,7 @@ impl SeaOrmModuleGovernanceService {
         if inserted.rows_affected() == 0 {
             let existing = tx
                 .query_one_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "SELECT id FROM registry_publication_evidence \
                          WHERE request_id = {} AND evidence_digest_sha256 = {}",
@@ -332,7 +333,7 @@ impl SeaOrmModuleGovernanceService {
         }
         let request_updated = tx
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
                      WHERE id = {} AND revision = {}",
@@ -356,7 +357,7 @@ impl SeaOrmModuleGovernanceService {
             .await?);
         }
         tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
                  (id, slug, request_id, release_id, event_type, actor_principal, \
@@ -425,15 +426,15 @@ impl SeaOrmModuleGovernanceService {
 
 pub(crate) async fn load_publication_evidence_contract(
     transaction: &DatabaseTransaction,
-    backend: DbBackend,
+    backend: SupportedBackend,
     request_id: &str,
     authority: ModulePublicationEvidenceAuthority,
     subject_digest_sha256: &str,
 ) -> Result<(String, String), ModuleGovernanceError> {
-    let mark = |position| placeholder(backend, position);
+    let mark = |position| backend.placeholder(position);
     let row = transaction
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT evidence_reference, evidence_digest_sha256 \
                  FROM registry_publication_evidence \

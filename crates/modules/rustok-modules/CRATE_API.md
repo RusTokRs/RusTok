@@ -1,44 +1,124 @@
-# rustok-modules / CRATE_API
+# `rustok-modules` crate API
+
+`rustok-modules` is the platform-owned control plane for module artifact identity,
+marketplace publication, admission, installation, lifecycle, static distribution,
+and effective tenant policy. This file is the crate-level contract included in
+its root Rust documentation. The implementation modules remain private unless
+explicitly listed below or re-exported from `src/lib.rs`.
 
 ## Public Modules
-`artifact`, `artifact_capability_router`, `artifact_cas`, `authoring`, `build`, `data_backfill`, `data_copier`, `data_snapshot`, `dynamic_lifecycle`, `marketplace`, `module`, `oci`, `policy`, `promotion`, `runtime`, `secrets`, `settings`, `trust`.
 
-## Primary Public Types and Signatures
-- `pub struct ModulesModule`: Core platform module registration and migration provider.
-- `pub struct ArtifactPackageDescriptor`: Metadata and integrity manifest for distribution packages.
-- `pub struct ModuleLifecycle`: State machine coordinating installed, active, disabled, and upgrade states.
-- `pub struct ModuleRegistryService`: Module marketplace catalog and package discovery.
-- `pub struct PolicyEngine`: Cryptographic verification of signatures, provenance, and trust policies.
+The explicit public modules are:
+
+- `module` and `migrations`;
+- `data_backfill`, `data_copier`, `data_object_migration`,
+  `data_post_purge_recovery`, `data_snapshot_intents`,
+  `data_snapshot_readiness`, and `data_upgrade`;
+- `executor_readiness`, `external_prebuilt_ingress`, `gc`, `oci_admission`,
+  `operations_tool`, `operator`, `queue_drain`, `source_object`,
+  `static_settings_translation_read`, and `wave_rollout`.
+
+`ModulesModule` is also re-exported at the crate root. Only explicitly listed
+modules and root re-exports form the supported public surface.
+
+## Primary Public Types and Operations
+
+- `ModulesModule` implements the platform module and migration-source contracts
+  and registers the artifact-event and schedule-delivery workers.
+- `ModuleArtifactDescriptor`, `ArtifactReleaseDraft`, `ArtifactRelease`, and
+  `OciArtifactReference` carry immutable artifact identity and release lineage.
+- `ModuleInstaller`, `ArtifactRuntime`, `ArtifactCommandBindingRequest`, and
+  `ArtifactHttpBindingRequest` admit and dispatch exact installed artifacts.
+- `ModuleEffectivePolicy` and `SharedModuleEffectivePolicyReader` provide the
+  owner-issued, redacted availability decision.
+- `ModuleMarketplaceCatalog` and `ModuleGovernanceLifecycleSnapshot` expose
+  transport-neutral marketplace and governance reads.
+- `ModuleBuildResultReader`, `ModuleAuthoringBuildCommand`, and
+  `ModuleAuthoringPublishCommand` bind authoring and publication to immutable
+  build evidence.
+- `SeaOrmModuleStaticDistributionRolloutService`,
+  `SeaOrmModuleArtifactSecurityService`, `SeaOrmArtifactSecretUseService`,
+  `SeaOrmArtifactDataSnapshotService`, `SeaOrmModulePromotionService`, and
+  `SeaOrmModuleStaticDistributionReleaseService` own their respective durable
+  state transitions.
 
 ## Invariants
-- **Digest-addressed immutability**: All module artifacts are verified against cryptographic content hashes (SHA-256) before extraction, publication, or execution.
-- **Fail-closed admission**: Unsigned, untrusted, or mismatched module packages are rejected prior to schema migration or dynamic execution.
-- **Dependency graph acyclicity**: Module dependency resolution strictly detects and rejects circular dependencies.
+
+- Artifact `(slug, version)` identity is immutable; content and release evidence
+  are digest-pinned and verified before admission or execution.
+- Registry publication, platform installation, and tenant enablement are
+  separate owner decisions.
+- Lifecycle, policy, security, promotion, and retention mutations use typed
+  authorization, revision/CAS, and idempotency contracts where required; durable
+  state and outbox evidence are committed atomically.
+- Runtime execution uses admitted, verified content and an isolated sandbox; it
+  does not fetch mutable registry references at execution time.
+- Secret values and private authorization material do not cross artifact
+  capability or browser-facing contracts.
 
 ## Platform Capability Bindings
-- **rustok-core**: Module lifecycle traits (`RusToKModule`), migration traits (`MigrationSource`), and base error infrastructure
-- **rustok-api**: Host runtime context and worker handler traits (`ModuleWorkHandler`, `ModuleWorkItem`)
-- **rustok-runtime**: Worker task registrations (`ModuleWorkRegistrations`) and instance filesystem layout
-- **rustok-events**: Canonical event envelope and contract validation
-- **rustok-outbox**: Transactional event dispatching and durable command idempotency receipts
+
+This crate consumes the following platform-owned capabilities through their
+contracts:
+
+- `rustok-api` — host/runtime context, typed ports, tenant and actor context,
+  and transport-neutral API errors;
+- `rustok-core` — module lifecycle, migration-source, and core domain contracts;
+- `rustok-events` — canonical event envelopes and event-contract validation;
+- `rustok-outbox` — transactional event writing for owner commands;
+- `rustok-runtime` — host runtime composition and worker registrations;
+- `rustok-sandbox` — isolated artifact execution and capability-broker contracts;
+- `rustok-secrets` — host-composed secret resolution and handle contracts;
+- `rustok-storage` — owner-scoped durable object storage.
+
+The deterministic source-archive implementation is supplied by
+`rustok-build-source`; it is a supporting library rather than a second module
+control plane.
 
 ## Domain Collaborations
-- **All platform and domain modules**: Canonical module registration, activation toggles, and dependency resolution
-- **rustok-tenant**: Tenant-level module enablement overlays and scoped configuration
+
+- `alloy` uses the owner build-result and publication-evidence contracts to
+  materialize and publish source-backed releases; it does not own registry
+  identity, catalog projections, or mutable OCI references.
+- `apps/server` is the composition host. It supplies persistence, storage,
+  authorization, and transport adapters and mounts owner contracts; it does not
+  own marketplace or tenant-policy decisions.
+- Artifact execution delegates to `rustok-sandbox`; worker processes use the
+  owner-issued build, verification, distribution, and delivery contracts rather
+  than querying private module-control-plane tables.
 
 ## Minimum Contract Set
 
 ### Input DTOs/Commands
-- `ModuleInstallCommand`: Command installing or upgrading an artifact package from a registered source.
-- `ModuleToggleCommand`: Command activating or disabling an installed module.
-- `ModulePublicationCommand`: Command publishing a module artifact to the platform registry.
+
+Public command and request families include `OciReleaseAdmissionCommand`,
+`ModuleStaticPromotionRequestCommand`, `ModuleTransitionFinalizeCommand`,
+`ArtifactCommandBindingRequest`, `ArtifactHttpBindingRequest`,
+`ModuleAuthoringBuildCommand`, and `ModuleAuthoringPublishCommand`. Read surfaces
+include `ModuleEffectivePolicyReader` and `ModuleMarketplaceCatalog`.
 
 ### Domain Invariants
-- Cryptographic provenance and signatures must be verified before any local storage or database state mutation.
-- Module toggles and promotions commit atomically within database transaction boundaries.
+
+Admission and execution are bound to exact artifact, release, installation,
+tenant, and capability evidence. Tenant policy is an owner decision, not a
+projection reconstructed from tenant rows. Retention holds, transition
+checkpoints, and recovery receipts preserve exact identity and revision across
+retries and recovery.
 
 ### Events / Outbox Side Effects
-- Emits `ModuleInstalledEvent`, `ModuleActivatedEvent`, `ModuleDisabledEvent`, `ModuleUpgradedEvent` via `rustok-outbox`.
+
+Commands that require durable event effects use the transactional event writer
+provided through `ControlPlaneInfrastructure` in the same transaction as their
+state and evidence. `ModulesModule` registers the canonical artifact-event and
+schedule-delivery workers. There is no module-local event bus or synthetic
+success event path.
 
 ### Errors / Failure Codes
-- Strongly-typed `ModuleError`, `ArtifactError`, `PolicyError`, and `RegistryError` identifying failure causes without masking.
+
+Failures remain typed at their owning boundary. Public examples include
+`ModuleControlPlaneError`, `ModuleArtifactError`, `ModuleInstallationError`,
+`ModuleEffectivePolicyError`, `ModuleGovernanceError`,
+`ModuleBuildProtocolError`, `OciReleaseAdmissionError`, `ArtifactDataError`, and
+`ModuleStaticDistributionError`. Adapters preserve source errors rather than
+collapsing operational, persisted-evidence, policy, or validation failures into
+one generic result.

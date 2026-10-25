@@ -1,7 +1,5 @@
 use sea_orm_migration::prelude::*;
 
-use super::m20250101_000001_create_tenants::Tenants;
-
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
@@ -25,12 +23,11 @@ impl MigrationTrait for Migration {
                             .string_len(64)
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(TenantModules::Enabled)
-                            .boolean()
-                            .not_null()
-                            .default(true),
-                    )
+                    // Tri-state enablement intent: NULL records "no tenant
+                    // intent" (the module inherits the platform default);
+                    // only an explicit toggle stores true/false. A settings
+                    // save must never freeze a default into intent.
+                    .col(ColumnDef::new(TenantModules::Enabled).boolean().null())
                     .col(
                         ColumnDef::new(TenantModules::Settings)
                             .json_binary()
@@ -161,4 +158,14 @@ enum ModuleStaticTenantLifecycle {
     ActiveIdempotencyKey,
     CreatedAt,
     UpdatedAt,
+}
+
+/// Platform-core table reference used only as a foreign-key target. The
+/// `tenants` table itself is owned by `rustok-migrations`
+/// (`m20250101_000001_create_tenants`), which precedes this migration in
+/// the globally name-sorted server migrator.
+#[derive(Iden)]
+enum Tenants {
+    Table,
+    Id,
 }

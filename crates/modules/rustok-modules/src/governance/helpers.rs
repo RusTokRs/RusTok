@@ -1,9 +1,8 @@
 //! Low-level database formatting, hashing, and JSON column helpers.
 
 use rustok_storage::{DigestObjectKey, ObjectScope};
-use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, QueryResult, Statement, Value};
+use sea_orm::{ConnectionTrait, DatabaseTransaction, QueryResult, Statement};
 use sha2::{Digest, Sha256};
-use uuid::Uuid;
 
 use super::*;
 use crate::build::ModuleBuildPublicationReceipt;
@@ -31,22 +30,22 @@ pub(crate) fn optional_json_text(
 
 pub(crate) async fn governance_owner_principal_for_slug(
     transaction: &DatabaseTransaction,
-    backend: DbBackend,
+    backend: SupportedBackend,
     slug: &str,
     lock: bool,
 ) -> Result<Option<serde_json::Value>, ModuleGovernanceError> {
-    let row_lock = if lock && backend == DbBackend::Postgres {
+    let row_lock = if lock && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
         ""
     };
     let row = transaction
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT CAST(owner_principal AS TEXT) AS owner_principal \
                  FROM registry_module_owners WHERE slug = {}{row_lock}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
             vec![slug.to_string().into()],
         ))
@@ -85,15 +84,15 @@ where
 
 pub(crate) async fn current_publish_request_revision(
     transaction: &DatabaseTransaction,
-    backend: DbBackend,
+    backend: SupportedBackend,
     request_id: &str,
 ) -> Result<i64, ModuleGovernanceError> {
     transaction
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT revision FROM registry_publish_requests WHERE id = {}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
             vec![request_id.to_string().into()],
         ))
@@ -105,7 +104,7 @@ pub(crate) async fn current_publish_request_revision(
 
 pub(crate) async fn publish_request_revision_conflict(
     transaction: &DatabaseTransaction,
-    backend: DbBackend,
+    backend: SupportedBackend,
     request_id: &str,
     expected_revision: i64,
 ) -> Result<ModuleGovernanceError, ModuleGovernanceError> {
@@ -141,30 +140,6 @@ pub(crate) fn optional_timestamp(
     row.try_get::<Option<chrono::DateTime<chrono::Utc>>>("", column)
         .map(|value| value.map(|value| value.to_rfc3339()))
         .map_err(store_error)
-}
-
-pub(crate) fn placeholder(backend: sea_orm::DbBackend, position: usize) -> String {
-    if backend == sea_orm::DbBackend::Postgres {
-        format!("${position}")
-    } else {
-        format!("?{position}")
-    }
-}
-
-pub(crate) fn database_now(backend: sea_orm::DbBackend) -> &'static str {
-    if backend == sea_orm::DbBackend::Postgres {
-        "NOW()"
-    } else {
-        "datetime('now')"
-    }
-}
-
-pub(crate) fn registry_uuid_value(value: Uuid, backend: sea_orm::DbBackend) -> Value {
-    if backend == sea_orm::DbBackend::Postgres {
-        Value::Uuid(Some(value))
-    } else {
-        value.to_string().into()
-    }
 }
 
 pub(crate) fn store_error(error: impl std::fmt::Display) -> ModuleGovernanceError {

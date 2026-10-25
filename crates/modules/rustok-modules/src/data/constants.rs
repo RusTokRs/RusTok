@@ -12,6 +12,10 @@ pub(crate) const MAX_ARTIFACT_DATA_NAMESPACE_OBJECTS: u64 = 1_024;
 pub(crate) const MAX_ARTIFACT_DATA_NAMESPACE_OBJECT_BYTES: u64 = 256 * 1024 * 1024;
 pub(crate) const MAX_ARTIFACT_DATA_NAMESPACE_UPLOAD_SESSIONS: u64 = 16;
 pub(crate) const MAX_ARTIFACT_DATA_NAMESPACE_STAGING_BYTES: u64 = 64 * 1024 * 1024;
+/// Bounds per-session chunk rows independently of payload bytes; otherwise
+/// one-byte chunks could create tens of millions of database rows under the
+/// staging-byte quota alone.
+pub(crate) const MAX_ARTIFACT_OBJECT_UPLOAD_CHUNKS_PER_SESSION: u64 = 1_024;
 pub(crate) const MAX_ARTIFACT_OBJECT_CONTENT_TYPE_BYTES: usize = 128;
 pub(crate) const MAX_SANDBOX_ARTIFACT_OBJECT_BYTES: usize = 44 * 1024;
 pub(crate) const MAX_ARTIFACT_OBJECT_GC_BATCH_SIZE: u32 = 100;

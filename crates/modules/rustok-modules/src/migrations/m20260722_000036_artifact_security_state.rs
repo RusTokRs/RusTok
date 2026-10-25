@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
+
+use crate::backend::SupportedBackend;
 
 /// Adds global quarantine/revocation state for immutable artifact releases.
 /// This state is deliberately separate from tenant enablement and registry
@@ -10,8 +12,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE module_artifact_security_states (\
                     module_slug TEXT NOT NULL CHECK (length(trim(module_slug)) BETWEEN 1 AND 128),\
                     module_version TEXT NOT NULL CHECK (length(trim(module_version)) BETWEEN 1 AND 128),\
@@ -40,7 +43,7 @@ impl MigrationTrait for Migration {
                            (completed_at IS NOT NULL AND receipt_json IS NOT NULL))\
                 )",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "CREATE TABLE module_artifact_security_states (\
                     module_slug TEXT NOT NULL CHECK (length(trim(module_slug)) BETWEEN 1 AND 128),\
                     module_version TEXT NOT NULL CHECK (length(trim(module_version)) BETWEEN 1 AND 128),\
@@ -66,17 +69,12 @@ impl MigrationTrait for Migration {
                     CHECK ((completed_at IS NULL AND receipt_json IS NULL) OR (completed_at IS NOT NULL AND receipt_json IS NOT NULL))\
                 )",
             ],
-            backend => {
-                return Err(DbErr::Custom(format!(
-                    "artifact security migration does not support {backend:?}"
-                )));
-            }
         };
         for statement in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;
@@ -85,6 +83,7 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
         for table in [
             "module_artifact_security_operations",
             "module_artifact_security_states",
@@ -92,7 +91,7 @@ impl MigrationTrait for Migration {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     format!("DROP TABLE IF EXISTS {table}"),
                 ))
                 .await?;

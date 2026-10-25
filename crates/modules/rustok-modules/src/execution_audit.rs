@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, Statement, TransactionTrait, Value as SqlValue,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -11,7 +11,9 @@ use rustok_sandbox::{
     SandboxSubject,
 };
 
-use crate::data::{configure_tenant_scope, placeholder, uuid_value};
+use crate::backend::SupportedBackend;
+use crate::data::configure_tenant_scope;
+use crate::installation::valid_digest;
 
 /// Durable, redacted execution audit adapter for installed module artifacts.
 ///
@@ -64,25 +66,25 @@ impl SeaOrmArtifactBindingExecutionAuditReader {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let rows = transaction
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT CAST(execution_id AS TEXT) AS execution_id, status, \
-                     CAST(started_at AS TEXT) AS started_at, \
-                     CAST(finished_at AS TEXT) AS finished_at, duration_ms, error_code \
+                     started_at, finished_at, duration_ms, error_code \
                      FROM module_artifact_execution_audit \
                      WHERE tenant_id = {} AND installation_id = {} AND binding_id = {} \
                      ORDER BY started_at DESC, execution_id DESC LIMIT {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
                 ),
                 vec![
-                    uuid_value(tenant_id, backend),
-                    uuid_value(installation_id, backend),
+                    backend.uuid_value(tenant_id),
+                    backend.uuid_value(installation_id),
                     binding_id.to_string().into(),
                     i64::from(limit).into(),
                 ],
@@ -90,7 +92,9 @@ impl SeaOrmArtifactBindingExecutionAuditReader {
             .await
             .map_err(storage_error)?;
         transaction.commit().await.map_err(storage_error)?;
-        rows.into_iter().map(audit_entry_from_row).collect()
+        rows.into_iter()
+            .map(|row| audit_entry_from_row(row, backend))
+            .collect()
     }
 }
 
@@ -99,9 +103,9 @@ impl SeaOrmArtifactExecutionObserver {
         Self { db }
     }
 
-    async fn persist(&self, record: &ExecutionRecord) -> Result<(), ()> {
+    async fn persist(&self, record: &ExecutionRecord) -> SandboxResult<()> {
         if record.execution_id.is_nil() || record.context.execution_id != record.execution_id {
-            return Err(());
+            return Err(audit_error("execution id is nil or inconsistent"));
         }
         let SandboxSubject::ModuleArtifact {
             installation_id,
@@ -110,7 +114,7 @@ impl SeaOrmArtifactExecutionObserver {
             digest,
         } = &record.subject
         else {
-            return Err(());
+            return Err(audit_error("execution subject is not a module artifact"));
         };
         if installation_id.is_nil()
             || slug.trim().is_empty()
@@ -134,34 +138,42 @@ impl SeaOrmArtifactExecutionObserver {
                 .as_ref()
                 .is_some_and(|code| code.len() > 96)
         {
-            return Err(());
+            return Err(audit_error("execution record identity or labels are invalid"));
         }
 
-        let transaction = self.db.begin().await.map_err(|_| ())?;
-        if let Some(tenant_id) = record.context.tenant_id {
-            configure_tenant_scope(&transaction, tenant_id)
-                .await
-                .map_err(|_| ())?;
+        let transaction = self.db.begin().await.map_err(audit_error)?;
+        match record.context.tenant_id {
+            Some(tenant_id) => {
+                configure_tenant_scope(&transaction, tenant_id)
+                    .await
+                    .map_err(audit_error)?;
+            }
+            None => {
+                crate::backend::set_platform_scope(&transaction)
+                    .await
+                    .map_err(audit_error)?;
+            }
         }
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(audit_error)?;
         match record.status {
             ExecutionStatus::Started => {
                 let columns = "execution_id, tenant_id, installation_id, module_slug, module_version, artifact_digest, executor, phase, actor_id, trace_id, binding_id, status, started_at";
                 let values = (1..=13)
-                    .map(|index| placeholder(backend, index))
+                    .map(|index| backend.placeholder(index))
                     .collect::<Vec<_>>()
                     .join(", ");
                 transaction
                     .execute_raw(Statement::from_sql_and_values(
-                        backend,
+                        backend.db_backend(),
                         format!(
                             "INSERT INTO module_artifact_execution_audit ({columns}) \
                              VALUES ({values}) ON CONFLICT (execution_id) DO NOTHING"
                         ),
                         vec![
-                            uuid_value(record.execution_id, backend),
-                            optional_uuid_value(record.context.tenant_id, backend),
-                            uuid_value(*installation_id, backend),
+                            backend.uuid_value(record.execution_id),
+                            backend.optional_uuid_value(record.context.tenant_id),
+                            backend.uuid_value(*installation_id),
                             slug.clone().into(),
                             version.clone().into(),
                             digest.clone().into(),
@@ -171,16 +183,16 @@ impl SeaOrmArtifactExecutionObserver {
                             optional_string_value(record.context.trace_id.clone()),
                             optional_string_value(record.context.audit_label.clone()),
                             "started".into(),
-                            record.started_at.to_rfc3339().into(),
+                            backend.datetime_value(record.started_at),
                         ],
                     ))
                     .await
-                    .map_err(|_| ())?;
+                    .map_err(audit_error)?;
             }
             ExecutionStatus::Succeeded | ExecutionStatus::Failed => {
                 let updated = transaction
                     .execute_raw(Statement::from_sql_and_values(
-                        backend,
+                        backend.db_backend(),
                         format!(
                             "UPDATE module_artifact_execution_audit \
                              SET status = {}, finished_at = {}, queue_time_ms = {}, \
@@ -188,20 +200,20 @@ impl SeaOrmArtifactExecutionObserver {
                                  peak_memory_bytes = {}, output_bytes = {}, \
                                  capability_calls = {}, error_code = {} \
                              WHERE execution_id = {} AND status = 'started'",
-                            placeholder(backend, 1),
-                            placeholder(backend, 2),
-                            placeholder(backend, 3),
-                            placeholder(backend, 4),
-                            placeholder(backend, 5),
-                            placeholder(backend, 6),
-                            placeholder(backend, 7),
-                            placeholder(backend, 8),
-                            placeholder(backend, 9),
-                            placeholder(backend, 10),
+                            backend.placeholder(1),
+                            backend.placeholder(2),
+                            backend.placeholder(3),
+                            backend.placeholder(4),
+                            backend.placeholder(5),
+                            backend.placeholder(6),
+                            backend.placeholder(7),
+                            backend.placeholder(8),
+                            backend.placeholder(9),
+                            backend.placeholder(10),
                         ),
                         vec![
                             status_name(record).into(),
-                            optional_timestamp_value(record.finished_at),
+                            backend.optional_datetime_value(record.finished_at),
                             optional_metric_value(
                                 record.metrics.as_ref().map(|value| value.queue_time_ms),
                             )?,
@@ -230,23 +242,51 @@ impl SeaOrmArtifactExecutionObserver {
                                     .map(|value| u64::from(value.capability_calls)),
                             )?,
                             optional_string_value(record.error_code.clone()),
-                            uuid_value(record.execution_id, backend),
+                            backend.uuid_value(record.execution_id),
                         ],
                     ))
                     .await
-                    .map_err(|_| ())?;
+                    .map_err(audit_error)?;
                 if updated.rows_affected() != 1 {
-                    return Err(());
+                    return Err(audit_error(
+                        "execution finish did not match a started audit row",
+                    ));
                 }
             }
         }
-        transaction.commit().await.map_err(|_| ())?;
+        transaction.commit().await.map_err(audit_error)?;
         Ok(())
+    }
+}
+
+/// Decodes an audit timestamp in its backend-native representation and
+/// re-emits canonical RFC 3339, so the wire value does not depend on the
+/// backend's text casting of timestamps.
+fn audit_timestamp(
+    row: &sea_orm::QueryResult,
+    backend: SupportedBackend,
+    column: &str,
+) -> Result<Option<String>, ArtifactBindingExecutionAuditError> {
+    match backend {
+        SupportedBackend::Postgres => row
+            .try_get::<Option<chrono::DateTime<chrono::Utc>>>("", column)
+            .map(|value| value.map(|timestamp| timestamp.to_rfc3339()))
+            .map_err(storage_error),
+        SupportedBackend::Sqlite => row
+            .try_get::<Option<String>>("", column)
+            .map_err(storage_error)?
+            .map(|value| {
+                crate::backend::parse_sqlite_datetime(&value)
+                    .map(|timestamp| timestamp.to_rfc3339())
+                    .map_err(storage_error)
+            })
+            .transpose(),
     }
 }
 
 fn audit_entry_from_row(
     row: sea_orm::QueryResult,
+    backend: SupportedBackend,
 ) -> Result<ArtifactBindingExecutionAuditEntry, ArtifactBindingExecutionAuditError> {
     let execution_id = row
         .try_get::<String>("", "execution_id")
@@ -260,8 +300,10 @@ fn audit_entry_from_row(
     Ok(ArtifactBindingExecutionAuditEntry {
         execution_id,
         status: row.try_get("", "status").map_err(storage_error)?,
-        started_at: row.try_get("", "started_at").map_err(storage_error)?,
-        finished_at: row.try_get("", "finished_at").map_err(storage_error)?,
+        started_at: audit_timestamp(&row, backend, "started_at")?.ok_or_else(|| {
+            storage_error("execution audit row is missing its start timestamp")
+        })?,
+        finished_at: audit_timestamp(&row, backend, "finished_at")?,
         duration_ms,
         error_code: row.try_get("", "error_code").map_err(storage_error)?,
     })
@@ -270,20 +312,8 @@ fn audit_entry_from_row(
 #[async_trait]
 impl ExecutionObserver for SeaOrmArtifactExecutionObserver {
     async fn observe(&self, record: &ExecutionRecord) -> SandboxResult<()> {
-        self.persist(record).await.map_err(|_| {
-            SandboxError::AuditUnavailable(
-                "artifact execution audit persistence failed".to_string(),
-            )
-        })
+        self.persist(record).await
     }
-}
-
-fn valid_digest(value: &str) -> bool {
-    value.len() == 71
-        && value.starts_with("sha256:")
-        && value[7..]
-            .chars()
-            .all(|character| character.is_ascii_hexdigit())
 }
 
 fn executor_name(record: &ExecutionRecord) -> &'static str {
@@ -316,31 +346,19 @@ fn status_name(record: &ExecutionRecord) -> &'static str {
     }
 }
 
-fn optional_uuid_value(value: Option<uuid::Uuid>, backend: DbBackend) -> SqlValue {
-    match value {
-        Some(value) => uuid_value(value, backend),
-        None => match backend {
-            DbBackend::Postgres => SqlValue::Uuid(None),
-            _ => SqlValue::String(None),
-        },
-    }
-}
-
 fn optional_string_value(value: Option<String>) -> SqlValue {
     value.map_or(SqlValue::String(None), Into::into)
 }
 
-fn optional_timestamp_value(value: Option<chrono::DateTime<chrono::Utc>>) -> SqlValue {
-    value.map_or(SqlValue::String(None), |timestamp| {
-        timestamp.to_rfc3339().into()
-    })
-}
-
-fn optional_metric_value(value: Option<u64>) -> Result<SqlValue, ()> {
+fn optional_metric_value(value: Option<u64>) -> SandboxResult<SqlValue> {
     match value {
-        Some(value) => i64::try_from(value).map(SqlValue::from).map_err(|_| ()),
+        Some(value) => i64::try_from(value).map(SqlValue::from).map_err(audit_error),
         None => Ok(SqlValue::BigInt(None)),
     }
+}
+
+fn audit_error<E: std::fmt::Display>(error: E) -> SandboxError {
+    SandboxError::AuditUnavailable(error.to_string())
 }
 
 fn storage_error(error: impl std::fmt::Display) -> ArtifactBindingExecutionAuditError {

@@ -24,7 +24,9 @@ impl ServerArtifactDeliveryTenantSource {
 
 #[async_trait]
 impl rustok_modules::ArtifactDeliveryTenantSource for ServerArtifactDeliveryTenantSource {
-    async fn tenant_ids(&self) -> Result<Vec<Uuid>, String> {
+    async fn tenant_ids(
+        &self,
+    ) -> Result<Vec<Uuid>, rustok_modules::ArtifactDeliveryTenantSourceError> {
         let mut page = 1_u64;
         let mut scanned = 0_u64;
         let mut tenant_ids = Vec::new();
@@ -33,7 +35,9 @@ impl rustok_modules::ArtifactDeliveryTenantSource for ServerArtifactDeliveryTena
                 .tenants
                 .list_tenants(page, TENANT_PAGE_SIZE)
                 .await
-                .map_err(|error| error.to_string())?;
+                .map_err(|error| {
+                    rustok_modules::ArtifactDeliveryTenantSourceError::Store(error.to_string())
+                })?;
             if tenants.is_empty() {
                 return Ok(tenant_ids);
             }
@@ -49,7 +53,11 @@ impl rustok_modules::ArtifactDeliveryTenantSource for ServerArtifactDeliveryTena
             }
             page = page
                 .checked_add(1)
-                .ok_or_else(|| "artifact delivery tenant pagination overflowed".to_string())?;
+                .ok_or_else(|| {
+                    rustok_modules::ArtifactDeliveryTenantSourceError::Invariant(
+                        "artifact delivery tenant pagination overflowed".to_string(),
+                    )
+                })?;
         }
     }
 }

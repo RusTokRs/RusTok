@@ -1,13 +1,14 @@
 use async_trait::async_trait;
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::policy::{
     ModuleEffectivePolicyChannelInput, ModuleEffectivePolicyCoRequisite,
     ModuleEffectivePolicyInstallationFact, ModuleEffectivePolicyMaintenanceInput,
@@ -19,9 +20,9 @@ use crate::recovery::{
 };
 use crate::{
     ArtifactInstallationResolver, ArtifactLifecycleExecutor, ArtifactSandboxPolicyResolver,
-    ControlPlaneInfrastructure, ModuleCommandContext, ModuleDefinitionCatalog,
-    ModuleDefinitionError, ModuleDefinitionKind, ModuleDefinitionSource, ModuleEffectivePolicy,
-    ModuleEffectivePolicyError, ModuleEffectivePolicyTransitionCoordinator,
+    ControlPlaneInfrastructure, ModuleArtifactSecurityError, ModuleCommandContext,
+    ModuleDefinitionCatalog, ModuleDefinitionError, ModuleDefinitionKind, ModuleDefinitionSource,
+    ModuleEffectivePolicy, ModuleEffectivePolicyError, ModuleEffectivePolicyTransitionCoordinator,
     ModuleExecutionDispatcher, ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest,
     ModuleOperationIssue, ModuleOperationJournal, ModuleOperationRecoveryError,
     ModuleOperationRecoveryPlan, ModuleOperationRequest, ModuleOperationStoreError,
@@ -38,6 +39,11 @@ use rustok_api::{PortError, StaticTenantModuleView};
 use rustok_core::ModuleRegistry;
 use rustok_outbox::idempotency::{self, Admission};
 
+/// Upper bound for one tenant's module override rows. The catalog itself is
+/// far smaller; more persisted rows than this indicate corrupted state and
+/// fail closed instead of loading unbounded input into policy resolution.
+const MAX_TENANT_MODULE_OVERRIDES: u32 = 1_000;
+
 /// Database-backed adapter for module lifecycle execution in a host composition.
 ///
 /// The caller supplies the selected distribution registry and its declared
@@ -45,7 +51,11 @@ use rustok_outbox::idempotency::{self, Admission};
 pub struct ModuleLifecycleDbWriter<'a> {
     db: DatabaseConnection,
     infrastructure: ControlPlaneInfrastructure,
-    catalog: Option<ModuleDefinitionCatalog>,
+    catalog: Option<Arc<ModuleDefinitionCatalog>>,
+    /// Catalog built from the static registry on first use. The registry is
+    /// fixed for the process lifetime, so the catalog never changes and is
+    /// shared instead of rebuilt (and deep-cloned) per call.
+    registry_catalog: OnceLock<Arc<ModuleDefinitionCatalog>>,
     static_registry: Option<&'a ModuleRegistry>,
     artifact_executor: Option<&'a dyn ArtifactLifecycleExecutor>,
     default_enabled_modules: Vec<String>,
@@ -58,7 +68,9 @@ pub struct ModuleLifecycleDbWriter<'a> {
 #[derive(Clone, Debug, PartialEq)]
 pub struct TenantModuleOverrideSnapshot {
     pub module_slug: String,
-    pub enabled: bool,
+    /// Recorded tenant enablement intent, or `None` when the row carries
+    /// settings without intent (the platform default applies).
+    pub enabled: Option<bool>,
     pub settings: serde_json::Value,
 }
 
@@ -188,6 +200,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             db,
             infrastructure,
             catalog: None,
+            registry_catalog: OnceLock::new(),
             static_registry: Some(registry),
             artifact_executor: None,
             default_enabled_modules,
@@ -209,7 +222,8 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         Self {
             db,
             infrastructure,
-            catalog: Some(catalog),
+            catalog: Some(Arc::new(catalog)),
+            registry_catalog: OnceLock::new(),
             static_registry: Some(registry),
             artifact_executor: None,
             default_enabled_modules,
@@ -246,7 +260,8 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         Self {
             db,
             infrastructure,
-            catalog: Some(catalog),
+            catalog: Some(Arc::new(catalog)),
+            registry_catalog: OnceLock::new(),
             static_registry: None,
             artifact_executor: Some(artifact_executor),
             default_enabled_modules,
@@ -688,22 +703,6 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             return Err(error);
         }
 
-        let effective_enabled_modules =
-            match self.effective_enabled_modules(command.tenant_id).await {
-                Ok(enabled_modules) => enabled_modules,
-                Err(error) => {
-                    self.abandon_static_settings_operation(
-                        lease,
-                        command.tenant_id,
-                        &command.module_slug,
-                        command.context.idempotency_key,
-                        &error,
-                    )
-                    .await?;
-                    return Err(error);
-                }
-            };
-
         let transaction = match self.db.begin().await {
             Ok(transaction) => transaction,
             Err(error) => {
@@ -719,15 +718,32 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 return Err(error);
             }
         };
+        if let Err(error) = crate::backend::set_tenant_scope(&transaction, command.tenant_id).await
+        {
+            let error = database_error(error);
+            self.abandon_static_settings_operation(
+                lease,
+                command.tenant_id,
+                &command.module_slug,
+                command.context.idempotency_key,
+                &error,
+            )
+            .await?;
+            return Err(error);
+        }
         let result = async {
+            // Effective enablement for the result projection: recorded
+            // intent wins; without intent the platform default applies
+            // (Core and default-enabled modules). A settings save itself
+            // records no intent (see `persist_settings`).
+            let platform_default_enabled = definition.kind == ModuleDefinitionKind::Core
+                || self.default_enabled_modules.contains(&definition.slug);
             let state = TenantModuleStateStore::persist_settings(
                 &transaction,
                 TenantModuleSettingsRequest {
                     tenant_id: command.tenant_id,
                     module_slug: definition.slug.clone(),
                     settings: command.settings.clone(),
-                    is_core: definition.kind == ModuleDefinitionKind::Core,
-                    is_effectively_enabled: effective_enabled_modules.contains(&definition.slug),
                 },
             )
             .await
@@ -751,7 +767,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             .map_err(map_static_lifecycle_settings_error)?;
             let result = ModuleLifecycleSettingsResult {
                 module_slug: state.module_slug,
-                enabled: state.enabled,
+                enabled: state.enabled.unwrap_or(platform_default_enabled),
                 settings: state.settings,
                 revision,
             };
@@ -953,23 +969,24 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         tenant_id: Uuid,
         limit: u32,
     ) -> Result<Vec<TenantModuleOverrideSnapshot>, ModuleLifecycleDbWriterError> {
-        if tenant_id.is_nil() || limit == 0 || limit > 1_000 {
+        if tenant_id.is_nil() || limit == 0 || limit > MAX_TENANT_MODULE_OVERRIDES {
             return Err(ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery);
         }
-        let backend = self.db.get_database_backend();
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
         let sql = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "SELECT module_slug, enabled, settings FROM tenant_modules \
                  WHERE tenant_id = $1 ORDER BY module_slug ASC LIMIT $2"
             }
-            _ => {
+            SupportedBackend::Sqlite => {
                 "SELECT module_slug, enabled, settings FROM tenant_modules \
                  WHERE tenant_id = ?1 ORDER BY module_slug ASC LIMIT ?2"
             }
         };
         self.db
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 sql,
                 vec![tenant_id.into(), i64::from(limit).into()],
             ))
@@ -1001,7 +1018,16 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 overrides.iter().map(|module| module.module_slug.clone()),
             )
             .await?;
-        project_static_tenant_module_views(overrides, &lifecycle_revisions)
+        let catalog = self.definition_catalog()?;
+        project_static_tenant_module_views(overrides, &lifecycle_revisions, &|module_slug| {
+            catalog.get(module_slug).map(|definition| {
+                definition.kind == ModuleDefinitionKind::Core
+                    || self
+                        .default_enabled_modules
+                        .iter()
+                        .any(|slug| slug == module_slug)
+            })
+        })
     }
 
     /// Resolves the explainable, revisioned availability policy from the exact
@@ -1066,7 +1092,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         maintenance: Option<ModuleEffectivePolicyMaintenanceInput>,
     ) -> Result<ModuleEffectivePolicy, ModuleLifecycleDbWriterError> {
         let catalog = self.definition_catalog()?;
-        let runtime_inputs = self.runtime_policy_inputs(&catalog, tenant_id).await;
+        let runtime_inputs = self.runtime_policy_inputs(&catalog, tenant_id).await?;
         ModuleEffectivePolicyQuery::new_with_context(
             &catalog,
             self.default_enabled_modules.iter().cloned(),
@@ -1082,16 +1108,15 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
 
     async fn effective_policy_from_overrides(
         &self,
-        tenant_id: Uuid,
         catalog: &ModuleDefinitionCatalog,
         overrides: Vec<TenantModuleOverride>,
+        runtime_inputs: &[ModuleEffectivePolicyRuntimeInput],
     ) -> Result<ModuleEffectivePolicy, ModuleLifecycleDbWriterError> {
-        let runtime_inputs = self.runtime_policy_inputs(catalog, tenant_id).await;
         ModuleEffectivePolicyQuery::new_with_context(
             catalog,
             self.default_enabled_modules.iter().cloned(),
             overrides,
-            runtime_inputs,
+            runtime_inputs.iter().cloned(),
             None,
             None,
         )
@@ -1102,16 +1127,15 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
 
     async fn ordering_policy_from_overrides(
         &self,
-        tenant_id: Uuid,
         catalog: &ModuleDefinitionCatalog,
         overrides: Vec<TenantModuleOverride>,
+        runtime_inputs: &[ModuleEffectivePolicyRuntimeInput],
     ) -> Result<ModuleEffectivePolicy, ModuleLifecycleDbWriterError> {
-        let runtime_inputs = self.runtime_policy_inputs(catalog, tenant_id).await;
         ModuleEffectivePolicyQuery::new_with_context(
             catalog,
             self.default_enabled_modules.iter().cloned(),
             overrides,
-            runtime_inputs,
+            runtime_inputs.iter().cloned(),
             None,
             None,
         )
@@ -1123,7 +1147,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         &self,
         catalog: &ModuleDefinitionCatalog,
         tenant_id: Uuid,
-    ) -> Vec<ModuleEffectivePolicyRuntimeInput> {
+    ) -> Result<Vec<ModuleEffectivePolicyRuntimeInput>, ModuleLifecycleDbWriterError> {
         let installations = SeaOrmArtifactInstallationStore::with_infrastructure(
             self.db.clone(),
             self.infrastructure.clone(),
@@ -1137,6 +1161,12 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             };
             let artifact =
                 ArtifactInstallationResolver::resolve(&installations, release, tenant_id).await;
+            // The installation port reports failures as opaque strings, so a
+            // missing installation cannot yet be distinguished from a storage
+            // failure. Both fail closed here: the module resolves as
+            // not-installed. Typing this port (so genuine storage failures
+            // propagate like the security resolution below) is tracked with
+            // the runtime port hardening in remediation Phase H.
             let Ok(artifact) = artifact else {
                 inputs.push(ModuleEffectivePolicyRuntimeInput {
                     module_slug: definition.slug.clone(),
@@ -1147,6 +1177,11 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 });
                 continue;
             };
+            // The sandbox resolver itself enforces that the stored capability
+            // grant revision matches the installation's, so `Ok` implies the
+            // effective revision is the artifact's. The port has the same
+            // opaque-string limitation as the installation port above; a
+            // failure fails closed as "no matching capability policy".
             let capability_policy_revision =
                 ArtifactSandboxPolicyResolver::resolve(&policies, &artifact, tenant_id)
                     .await
@@ -1155,7 +1190,11 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             let executor_available = self.artifact_executor.is_some_and(|executor| {
                 executor.supports_payload_kind(artifact.descriptor.payload_kind)
             });
-            let security = security.resolve(release).await.ok();
+            // The security resolver returns an explicit `Clear` snapshot when
+            // no security row exists, so every `Err` is a genuine storage or
+            // validation failure and must propagate instead of silently
+            // downgrading the module to a policy denial.
+            let security = Some(security.resolve(release).await?);
             inputs.push(ModuleEffectivePolicyRuntimeInput {
                 module_slug: definition.slug.clone(),
                 installation: Some(ModuleEffectivePolicyInstallationFact {
@@ -1172,7 +1211,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 security,
             });
         }
-        inputs
+        Ok(inputs)
     }
 
     async fn recovery_execution_context(
@@ -1180,7 +1219,11 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         tenant_id: Uuid,
         module_slug: &str,
     ) -> Result<
-        (ModuleDefinitionCatalog, Option<bool>, serde_json::Value),
+        (
+            Arc<ModuleDefinitionCatalog>,
+            Option<bool>,
+            serde_json::Value,
+        ),
         ModuleLifecycleDbWriterError,
     > {
         let catalog = self.definition_catalog()?;
@@ -1196,7 +1239,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         module_slug: &str,
     ) -> Result<
         (
-            ModuleDefinitionCatalog,
+            Arc<ModuleDefinitionCatalog>,
             Option<bool>,
             HashSet<String>,
             serde_json::Value,
@@ -1206,8 +1249,9 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         let catalog = self.definition_catalog()?;
         let overrides = self.overrides(tenant_id).await?;
         let current_override_enabled = override_enabled(&overrides, module_slug);
+        let runtime_inputs = self.runtime_policy_inputs(&catalog, tenant_id).await?;
         let current_policy = self
-            .effective_policy_from_overrides(tenant_id, &catalog, overrides)
+            .effective_policy_from_overrides(&catalog, overrides, &runtime_inputs)
             .await?;
         let current_settings = self.settings(tenant_id, module_slug).await?;
         Ok((
@@ -1225,7 +1269,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         requested_override_enabled: Option<bool>,
     ) -> Result<
         (
-            ModuleDefinitionCatalog,
+            Arc<ModuleDefinitionCatalog>,
             HashSet<String>,
             HashSet<String>,
             Option<bool>,
@@ -1237,11 +1281,16 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         let catalog = self.definition_catalog()?;
         let overrides = self.overrides(tenant_id).await?;
         let previous_override_enabled = override_enabled(&overrides, module_slug);
+        // Runtime evidence is resolved once and shared by every policy
+        // projection in this context; resolving per projection would repeat
+        // the installation/sandbox/security queries and could observe
+        // different evidence within one command.
+        let runtime_inputs = self.runtime_policy_inputs(&catalog, tenant_id).await?;
         let current_policy = self
-            .effective_policy_from_overrides(tenant_id, &catalog, overrides.clone())
+            .effective_policy_from_overrides(&catalog, overrides.clone(), &runtime_inputs)
             .await?;
         let ordering_policy = self
-            .ordering_policy_from_overrides(tenant_id, &catalog, overrides.clone())
+            .ordering_policy_from_overrides(&catalog, overrides.clone(), &runtime_inputs)
             .await?;
         let mut next_overrides = overrides;
         match requested_override_enabled {
@@ -1261,7 +1310,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             None => next_overrides.retain(|value| value.module_slug != module_slug),
         }
         let next_policy = self
-            .effective_policy_from_overrides(tenant_id, &catalog, next_overrides)
+            .effective_policy_from_overrides(&catalog, next_overrides, &runtime_inputs)
             .await?;
         let policy_transition = if current_policy.policy_revision() != next_policy.policy_revision()
         {
@@ -1289,34 +1338,50 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         ))
     }
 
-    fn definition_catalog(&self) -> Result<ModuleDefinitionCatalog, ModuleLifecycleDbWriterError> {
-        match &self.catalog {
-            Some(catalog) => Ok(catalog.clone()),
-            None => Ok(ModuleDefinitionCatalog::from_static_registry(
-                self.static_registry.ok_or_else(|| {
+    fn definition_catalog(
+        &self,
+    ) -> Result<Arc<ModuleDefinitionCatalog>, ModuleLifecycleDbWriterError> {
+        if let Some(catalog) = &self.catalog {
+            return Ok(Arc::clone(catalog));
+        }
+        if let Some(catalog) = self.registry_catalog.get() {
+            return Ok(Arc::clone(catalog));
+        }
+        let catalog = Arc::new(
+            ModuleDefinitionCatalog::from_static_registry(self.static_registry.ok_or_else(
+                || {
                     ModuleLifecycleDbWriterError::Configuration(
                         "static lifecycle writer has no module registry".into(),
                     )
-                })?,
-            )
-            .map_err(ModuleLifecycleDbWriterError::Definition)?),
-        }
+                },
+            )?)
+            .map_err(ModuleLifecycleDbWriterError::Definition)?,
+        );
+        // A concurrent winner is equally valid: the registry-built catalog
+        // is deterministic, so either instance is interchangeable.
+        Ok(Arc::clone(self.registry_catalog.get_or_init(|| catalog)))
     }
 
     async fn overrides(
         &self,
         tenant_id: Uuid,
     ) -> Result<Vec<TenantModuleOverride>, ModuleLifecycleDbWriterError> {
-        let backend = self.db.get_database_backend();
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
         let sql = match backend {
-            DbBackend::Postgres => {
-                "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = $1"
+            SupportedBackend::Postgres => {
+                "SELECT module_slug, enabled FROM tenant_modules \
+                 WHERE tenant_id = $1 AND enabled IS NOT NULL LIMIT 1001"
             }
-            _ => "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = ?1",
+            SupportedBackend::Sqlite => {
+                "SELECT module_slug, enabled FROM tenant_modules \
+                 WHERE tenant_id = ?1 AND enabled IS NOT NULL LIMIT 1001"
+            }
         };
-        self.db
+        let overrides = self
+            .db
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 sql,
                 vec![tenant_id.into()],
             ))
@@ -1329,7 +1394,11 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                     enabled: row.try_get("", "enabled").map_err(database_error)?,
                 })
             })
-            .collect()
+            .collect::<Result<Vec<_>, ModuleLifecycleDbWriterError>>()?;
+        if overrides.len() > MAX_TENANT_MODULE_OVERRIDES as usize {
+            return Err(ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery);
+        }
+        Ok(overrides)
     }
 
     async fn settings(
@@ -1346,18 +1415,19 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 .await
                 .map_err(|error| map_artifact_settings_error(module_slug, error));
         }
-        let backend = self.db.get_database_backend();
+        let backend =
+            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
         let sql = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "SELECT settings FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
             }
-            _ => {
+            SupportedBackend::Sqlite => {
                 "SELECT settings FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
             }
         };
         self.db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 sql,
                 vec![tenant_id.into(), module_slug.into()],
             ))
@@ -1372,6 +1442,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
 fn project_static_tenant_module_views(
     overrides: Vec<TenantModuleOverrideSnapshot>,
     lifecycle_revisions: &BTreeMap<String, StaticTenantLifecycleSnapshot>,
+    platform_default_enabled: &dyn Fn(&str) -> Option<bool>,
 ) -> Result<Vec<StaticTenantModuleView>, ModuleLifecycleDbWriterError> {
     overrides
         .into_iter()
@@ -1385,9 +1456,22 @@ fn project_static_tenant_module_views(
                     ))
                 })?
                 .revision;
+            // The browser projection presents effective enablement:
+            // recorded intent wins; without intent the platform default
+            // applies. An unknown slug has no resolvable default and must
+            // fail loudly instead of presenting fabricated state.
+            let enabled = match module.enabled {
+                Some(enabled) => enabled,
+                None => platform_default_enabled(&module.module_slug).ok_or_else(|| {
+                    ModuleLifecycleDbWriterError::Configuration(format!(
+                        "cannot resolve the platform default for unknown module `{}`",
+                        module.module_slug
+                    ))
+                })?,
+            };
             Ok(StaticTenantModuleView {
                 module_slug: module.module_slug,
-                enabled: module.enabled,
+                enabled,
                 settings: module.settings.to_string(),
                 revision: i64::try_from(revision).map_err(|_| {
                     ModuleLifecycleDbWriterError::Configuration(
@@ -1455,6 +1539,8 @@ pub enum ModuleLifecycleDbWriterError {
     },
     #[error(transparent)]
     Settings(#[from] ModuleOperationStoreError),
+    #[error(transparent)]
+    Security(#[from] ModuleArtifactSecurityError),
     #[error(transparent)]
     OperationReceipt(PortError),
 }
@@ -1636,10 +1722,12 @@ mod tests {
         let views = project_static_tenant_module_views(
             vec![TenantModuleOverrideSnapshot {
                 module_slug: "forum".to_string(),
-                enabled: true,
+                enabled: Some(true),
                 settings: serde_json::json!({ "visibility": "public" }),
             }],
             &revisions,
+            // Explicit intent never consults the platform default.
+            &|_| None,
         )
         .expect("owner projection");
 
@@ -1655,10 +1743,11 @@ mod tests {
         let error = project_static_tenant_module_views(
             vec![TenantModuleOverrideSnapshot {
                 module_slug: "forum".to_string(),
-                enabled: true,
+                enabled: Some(true),
                 settings: serde_json::json!({}),
             }],
             &BTreeMap::new(),
+            &|_| None,
         )
         .expect_err("missing aggregate revision must not become a synthetic response");
 

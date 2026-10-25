@@ -25,6 +25,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::trust::is_sha256_digest;
 use crate::{
     ArtifactReleaseRef, MODULE_BUILD_COMPONENT_TARGET, MODULE_BUILD_PROTOCOL_VERSION,
     MODULE_BUILD_RUNTIME_ABI, MODULE_BUILD_WIT_VERSION, MODULE_BUILD_WIT_WORLD,
@@ -89,7 +90,7 @@ impl PreparedModuleSourceArchive {
         let source_digest = source_digest.into();
         if archive_path.as_os_str().is_empty()
             || !archive_path.is_absolute()
-            || !valid_digest(&source_digest)
+            || !is_sha256_digest(&source_digest)
         {
             return Err(ModuleAuthoringBuildError::InvalidCommand);
         }
@@ -588,8 +589,8 @@ impl ModuleAuthoringBuildCommand {
             || Version::parse(&self.rust_toolchain).is_err()
             || Version::parse(&self.sdk_version).is_err()
             || Version::parse(&self.template_version).is_err()
-            || !valid_digest(&self.source_digest)
-            || !valid_digest(&self.dependency_lock_digest)
+            || !is_sha256_digest(&self.source_digest)
+            || !is_sha256_digest(&self.dependency_lock_digest)
             || crate::build::validate_build_scenario(&self.scenario).is_err()
             || !crate::build::valid_parent_release_lineage(
                 &self.parent_release,
@@ -689,14 +690,6 @@ fn submission_from_receipts(
         source_bytes: source.extracted_bytes,
         entries: source.entries,
     }
-}
-
-fn valid_digest(value: &str) -> bool {
-    value.len() == 71
-        && value.starts_with("sha256:")
-        && value[7..]
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 #[derive(Debug, Error)]

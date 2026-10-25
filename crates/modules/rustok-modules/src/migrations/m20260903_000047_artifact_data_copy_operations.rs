@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbBackend};
+use sea_orm::ConnectionTrait;
 use sea_orm_migration::prelude::*;
+
+use crate::backend::SupportedBackend;
 
 /// Frozen page requests commit before record writes; exact receipts commit with them.
 #[derive(DeriveMigrationName)]
@@ -8,25 +10,20 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let backend = manager.get_database_backend();
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
         let (uuid, json, timestamp, digest_check) = match backend {
-            DbBackend::Postgres => (
+            SupportedBackend::Postgres => (
                 "UUID",
                 "JSONB",
                 "TIMESTAMPTZ",
                 "VALUE ~ '^sha256:[0-9a-f]{64}$'",
             ),
-            DbBackend::Sqlite => (
+            SupportedBackend::Sqlite => (
                 "TEXT",
                 "JSON",
                 "TEXT",
                 "length(VALUE)=71 AND substr(VALUE,1,7)='sha256:' AND substr(VALUE,8) NOT GLOB '*[^0-9a-f]*'",
             ),
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "Artifact record copy does not support {backend:?}"
-                )));
-            }
         };
         manager.get_connection().execute_unprepared(&format!(
             "CREATE TABLE module_artifact_data_copy_operations (
@@ -57,7 +54,7 @@ impl MigrationTrait for Migration {
             "CREATE INDEX idx_artifact_data_copy_ops_scope ON module_artifact_data_copy_operations
              (tenant_id,data_owner_id,target_namespace_instance_id,expected_target_namespace_revision,status)").await?;
         let transitions = "(OLD.status='preparing' AND NEW.status='committing') OR (OLD.status='committing' AND NEW.status='committed')";
-        if backend == DbBackend::Postgres {
+        if backend == SupportedBackend::Postgres {
             for sql in [
                 "ALTER TABLE module_artifact_data_copy_operations ENABLE ROW LEVEL SECURITY",
                 "CREATE POLICY module_artifact_data_copy_operations_scope ON module_artifact_data_copy_operations
@@ -121,7 +118,7 @@ impl MigrationTrait for Migration {
             .get_connection()
             .execute_unprepared("DROP TABLE IF EXISTS module_artifact_data_copy_operations")
             .await?;
-        if manager.get_database_backend() == DbBackend::Postgres {
+        if SupportedBackend::new(manager.get_database_backend())? == SupportedBackend::Postgres {
             manager
                 .get_connection()
                 .execute_unprepared(
@@ -137,16 +134,18 @@ impl MigrationTrait for Migration {
 /// Only the owner commit transaction sees a committing target; other writers
 /// still see preparing and serialize on the namespace roots.
 pub(crate) fn record_copy_hold(
-    backend: DbBackend,
+    backend: SupportedBackend,
     row: &str,
     allow_committing_target: bool,
     authorized_target: Option<&str>,
 ) -> String {
     let nonterminal = match backend {
-        DbBackend::Postgres => {
+        SupportedBackend::Postgres => {
             "(copy.receipt_json->'is_terminal_page') IS DISTINCT FROM 'true'::jsonb"
         }
-        _ => "json_type(copy.receipt_json,'$.is_terminal_page') IS NOT 'true'",
+        SupportedBackend::Sqlite => {
+            "json_type(copy.receipt_json,'$.is_terminal_page') IS NOT 'true'"
+        }
     };
     let target_states = if allow_committing_target {
         "copy.status='preparing'"

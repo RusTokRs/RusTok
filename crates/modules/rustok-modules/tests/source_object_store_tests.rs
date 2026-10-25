@@ -1,6 +1,9 @@
 use std::{fs, path::PathBuf};
 
-use rustok_modules::{ModuleInstallationScope, SourceObjectError, SourceObjectStore, migrations};
+use rustok_modules::{
+    MAX_SOURCE_OBJECT_BYTES, ModuleInstallationScope, SourceObjectError, SourceObjectStore,
+    migrations,
+};
 use sea_orm::{Database, DatabaseConnection};
 use sea_orm_migration::MigratorTrait;
 use sha2::{Digest, Sha256};
@@ -81,8 +84,9 @@ async fn test_source_blob_create_only_and_deduplication() {
     assert_eq!(receipt1.source_digest, digest);
     assert_eq!(receipt1.byte_length, payload.len() as u64);
 
-    // Verify file exists directly under <cas_root>/<hex> without .tar extension
-    let blob_path = cas_root.join(hex);
+    // Verify file exists at the two-level fan-out path <cas_root>/<2>/<2>/<hex>
+    let blob_path = cas_root.join(&hex[0..2]).join(&hex[2..4]).join(hex);
+    assert_eq!(blob_path, store.destination_path(&digest).expect("path"));
     assert!(blob_path.exists(), "blob must exist at canonical path");
     let content = fs::read(&blob_path).expect("read");
     assert_eq!(content, payload);
@@ -156,8 +160,7 @@ async fn test_source_blob_digest_mismatch_fails_closed() {
     }
 
     // Verify no file or receipt was committed
-    let hex = &fake_digest[7..];
-    assert!(!cas_dir.path().join(hex).exists());
+    assert!(!store.destination_path(fake_digest).expect("path").exists());
 }
 
 #[tokio::test]
@@ -191,9 +194,9 @@ async fn test_tenant_isolation_and_rls() {
     let read_a = store
         .get_receipt(
             receipt_a.source_receipt_id,
-            Some(&ModuleInstallationScope::Tenant {
+            &ModuleInstallationScope::Tenant {
                 tenant_id: tenant_a,
-            }),
+            },
         )
         .await
         .expect("read a");
@@ -203,9 +206,9 @@ async fn test_tenant_isolation_and_rls() {
     let read_b = store
         .get_receipt(
             receipt_a.source_receipt_id,
-            Some(&ModuleInstallationScope::Tenant {
+            &ModuleInstallationScope::Tenant {
                 tenant_id: tenant_b,
-            }),
+            },
         )
         .await;
 
@@ -249,4 +252,154 @@ async fn test_retention_holds_lifecycle() {
         .expect("release hold");
 
     assert!(!store.is_held(&digest).await.expect("is_held"));
+}
+
+#[tokio::test]
+async fn test_publish_source_file_streams_and_verified_path() {
+    let db = setup_test_db().await;
+    let cas_dir = TestTempDir::new();
+    let store = SourceObjectStore::new(db, cas_dir.path().to_path_buf()).expect("store");
+
+    // Multi-chunk payload (larger than the 64 KiB stream chunk).
+    let payload: Vec<u8> = (0..200_000u32).map(|i| (i % 251) as u8).collect();
+    let digest = sha256_digest(&payload);
+    let source_path = cas_dir.path().join("workspace-source.bin");
+    fs::write(&source_path, &payload).expect("write source file");
+
+    let receipt = store
+        .publish_source_file(
+            Uuid::new_v4(),
+            &ModuleInstallationScope::Platform,
+            "application/vnd.rustok.source.workspace.v1+json",
+            &digest,
+            &source_path,
+            None,
+        )
+        .await
+        .expect("publish file");
+    assert_eq!(receipt.byte_length, payload.len() as u64);
+
+    let verified_path = store.get_source_path(&digest).await.expect("verified path");
+    assert_eq!(
+        verified_path,
+        store.destination_path(&digest).expect("path")
+    );
+    let read_back = store.get_source_blob(&digest).await.expect("get_blob");
+    assert_eq!(read_back, payload);
+}
+
+#[tokio::test]
+async fn test_corrupt_existing_blob_fails_closed() {
+    let db = setup_test_db().await;
+    let cas_dir = TestTempDir::new();
+    let store = SourceObjectStore::new(db, cas_dir.path().to_path_buf()).expect("store");
+
+    let payload = b"integrity matters";
+    let digest = sha256_digest(payload);
+    store
+        .publish_source_blob(
+            Uuid::new_v4(),
+            &ModuleInstallationScope::Platform,
+            "application/x-tar",
+            &digest,
+            payload,
+            None,
+        )
+        .await
+        .expect("publish");
+
+    // Corrupt the blob in place.
+    let blob_path = store.destination_path(&digest).expect("path");
+    fs::write(&blob_path, b"tampered bytes").expect("corrupt blob");
+
+    // Republishing must surface the corruption instead of trusting existence.
+    let republish = store
+        .publish_source_blob(
+            Uuid::new_v4(),
+            &ModuleInstallationScope::Platform,
+            "application/x-tar",
+            &digest,
+            payload,
+            None,
+        )
+        .await;
+    assert!(matches!(
+        republish,
+        Err(SourceObjectError::DigestMismatch { .. })
+    ));
+
+    // Verified reads fail closed as well.
+    assert!(matches!(
+        store.get_source_path(&digest).await,
+        Err(SourceObjectError::DigestMismatch { .. })
+    ));
+    assert!(matches!(
+        store.get_source_blob(&digest).await,
+        Err(SourceObjectError::DigestMismatch { .. })
+    ));
+}
+
+#[tokio::test]
+async fn test_oversize_rejected_before_commit() {
+    let db = setup_test_db().await;
+    let cas_dir = TestTempDir::new();
+    let store = SourceObjectStore::new(db, cas_dir.path().to_path_buf()).expect("store");
+
+    let any_digest = sha256_digest(b"anything");
+
+    // In-memory path: size is checked before hashing or writing.
+    let oversize = vec![0u8; (MAX_SOURCE_OBJECT_BYTES + 1) as usize];
+    let blob_result = store
+        .publish_source_blob(
+            Uuid::new_v4(),
+            &ModuleInstallationScope::Platform,
+            "application/x-tar",
+            &any_digest,
+            &oversize,
+            None,
+        )
+        .await;
+    assert!(matches!(
+        blob_result,
+        Err(SourceObjectError::TooLarge { .. })
+    ));
+
+    // File path: sparse file above the ceiling is rejected from metadata.
+    let big_path = cas_dir.path().join("oversize.bin");
+    let big_file = fs::File::create(&big_path).expect("create sparse file");
+    big_file
+        .set_len(MAX_SOURCE_OBJECT_BYTES + 1)
+        .expect("set sparse length");
+    drop(big_file);
+    let file_result = store
+        .publish_source_file(
+            Uuid::new_v4(),
+            &ModuleInstallationScope::Platform,
+            "application/x-tar",
+            &any_digest,
+            &big_path,
+            None,
+        )
+        .await;
+    assert!(matches!(
+        file_result,
+        Err(SourceObjectError::TooLarge { .. })
+    ));
+}
+
+#[tokio::test]
+async fn test_verified_path_not_found() {
+    let db = setup_test_db().await;
+    let cas_dir = TestTempDir::new();
+    let store = SourceObjectStore::new(db, cas_dir.path().to_path_buf()).expect("store");
+
+    let missing = sha256_digest(b"never published");
+    assert!(matches!(
+        store.get_source_path(&missing).await,
+        Err(SourceObjectError::NotFound(_))
+    ));
+    assert!(matches!(
+        store.get_source_blob(&missing).await,
+        Err(SourceObjectError::NotFound(_))
+    ));
 }

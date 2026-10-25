@@ -221,14 +221,15 @@ impl<S: BackfillCheckpointStore> DataBackfillCoordinator<S> {
     }
 
     /// Executes a single backfill page and commits the updated durable checkpoint atomically.
-    pub async fn process_page<F, Fut>(
+    pub async fn process_page<F, Fut, E>(
         &self,
         backfill_id: Uuid,
         page_processor: F,
     ) -> Result<BackfillCheckpoint, BackfillError>
     where
         F: FnOnce(Option<String>) -> Fut,
-        Fut: std::future::Future<Output = Result<BackfillPageResult, String>>,
+        Fut: std::future::Future<Output = Result<BackfillPageResult, E>>,
+        E: std::fmt::Display,
     {
         let current = self
             .store
@@ -247,7 +248,7 @@ impl<S: BackfillCheckpointStore> DataBackfillCoordinator<S> {
 
         let page_result = page_processor(current.cursor.clone())
             .await
-            .map_err(BackfillError::Processor)?;
+            .map_err(|error| BackfillError::Processor(error.to_string()))?;
 
         let new_items = current.items_processed + page_result.processed_count;
         let new_status = if page_result.has_more {

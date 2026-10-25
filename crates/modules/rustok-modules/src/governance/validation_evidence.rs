@@ -1,6 +1,6 @@
 //! Owner validation stage evidence passes and transition detail contracts.
 
-use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, Statement, Value};
+use sea_orm::{ConnectionTrait, DatabaseTransaction, Statement, Value};
 
 use super::helpers::*;
 use super::*;
@@ -31,7 +31,7 @@ pub(crate) struct OwnerEvidenceStage<'a> {
 pub(crate) async fn pass_owner_evidence_validation_stage(
     infrastructure: &ControlPlaneInfrastructure,
     tx: &DatabaseTransaction,
-    backend: DbBackend,
+    backend: SupportedBackend,
     stage: OwnerEvidenceStage<'_>,
 ) -> Result<(), ModuleGovernanceError> {
     let OwnerEvidenceStage {
@@ -43,11 +43,11 @@ pub(crate) async fn pass_owner_evidence_validation_stage(
         detail,
         reason_code,
     } = stage;
-    let mark = |n| placeholder(backend, n);
-    let now = database_now(backend);
+    let mark = |n| backend.placeholder(n);
+    let now = backend.now_sql();
     let Some(stage) = tx
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT id, status, attempt_number, queue_reason, runner_kind \
                  FROM registry_validation_stages WHERE request_id = {} AND stage_key = {} \
@@ -83,7 +83,7 @@ pub(crate) async fn pass_owner_evidence_validation_stage(
         let attempt_number = prior_attempt + 1;
         let queue_reason = reason_code.to_string();
         tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO registry_validation_stages \
                  (id, request_id, slug, version, stage_key, status, triggered_by, queue_reason, \
@@ -112,7 +112,7 @@ pub(crate) async fn pass_owner_evidence_validation_stage(
         let stage_id: String = stage.try_get("", "id").map_err(store_error)?;
         let updated = tx
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE registry_validation_stages SET status = 'passed', detail = {}, \
                      last_error = NULL, started_at = COALESCE(started_at, {now}), \
@@ -163,7 +163,7 @@ pub(crate) async fn pass_owner_evidence_validation_stage(
         ),
     ] {
         tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
                  (id, slug, request_id, release_id, event_type, actor_principal, \

@@ -77,7 +77,11 @@ impl ModuleEffectivePolicyTransitionCoordinator {
             .consumer
             .apply_in_transaction(transaction, tenant_id, consumer_key, transition)
             .await?;
-        if outcome != ModulePolicyRevisionApplyOutcome::Applied {
+        // A gap resync still publishes: the transition was computed from the
+        // live policy, the cursor advanced to its successor, and downstream
+        // consumers resync from the event. Only a duplicate (successor
+        // already at the cursor) indicates a broken invariant here.
+        if outcome == ModulePolicyRevisionApplyOutcome::Duplicate {
             return Err(ModuleEffectivePolicyTransitionCoordinatorError::RevisionRejected(outcome));
         }
         self.publisher
