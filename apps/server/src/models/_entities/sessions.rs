@@ -14,6 +14,9 @@ pub struct Model {
     pub last_used_at: Option<DateTimeWithTimeZone>,
     pub expires_at: DateTimeWithTimeZone,
     pub revoked_at: Option<DateTimeWithTimeZone>,
+    pub previous_token_hash: Option<String>,
+    pub previous_token_revoked_at: Option<DateTimeWithTimeZone>,
+    pub absolute_expires_at: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

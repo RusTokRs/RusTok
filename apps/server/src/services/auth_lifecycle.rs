@@ -118,6 +118,11 @@ const MAX_FAILED_LOGIN_ATTEMPTS: i32 = 10;
 /// A successful password reset or password change clears the lock early.
 const LOGIN_LOCKOUT_MINUTES: i64 = 15;
 
+/// Replay of a rotated-away refresh token inside this window is treated
+/// as a lost-response retry; after it, reuse means the token was copied
+/// and the whole session lineage is revoked.
+const REFRESH_REUSE_GRACE_SECONDS: i64 = 30;
+
 impl AuthLifecycleService {
     pub fn metrics_snapshot() -> AuthLifecycleMetricsSnapshot {
         AuthLifecycleMetricsSnapshot {
@@ -641,9 +646,24 @@ impl AuthLifecycleService {
         let token_hash = hash_refresh_token(refresh_token);
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
 
-        let session = Self::find_refresh_session_for_update_in_tx(&txn, tenant_id, &token_hash)
-            .await?
-            .ok_or(AuthLifecycleError::InvalidRefreshToken)?;
+        let session = match Self::find_refresh_session_for_update_in_tx(
+            &txn,
+            tenant_id,
+            &token_hash,
+        )
+        .await?
+        {
+            Some(session) => session,
+            None => {
+                // No live session holds this hash. If it is the token
+                // rotated away at the previous refresh, its replay after
+                // the grace window means theft: revoke the lineage and
+                // commit that revocation before failing closed.
+                Self::detect_refresh_reuse_in_tx(&txn, tenant_id, &token_hash).await?;
+                txn.commit().await.map_err(AuthLifecycleError::from)?;
+                return Err(AuthLifecycleError::InvalidRefreshToken);
+            }
+        };
 
         if !session.is_active() {
             return Err(AuthLifecycleError::SessionExpired);
@@ -660,13 +680,31 @@ impl AuthLifecycleService {
         }
 
         let now = Utc::now();
+        let absolute_deadline = session
+            .absolute_expires_at
+            .map(|deadline| deadline.with_timezone(&Utc))
+            .unwrap_or_else(|| {
+                // Pre-migration rows carry no cap; derive it from the
+                // original login time and persist it on this rotation.
+                session.created_at.with_timezone(&Utc)
+                    + Duration::days(sessions::SESSION_ABSOLUTE_LIFETIME_DAYS)
+            });
+        if now >= absolute_deadline {
+            return Err(AuthLifecycleError::SessionExpired);
+        }
+
         let new_refresh_token = generate_refresh_token().map_err(AuthLifecycleError::from)?;
         let new_token_hash = hash_refresh_token(&new_refresh_token);
-        let expires_at = Self::session_expiration(now, config.refresh_expiration)?;
+        let expires_at =
+            Self::session_expiration(now, config.refresh_expiration)?.min(absolute_deadline);
 
         let session_id = session.id;
+        let replaced_token_hash = session.token_hash.clone();
         let mut session_model: sessions::ActiveModel = session.into();
         session_model.token_hash = Set(new_token_hash);
+        session_model.previous_token_hash = Set(Some(replaced_token_hash));
+        session_model.previous_token_revoked_at = Set(Some(now.into()));
+        session_model.absolute_expires_at = Set(Some(absolute_deadline.into()));
         session_model.expires_at = Set(expires_at.into());
         session_model.last_used_at = Set(Some(now.into()));
         session_model
@@ -695,6 +733,47 @@ impl AuthLifecycleService {
                 effective_role,
             },
         ))
+    }
+
+    /// OAuth BCP refresh-token reuse detection for the in-place rotation
+    /// model: the session row remembers the hash rotated away at the
+    /// previous refresh. Presenting that hash after the grace window can
+    /// only happen if the token was copied, so the lineage is revoked.
+    /// Older generations are not remembered and read as unknown tokens.
+    async fn detect_refresh_reuse_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: uuid::Uuid,
+        token_hash: &str,
+    ) -> std::result::Result<(), AuthLifecycleError> {
+        let previous = sessions::Entity::find()
+            .filter(sessions::Column::TenantId.eq(tenant_id))
+            .filter(sessions::Column::PreviousTokenHash.eq(token_hash.to_string()))
+            .filter(sessions::Column::RevokedAt.is_null())
+            .one(txn)
+            .await
+            .map_err(AuthLifecycleError::from)?;
+
+        if let Some(previous) = previous {
+            let within_grace = previous.previous_token_revoked_at.is_some_and(|rotated_at| {
+                Utc::now().timestamp() - rotated_at.timestamp() < REFRESH_REUSE_GRACE_SECONDS
+            });
+            if !within_grace {
+                tracing::warn!(
+                    session_id = %previous.id,
+                    user_id = %previous.user_id,
+                    "refresh token reuse detected; revoking session lineage"
+                );
+                let mut active: sessions::ActiveModel = previous.into();
+                active.revoked_at = Set(Some(Utc::now().into()));
+                active.previous_token_hash = Set(None);
+                active
+                    .update(txn)
+                    .await
+                    .map_err(AuthLifecycleError::from)?;
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn change_password_runtime(

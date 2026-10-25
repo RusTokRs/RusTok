@@ -1,10 +1,14 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, prelude::*, sea_query::Expr};
 
 use rustok_core::generate_id;
 
 use super::_entities::sessions::{self};
 pub use super::_entities::sessions::{ActiveModel, Column, Entity, Model};
+
+/// Hard cap on a refresh lineage: no amount of sliding rotation extends
+/// a session beyond this many days from the original login.
+pub const SESSION_ABSOLUTE_LIFETIME_DAYS: i64 = 90;
 
 impl Model {
     pub fn is_active(&self) -> bool {
@@ -31,6 +35,11 @@ impl ActiveModel {
             last_used_at: sea_orm::ActiveValue::NotSet,
             expires_at: sea_orm::ActiveValue::Set(expires_at.into()),
             revoked_at: sea_orm::ActiveValue::NotSet,
+            previous_token_hash: sea_orm::ActiveValue::NotSet,
+            previous_token_revoked_at: sea_orm::ActiveValue::NotSet,
+            absolute_expires_at: sea_orm::ActiveValue::Set(Some(
+                (Utc::now() + Duration::days(SESSION_ABSOLUTE_LIFETIME_DAYS)).into(),
+            )),
             created_at: sea_orm::ActiveValue::NotSet,
             updated_at: sea_orm::ActiveValue::NotSet,
         }
