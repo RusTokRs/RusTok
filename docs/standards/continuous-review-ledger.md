@@ -98,7 +98,7 @@ review/integration remain open. No sequential FS cursor, checkbox or readiness p
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages  
-**Next pending component:** [`crates/modules/rustok-taxonomy`](../../crates/modules/rustok-taxonomy) (53 files, 14,828 LOC)  
+**Next pending component:** [`crates/modules/rustok-brand`](../../crates/modules/rustok-brand) (22 files, 3,399 LOC)  
 **Current main SHA:** `4fee232d5`  
 **Active branch:** `main`  
 
@@ -359,7 +359,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 ---
 
 ### Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages
-*Product catalog, variants, EAV attributes, categories tree closure, brand taxonomy, navigation menus, dynamic page builder, CMS pages, forms, and docs.* (11/26 completed)
+*Product catalog, variants, EAV attributes, categories tree closure, brand taxonomy, navigation menus, dynamic page builder, CMS pages, forms, and docs.* (12/26 completed)
 
 - [x] **[`crates/modules/rustok-product`](../../crates/modules/rustok-product)** (190 files, 81,078 LOC) — Core product catalog, variant matrix, SKU generation, published state machine, category bindings, and EAV attributes. Audited and verified all 6 Universal Logic Dimensions across 190 source files; verified ProductModule in src/module.rs with ModuleKind::Optional, health check, and runtime extension registration; verified canonical CRATE_API.md with mandatory contract sections and contract_tests.rs; added repository and readme metadata to Cargo.toml; 142/142 lib unit tests passed, 6/6 integration tests passed (module, category taxonomy same-id cutover, media reference protocol), 0 clippy warnings, remediation gate passed, zero defects.
 - [x] **[`crates/modules/rustok-product/admin`](../../crates/modules/rustok-product/admin)** (29 files, 21,028 LOC) — FFA admin UI for comprehensive product management, variant matrix editor, image gallery, and price rules. Audited Leptos admin UI package; verified strict FFA separation (pure Rust models, view-model computations, dirty-field tracking in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn); added docs.rs and repository metadata; 68/68 unit tests and 68/68 SSR tests passed, 0 clippy warnings, zero defects.
@@ -370,7 +370,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[`crates/modules/rustok-product-relations/admin`](../../crates/modules/rustok-product-relations/admin)** (9 files, 1,712 LOC) — FFA admin UI for configuring product recommendations and relation rules. Audited Leptos admin FFA package; verified strict FFA separation (pure Rust models, view-model computations, validation rules in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn); added CRATE_API.md, contract_tests.rs, docs.rs, readme, and repository metadata; 14/14 tests passed, 0 clippy warnings, zero defects.
 - [x] **[`crates/modules/rustok-product-transport`](../../crates/modules/rustok-product-transport)** (8 files, 1,704 LOC) — gRPC and REST transport adapters for product catalog queries and mutations. Audited and verified all 6 Universal Logic Dimensions across 8 source files; verified canonical CRATE_API.md and contract_tests.rs; verified client/server framing, bearer authentication interceptor, and bounded connection timeouts; 19/19 tests passed, zero defects.
 - [x] **[`crates/modules/rustok-product-catalog-service`](../../crates/modules/rustok-product-catalog-service)** (1 files, 508 LOC) — In-process catalog read port implementation with price and inventory enrichment. Audited standalone gRPC host; verified schema preflight checks for products, variants, and sys_events; verified loopback vs TLS security bounds, sanitized secret formatting, and graceful shutdown; added docs.rs, readme, and repository metadata; 6/6 tests passed, zero defects.
-- [ ] **[`crates/modules/rustok-taxonomy`](../../crates/modules/rustok-taxonomy)** (53 files, 14,828 LOC) — Hierarchical taxonomy trees, terms, faceted navigation filters, and category parent-child closures.
+- [x] **[`crates/modules/rustok-taxonomy`](../../crates/modules/rustok-taxonomy)** (53 files, 14,828 LOC) — Hierarchical taxonomy trees, terms, faceted navigation filters, and category parent-child closures. Standardized TaxonomyModule in src/module.rs with ModuleKind::Optional and health check; created canonical CRATE_API.md with 7 contract sections; created contract_tests.rs; 37/37 tests passed, 0 clippy warnings, zero defects.
 - [ ] **[`crates/modules/rustok-brand`](../../crates/modules/rustok-brand)** (22 files, 3,399 LOC) — Manufacturer and brand directory, brand logos, brand stories, and brand-filtered product listings.
 - [ ] **[`crates/modules/rustok-brand/admin`](../../crates/modules/rustok-brand/admin)** (9 files, 2,081 LOC) — FFA admin UI for brand catalog management, logo upload, and brand metadata.
 - [ ] **[`crates/modules/rustok-navigation`](../../crates/modules/rustok-navigation)** (40 files, 5,286 LOC) — Hierarchical site menus, header/footer navigation trees, custom URL redirects, and menu item ordering.
