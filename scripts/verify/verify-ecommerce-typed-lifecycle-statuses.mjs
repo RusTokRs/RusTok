@@ -22,8 +22,16 @@ const orderLib = read('crates/modules/rustok-order/src/lib.rs');
 const orderCompensation = read('crates/modules/rustok-order/src/checkout_compensation.rs');
 const orderRecovery = read('crates/modules/rustok-order/src/checkout_order_recovery.rs');
 const orderStageFacade = read('crates/modules/rustok-commerce/src/services/checkout_order_stages.rs');
-const orderStageLegacy = read('crates/modules/rustok-commerce/src/services/checkout_order_stages_legacy.rs');
-const orderStage = `${orderStageFacade}\n${orderStageLegacy}`;
+const orderCreation = read('crates/modules/rustok-commerce/src/services/checkout_order_creation.rs');
+const orderConfirmation = read('crates/modules/rustok-commerce/src/services/checkout_order_confirmation.rs');
+const orderAdoption = read('crates/modules/rustok-commerce/src/services/checkout_inventory_order_adoption.rs');
+// The order-stage compatibility include source was retired: the mounted facade
+// is the only order-stage implementation and it must stay that way.
+const orderStageLegacy = 'crates/modules/rustok-commerce/src/services/checkout_order_stages_legacy.rs';
+if (existsSync(new URL(orderStageLegacy, root))) {
+  failures.push(`${orderStageLegacy}: retired source must not return`);
+}
+const orderStage = orderStageFacade;
 const payment = read('crates/modules/rustok-payment/src/dto/payment.rs');
 const paymentPorts = read('crates/modules/rustok-payment/src/ports.rs');
 const paymentStageFacade = read(
@@ -57,22 +65,17 @@ const compensation = read(
 
 requireText(
   orderStageFacade,
-  'include!("checkout_order_stages_legacy.rs");',
-  'mounted order-stage facade',
-);
-requireText(
-  orderStageFacade,
-  'struct SanitizingCheckoutCompletionPort',
-  'mounted order-stage completion adapter',
-);
-requireText(
-  orderStageFacade,
-  'pub struct CheckoutOrderRecoveryAdapter',
+  'CheckoutOrderRecoveryAdapter',
   'mounted order-stage recovery adapter',
 );
 requireText(
+  orderStageFacade,
+  'ReadCheckoutOrderProjectionRequest {',
+  'mounted order-stage projection read',
+);
+requireText(
   paymentStageFacade,
-  'include!("checkout_payment_stages_legacy.rs");',
+  '#[path = "checkout_payment_stages_legacy.rs"]',
   'mounted payment-stage facade',
 );
 requireText(
@@ -105,16 +108,18 @@ for (const [source, value, label] of [
   [orderRecovery, 'OrderStatusKind::Pending', 'typed pending recovery'],
   [orderRecovery, 'OrderStatusKind::Cancelled', 'typed cancelled recovery'],
   [orderRecovery, 'OrderStatusKind::Unknown', 'typed unknown recovery'],
-  [orderStage, 'OrderStatusKind', 'mounted order status import'],
-  [orderStage, 'allowed_statuses: &[OrderStatusKind]', 'typed order projection policy'],
-  [orderStage, 'allowed_statuses.contains(&order.status_kind())', 'typed order projection check'],
+  [orderCreation, 'OrderStatusKind', 'order creation typed status import'],
+  [orderCreation, 'order.status_kind() != OrderStatusKind::Pending', 'typed order creation admission'],
+  [orderConfirmation, 'OrderStatusKind', 'order confirmation typed status import'],
+  [orderConfirmation, 'match order.status_kind()', 'typed confirmation dispatch'],
+  [orderAdoption, 'order.status_kind(),', 'typed adoption admission'],
+  [orderAdoption, 'OrderStatusKind::Pending | OrderStatusKind::Confirmed', 'typed adoption status set'],
   [payment, 'pub enum PaymentCollectionStatusKind', 'payment collection status enum'],
   [payment, 'pub enum PaymentStatusKind', 'payment status enum'],
   [payment, 'pub enum RefundStatusKind', 'refund status enum'],
   [payment, 'pub fn status_kind(&self) -> PaymentCollectionStatusKind', 'payment typed accessor'],
   [payment, '_ => Self::Unknown', 'payment unknown mapping'],
   [paymentPorts, 'pub fn status_kind(&self) -> PaymentCollectionStatusKind', 'payment snapshot typed accessor'],
-  [paymentStage, 'PaymentCollectionStatusKind', 'mounted payment status import'],
   [paymentStage, 'authorized.status_kind().is_authorized_or_captured()', 'typed authorization result'],
   [paymentStage, 'captured.status_kind().is_captured()', 'typed capture result'],
   [paymentStage, 'collection.status_kind().is_captured()', 'typed captured replay'],
@@ -188,6 +193,8 @@ for (const value of [
   'authorized.status.as_str()',
   'captured.status != "captured"',
   'collection.status != "captured"',
+  'payment_collection.status',
+  'collection.status.as_str()',
   'order.status.as_str()',
 ]) {
   forbidText(paymentStage, value, 'mounted payment stage raw lifecycle status');
@@ -201,13 +208,20 @@ for (const value of [
   forbidText(orderRecovery, value, 'order checkout recovery raw lifecycle status');
 }
 
-for (const value of [
-  'allowed_statuses: &[&str]',
-  'allowed_statuses.contains(&order.status.as_str())',
-  '&["confirmed"]',
-  '&["confirmed", "paid", "shipped", "delivered"]',
+for (const [source, label] of [
+  [orderStage, 'mounted order stage'],
+  [orderCreation, 'order creation executor'],
+  [orderConfirmation, 'order confirmation executor'],
+  [orderAdoption, 'order adoption service'],
 ]) {
-  forbidText(orderStage, value, 'mounted order projection raw lifecycle status');
+  for (const value of [
+    'allowed_statuses: &[&str]',
+    'order.status.as_str()',
+    'order.status != "pending"',
+    '&["confirmed", "paid", "shipped", "delivered"]',
+  ]) {
+    forbidText(source, value, `${label} raw lifecycle status`);
+  }
 }
 
 for (const value of [
@@ -238,7 +252,7 @@ for (const value of [
 }
 
 for (const value of [
-  'current.status.as_str()',
+  'matches!(current.status.as_str(), "',
   'current.status == "shipped"',
   'current.status != "delivered"',
   'current.status == "cancelled"',
