@@ -8,6 +8,8 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # rustok-navigation
+//!
 //! Canonical platform owner of localized navigation menus and channel slot bindings in RusToK.
 //!
 //! # Architecture and Guidelines

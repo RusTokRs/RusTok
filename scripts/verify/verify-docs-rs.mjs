@@ -43,21 +43,49 @@ if (scanLibs) searchDirs.push({ type: 'lib', dir: path.join(repoRoot, 'crates/li
 if (scanUi) searchDirs.push({ type: 'ui', dir: path.join(repoRoot, 'crates/ui') });
 
 const results = [];
-
+const targets = [];
 for (const { type, dir } of searchDirs) {
   if (!fs.existsSync(dir)) continue;
   const entries = fs.readdirSync(dir, { withFileTypes: true });
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const crateName = entry.name;
-    if (targetCrate && crateName !== targetCrate) continue;
-
-    const crateDir = path.join(dir, crateName);
-    const libRsPath = path.join(crateDir, 'src/lib.rs');
-    const moduleRsPath = path.join(crateDir, 'src/module.rs');
+    const crateDir = path.join(dir, entry.name);
     const cargoTomlPath = path.join(crateDir, 'Cargo.toml');
-    const moduleTomlPath = path.join(crateDir, 'rustok-module.toml');
+    if (fs.existsSync(cargoTomlPath)) {
+      targets.push({ type, crateDir });
+    }
+    // Also discover nested crates (e.g. admin, storefront)
+    try {
+      const subEntries = fs.readdirSync(crateDir, { withFileTypes: true });
+      for (const sub of subEntries) {
+        if (!sub.isDirectory()) continue;
+        const subCrateDir = path.join(crateDir, sub.name);
+        if (fs.existsSync(path.join(subCrateDir, 'Cargo.toml'))) {
+          targets.push({ type, crateDir: subCrateDir });
+        }
+      }
+    } catch {
+      // Ignore read errors
+    }
+  }
+}
+
+for (const { type, crateDir } of targets) {
+  const cargoTomlPath = path.join(crateDir, 'Cargo.toml');
+  let crateName = path.basename(crateDir);
+  if (fs.existsSync(cargoTomlPath)) {
+    const cargoContent = fs.readFileSync(cargoTomlPath, 'utf8');
+    const nameMatch = cargoContent.match(/name\s*=\s*["']([^"']+)["']/);
+    if (nameMatch) {
+      crateName = nameMatch[1];
+    }
+  }
+  if (targetCrate && crateName !== targetCrate && path.basename(crateDir) !== targetCrate) continue;
+
+  const libRsPath = path.join(crateDir, 'src/lib.rs');
+  const moduleRsPath = path.join(crateDir, 'src/module.rs');
+  const moduleTomlPath = path.join(crateDir, 'rustok-module.toml');
     const crateApiPath = path.join(crateDir, 'CRATE_API.md');
     const readmePath = path.join(crateDir, 'README.md');
     const srcContractTestsPath = path.join(crateDir, 'src/contract_tests.rs');
@@ -243,7 +271,6 @@ for (const { type, dir } of searchDirs) {
       issues,
     });
   }
-}
 
 // Print summary
 console.log('='.repeat(80));
