@@ -1,6 +1,5 @@
-use async_graphql::{
-    ComplexObject, Context, Enum, FieldError, InputObject, MaybeUndefined, Result, SimpleObject,
-};
+use async_graphql::{ComplexObject, Context, Enum, FieldError, InputObject, Result, SimpleObject};
+
 use chrono::{DateTime, Utc};
 use rustok_api::{
     AuthContext, Patch, Permission, RichTextDocument, RichTextView, TenantContext,
@@ -10,6 +9,15 @@ use rustok_core::SecurityContext;
 use rustok_profiles::GqlProfileSummary;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
+
+/// GraphQL's three-state input wrapper, re-exported with the input types.
+///
+/// A nullable input field has to distinguish "not supplied" (`Undefined`) from
+/// "explicit null" (`Null`) and a value (`Value`); a plain `Option<T>` collapses
+/// the first two. Exposing the wrapper keeps that contract reachable for every
+/// caller of these inputs (including tests) without adding a direct
+/// `async-graphql` dependency to them.
+pub use async_graphql::MaybeUndefined;
 
 use crate::{
     BlogError, BlogPostStatus, CommentListItem as DomainCommentListItem, CommentResponse,
@@ -283,9 +291,9 @@ fn require_comment_moderator(ctx: &Context<'_>) -> Result<AuthContext> {
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
         .clone();
-    if !has_any_effective_permission(&auth.permissions, &[Permission::BLOG_POSTS_MANAGE]) {
+    if !has_any_effective_permission(&auth.permissions, &[Permission::COMMENTS_MODERATE]) {
         return Err(<FieldError as GraphQLError>::permission_denied(
-            "Permission denied: blog_posts:manage required",
+            "Permission denied: comments:moderate required",
         ));
     }
     Ok(auth)

@@ -55,7 +55,7 @@ pub use services::{
     CategoryService, CommentService, PostService, PreviewToken, PreviewTokenService, TagService,
     canonical_post_route,
 };
-pub use state_machine::{BlogPostStatus, CommentStatus};
+pub use state_machine::BlogPostStatus;
 
 #[cfg(test)]
 mod contract_tests;

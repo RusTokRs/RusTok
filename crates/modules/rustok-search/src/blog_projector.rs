@@ -307,7 +307,14 @@ impl BlogSearchProjector {
                 'blog_post'::text AS entity_type,
                 bt.locale,
                 p.status::text AS status,
-                (LOWER(p.status::text) = 'published') AS is_public,
+                -- "Public" is the Blog owner's definition: published *and*
+                -- stamped with its publication time. A published row without
+                -- `published_at` is damaged state that every Blog surface (the
+                -- public list, the SEO scan, the comment target gate and the
+                -- module's own Search source) hides; treating it as public here
+                -- made it discoverable in storefront search anyway, because a
+                -- module without an audience policy is gated by this flag alone.
+                (LOWER(p.status::text) = 'published' AND p.published_at IS NOT NULL) AS is_public,
                 COALESCE(bt.title, '') AS title,
                 COALESCE(bct.name, bct_fallback.name, bct_term.canonical_key) AS subtitle,
                 p.slug,
@@ -519,7 +526,26 @@ impl BlogSearchProjector {
                     .try_get::<Option<String>>("", "excerpt")
                     .map_err(Error::Database)?;
                 let body = row.try_get::<String>("", "body").map_err(Error::Database)?;
-                let article_text = project_canonical_article_plain_text(&body)?;
+                // A stored body that no longer satisfies the article contract is
+                // damaged Blog data, not a transient failure. Aborting here failed
+                // the whole `upsert_post` / `rebuild_tenant` transaction, so one bad
+                // row made the tenant's index impossible to rebuild (the rebuild
+                // deletes the documents first, then rolls back) — the same
+                // poison-pill shape the Blog-side projection already degrades.
+                // The document keeps the excerpt the INSERT wrote and the damage
+                // is logged.
+                let article_text = match project_canonical_article_plain_text(&body) {
+                    Ok(article_text) => article_text,
+                    Err(error) => {
+                        tracing::warn!(
+                            tenant_id = %tenant_id,
+                            document_key = %document_key,
+                            %error,
+                            "Stored Blog article body could not be projected; indexing the excerpt instead"
+                        );
+                        continue;
+                    }
+                };
                 let search_body = compose_search_body(excerpt.as_deref(), &article_text);
 
                 conn.execute_raw(Statement::from_sql_and_values(

@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use rustok_api::Patch;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
@@ -26,8 +27,11 @@ pub struct UpdateCategoryInput {
     pub name: Option<String>,
     #[schema(max_length = 120)]
     pub slug: Option<String>,
-    #[schema(max_length = 1000)]
-    pub description: Option<String>,
+    /// Missing field keeps the current description, an explicit `null`
+    /// clears it, and a string replaces it.
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    #[schema(value_type = Option<String>, max_length = 1000)]
+    pub description: Patch<String>,
     /// Extension settings must be a JSON object no larger than 64 KiB when encoded.
     pub settings: Option<serde_json::Value>,
 }

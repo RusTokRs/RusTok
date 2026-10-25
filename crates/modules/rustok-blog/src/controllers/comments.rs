@@ -323,8 +323,8 @@ pub async fn moderate_comment(
     ensure_blog_permission(
         &tenant,
         &auth,
-        &[Permission::BLOG_POSTS_MANAGE],
-        "Permission denied: blog_posts:manage required",
+        &[Permission::COMMENTS_MODERATE],
+        "Permission denied: comments:moderate required",
     )?;
 
     let locale = input

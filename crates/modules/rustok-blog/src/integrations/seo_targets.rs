@@ -13,10 +13,22 @@ use rustok_seo_targets::{
 use url::Url;
 use uuid::Uuid;
 
+use crate::dto::PublishedSeoPost;
+use crate::services::is_post_visible_for_channel;
 use crate::state_machine::BlogPostStatus;
-use crate::{BlogError, PostResponse, PostService, PostSummary};
+use crate::{BlogError, PostResponse, PostService, canonical_post_route};
 
 const BULK_FETCH_SIZE: u32 = 48;
+
+/// Hard ceiling of one `sitemap_candidates` call.
+///
+/// The SEO port returns the whole candidate list as a `Vec`, so a tenant with a
+/// very large published corpus would otherwise pin an unbounded amount of
+/// memory in this process. The scan is keyset-paged, so stopping at the ceiling
+/// is cheap; it is deliberately below the 50k-URL sitemap-file limit, and a
+/// truncation is logged as a warning because only a streaming port (or a
+/// sitemap splitter in `rustok-seo`) can carry a larger corpus.
+const MAX_SITEMAP_CANDIDATES: usize = 20_000;
 
 /// The one Blog SEO target slug, built from the canonical constant.
 ///
@@ -81,7 +93,7 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
 
         if matches!(request.scope, SeoTargetLoadScope::PublicRoute)
             && (post.status != BlogPostStatus::Published
-                || !channel_visible(post.channel_slugs.as_slice(), request.channel_slug))
+                || !is_post_visible_for_channel(post.channel_slugs.as_slice(), request.channel_slug))
         {
             return Ok(None);
         }
@@ -112,7 +124,7 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
         Ok(post
             .filter(|post| {
                 post.status == BlogPostStatus::Published
-                    && channel_visible(post.channel_slugs.as_slice(), request.channel_slug)
+                    && is_post_visible_for_channel(post.channel_slugs.as_slice(), request.channel_slug)
             })
             .map(|post| SeoRouteMatchRecord {
                 // Cloned because the closure borrows the outer binding; the slug is a
@@ -161,6 +173,7 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
         let service = PostService::new(runtime.db.clone(), runtime.event_bus.clone());
         let mut after = None;
         let mut candidates = Vec::new();
+        let mut truncated = false;
 
         loop {
             let page = service
@@ -174,7 +187,15 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
                 .await?;
 
             for item in page.items {
+                if candidates.len() >= MAX_SITEMAP_CANDIDATES {
+                    truncated = true;
+                    break;
+                }
                 candidates.push(map_post_sitemap_candidate(item)?);
+            }
+
+            if truncated {
+                break;
             }
 
             match page.next_after {
@@ -183,26 +204,34 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
             }
         }
 
+        if truncated {
+            tracing::warn!(
+                tenant_id = %request.tenant_id,
+                limit = MAX_SITEMAP_CANDIDATES,
+                "Blog sitemap candidate scan reached its bound; the sitemap is incomplete and needs the paged SEO port"
+            );
+        }
+
         Ok(candidates)
     }
 }
 
-fn map_post_bulk_summary(item: PostSummary) -> AnyResult<SeoBulkSummaryRecord> {
+fn map_post_bulk_summary(item: PublishedSeoPost) -> AnyResult<SeoBulkSummaryRecord> {
     Ok(SeoBulkSummaryRecord {
         target_kind: blog_target_slug()?,
         target_id: item.id,
         effective_locale: item.effective_locale,
         label: item.title,
-        route: format!("/modules/blog?slug={}", item.slug),
+        route: canonical_post_route(item.slug.as_str()),
     })
 }
 
-fn map_post_sitemap_candidate(item: PostSummary) -> AnyResult<SeoSitemapCandidateRecord> {
+fn map_post_sitemap_candidate(item: PublishedSeoPost) -> AnyResult<SeoSitemapCandidateRecord> {
     let image_alt = item.title.clone();
     let image = item
         .featured_image_url
         .and_then(|url| SeoTargetImageRecord::from_parts(url, Some(image_alt), None, None, None));
-    let route = format!("/modules/blog?slug={}", item.slug);
+    let route = canonical_post_route(item.slug.as_str());
     Ok(SeoSitemapCandidateRecord {
         target_kind: blog_target_slug()?,
         target_id: item.id,
@@ -325,25 +354,6 @@ fn parse_blog_route(route: &str) -> AnyResult<Option<String>> {
     }
 
     Ok(None)
-}
-
-fn channel_visible(channel_slugs: &[String], requested_channel: Option<&str>) -> bool {
-    if channel_slugs.is_empty() {
-        return true;
-    }
-    let Some(requested_channel) = normalize_channel_slug(requested_channel) else {
-        return false;
-    };
-    channel_slugs.iter().any(|slug| {
-        normalize_channel_slug(Some(slug.as_str())).as_deref() == Some(requested_channel.as_str())
-    })
-}
-
-fn normalize_channel_slug(channel_slug: Option<&str>) -> Option<String> {
-    channel_slug
-        .map(str::trim)
-        .filter(|slug| !slug.is_empty())
-        .map(|slug| slug.to_ascii_lowercase())
 }
 
 fn summarize_text(value: &str) -> Option<String> {

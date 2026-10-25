@@ -11,7 +11,7 @@
 use chrono::Utc;
 use rustok_blog::dto::{CategoryListItem, TagListItem};
 use rustok_blog::graphql::{
-    CreateBlogCategoryInput, GqlBlogCategory, GqlBlogTag, UpdateBlogCategoryInput,
+    CreateBlogCategoryInput, GqlBlogCategory, GqlBlogTag, MaybeUndefined, UpdateBlogCategoryInput,
 };
 use uuid::Uuid;
 
@@ -100,13 +100,31 @@ fn test_create_and_update_category_input_conversions() {
         locale: "en".to_string(),
         name: Some("Technology".to_string()),
         slug: None,
-        description: None,
+        description: MaybeUndefined::Undefined,
         settings: None,
     };
     let domain_update: rustok_blog::dto::UpdateCategoryInput = update.try_into().expect("valid update converts");
     assert_eq!(domain_update.locale, "en");
     assert_eq!(domain_update.name, Some("Technology".to_string()));
     assert_eq!(domain_update.slug, None);
+    assert_eq!(
+        domain_update.description,
+        rustok_api::Patch::Keep,
+        "an absent GraphQL field must not clear the stored description"
+    );
+
+    // An explicit `null` is the only way to clear the field, and it must not be
+    // collapsed into "not supplied".
+    let clearing = UpdateBlogCategoryInput {
+        locale: "en".to_string(),
+        name: None,
+        slug: None,
+        description: MaybeUndefined::Null,
+        settings: None,
+    };
+    let domain_clearing: rustok_blog::dto::UpdateCategoryInput =
+        clearing.try_into().expect("a clearing update converts");
+    assert_eq!(domain_clearing.description, rustok_api::Patch::Clear);
 }
 
 #[test]
@@ -128,7 +146,7 @@ fn category_input_conversion_rejects_invalid_settings_json() {
         locale: "en".to_string(),
         name: None,
         slug: None,
-        description: None,
+        description: MaybeUndefined::Undefined,
         settings: Some("[1,".to_string()),
     };
     let update_result =

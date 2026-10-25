@@ -49,6 +49,12 @@ pub enum BlogError {
     #[error("Cannot publish archived post")]
     CannotPublishArchived,
 
+    #[error("Cannot unpublish archived post")]
+    CannotUnpublishArchived,
+
+    #[error("Cannot restore published post")]
+    CannotRestorePublished,
+
     #[error("Invalid Blog post lifecycle transition: {from:?} -> {to:?}")]
     InvalidTransition {
         from: crate::BlogPostStatus,
@@ -167,6 +173,20 @@ impl From<BlogError> for RichError {
                 RichError::new(ErrorKind::BusinessLogic, "Cannot publish archived post")
                     .with_user_message("Archived posts must be restored before publishing.")
                     .with_error_code("CANNOT_PUBLISH_ARCHIVED")
+            }
+            BlogError::CannotUnpublishArchived => {
+                RichError::new(ErrorKind::BusinessLogic, "Cannot unpublish archived post")
+                    .with_user_message(
+                        "Archived posts are already unpublished. Restore the post to edit it.",
+                    )
+                    .with_error_code("CANNOT_UNPUBLISH_ARCHIVED")
+            }
+            BlogError::CannotRestorePublished => {
+                RichError::new(ErrorKind::BusinessLogic, "Cannot restore published post")
+                    .with_user_message(
+                        "Published posts are not archived. Unpublish or archive the post first.",
+                    )
+                    .with_error_code("CANNOT_RESTORE_PUBLISHED")
             }
             BlogError::InvalidTransition { from, to } => RichError::new(
                 ErrorKind::BusinessLogic,

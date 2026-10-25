@@ -63,45 +63,13 @@ impl BlogPostStatus {
 // ============================================================================
 // Blog Comment State Machine
 // ============================================================================
-
-/// Comment status enum for database storage
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum CommentStatus {
-    #[default]
-    Pending,
-    Approved,
-    Spam,
-    Trash,
-}
-
-impl CommentStatus {
-    /// Check if comment is visible publicly
-    pub fn is_visible(&self) -> bool {
-        matches!(self, Self::Approved)
-    }
-
-    /// Transition to approved
-    pub fn approve(self) -> Self {
-        match self {
-            Self::Pending | Self::Spam => Self::Approved,
-            Self::Approved | Self::Trash => self,
-        }
-    }
-
-    /// Transition to spam
-    pub fn mark_spam(self) -> Self {
-        match self {
-            Self::Pending | Self::Approved => Self::Spam,
-            Self::Spam | Self::Trash => self,
-        }
-    }
-
-    /// Transition to trash
-    pub fn trash(self) -> Self {
-        Self::Trash
-    }
-}
+//
+// Blog does not own comment state. Comments (including their moderation
+// status) are owned by the `rustok-comments` module and reached through the
+// `CommentsThreadPort`; a second `CommentStatus` model here was a dead
+// parallel implementation that no write path or transport consulted. The
+// canonical model lives in `rustok-comments`, so it is intentionally absent
+// from this module.
 
 // ============================================================================
 // Tests
@@ -176,65 +144,7 @@ mod tests {
     }
 
     #[test]
-    fn the_comment_model_carries_no_payload() {
-        assert_eq!(std::mem::size_of::<CommentStatus>(), 1);
-    }
-
-    #[test]
-    fn the_default_statuses_are_the_entry_states() {
+    fn the_default_post_status_is_the_entry_state() {
         assert_eq!(BlogPostStatus::default(), BlogPostStatus::Draft);
-        assert_eq!(CommentStatus::default(), CommentStatus::Pending);
-    }
-
-    #[test]
-    fn test_comment_status_transitions() {
-        // Pending -> Approved
-        assert_eq!(CommentStatus::Pending.approve(), CommentStatus::Approved);
-
-        // Approved -> Spam
-        assert_eq!(CommentStatus::Approved.mark_spam(), CommentStatus::Spam);
-
-        // Spam -> Approved
-        assert_eq!(CommentStatus::Spam.approve(), CommentStatus::Approved);
-
-        // Any -> Trash
-        assert_eq!(CommentStatus::Pending.trash(), CommentStatus::Trash);
-        assert_eq!(CommentStatus::Approved.trash(), CommentStatus::Trash);
-    }
-
-    #[test]
-    fn test_comment_visibility() {
-        assert!(!CommentStatus::Pending.is_visible());
-        assert!(CommentStatus::Approved.is_visible());
-        assert!(!CommentStatus::Spam.is_visible());
-        assert!(!CommentStatus::Trash.is_visible());
-    }
-
-    #[test]
-    fn comment_visibility_is_correct() {
-        let statuses = [
-            CommentStatus::Pending,
-            CommentStatus::Approved,
-            CommentStatus::Spam,
-            CommentStatus::Trash,
-        ];
-
-        for status in statuses {
-            let is_visible = status.is_visible();
-            assert_eq!(is_visible, status == CommentStatus::Approved);
-        }
-    }
-
-    #[test]
-    fn approved_stays_approved_on_approve() {
-        let status = CommentStatus::Approved;
-        assert_eq!(status.approve(), CommentStatus::Approved);
-    }
-
-    #[test]
-    fn trash_is_terminal() {
-        let status = CommentStatus::Trash;
-        assert_eq!(status.approve(), CommentStatus::Trash);
-        assert_eq!(status.mark_spam(), CommentStatus::Trash);
     }
 }

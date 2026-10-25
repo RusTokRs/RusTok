@@ -1,5 +1,6 @@
 use chrono::Utc;
-use rustok_blog::{blog_post, blog_post_tag, blog_post_translation};
+use rustok_blog::services::remove_post_tag_links_in_tx;
+use rustok_blog::{blog_post, blog_post_translation};
 use rustok_comments::{comment, comment_thread};
 use rustok_content::{
     ContentError, ContentResult, DemotePostToTopicInput, DemotePostToTopicOutput,
@@ -139,11 +140,11 @@ pub(crate) async fn demote_post_to_topic(
     .await?;
 
     delete_comments_for_post_in_tx(txn, tenant_id, post.id).await?;
-    blog_post_tag::Entity::delete_many()
-        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
-        .filter(blog_post_tag::Column::PostId.eq(post.id))
-        .exec(txn)
-        .await?;
+    // Blog owns the relation rows and derives `blog_tag_usage` from them; the
+    // owner command removes the links and repairs the projection in one step.
+    remove_post_tag_links_in_tx(txn, tenant_id, post.id)
+        .await
+        .map_err(crate::errors::blog_error_to_content_error)?;
     blog_post::Entity::delete_many()
         .filter(blog_post::Column::TenantId.eq(tenant_id))
         .filter(blog_post::Column::Id.eq(post.id))

@@ -4,9 +4,10 @@
 //! gone: it was dead code that contradicted the persisted semantics (it
 //! overwrote `created_at` when a post left the published state) and no write
 //! path used it. The properties below guard the model the write path actually
-//! uses — the persisted status enum, its canonical transition table
+//! uses — the persisted status enum and its canonical transition table
 //! ([`BlogPostStatus::can_transition_to`], consulted by
-//! `crate::services::post::commands`) and the comment moderation model.
+//! `crate::services::post::commands`). Comment moderation state is owned by
+//! `rustok-comments` and is not modelled here.
 //!
 //! Every property is a property of the *relation* between two statuses, so a
 //! change of the transition table is caught by the property suite and not only
@@ -24,15 +25,6 @@ fn status_strategy() -> impl Strategy<Value = BlogPostStatus> {
     })
 }
 
-/// Generates every Blog comment status.
-fn comment_status_strategy() -> impl Strategy<Value = CommentStatus> {
-    any::<u8>().prop_map(|value| match value % 4 {
-        0 => CommentStatus::Pending,
-        1 => CommentStatus::Approved,
-        2 => CommentStatus::Spam,
-        _ => CommentStatus::Trash,
-    })
-}
 
 proptest! {
     /// A post is published out of the draft state only.
@@ -124,51 +116,4 @@ proptest! {
                 || !from.can_transition_to(BlogPostStatus::Published),
         );
     }
-
-    /// Only an approved comment is publicly visible.
-    #[test]
-    fn comment_visibility_matches_the_approved_status(from in comment_status_strategy()) {
-        prop_assert_eq!(from.is_visible(), from == CommentStatus::Approved);
-    }
-
-    /// A trashed comment never becomes visible again.
-    #[test]
-    fn a_trashed_comment_never_becomes_visible_again(from in comment_status_strategy()) {
-        prop_assert!(!from.trash().is_visible());
-        prop_assert!(
-            from != CommentStatus::Trash
-                || (!from.approve().is_visible() && !from.mark_spam().is_visible()),
-        );
-    }
-}
-
-/// The comment visibility is decided by the approved status only.
-#[test]
-fn comment_visibility_is_correct() {
-    let statuses = [
-        CommentStatus::Pending,
-        CommentStatus::Approved,
-        CommentStatus::Spam,
-        CommentStatus::Trash,
-    ];
-
-    for status in statuses {
-        let is_visible = status.is_visible();
-        assert_eq!(is_visible, status == CommentStatus::Approved);
-    }
-}
-
-/// An approved comment stays approved.
-#[test]
-fn approved_stays_approved_on_approve() {
-    let status = CommentStatus::Approved;
-    assert_eq!(status.approve(), CommentStatus::Approved);
-}
-
-/// The trashed state is terminal.
-#[test]
-fn trash_is_terminal() {
-    let status = CommentStatus::Trash;
-    assert_eq!(status.approve(), CommentStatus::Trash);
-    assert_eq!(status.mark_spam(), CommentStatus::Trash);
 }

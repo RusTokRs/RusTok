@@ -56,6 +56,7 @@ impl PostService {
         }
         let content = normalize_article(content)?;
         let article_body = canonical_article_body(&content)?;
+        ensure_article_body_within_bounds(&article_body)?;
 
         let slug = normalize_slug(slug.as_deref().unwrap_or(&title));
         if slug.is_empty() {
@@ -171,6 +172,25 @@ impl PostService {
             .await
             .map_err(BlogError::from)?;
 
+        // A post created in the published state is a publication, not only a
+        // creation: subscribers to `blog.post.published` (search, feeds,
+        // webhooks, caches) must see the same event a later `publish_post`
+        // would have emitted.
+        if publish {
+            self.event_bus
+                .publish_in_tx(
+                    &txn,
+                    tenant_id,
+                    security.user_id,
+                    DomainEvent::BlogPostPublished {
+                        post_id,
+                        author_id: Some(author_id),
+                    },
+                )
+                .await
+                .map_err(BlogError::from)?;
+        }
+
         if let Some(scheduled) = scheduled_at {
             self.event_bus
                 .publish_in_tx(
@@ -283,6 +303,9 @@ impl PostService {
             .as_ref()
             .map(canonical_article_body)
             .transpose()?;
+        if let Some(article_body) = article_body.as_deref() {
+            ensure_article_body_within_bounds(article_body)?;
+        }
 
         let requested_slug = slug.as_deref().map(normalize_slug);
         if let Some(requested_slug) = requested_slug.as_deref()
@@ -559,7 +582,9 @@ impl PostService {
             post.author_id,
         )?;
         let current = storage_to_status(&post.status)?;
-        ensure_transition(current, BlogPostStatus::Published)?;
+        if !lifecycle_command_should_apply(LifecycleCommand::Publish, current)? {
+            return Ok(());
+        }
 
         let now = chrono::Utc::now();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
@@ -608,7 +633,9 @@ impl PostService {
             post.author_id,
         )?;
         let current = storage_to_status(&post.status)?;
-        ensure_transition(current, BlogPostStatus::Draft)?;
+        if !lifecycle_command_should_apply(LifecycleCommand::Unpublish, current)? {
+            return Ok(());
+        }
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         apply_status_transition_in_tx(
@@ -661,7 +688,9 @@ impl PostService {
             post.author_id,
         )?;
         let current = storage_to_status(&post.status)?;
-        ensure_transition(current, BlogPostStatus::Archived)?;
+        if !lifecycle_command_should_apply(LifecycleCommand::Archive, current)? {
+            return Ok(());
+        }
 
         let now = chrono::Utc::now();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
@@ -709,7 +738,9 @@ impl PostService {
             post.author_id,
         )?;
         let current = storage_to_status(&post.status)?;
-        ensure_transition(current, BlogPostStatus::Draft)?;
+        if !lifecycle_command_should_apply(LifecycleCommand::Restore, current)? {
+            return Ok(());
+        }
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         apply_status_transition_in_tx(
@@ -760,7 +791,7 @@ impl PostService {
         }
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
-        remove_post_tag_usage_in_tx(&txn, tenant_id, post_id).await?;
+        remove_post_tag_links_in_tx(&txn, tenant_id, post_id).await?;
         // The comment projection ledger of a deleted post is terminal state:
         // no post can ever be projected for it again (a later Comments event
         // for the post re-cleans and is dropped by the projection handler),
@@ -818,6 +849,69 @@ impl PostService {
         txn.commit().await.map_err(BlogError::from)?;
         Ok(())
     }
+}
+
+/// The four lifecycle commands of a Blog post.
+///
+/// Commands, not target statuses, are the unit of lifecycle semantics: `Draft`
+/// is the target of two different commands (`Unpublish` from `Published` and
+/// `Restore` from `Archived`), so a validation that only inspects the target
+/// cannot tell them apart.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LifecycleCommand {
+    Publish,
+    Unpublish,
+    Archive,
+    Restore,
+}
+
+impl LifecycleCommand {
+    /// The one source status this command may start from and its target.
+    const fn edge(self) -> (BlogPostStatus, BlogPostStatus) {
+        match self {
+            Self::Publish => (BlogPostStatus::Draft, BlogPostStatus::Published),
+            Self::Unpublish => (BlogPostStatus::Published, BlogPostStatus::Draft),
+            Self::Archive => (BlogPostStatus::Published, BlogPostStatus::Archived),
+            Self::Restore => (BlogPostStatus::Archived, BlogPostStatus::Draft),
+        }
+    }
+}
+
+/// Decides whether a lifecycle command must run against the **stored** status.
+///
+/// Returns `Ok(false)` when the post is already in the command's target state:
+/// that is a successful no-op, so a retried request after a lost response never
+/// fails and never emits a second lifecycle event (idempotent command
+/// semantics, `AGENTS.md` §7).
+///
+/// A post in any status other than the command's declared source is rejected
+/// with an error that names the command instead of the raw transition: the
+/// state graph allows `Archived -> Draft`, which is exactly what `Restore`
+/// means, but it is not what `Unpublish` means.
+fn lifecycle_command_should_apply(
+    command: LifecycleCommand,
+    current: BlogPostStatus,
+) -> BlogResult<bool> {
+    let (source, target) = command.edge();
+    if current == target {
+        return Ok(false);
+    }
+    if current != source {
+        return Err(match (command, current) {
+            (LifecycleCommand::Publish, BlogPostStatus::Archived) => {
+                BlogError::CannotPublishArchived
+            }
+            (LifecycleCommand::Unpublish, BlogPostStatus::Archived) => {
+                BlogError::CannotUnpublishArchived
+            }
+            (LifecycleCommand::Restore, BlogPostStatus::Published) => {
+                BlogError::CannotRestorePublished
+            }
+            _ => BlogError::invalid_transition(current, target),
+        });
+    }
+    ensure_transition(current, target)?;
+    Ok(true)
 }
 
 fn ensure_transition(current: BlogPostStatus, next: BlogPostStatus) -> BlogResult<()> {

@@ -10,6 +10,25 @@ use uuid::Uuid;
 use crate::error::{BlogError, BlogResult};
 use crate::state_machine::BlogPostStatus;
 
+/// Upper bound of an accepted list cursor token, in bytes.
+///
+/// A cursor is opaque and client-supplied, so it is decoded before its contents
+/// can be validated: without a bound, one request could hand the process an
+/// arbitrarily large base64 blob (query strings are not covered by the router's
+/// `DefaultBodyLimit`). The longest token this module issues is a
+/// `PublishedPostCursor`: `v1|0|<rfc3339>|<rfc3339>|<uuid>` is ~110 bytes and
+/// encodes to ~150. 512 keeps every issued token valid with a wide margin while
+/// refusing anything that is not one of ours.
+const MAX_LIST_CURSOR_TOKEN_BYTES: usize = 512;
+
+/// Rejects an oversized cursor before it is decoded.
+fn ensure_cursor_token_is_bounded(token: &str) -> BlogResult<()> {
+    if token.len() > MAX_LIST_CURSOR_TOKEN_BYTES {
+        return Err(BlogError::validation("Blog list cursor is invalid"));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreatePostInput {
     pub locale: String,
@@ -200,6 +219,40 @@ mod tests {
         assert!(PublishedPostCursor::decode("not-a-token").is_err());
         assert!(PublishedPostCursor::decode("").is_err());
     }
+
+    /// A cursor is decoded before anything else can validate it, and query
+    /// strings bypass the router body limit, so an oversized token must be
+    /// refused instead of being base64-decoded in full.
+    #[test]
+    fn list_cursors_are_bounded_before_decoding() {
+        let oversized = "A".repeat(super::MAX_LIST_CURSOR_TOKEN_BYTES + 1);
+        let public_error = PublishedPostCursor::decode(&oversized)
+            .expect_err("an oversized public cursor is refused");
+        assert!(matches!(
+            public_error,
+            crate::BlogError::Validation(_)
+        ));
+        let admin_error = super::AdminPostCursor::decode(
+            &oversized,
+            super::PostSortField::CreatedAt,
+            super::PostSortOrder::Desc,
+        )
+        .expect_err("an oversized admin cursor is refused");
+        assert!(matches!(
+            admin_error,
+            crate::BlogError::Validation(_)
+        ));
+
+        // The bound accepts a real token with a wide margin.
+        let cursor = PublishedPostCursor {
+            is_pinned: false,
+            pinned_at: None,
+            published_at: chrono::DateTime::parse_from_rfc3339("2026-10-08T08:00:00Z")
+                .expect("published_at"),
+            id: Uuid::from_u128(7),
+        };
+        assert!(PublishedPostCursor::decode(&cursor.encode()).is_ok());
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -332,9 +385,9 @@ impl AdminPostCursor {
         sort_order: PostSortOrder,
     ) -> BlogResult<Self> {
         let invalid = || BlogError::validation("Blog list cursor is invalid");
-        let bytes = URL_SAFE_NO_PAD
-            .decode(token.trim())
-            .map_err(|_| invalid())?;
+        let token = token.trim();
+        ensure_cursor_token_is_bounded(token)?;
+        let bytes = URL_SAFE_NO_PAD.decode(token).map_err(|_| invalid())?;
         let raw = String::from_utf8(bytes).map_err(|_| invalid())?;
         let mut parts = raw.split('|');
         let (Some(field), Some(order), Some(value), Some(id), None) = (
@@ -437,9 +490,9 @@ impl PublishedPostCursor {
 
     pub fn decode(value: &str) -> BlogResult<Self> {
         let invalid = || BlogError::validation("Blog list cursor is invalid");
-        let bytes = URL_SAFE_NO_PAD
-            .decode(value.trim())
-            .map_err(|_| invalid())?;
+        let value = value.trim();
+        ensure_cursor_token_is_bounded(value)?;
+        let bytes = URL_SAFE_NO_PAD.decode(value).map_err(|_| invalid())?;
         let raw = String::from_utf8(bytes).map_err(|_| invalid())?;
         let parts: Vec<&str> = raw.split('|').collect();
         let [version, is_pinned, pinned_at, published_at, id] = parts.as_slice() else {
@@ -491,11 +544,28 @@ pub struct PublicPostPage {
     pub next_cursor: Option<PublishedPostCursor>,
 }
 
-/// One keyset page of a published-post scan for bulk and sitemap jobs.
+/// Minimal projection of one published post for SEO scans.
+///
+/// The SEO port needs identity, the route key, the localized title, the
+/// featured image and the set of translated locales. Reusing [`PostSummary`]
+/// for the scan forced every sitemap page to load tag links, category names,
+/// channel allowlists and full translation rows (including the article body)
+/// that the sitemap mapping discards.
+#[derive(Debug, Clone)]
+pub struct PublishedSeoPost {
+    pub id: Uuid,
+    pub slug: String,
+    pub title: String,
+    pub featured_image_url: Option<String>,
+    pub effective_locale: String,
+    pub available_locales: Vec<String>,
+}
+
+/// One keyset page of a published-post SEO scan for bulk and sitemap jobs.
 /// `next_after` is the last id of this page when another page exists.
 #[derive(Debug, Clone)]
 pub struct PublishedPostScanPage {
-    pub items: Vec<PostSummary>,
+    pub items: Vec<PublishedSeoPost>,
     pub next_after: Option<Uuid>,
 }
 

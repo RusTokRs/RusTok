@@ -20,7 +20,7 @@ use crate::services::category_name_projection::{
     BlogCategoryProjectionInfo, load_category_projections_map,
 };
 use crate::services::post::{
-    order_public_post_list, public_post_after_condition, public_post_cursor,
+    order_published_post_scan, published_post_scan_after_condition, published_post_scan_cursor,
 };
 use crate::services::tag::load_post_tags_map;
 
@@ -346,17 +346,26 @@ impl SearchProjectionSource for BlogSearchProjectionSource {
             )));
         }
 
+        // The public corpus is `published` **and** stamped, as in every other
+        // Blog read path. Returning a `published_at = NULL` row here produced a
+        // document the source itself marked `is_public: false`: the trait
+        // contract says a source must never hand the storefront a document it
+        // is not allowed to discover, and a row no other public surface shows
+        // is exactly that.
         let mut select = blog_post::Entity::find()
             .filter(blog_post::Column::TenantId.eq(tenant_id))
-            .filter(blog_post::Column::Status.eq("published"));
+            .filter(blog_post::Column::Status.eq("published"))
+            .filter(blog_post::Column::PublishedAt.is_not_null());
 
         if let Some(token) = after.as_deref() {
             let cursor = PublishedPostCursor::decode(token)
                 .map_err(|e| Error::Validation(format!("Invalid blog post cursor: {e}")))?;
-            select = select.filter(public_post_after_condition(&cursor));
+            select = select.filter(published_post_scan_after_condition(&cursor));
         }
 
-        select = order_public_post_list(select);
+        // Immutable ordering: a walk must stay complete while posts are pinned
+        // (pin state is not projected into Search and does not emit a reindex).
+        select = order_published_post_scan(select);
         // Fetch one extra row: `posts.len() == limit` alone cannot tell a
         // full-but-final page from a page with a successor, and used to emit
         // a spurious cursor that resolved to an empty page.
@@ -369,10 +378,10 @@ impl SearchProjectionSource for BlogSearchProjectionSource {
         let has_next_page = posts.len() > limit;
         posts.truncate(limit);
         let next_cursor = if has_next_page {
-            posts
-                .last()
-                .and_then(|p| public_post_cursor(p).ok())
-                .map(|c| c.encode())
+            match posts.last().map(published_post_scan_cursor).transpose() {
+                Ok(cursor) => cursor.map(|c| c.encode()),
+                Err(error) => return Err(Error::Internal(error.to_string())),
+            }
         } else {
             None
         };
@@ -395,9 +404,13 @@ impl SearchProjectionSource for BlogSearchProjectionSource {
             return Ok(Vec::new());
         }
 
+        // Same corpus rule as `list_public_documents`: a published row without
+        // its publication timestamp is damaged state, not a discoverable
+        // document.
         let post = blog_post::Entity::find_by_id(entity_id)
             .filter(blog_post::Column::TenantId.eq(tenant_id))
             .filter(blog_post::Column::Status.eq("published"))
+            .filter(blog_post::Column::PublishedAt.is_not_null())
             .one(&self.db)
             .await
             .map_err(Error::Database)?;

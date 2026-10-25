@@ -59,7 +59,7 @@ impl PostService {
     /// `None` unless that post is currently a `Draft`, so a token stops resolving the
     /// moment the post is published, archived, or deleted.
     #[instrument(skip(self))]
-    pub async fn get_draft_preview(
+    pub(crate) async fn get_draft_preview(
         &self,
         tenant_id: Uuid,
         post_id: Uuid,
@@ -100,6 +100,23 @@ impl PostService {
         Ok(Some(response))
     }
 
+    /// Slug lookup of one post by its owner.
+    ///
+    /// **The channel allowlist is the caller's decision, not this method's.**
+    /// The method answers with the post's *status* view only: `Published` for a
+    /// caller without tenant-wide `blog_posts:read`, any status otherwise. A
+    /// published post that is restricted to a subset of channels is still
+    /// returned here, because the two callers apply the boundary at their own
+    /// layer and need the row to answer correctly:
+    ///
+    /// * GraphQL `postBySlug` filters the result through `post_is_readable`
+    ///   (channel-aware) before exposing it;
+    /// * the SEO provider (`integrations/seo_targets.rs::resolve_route`) applies
+    ///   its own load scope and `is_post_visible_for_channel`.
+    ///
+    /// Any new caller that serves a public surface must do the same or call
+    /// [`Self::get_post`] under its own visibility rule — this method alone is
+    /// not a public read.
     #[instrument(skip(self))]
     pub async fn get_post_by_slug(
         &self,
@@ -210,13 +227,26 @@ impl PostService {
             select = apply_tag_filter(select, tenant_id, tag_id);
         }
 
+        // One definition of the public corpus, shared with the public keyset list,
+        // the comment target gate, the SEO scan and the Search projection: a post
+        // is public when it is `Published` **and** carries its publication
+        // timestamp. `published_at` is stamped by every path that enters the
+        // published state, so a published row without it is damaged state, and a
+        // caller without the authority to read non-public posts must not see it —
+        // otherwise the customer-facing list would show a post that the public
+        // list, the sitemap and the comments gate all refuse.
+        let can_read_non_public = can_read_non_public_posts(&security);
         if let Some(status) = query.status {
             select = select.filter(blog_post::Column::Status.eq(status_to_storage(status)));
-        } else if !can_read_non_public_posts(&security) {
+            if status == BlogPostStatus::Published && !can_read_non_public {
+                select = select.filter(blog_post::Column::PublishedAt.is_not_null());
+            }
+        } else if !can_read_non_public {
             select = select
-                .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)));
+                .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)))
+                .filter(blog_post::Column::PublishedAt.is_not_null());
         }
-        if !can_read_non_public_posts(&security)
+        if !can_read_non_public
             && matches!(query.status, Some(status) if status != BlogPostStatus::Published)
         {
             return Ok(PostListResponse::new(Vec::new(), None, query.per_page()));
@@ -284,80 +314,21 @@ impl PostService {
             )
             .await?;
 
-        let mut items = Vec::with_capacity(posts.len());
-        for post in posts {
-            if let Err(error) = Self::validate_persisted_version(&post) {
-                tracing::warn!(
-                    tenant_id = %tenant_id,
-                    post_id = %post.id,
-                    version = post.version,
-                    %error,
-                    "Skipping Blog post with an invalid persisted version in post list"
-                );
-                continue;
-            }
-            let translations = translations_map.get(&post.id).cloned().unwrap_or_default();
-            // One damaged row must not fail the whole page for every reader:
-            // skip it loudly instead. The write path still rejects creating
-            // such rows; this only contains pre-existing corruption.
-            if translations.is_empty() {
-                tracing::warn!(
-                    tenant_id = %tenant_id,
-                    post_id = %post.id,
-                    "Skipping Blog post without localized records in post list"
-                );
-                continue;
-            }
-            let resolved =
-                resolve_translation_record(&translations, &locale, fallback_locale.as_deref());
-            let Some(translation) = resolved.translation else {
-                tracing::warn!(
-                    tenant_id = %tenant_id,
-                    post_id = %post.id,
-                    "Skipping Blog post whose locale resolver returned no translation in post list"
-                );
-                continue;
-            };
-            let tags = tags_map.get(&post.id).cloned().unwrap_or_default();
-
-            let Ok(status) = storage_to_status(&post.status) else {
-                tracing::warn!(
-                    tenant_id = %tenant_id,
-                    post_id = %post.id,
-                    status = %post.status,
-                    "Skipping Blog post with an unknown persisted status in post list"
-                );
-                continue;
-            };
-
-            items.push(PostSummary {
-                id: post.id,
-                title: translation.title.clone(),
-                slug: post.slug.clone(),
-                locale: locale.clone(),
-                effective_locale: resolved.effective_locale,
-                available_locales: available_locales_from(&translations, |item| {
-                    item.locale.as_str()
-                }),
-                excerpt: translation.excerpt.clone(),
-                status,
-                author_id: post.author_id,
-                author_name: None,
-                category_id: post.category_id,
-                category_name: post
-                    .category_id
-                    .and_then(|category_id| category_names_map.get(&category_id).cloned()),
-                tags,
-                featured_image_url: post.featured_image_url.clone(),
-                channel_slugs: channel_slugs_map.get(&post.id).cloned().unwrap_or_default(),
-                comment_count: post.comment_count as i64,
-                published_at: post.published_at.map(Into::into),
-                scheduled_at: post.scheduled_at.map(Into::into),
-                is_pinned: post.is_pinned,
-                pinned_at: post.pinned_at.map(Into::into),
-                created_at: post.created_at.into(),
-            });
-        }
+        let items = posts
+            .into_iter()
+            .filter_map(|post| {
+                Self::project_post_summary(
+                    tenant_id,
+                    post,
+                    &translations_map,
+                    &tags_map,
+                    &channel_slugs_map,
+                    &category_names_map,
+                    &locale,
+                    fallback_locale.as_deref(),
+                )
+            })
+            .collect::<Vec<_>>();
 
         Ok(PostListResponse::new(items, next_cursor, query.per_page()))
     }
@@ -421,80 +392,21 @@ impl PostService {
             )
             .await?;
 
-        let mut items = Vec::with_capacity(posts.len());
-        for post in posts {
-            if let Err(error) = Self::validate_persisted_version(&post) {
-                tracing::warn!(
-                    tenant_id = %tenant_id,
-                    post_id = %post.id,
-                    version = post.version,
-                    %error,
-                    "Skipping Blog post with an invalid persisted version in post list"
-                );
-                continue;
-            }
-            let translations = translations_map.get(&post.id).cloned().unwrap_or_default();
-            // One damaged row must not fail the whole page for every reader:
-            // skip it loudly instead. The write path still rejects creating
-            // such rows; this only contains pre-existing corruption.
-            if translations.is_empty() {
-                tracing::warn!(
-                    tenant_id = %tenant_id,
-                    post_id = %post.id,
-                    "Skipping Blog post without localized records in post list"
-                );
-                continue;
-            }
-            let resolved =
-                resolve_translation_record(&translations, &locale, fallback_locale.as_deref());
-            let Some(translation) = resolved.translation else {
-                tracing::warn!(
-                    tenant_id = %tenant_id,
-                    post_id = %post.id,
-                    "Skipping Blog post whose locale resolver returned no translation in post list"
-                );
-                continue;
-            };
-            let tags = tags_map.get(&post.id).cloned().unwrap_or_default();
-
-            let Ok(status) = storage_to_status(&post.status) else {
-                tracing::warn!(
-                    tenant_id = %tenant_id,
-                    post_id = %post.id,
-                    status = %post.status,
-                    "Skipping Blog post with an unknown persisted status in post list"
-                );
-                continue;
-            };
-
-            items.push(PostSummary {
-                id: post.id,
-                title: translation.title.clone(),
-                slug: post.slug.clone(),
-                locale: locale.clone(),
-                effective_locale: resolved.effective_locale,
-                available_locales: available_locales_from(&translations, |item| {
-                    item.locale.as_str()
-                }),
-                excerpt: translation.excerpt.clone(),
-                status,
-                author_id: post.author_id,
-                author_name: None,
-                category_id: post.category_id,
-                category_name: post
-                    .category_id
-                    .and_then(|category_id| category_names_map.get(&category_id).cloned()),
-                tags,
-                featured_image_url: post.featured_image_url.clone(),
-                channel_slugs: channel_slugs_map.get(&post.id).cloned().unwrap_or_default(),
-                comment_count: post.comment_count as i64,
-                published_at: post.published_at.map(Into::into),
-                scheduled_at: post.scheduled_at.map(Into::into),
-                is_pinned: post.is_pinned,
-                pinned_at: post.pinned_at.map(Into::into),
-                created_at: post.created_at.into(),
-            });
-        }
+        let items = posts
+            .into_iter()
+            .filter_map(|post| {
+                Self::project_post_summary(
+                    tenant_id,
+                    post,
+                    &translations_map,
+                    &tags_map,
+                    &channel_slugs_map,
+                    &category_names_map,
+                    &locale,
+                    fallback_locale.as_deref(),
+                )
+            })
+            .collect::<Vec<_>>();
 
         Ok(items)
     }
@@ -590,8 +502,20 @@ impl PostService {
         Ok(PublicPostPage { items, next_cursor })
     }
 
-    /// Keyset scan of published posts ordered by `id`, for bulk and sitemap jobs.
+    /// Keyset scan of the published corpus ordered by `id`, for bulk and sitemap jobs.
     /// Callers loop until `next_after` is `None`; no row is counted.
+    ///
+    /// The scan returns the SEO projection ([`PublishedSeoPost`]) and not a
+    /// [`PostSummary`]: a sitemap job walks the **whole** corpus, so every
+    /// projection it does not consume (tag links, category names, channel
+    /// allowlists, the article body of every translation) would be paid once per
+    /// page. Translations are loaded for the page in one batch and only the
+    /// fields the SEO mappers use are projected.
+    ///
+    /// Rows that cannot be projected are skipped with a warning instead of
+    /// failing the page, matching the policy of the list read path: one damaged
+    /// row must not blank the sitemap of the whole tenant. A skipped row still
+    /// occupies its slot in the keyset window, so the cursor keeps advancing.
     #[instrument(skip(self))]
     pub async fn scan_published_posts(
         &self,
@@ -636,9 +560,56 @@ impl PostService {
             None
         };
 
-        let items = self
-            .summarize_posts(tenant_id, posts, locale, fallback_locale)
-            .await?;
+        let post_ids = posts.iter().map(|post| post.id).collect::<Vec<_>>();
+        let translations_map = self.load_translations_map(tenant_id, &post_ids).await?;
+
+        let mut items = Vec::with_capacity(posts.len());
+        for post in posts {
+            // `published_at` is stamped by every path that enters the published
+            // state and is never reset, so a published row without it can only
+            // be pre-existing corruption. Such a row has no publication date to
+            // report (sitemap `lastmod`, structured data), so it is skipped
+            // rather than published with an empty date.
+            if post.published_at.is_none() {
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    post_id = %post.id,
+                    "Skipping published Blog post without a publication timestamp in SEO scan"
+                );
+                continue;
+            }
+            let translations = translations_map.get(&post.id).cloned().unwrap_or_default();
+            if translations.is_empty() {
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    post_id = %post.id,
+                    "Skipping Blog post without localized records in SEO scan"
+                );
+                continue;
+            }
+            let resolved =
+                resolve_translation_record(&translations, &locale, fallback_locale.as_deref());
+            let Some(translation) = resolved.translation else {
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    post_id = %post.id,
+                    "Skipping Blog post whose locale resolver returned no translation in SEO scan"
+                );
+                continue;
+            };
+
+            items.push(PublishedSeoPost {
+                id: post.id,
+                slug: post.slug.clone(),
+                title: translation.title.clone(),
+                featured_image_url: post.featured_image_url.clone(),
+                effective_locale: resolved.effective_locale,
+                available_locales: available_locales_from(&translations, |item| {
+                    item.locale.as_str()
+                }),
+            });
+        }
+
         Ok(PublishedPostScanPage { items, next_after })
     }
 
@@ -781,6 +752,94 @@ impl PostService {
             version: post.version,
         })
     }
+
+    /// Projects one post row plus its batch-loaded dependants into a
+    /// [`PostSummary`].
+    ///
+    /// Both list read paths (`list_posts` and the public `summarize_posts`) use
+    /// this one projection: a field added to `PostSummary` must be added here
+    /// once, so an admin list and a public list of the same post cannot drift
+    /// apart.
+    ///
+    /// Returns `None` for a row that cannot be projected (invalid version,
+    /// missing translations, a locale that resolves to nothing, an unknown
+    /// persisted status). The caller skips it and the warning names the row:
+    /// one damaged row must not fail the page for every reader, while the write
+    /// path still rejects creating such rows.
+    fn project_post_summary(
+        tenant_id: Uuid,
+        post: blog_post::Model,
+        translations_map: &HashMap<Uuid, Vec<blog_post_translation::Model>>,
+        tags_map: &HashMap<Uuid, Vec<String>>,
+        channel_slugs_map: &HashMap<Uuid, Vec<String>>,
+        category_names_map: &HashMap<Uuid, String>,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> Option<PostSummary> {
+        if let Err(error) = Self::validate_persisted_version(&post) {
+            tracing::warn!(
+                tenant_id = %tenant_id,
+                post_id = %post.id,
+                version = post.version,
+                %error,
+                "Skipping Blog post with an invalid persisted version in post list"
+            );
+            return None;
+        }
+        let translations = translations_map.get(&post.id).cloned().unwrap_or_default();
+        if translations.is_empty() {
+            tracing::warn!(
+                tenant_id = %tenant_id,
+                post_id = %post.id,
+                "Skipping Blog post without localized records in post list"
+            );
+            return None;
+        }
+        let resolved = resolve_translation_record(&translations, locale, fallback_locale);
+        let Some(translation) = resolved.translation else {
+            tracing::warn!(
+                tenant_id = %tenant_id,
+                post_id = %post.id,
+                "Skipping Blog post whose locale resolver returned no translation in post list"
+            );
+            return None;
+        };
+        let Ok(status) = storage_to_status(&post.status) else {
+            tracing::warn!(
+                tenant_id = %tenant_id,
+                post_id = %post.id,
+                status = %post.status,
+                "Skipping Blog post with an unknown persisted status in post list"
+            );
+            return None;
+        };
+
+        Some(PostSummary {
+            id: post.id,
+            title: translation.title.clone(),
+            slug: post.slug.clone(),
+            locale: locale.to_string(),
+            effective_locale: resolved.effective_locale,
+            available_locales: available_locales_from(&translations, |item| item.locale.as_str()),
+            excerpt: translation.excerpt.clone(),
+            status,
+            author_id: post.author_id,
+            author_name: None,
+            category_id: post.category_id,
+            category_name: post
+                .category_id
+                .and_then(|category_id| category_names_map.get(&category_id).cloned()),
+            tags: tags_map.get(&post.id).cloned().unwrap_or_default(),
+            featured_image_url: post.featured_image_url.clone(),
+            channel_slugs: channel_slugs_map.get(&post.id).cloned().unwrap_or_default(),
+            comment_count: post.comment_count as i64,
+            published_at: post.published_at.map(Into::into),
+            scheduled_at: post.scheduled_at.map(Into::into),
+            is_pinned: post.is_pinned,
+            pinned_at: post.pinned_at.map(Into::into),
+            created_at: post.created_at.into(),
+        })
+    }
 }
 
 /// The one ordering of every public Blog post list:
@@ -856,4 +915,64 @@ pub(crate) fn public_post_after_condition(after: &PublishedPostCursor) -> Condit
             .add(blog_post::Column::PublishedAt.eq(after.published_at))
             .add(blog_post::Column::Id.lt(after.id)),
     )
+}
+
+/// Ordering of the published corpus for **projections** (Search ingestion,
+/// bulk scans): `published_at DESC, id DESC`.
+///
+/// Deliberately not [`order_public_post_list`]: that ordering leads with
+/// `is_pinned`/`pinned_at`, which are *mutable presentation state* — `pin_post`
+/// and `unpin_post` rewrite them without emitting a reindex request (the Search
+/// payload does not project pin state), so a row can move across a cursor while
+/// a page-by-page walk is in flight. For a reader that is one request that is
+/// harmless; for an indexer walk that deletes the tenant's documents first and
+/// re-inserts them page by page, a post pinned (or created and pinned) between
+/// two pages jumps *before* the cursor and is never visited in that pass — and
+/// no later event re-indexes it. Ordering by the two immutable publication keys
+/// keeps every walk complete; the tie-break on `id` makes it total.
+pub(crate) fn order_published_post_scan(
+    select: Select<blog_post::Entity>,
+) -> Select<blog_post::Entity> {
+    select
+        .order_by_desc(blog_post::Column::PublishedAt)
+        .order_by_desc(blog_post::Column::Id)
+}
+
+/// Cursor that resumes [`order_published_post_scan`] after `post`.
+///
+/// The pin keys of [`PublishedPostCursor`] are written as their neutral values:
+/// they are not part of this ordering, and the shape is shared so that an
+/// already-issued token keeps parsing. They are ignored on the way back in by
+/// [`published_post_scan_after_condition`].
+pub(crate) fn published_post_scan_cursor(
+    post: &blog_post::Model,
+) -> BlogResult<PublishedPostCursor> {
+    let published_at = post.published_at.ok_or_else(|| {
+        BlogError::invariant(format!(
+            "Published blog post {} has no published_at",
+            post.id
+        ))
+    })?;
+    Ok(PublishedPostCursor {
+        is_pinned: false,
+        pinned_at: None,
+        published_at,
+        id: post.id,
+    })
+}
+
+/// Rows strictly after `after` in [`order_published_post_scan`].
+///
+/// Only the two immutable keys are compared. Reusing
+/// [`public_post_after_condition`] here would silently restrict the walk to
+/// `is_pinned = false AND pinned_at IS NULL`, so every pinned post would be
+/// skipped.
+pub(crate) fn published_post_scan_after_condition(after: &PublishedPostCursor) -> Condition {
+    Condition::any()
+        .add(blog_post::Column::PublishedAt.lt(after.published_at))
+        .add(
+            Condition::all()
+                .add(blog_post::Column::PublishedAt.eq(after.published_at))
+                .add(blog_post::Column::Id.lt(after.id)),
+        )
 }

@@ -160,6 +160,15 @@ impl TagService {
             },
         )
         .await?;
+        // The projection row is derived state, and `list_tags` pages and orders
+        // by it, so the tag's own mutation re-derives it from the canonical
+        // sources instead of trusting whatever the row held. Taxonomy
+        // `canonical_key` is immutable identity and does not move on a rename
+        // (`DECISIONS/2026-09-22-blog-tag-bounded-pagination.md`), so this is a
+        // repair and re-count, not a re-sort: a row created by the backfill, or
+        // left behind by a writer outside this service, is brought back to the
+        // projection invariant on the next tag write.
+        refresh_tag_usage_in_tx(&txn, tenant_id, &[tag_id]).await?;
         publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
         txn.commit().await.map_err(BlogError::from)?;
 
@@ -264,19 +273,28 @@ impl TagService {
 
         let mut items = Vec::with_capacity(usage_rows.len());
         for usage in usage_rows {
-            let term = terms_by_id.get(&usage.tag_id).ok_or_else(|| {
-                BlogError::invariant(format!(
-                    "Blog tag usage projection references missing Taxonomy tag {}",
-                    usage.tag_id
-                ))
-            })?;
+            let Some(term) = terms_by_id.get(&usage.tag_id) else {
+                // A projection row whose Taxonomy term is gone is broken derived
+                // state, not a reason to fail the whole public listing: skip the
+                // row and leave a trace, as the post list does for malformed
+                // rows. The write path repairs the projection on the next
+                // mutation (`refresh_tag_usage_in_tx`).
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    tag_id = %usage.tag_id,
+                    "Blog tag usage projection references a missing Taxonomy tag; skipping the row"
+                );
+                continue;
+            };
             if term.scope_type == TaxonomyScopeType::Module
                 && term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
             {
-                return Err(BlogError::invariant(format!(
-                    "Blog tag usage projection references non-Blog module term {}",
-                    term.id
-                )));
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    tag_id = %term.id,
+                    "Blog tag usage projection references a non-Blog module term; skipping the row"
+                );
+                continue;
             }
             items.push(TagListItem {
                 id: term.id,
@@ -480,26 +498,9 @@ pub(crate) async fn sync_post_tags_in_tx(
         validate_tag_name(name)?;
     }
 
-    let previous_relations = blog_post_tag::Entity::find()
-        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
-        .filter(blog_post_tag::Column::PostId.eq(post_id))
-        .all(txn)
-        .await?;
-    let previous_tag_ids = previous_relations
-        .into_iter()
-        .map(|relation| relation.tag_id)
-        .collect::<Vec<_>>();
-
-    blog_post_tag::Entity::delete_many()
-        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
-        .filter(blog_post_tag::Column::PostId.eq(post_id))
-        .exec(txn)
-        .await?;
-
-    decrement_tag_usage_in_tx(txn, tenant_id, &previous_tag_ids).await?;
-
     if normalized_names.is_empty() {
-        return Ok(());
+        // Clearing the tag set still rewrites relations and the projection.
+        return remove_post_tag_links_in_tx(txn, tenant_id, post_id).await;
     }
 
     let term_ids = TaxonomyService::new(db.clone())
@@ -515,21 +516,7 @@ pub(crate) async fn sync_post_tags_in_tx(
         .await?;
 
     validate_post_tag_terms_in_tx(txn, tenant_id, &term_ids, &normalized_locale).await?;
-    increment_tag_usage_in_tx(txn, tenant_id, &term_ids).await?;
-
-    let now = Utc::now();
-    for term_id in term_ids {
-        blog_post_tag::ActiveModel {
-            post_id: Set(post_id),
-            tag_id: Set(term_id),
-            tenant_id: Set(tenant_id),
-            created_at: Set(now.into()),
-        }
-        .insert(txn)
-        .await?;
-    }
-
-    Ok(())
+    replace_post_tag_links_in_tx(txn, tenant_id, post_id, &term_ids).await
 }
 
 async fn validate_post_tag_terms_in_tx(
@@ -569,13 +556,26 @@ async fn validate_post_tag_terms_in_tx(
     Ok(())
 }
 
-async fn increment_tag_usage_in_tx(
+/// Recomputes the `blog_tag_usage` projection of `tag_ids` from the relation
+/// table inside the caller's transaction.
+///
+/// The projection is derived state, so it is **recomputed**, never adjusted by
+/// `+1`/`-1`: the count is read from `blog_post_tags` after the relation write
+/// of the same transaction. That makes the write path self-healing — a
+/// projection row lost to a crashed transaction, a manual data fix or a writer
+/// outside this service (content orchestration) is repaired by the next
+/// mutation instead of turning into an underflow error that blocks every
+/// subsequent post save.
+///
+/// Rows are kept at `use_count = 0` for Blog-owned module terms because
+/// `list_tags` pages over this table (a tag with no posts must remain
+/// listable); projection rows of global terms are removed at zero, exactly as
+/// the previous decrement path did.
+async fn refresh_tag_usage_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     tag_ids: &[Uuid],
 ) -> BlogResult<()> {
-    use sea_orm::ExprTrait;
-
     if tag_ids.is_empty() {
         return Ok(());
     }
@@ -593,7 +593,7 @@ async fn increment_tag_usage_in_tx(
     .await?;
     if terms.len() != unique_ids.len() {
         return Err(BlogError::invariant(
-            "Blog tag usage increment references a missing or wrong-kind Taxonomy term",
+            "Blog tag usage refresh references a missing or wrong-kind Taxonomy term",
         ));
     }
     for term in terms {
@@ -605,26 +605,37 @@ async fn increment_tag_usage_in_tx(
                 term.id
             )));
         }
+
+        let use_count = blog_post_tag::Entity::find()
+            .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
+            .filter(blog_post_tag::Column::TagId.eq(term.id))
+            .count(txn)
+            .await?;
+        let use_count = i32::try_from(use_count).unwrap_or(i32::MAX);
+
+        if use_count == 0 && term.scope_type == TaxonomyScopeType::Global {
+            blog_tag_usage::Entity::delete_many()
+                .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
+                .filter(blog_tag_usage::Column::TagId.eq(term.id))
+                .exec(txn)
+                .await?;
+            continue;
+        }
+
         blog_tag_usage::Entity::insert(blog_tag_usage::ActiveModel {
             tenant_id: Set(tenant_id),
             tag_id: Set(term.id),
             canonical_key: Set(term.canonical_key.clone()),
-            use_count: Set(1),
+            use_count: Set(use_count),
         })
         .on_conflict(
             OnConflict::columns([
                 blog_tag_usage::Column::TenantId,
                 blog_tag_usage::Column::TagId,
             ])
-            .values([
-                (
-                    blog_tag_usage::Column::UseCount,
-                    Expr::col((blog_tag_usage::Entity, blog_tag_usage::Column::UseCount)).add(1),
-                ),
-                (
-                    blog_tag_usage::Column::CanonicalKey,
-                    Expr::value(term.canonical_key),
-                ),
+            .update_columns([
+                blog_tag_usage::Column::UseCount,
+                blog_tag_usage::Column::CanonicalKey,
             ])
             .to_owned(),
         )
@@ -635,85 +646,93 @@ async fn increment_tag_usage_in_tx(
     Ok(())
 }
 
-async fn decrement_tag_usage_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    tag_ids: &[Uuid],
-) -> BlogResult<()> {
-    use sea_orm::ExprTrait;
-
-    if tag_ids.is_empty() {
-        return Ok(());
-    }
-    let mut unique_ids = tag_ids.to_vec();
-    unique_ids.sort_unstable();
-    unique_ids.dedup();
-    let terms = TaxonomyOwnerReader::load_terms_by_ids_in_tx(
-        txn,
-        tenant_id,
-        TaxonomyTermKind::Tag,
-        &unique_ids,
-        PLATFORM_FALLBACK_LOCALE,
-        None,
-    )
-    .await?;
-    if terms.len() != unique_ids.len() {
-        return Err(BlogError::invariant(
-            "Blog tag usage decrement references a missing or wrong-kind Taxonomy term",
-        ));
-    }
-    for term in terms {
-        if term.scope_type == TaxonomyScopeType::Module
-            && term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
-        {
-            return Err(BlogError::invariant(format!(
-                "Blog post tag {} references a Taxonomy term outside the Blog/module scope",
-                term.id
-            )));
-        }
-        let updated = blog_tag_usage::Entity::update_many()
-            .col_expr(
-                blog_tag_usage::Column::UseCount,
-                Expr::col(blog_tag_usage::Column::UseCount).sub(1),
-            )
-            .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
-            .filter(blog_tag_usage::Column::TagId.eq(term.id))
-            .filter(blog_tag_usage::Column::UseCount.gt(0))
-            .exec(txn)
-            .await?;
-        if updated.rows_affected != 1 {
-            return Err(BlogError::invariant(format!(
-                "Blog tag usage projection underflow for Taxonomy term {}",
-                term.id
-            )));
-        }
-        if term.scope_type == TaxonomyScopeType::Global {
-            blog_tag_usage::Entity::delete_many()
-                .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
-                .filter(blog_tag_usage::Column::TagId.eq(term.id))
-                .filter(blog_tag_usage::Column::UseCount.eq(0))
-                .exec(txn)
-                .await?;
-        }
-    }
-    Ok(())
-}
-
-pub(crate) async fn remove_post_tag_usage_in_tx(
+/// Replaces the whole tag set of a post inside the caller's transaction.
+///
+/// This is the single write entry point for post-to-tag relations. Blog
+/// itself and the content-orchestration bridge both use it, so the relation
+/// rows and the `blog_tag_usage` projection can never be written separately.
+/// `tag_ids` must already be resolved Taxonomy term ids of the same tenant;
+/// duplicates are collapsed.
+pub async fn replace_post_tag_links_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     post_id: Uuid,
+    tag_ids: &[Uuid],
 ) -> BlogResult<()> {
-    let relations = blog_post_tag::Entity::find()
+    if tenant_id.is_nil() {
+        return Err(BlogError::validation("Tenant ID must not be nil"));
+    }
+    if post_id.is_nil() {
+        return Err(BlogError::validation("Post ID must not be nil"));
+    }
+
+    let previous_relations = blog_post_tag::Entity::find()
         .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
         .filter(blog_post_tag::Column::PostId.eq(post_id))
         .all(txn)
         .await?;
-    let tag_ids = relations
+    let previous_tag_ids = previous_relations
         .into_iter()
         .map(|relation| relation.tag_id)
         .collect::<Vec<_>>();
-    decrement_tag_usage_in_tx(txn, tenant_id, &tag_ids).await
+
+    blog_post_tag::Entity::delete_many()
+        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
+        .filter(blog_post_tag::Column::PostId.eq(post_id))
+        .exec(txn)
+        .await?;
+
+    let mut unique_tag_ids = tag_ids.to_vec();
+    unique_tag_ids.sort_unstable();
+    unique_tag_ids.dedup();
+    let now = Utc::now();
+    for tag_id in &unique_tag_ids {
+        blog_post_tag::ActiveModel {
+            post_id: Set(post_id),
+            tag_id: Set(*tag_id),
+            tenant_id: Set(tenant_id),
+            created_at: Set(now.into()),
+        }
+        .insert(txn)
+        .await?;
+    }
+
+    let mut affected = previous_tag_ids;
+    affected.extend(unique_tag_ids);
+    refresh_tag_usage_in_tx(txn, tenant_id, &affected).await
+}
+
+/// Removes every tag link of a post inside the caller's transaction and
+/// refreshes the usage projection of the tags it pointed at.
+pub async fn remove_post_tag_links_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    post_id: Uuid,
+) -> BlogResult<()> {
+    if tenant_id.is_nil() {
+        return Err(BlogError::validation("Tenant ID must not be nil"));
+    }
+    if post_id.is_nil() {
+        return Err(BlogError::validation("Post ID must not be nil"));
+    }
+
+    let previous_relations = blog_post_tag::Entity::find()
+        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
+        .filter(blog_post_tag::Column::PostId.eq(post_id))
+        .all(txn)
+        .await?;
+    let previous_tag_ids = previous_relations
+        .into_iter()
+        .map(|relation| relation.tag_id)
+        .collect::<Vec<_>>();
+
+    blog_post_tag::Entity::delete_many()
+        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
+        .filter(blog_post_tag::Column::PostId.eq(post_id))
+        .exec(txn)
+        .await?;
+
+    refresh_tag_usage_in_tx(txn, tenant_id, &previous_tag_ids).await
 }
 
 pub(crate) async fn initialize_tag_usage_in_tx(
@@ -722,12 +741,23 @@ pub(crate) async fn initialize_tag_usage_in_tx(
     tag_id: Uuid,
     canonical_key: &str,
 ) -> BlogResult<()> {
+    // Idempotent by design: a retried create (or a projection row that already
+    // exists because the tag was re-created) must not fail on the projection's
+    // primary key. A zero-row upsert keeps the existing count untouched.
     blog_tag_usage::Entity::insert(blog_tag_usage::ActiveModel {
         tenant_id: Set(tenant_id),
         tag_id: Set(tag_id),
         canonical_key: Set(canonical_key.to_string()),
         use_count: Set(0),
     })
+    .on_conflict(
+        OnConflict::columns([
+            blog_tag_usage::Column::TenantId,
+            blog_tag_usage::Column::TagId,
+        ])
+        .do_nothing()
+        .to_owned(),
+    )
     .exec(txn)
     .await
     .map_err(BlogError::from)?;

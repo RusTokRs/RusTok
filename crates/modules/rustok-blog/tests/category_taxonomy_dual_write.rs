@@ -126,7 +126,7 @@ async fn category_commands_use_taxonomy_after_legacy_storage_retirement() {
                 locale: "en".to_string(),
                 name: Some("Help".to_string()),
                 slug: Some("help".to_string()),
-                description: Some("Help centre".to_string()),
+                description: rustok_api::Patch::Set("Help centre".to_string()),
                 settings: None,
             },
         )
@@ -170,7 +170,7 @@ async fn category_commands_use_taxonomy_after_legacy_storage_retirement() {
                 locale: "en".to_string(),
                 name: None,
                 slug: None,
-                description: None,
+                description: rustok_api::Patch::Keep,
                 settings: Some(serde_json::json!({"layout": "canonical-only"})),
             },
         )

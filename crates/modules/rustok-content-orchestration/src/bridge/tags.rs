@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use chrono::Utc;
 use rustok_blog::blog_post_tag;
+use rustok_blog::services::replace_post_tag_links_in_tx;
 use rustok_content::ContentResult;
 use rustok_forum::forum_topic_tag;
 use rustok_taxonomy::{TaxonomyOwnerReader, TaxonomyService, TaxonomyTermKind};
@@ -119,12 +120,6 @@ pub(crate) async fn sync_blog_tags_for_post_in_tx(
     names.sort();
     names.dedup();
 
-    blog_post_tag::Entity::delete_many()
-        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
-        .filter(blog_post_tag::Column::PostId.eq(post_id))
-        .exec(txn)
-        .await?;
-
     let tag_ids = taxonomy
         .ensure_terms_for_module_in_tx(
             txn,
@@ -137,16 +132,14 @@ pub(crate) async fn sync_blog_tags_for_post_in_tx(
         .await
         .map_err(taxonomy_error_to_content_error)?;
 
-    for tag_id in tag_ids {
-        blog_post_tag::ActiveModel {
-            post_id: Set(post_id),
-            tag_id: Set(tag_id),
-            tenant_id: Set(tenant_id),
-            created_at: Set(Utc::now().into()),
-        }
-        .insert(txn)
-        .await?;
-    }
+    // The relation rows belong to Blog, and Blog's `blog_tag_usage`
+    // projection is derived from them. Writing the rows here directly (as the
+    // bridge used to) left the projection stale, so the tags kept their old
+    // counts and the next Blog `update_post` failed on an underflow. The owner
+    // command rewrites both in one step.
+    replace_post_tag_links_in_tx(txn, tenant_id, post_id, &tag_ids)
+        .await
+        .map_err(crate::errors::blog_error_to_content_error)?;
 
     Ok(())
 }

@@ -326,8 +326,8 @@ impl BlogMutation {
         let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
         let auth = require_blog_permission(
             ctx,
-            &[Permission::BLOG_POSTS_MANAGE],
-            "Permission denied: blog_posts:manage required",
+            &[Permission::COMMENTS_MODERATE],
+            "Permission denied: comments:moderate required",
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;

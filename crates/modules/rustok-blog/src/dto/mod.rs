@@ -21,6 +21,6 @@ pub use post::{
     AdminPostCursor, ArchivePostInput, BulkOperationFailure, BulkOperationResult, CreatePostInput,
     PostListQuery, PostListResponse, PostResponse, PostSortField, PostSortOrder, PostSummary,
     PublicPostPage, PublicPostsPageQuery, PublishedPostCursor, PublishedPostScanPage,
-    UpdatePostInput,
+    PublishedSeoPost, UpdatePostInput,
 };
 pub use tag::{CreateTagInput, ListTagsFilter, TagListItem, TagResponse, UpdateTagInput};
