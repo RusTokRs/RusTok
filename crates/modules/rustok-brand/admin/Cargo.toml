@@ -2,6 +2,7 @@
 name = "rustok-brand-admin"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Leptos admin FFA package for Brand catalog administration"
 repository.workspace = true
