@@ -34,28 +34,26 @@ jobs:
           toolchain: "1.96.0"
           components: rustfmt
       - name: Format files changed vs merge-base
-        shell: bash {0}
         run: |
+          set -x
           BASE=$(git merge-base origin/main HEAD)
+          echo "::notice::autofmt merge-base=$BASE"
           git diff --name-only "$BASE"...HEAD -- '*.rs' > /tmp/changed_rs.txt
-          wc -l /tmp/changed_rs.txt
+          echo "::notice::autofmt changed .rs files: $(wc -l < /tmp/changed_rs.txt)"
           while IFS= read -r f; do
-            [ -f "$f" ] && rustfmt --edition 2024 "$f" || true
-          done < /tmp/changed_rs.txt
-          # Only commit formatting changes to PR-changed files.
-          git checkout -- . ':(exclude,glob)**' 2>/dev/null || true
-          while IFS= read -r f; do
-            [ -f "$f" ] && rustfmt --edition 2024 "$f" || true
+            if [ -f "$f" ]; then rustfmt --edition 2024 "$f"; fi
           done < /tmp/changed_rs.txt
           git add --pathspec-from-file=/tmp/changed_rs.txt
+          git diff --cached --stat | tail -3
           if git diff --cached --quiet; then
-            echo "No formatting changes needed"
+            echo "::notice::autofmt: no formatting changes needed"
             exit 0
           fi
           git config user.name "diag-autofmt"
           git config user.email "diag-autofmt@users.noreply.github.com"
           git commit -m "style: rustfmt on PR-changed files (diag autofmt)"
           git push origin HEAD:arena/551d146c-rustok
+          echo "::notice::autofmt: pushed formatting commit
 
   diagnose:
     name: Diagnose check/clippy/fmt
@@ -129,13 +127,13 @@ jobs:
       - name: cargo check (json)
         shell: bash {0}
         run: |
-          cargo check --workspace --all-targets --all-features --message-format=json 2>/dev/null \
+          cargo check --workspace --all-targets --all-features --keep-going --message-format=json 2>/dev/null \
             | python3 /tmp/extract.py /tmp/check_errors.txt
           tail -1 /tmp/check_errors.txt || true
       - name: cargo clippy (json)
         shell: bash {0}
         run: |
-          cargo clippy --workspace --all-targets --no-deps --message-format=json -- -D warnings 2>/dev/null \
+          cargo clippy --workspace --all-targets --no-deps --keep-going --message-format=json -- -D warnings 2>/dev/null \
             | python3 /tmp/extract.py /tmp/clippy_errors.txt
           tail -1 /tmp/clippy_errors.txt || true
       - name: Post PR comment with results
