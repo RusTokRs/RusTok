@@ -252,7 +252,8 @@ jobs:
             run_tests -p leptos-auth --lib
             run_tests -p rustok-ui-auth --lib
             run_tests -p rustok-migrations --lib --tests
-            run_tests -p rustok-server --lib auth
+            echo "=== cargo test -p rustok-server --lib auth (raw tail) ==="
+            cargo test -p rustok-server --lib auth 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tail -80
           } > /tmp/test_results.txt 2>&1
           wc -l /tmp/test_results.txt
       - name: Post PR comment (tests)
