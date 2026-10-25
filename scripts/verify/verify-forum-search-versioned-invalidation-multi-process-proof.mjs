@@ -160,13 +160,22 @@ requireAll(
 );
 
 const ownerSource = read(ownerSourcePath);
+// The two invariants are owned by two files: the tenant-head page ordering lives in
+// `forum_owner_checkpoint`, the revision contiguity in `forum_reconciliation`.
+const checkpointOwnerSource = read("crates/modules/rustok-search/src/forum_owner_checkpoint.rs");
+requireAll(
+  checkpointOwnerSource,
+  [
+    "owner tenant heads must be strictly ordered after the requested cursor",
+    "after_tenant_id",
+  ],
+  "owner tenant head ordering",
+);
 requireAll(
   ownerSource,
   [
-    "owner tenant heads must be strictly ordered after the requested cursor",
     "owner revisions must be contiguous and strictly ordered after the requested cursor",
     "ForumProjectionOwnerRevisionImpact::FullRebuild",
-    "after_tenant_id",
     "owner_revision",
     "ingest_sequence",
   ],

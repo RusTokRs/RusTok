@@ -18,6 +18,61 @@ function readJson(relativePath) {
   return JSON.parse(read(relativePath));
 }
 
+// `event-contract-digests.json` is a *generated* artifact: only
+// `cargo run --locked -p rustok-events --example event_contract_digests -- --write`
+// can prove a value, and the `event-contract-digest-admission` workflow pins that
+// command (see `verify-event-contract-digest-admission.mjs`). A source-text guard
+// cannot recompute SHA-256 over the Rust event registry.
+//
+// What this guard can prove is (a) the committed artifact is a well-formed
+// generator artifact and (b) it is no longer the pre-publisher snapshot, i.e. the
+// publisher's event family actually reached the registry. The third, historical
+// claim - exact equality with the values recorded at publisher delivery - is
+// deliberately not asserted: every later event family legitimately changes the
+// registry digest, so that equality rots into a false failure for correct work.
+// Exactness is the admission workflow's job, not this guard's.
+const DIGEST_KEYS = [
+  "registry",
+  "root_event",
+  "root_envelope",
+  "contract_payload",
+  "contract_envelope",
+];
+const PRE_PUBLISHER_DIGESTS = {
+  format_version: 1,
+  registry: "sha256:18fdee49d915a22ed3dd709ec6cc1826d6d47a59ddfe659fbd07ede7f6cd3d07",
+  root_event: "sha256:2bc388a237ff1fcbe327c340633815a64c84c799afef5a0012f458752d6deb87",
+  root_envelope: "sha256:cfb55b9ac1fbebdc27658e035c00a98468c947b4830f8603c4258457849db42d",
+  contract_payload: "sha256:5f1f9577bc9429b76bbfe5420d1bd71249efd6aea702ec0a103e4a402702cd02",
+  contract_envelope: "sha256:b29a8c7809045e14f1233db4e2f9dba9cedf96352df3ea9e87ca1e86f6a59eb8",
+};
+
+function checkDigestArtifact(artifact, label, fail) {
+  if (!artifact) return;
+  if (artifact.format_version !== 1) fail(`${label}: format_version must be 1`);
+  const keys = Object.keys(artifact)
+    .filter((key) => key !== "format_version")
+    .sort();
+  if (JSON.stringify(keys) !== JSON.stringify([...DIGEST_KEYS].sort())) {
+    fail(`${label}: unexpected digest keys ${JSON.stringify(keys)}`);
+    return;
+  }
+  for (const key of DIGEST_KEYS) {
+    if (!/^sha256:[0-9a-f]{64}$/.test(artifact[key] ?? "")) {
+      fail(`${label}: ${key} is not a sha256 digest`);
+    }
+  }
+}
+
+function assertNotPrePublisher(artifact, label, fail) {
+  if (!artifact) return;
+  if (DIGEST_KEYS.every((key) => artifact[key] === PRE_PUBLISHER_DIGESTS[key])) {
+    fail(
+      `${label}: still equals the pre-publisher digest snapshot; the delivered event family never reached the registry`,
+    );
+  }
+}
+
 function requireMarker(source, marker, label) {
   if (!source.includes(marker)) {
     throw new Error(`${label} is missing required marker: ${marker}`);
@@ -62,7 +117,7 @@ const publisherContract = publisherDelivered ? readJson(publisherContractPath) :
 
 for (const [marker, sourcePath] of [
   ["pub fn new_caused_by<E>(", eventsContractPath],
-  ["Self::new_with_causation(tenant_id, actor_id, Some(causation_id), event)", eventsContractPath],
+  ["Self::new_with_identity(id, tenant_id, actor_id, Some(causation_id), event)", eventsContractPath],
   ["pub fn causation_id(&self) -> Option<Uuid>", eventsContractPath],
   ["EventValidationError::NilUuid(\"causation_id\")", eventsContractPath],
   ["caused_contract_envelope_retains_exact_causation_identity", eventsContractPath],
@@ -144,13 +199,19 @@ if (!publisherDelivered) {
   ]) {
     requireMarker(sources.get(sourcePath), marker, sourcePath);
   }
-  const expected = {
-    format_version: 1,
-    ...publisherContract.digest_generation.new_values,
-  };
-  if (JSON.stringify(digest) !== JSON.stringify(expected)) {
-    throw new Error(`${digestPath} does not match the delivered publisher contract`);
-  }
+  checkDigestArtifact(digest, digestPath, (message) => {
+    throw new Error(message);
+  });
+  assertNotPrePublisher(digest, digestPath, (message) => {
+    throw new Error(message);
+  });
+  checkDigestArtifact(
+    { format_version: 1, ...publisherContract.digest_generation.new_values },
+    `${publisherContractPath} digest_generation.new_values`,
+    (message) => {
+      throw new Error(message);
+    },
+  );
 }
 
 console.log(

@@ -31,15 +31,25 @@ function read(relativePath) {
   return readFileSync(target, "utf8");
 }
 
+// Prose in ADR notes and plans is hard-wrapped at ~80 columns, so a required or
+// forbidden phrase must not depend on where the author put a newline. Collapse
+// whitespace on both sides before comparing; this also stops a guard from being
+// bypassed by re-wrapping a forbidden sentence.
+function spaced(value) {
+  return value.replace(/\s+/g, " ");
+}
+
 function requireAll(source, markers, label) {
+  const haystack = spaced(source);
   for (const marker of markers) {
-    if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
+    if (!haystack.includes(spaced(marker))) failures.push(`${label}: missing ${marker}`);
   }
 }
 
 function rejectAll(source, markers, label) {
+  const haystack = spaced(source);
   for (const marker of markers) {
-    if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
+    if (haystack.includes(spaced(marker))) failures.push(`${label}: forbidden ${marker}`);
   }
 }
 
@@ -159,7 +169,7 @@ requireOrdered(
   owner,
   [
     "let revision = allocate_projection_revision_in_tx(txn, tenant_id).await?;",
-    "let event_id = TransactionalEventBus::publish_root_in_tx_with_envelope_id",
+    "let root_event_id = TransactionalEventBus::publish_root_in_tx_with_envelope_id",
     "record_projection_revision_in_tx(",
   ],
   `${paths.owner} direct transactional ordering`,
@@ -176,7 +186,12 @@ requireOrdered(
 );
 rejectAll(
   owner,
-  ["ForumProjectionEvent", "publish_contract_in_tx", "SearchProjectionRevision"],
+  // Only the *uncaused* contract publication is forbidden here: `FORUM-23B2G2A`
+  // may not emit the typed wire envelope on its own. The caused variants
+  // (`publish_contract_in_tx_with_causation`,
+  // `publish_contract_direct_in_tx_with_causation_and_envelope_id`) are the
+  // delivered `FORUM-23B2G2B2` publisher and must stay allowed.
+  ["ForumProjectionEvent", "publish_contract_in_tx(", "SearchProjectionRevision"],
   `${paths.owner} wire rollout boundary`,
 );
 
@@ -215,7 +230,10 @@ requireAll(
     "# FORUM-23B2G2A Forum Search owner revision ledger",
     "same owner transaction",
     "publish_root_in_tx_with_envelope_id",
-    "Search does not yet receive or enforce the Forum revision",
+    "It does not yet receive or enforce the Forum revision",
+    // The slice-time handoff is now recorded as superseded, so a reader cannot
+    // mistake it for the live behaviour.
+    "Current state (2026-10-25).** This slice's own handoff was superseded by",
     "FORUM-23B2G2B",
     "did not run these commands",
   ],

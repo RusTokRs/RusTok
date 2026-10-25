@@ -95,7 +95,9 @@ for (const marker of [
   "SqlValue::Json(Some(Box::new(envelope_json)))",
   "ON CONFLICT (event_id) DO NOTHING",
   "status IN ('pending', 'retryable_error')",
-  "ORDER BY revision_at ASC, event_id ASC",
+  // Ordering is the PostgreSQL-issued ingest sequence, never a wall clock
+  // or an event UUID (FORUM-23B2G1 replaced both).
+  "ORDER BY ingest_sequence ASC",
   "FOR UPDATE",
   "due_at > Utc::now()",
   "pg_try_advisory_xact_lock(hashtextextended($1, 0))",
@@ -103,7 +105,7 @@ for (const marker of [
   "search:{FORUM_SOURCE_MODULE}:{tenant_id}:{FULL_SCOPE_KEY}",
   "load_effective_watermark",
   "load_watermark(transaction, tenant_id, FULL_SCOPE_KEY)",
-  "incoming_event_id.as_bytes() > watermark_event_id.as_bytes()",
+  "ingest_sequence <= watermark_sequence",
   'Some("stale_revision")',
   "MAX_ATTEMPTS: u32 = 12",
   "retry_exhausted",
@@ -145,7 +147,8 @@ rejectMarker(
 );
 
 requireMarker(lib, "mod forum_inbox;", libPath);
-requireMarker(lib, "SearchIngestionHandler::with_forum_source", libPath);
+// The Forum-aware constructor belongs to the ingestion handler, not to the crate root.
+requireMarker(ingestion, "pub fn with_forum_source(", ingestionPath);
 rejectMarker(lib, "rustok_forum::", libPath);
 requireMarker(manifest, "rustok-content.workspace = true", manifestPath);
 requireMarker(manifest, "[dev-dependencies]", manifestPath);
@@ -203,7 +206,7 @@ if (contract) {
   if (contract.storage_boundary?.maximum_attempts !== 12) failures.push(`${contractPath}: retry bound drift`);
 
   for (const key of [
-    "ordering_is_timestamp_then_event_id",
+    "ordering_is_database_ingest_sequence",
     "duplicate_event_id_is_idempotent",
     "stale_or_equal_revision_is_skipped",
     "invalid_stored_envelope_is_dead_lettered",
@@ -214,6 +217,8 @@ if (contract) {
     if (contract.revision_boundary?.[key] !== true) failures.push(`${contractPath}: revision ${key} drift`);
   }
   for (const key of [
+    // Wall-clock/UUID ordering must never come back.
+    "ordering_is_timestamp_then_event_id",
     "source_domain_event_schema_changed",
     "source_owner_revision_field_added",
     "new_reindex_target_string_added",

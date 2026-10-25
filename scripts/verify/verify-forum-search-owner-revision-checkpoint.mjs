@@ -262,7 +262,7 @@ requireAll(note, [
 ], paths.note);
 requireAll(forumPlan, [
   "| `FORUM-23` | `in_progress` |",
-  "owner-issued revision reconciliation plus maintainer runtime evidence remain",
+  "owner-issued revision reconciliation stays open only",
 ], `${paths.forumPlan} canonical open boundary`);
 requireAll(searchPlan, [
   "owner-issued monotonic aggregate revisions",

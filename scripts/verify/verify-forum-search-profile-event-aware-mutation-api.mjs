@@ -107,8 +107,16 @@ for (const marker of [
 }
 
 requireMarker(profilesLib, "pub mod mutations;", profilesLibPath);
-requireMarker(profilesLib, "pub use mutations::ProfileMutationService;", profilesLibPath);
-requireMarker(profilesLib, "pub use upsert_write::backfill_profile_with_event;", profilesLibPath);
+// The crate exports the facade and its request types as one brace group, and the
+// raw `upsert_write::backfill_profile_with_event` helper is deliberately `pub(crate)`:
+// backfill is reachable only through `ProfileMutationService`, which is what keeps the
+// event bus mandatory for every caller.
+requireMarker(
+  profilesLib,
+  "pub use mutations::{ProfileBackfillRequest, ProfileMutationContext, ProfileMutationService};",
+  profilesLibPath,
+);
+requireMarker(facade, "pub async fn backfill_profile_with_event(", facadePath);
 
 for (const marker of [
   "ProfileMutationService",

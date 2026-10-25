@@ -1055,19 +1055,45 @@ plan-sync slice and is satisfied by the two subsections above; the read-only
 `node scripts/audit/forum_plan_requirements.mjs` reports which markers the verifier
 family demands of this section.
 
+The owner-revision boundary itself is pinned by
+`verify-forum-search-owner-revision-ledger.mjs`,
+`verify-forum-search-owner-revision-counter-hardening.mjs`,
+`verify-forum-search-owner-revision-source.mjs` and
+`verify-forum-search-owner-revision-checkpoint.mjs`. The versioned family is
+`FORUM-23B2G2B3A` (frozen wire contract), `FORUM-23B2G2B3B1` (caused-publication
+API), `FORUM-23B2G2B3B2` (owner publisher), `FORUM-23B2G2B3C` (persistent
+consumer) and `FORUM-23B2G2B3D0` / `FORUM-23B2G2B3D1` (retained runtime
+evidence); each keeps its own execution-pending status, and only the
+`LINK-FORUM-03` cross-module runtime proof can close them.
+
 ### Remaining scope of `FORUM-23`
 
 Search filters include
 category subtree, author, tag, locale, date, solved, kind, channel/group and
 attachment-presence families; kind and attachment-presence have no owner model yet.
-The plan keeps owner-issued monotonic projection revisions as the remaining ordering
-work: they must replace the remaining clock-based projection ordering, reconciliation
-and ACL/deletion cleanup need runtime evidence, and
-the maintainer-executed PostgreSQL, restart, retry and LINK-FORUM-03 evidence is not
-retained. The 51 `forum-search-*.json` contracts in this directory state an
-execution-pending status of their own - commonly
-`source_complete_execution_pending` or `source_ready_maintainer_execution_pending` -
-and none of them claims completion.
+
+The ordering work is source-complete but not evidence-complete. `FORUM-23B2G1`
+replaced wall-clock and event-UUID execution ordering with a PostgreSQL-issued
+`ingest_sequence`; `FORUM-23B2G2A`-`FORUM-23B2G2B2` added the owner-issued
+monotonic projection revisions, their counter hardening, the owner publisher and
+the Search checkpoint; and `FORUM-23B2G2B3A`-`FORUM-23B2G2B3D19` added the
+versioned invalidation wire contract, the persistent consumer and the retained
+runtime-evidence protocol.
+
+No slice closes `FORUM-23`: owner-issued revision reconciliation stays open only
+as maintainer runtime evidence, because the PostgreSQL/Iggy restart, retry,
+poison, multi-process and ACL/deletion runs are not retained, and the
+`LINK-FORUM-03` aggregate proof cannot be assembled from source alone. The
+source side does establish the contract those runs must confirm: owner/index
+revisions reconcile through one shared identity
+(`forum_projection_revision_ledger.event_id` = `search_projection_inbox.event_id`
+= `ContractEventEnvelope.causation_id`) and one `ingest_sequence` order, so a
+replay can only move forward.
+
+The `forum-search-*.json` contracts in this directory state an execution-pending
+status of their own - commonly `source_complete_execution_pending`,
+`source_complete_runtime_evidence_pending` or
+`source_ready_maintainer_execution_pending` - and none of them claims completion.
 
 ## `FORUM-24` — localized routes
 

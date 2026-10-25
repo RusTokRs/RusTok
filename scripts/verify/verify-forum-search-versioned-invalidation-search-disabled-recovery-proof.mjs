@@ -6,14 +6,27 @@ import { resolve } from "node:path";
 
 const root = process.cwd();
 const read = (path) => readFileSync(resolve(root, path), "utf8");
+// Markdown handoffs are hard-wrapped at ~80 columns, so a required phrase must not
+// depend on where the author put a newline (and a forbidden phrase must not become
+// invisible when it is re-wrapped). Collapse whitespace on both sides first.
+const spaced = (value) => value.replace(/\s+/g, " ");
+
 const requireAll = (text, markers, label) => {
+  const haystack = spaced(text);
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing required marker: ${marker}`);
+    assert.ok(
+      haystack.includes(spaced(marker)),
+      `${label} is missing required marker: ${marker}`,
+    );
   }
 };
 const forbidAll = (text, markers, label) => {
+  const haystack = spaced(text);
   for (const marker of markers) {
-    assert.ok(!text.includes(marker), `${label} contains forbidden marker: ${marker}`);
+    assert.ok(
+      !haystack.includes(spaced(marker)),
+      `${label} contains forbidden marker: ${marker}`,
+    );
   }
 };
 
@@ -36,6 +49,13 @@ assert.equal(
 assert.equal(contract.task, "FORUM-23B2G2B3D9");
 assert.equal(contract.status, "source_ready_maintainer_execution_pending");
 assert.equal(contract.runtime_evidence_parent, parentContractPath);
+// The composition helper lives beside the tests and is the only place the real
+// Forum factory is exercised, so the guard pins both halves.
+const supportPath = "apps/server/tests/support/forum_public_settings.rs";
+assert.ok(
+  read(supportPath).includes("ForumSearchProjectionSourceFactory.build_with_extensions(db, &extensions)"),
+  `${supportPath} is missing the real Forum projection factory`,
+);
 assert.equal(contract.test, testPath);
 assert.equal(contract.evidence_artifact.path, evidencePath);
 assert.equal(contract.evidence_artifact.generation, "executable_test_only");
@@ -85,7 +105,10 @@ requireAll(
     "TopicService::new",
     "d9searchdisabledtopicone",
     "d9searchdisabledtopictwo",
-    "snapshot.revisions.iter().map(|row| row.revision)",
+    // The assertion is a wrapped method chain (`snapshot\n.revisions\n.iter()\n.map(...)`),
+    // so the marker pins its two semantic halves rather than one impossible line.
+    ".map(|row| row.revision)",
+    "!= [1, 2, 3]",
     'snapshot.revisions[0].target_type != "forum"',
     'snapshot.revisions[1].target_type != "forum_category"',
     "load_root_event_ids",
@@ -94,7 +117,7 @@ requireAll(
     ".causation_id()",
     "evidence.enable_search().await?",
     "count_rows(db, \"search_projection_inbox\").await? != 0",
-    "ForumSearchProjectionSourceFactory.build",
+    "forum_public_settings::projection_source(db.clone())",
     "ForumEventService::new",
     "ForumProjectionReconciler::with_owner_revision_source",
     "recovered.owner_tenants_scanned != 1",
@@ -231,15 +254,20 @@ requireAll(
   ],
   "Search bounded reconciliation composition",
 );
+// The driver is module-neutral: it reads bounded pages from the injected source and
+// deletes only that source's scope, so the guard pins those two facts instead of a
+// Forum-specific helper name. Method chains here are hard-wrapped, hence the
+// single-token markers.
 requireAll(
   read("crates/modules/rustok-search/src/projection_driver.rs"),
   [
-    "self.source.list_public_documents",
-    "delete_forum_scope(&tx, tenant_id)",
+    ".list_public_documents(",
+    "self.delete_scope(&tx, tenant_id).await?",
+    "DELETE FROM search_documents WHERE tenant_id = $1 AND source_module = $2",
     "INSERT INTO search_documents",
     "tx.commit().await",
   ],
-  "Search current-state Forum projector",
+  "Search current-state projection driver",
 );
 
 const doc = read(docPath);

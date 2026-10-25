@@ -4,8 +4,11 @@
 
 `source_complete_runtime_evidence_pending`
 
-This slice froze the version-1 typed wire contract and rolling-delivery sequence
-for Forum Search projection invalidations. The executable event family,
+The wire contract this slice froze keeps its own frozen status in
+`crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-wire.json`;
+that status describes the artifact, not the implementation. This slice froze the
+version-1 typed wire contract and rolling-delivery sequence for Forum Search
+projection invalidations. The executable event family,
 causation-aware owner publisher and persistent Search consumer are now merged;
 maintainer-executed PostgreSQL, Iggy and cross-module evidence remains open.
 
@@ -103,9 +106,10 @@ typed ingress inbox identity  = ContractEventEnvelope.causation_id
 shared identity               = legacy root envelope ID
 ```
 
-`search_projection_inbox` keeps its existing unique `event_id` boundary.
-Whichever representation arrives first creates the one durable work item; the
-other must match the complete retained identity and becomes a durable duplicate.
+`search_projection_inbox` keeps its existing unique `event_id` boundary and dedupes
+with `ON CONFLICT (event_id) DO NOTHING`. Whichever representation arrives first
+creates the one durable work item; the other must match the complete retained
+identity and becomes a durable duplicate.
 Both converge on the existing `ForumProjectionInbox`,
 `ForumProjectionReconciler` and `SearchProjectionDriver` path.
 
