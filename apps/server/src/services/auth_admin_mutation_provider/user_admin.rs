@@ -400,16 +400,23 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         )
         .await
         .map_err(map_custom_field_error)?;
+        // Authorization is fully decided above; only now spend Argon2
+        // work, still before opening the transaction.
+        let prepared_user = AuthLifecycleService::prepare_new_user(
+            &command.email,
+            &command.password,
+            command.name,
+            rustok_auth::DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
+        )
+        .await
+        .map_err(map_lifecycle_error)?;
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
         let mut user = AuthLifecycleService::create_user_in_tx(
             &tx,
             context.tenant_id,
-            &command.email,
-            &command.password,
-            command.name,
+            prepared_user,
             role.clone(),
             status.clone(),
-            rustok_auth::DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
         )
         .await
         .map_err(map_lifecycle_error)?;

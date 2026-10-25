@@ -7,7 +7,7 @@ use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
 use sha2::{Digest, Sha256};
 
-use crate::auth::{AuthConfig, decode_invite_token, normalize_email, validate_password_policy};
+use crate::auth::{AuthConfig, decode_invite_token, normalize_email};
 use crate::error::Error;
 use crate::models::{auth_invite_consumptions, auth_invites, users};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
@@ -71,18 +71,19 @@ impl AuthLifecycleService {
 
         // A signed invite carrying a malformed address is an invalid token,
         // not caller input worth a distinct validation response. Validate
-        // the password *before* reserving the token digest so a policy
-        // failure never burns a single-use invite.
+        // and hash the credentials *before* opening the transaction and
+        // reserving the token digest, so a policy failure never burns a
+        // single-use invite and Argon2 never runs inside the transaction.
         let email = normalize_email(&claims.sub)
             .map_err(|_| InviteAcceptanceError::InvalidToken)?;
-        if let Err(error) = validate_password_policy(password, config.min_password_length) {
-            return Err(match error {
-                crate::auth::AuthError::Validation(message) => {
-                    InviteAcceptanceError::Validation(message)
-                }
-                _ => InviteAcceptanceError::Internal(crate::auth::auth_err(error)),
-            });
-        }
+        let prepared = AuthLifecycleService::prepare_new_user(
+            &email,
+            password,
+            name,
+            config.min_password_length,
+        )
+        .await
+        .map_err(map_lifecycle_error)?;
         let role = claims.role;
         let token_hash = hex::encode(Sha256::digest(token.as_bytes()));
         let consumption_id = uuid::Uuid::new_v4();
@@ -142,12 +143,9 @@ impl AuthLifecycleService {
         let user = match AuthLifecycleService::create_user_in_tx(
             &tx,
             tenant_id,
-            &email,
-            password,
-            name,
+            prepared,
             role.clone(),
             Some(rustok_core::UserStatus::Active),
-            config.min_password_length,
         )
         .await
         {

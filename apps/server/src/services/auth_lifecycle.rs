@@ -96,6 +96,27 @@ impl From<AuthLifecycleError> for Error {
     }
 }
 
+/// New-account credentials after canonical validation and Argon2
+/// hashing (see `AuthLifecycleService::prepare_new_user`). Fields are
+/// crate-private so the only way to obtain one is through that
+/// validation point.
+pub(crate) struct PreparedNewUser {
+    email: String,
+    name: Option<String>,
+    password_hash: String,
+}
+
+impl std::fmt::Debug for PreparedNewUser {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PreparedNewUser")
+            .field("email", &self.email)
+            .field("name", &self.name)
+            .field("password_hash", &"<redacted>")
+            .finish()
+    }
+}
+
 pub struct AuthLifecycleService;
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -189,50 +210,64 @@ impl AuthLifecycleService {
         status: Option<rustok_core::UserStatus>,
         min_password_length: usize,
     ) -> std::result::Result<users::Model, AuthLifecycleError> {
+        let prepared =
+            Self::prepare_new_user(email, password, name, min_password_length).await?;
         let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
 
-        let user = Self::create_user_in_tx(
-            &tx,
-            tenant_id,
-            email,
-            password,
-            name,
-            role,
-            status,
-            min_password_length,
-        )
-        .await?;
+        let user = Self::create_user_in_tx(&tx, tenant_id, prepared, role, status).await?;
 
         tx.commit().await.map_err(AuthLifecycleError::from)?;
 
         Ok(user)
     }
 
-    pub(crate) async fn create_user_in_tx<C>(
-        db: &C,
-        tenant_id: uuid::Uuid,
+    /// Validate and hash new-account credentials *before* any database
+    /// transaction begins.
+    ///
+    /// This is the single canonical validation point for every
+    /// account-creation path (registration, admin provisioning, invite
+    /// acceptance, bootstrap seeds): no caller can persist an
+    /// unnormalized email, an over-long display name, or a password
+    /// below policy, because `create_user_in_tx` only accepts the
+    /// prepared result. Keeping Argon2 (tens of milliseconds on a
+    /// blocking thread) outside the transaction also means account
+    /// creation no longer holds a pooled connection and an open
+    /// transaction — with its locks — for the duration of the hash.
+    pub(crate) async fn prepare_new_user(
         email: &str,
         password: &str,
         name: Option<String>,
-        role: rustok_core::UserRole,
-        status: Option<rustok_core::UserStatus>,
         min_password_length: usize,
-    ) -> std::result::Result<users::Model, AuthLifecycleError>
-    where
-        C: ConnectionTrait,
-    {
-        // Single canonical validation point for every account-creation path
-        // (registration, admin provisioning, invite acceptance, bootstrap
-        // seeds): no caller can persist an unnormalized email, an over-long
-        // display name, or a password below policy.
+    ) -> std::result::Result<PreparedNewUser, AuthLifecycleError> {
         let email = normalize_email(email).map_err(AuthLifecycleError::from)?;
         let name = normalize_display_name(name.as_deref()).map_err(AuthLifecycleError::from)?;
         validate_password_policy(password, min_password_length)
             .map_err(AuthLifecycleError::from)?;
 
+        let password_hash = hash_password_async(password.to_string())
+            .await
+            .map_err(AuthLifecycleError::from)?;
+
+        Ok(PreparedNewUser {
+            email,
+            name,
+            password_hash,
+        })
+    }
+
+    pub(crate) async fn create_user_in_tx<C>(
+        db: &C,
+        tenant_id: uuid::Uuid,
+        prepared: PreparedNewUser,
+        role: rustok_core::UserRole,
+        status: Option<rustok_core::UserStatus>,
+    ) -> std::result::Result<users::Model, AuthLifecycleError>
+    where
+        C: ConnectionTrait,
+    {
         if users::Entity::find()
             .filter(users::Column::TenantId.eq(tenant_id))
-            .filter(users::Column::Email.eq(email.as_str()))
+            .filter(users::Column::Email.eq(prepared.email.as_str()))
             .one(db)
             .await
             .map_err(AuthLifecycleError::from)?
@@ -241,12 +276,8 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::EmailAlreadyExists);
         }
 
-        let password_hash = hash_password_async(password.to_string())
-            .await
-            .map_err(AuthLifecycleError::from)?;
-
-        let mut user = users::ActiveModel::new(tenant_id, &email, &password_hash);
-        user.name = Set(name);
+        let mut user = users::ActiveModel::new(tenant_id, &prepared.email, &prepared.password_hash);
+        user.name = Set(prepared.name);
         if let Some(status) = status {
             user.status = Set(status);
         }
@@ -369,16 +400,15 @@ impl AuthLifecycleService {
         password: &str,
         name: Option<String>,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
+        let prepared =
+            Self::prepare_new_user(email, password, name, config.min_password_length).await?;
         let tx = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
         let user = Self::create_user_in_tx(
             &tx,
             tenant_id,
-            email,
-            password,
-            name,
+            prepared,
             rustok_core::UserRole::Customer,
             None,
-            config.min_password_length,
         )
         .await?;
         let tokens =
