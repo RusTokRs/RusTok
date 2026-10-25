@@ -35,6 +35,9 @@ pub use search_projection::{
 pub use services::{COMPACTION_THRESHOLD, DocumentService};
 
 #[cfg(test)]
+mod contract_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use uuid::Uuid;
@@ -181,4 +184,118 @@ mod tests {
         let md = doc.render_markdown();
         assert!(md.contains("entity-embed"));
     }
+
+    #[test]
+    fn test_create_page_dto_validation() {
+        // Valid DTO
+        let valid = CreatePageDto {
+            title: "Getting Started".to_string(),
+            slug: Some("getting-started".to_string()),
+            parent_id: None,
+            icon: None,
+            cover_image: None,
+        };
+        assert!(valid.validate().is_ok());
+
+        // Empty title
+        let blank_title = CreatePageDto {
+            title: "   \t\n  ".to_string(),
+            slug: None,
+            parent_id: None,
+            icon: None,
+            cover_image: None,
+        };
+        assert!(matches!(blank_title.validate(), Err(DocsError::Validation(_))));
+
+        // Title exceeding 255 chars
+        let long_title = CreatePageDto {
+            title: "a".repeat(256),
+            slug: None,
+            parent_id: None,
+            icon: None,
+            cover_image: None,
+        };
+        assert!(matches!(long_title.validate(), Err(DocsError::Validation(_))));
+
+        // Blank slug when provided
+        let blank_slug = CreatePageDto {
+            title: "Valid Title".to_string(),
+            slug: Some("   ".to_string()),
+            parent_id: None,
+            icon: None,
+            cover_image: None,
+        };
+        assert!(matches!(blank_slug.validate(), Err(DocsError::Validation(_))));
+
+        // Nil parent_id
+        let nil_parent = CreatePageDto {
+            title: "Valid Title".to_string(),
+            slug: None,
+            parent_id: Some(Uuid::nil()),
+            icon: None,
+            cover_image: None,
+        };
+        assert!(matches!(nil_parent.validate(), Err(DocsError::Validation(_))));
+    }
+
+    #[test]
+    fn test_update_page_dto_validation() {
+        let valid = UpdatePageDto {
+            title: Some("New Title".to_string()),
+            slug: Some("new-title".to_string()),
+            parent_id: None,
+            icon: None,
+            cover_image: None,
+            is_archived: None,
+        };
+        assert!(valid.validate().is_ok());
+
+        let blank_title = UpdatePageDto {
+            title: Some("   ".to_string()),
+            ..Default::default()
+        };
+        assert!(matches!(blank_title.validate(), Err(DocsError::Validation(_))));
+
+        let nil_parent = UpdatePageDto {
+            parent_id: Some(Some(Uuid::nil())),
+            ..Default::default()
+        };
+        assert!(matches!(nil_parent.validate(), Err(DocsError::Validation(_))));
+    }
+
+    #[test]
+    fn test_apply_delta_dto_validation() {
+        let valid = ApplyDeltaDto {
+            deltas: vec![vec![1, 2, 3], vec![4, 5, 6]],
+        };
+        assert!(valid.validate().is_ok());
+
+        // Empty delta item
+        let empty_item = ApplyDeltaDto {
+            deltas: vec![vec![1, 2], vec![]],
+        };
+        assert!(matches!(empty_item.validate(), Err(DocsError::Validation(_))));
+
+        // Excess batch size (> 500)
+        let too_many = ApplyDeltaDto {
+            deltas: vec![vec![1]; 501],
+        };
+        assert!(matches!(too_many.validate(), Err(DocsError::Validation(_))));
+    }
+
+    #[test]
+    fn test_docs_error_http_mapping() {
+        use rustok_web::HttpError;
+
+        let val_err = DocsError::Validation("Invalid title".to_string());
+        let http_err: HttpError = val_err.into();
+        assert_eq!(http_err.code, "validation_error");
+
+        let page_id = Uuid::new_v4();
+        let parent_id = Uuid::new_v4();
+        let cycle_err = DocsError::CycleDetected { page_id, parent_id };
+        let http_err: HttpError = cycle_err.into();
+        assert_eq!(http_err.code, "cycle_detected");
+    }
 }
+

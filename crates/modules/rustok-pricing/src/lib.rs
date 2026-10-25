@@ -1,15 +1,17 @@
-#![deny(clippy::float_arithmetic)]
+//! # RusToK Pricing
+//!
+//! Pricing domain module extracted from commerce.
+//! Provides price resolution, currency rules, discount calculation, price list management,
+//! and transactional translation change tracking.
 
-use async_trait::async_trait;
-use rustok_api::{Action, Permission, Resource};
-use rustok_core::{MigrationSource, RusToKModule};
-use sea_orm_migration::MigrationTrait;
+#![deny(clippy::float_arithmetic)]
 
 pub mod entities {
     pub use rustok_pricing_persistence::entities::{price, price_list, price_list_translation};
 }
 
 pub mod migrations;
+pub mod module;
 pub mod ports;
 mod price_list_owner_port;
 mod public_error;
@@ -19,6 +21,10 @@ mod translation_changes;
 mod translation_target;
 mod write_context;
 
+#[cfg(test)]
+mod contract_tests;
+
+pub use module::PricingModule;
 pub use ports::{
     ActivePriceListProjectionRequest, ActivePriceListProjectionSnapshot,
     AdminProductPricingProjectionRequest, ApplyVariantDiscountRequest,
@@ -31,7 +37,6 @@ pub use price_list_owner_port::{PriceListOwnerPort, in_process_price_list_owner_
 pub use public_error::{PricingPublicError, map_pricing_port_error, map_pricing_service_error};
 pub use read_context::{InProcessPricingReadPort, in_process_pricing_read_port};
 pub use write_context::{InProcessPricingWritePort, in_process_pricing_write_port};
-// Canonical in_process_pricing_write_port, retained for diagnostic compatibility
 
 pub use services::{
     ActivePriceListOption, AdminPricingPrice, AdminPricingProductDetail, AdminPricingProductList,
@@ -52,51 +57,3 @@ pub use translation_changes::{
 pub use translation_target::{
     PriceListTranslationTargetProvider, register_price_list_translation_target_provider,
 };
-
-pub struct PricingModule;
-
-#[async_trait]
-impl RusToKModule for PricingModule {
-    fn slug(&self) -> &'static str {
-        "pricing"
-    }
-
-    fn name(&self) -> &'static str {
-        "Pricing"
-    }
-
-    fn description(&self) -> &'static str {
-        "Variant pricing, price lists, regions, and discount calculations"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn dependencies(&self) -> &[&'static str] {
-        &["product"]
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::PRODUCTS_READ,
-            Permission::PRODUCTS_UPDATE,
-            Permission::new(Resource::Discounts, Action::Create),
-            Permission::new(Resource::Discounts, Action::Read),
-            Permission::new(Resource::Discounts, Action::Update),
-            Permission::new(Resource::Discounts, Action::Delete),
-            Permission::new(Resource::Discounts, Action::List),
-            Permission::new(Resource::Discounts, Action::Manage),
-        ]
-    }
-}
-
-impl MigrationSource for PricingModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-
-    fn migration_dependencies(&self) -> Vec<rustok_core::MigrationDependencyDescriptor> {
-        migrations::migration_dependencies()
-    }
-}

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-pub use rustok_moderation_api::{
+pub use crate::model::{
     ApplyModerationDecisionCommand, ModerationDecisionApplication, ModerationDecisionEffect,
     ModerationDecisionEffectAction, ModerationDecisionKind, ModerationEffectValidationError,
     ModerationReasonCode, ModerationScopeKind, ModerationScopeRef, ModerationSubjectKind,

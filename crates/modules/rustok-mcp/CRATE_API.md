@@ -1,7 +1,24 @@
 # rustok-mcp / CRATE_API
 
 ## Public Modules
-`access`, `alloy_tools`, `runtime`, `server`, `tools`.
+`access`, `alloy_authoring`, `alloy_import`, `alloy_tools`, `management`, `runtime`, `scaffold_workspace`, `server`, `tools`.
+
+## Platform Capability Bindings
+
+- **Model Context Protocol (MCP) Server**: Provides stdio RPC server via `serve_stdio` and `RusToKMcpServer`.
+- **Module Exploration Tools**: `tools::*` providing module listing, discovery, queries, and health inspection.
+- **Alloy Scaffold & Authoring Integration**:
+  - `alloy_tools::*` and `alloy_authoring::*`: Tools for generating module scaffolds, validating scripts, and managing lifecycle.
+  - `McpManagementPort` & `McpManagementRuntime`: Server-level management of scaffold drafts and tokens.
+- **Fine-Grained Access Control**:
+  - `McpAccessResolver`, `McpAccessPolicy`, `McpToolRequirement`: Role and scope checks before tool execution.
+  - `McpAuditSink`: Structured audit logging for tool executions.
+
+## Domain Collaborations
+
+- **`rustok-core`**: Module registry exploration and standard error mappings.
+- **`apps/server`**: Host composition for MCP remote sessions, tokens, and management ports.
+
 
 ## Primary Public Types and Signatures
 - `pub async fn serve_stdio(config: McpServerConfig) -> Result<...>`

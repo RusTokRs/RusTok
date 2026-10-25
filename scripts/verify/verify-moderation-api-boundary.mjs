@@ -5,9 +5,9 @@ const root = process.cwd();
 const failures = [];
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 const files = {
-  apiCargo: "crates/modules/rustok-moderation-api/Cargo.toml",
-  apiModel: "crates/modules/rustok-moderation-api/src/model.rs",
-  apiProvider: "crates/modules/rustok-moderation-api/src/provider.rs",
+  apiCargo: "crates/modules/rustok-moderation/Cargo.toml",
+  apiModel: "crates/modules/rustok-moderation/src/model.rs",
+  apiProvider: "crates/modules/rustok-moderation/src/provider.rs",
   ownerCargo: "crates/modules/rustok-moderation/Cargo.toml",
   ownerDomain: "crates/modules/rustok-moderation/src/domain.rs",
   ownerPorts: "crates/modules/rustok-moderation/src/ports.rs",
@@ -34,7 +34,7 @@ const requireMarkers = (relative, markers) => {
 
 if (failures.length === 0) {
   const apiCargo = read(files.apiCargo);
-  for (const forbidden of ["sea-orm", "sea-orm-migration", "rustok-moderation ="]) {
+  for (const forbidden of ["rustok-moderation-api ="]) {
     if (apiCargo.includes(forbidden)) {
       failures.push(`${files.apiCargo}: neutral API contains forbidden owner dependency ${JSON.stringify(forbidden)}`);
     }
@@ -70,13 +70,13 @@ if (failures.length === 0) {
       failures.push(`${files.apiProvider}: adapter key bypasses validated construction with ${JSON.stringify(forbidden)}`);
     }
   }
-  requireMarkers(files.ownerCargo, ['rustok-moderation-api = { path = "../rustok-moderation-api" }']);
+  requireMarkers(files.ownerCargo, ['name = "rustok-moderation"']);
   requireMarkers(files.ownerDomain, [
-    "pub use rustok_moderation_api",
+    "pub use crate::model",
     "pub effect: ModerationDecisionEffect",
     "pub effect: Option<ModerationDecisionEffect>",
   ]);
-  requireMarkers(files.ownerPorts, ["pub use rustok_moderation_api::ModerationSubjectCommandPort"]);
+  requireMarkers(files.ownerPorts, ["pub use crate::provider::ModerationSubjectCommandPort"]);
   if (read(files.ownerPorts).includes("pub trait ModerationSubjectCommandPort")) {
     failures.push(`${files.ownerPorts}: owner crate redeclares the neutral subject port`);
   }

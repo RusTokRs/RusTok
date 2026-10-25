@@ -1,0 +1,15 @@
+party-title = Counterparty & Legal Entities
+party-description = Управление настройками и рабочими процессами Counterparty & Legal Entities
+party-empty = Записи не найдены
+party-save = Сохранить
+party-cancel = Отмена
+party-success = Операция успешно выполнена
+party-error = Произошла ошибка
+party-search-placeholder = Поиск записей Counterparty & Legal Entities...
+party-col-title = Название
+party-col-status = Статус
+party-col-created = Дата создания
+party-col-actions = Действия
+party-action-create = Создать
+party-action-edit = Изменить
+party-action-delete = Удалить

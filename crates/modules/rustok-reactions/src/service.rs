@@ -6,7 +6,7 @@ use chrono::Utc;
 use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError};
 use rustok_events::ReactionsEvent;
 use rustok_outbox::{ContractEventWriteOnceError, TransactionalEventBus, idempotency};
-use rustok_reactions_api::{
+use crate::{
     ApplyReactionCommand, ReactionAction, ReactionActorState, ReactionAggregate, ReactionCatalog,
     ReactionContractError, ReactionKey, ReactionProviderError, ReactionReadPort,
     ReactionReadRequest, ReactionSelectionPolicy, ReactionSnapshot, ReactionSubjectAccess,
@@ -42,7 +42,7 @@ impl ReactionsService {
         database: DatabaseConnection,
         extensions: &rustok_core::ModuleRuntimeExtensions,
     ) -> Self {
-        let subjects = rustok_reactions_api::reaction_subject_registry_from_extensions(extensions)
+        let subjects = crate::reaction_subject_registry_from_extensions(extensions)
             .unwrap_or_else(|| Arc::new(ReactionSubjectRegistry::default()));
         Self::new(database, subjects)
     }
@@ -1029,7 +1029,7 @@ fn decode_replay<T: DeserializeOwned>(value: serde_json::Value) -> Result<T, Por
 
 #[cfg(test)]
 mod tests {
-    use rustok_reactions_api::{ReactionAction, ReactionKey, ReactionSelectionPolicy};
+    use crate::{ReactionAction, ReactionKey, ReactionSelectionPolicy};
 
     use super::plan_selection;
 
@@ -1203,7 +1203,7 @@ mod tests {
     #[test]
     fn validate_subject_tenant_enforces_exact_tenant() {
         use rustok_api::{PortActor, PortContext};
-        use rustok_reactions_api::{ReactionSourceSlug, ReactionSubjectKind, ReactionSubjectRef};
+        use crate::{ReactionSourceSlug, ReactionSubjectKind, ReactionSubjectRef};
         use uuid::Uuid;
         use super::validate_subject_tenant;
 

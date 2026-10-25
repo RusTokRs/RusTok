@@ -12,7 +12,7 @@ use rustok_core::search_projection::{
     SearchProjectionSource, SearchProjectionSourceFactory,
 };
 use rustok_core::{Error, ModuleRuntimeExtensions, Result};
-use rustok_profiles_api::ProfileSummaryReader;
+use rustok_profiles::{ProfileSummaryAudience, ProfileSummaryReader};
 
 use crate::dto::PublishedPostCursor;
 use crate::entities::{blog_post, blog_post_channel_visibility, blog_post_translation};
@@ -297,7 +297,7 @@ impl BlogSearchProjectionSource {
                 author_ids,
                 None,
                 Some(PLATFORM_FALLBACK_LOCALE),
-                rustok_profiles_api::ProfileSummaryAudience::Anonymous,
+                ProfileSummaryAudience::Anonymous,
             )
             .await
         {

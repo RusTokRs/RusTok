@@ -257,7 +257,10 @@ fn normalize_tls_domain(
 
 fn is_loopback_host(host: Option<Host<&str>>) -> bool {
     match host {
-        Some(Host::Domain(domain)) => domain.eq_ignore_ascii_case("localhost"),
+        Some(Host::Domain(domain)) => {
+            domain.eq_ignore_ascii_case("localhost")
+                || domain.to_ascii_lowercase().ends_with(".localhost")
+        }
         Some(Host::Ipv4(address)) => IpAddr::V4(address).is_loopback(),
         Some(Host::Ipv6(address)) => IpAddr::V6(address).is_loopback(),
         None => false,
@@ -271,6 +274,7 @@ fn rebase_public_descriptor(
     let (Some(descriptor), Some(public_origin)) = (descriptor, public_origin) else {
         return;
     };
+    let public_origin = public_origin.trim_end_matches('/');
     if descriptor.url.starts_with('/') && !descriptor.url.starts_with("//") {
         descriptor.url = format!("{public_origin}{}", descriptor.url);
     }
@@ -330,6 +334,15 @@ mod tests {
     }
 
     #[test]
+    fn localhost_subdomain_is_recognized_as_loopback() {
+        let accepted = GrpcMediaPublicImageConnectionConfig::new("http://media.dev.localhost:50051")
+            .allow_insecure_loopback(true)
+            .validated()
+            .expect("localhost subdomain should be treated as loopback development transport");
+        assert!(!accepted.endpoint_uses_tls);
+    }
+
+    #[test]
     fn timeout_is_bounded() {
         let error = GrpcMediaPublicImageConnectionConfig::new("https://media.internal")
             .with_connect_timeout(Duration::from_secs(31))
@@ -367,5 +380,22 @@ mod tests {
         .expect("absolute descriptor");
         rebase_public_descriptor(Some(&mut absolute), Some("https://media.example.com"));
         assert_eq!(absolute.url, "https://cdn.example.com/image.png");
+    }
+
+    #[test]
+    fn public_origin_with_trailing_slash_does_not_duplicate_slashes() {
+        let mut relative = MediaImageDescriptor::from_parts(
+            "/api/media/public/images/asset/checksum",
+            None,
+            None,
+            None,
+            Some("image/png".to_string()),
+        )
+        .expect("relative descriptor");
+        rebase_public_descriptor(Some(&mut relative), Some("https://media.example.com/"));
+        assert_eq!(
+            relative.url,
+            "https://media.example.com/api/media/public/images/asset/checksum"
+        );
     }
 }

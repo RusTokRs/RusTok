@@ -37,15 +37,15 @@ fn builtin_seo_slug_constants_satisfy_the_owner_grammar() {
 #[test]
 fn blog_reaction_key_constants_satisfy_the_owner_grammar() {
     assert!(
-        rustok_reactions_api::ReactionSourceSlug::new(crate::BLOG_REACTION_SOURCE).is_ok(),
+        rustok_reactions::ReactionSourceSlug::new(crate::BLOG_REACTION_SOURCE).is_ok(),
         "BLOG_REACTION_SOURCE must satisfy the Reactions source-slug grammar"
     );
     assert!(
-        rustok_reactions_api::ReactionSubjectKind::new(crate::BLOG_POST_REACTION_KIND).is_ok(),
+        rustok_reactions::ReactionSubjectKind::new(crate::BLOG_POST_REACTION_KIND).is_ok(),
         "BLOG_POST_REACTION_KIND must satisfy the Reactions subject-kind grammar"
     );
     assert!(
-        rustok_reactions_api::ReactionKey::new(crate::BLOG_REACTION_V1_KEY).is_ok(),
+        rustok_reactions::ReactionKey::new(crate::BLOG_REACTION_V1_KEY).is_ok(),
         "BLOG_REACTION_V1_KEY must satisfy the Reactions key grammar"
     );
 }

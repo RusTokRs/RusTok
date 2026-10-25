@@ -85,6 +85,9 @@ impl ModerationService {
         tenant_id: Uuid,
         decision_id: Uuid,
     ) -> ModerationResult<Option<ModerationApplicationOperationRecord>> {
+        if tenant_id.is_nil() || decision_id.is_nil() {
+            return Ok(None);
+        }
         find_application_operation_model(self.database(), tenant_id, decision_id)
             .await?
             .map(map_application_operation)
@@ -96,6 +99,9 @@ impl ModerationService {
         tenant_id: Uuid,
         limit: u32,
     ) -> ModerationResult<Vec<ModerationApplicationOperationRecord>> {
+        if tenant_id.is_nil() {
+            return Ok(Vec::new());
+        }
         let now = Utc::now().fixed_offset();
         let due = due_condition(now);
         let models = moderation_application_operation::Entity::find()
@@ -116,6 +122,16 @@ impl ModerationService {
         lease_owner: impl Into<String>,
         lease_seconds: i64,
     ) -> ModerationResult<Option<ModerationApplicationOperationRecord>> {
+        if tenant_id.is_nil() {
+            return Err(ModerationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if decision_id.is_nil() {
+            return Err(ModerationError::Validation(
+                "decision_id must not be nil".to_string(),
+            ));
+        }
         let lease_owner = normalize_text(lease_owner.into(), "lease_owner", MAX_LEASE_OWNER_BYTES)?;
         let lease_seconds = normalize_seconds(
             lease_seconds,
@@ -308,6 +324,21 @@ impl ModerationService {
         lease_token: Uuid,
         application: ModerationDecisionApplication,
     ) -> ModerationResult<ModerationApplicationOperationRecord> {
+        if tenant_id.is_nil() {
+            return Err(ModerationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if decision_id.is_nil() {
+            return Err(ModerationError::Validation(
+                "decision_id must not be nil".to_string(),
+            ));
+        }
+        if lease_token.is_nil() {
+            return Err(ModerationError::Validation(
+                "lease_token must not be nil".to_string(),
+            ));
+        }
         let transaction = self.database().begin().await?;
         let current = find_application_operation_model(&transaction, tenant_id, decision_id)
             .await?
@@ -433,6 +464,21 @@ impl ModerationService {
         error_message: String,
         next_attempt_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     ) -> ModerationResult<ModerationApplicationOperationRecord> {
+        if tenant_id.is_nil() {
+            return Err(ModerationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if decision_id.is_nil() {
+            return Err(ModerationError::Validation(
+                "decision_id must not be nil".to_string(),
+            ));
+        }
+        if lease_token.is_nil() {
+            return Err(ModerationError::Validation(
+                "lease_token must not be nil".to_string(),
+            ));
+        }
         let error_code = normalize_text(error_code, "error_code", MAX_ERROR_CODE_BYTES)?;
         let error_message =
             normalize_text(error_message, "error_message", MAX_ERROR_MESSAGE_BYTES)?;
@@ -820,5 +866,58 @@ mod tests {
             terminal_case_status(ModerationApplicationOperationStatus::Retryable),
             None
         );
+    }
+
+    #[test]
+    fn normalize_seconds_validates_bounds() {
+        assert_eq!(
+            normalize_seconds(
+                0,
+                DEFAULT_APPLICATION_LEASE_SECONDS,
+                MAX_APPLICATION_LEASE_SECONDS,
+                "lease"
+            )
+            .unwrap(),
+            DEFAULT_APPLICATION_LEASE_SECONDS
+        );
+        assert_eq!(
+            normalize_seconds(
+                30,
+                DEFAULT_APPLICATION_LEASE_SECONDS,
+                MAX_APPLICATION_LEASE_SECONDS,
+                "lease"
+            )
+            .unwrap(),
+            30
+        );
+        assert!(
+            normalize_seconds(
+                -1,
+                DEFAULT_APPLICATION_LEASE_SECONDS,
+                MAX_APPLICATION_LEASE_SECONDS,
+                "lease"
+            )
+            .is_err()
+        );
+        assert!(
+            normalize_seconds(
+                MAX_APPLICATION_LEASE_SECONDS + 1,
+                DEFAULT_APPLICATION_LEASE_SECONDS,
+                MAX_APPLICATION_LEASE_SECONDS,
+                "lease"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn normalize_text_validates_bounds() {
+        assert_eq!(
+            normalize_text("  hello  ".to_string(), "field", 10).unwrap(),
+            "hello"
+        );
+        assert!(normalize_text("".to_string(), "field", 10).is_err());
+        assert!(normalize_text("   ".to_string(), "field", 10).is_err());
+        assert!(normalize_text("a".repeat(11), "field", 10).is_err());
     }
 }

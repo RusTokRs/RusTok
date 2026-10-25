@@ -28,8 +28,16 @@ impl RusToKModule for AccountingModule {
         &["outbox"]
     }
 
+    fn kind(&self) -> rustok_core::module::ModuleKind {
+        rustok_core::module::ModuleKind::Core
+    }
+
     fn permissions(&self) -> Vec<Permission> {
         Vec::new()
+    }
+
+    async fn health(&self) -> rustok_core::module::HealthStatus {
+        rustok_core::module::HealthStatus::Healthy
     }
 }
 

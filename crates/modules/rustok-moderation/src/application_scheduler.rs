@@ -5,7 +5,7 @@ use chrono::Utc;
 use rustok_api::{
     ModuleWorkError, ModuleWorkHandler, ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource,
 };
-use rustok_moderation_api::ModerationSubjectAdapterRegistry;
+use crate::provider::ModerationSubjectAdapterRegistry;
 use rustok_runtime::{HostRuntimeContext, ModuleWorkRegistration, ModuleWorkScheduler};
 use sea_orm::{ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;

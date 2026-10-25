@@ -5,6 +5,23 @@ use uuid::Uuid;
 use crate::model::*;
 
 #[cfg(feature = "ssr")]
+fn validate_contexts(
+    tenant: &rustok_api::TenantContext,
+    auth: &rustok_api::AuthContext,
+) -> Result<(), String> {
+    if tenant.id.is_nil() {
+        return Err("Invalid tenant context: nil UUID is not permitted".to_string());
+    }
+    if auth.user_id.is_nil() {
+        return Err("Invalid auth context: nil user UUID is not permitted".to_string());
+    }
+    if auth.tenant_id != tenant.id {
+        return Err("Permission denied: tenant mismatch".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(feature = "ssr")]
 pub async fn fetch_conversations(
     _token: Option<String>,
     _tenant_slug: Option<String>,
@@ -20,9 +37,7 @@ pub async fn fetch_conversations(
         .await
         .map_err(|e| e.to_string())?;
 
-    if auth.tenant_id != tenant.id {
-        return Err("Permission denied: tenant mismatch".to_string());
-    }
+    validate_contexts(&tenant, &auth)?;
 
     let runtime_ctx = expect_context::<HostRuntimeContext>();
     let service = MessengerService::new(runtime_ctx.db_clone(), 1);
@@ -69,8 +84,10 @@ pub async fn fetch_messages(
         .await
         .map_err(|e| e.to_string())?;
 
-    if auth.tenant_id != tenant.id {
-        return Err("Permission denied: tenant mismatch".to_string());
+    validate_contexts(&tenant, &auth)?;
+
+    if conversation_id.is_nil() {
+        return Err("Invalid conversation ID: nil UUID is not permitted".to_string());
     }
 
     let runtime_ctx = expect_context::<HostRuntimeContext>();
@@ -125,8 +142,13 @@ pub async fn send_message(
         .await
         .map_err(|e| e.to_string())?;
 
-    if auth.tenant_id != tenant.id {
-        return Err("Permission denied: tenant mismatch".to_string());
+    validate_contexts(&tenant, &auth)?;
+
+    if input.conversation_id.is_nil() {
+        return Err("Invalid conversation ID: nil UUID is not permitted".to_string());
+    }
+    if input.content.trim().is_empty() {
+        return Err("Message content cannot be empty".to_string());
     }
 
     let runtime_ctx = expect_context::<HostRuntimeContext>();
@@ -181,8 +203,13 @@ pub async fn update_cursor(
         .await
         .map_err(|e| e.to_string())?;
 
-    if auth.tenant_id != tenant.id {
-        return Err("Permission denied: tenant mismatch".to_string());
+    validate_contexts(&tenant, &auth)?;
+
+    if input.conversation_id.is_nil() {
+        return Err("Invalid conversation ID: nil UUID is not permitted".to_string());
+    }
+    if input.last_read_message_id < 0 {
+        return Err("Invalid message ID: cannot be negative".to_string());
     }
 
     let runtime_ctx = expect_context::<HostRuntimeContext>();

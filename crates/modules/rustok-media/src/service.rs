@@ -145,6 +145,9 @@ pub async fn load_media_usage_snapshot(
     db: &DatabaseConnection,
     tenant_id: Uuid,
 ) -> Result<MediaUsageSnapshot> {
+    if tenant_id.is_nil() {
+        return Err(MediaError::NilTenantId);
+    }
     let file_count = AssetEntity::find()
         .filter(AssetCol::TenantId.eq(tenant_id))
         .filter(AssetCol::LifecycleState.eq(AssetState::Active.as_str()))
@@ -488,6 +491,9 @@ impl MediaService {
         input: UploadInput,
         upload_session_id: Option<Uuid>,
     ) -> Result<MediaItem> {
+        if input.tenant_id.is_nil() {
+            return Err(MediaError::NilTenantId);
+        }
         if let Some(upload_session_id) = upload_session_id
             && let Some(existing) = AssetEntity::find()
                 .filter(AssetCol::TenantId.eq(input.tenant_id))
@@ -642,6 +648,12 @@ impl MediaService {
         id: Uuid,
         input: PrepareUploadSessionInput,
     ) -> Result<PreparedUploadSession> {
+        if id.is_nil() {
+            return Err(MediaError::NotFound(id));
+        }
+        if input.tenant_id.is_nil() {
+            return Err(MediaError::NilTenantId);
+        }
         if !self.supports_presigned_upload() {
             return Err(MediaError::PresignedUploadUnavailable);
         }
@@ -781,6 +793,12 @@ impl MediaService {
         tenant_id: Uuid,
         session_id: Uuid,
     ) -> Result<MediaItem> {
+        if tenant_id.is_nil() {
+            return Err(MediaError::NilTenantId);
+        }
+        if session_id.is_nil() {
+            return Err(MediaError::NotFound(session_id));
+        }
         let session = UploadSessionEntity::find_by_id(session_id)
             .filter(UploadSessionCol::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -984,6 +1002,12 @@ impl MediaService {
         &self,
         input: CreateRenditionInput,
     ) -> Result<MediaRenditionItem> {
+        if input.tenant_id.is_nil() {
+            return Err(MediaError::NilTenantId);
+        }
+        if input.asset_id.is_nil() {
+            return Err(MediaError::NotFound(input.asset_id));
+        }
         let purpose = normalize_rendition_purpose(&input.purpose)?;
         input
             .recipe
@@ -1332,6 +1356,12 @@ impl MediaService {
     }
 
     pub async fn get(&self, tenant_id: Uuid, id: Uuid) -> Result<MediaItem> {
+        if tenant_id.is_nil() {
+            return Err(MediaError::NilTenantId);
+        }
+        if id.is_nil() {
+            return Err(MediaError::NotFound(id));
+        }
         let (asset, blob) = AssetEntity::find_by_id(id)
             .filter(AssetCol::TenantId.eq(tenant_id))
             .filter(AssetCol::LifecycleState.eq(AssetState::Active.as_str()))
@@ -1349,6 +1379,12 @@ impl MediaService {
         tenant_id: Uuid,
         media_id: Uuid,
     ) -> Result<String> {
+        if tenant_id.is_nil() {
+            return Err(MediaError::NilTenantId);
+        }
+        if media_id.is_nil() {
+            return Err(MediaError::NotFound(media_id));
+        }
         let asset = AssetEntity::find_by_id(media_id)
             .filter(AssetCol::TenantId.eq(tenant_id))
             .filter(AssetCol::LifecycleState.eq(AssetState::Active.as_str()))
@@ -1364,6 +1400,10 @@ impl MediaService {
         limit: u64,
         offset: u64,
     ) -> Result<(Vec<MediaItem>, u64)> {
+        if tenant_id.is_nil() {
+            return Err(MediaError::NilTenantId);
+        }
+        let limit = std::cmp::min(limit, 1000);
         let query = AssetEntity::find()
             .filter(AssetCol::TenantId.eq(tenant_id))
             .filter(AssetCol::LifecycleState.eq(AssetState::Active.as_str()))
@@ -1391,6 +1431,10 @@ impl MediaService {
         limit: u64,
         offset: u64,
     ) -> Result<(Vec<MediaItem>, u64)> {
+        if tenant_id.is_nil() {
+            return Err(MediaError::NilTenantId);
+        }
+        let limit = std::cmp::min(limit, 1000);
         let normalized = normalize_owner_module(Some(module))?;
         let query = AssetEntity::find()
             .filter(AssetCol::TenantId.eq(tenant_id))
@@ -1414,6 +1458,9 @@ impl MediaService {
     }
 
     pub async fn purge_module_media(&self, tenant_id: Uuid, module: &str) -> Result<u64> {
+        if tenant_id.is_nil() {
+            return Err(MediaError::NilTenantId);
+        }
         let normalized = normalize_owner_module(Some(module))?;
         let assets = AssetEntity::find()
             .filter(AssetCol::TenantId.eq(tenant_id))
@@ -1461,6 +1508,9 @@ impl MediaService {
         tenant_id: Uuid,
         request: crate::MediaAssetReferenceLookupRequest,
     ) -> Result<crate::MediaAssetReferenceLookupResult> {
+        if tenant_id.is_nil() {
+            return Err(MediaError::NilTenantId);
+        }
         let owner_module = normalize_owner_module(Some(&request.owner_module))?;
         let references = AssetReferenceEntity::find()
             .filter(AssetReferenceCol::TenantId.eq(tenant_id))
@@ -1486,22 +1536,26 @@ impl MediaService {
         tenant_id: Uuid,
         request: crate::MediaAssetReferenceListRequest,
     ) -> Result<crate::MediaAssetReferenceListPage> {
+        if tenant_id.is_nil() {
+            return Err(MediaError::NilTenantId);
+        }
+        let page_limit = std::cmp::min(request.limit, 1000);
         let owner_module = normalize_owner_module(Some(&request.owner_module))?;
         let mut query = AssetReferenceEntity::find()
             .filter(AssetReferenceCol::TenantId.eq(tenant_id))
             .filter(AssetReferenceCol::OwnerModule.eq(&owner_module))
             .order_by_asc(AssetReferenceCol::ReferenceId)
-            .limit(request.limit.saturating_add(1));
+            .limit(page_limit.saturating_add(1));
 
         if let Some(after_reference_id) = request.after_reference_id {
             query = query.filter(AssetReferenceCol::ReferenceId.gt(after_reference_id));
         }
 
         let rows = query.all(&self.db).await?;
-        let has_more = rows.len() > request.limit as usize;
+        let has_more = rows.len() > page_limit as usize;
         let references = rows
             .into_iter()
-            .take(request.limit as usize)
+            .take(page_limit as usize)
             .map(|row| MediaAssetReference {
                 media_id: row.media_id,
                 tenant_id: row.tenant_id,
@@ -1523,6 +1577,12 @@ impl MediaService {
         media_id: Uuid,
         input: MediaAssetReferenceInput,
     ) -> Result<MediaAssetReference> {
+        if tenant_id.is_nil() {
+            return Err(MediaError::NilTenantId);
+        }
+        if media_id.is_nil() {
+            return Err(MediaError::NotFound(media_id));
+        }
         let owner_module = normalize_owner_module(Some(&input.owner_module))?;
         if input.reference_id.is_nil() {
             return Err(MediaError::InvalidAssetReferenceId);
@@ -1629,6 +1689,12 @@ impl MediaService {
         media_id: Uuid,
         input: MediaAssetReferenceInput,
     ) -> Result<()> {
+        if tenant_id.is_nil() {
+            return Err(MediaError::NilTenantId);
+        }
+        if media_id.is_nil() {
+            return Err(MediaError::NotFound(media_id));
+        }
         let owner_module = normalize_owner_module(Some(&input.owner_module))?;
         if input.reference_id.is_nil() {
             return Err(MediaError::InvalidAssetReferenceId);
@@ -1656,6 +1722,12 @@ impl MediaService {
     }
 
     pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> Result<()> {
+        if tenant_id.is_nil() {
+            return Err(MediaError::NilTenantId);
+        }
+        if id.is_nil() {
+            return Err(MediaError::NotFound(id));
+        }
         let asset = AssetEntity::find_by_id(id)
             .filter(AssetCol::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -1742,6 +1814,12 @@ impl MediaService {
         media_id: Uuid,
         input: UpsertTranslationInput,
     ) -> Result<MediaTranslationItem> {
+        if tenant_id.is_nil() {
+            return Err(MediaError::NilTenantId);
+        }
+        if media_id.is_nil() {
+            return Err(MediaError::NotFound(media_id));
+        }
         let transaction = self.db.begin().await?;
         let asset = AssetEntity::find_by_id(media_id)
             .filter(AssetCol::TenantId.eq(tenant_id))
@@ -1819,6 +1897,12 @@ impl MediaService {
         media_id: Uuid,
         input: ApplyExactMediaTranslationInput,
     ) -> Result<MediaTranslationItem> {
+        if tenant_id.is_nil() {
+            return Err(MediaError::NilTenantId);
+        }
+        if media_id.is_nil() {
+            return Err(MediaError::NotFound(media_id));
+        }
         let resource_revision = input.expected_resource_revision.clone();
         let target_locale = input.target.locale.as_str().to_string();
         let transaction = self.db.begin().await?;
@@ -1852,6 +1936,12 @@ impl MediaService {
         media_id: Uuid,
         input: ApplyExactMediaTranslationInput,
     ) -> Result<MediaTranslationItem> {
+        if tenant_id.is_nil() {
+            return Err(MediaError::NilTenantId);
+        }
+        if media_id.is_nil() {
+            return Err(MediaError::NotFound(media_id));
+        }
         if input.source_locale == input.target.locale {
             return Err(MediaError::InvalidLocale(input.source_locale.into_inner()));
         }
@@ -1985,6 +2075,12 @@ impl MediaService {
         tenant_id: Uuid,
         media_id: Uuid,
     ) -> Result<Vec<MediaTranslationItem>> {
+        if tenant_id.is_nil() {
+            return Err(MediaError::NilTenantId);
+        }
+        if media_id.is_nil() {
+            return Err(MediaError::NotFound(media_id));
+        }
         let _ = self.get(tenant_id, media_id).await?;
         let rows = TransEntity::find()
             .filter(TransCol::TenantId.eq(tenant_id))
@@ -2011,6 +2107,10 @@ impl MediaService {
         tenant_id: Uuid,
         limit: u64,
     ) -> Result<MediaReconciliationReport> {
+        if tenant_id.is_nil() {
+            return Err(MediaError::NilTenantId);
+        }
+        let limit = limit.clamp(1, 1000);
         let rows = self.reconciliation_rows(Some(tenant_id), limit).await?;
 
         let mut report = self.reconcile_storage_rows(rows).await?;
@@ -2028,6 +2128,7 @@ impl MediaService {
         &self,
         limit: u64,
     ) -> Result<MediaReconciliationReport> {
+        let limit = limit.clamp(1, 1000);
         let rows = self.reconciliation_rows(None, limit).await?;
 
         let mut report = self.reconcile_storage_rows(rows).await?;
@@ -2567,5 +2668,15 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[tokio::test]
+    async fn nil_tenant_id_is_consistently_rejected() {
+        use sea_orm::Database;
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        assert!(matches!(
+            super::load_media_usage_snapshot(&db, Uuid::nil()).await,
+            Err(MediaError::NilTenantId)
+        ));
     }
 }

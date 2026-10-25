@@ -73,7 +73,7 @@ mod-product   = ["dep:rustok-product", "dep:rustok-product-transport", "mod-taxo
 mod-product_relations = ["dep:rustok-product-relations", "mod-product", "rustok-distribution/mod-product_relations"]
 mod-brand = ["dep:rustok-brand", "mod-product", "rustok-distribution/mod-brand"]
 mod-product_bundles = ["dep:rustok-product-bundles", "mod-product", "rustok-distribution/mod-product_bundles"]
-mod-profiles  = ["dep:rustok-profiles", "dep:rustok-profiles-api", "dep:rustok-media-transport", "mod-media", "mod-social_graph", "mod-taxonomy", "rustok-distribution/mod-profiles"]
+mod-profiles  = ["dep:rustok-profiles", "dep:rustok-media-transport", "mod-media", "mod-social_graph", "mod-taxonomy", "rustok-distribution/mod-profiles"]
 mod-social_graph = ["dep:rustok-social-graph", "rustok-social-graph/graphql", "rustok-social-graph/index-consumer"]
 mod-groups    = ["dep:rustok-groups", "rustok-groups/graphql", "rustok-distribution/mod-groups"]
 mod-region    = ["dep:rustok-region", "dep:rustok-translation-targets", "rustok-distribution/mod-region"]
@@ -99,7 +99,7 @@ mod-blog      = ["dep:rustok-blog", "dep:rustok-content", "dep:rustok-translatio
 mod-forum     = ["dep:rustok-forum", "mod-content", "mod-media", "mod-taxonomy", "rustok-content-orchestration/mod-forum", "rustok-distribution/mod-forum"]
 mod-reactions = ["dep:rustok-reactions", "rustok-reactions/graphql", "rustok-distribution/mod-reactions"]
 mod-notifications = ["dep:rustok-notifications", "rustok-notifications/server", "rustok-distribution/mod-notifications"]
-mod-comments  = ["dep:rustok-comments", "dep:rustok-comments-api", "rustok-comments/server", "rustok-content-orchestration/mod-comments", "rustok-distribution/mod-comments"]
+mod-comments  = ["dep:rustok-comments", "rustok-comments/server", "rustok-content-orchestration/mod-comments", "rustok-distribution/mod-comments"]
 mod-pages     = ["dep:rustok-pages", "dep:rustok-translation-targets", "mod-content", "mod-page_builder", "rustok-distribution/mod-pages"]
 mod-navigation = ["dep:rustok-navigation", "dep:rustok-translation-targets", "rustok-distribution/mod-navigation"]
 mod-forms     = ["dep:rustok-forms-module", "rustok-distribution/mod-forms"]
@@ -110,6 +110,13 @@ mod-alloy     = ["dep:alloy", "dep:rustok-translation-targets", "rustok-distribu
 mod-flex      = ["dep:rustok-translation-targets", "rustok-distribution/mod-flex"]
 mod-docs      = ["dep:rustok-docs", "mod-flex", "rustok-distribution/mod-docs"]
 mod-messenger = ["dep:rustok-messenger", "rustok-messenger/graphql", "rustok-distribution/mod-messenger"]
+mod-tasks = ["dep:rustok-tasks", "rustok-distribution/mod-tasks"]
+mod-calendar = ["dep:rustok-calendar", "rustok-distribution/mod-calendar"]
+mod-calls = ["dep:rustok-calls", "rustok-distribution/mod-calls"]
+mod-finance = ["dep:rustok-finance", "rustok-distribution/mod-finance"]
+mod-billing = ["dep:rustok-billing", "rustok-distribution/mod-billing"]
+mod-deal = ["dep:rustok-deal", "rustok-distribution/mod-deal"]
+mod-party = ["dep:rustok-party", "rustok-distribution/mod-party"]
 mod-media     = ["dep:rustok-media", "dep:rustok-translation-targets", "rustok-distribution/mod-media"]
 # Whole-owner Media control ports must not require the unrelated Profiles module.
 media-grpc = ["mod-media", "dep:rustok-media-transport"]
@@ -151,8 +158,7 @@ rustok-product-transport = { path = "../../crates/modules/rustok-product-transpo
 rustok-product-relations = { workspace = true, optional = true }
 rustok-brand = { workspace = true, optional = true }
 rustok-product-bundles = { workspace = true, optional = true }
-rustok-profiles  = { workspace = true, optional = true }
-rustok-profiles-api = { workspace = true, optional = true }
+rustok-profiles  = { workspace = true, optional = true, features = ["server"] }
 rustok-social-graph = { path = "../../crates/modules/rustok-social-graph", optional = true }
 rustok-groups = { path = "../../crates/modules/rustok-groups", default-features = false, optional = true }
 rustok-region    = { workspace = true, optional = true }
@@ -174,7 +180,6 @@ rustok-accounting = { workspace = true, optional = true }
 rustok-moderation = { workspace = true, optional = true }
 rustok-blog      = { workspace = true, optional = true }
 rustok-comments  = { workspace = true, optional = true }
-rustok-comments-api = { workspace = true, optional = true }
 rustok-content   = { workspace = true, optional = true }
 rustok-content-orchestration = { workspace = true }
 rustok-forum     = { workspace = true, optional = true }
@@ -183,6 +188,13 @@ rustok-notifications = { workspace = true, optional = true }
 rustok-pages     = { workspace = true, optional = true }
 rustok-docs      = { workspace = true, optional = true }
 rustok-messenger = { workspace = true, optional = true }
+rustok-tasks = { workspace = true, optional = true }
+rustok-calendar = { workspace = true, optional = true }
+rustok-calls = { workspace = true, optional = true }
+rustok-finance = { workspace = true, optional = true }
+rustok-billing = { workspace = true, optional = true }
+rustok-deal = { workspace = true, optional = true }
+rustok-party = { workspace = true, optional = true }
 rustok-forms-module = { workspace = true, optional = true }
 rustok-newsletter = { workspace = true, optional = true }
 rustok-navigation = { workspace = true, optional = true }
@@ -284,5 +296,5 @@ rustok-manifest = { workspace = true, default-features = false }
 
 [package.metadata.cargo-udeps.ignore]
 development = ["serial_test"]
-normal = ["rustok-rbac", "rustok-tenant", "rustok-docs"]
+normal = ["rustok-rbac", "rustok-tenant", "rustok-docs", "rustok-party", "rustok-deal", "rustok-billing", "rustok-finance", "rustok-calls", "rustok-calendar", "rustok-tasks"]
 

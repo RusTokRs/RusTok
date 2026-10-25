@@ -72,8 +72,11 @@ async fn groups_storefront_my_application_native(
         if auth.tenant_id != tenant.id {
             return Err(ServerFnError::new("groups tenant mismatch"));
         }
-        let group_id = Uuid::parse_str(&query.group_id)
+        let group_id = Uuid::parse_str(query.group_id.trim())
             .map_err(|_| ServerFnError::new("group_id must be a UUID"))?;
+        if group_id.is_nil() {
+            return Err(ServerFnError::new("group_id must not be nil"));
+        }
         let mut context = PortContext::new(
             tenant.id.to_string(),
             PortActor::user(auth.user_id.to_string()),
@@ -136,8 +139,11 @@ async fn groups_storefront_cancel_application_native(
         if auth.tenant_id != tenant.id {
             return Err(ServerFnError::new("groups tenant mismatch"));
         }
-        let application_id = Uuid::parse_str(&command.application_id)
+        let application_id = Uuid::parse_str(command.application_id.trim())
             .map_err(|_| ServerFnError::new("application_id must be a UUID"))?;
+        if application_id.is_nil() {
+            return Err(ServerFnError::new("application_id must not be nil"));
+        }
         let mut context = PortContext::new(
             tenant.id.to_string(),
             PortActor::user(auth.user_id.to_string()),

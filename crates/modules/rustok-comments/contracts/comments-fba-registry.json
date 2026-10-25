@@ -16,7 +16,7 @@
     {
       "name": "CommentsThreadPort",
       "owner": "comments",
-      "contract_source": "crates/modules/rustok-comments-api/src/provider.rs",
+      "contract_source": "crates/modules/rustok-comments/src/ports.rs",
       "operations": [
         "create_comment",
         "get_comment",

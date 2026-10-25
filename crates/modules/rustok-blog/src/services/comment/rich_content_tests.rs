@@ -1,6 +1,6 @@
 use super::*;
 use rustok_api::{RichTextDocument, RichTextView};
-use rustok_comments_api::CommentRecord;
+use rustok_comments::CommentRecord;
 
 #[test]
 fn map_comment_record_preserves_the_typed_projection() {

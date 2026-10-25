@@ -22,6 +22,9 @@ impl NewsletterMutation {
     ) -> Result<GqlSubscriber> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
         let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
+        if tenant_id.is_nil() {
+            return Err(Error::new("tenant_id must not be nil"));
+        }
 
         let service = SubscriberService::new(runtime.db.clone());
         let response = service
@@ -41,6 +44,12 @@ impl NewsletterMutation {
     ) -> Result<bool> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
         let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
+        if tenant_id.is_nil() {
+            return Err(Error::new("tenant_id must not be nil"));
+        }
+        if id.is_nil() {
+            return Err(Error::new("id must not be nil"));
+        }
 
         let service = SubscriberService::new(runtime.db.clone());
         service
@@ -60,6 +69,12 @@ impl NewsletterMutation {
     ) -> Result<bool> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
         let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
+        if tenant_id.is_nil() {
+            return Err(Error::new("tenant_id must not be nil"));
+        }
+        if id.is_nil() {
+            return Err(Error::new("id must not be nil"));
+        }
 
         let service = SubscriberService::new(runtime.db.clone());
         service
@@ -80,6 +95,12 @@ impl NewsletterMutation {
     ) -> Result<GqlSubscriber> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
         let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
+        if tenant_id.is_nil() {
+            return Err(Error::new("tenant_id must not be nil"));
+        }
+        if id.is_nil() {
+            return Err(Error::new("id must not be nil"));
+        }
 
         let service = SubscriberService::new(runtime.db.clone());
         let response = service
@@ -99,6 +120,12 @@ impl NewsletterMutation {
     ) -> Result<bool> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
         let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
+        if tenant_id.is_nil() {
+            return Err(Error::new("tenant_id must not be nil"));
+        }
+        if id.is_nil() {
+            return Err(Error::new("id must not be nil"));
+        }
 
         let service = SubscriberService::new(runtime.db.clone());
         service
@@ -118,6 +145,9 @@ impl NewsletterMutation {
     ) -> Result<GqlCampaign> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
         let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
+        if tenant_id.is_nil() {
+            return Err(Error::new("tenant_id must not be nil"));
+        }
 
         let service = CampaignService::new(runtime.db.clone());
         let response = service
@@ -138,6 +168,12 @@ impl NewsletterMutation {
     ) -> Result<GqlCampaign> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
         let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
+        if tenant_id.is_nil() {
+            return Err(Error::new("tenant_id must not be nil"));
+        }
+        if id.is_nil() {
+            return Err(Error::new("id must not be nil"));
+        }
 
         let service = CampaignService::new(runtime.db.clone());
         let response = service
@@ -158,6 +194,12 @@ impl NewsletterMutation {
     ) -> Result<GqlCampaign> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
         let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
+        if tenant_id.is_nil() {
+            return Err(Error::new("tenant_id must not be nil"));
+        }
+        if id.is_nil() {
+            return Err(Error::new("id must not be nil"));
+        }
 
         let scheduled_at: DateTime<Utc> = DateTime::parse_from_rfc3339(&input.scheduled_at)
             .map_err(|e| Error::new(format!("invalid scheduled_at format: {e}")))?
@@ -181,6 +223,12 @@ impl NewsletterMutation {
     ) -> Result<GqlCampaign> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
         let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
+        if tenant_id.is_nil() {
+            return Err(Error::new("tenant_id must not be nil"));
+        }
+        if id.is_nil() {
+            return Err(Error::new("id must not be nil"));
+        }
 
         let service = CampaignService::new(runtime.db.clone());
         let response = service
@@ -200,6 +248,12 @@ impl NewsletterMutation {
     ) -> Result<bool> {
         let runtime = ctx.data::<std::sync::Arc<NewsletterGraphqlRuntimeData>>()?;
         let tenant_id = tenant_id.ok_or_else(|| Error::new("tenant_id is required"))?;
+        if tenant_id.is_nil() {
+            return Err(Error::new("tenant_id must not be nil"));
+        }
+        if id.is_nil() {
+            return Err(Error::new("id must not be nil"));
+        }
 
         let service = CampaignService::new(runtime.db.clone());
         service

@@ -1,9 +1,10 @@
-#![deny(clippy::float_arithmetic)]
+//! # RusToK Payment
+//!
+//! Payment domain module extracted from commerce.
+//! Provides payment collection schemas, provider SPI abstraction, refund lifecycle,
+//! checkout execution ports, and transactional event handling.
 
-use async_trait::async_trait;
-use rustok_api::Permission;
-use rustok_core::{MigrationSource, RusToKModule};
-use sea_orm_migration::MigrationTrait;
+#![deny(clippy::float_arithmetic)]
 
 mod admin_collection_command;
 mod admin_read;
@@ -24,6 +25,7 @@ pub mod error;
 #[cfg(feature = "server")]
 pub mod http;
 pub mod migrations;
+pub mod module;
 #[cfg(feature = "server")]
 pub mod openapi;
 mod order_read;
@@ -34,6 +36,9 @@ pub mod providers;
 pub mod services;
 #[cfg(feature = "stripe")]
 pub mod stripe_provider;
+
+#[cfg(test)]
+mod contract_tests;
 
 pub use admin_collection_command::{
     AuthorizeAdminPaymentCollectionRequest, CancelAdminPaymentCollectionRequest,
@@ -60,21 +65,45 @@ pub use checkout_compensation::{
     CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest,
     InProcessCheckoutPaymentCompensationPort, in_process_checkout_payment_compensation_port,
 };
-pub use checkout_execution::*;
+pub use checkout_execution::{
+    AuthorizeCheckoutPaymentCollectionRequest, CaptureCheckoutPaymentCollectionRequest,
+    CheckoutPaymentExecutionPort, CheckoutPaymentIdentity, InProcessCheckoutPaymentExecutionPort,
+    PrepareCheckoutPaymentCollectionRequest, ReadCheckoutPaymentCollectionRequest,
+    in_process_checkout_payment_execution_port,
+};
 pub use collection_runtime::PaymentCollectionRuntime;
-pub use dto::*;
-pub use entities::*;
+pub use dto::{
+    AuthorizePaymentInput, CancelPaymentInput, CancelRefundInput, CapturePaymentInput,
+    CompleteRefundInput, CreatePaymentCollectionInput, CreateRefundInput,
+    ListPaymentCollectionsInput, ListRefundsInput, PaymentCollectionResponse,
+    PaymentCollectionStatusKind, PaymentResponse, PaymentStatusKind, RefundResponse,
+    RefundStatusKind,
+};
+pub use entities::payment as payment_entity;
+pub use entities::payment_collection as payment_collection_entity;
+pub use error::{PaymentError, PaymentResult};
+pub use module::PaymentModule;
 pub use order_read::{
     InProcessPaymentOrderReadPort, LatestPaymentCollectionByOrderRequest,
     ListRefundsByOrderRequest, PaymentOrderReadPort, PaymentOrderReadRuntime,
     PaymentOrderRefundPage, in_process_payment_order_read_port,
 };
-pub use ports::*;
-pub use providers::*;
+pub use ports::{
+    PaymentCollectionCreateOrReuseRequest, PaymentCollectionPort, PaymentCollectionStatusRequest,
+    PaymentCollectionStatusSnapshot,
+};
+pub use providers::{
+    ExternalPaymentProviderRegistration, MANUAL_PAYMENT_PROVIDER_ID, ManualPaymentProvider,
+    PaymentProvider, PaymentProviderCapabilities, PaymentProviderDegradedMode,
+    PaymentProviderDescriptor, PaymentProviderHealth, PaymentProviderOperationRequest,
+    PaymentProviderOperationResult, PaymentProviderRegistry, PaymentProviderRuntimeMode,
+    PaymentProviderWebhookRequest, PaymentProviderWebhookResult,
+};
 #[cfg(feature = "stripe")]
-pub use stripe_provider::*;
-
-pub use error::{PaymentError, PaymentResult};
+pub use stripe_provider::{
+    STRIPE_PAYMENT_PROVIDER_ID, StaticStripeCredentialProvider, StripeCredentialProvider,
+    StripeCredentials, StripePaymentProvider, StripePaymentProviderConfig,
+};
 pub use services::{
     BeginProviderOperation, ChargebackLifecycleEventApplier, CheckoutAdmissionDecision,
     CheckoutAdmissionLinkState, CheckoutAdmissionRefusal, CheckoutExecutionAdmissionPort,
@@ -96,41 +125,3 @@ pub use services::{
     VerifiedProviderEvent, decide_checkout_admission_claim, execution_admission_refusal_error,
     refusal_metric_operation_label,
 };
-
-pub struct PaymentModule;
-
-#[async_trait]
-impl RusToKModule for PaymentModule {
-    fn slug(&self) -> &'static str {
-        "payment"
-    }
-
-    fn name(&self) -> &'static str {
-        "Payment"
-    }
-
-    fn description(&self) -> &'static str {
-        "Default payment submodule in the ecommerce family"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::PAYMENTS_CREATE,
-            Permission::PAYMENTS_READ,
-            Permission::PAYMENTS_UPDATE,
-            Permission::PAYMENTS_DELETE,
-            Permission::PAYMENTS_LIST,
-            Permission::PAYMENTS_MANAGE,
-        ]
-    }
-}
-
-impl MigrationSource for PaymentModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-}

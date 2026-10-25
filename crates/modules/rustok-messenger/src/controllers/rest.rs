@@ -33,6 +33,17 @@ pub struct UpdateCursorBody {
     pub last_read_message_id: i64,
 }
 
+fn require_actor_id(auth: &AuthContext) -> HttpResult<Uuid> {
+    let actor_id = auth.user_id;
+    if actor_id.is_nil() {
+        return Err(HttpError::unauthorized(
+            "UNAUTHORIZED",
+            "Authenticated non-nil user required",
+        ));
+    }
+    Ok(actor_id)
+}
+
 pub async fn create_conversation(
     State(runtime): State<MessengerHttpRuntime>,
     tenant: TenantContext,
@@ -41,8 +52,7 @@ pub async fn create_conversation(
 ) -> HttpResult<(StatusCode, Json<ConversationOutput>)> {
     let tenant_id = tenant.id;
     ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
-
-    let actor_id = auth.user_id;
+    let actor_id = require_actor_id(&auth)?;
 
     let output = runtime
         .service
@@ -60,8 +70,7 @@ pub async fn list_conversations(
 ) -> HttpResult<Json<Vec<ConversationOutput>>> {
     let tenant_id = tenant.id;
     ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
-
-    let actor_id = auth.user_id;
+    let actor_id = require_actor_id(&auth)?;
 
     let limit = query.limit.unwrap_or(50).min(100);
     let offset = query.offset.unwrap_or(0);
@@ -82,8 +91,11 @@ pub async fn get_conversation(
 ) -> HttpResult<Json<ConversationOutput>> {
     let tenant_id = tenant.id;
     ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
+    let actor_id = require_actor_id(&auth)?;
 
-    let actor_id = auth.user_id;
+    if id.is_nil() {
+        return Err(HttpError::bad_request("INVALID_ID", "Conversation ID must not be nil"));
+    }
 
     let output = runtime
         .service
@@ -102,8 +114,11 @@ pub async fn update_channel_translation(
 ) -> HttpResult<Json<ChannelTranslationOutput>> {
     let tenant_id = tenant.id;
     ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
+    let actor_id = require_actor_id(&auth)?;
 
-    let actor_id = auth.user_id;
+    if id.is_nil() || input.channel_id.is_nil() {
+        return Err(HttpError::bad_request("INVALID_ID", "Channel ID must not be nil"));
+    }
 
     if input.channel_id != id {
         return Err(HttpError::bad_request("MISMATCHED_ID", "Path ID and body channel_id do not match"));
@@ -125,10 +140,13 @@ pub async fn send_message(
 ) -> HttpResult<(StatusCode, Json<MessageOutput>)> {
     let tenant_id = tenant.id;
     ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
-
-    let actor_id = auth.user_id;
+    let actor_id = require_actor_id(&auth)?;
 
     let conversation_id = input.conversation_id;
+    if conversation_id.is_nil() {
+        return Err(HttpError::bad_request("INVALID_CONVERSATION", "Conversation ID must not be nil"));
+    }
+
     let output = runtime
         .service
         .send_message(tenant_id, actor_id, input)
@@ -152,8 +170,11 @@ pub async fn list_messages(
 ) -> HttpResult<Json<Vec<MessageOutput>>> {
     let tenant_id = tenant.id;
     ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
+    let actor_id = require_actor_id(&auth)?;
 
-    let actor_id = auth.user_id;
+    if conversation_id.is_nil() {
+        return Err(HttpError::bad_request("INVALID_CONVERSATION", "Conversation ID must not be nil"));
+    }
 
     let mut q = query;
     q.conversation_id = conversation_id;
@@ -175,8 +196,14 @@ pub async fn fast_sync(
 ) -> HttpResult<Json<FastSyncResponse>> {
     let tenant_id = tenant.id;
     ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
+    let actor_id = require_actor_id(&auth)?;
 
-    let actor_id = auth.user_id;
+    if conversation_id.is_nil() {
+        return Err(HttpError::bad_request("INVALID_CONVERSATION", "Conversation ID must not be nil"));
+    }
+    if query.since_seq < 0 {
+        return Err(HttpError::bad_request("INVALID_SEQUENCE", "since_seq cannot be negative"));
+    }
 
     let output = runtime
         .service
@@ -203,8 +230,14 @@ pub async fn update_cursor(
 ) -> HttpResult<Json<CursorOutput>> {
     let tenant_id = tenant.id;
     ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
+    let actor_id = require_actor_id(&auth)?;
 
-    let actor_id = auth.user_id;
+    if conversation_id.is_nil() {
+        return Err(HttpError::bad_request("INVALID_CONVERSATION", "Conversation ID must not be nil"));
+    }
+    if body.last_read_message_id < 0 {
+        return Err(HttpError::bad_request("INVALID_CURSOR", "last_read_message_id cannot be negative"));
+    }
 
     let output = runtime
         .service
@@ -235,8 +268,7 @@ pub async fn search_messages(
 ) -> HttpResult<Json<Vec<MessageOutput>>> {
     let tenant_id = tenant.id;
     ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
-
-    let actor_id = auth.user_id;
+    let actor_id = require_actor_id(&auth)?;
 
     let output = runtime
         .service
@@ -254,8 +286,8 @@ pub async fn upload_device_keys(
 ) -> HttpResult<(StatusCode, Json<crate::e2ee::DeviceKey>)> {
     let tenant_id = tenant.id;
     ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
+    let actor_id = require_actor_id(&auth)?;
 
-    let actor_id = auth.user_id;
     let device_key = runtime
         .service
         .device_keys()
@@ -274,6 +306,10 @@ pub async fn list_user_devices(
     let tenant_id = tenant.id;
     ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
 
+    if user_id.is_nil() {
+        return Err(HttpError::bad_request("INVALID_USER", "User ID must not be nil"));
+    }
+
     let devices = runtime.service.device_keys().list_user_devices(user_id);
     Ok(Json(devices))
 }
@@ -287,10 +323,18 @@ pub async fn claim_prekey_bundle(
     let tenant_id = tenant.id;
     ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
 
+    if target_user_id.is_nil() {
+        return Err(HttpError::bad_request("INVALID_USER", "Target user ID must not be nil"));
+    }
+    let trimmed_device_id = device_id.trim();
+    if trimmed_device_id.is_empty() {
+        return Err(HttpError::bad_request("INVALID_DEVICE", "Device ID must not be empty"));
+    }
+
     let bundle = runtime
         .service
         .device_keys()
-        .claim_prekey_bundle(target_user_id, &device_id)
+        .claim_prekey_bundle(target_user_id, trimmed_device_id)
         .map_err(|e| HttpError::not_found("DEVICE_NOT_FOUND", e.to_string()))?;
 
     Ok(Json(bundle))
@@ -305,8 +349,11 @@ pub async fn patch_message(
 ) -> HttpResult<Json<MessageOutput>> {
     let tenant_id = tenant.id;
     ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
+    let actor_id = require_actor_id(&auth)?;
 
-    let actor_id = auth.user_id;
+    if message_id <= 0 {
+        return Err(HttpError::bad_request("INVALID_MESSAGE_ID", "Message ID must be positive"));
+    }
 
     let output = runtime
         .service
@@ -330,8 +377,11 @@ pub async fn delete_message(
 ) -> HttpResult<StatusCode> {
     let tenant_id = tenant.id;
     ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
+    let actor_id = require_actor_id(&auth)?;
 
-    let actor_id = auth.user_id;
+    if message_id <= 0 {
+        return Err(HttpError::bad_request("INVALID_MESSAGE_ID", "Message ID must be positive"));
+    }
 
     let conv_id = runtime
         .service
@@ -356,8 +406,11 @@ pub async fn add_member(
 ) -> HttpResult<(StatusCode, Json<MemberOutput>)> {
     let tenant_id = tenant.id;
     ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
+    let actor_id = require_actor_id(&auth)?;
 
-    let actor_id = auth.user_id;
+    if conversation_id.is_nil() || input.user_id.is_nil() {
+        return Err(HttpError::bad_request("INVALID_ID", "Conversation ID and user ID must not be nil"));
+    }
 
     let output = runtime
         .service
@@ -375,8 +428,11 @@ pub async fn remove_member(
 ) -> HttpResult<StatusCode> {
     let tenant_id = tenant.id;
     ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
+    let actor_id = require_actor_id(&auth)?;
 
-    let actor_id = auth.user_id;
+    if conversation_id.is_nil() || target_user_id.is_nil() {
+        return Err(HttpError::bad_request("INVALID_ID", "Conversation ID and target user ID must not be nil"));
+    }
 
     runtime
         .service
@@ -394,8 +450,11 @@ pub async fn list_members(
 ) -> HttpResult<Json<Vec<MemberOutput>>> {
     let tenant_id = tenant.id;
     ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
+    let actor_id = require_actor_id(&auth)?;
 
-    let actor_id = auth.user_id;
+    if conversation_id.is_nil() {
+        return Err(HttpError::bad_request("INVALID_CONVERSATION", "Conversation ID must not be nil"));
+    }
 
     let output = runtime
         .service

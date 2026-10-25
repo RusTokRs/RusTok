@@ -74,6 +74,11 @@ pub(crate) async fn replay_existing<R: DeserializeOwned>(
     idempotency_key: &str,
     expected_hash: &str,
 ) -> ModerationResult<Option<R>> {
+    if tenant_id.is_nil() {
+        return Err(ModerationError::Validation(
+            "tenant ID cannot be nil".to_string(),
+        ));
+    }
     match find_receipt(db, tenant_id, operation_kind, idempotency_key).await? {
         Some(receipt) => replay(receipt, operation_kind, expected_hash).map(Some),
         None => Ok(None),
@@ -87,6 +92,11 @@ pub(crate) async fn admit(
     idempotency_key: String,
     hash: &str,
 ) -> ModerationResult<ModerationReceiptAdmission> {
+    if tenant_id.is_nil() {
+        return Err(ModerationError::Validation(
+            "tenant ID cannot be nil".to_string(),
+        ));
+    }
     if let Some(existing) =
         find_receipt(db, tenant_id, operation_kind, idempotency_key.as_str()).await?
     {
@@ -278,5 +288,16 @@ mod tests {
         assert_eq!(left, right);
         assert_eq!(left.len(), 64);
         assert_eq!(left, left.to_ascii_lowercase());
+    }
+
+    #[test]
+    fn normalize_idempotency_key_validates_bounds() {
+        assert!(normalize_idempotency_key("").is_err());
+        assert!(normalize_idempotency_key("   ").is_err());
+        assert!(normalize_idempotency_key("a".repeat(192)).is_err());
+        assert_eq!(
+            normalize_idempotency_key("  valid-key  ").unwrap(),
+            "valid-key"
+        );
     }
 }

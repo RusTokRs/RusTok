@@ -75,4 +75,4 @@ See [`docs/architecture/settings.md`](../../../docs/architecture/settings.md).
 - `dto::*`
 - `entities::*`
 
-See also `docs/README.md`.
+See also `docs/README.md` and [CRATE_API.md](CRATE_API.md).

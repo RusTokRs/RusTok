@@ -7,7 +7,7 @@ use rustok_api::{
     TenantContext,
     graphql::{GraphQLError, GraphqlRuntimeInputs, require_module_enabled},
 };
-use rustok_reactions_api::{
+use crate::{
     ApplyReactionCommand, ReactionAction, ReactionCommandIdentity, ReactionKey, ReactionReadPort,
     ReactionReadRequest, ReactionSelectionPolicy, ReactionSnapshot, ReactionSourceSlug,
     ReactionSubjectKind, ReactionSubjectRef, ReactionSubjectRegistry, ReactionWritePort,

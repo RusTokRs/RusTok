@@ -1,8 +1,16 @@
+//! # RusToK Pricing Persistence
+//!
+//! Pricing-owned ORM entities and transaction-aware persistence bootstrap.
+//! Holds SeaORM entities for prices, price lists, and multilingual translations.
+
 use rust_decimal::Decimal;
 use sea_orm::{ColumnTrait, Condition, ConnectionTrait, EntityTrait, QueryFilter, Set};
 use uuid::Uuid;
 
 pub mod entities;
+
+#[cfg(test)]
+mod contract_tests;
 
 use entities::price;
 

@@ -1,7 +1,8 @@
-use async_trait::async_trait;
-use rustok_api::Permission;
-use rustok_core::{MigrationSource, RusToKModule};
-use sea_orm_migration::MigrationTrait;
+//! # RusToK Inventory
+//!
+//! Inventory domain module extracted from commerce.
+//! Provides stock availability checks, reservation leases, concurrency guards,
+//! backorder policies, and stock location translations.
 
 pub mod entities {
     pub use rustok_commerce_foundation::entities::{
@@ -11,6 +12,7 @@ pub mod entities {
 }
 
 pub mod migrations;
+pub mod module;
 pub mod ports;
 mod reservation_owner_context;
 mod reservation_port_context;
@@ -20,7 +22,17 @@ pub mod shipment_stock;
 mod translation_changes;
 mod translation_target;
 
-pub use ports::*;
+#[cfg(test)]
+mod contract_tests;
+
+pub use module::InventoryModule;
+pub use ports::{
+    InventoryAvailabilityRequest, InventoryAvailabilitySnapshot,
+    InventoryIdentityReservationReleaseRequest, InventoryIdentityReservationReleaseSnapshot,
+    InventoryIdentityReservationRequest, InventoryIdentityReservationSnapshot,
+    InventoryReservationIdentityPort, InventoryReservationPort, InventoryReservationReleaseRequest,
+    InventoryReservationReleaseSnapshot, InventoryReservationRequest, InventoryReservationSnapshot,
+};
 pub use reservation_owner_context::{
     PersistentInventoryReservationIdentityPort, in_process_inventory_reservation_identity_port,
 };
@@ -50,49 +62,3 @@ pub use translation_changes::{
 pub use translation_target::{
     StockLocationTranslationTargetProvider, register_stock_location_translation_target_provider,
 };
-
-pub struct InventoryModule;
-
-#[async_trait]
-impl RusToKModule for InventoryModule {
-    fn slug(&self) -> &'static str {
-        "inventory"
-    }
-
-    fn name(&self) -> &'static str {
-        "Inventory"
-    }
-
-    fn description(&self) -> &'static str {
-        "Inventory adjustments, availability checks, and stock-level persistence"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn dependencies(&self) -> &[&'static str] {
-        &["product"]
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::INVENTORY_CREATE,
-            Permission::INVENTORY_READ,
-            Permission::INVENTORY_UPDATE,
-            Permission::INVENTORY_DELETE,
-            Permission::INVENTORY_LIST,
-            Permission::INVENTORY_MANAGE,
-        ]
-    }
-}
-
-impl MigrationSource for InventoryModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-
-    fn migration_dependencies(&self) -> Vec<rustok_core::MigrationDependencyDescriptor> {
-        migrations::migration_dependencies()
-    }
-}

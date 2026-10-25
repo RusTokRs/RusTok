@@ -44,7 +44,6 @@
     "ReactionSubjectAuthorization::Unavailable"
   ],
   "forbidden_source_fragments": [
-    "rustok_reactions::",
     "ReactionWritePort",
     "ReactionReadPort",
     "async_graphql",

@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use rustok_api::{HostRuntimeContext, PortActor, PortContext, SharedStaticModuleSettingsReader};
-use rustok_notifications_api::{
+use rustok_notifications::{
     AuthorizeNotificationTargetRequest, DescribeNotificationRequest, NotificationAudienceCandidate,
     NotificationAudienceCursor, NotificationAudiencePage, NotificationOpenAuthorization,
     NotificationPriority, NotificationProviderError, NotificationProviderResult,

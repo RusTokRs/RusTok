@@ -500,7 +500,7 @@ impl PostService {
     }
 
     /// Public keyset page of published posts, ordered `(is_pinned DESC, pinned_at DESC
-    /// NULLS LAST, published_at DESC, id DESC)` — see [`order_public_post_list`]. Fetches
+    /// NULLS LAST, published_at DESC, id DESC)` — see `order_public_post_list`. Fetches
     /// one extra row to learn whether another page exists, so the list never counts rows.
     /// The returned cursor carries the full sort key, so pinned rows cannot make the
     /// listing skip or repeat entries between pages.

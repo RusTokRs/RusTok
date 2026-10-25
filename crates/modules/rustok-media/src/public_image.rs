@@ -316,9 +316,9 @@ mod tests {
         );
 
         // Non-hex characters are rejected
-        let invalid_char = format!("{}g", &"0".repeat(63));
+        let invalid_char = format!("{}g", "0".repeat(63));
         assert_eq!(normalize_checksum(&invalid_char), None);
-        let special_char = format!("{}!", &"0".repeat(63));
+        let special_char = format!("{}!", "0".repeat(63));
         assert_eq!(normalize_checksum(&special_char), None);
     }
 

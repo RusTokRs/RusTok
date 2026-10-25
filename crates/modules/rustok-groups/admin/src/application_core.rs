@@ -168,8 +168,12 @@ pub fn prepare_reopen_group_membership_application(
     })
 }
 
-fn normalize_uuid(value: &str) -> Result<String, uuid::Error> {
-    Uuid::parse_str(value.trim()).map(|value| value.to_string())
+fn normalize_uuid(value: &str) -> Result<String, ()> {
+    let parsed = Uuid::parse_str(value.trim()).map_err(|_| ())?;
+    if parsed.is_nil() {
+        return Err(());
+    }
+    Ok(parsed.to_string())
 }
 
 fn normalize_key(value: &str) -> Option<String> {
@@ -189,4 +193,321 @@ fn normalize_optional_text(value: Option<String>) -> Option<String> {
         let value = value.trim();
         (!value.is_empty()).then(|| value.to_string())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn policy_queries_reject_nil_and_invalid_uuids() {
+        let nil_uuid = Uuid::nil().to_string();
+        let valid_uuid = "550e8400-e29b-41d4-a716-446655440000";
+
+        assert_eq!(
+            prepare_group_application_policy_locale_catalog_query(&nil_uuid),
+            Err(GroupsAdminApplicationInputError::InvalidGroupId)
+        );
+        assert_eq!(
+            prepare_group_application_policy_locale_catalog_query("not-a-uuid"),
+            Err(GroupsAdminApplicationInputError::InvalidGroupId)
+        );
+
+        let query = prepare_group_application_policy_locale_catalog_query(valid_uuid).unwrap();
+        assert_eq!(query.group_id, valid_uuid);
+
+        assert_eq!(
+            prepare_group_application_policy_query(&nil_uuid, "en"),
+            Err(GroupsAdminApplicationInputError::InvalidGroupId)
+        );
+        assert_eq!(
+            prepare_group_application_policy_query(valid_uuid, "invalid locale!"),
+            Err(GroupsAdminApplicationInputError::InvalidLocale)
+        );
+
+        let query = prepare_group_application_policy_query(valid_uuid, "EN-us").unwrap();
+        assert_eq!(query.group_id, valid_uuid);
+        assert_eq!(query.locale, "en-US");
+    }
+
+    #[test]
+    fn upsert_application_policy_validations() {
+        let nil_uuid = Uuid::nil().to_string();
+        let valid_group = "550e8400-e29b-41d4-a716-446655440000";
+        let valid_policy = "550e8400-e29b-41d4-a716-446655440001";
+
+        assert_eq!(
+            prepare_upsert_group_application_policy(&nil_uuid, "en", None, true, vec![], vec![]),
+            Err(GroupsAdminApplicationInputError::InvalidGroupId)
+        );
+        assert_eq!(
+            prepare_upsert_group_application_policy(valid_group, "???", None, true, vec![], vec![]),
+            Err(GroupsAdminApplicationInputError::InvalidLocale)
+        );
+
+        // Precondition with nil policy_id
+        let nil_precondition = GroupsAdminApplicationPolicyPrecondition {
+            policy_id: nil_uuid.clone(),
+            revision: 1,
+            locale: "en".to_string(),
+        };
+        assert_eq!(
+            prepare_upsert_group_application_policy(
+                valid_group,
+                "en",
+                Some(nil_precondition),
+                true,
+                vec![],
+                vec![]
+            ),
+            Err(GroupsAdminApplicationInputError::InvalidExpectedPolicy)
+        );
+
+        // Precondition with revision 0
+        let zero_rev_precondition = GroupsAdminApplicationPolicyPrecondition {
+            policy_id: valid_policy.to_string(),
+            revision: 0,
+            locale: "en".to_string(),
+        };
+        assert_eq!(
+            prepare_upsert_group_application_policy(
+                valid_group,
+                "en",
+                Some(zero_rev_precondition),
+                true,
+                vec![],
+                vec![]
+            ),
+            Err(GroupsAdminApplicationInputError::InvalidExpectedPolicy)
+        );
+
+        // Precondition with locale mismatch
+        let mismatch_precondition = GroupsAdminApplicationPolicyPrecondition {
+            policy_id: valid_policy.to_string(),
+            revision: 1,
+            locale: "de".to_string(),
+        };
+        assert_eq!(
+            prepare_upsert_group_application_policy(
+                valid_group,
+                "en",
+                Some(mismatch_precondition),
+                true,
+                vec![],
+                vec![]
+            ),
+            Err(GroupsAdminApplicationInputError::InvalidExpectedPolicy)
+        );
+
+        // Question count bounds
+        let too_many_questions = (0..21)
+            .map(|i| GroupsAdminApplicationQuestion {
+                key: format!("q{}", i),
+                prompt: "Question prompt".to_string(),
+                help_text: None,
+                required: true,
+                max_answer_chars: 100,
+            })
+            .collect();
+        assert_eq!(
+            prepare_upsert_group_application_policy(
+                valid_group,
+                "en",
+                None,
+                true,
+                too_many_questions,
+                vec![]
+            ),
+            Err(GroupsAdminApplicationInputError::TooManyQuestions)
+        );
+
+        // Rule count bounds
+        let too_many_rules = (0..21)
+            .map(|i| GroupsAdminApplicationRule {
+                key: format!("r{}", i),
+                title: "Rule title".to_string(),
+                body: "Rule body".to_string(),
+                required: true,
+            })
+            .collect();
+        assert_eq!(
+            prepare_upsert_group_application_policy(
+                valid_group,
+                "en",
+                None,
+                true,
+                vec![],
+                too_many_rules
+            ),
+            Err(GroupsAdminApplicationInputError::TooManyRules)
+        );
+
+        // Question invalid key
+        let invalid_key_question = vec![GroupsAdminApplicationQuestion {
+            key: "Invalid Key!".to_string(),
+            prompt: "Prompt".to_string(),
+            help_text: None,
+            required: true,
+            max_answer_chars: 100,
+        }];
+        assert_eq!(
+            prepare_upsert_group_application_policy(
+                valid_group,
+                "en",
+                None,
+                true,
+                invalid_key_question,
+                vec![]
+            ),
+            Err(GroupsAdminApplicationInputError::InvalidQuestion)
+        );
+
+        // Question invalid prompt or max_answer_chars
+        let empty_prompt_question = vec![GroupsAdminApplicationQuestion {
+            key: "q1".to_string(),
+            prompt: "   ".to_string(),
+            help_text: None,
+            required: true,
+            max_answer_chars: 100,
+        }];
+        assert_eq!(
+            prepare_upsert_group_application_policy(
+                valid_group,
+                "en",
+                None,
+                true,
+                empty_prompt_question,
+                vec![]
+            ),
+            Err(GroupsAdminApplicationInputError::InvalidQuestion)
+        );
+
+        let zero_chars_question = vec![GroupsAdminApplicationQuestion {
+            key: "q1".to_string(),
+            prompt: "Prompt".to_string(),
+            help_text: None,
+            required: true,
+            max_answer_chars: 0,
+        }];
+        assert_eq!(
+            prepare_upsert_group_application_policy(
+                valid_group,
+                "en",
+                None,
+                true,
+                zero_chars_question,
+                vec![]
+            ),
+            Err(GroupsAdminApplicationInputError::InvalidQuestion)
+        );
+
+        // Rule invalid key or empty title/body
+        let invalid_rule = vec![GroupsAdminApplicationRule {
+            key: "r1".to_string(),
+            title: "".to_string(),
+            body: "Body".to_string(),
+            required: true,
+        }];
+        assert_eq!(
+            prepare_upsert_group_application_policy(
+                valid_group,
+                "en",
+                None,
+                true,
+                vec![],
+                invalid_rule
+            ),
+            Err(GroupsAdminApplicationInputError::InvalidRule)
+        );
+
+        // Valid command preparation
+        let valid_cmd = prepare_upsert_group_application_policy(
+            valid_group,
+            "en",
+            Some(GroupsAdminApplicationPolicyPrecondition {
+                policy_id: valid_policy.to_string(),
+                revision: 2,
+                locale: "en".to_string(),
+            }),
+            true,
+            vec![GroupsAdminApplicationQuestion {
+                key: "Q1".to_string(),
+                prompt: "  Why do you want to join?  ".to_string(),
+                help_text: Some("  Details  ".to_string()),
+                required: true,
+                max_answer_chars: 500,
+            }],
+            vec![GroupsAdminApplicationRule {
+                key: "R1".to_string(),
+                title: " Be kind ".to_string(),
+                body: " Respect others ".to_string(),
+                required: true,
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(valid_cmd.group_id, valid_group);
+        assert_eq!(valid_cmd.locale, "en");
+        assert_eq!(valid_cmd.questions[0].key, "q1");
+        assert_eq!(valid_cmd.questions[0].prompt, "Why do you want to join?");
+        assert_eq!(valid_cmd.questions[0].help_text.as_deref(), Some("Details"));
+        assert_eq!(valid_cmd.rules[0].key, "r1");
+        assert_eq!(valid_cmd.rules[0].title, "Be kind");
+        assert_eq!(valid_cmd.rules[0].body, "Respect others");
+    }
+
+    #[test]
+    fn membership_application_lifecycle_validations() {
+        let nil_uuid = Uuid::nil().to_string();
+        let valid_group = "550e8400-e29b-41d4-a716-446655440000";
+        let valid_app = "550e8400-e29b-41d4-a716-446655440001";
+
+        // Query status validation
+        assert_eq!(
+            prepare_group_membership_application_query(&nil_uuid, None),
+            Err(GroupsAdminApplicationInputError::InvalidGroupId)
+        );
+        assert_eq!(
+            prepare_group_membership_application_query(valid_group, Some("unknown_status")),
+            Err(GroupsAdminApplicationInputError::InvalidStatus)
+        );
+        let q = prepare_group_membership_application_query(valid_group, Some(" PENDING ")).unwrap();
+        assert_eq!(q.status.as_deref(), Some("pending"));
+
+        // Review command
+        assert_eq!(
+            prepare_review_group_membership_application(
+                &nil_uuid,
+                GroupsAdminApplicationReviewDecision::Approve,
+                None
+            ),
+            Err(GroupsAdminApplicationInputError::InvalidApplicationId)
+        );
+        let long_note = "a".repeat(2001);
+        assert_eq!(
+            prepare_review_group_membership_application(
+                valid_app,
+                GroupsAdminApplicationReviewDecision::Reject,
+                Some(long_note)
+            ),
+            Err(GroupsAdminApplicationInputError::ReviewNoteTooLong)
+        );
+
+        let review_cmd = prepare_review_group_membership_application(
+            valid_app,
+            GroupsAdminApplicationReviewDecision::Approve,
+            Some("  Welcome to the group!  ".to_string()),
+        )
+        .unwrap();
+        assert_eq!(review_cmd.application_id, valid_app);
+        assert_eq!(review_cmd.note.as_deref(), Some("Welcome to the group!"));
+
+        // Reopen command
+        assert_eq!(
+            prepare_reopen_group_membership_application(&nil_uuid),
+            Err(GroupsAdminApplicationInputError::InvalidApplicationId)
+        );
+        let reopen_cmd = prepare_reopen_group_membership_application(valid_app).unwrap();
+        assert_eq!(reopen_cmd.application_id, valid_app);
+    }
 }

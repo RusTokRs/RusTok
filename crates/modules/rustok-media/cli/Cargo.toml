@@ -13,6 +13,7 @@ rustok-runtime.workspace = true
 rustok-storage.workspace = true
 sea-orm.workspace = true
 serde_json.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

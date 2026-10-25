@@ -1,9 +1,0 @@
-[package]
-name = "rustok-seo-render"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-description = "Compatibility re-export crate for rustok-seo-storefront head rendering"
-
-[dependencies]
-rustok-seo-storefront = { path = "../storefront" }

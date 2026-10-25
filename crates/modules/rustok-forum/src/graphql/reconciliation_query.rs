@@ -7,7 +7,7 @@ use rustok_api::{
     has_any_effective_permission,
 };
 use rustok_core::SecurityContext;
-use rustok_notifications_api::{
+use rustok_notifications::{
     NotificationInboxReconciliationInspectPage, NotificationInboxReconciliationInspectRequest,
 };
 use sea_orm::DatabaseConnection;

@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description.workspace = true
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 rustok-api.workspace = true
 async-trait.workspace = true

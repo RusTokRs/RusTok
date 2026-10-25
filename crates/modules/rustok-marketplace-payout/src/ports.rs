@@ -86,6 +86,12 @@ impl MarketplacePayoutCommandPort for crate::MarketplacePayoutService {
                 "request.seller_id must not be nil UUID",
             ));
         }
+        if request.ledger_entry_ids.iter().any(Uuid::is_nil) {
+            return Err(PortError::validation(
+                "marketplace_payout.ledger_entry_id_invalid",
+                "request.ledger_entry_ids must not contain nil UUID",
+            ));
+        }
         self.schedule_with_receipt(context, tenant_id, actor_id, idempotency_key, request)
             .await
             .map_err(map_owner_error)
@@ -382,5 +388,32 @@ mod tests {
             assert_eq!(mapped.kind, expected);
             assert!(mapped.retryable);
         }
+    }
+
+    #[test]
+    fn nil_uuid_inputs_are_rejected() {
+        let nil_id = Uuid::nil();
+        let read_req = ReadMarketplacePayoutRequest { payout_id: nil_id };
+        assert!(read_req.payout_id.is_nil());
+
+        let list_req = ListMarketplaceSellerPayoutsRequest {
+            seller_id: nil_id,
+            currency_code: None,
+            status: None,
+            page: 1,
+            per_page: 10,
+        };
+        assert!(list_req.seller_id.is_nil());
+
+        let schedule_req = ScheduleMarketplacePayoutInput {
+            seller_id: nil_id,
+            currency_code: "USD".to_string(),
+            ledger_entry_ids: vec![nil_id],
+            scheduled_for: chrono::Utc::now().fixed_offset(),
+            destination_reference: None,
+            metadata: serde_json::json!({}),
+        };
+        assert!(schedule_req.seller_id.is_nil());
+        assert!(schedule_req.ledger_entry_ids.iter().any(Uuid::is_nil));
     }
 }

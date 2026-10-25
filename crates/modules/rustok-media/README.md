@@ -107,6 +107,7 @@
 
 ## Docs
 
+- [CRATE_API.md](CRATE_API.md)
 - [Module docs](./docs/README.md)
 - [Implementation plan](./docs/implementation-plan.md)
 - [Media and Search extraction ADR](../../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md)

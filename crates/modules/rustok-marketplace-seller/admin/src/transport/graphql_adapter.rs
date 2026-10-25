@@ -156,7 +156,7 @@ pub async fn load_detail(
 ) -> Result<MarketplaceSellerAdminDetail, GraphqlMarketplaceSellerAdminError> {
     let response: DetailResponse = request(
         DETAIL_QUERY,
-        IdVariables { id: seller_id },
+        IdVariables { id: seller_id.trim().to_string() },
         token,
         tenant_slug,
     )
@@ -178,12 +178,12 @@ pub async fn execute_command(
             let response: SellerMutationResponse = request(
                 CREATE_MUTATION,
                 serde_json::json!({
-                    "idempotencyKey": idempotency_key,
+                    "idempotencyKey": idempotency_key.trim(),
                     "input": {
-                        "handle": draft.handle,
-                        "displayName": draft.display_name,
-                        "legalName": draft.legal_name,
-                        "ownerUserId": draft.owner_user_id,
+                        "handle": draft.handle.trim(),
+                        "displayName": draft.display_name.trim(),
+                        "legalName": normalize_optional_text(draft.legal_name),
+                        "ownerUserId": draft.owner_user_id.trim(),
                         "metadata": object_or_empty(draft.metadata)?,
                     }
                 }),
@@ -197,8 +197,8 @@ pub async fn execute_command(
             let response: SellerMutationResponse = request(
                 UPDATE_PROFILE_MUTATION,
                 serde_json::json!({
-                    "idempotencyKey": idempotency_key,
-                    "sellerId": seller_id,
+                    "idempotencyKey": idempotency_key.trim(),
+                    "sellerId": seller_id.trim(),
                     "input": {
                         "displayName": normalize_optional_text(draft.display_name),
                         "legalName": normalize_optional_text(draft.legal_name),
@@ -215,8 +215,8 @@ pub async fn execute_command(
             seller_command(
                 SUBMIT_MUTATION,
                 serde_json::json!({
-                    "idempotencyKey": idempotency_key,
-                    "sellerId": seller_id,
+                    "idempotencyKey": idempotency_key.trim(),
+                    "sellerId": seller_id.trim(),
                     "note": normalize_optional_text(note),
                 }),
                 token,
@@ -232,8 +232,8 @@ pub async fn execute_command(
             seller_command(
                 REVIEW_MUTATION,
                 serde_json::json!({
-                    "idempotencyKey": idempotency_key,
-                    "sellerId": seller_id,
+                    "idempotencyKey": idempotency_key.trim(),
+                    "sellerId": seller_id.trim(),
                     "approved": approved,
                     "note": normalize_optional_text(note),
                 }),
@@ -246,9 +246,9 @@ pub async fn execute_command(
             seller_command(
                 SUSPEND_MUTATION,
                 serde_json::json!({
-                    "idempotencyKey": idempotency_key,
-                    "sellerId": seller_id,
-                    "reason": reason,
+                    "idempotencyKey": idempotency_key.trim(),
+                    "sellerId": seller_id.trim(),
+                    "reason": reason.trim(),
                 }),
                 token,
                 tenant_slug,
@@ -259,8 +259,8 @@ pub async fn execute_command(
             seller_command(
                 REACTIVATE_MUTATION,
                 serde_json::json!({
-                    "idempotencyKey": idempotency_key,
-                    "sellerId": seller_id,
+                    "idempotencyKey": idempotency_key.trim(),
+                    "sellerId": seller_id.trim(),
                 }),
                 token,
                 tenant_slug,
@@ -271,10 +271,10 @@ pub async fn execute_command(
             let response: MemberMutationResponse = request(
                 ADD_MEMBER_MUTATION,
                 serde_json::json!({
-                    "idempotencyKey": idempotency_key,
-                    "sellerId": seller_id,
+                    "idempotencyKey": idempotency_key.trim(),
+                    "sellerId": seller_id.trim(),
                     "input": {
-                        "userId": draft.user_id,
+                        "userId": draft.user_id.trim(),
                         "role": graphql_enum_required(draft.role, "member role")?,
                         "metadata": object_or_empty(draft.metadata)?,
                     }
@@ -293,9 +293,9 @@ pub async fn execute_command(
             let response: MemberMutationResponse = request(
                 UPDATE_MEMBER_MUTATION,
                 serde_json::json!({
-                    "idempotencyKey": idempotency_key,
-                    "sellerId": seller_id,
-                    "memberId": member_id,
+                    "idempotencyKey": idempotency_key.trim(),
+                    "sellerId": seller_id.trim(),
+                    "memberId": member_id.trim(),
                     "input": {
                         "role": draft.role.map(|value| graphql_enum_required(value, "member role")).transpose()?,
                         "status": draft.status.map(|value| graphql_enum_required(value, "member status")).transpose()?,

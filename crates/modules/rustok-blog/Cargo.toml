@@ -19,13 +19,13 @@ base64.workspace = true
 rand.workspace = true
 rustok-api = { workspace = true, features = ["server"] }
 rustok-channel.workspace = true
-rustok-comments-api.workspace = true
+rustok-comments = { workspace = true, default-features = false, features = ["ports"] }
 rustok-content.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
-rustok-profiles-api.workspace = true
-rustok-reactions-api = { path = "../rustok-reactions-api" }
+rustok-profiles.workspace = true
+rustok-reactions = { workspace = true, default-features = false }
 rustok-runtime = { workspace = true, optional = true }
 rustok-seo-targets.workspace = true
 rustok-taxonomy.workspace = true

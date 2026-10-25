@@ -15,15 +15,6 @@ pub mod migrations;
 pub mod services;
 
 #[cfg(feature = "server")]
-use async_trait::async_trait;
-#[cfg(feature = "server")]
-use rustok_api::Permission;
-#[cfg(feature = "server")]
-use rustok_core::{MigrationSource, RusToKModule};
-#[cfg(feature = "server")]
-use sea_orm_migration::MigrationTrait;
-
-#[cfg(feature = "server")]
 pub use authorization::SeoWorkerAuthorization;
 pub use dto::{
     SeoAlternateLink, SeoBulkApplyInput, SeoBulkApplyMode, SeoBulkArtifactRecord,
@@ -61,72 +52,9 @@ pub use services::{
 };
 
 #[cfg(feature = "server")]
-pub struct SeoModule;
-
+pub mod module;
 #[cfg(feature = "server")]
-#[async_trait]
-impl RusToKModule for SeoModule {
-    fn slug(&self) -> &'static str {
-        "seo"
-    }
+pub use module::SeoModule;
 
-    fn name(&self) -> &'static str {
-        "SEO"
-    }
-
-    fn description(&self) -> &'static str {
-        "SEO metadata, routing resolution, redirects, sitemaps, and robots runtime"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn dependencies(&self) -> &[&'static str] {
-        &["content"]
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::SEO_READ,
-            Permission::SEO_UPDATE,
-            Permission::SEO_PUBLISH,
-            Permission::SEO_GENERATE,
-            Permission::SEO_MANAGE,
-        ]
-    }
-
-    fn register_event_listeners(
-        &self,
-        registry: &mut rustok_core::ModuleEventListenerRegistry,
-        ctx: &rustok_core::ModuleEventListenerContext<'_>,
-    ) {
-        let event_bus = ctx
-            .extensions
-            .get::<rustok_outbox::TransactionalEventBus>()
-            .cloned()
-            .unwrap_or_else(|| {
-                let transport: std::sync::Arc<dyn rustok_core::events::EventTransport> =
-                    std::sync::Arc::new(rustok_outbox::OutboxTransport::new(ctx.db.clone()));
-                rustok_outbox::TransactionalEventBus::new(transport)
-            });
-        let seo_registry = ctx
-            .extensions
-            .get::<rustok_seo_targets::SeoTargetRegistry>()
-            .cloned()
-            .unwrap_or_default();
-
-        registry.register(services::SeoCanonicalUrlRedirectHandler::new(
-            ctx.db.clone(),
-            event_bus,
-            std::sync::Arc::new(seo_registry),
-        ));
-    }
-}
-
-#[cfg(feature = "server")]
-impl MigrationSource for SeoModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-}
+#[cfg(all(test, feature = "server"))]
+mod contract_tests;

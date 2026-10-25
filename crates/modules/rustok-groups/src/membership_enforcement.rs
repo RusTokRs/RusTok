@@ -35,6 +35,10 @@ impl GroupMembershipEnforcementService {
         request: ReadGroupMembershipEnforcementRequest,
         evaluated_at: DateTime<Utc>,
     ) -> GroupsResult<GroupMembershipEffectiveState> {
+        request.validate()?;
+        if tenant_id.is_nil() {
+            return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
         resolve_group_membership_enforcement(
             &self.db,
             tenant_id,
@@ -61,6 +65,15 @@ pub(crate) async fn resolve_group_membership_enforcement<C>(
 where
     C: ConnectionTrait,
 {
+    if tenant_id.is_nil() {
+        return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+    }
+    if group_id.is_nil() {
+        return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+    }
+    if user_id.is_nil() {
+        return Err(GroupsError::Validation("user_id cannot be nil UUID".to_string()));
+    }
     let Some(membership) = membership_state::Entity::find()
         .filter(membership_state::Column::TenantId.eq(tenant_id))
         .filter(membership_state::Column::GroupId.eq(group_id))
@@ -267,15 +280,29 @@ impl GroupMembershipEnforcementReadPort for GroupMembershipEnforcementService {
         request: ReadGroupMembershipEnforcementRequest,
     ) -> Result<GroupMembershipEffectiveState, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        request.validate()?;
         if !can_read_effective_membership(&context, request.user_id) {
             return Err(PortError::forbidden(
                 "groups.membership_enforcement_forbidden",
                 "membership enforcement state is not visible to this actor",
             ));
         }
-        let tenant_id = Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
+        let trimmed_tenant = context.tenant_id.trim();
+        if trimmed_tenant.is_empty() {
+            return Err(PortError::validation(
+                "groups.tenant_id_invalid",
+                "tenant_id cannot be empty",
+            ));
+        }
+        let tenant_id = Uuid::parse_str(trimmed_tenant).map_err(|_| {
             PortError::validation("groups.tenant_id_invalid", "tenant_id must be a UUID")
         })?;
+        if tenant_id.is_nil() {
+            return Err(PortError::validation(
+                "groups.tenant_id_invalid",
+                "tenant_id cannot be nil UUID",
+            ));
+        }
         self.read_effective_state_owned(tenant_id, request, Utc::now())
             .await
             .map_err(Into::into)
@@ -283,8 +310,20 @@ impl GroupMembershipEnforcementReadPort for GroupMembershipEnforcementService {
 }
 
 fn can_read_effective_membership(context: &PortContext, target_user_id: Uuid) -> bool {
-    let exact_user = context.actor.kind == PortActorKind::User
-        && Uuid::parse_str(context.actor.id.trim()).ok() == Some(target_user_id);
+    if target_user_id.is_nil() {
+        return false;
+    }
+    let actor_uuid = if context.actor.kind == PortActorKind::User {
+        let trimmed = context.actor.id.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Uuid::parse_str(trimmed).ok().filter(|u| !u.is_nil())
+        }
+    } else {
+        None
+    };
+    let exact_user = actor_uuid == Some(target_user_id);
     exact_user
         || context.claims.iter().any(|claim| {
             matches!(

@@ -140,8 +140,20 @@ pub async fn ws_handler(
     Path(conversation_id): Path<Uuid>,
     ws: WebSocketUpgrade,
 ) -> HttpResult<Response> {
+    let tenant_id = tenant.id;
+    if tenant_id.is_nil() {
+        return Err(HttpError::bad_request("INVALID_TENANT", "Tenant ID must not be nil"));
+    }
+    let actor_id = auth.user_id;
+    if actor_id.is_nil() {
+        return Err(HttpError::unauthorized("UNAUTHORIZED", "Authenticated non-nil user required"));
+    }
+    if conversation_id.is_nil() {
+        return Err(HttpError::bad_request("INVALID_CONVERSATION", "Conversation ID must not be nil"));
+    }
+
     // 1. Ensure messenger module is enabled for tenant
-    super::ensure_messenger_module_enabled(&runtime.db, tenant.id).await?;
+    super::ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
 
     // 2. Enforce read permission before upgrade
     if !has_any_effective_permission(&auth.permissions, &[Permission::MESSAGES_READ]) {
@@ -150,9 +162,6 @@ pub async fn ws_handler(
             "Permission denied: messages:read required for real-time messaging",
         ));
     }
-
-    let tenant_id = tenant.id;
-    let actor_id = auth.user_id;
 
     // 3. Ensure actor is an active member of the conversation
     if let Err(err) = runtime.service.ensure_membership(conversation_id, actor_id).await {

@@ -32,7 +32,7 @@ rustok-ui-i18n.workspace = true
 leptos-ui-routing.workspace = true
 rustok-core = { workspace = true, optional = true }
 rustok-customer = { workspace = true, optional = true }
-rustok-profiles = { workspace = true, optional = true }
+rustok-profiles = { workspace = true, optional = true, features = ["server"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 tracing.workspace = true

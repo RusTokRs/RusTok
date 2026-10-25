@@ -4,7 +4,7 @@ use rustok_core::{
     MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry,
     ModuleRuntimeExtensions, RusToKModule,
 };
-use rustok_reactions_api::register_reaction_subject_provider_factory;
+use rustok_reactions::register_reaction_subject_provider_factory;
 use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
 

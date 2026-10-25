@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_api::{HostRuntimeContext, PortContext, SharedStaticModuleSettingsReader};
-use rustok_reactions_api::{
+use rustok_reactions::{
     ReactionCatalog, ReactionKey, ReactionProviderError, ReactionProviderResult,
     ReactionSelectionPolicy, ReactionSourceSlug, ReactionSubjectAuthorization, ReactionSubjectKind,
     ReactionSubjectProvider, ReactionSubjectProviderFactory, ReactionSubjectRequest,
@@ -126,8 +126,8 @@ impl ReactionSubjectProvider for BlogReactionSubjectProvider {
         vec![blog_post_reaction_kind()]
     }
 
-    fn deletion_bindings(&self) -> Vec<rustok_reactions_api::ReactionSubjectDeletionBinding> {
-        vec![rustok_reactions_api::ReactionSubjectDeletionBinding {
+    fn deletion_bindings(&self) -> Vec<rustok_reactions::ReactionSubjectDeletionBinding> {
+        vec![rustok_reactions::ReactionSubjectDeletionBinding {
             source: blog_reaction_source(),
             kind: blog_post_reaction_kind(),
             target_type: "blog_post".to_string(),

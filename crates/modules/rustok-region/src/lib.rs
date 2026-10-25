@@ -1,20 +1,28 @@
-use async_trait::async_trait;
-use rustok_api::Permission;
-use rustok_core::{MigrationSource, RusToKModule};
-use sea_orm_migration::MigrationTrait;
+//! # RusToK Region Module
+//!
+//! Provides geographical jurisdiction boundaries, country-to-region mapping,
+//! currency codes, localized region naming, and regional tax policy definitions.
 
 pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod migrations;
+pub mod module;
 pub mod ports;
 pub mod services;
 pub mod translation_changes;
 pub mod translation_target;
 
-pub use dto::*;
+pub use dto::{
+    CreateRegionInput, RegionCountryTaxPolicyInput, RegionCountryTaxPolicyResponse, RegionResponse,
+    RegionTranslationInput, RegionTranslationResponse, UpdateRegionInput,
+};
 pub use error::{RegionError, RegionResult};
-pub use ports::*;
+pub use module::RegionModule;
+pub use ports::{
+    RegionListRequest, RegionReadPort, RegionReadProjection, RegionReadRequest, RegionReadSelector,
+    in_process_region_read_port,
+};
 pub use services::{
     RegionService, RegionTranslationExactLocaleApply, RegionTranslationExactLocaleApplyReceipt,
     RegionTranslationExactLocaleError, RegionTranslationExactLocaleRecord,
@@ -26,40 +34,5 @@ pub use translation_target::{
     RegionTranslationTargetProvider, register_region_translation_target_provider,
 };
 
-pub struct RegionModule;
-
-#[async_trait]
-impl RusToKModule for RegionModule {
-    fn slug(&self) -> &'static str {
-        "region"
-    }
-
-    fn name(&self) -> &'static str {
-        "Region"
-    }
-
-    fn description(&self) -> &'static str {
-        "Default region submodule in the ecommerce family"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::REGIONS_CREATE,
-            Permission::REGIONS_READ,
-            Permission::REGIONS_UPDATE,
-            Permission::REGIONS_DELETE,
-            Permission::REGIONS_LIST,
-            Permission::REGIONS_MANAGE,
-        ]
-    }
-}
-
-impl MigrationSource for RegionModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-}
+#[cfg(test)]
+mod contract_tests;

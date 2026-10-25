@@ -1,7 +1,8 @@
-use async_trait::async_trait;
-use rustok_api::Permission;
-use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
-use sea_orm_migration::MigrationTrait;
+//! # RusToK Fulfillment
+//!
+//! Fulfillment domain module extracted from commerce.
+//! Provides shipping-option schemas, carrier provider SPI abstraction, fulfillment lifecycle,
+//! checkout execution ports, and item-level delivery progress tracking.
 
 mod admin_command;
 mod admin_create_command;
@@ -12,6 +13,7 @@ pub mod entities;
 pub mod error;
 mod fulfillment_read;
 pub mod migrations;
+pub mod module;
 pub mod ports;
 pub mod providers;
 pub mod services;
@@ -21,6 +23,9 @@ mod shipping_option_read;
 pub mod status;
 mod translation_changes;
 mod translation_target;
+
+#[cfg(test)]
+mod contract_tests;
 
 pub use admin_command::{
     CancelAdminFulfillmentRequest, DeliverAdminFulfillmentRequest, FulfillmentAdminCommandPort,
@@ -40,15 +45,34 @@ pub use checkout_execution::{
 pub use checkout_execution_typed::{
     TypedCheckoutFulfillmentExecutionPort, in_process_checkout_fulfillment_execution_port,
 };
-pub use dto::*;
-pub use entities::*;
+pub use dto::{
+    CancelFulfillmentInput, CreateFulfillmentInput, CreateFulfillmentItemInput,
+    CreateShippingOptionInput, DeliverFulfillmentInput, FulfillmentItemQuantityInput,
+    FulfillmentItemResponse, FulfillmentResponse, ListFulfillmentsInput, ReopenFulfillmentInput,
+    ReshipFulfillmentInput, ShipFulfillmentInput, ShippingOptionResponse,
+    ShippingOptionTranslationInput, ShippingOptionTranslationResponse, UpdateShippingOptionInput,
+};
+pub use entities::fulfillment as fulfillment_entity;
+pub use entities::fulfillment_item as fulfillment_item_entity;
+pub use entities::shipping_option as shipping_option_entity;
 pub use fulfillment_read::{
     FindLatestFulfillmentByOrderProjectionRequest, FulfillmentProjectionPage, FulfillmentReadPort,
     InProcessFulfillmentReadPort, ListFulfillmentProjectionsRequest,
     ReadFulfillmentProjectionRequest, in_process_fulfillment_read_port,
 };
-pub use ports::*;
-pub use providers::*;
+pub use module::FulfillmentModule;
+pub use ports::{
+    ListSellerShippingOptionsRequest, SelectShippingOptionPortRequest,
+    SelectedShippingOptionSnapshot, SellerShippingOptionsSnapshot, ShippingOptionProjection,
+    ShippingSelectionPort,
+};
+pub use providers::{
+    ExternalFulfillmentProviderRegistration, FulfillmentProvider, FulfillmentProviderCapabilities,
+    FulfillmentProviderDegradedMode, FulfillmentProviderDescriptor, FulfillmentProviderHealth,
+    FulfillmentProviderOperationRequest, FulfillmentProviderOperationResult,
+    FulfillmentProviderRegistry, FulfillmentProviderRuntimeMode, FulfillmentRateQuote,
+    FulfillmentRateQuoteRequest, MANUAL_FULFILLMENT_PROVIDER_ID, ManualFulfillmentProvider,
+};
 pub use shipping_option_admin_command::{
     CreateAdminShippingOptionRequest, DeactivateAdminShippingOptionRequest,
     InProcessShippingOptionAdminCommandPort, ReactivateAdminShippingOptionRequest,
@@ -65,7 +89,7 @@ pub use shipment_stock::{
     NoopShipmentStockPort, ShipmentStockError, ShipmentStockPort, ShipmentStockRequest,
     UnconfiguredShipmentStockPort,
 };
-pub use status::*;
+pub use status::FulfillmentStatusKind;
 pub use translation_changes::{
     ShippingOptionTranslationChangeLifecycle, ShippingOptionTranslationChangeRecord,
 };
@@ -84,45 +108,3 @@ pub use services::{
     ShippingOptionTranslationExactLocaleRecord, ShippingOptionTranslationExactLocaleResult,
     ShippingOptionTranslationExactLocaleSnapshot, ShippingOptionTranslationService,
 };
-
-pub struct FulfillmentModule;
-
-#[async_trait]
-impl RusToKModule for FulfillmentModule {
-    fn slug(&self) -> &'static str {
-        "fulfillment"
-    }
-
-    fn name(&self) -> &'static str {
-        "Fulfillment"
-    }
-
-    fn description(&self) -> &'static str {
-        "Default fulfillment submodule in the ecommerce family"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::FULFILLMENTS_CREATE,
-            Permission::FULFILLMENTS_READ,
-            Permission::FULFILLMENTS_UPDATE,
-            Permission::FULFILLMENTS_DELETE,
-            Permission::FULFILLMENTS_LIST,
-            Permission::FULFILLMENTS_MANAGE,
-        ]
-    }
-}
-
-impl MigrationSource for FulfillmentModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-
-    fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
-        migrations::migration_dependencies()
-    }
-}

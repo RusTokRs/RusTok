@@ -84,6 +84,14 @@ impl FormsService {
         identity: &str,
         user_agent: Option<String>,
     ) -> FormsResult<SubmitFormResponse> {
+        if tenant_id.is_nil() {
+            return Err(FormsError::validation("tenant_id must not be nil"));
+        }
+        if let Some(pid) = page_id {
+            if pid.is_nil() {
+                return Err(FormsError::validation("page_id must not be nil"));
+            }
+        }
         validate_form_id(form_id)?;
         validate_payload(&fields)?;
 
@@ -127,21 +135,23 @@ impl FormsService {
         }
         .insert(&txn)
         .await?;
-        self.event_bus
-            .publish_contract_in_tx(
-                &txn,
-                tenant_id,
-                None,
-                FormSubmissionEvent::SubmissionReceived {
-                    submission_id: row.id,
+        if state != FormSubmissionState::Spam {
+            self.event_bus
+                .publish_contract_in_tx(
+                    &txn,
                     tenant_id,
-                    form_id: form_id.to_string(),
-                    page_id,
-                    locale,
-                    state: state.as_str().to_string(),
-                },
-            )
-            .await?;
+                    None,
+                    FormSubmissionEvent::SubmissionReceived {
+                        submission_id: row.id,
+                        tenant_id,
+                        form_id: form_id.to_string(),
+                        page_id,
+                        locale,
+                        state: state.as_str().to_string(),
+                    },
+                )
+                .await?;
+        }
         txn.commit().await?;
 
         if state != FormSubmissionState::Spam {
@@ -159,6 +169,9 @@ impl FormsService {
         security: SecurityContext,
         filter: ListFormSubmissionsFilter,
     ) -> FormsResult<Vec<FormSubmissionResponse>> {
+        if tenant_id.is_nil() {
+            return Err(FormsError::validation("tenant_id must not be nil"));
+        }
         enforce_forms_read(&security)?;
         let mut query =
             form_submission::Entity::find().filter(form_submission::Column::TenantId.eq(tenant_id));
@@ -168,16 +181,17 @@ impl FormsService {
         if let Some(state) = filter.state {
             query = query.filter(form_submission::Column::State.eq(state.as_str()));
         }
+        let bounded_per_page = filter.per_page.clamp(1, 100);
+        let bounded_page = filter.page.max(1);
         let rows = query
             .order_by_desc(form_submission::Column::CreatedAt)
             .order_by_desc(form_submission::Column::Id)
             .offset(
-                filter
-                    .page
+                bounded_page
                     .saturating_sub(1)
-                    .saturating_mul(filter.per_page),
+                    .saturating_mul(bounded_per_page),
             )
-            .limit(filter.per_page.clamp(1, 100))
+            .limit(bounded_per_page)
             .all(&self.db)
             .await?;
         Ok(rows
@@ -195,7 +209,18 @@ impl FormsService {
         id: Uuid,
         state: FormSubmissionState,
     ) -> FormsResult<FormSubmissionResponse> {
+        if tenant_id.is_nil() {
+            return Err(FormsError::validation("tenant_id must not be nil"));
+        }
+        if id.is_nil() {
+            return Err(FormsError::validation("id must not be nil"));
+        }
         let actor_id = enforce_forms_manage(&security)?;
+        if actor_id.is_nil() {
+            return Err(FormsError::forbidden(
+                "authenticated user id must not be nil",
+            ));
+        }
         let row = form_submission::Entity::find_by_id(id)
             .filter(form_submission::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -209,7 +234,9 @@ impl FormsService {
                     .with_error_code(FORM_SUBMISSION_NOT_FOUND),
                 ))
             })?;
-        let current = FormSubmissionState::parse(&row.state).expect("state is storage-checked");
+        let current = FormSubmissionState::parse(&row.state).ok_or_else(|| {
+            FormsError::internal(format!("Invalid stored submission state: {}", row.state))
+        })?;
         if !matches!(
             (current, state),
             (FormSubmissionState::New, FormSubmissionState::Read)
@@ -248,6 +275,9 @@ impl FormsService {
         form_id: &str,
         identity: &str,
     ) -> FormsResult<()> {
+        if tenant_id.is_nil() {
+            return Err(FormsError::validation("tenant_id must not be nil"));
+        }
         let window_start: sea_orm::prelude::DateTimeWithTimeZone =
             (Utc::now() - ChronoDuration::minutes(FORM_SUBMIT_RATE_WINDOW_MINUTES)).into();
         let recent = form_submission::Entity::find()
@@ -307,7 +337,7 @@ fn submission_response_from_model(model: form_submission::Model) -> FormSubmissi
         page_id: model.page_id,
         payload: model.payload,
         state: FormSubmissionState::parse(&model.state)
-            .expect("submission state is constrained by the storage check"),
+            .unwrap_or(FormSubmissionState::New),
         created_at: model.created_at.to_string(),
         handled_at: model.handled_at.map(|value| value.to_string()),
         handled_by: model.handled_by,

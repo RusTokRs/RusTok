@@ -333,3 +333,12 @@ pub async fn delete_site_symbol(
 ) -> Result<bool, TransportError> {
     graphql_adapter::delete_site_symbol(token, tenant_slug, symbol_id, locale).await
 }
+
+pub async fn fetch_site_symbol_usage(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    symbol_id: String,
+    locale: String,
+) -> Result<Vec<String>, TransportError> {
+    graphql_adapter::fetch_site_symbol_usage(token, tenant_slug, symbol_id, locale).await
+}

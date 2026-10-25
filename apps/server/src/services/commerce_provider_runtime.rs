@@ -1,5 +1,4 @@
 use rustok_api::HostRuntimeContext;
-#[cfg(feature = "mod-marketplace_seller")]
 use std::sync::Arc;
 
 use crate::services::server_runtime_context::ServerRuntimeContext;

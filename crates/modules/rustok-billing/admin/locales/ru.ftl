@@ -1,0 +1,15 @@
+billing-title = B2B Billing & Settlements
+billing-description = Управление настройками и рабочими процессами B2B Billing & Settlements
+billing-empty = Записи не найдены
+billing-save = Сохранить
+billing-cancel = Отмена
+billing-success = Операция успешно выполнена
+billing-error = Произошла ошибка
+billing-search-placeholder = Поиск записей B2B Billing & Settlements...
+billing-col-title = Название
+billing-col-status = Статус
+billing-col-created = Дата создания
+billing-col-actions = Действия
+billing-action-create = Создать
+billing-action-edit = Изменить
+billing-action-delete = Удалить

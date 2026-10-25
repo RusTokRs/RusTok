@@ -6,7 +6,7 @@ use rustok_api::{
     SharedStaticModuleSettingsReader,
 };
 use rustok_core::SecurityContext;
-use rustok_reactions_api::{
+use rustok_reactions::{
     ReactionCatalog, ReactionKey, ReactionProviderError, ReactionProviderResult,
     ReactionSelectionPolicy, ReactionSourceSlug, ReactionSubjectAccess,
     ReactionSubjectAuthorization, ReactionSubjectKind, ReactionSubjectProvider,
@@ -459,7 +459,7 @@ fn map_forum_error(error: ForumError) -> ReactionProviderError {
 #[cfg(test)]
 mod tests {
     use rustok_api::{PortActor, StaticModuleSettingsReader, StaticModuleSettingsSnapshot};
-    use rustok_reactions_api::{ReactionSelectionPolicy, ReactionSubjectRef};
+    use rustok_reactions::{ReactionSelectionPolicy, ReactionSubjectRef};
     use sea_orm::Database;
 
     use super::*;

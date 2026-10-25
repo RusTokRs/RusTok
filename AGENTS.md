@@ -200,11 +200,35 @@ All UI applications (`apps/*`), module-owned UI packages (`crates/modules/*/admi
    - **`core/` is framework-agnostic:** It MUST contain zero imports of UI framework types (`leptos::*`, `dioxus::*`, etc.). All domain logic, input validation rules, command/DTO construction, computable view-models, status/badge resolution, and state transitions MUST live in `core/` and be verified with pure Rust unit tests (`#[test]`) without any UI runtime.
    - **`ui/<framework>` is strictly a render/binding adapter:** An agent or contributor MUST NOT implement validation rules, state machines, request mutations, data calculations, or domain condition branches inside framework components, signals, or templates (`view!`, `rsx!`).
    - **Verification invariant:** If a piece of logic can be tested with `assert_eq!` on pure Rust data without a UI runtime, it MUST live in `core/`, never in the UI adapter.
+
 2. **Transport boundary:**
    - UI adapters MUST NOT call raw API endpoints or backend server functions directly. They MUST access backend capabilities strictly through the module-owned `transport/` facade.
    - Dual-path transport (monolith server functions + headless GraphQL) MUST be preserved in accordance with `docs/UI/graphql-architecture.md`.
-3. **Shared UI libraries:**
-   - Reusable visual primitives live in canonical platform libraries (`crates/ui/*`: `rustok-ui`, `rustok-forms`, `rustok-grid`, `fly`). Module UI MUST reuse these primitives and design tokens rather than inventing ad-hoc styling, custom input controls, or local form engines.
+
+3. **Canonical Platform UI Stack (`crates/ui/*`):**
+   Module UI MUST reuse canonical visual primitives and design tokens. Inventing ad-hoc controls or duplicating platform UI components is an architectural defect.
+   - **`rustok-ui` / `leptos-ui`**: Canonical visual primitives (`Button`, `Input`, `Select`, `Dialog`/Modal, `Badge`, `Card`, `Alert`, `Tabs`, `Switch`, `Avatar`, `Skeleton`, `Spinner`, `Separator`).
+     *Invariants:* MUST NOT write raw `<button>` or `<input>` with custom styling, hand-roll modal dialogs, or build ad-hoc alerts.
+   - **`rustok-grid` (`rustok-grid-leptos`, `rustok-grid-dioxus`)**: Data grids, paginated tables, column sorting, filtering, row selection.
+     *Invariants:* MUST NOT build manual `<table>` loops or custom table pagination in module UI.
+   - **`rustok-forms`**: Schema-driven form rendering, field adapters, and form error state.
+     *Invariants:* MUST NOT hand-roll form validation logic or manual form error bindings.
+   - **`fly`**: Cross-framework rendering engine and UI action registry.
+   - **`rustok-ui-core` & `leptos-ui-routing`**: Framework-agnostic route context (`UiRouteContext`), route query params, and navigation breadcrumbs.
+   - **`rustok-ui-i18n`**: UI localization, language toggles, localized date/number formatting.
+   - **`rustok-graphql`**: Client-side GraphQL transport for headless mode.
+
+4. **Approved External UI Libraries and Conventions:**
+   - **Frameworks:** `Leptos` (SSR + Hydrate) is the primary web framework for `apps/admin` and `apps/storefront`; `Dioxus` is the cross-platform desktop/mobile target; `Next.js` (React / TypeScript) is the reference headless client in `apps/next-*`. MUST NOT introduce other UI frameworks (Yew, Svelte, Vue, Solid).
+   - **Styling:** Tailwind CSS utility classes with `shadcn/ui`-compatible design tokens and CSS variables. MUST NOT use hardcoded hex colors (`style="color: #..."`), inline styles, or custom ad-hoc `.css`/`.scss` files outside the design token contract.
+   - **Reactive Utilities:** `leptos-use` is the canonical reactive utility library (clipboard, event listeners, resize, timers). MUST NOT write custom JS snippets or raw WASM bindings for standard browser capabilities supported by `leptos-use`.
+   - **Icons:** Canonical Lucide-based icon set exposed via `rustok-ui`. MUST NOT pull third-party icon crates/packages or paste raw inline `<svg>` blocks.
+
+5. **UI Workbench and Design System Parity (Storybook Alternative):**
+   RusToK rejects classic Storybook (due to zero WASM/Rust support, heavy dependency bloat, and lack of runtime autonomy) in favor of the native **UI Workbench** (`docs/UI/ui-workbench-architecture.md`):
+   - **Isolated Showcase Routes:** Reusable UI components and composite recipes MUST be showcased in native host galleries: `/design-system` in `apps/admin` (Leptos WASM playground) and `/dashboard/design-system` in `apps/next-admin`.
+   - **Single Source of Design Tokens:** Tokens originate strictly in `UI/tokens/tokens.json` and `UI/tokens/base.css`.
+   - **Cross-Framework Parity Gate:** When modifying or introducing design tokens or UI primitives, agents MUST run `npm run verify:ui:parity` to ensure parity across Rust, Next.js, and mobile targets. Introducing external Storybook configurations or standalone synthetic dev servers is forbidden.
 
 ### Reuse and abstraction
 
@@ -216,6 +240,74 @@ Reuse is driven by shared semantics and ownership, not textual similarity.
 - Keep owner-local implementations separate when similar code represents different bounded-context semantics.
 - Before adding reusable code, inspect existing canonical libraries and their documented responsibilities.
 - Do not create a shared helper that forces one owner to depend on another owner's implementation details.
+
+### Canonical platform stack and zero-reinvention contract
+
+Every domain module in RusToK MUST reuse the canonical platform libraries, core modules, and attached capabilities. Re-implementing, wrapping in local ad-hoc helpers, or creating duplicate domain primitives for concerns already owned by the platform is an architectural defect.
+
+#### Layer 0: Platform Foundation Libraries (`crates/libs/*`)
+- **`rustok-core`**: Module lifecycle (`RusToKModule`, `ModuleRegistry`), migrations (`ModuleMigration`, `MigrationSource`), money/currency types (`Money`, `Currency`), tenant context (`TenantContext`), error infrastructure (`RusToKError`), validation.
+  *Invariants:* MUST NOT use raw `f64` or `Decimal` for currency/money; MUST NOT define custom module lifecycle or migration traits.
+- **`rustok-api`**: Standard API response envelopes, error descriptors (`ErrorCode`, `ErrorDetail`), server traits, unified pagination DTOs (`PaginationInput`, `PageInfo`).
+  *Invariants:* MUST NOT invent custom API error envelopes or ad-hoc pagination DTOs.
+- **`rustok-events`**: Canonical event envelope, event contract traits (`EventContract`, `ValidateEvent`), event serialization.
+  *Invariants:* MUST NOT emit untyped raw `jsonb` payloads without an event contract.
+- **`rustok-telemetry`**: OpenTelemetry tracing and metrics instrumentation.
+  *Invariants:* MUST NOT use `println!` or uninstrumented ad-hoc logging.
+- **`rustok-manifest`**: RusToK module manifest (`modules.toml`) parser, dependency graph, and metadata.
+- **`rustok-fba`**: Fluid Backend Architecture runtime primitives (typed ports, command facades, dual-transport abstractions).
+
+#### Layer 1: Core Platform Modules (`crates/modules/*` — Always Active)
+- **`rustok-modules`**: Platform module registry, dynamic toggle status, discovery, and runtime extension composition.
+  *Invariants:* MUST NOT invent ad-hoc feature-flags or local module-enabled checks; use canonical module state.
+- **`rustok-tenant`**: Multi-tenant data isolation (`TenantId`, `TenantContext`).
+  *Invariants:* MUST NOT create local organization/tenant tables; all domain entities must be scoped by canonical `TenantId`.
+- **`rustok-auth`**: Authentication, tokens, session claims, JWT lifecycle.
+  *Invariants:* MUST NOT create local token or password verification logic.
+- **`rustok-rbac`**: Role-based access control, permissions, and policy checks.
+  *Invariants:* MUST NOT hardcode role checks (`if role == "admin"`) or local permission tables.
+- **`rustok-outbox` & `rustok-events-module`**: Reliable transactional outbox dispatching and system event wiring.
+  *Invariants:* MUST NOT perform synchronous cross-module HTTP/RPC calls for side-effects. All inter-module side-effects execute via transactional outbox events.
+- **`rustok-cache`**: Multi-tier caching (L1 in-memory + L2 distributed) with tag-based invalidation.
+  *Invariants:* MUST NOT directly instantiate Redis or in-memory cache clients inside domain modules.
+- **`rustok-search` & `rustok-index`**: Full-text search engine and search projections.
+  *Invariants:* MUST NOT execute heavy `WHERE ... ILIKE %...%` queries across catalog/content tables for search.
+- **`rustok-channel`**: Multi-channel distribution and channel scoping.
+- **`rustok-email`**: Transactional email templates and delivery.
+
+#### Layer 2: Attached Platform Capabilities (`crates/modules/*` — Extensions)
+- **`flex`**: Dynamic EAV attributes and custom schema-driven entity fields.
+  *Invariants:* MUST NOT use unconstrained `metadata: jsonb` or `extra: jsonb` columns for business attributes; attach via `flex`.
+- **`rustok-media`**: Binary asset delivery, image transformations, storage/CDN.
+  *Invariants:* MUST NOT store raw file paths or `image_url: String` columns; attach media assets via `rustok-media`.
+- **`rustok-taxonomy`**: Taxons, hierarchies, categories, tags, vocabularies.
+  *Invariants:* MUST NOT create local `*_tags`, `*_categories` tables or `tags: Vec<String>` columns; attach via `rustok-taxonomy`.
+- **`rustok-profiles` & `rustok-social-graph`**: Public member identity, directory, author bios, avatars, and follower relations.
+  *Invariants:* MUST NOT create local author/profile tables (`*_profiles`, `authors`, `user_bio`); `rustok-profiles` is the sole canonical member identity owner.
+- **`rustok-translation`**: Multi-language localization and translation entity targets.
+  *Invariants:* MUST NOT add localized columns (`title_en`, `title_ru`) or ad-hoc JSON translation dictionaries.
+- **`rustok-seo` & `rustok-slug`**: SEO metadata, OpenGraph tags, canonical URLs, deterministic URL slug generation.
+  *Invariants:* MUST NOT create local regex slugifiers or duplicate meta-tag tables.
+- **`rustok-comments`**: Polymorphic comment threads and moderation bindings.
+  *Invariants:* MUST NOT create local comment/review tables for content or catalog entities.
+- **`rustok-reactions`**: Polymorphic likes, upvotes, and emoji reactions.
+  *Invariants:* MUST NOT create local counters (`likes_count`) decoupled from the reaction engine.
+- **`rustok-notifications`**: User notification inbox and delivery dispatch.
+  *Invariants:* MUST NOT create local notification tables in domain modules.
+- **`rustok-moderation`**: Content moderation cases, reports, review workflows.
+  *Invariants:* MUST NOT implement local moderation flags without integrating with `rustok-moderation`.
+- **`rustok-forms`**: Dynamic schema-driven forms rendering and field validation.
+- **`rustok-workflow`**: Workflow automation, orchestration, and state machine transitions.
+  *Invariants:* MUST NOT implement ad-hoc custom state machine execution runners.
+- **`rustok-ai`**: Universal AI provider orchestration, embeddings, and generative agents.
+  *Invariants:* MUST NOT make raw third-party LLM API calls inside domain modules; route through `rustok-ai`.
+- **`alloy`**: Rhai scripting runtime, workflow automation, and custom handlers.
+- **`rustok-iggy` & `rustok-iggy-connector`**: High-throughput distributed message streaming.
+
+#### Crate Contract Documentation (`CRATE_API.md`)
+Every domain crate's public contract file (`CRATE_API.md`) and root `lib.rs` rustdoc (`#![doc = include_str!("../CRATE_API.md")]`) MUST explicitly declare:
+1. `## Platform Capability Bindings`: Positive list of all Layer 1 and Layer 2 platform capabilities consumed by the crate (or `None (autonomous domain model)` if strictly isolated).
+2. `## Domain Collaborations`: Positive list of peer business modules interacting with this crate via ports or events.
 
 ## 6. Canonical vocabulary
 

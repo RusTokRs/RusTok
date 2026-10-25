@@ -1,36 +1,26 @@
-//! Content Portability — implementation of import/export services.
+//! # RusToK Content Portability
 //!
-//! This crate provides concrete implementations for importing and exporting
-//! content in various formats (JSON, CSV, etc.).
-//!
-//! # Architecture
-//!
-//! ```text
-//! rustok-content-portability-api  ← contracts
-//! rustok-content-portability      ← implementation (this crate)
-//!   ├─ Services (ImportService, ExportService)
-//!   ├─ Format handlers (JSON, CSV)
-//!   ├─ File I/O helpers
-//!   └─ Validation framework
-//! ```
-//!
-//! # Example
-//!
-//! ```rust,ignore
-//! use rustok_content_portability::{ImportService, JsonFormatHandler};
-//! use rustok_content_portability_api::{ImportContext, Format};
-//!
-//! let service = ImportService::new(JsonFormatHandler);
-//! let context = ImportContext::new(tenant_id, user_id, Format::Json);
-//!
-//! let result = service.import_from_file("posts.json", context).await?;
-//! println!("Imported {} items", result.success_count());
-//! ```
+//! Unified content import and export contracts and implementation services for the RusToK platform.
 
+mod contracts;
+mod errors;
 mod formats;
 mod io;
+mod progress;
 mod services;
+mod validation;
 
-pub use formats::*;
-pub use io::*;
-pub use services::*;
+#[cfg(test)]
+mod contract_tests;
+
+pub use contracts::{
+    BatchImportResult, ContentExporter, ContentImporter, ExportContext, ExportFilters,
+    ExportResult, ImportContext, ImportResult,
+};
+pub use errors::PortabilityError;
+pub use formats::{CsvFormatHandler, Format, FormatOptions, JsonFormatHandler};
+pub use io::{file_exists, file_size, read_file, write_file};
+pub use progress::{ProgressCallback, ProgressReporter};
+pub use services::{ExportService, ImportService};
+pub use validation::{FieldValidation, Validatable, ValidationResult};
+

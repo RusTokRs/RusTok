@@ -13,7 +13,7 @@ const evidencePath =
   "crates/modules/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json";
 const sharedPolicyPath = "crates/libs/rustok-api/src/ports.rs";
 const providerPath = "crates/modules/rustok-comments/src/ports.rs";
-const providerApiPath = "crates/modules/rustok-comments-api/src/provider.rs";
+const providerApiPath = "crates/modules/rustok-comments/src/ports.rs";
 const publicReadPath = "crates/modules/rustok-comments/src/public_read.rs";
 const dtoPath = "crates/modules/rustok-comments/src/dto.rs";
 const richtextPath = "crates/modules/rustok-comments/src/richtext.rs";
@@ -122,19 +122,12 @@ function fixture({
 
   write(
     root,
-    providerApiPath,
+    providerPath,
     `
       pub trait CommentsThreadPort: Send + Sync {
         ${apiOperations.map((operation) => `async fn ${operation}(&self);`).join("\n")}
       }
       use rustok_api::{PortContext, PortError};
-    `,
-  );
-
-  write(
-    root,
-    providerPath,
-    `
       struct InProcessCommentsThreadProvider { db: DatabaseConnection, service: CommentsService }
       use rustok_api::PortActor;
       struct CommentsIdempotencyRequest<'a, T> { actor: &'a PortActor, request: &'a T }

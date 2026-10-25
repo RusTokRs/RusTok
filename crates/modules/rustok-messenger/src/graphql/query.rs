@@ -1,14 +1,13 @@
 use async_graphql::{Context, FieldError, Object, Result};
-use rustok_api::{AuthContext, TenantContext};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
+use super::require_auth_context;
 use super::runtime_data::MessengerGraphqlRuntimeData;
 use super::types::{
     ConversationItemGql, MessageItemGql, MessengerChannelListItemGql, MessengerE2eeDeviceAuditGql,
     MessengerOverviewGql,
 };
-use crate::controllers::ensure_messenger_module_enabled;
 use crate::domain::ConversationType;
 use crate::services::MessengerService;
 
@@ -20,15 +19,7 @@ pub struct MessengerQuery;
 impl MessengerQuery {
     /// Retrieve aggregated metrics and status for the Messenger overview tab.
     async fn messenger_overview(&self, ctx: &Context<'_>) -> Result<MessengerOverviewGql> {
-        let tenant = ctx.data::<TenantContext>()?;
-        let auth = ctx.data::<AuthContext>()?;
-        if auth.tenant_id != tenant.id {
-            return Err(FieldError::new("Permission denied: tenant mismatch"));
-        }
-        let db = ctx.data::<DatabaseConnection>()?;
-        ensure_messenger_module_enabled(db, tenant.id)
-            .await
-            .map_err(|e| FieldError::new(e.message))?;
+        let (tenant, _auth, db) = require_auth_context(ctx).await?;
 
         let runtime_data = ctx.data_opt::<MessengerGraphqlRuntimeData>();
         let device_registry = runtime_data.map(|d| d.device_keys.clone());
@@ -58,15 +49,7 @@ impl MessengerQuery {
 
     /// List active channels with membership count and localized title for current tenant.
     async fn messenger_channels(&self, ctx: &Context<'_>) -> Result<Vec<MessengerChannelListItemGql>> {
-        let tenant = ctx.data::<TenantContext>()?;
-        let auth = ctx.data::<AuthContext>()?;
-        if auth.tenant_id != tenant.id {
-            return Err(FieldError::new("Permission denied: tenant mismatch"));
-        }
-        let db = ctx.data::<DatabaseConnection>()?;
-        ensure_messenger_module_enabled(db, tenant.id)
-            .await
-            .map_err(|e| FieldError::new(e.message))?;
+        let (tenant, _auth, db) = require_auth_context(ctx).await?;
 
         let service = MessengerService::new(db.clone(), 1);
         let items = service
@@ -101,15 +84,7 @@ impl MessengerQuery {
         &self,
         ctx: &Context<'_>,
     ) -> Result<Vec<MessengerE2eeDeviceAuditGql>> {
-        let tenant = ctx.data::<TenantContext>()?;
-        let auth = ctx.data::<AuthContext>()?;
-        if auth.tenant_id != tenant.id {
-            return Err(FieldError::new("Permission denied: tenant mismatch"));
-        }
-        let db = ctx.data::<DatabaseConnection>()?;
-        ensure_messenger_module_enabled(db, tenant.id)
-            .await
-            .map_err(|e| FieldError::new(e.message))?;
+        let (_tenant, _auth, db) = require_auth_context(ctx).await?;
 
         let runtime_data = ctx.data_opt::<MessengerGraphqlRuntimeData>();
         let device_registry = runtime_data.map(|d| d.device_keys.clone());
@@ -139,15 +114,7 @@ impl MessengerQuery {
 
     /// List conversations accessible to the current authenticated user.
     async fn messenger_conversations(&self, ctx: &Context<'_>) -> Result<Vec<ConversationItemGql>> {
-        let tenant = ctx.data::<TenantContext>()?;
-        let auth = ctx.data::<AuthContext>()?;
-        if auth.tenant_id != tenant.id {
-            return Err(FieldError::new("Permission denied: tenant mismatch"));
-        }
-        let db = ctx.data::<DatabaseConnection>()?;
-        ensure_messenger_module_enabled(db, tenant.id)
-            .await
-            .map_err(|e| FieldError::new(e.message))?;
+        let (tenant, auth, db) = require_auth_context(ctx).await?;
 
         let service = MessengerService::new(db.clone(), 1);
         let convs = service
@@ -205,15 +172,21 @@ impl MessengerQuery {
         since_seq: Option<i64>,
         limit: Option<i32>,
     ) -> Result<Vec<MessageItemGql>> {
-        let tenant = ctx.data::<TenantContext>()?;
-        let auth = ctx.data::<AuthContext>()?;
-        if auth.tenant_id != tenant.id {
-            return Err(FieldError::new("Permission denied: tenant mismatch"));
+        let (tenant, auth, db) = require_auth_context(ctx).await?;
+
+        if conversation_id.is_nil() {
+            return Err(FieldError::new("Invalid conversation ID: nil UUID is not permitted"));
         }
-        let db = ctx.data::<DatabaseConnection>()?;
-        ensure_messenger_module_enabled(db, tenant.id)
-            .await
-            .map_err(|e| FieldError::new(e.message))?;
+        if let Some(seq) = since_seq {
+            if seq < 0 {
+                return Err(FieldError::new("since_seq cannot be negative"));
+            }
+        }
+        if let Some(l) = limit {
+            if l <= 0 {
+                return Err(FieldError::new("limit must be positive"));
+            }
+        }
 
         let service = MessengerService::new(db.clone(), 1);
         let msgs = if let Some(seq) = since_seq {

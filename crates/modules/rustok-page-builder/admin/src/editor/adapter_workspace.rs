@@ -191,5 +191,7 @@ pub fn adapter_editor_messages(locale: Option<&str>) -> EditorMessages {
             "page_builder.workspace.previewFailed",
             "Preview failed",
         ),
+        edit: t(locale, "page_builder.action.edit", "Edit"),
+        preview: t(locale, "page_builder.action.preview", "Preview"),
     }
 }

@@ -161,6 +161,11 @@ Provides sovereign {title} domain capability for RusToK.
 - Emits transactional domain events via `rustok-outbox`
 - Search index projections via `rustok-core` search integration
 - Multi-language translation targets via `rustok-translation-targets`
+
+## Docs
+- [Public Contract Reference (CRATE_API.md)](./CRATE_API.md)
+- [Module Architecture Contract](./docs/README.md)
+- [Implementation Plan](./docs/implementation-plan.md)
 "#
     );
     write_file_content(&module_dir.join("README.md"), &readme, opts.dry_run)?;
@@ -273,11 +278,61 @@ Deliberate public modules and exports:
 
 - Tenant isolation: All queries and commands strictly enforce `tenant_id` scoping.
 - Concurrency: Write operations execute within explicit transaction boundaries.
+
+## Platform Capability Bindings
+
+- **rustok-outbox**: Transactional outbox events and durable idempotency receipts
+- **rustok-tenant**: Multi-tenant data isolation (`TenantId`)
+
+## Domain Collaborations
+
+- None (isolated domain service)
+
+## Minimum Contract Set
+
+### Input DTOs/Commands
+- `{pascal}CreateInput` and `{pascal}UpdateInput` data transfer objects.
+
+### Domain Invariants
+- Tenant isolation: All queries and commands strictly enforce `tenant_id` scoping.
+- Concurrency: Write operations execute within explicit transaction boundaries.
+
+### Events / Outbox Side Effects
+- Domain mutations record transactional outbox events via `rustok-outbox`.
+
+### Errors / Failure Codes
+- Strongly-typed `{pascal}Error` with structured failure categories.
 "#
     );
     write_file_content(
         &module_dir.join("CRATE_API.md"),
         &crate_api,
+        opts.dry_run,
+    )?;
+
+    // src/contract_tests.rs
+    let contract_tests = r####"#[test]
+fn crate_api_defines_minimal_contract_sections() {
+    let api = include_str!("../CRATE_API.md");
+    for marker in [
+        "## Platform Capability Bindings",
+        "## Domain Collaborations",
+        "## Minimum Contract Set",
+        "### Input DTOs/Commands",
+        "### Domain Invariants",
+        "### Events / Outbox Side Effects",
+        "### Errors / Failure Codes",
+    ] {
+        assert!(
+            api.contains(marker),
+            "CRATE_API.md must contain section: {marker}"
+        );
+    }
+}
+"####;
+    write_file_content(
+        &module_dir.join("src").join("contract_tests.rs"),
+        contract_tests,
         opts.dry_run,
     )?;
 
@@ -311,6 +366,9 @@ pub mod events;
 pub mod integrations;
 pub mod module;
 pub mod services;
+
+#[cfg(test)]
+mod contract_tests;
 "#
     );
 

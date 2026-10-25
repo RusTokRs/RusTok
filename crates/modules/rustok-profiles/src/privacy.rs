@@ -33,7 +33,7 @@ pub enum ProfilePrivacyDecision {
 }
 
 /// Compatibility name for the neutral Profiles API presentation audience.
-pub use rustok_profiles_api::ProfileSummaryAudience as ProfileAccessAudience;
+pub use crate::api::ProfileSummaryAudience as ProfileAccessAudience;
 
 /// Evaluate the canonical active-profile visibility matrix.
 ///

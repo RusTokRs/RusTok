@@ -417,7 +417,33 @@ fn trusted_context<T>(
             "trusted media authority does not allow this operation",
         ));
     }
-    if claimed.tenant_id != authority.tenant_id {
+    if authority.tenant_id.trim().is_empty() {
+        return Err(Status::unauthenticated(
+            "trusted media authority tenant cannot be empty",
+        ));
+    }
+    if let Ok(tenant_uuid) = Uuid::parse_str(authority.tenant_id.trim())
+        && tenant_uuid.is_nil()
+    {
+        return Err(Status::unauthenticated(
+            "trusted media authority tenant cannot be nil UUID",
+        ));
+    }
+    if authority.actor.id.trim().is_empty() {
+        return Err(Status::unauthenticated(
+            "trusted media authority actor id cannot be empty",
+        ));
+    }
+    if let Ok(actor_uuid) = Uuid::parse_str(authority.actor.id.trim())
+        && actor_uuid.is_nil()
+    {
+        return Err(Status::unauthenticated(
+            "trusted media authority actor id cannot be nil UUID",
+        ));
+    }
+    if claimed.tenant_id.trim().is_empty()
+        || claimed.tenant_id.trim() != authority.tenant_id.trim()
+    {
         return Err(Status::permission_denied(
             "media tenant does not match authenticated authority",
         ));
@@ -443,7 +469,8 @@ fn decode_input<T: DeserializeOwned>(value: &[u8]) -> Result<T, Status> {
 }
 
 fn parse_id(value: &str) -> Result<Uuid, Status> {
-    let id = Uuid::parse_str(value).map_err(|_| {
+    let trimmed = value.trim();
+    let id = Uuid::parse_str(trimmed).map_err(|_| {
         port_error_to_status(PortError::validation(
             "media.transport_invalid_id",
             "media gRPC identifiers must be UUIDs",
@@ -484,9 +511,147 @@ fn port_error_to_status(error: PortError) -> Status {
 
 #[cfg(test)]
 mod tests {
-    use super::{MediaGrpcOperation, TrustedMediaAuthority, port_error_to_status, trusted_context};
-    use rustok_api::{PortActor, PortContext, PortError};
+    use super::{
+        MediaGrpcOperation, MediaGrpcService, TrustedMediaAuthority, parse_id, port_error_to_status,
+        trusted_context,
+    };
+    use crate::proto::{ImageDescriptorRequest, media_service_server::MediaService};
+    use async_trait::async_trait;
+    use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
+    use std::sync::Arc;
     use tonic::{Code, Request};
+    use uuid::Uuid;
+
+    struct DummyProvider;
+
+    #[async_trait]
+    impl rustok_media::MediaAssetReadPort for DummyProvider {
+        async fn get_asset(
+            &self,
+            _context: PortContext,
+            _media_id: Uuid,
+        ) -> Result<rustok_media::MediaItem, PortError> {
+            Err(PortError::not_found("media.not_found", "asset not found"))
+        }
+
+        async fn get_asset_reference_admission(
+            &self,
+            _context: PortContext,
+            _media_id: Uuid,
+        ) -> Result<rustok_media::MediaAssetReferenceAdmission, PortError> {
+            Err(PortError::not_found("media.not_found", "admission not found"))
+        }
+
+        async fn lookup_asset_references(
+            &self,
+            _context: PortContext,
+            _request: rustok_media::MediaAssetReferenceLookupRequest,
+        ) -> Result<rustok_media::MediaAssetReferenceLookupResult, PortError> {
+            Ok(rustok_media::MediaAssetReferenceLookupResult {
+                references: Vec::new(),
+            })
+        }
+
+        async fn list_asset_references(
+            &self,
+            _context: PortContext,
+            _request: rustok_media::MediaAssetReferenceListRequest,
+        ) -> Result<rustok_media::MediaAssetReferenceListPage, PortError> {
+            Ok(rustok_media::MediaAssetReferenceListPage {
+                references: Vec::new(),
+                next_reference_id: None,
+                has_more: false,
+            })
+        }
+
+        async fn list_assets(
+            &self,
+            _context: PortContext,
+            _limit: u64,
+            _offset: u64,
+        ) -> Result<(Vec<rustok_media::MediaItem>, u64), PortError> {
+            Ok((Vec::new(), 0))
+        }
+
+        async fn get_image_descriptor(
+            &self,
+            _context: PortContext,
+            _media_id: Uuid,
+            _alt: Option<String>,
+        ) -> Result<Option<rustok_media::MediaImageDescriptor>, PortError> {
+            Ok(None)
+        }
+
+        async fn get_translations(
+            &self,
+            _context: PortContext,
+            _media_id: Uuid,
+        ) -> Result<Vec<rustok_media::MediaTranslationItem>, PortError> {
+            Ok(Vec::new())
+        }
+    }
+
+    #[async_trait]
+    impl rustok_media::MediaAssetWritePort for DummyProvider {
+        async fn prepare_upload(
+            &self,
+            _context: PortContext,
+            _request: rustok_media::MediaUploadRequest,
+        ) -> Result<rustok_media::MediaUploadTarget, PortError> {
+            Err(PortError::unavailable("media.unavailable", "not supported"))
+        }
+
+        async fn complete_upload(
+            &self,
+            _context: PortContext,
+            _session_id: Uuid,
+        ) -> Result<rustok_media::MediaItem, PortError> {
+            Err(PortError::not_found("media.not_found", "session not found"))
+        }
+
+        async fn delete_asset(
+            &self,
+            _context: PortContext,
+            _media_id: Uuid,
+        ) -> Result<(), PortError> {
+            Ok(())
+        }
+
+        async fn retain_asset_reference(
+            &self,
+            _context: PortContext,
+            _media_id: Uuid,
+            _input: rustok_media::MediaAssetReferenceInput,
+        ) -> Result<rustok_media::MediaAssetReference, PortError> {
+            Err(PortError::not_found("media.not_found", "asset not found"))
+        }
+
+        async fn release_asset_reference(
+            &self,
+            _context: PortContext,
+            _media_id: Uuid,
+            _input: rustok_media::MediaAssetReferenceInput,
+        ) -> Result<(), PortError> {
+            Ok(())
+        }
+
+        async fn upsert_translation(
+            &self,
+            _context: PortContext,
+            _media_id: Uuid,
+            _input: rustok_media::UpsertTranslationInput,
+        ) -> Result<rustok_media::MediaTranslationItem, PortError> {
+            Err(PortError::not_found("media.not_found", "asset not found"))
+        }
+
+        async fn reconcile_storage(
+            &self,
+            _context: PortContext,
+            _request: rustok_media::MediaReconciliationRequest,
+        ) -> Result<rustok_media::MediaReconciliationReport, PortError> {
+            Err(PortError::unavailable("media.unavailable", "not supported"))
+        }
+    }
 
     #[test]
     fn owner_error_is_preserved_in_status_details() {
@@ -508,6 +673,81 @@ mod tests {
             .expect_err("authority must be required");
 
         assert_eq!(error.code(), Code::Unauthenticated);
+    }
+
+    #[test]
+    fn remote_context_rejects_empty_authority_tenant() {
+        let mut request = Request::new(());
+        request.extensions_mut().insert(
+            TrustedMediaAuthority::new("   ", PortActor::service("verified-service"))
+                .allow_operation(MediaGrpcOperation::GetAsset),
+        );
+        let claimed = PortContext::new("   ", PortActor::service("verified-service"), "en", "corr");
+
+        let error = trusted_context(&request, claimed, MediaGrpcOperation::GetAsset)
+            .expect_err("empty authority tenant must be rejected");
+
+        assert_eq!(error.code(), Code::Unauthenticated);
+    }
+
+    #[test]
+    fn remote_context_rejects_empty_authority_actor() {
+        let mut request = Request::new(());
+        request.extensions_mut().insert(
+            TrustedMediaAuthority::new("tenant-a", PortActor::service("   "))
+                .allow_operation(MediaGrpcOperation::GetAsset),
+        );
+        let claimed = PortContext::new("tenant-a", PortActor::service("forged"), "en", "corr");
+
+        let error = trusted_context(&request, claimed, MediaGrpcOperation::GetAsset)
+            .expect_err("empty authority actor must be rejected");
+
+        assert_eq!(error.code(), Code::Unauthenticated);
+    }
+
+    #[test]
+    fn remote_context_rejects_nil_authority_tenant() {
+        let mut request = Request::new(());
+        request.extensions_mut().insert(
+            TrustedMediaAuthority::new(Uuid::nil().to_string(), PortActor::service("verified-service"))
+                .allow_operation(MediaGrpcOperation::GetAsset),
+        );
+        let claimed = PortContext::new(Uuid::nil().to_string(), PortActor::service("verified-service"), "en", "corr");
+
+        let error = trusted_context(&request, claimed, MediaGrpcOperation::GetAsset)
+            .expect_err("nil authority tenant must be rejected");
+
+        assert_eq!(error.code(), Code::Unauthenticated);
+    }
+
+    #[test]
+    fn remote_context_rejects_nil_authority_actor() {
+        let mut request = Request::new(());
+        request.extensions_mut().insert(
+            TrustedMediaAuthority::new("tenant-a", PortActor::service(Uuid::nil().to_string()))
+                .allow_operation(MediaGrpcOperation::GetAsset),
+        );
+        let claimed = PortContext::new("tenant-a", PortActor::service(Uuid::nil().to_string()), "en", "corr");
+
+        let error = trusted_context(&request, claimed, MediaGrpcOperation::GetAsset)
+            .expect_err("nil authority actor must be rejected");
+
+        assert_eq!(error.code(), Code::Unauthenticated);
+    }
+
+    #[test]
+    fn remote_context_rejects_tenant_mismatch() {
+        let mut request = Request::new(());
+        request.extensions_mut().insert(
+            TrustedMediaAuthority::new("tenant-a", PortActor::service("verified-service"))
+                .allow_operation(MediaGrpcOperation::GetAsset),
+        );
+        let claimed = PortContext::new("tenant-b", PortActor::user("forged"), "en", "corr");
+
+        let error = trusted_context(&request, claimed, MediaGrpcOperation::GetAsset)
+            .expect_err("tenant mismatch must be rejected");
+
+        assert_eq!(error.code(), Code::PermissionDenied);
     }
 
     #[test]
@@ -559,5 +799,60 @@ mod tests {
             .expect_err("public image selection must require an explicit operation grant");
 
         assert_eq!(error.code(), Code::PermissionDenied);
+    }
+
+    #[test]
+    fn parse_id_trims_and_parses_valid_uuid() {
+        let id = Uuid::new_v4();
+        let formatted = format!("  {id}  \n");
+        let parsed = parse_id(&formatted).expect("whitespace-padded uuid should parse");
+        assert_eq!(parsed, id);
+    }
+
+    #[test]
+    fn parse_id_rejects_nil_uuid() {
+        let status = parse_id(&Uuid::nil().to_string()).expect_err("nil uuid must be rejected");
+        assert_eq!(status.code(), Code::InvalidArgument);
+        let details: PortError = serde_json::from_slice(status.details()).unwrap();
+        assert_eq!(details.kind, PortErrorKind::Validation);
+        assert_eq!(details.code, "media.transport_nil_id");
+    }
+
+    #[test]
+    fn parse_id_rejects_invalid_uuid() {
+        let status = parse_id("not-a-uuid").expect_err("invalid uuid must be rejected");
+        assert_eq!(status.code(), Code::InvalidArgument);
+        let details: PortError = serde_json::from_slice(status.details()).unwrap();
+        assert_eq!(details.kind, PortErrorKind::Validation);
+        assert_eq!(details.code, "media.transport_invalid_id");
+    }
+
+    #[tokio::test]
+    async fn unconfigured_public_image_provider_returns_unavailable() {
+        let service = MediaGrpcService::new(Arc::new(DummyProvider));
+        let mut request = Request::new(ImageDescriptorRequest {
+            context_json: serde_json::to_vec(&PortContext::new(
+                "tenant-a",
+                PortActor::service("test"),
+                "en",
+                "corr",
+            ))
+            .unwrap(),
+            id: Uuid::new_v4().to_string(),
+            alt: None,
+        });
+        request.extensions_mut().insert(
+            TrustedMediaAuthority::new("tenant-a", PortActor::service("test"))
+                .allow_operation(MediaGrpcOperation::GetPublicImageAsset),
+        );
+
+        let status = service
+            .get_public_image_asset(request)
+            .await
+            .expect_err("unconfigured public image provider must return unavailable");
+        assert_eq!(status.code(), Code::Unavailable);
+        let details: PortError = serde_json::from_slice(status.details()).unwrap();
+        assert_eq!(details.kind, PortErrorKind::Unavailable);
+        assert_eq!(details.code, "media.public_image_provider_unavailable");
     }
 }

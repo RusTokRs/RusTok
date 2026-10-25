@@ -27,28 +27,19 @@ if (contract.contract !== "reactions_foundation_v2") {
 
 for (const relativePath of contract.required_files) read(relativePath);
 
-const apiCargo = read("crates/modules/rustok-reactions-api/Cargo.toml");
-const apiSource = [
-  read("crates/modules/rustok-reactions-api/src/lib.rs"),
-  read("crates/modules/rustok-reactions-api/src/model.rs"),
-  read("crates/modules/rustok-reactions-api/src/provider.rs"),
-].join("\n");
 const ownerCargo = read("crates/modules/rustok-reactions/Cargo.toml");
 const ownerSource = [
   read("crates/modules/rustok-reactions/src/lib.rs"),
+  read("crates/modules/rustok-reactions/src/model.rs"),
+  read("crates/modules/rustok-reactions/src/provider.rs"),
   read("crates/modules/rustok-reactions/src/service.rs"),
 ].join("\n");
 
 for (const symbol of contract.required_api_symbols) {
-  if (!apiSource.includes(symbol)) fail(`neutral API is missing ${symbol}`);
+  if (!ownerSource.includes(symbol)) fail(`Reactions is missing ${symbol}`);
 }
 for (const limit of contract.required_limits) {
-  if (!apiSource.includes(limit)) fail(`neutral API is missing bound ${limit}`);
-}
-for (const dependency of contract.forbidden_api_dependencies) {
-  if (apiCargo.includes(dependency)) {
-    fail(`neutral API imports forbidden dependency ${dependency}`);
-  }
+  if (!ownerSource.includes(limit)) fail(`Reactions is missing bound ${limit}`);
 }
 for (const dependency of contract.forbidden_owner_dependencies) {
   if (ownerCargo.includes(dependency)) {
@@ -65,7 +56,7 @@ for (const fragment of [
   "register_reaction_subject_provider",
   "materialize_reaction_subject_registry",
 ]) {
-  if (!apiSource.includes(fragment)) fail(`neutral API is missing ${fragment}`);
+  if (!ownerSource.includes(fragment)) fail(`Reactions API is missing ${fragment}`);
 }
 
 for (const fragment of [
@@ -81,7 +72,6 @@ for (const fragment of [
 
 for (const forbiddenPath of [
   "crates/modules/rustok-reactions/admin",
-  "crates/modules/rustok-reactions/storefront",
 ]) {
   if (existsSync(path.join(repoRoot, forbiddenPath))) {
     fail(`foundation unexpectedly contains ${forbiddenPath}`);

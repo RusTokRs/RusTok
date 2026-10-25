@@ -34,11 +34,11 @@ const plan = read("crates/modules/rustok-reactions/docs/implementation-plan.md")
 const forumPlan = read("crates/modules/rustok-forum/docs/implementation-plan.md");
 
 for (const dependency of [
-  "rustok-api.workspace = true",
-  "rustok-outbox.workspace = true",
-  "sea-orm.workspace = true",
-  "sea-orm-migration.workspace = true",
-  "serde_json.workspace = true",
+  "rustok-api",
+  "rustok-outbox",
+  "sea-orm",
+  "sea-orm-migration",
+  "serde_json",
 ]) {
   if (!cargo.includes(dependency)) fail(`Cargo boundary is missing ${dependency}`);
 }

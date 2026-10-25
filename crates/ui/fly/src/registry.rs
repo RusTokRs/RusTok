@@ -73,6 +73,7 @@ fn validate_registry_id(id: &str) -> FlyResult<()> {
         "spacer",
         "tabs",
         "accordion",
+        "slider",
         "page_content_slot",
         "form",
         "label",
@@ -315,6 +316,7 @@ pub fn builtin_component_definitions() -> Vec<ComponentDefinition> {
                     | "grid"
                     | "tabs"
                     | "accordion"
+                    | "slider"
                     | "media"
                     | "form"
                     | "symbol"
@@ -393,6 +395,7 @@ fn builtin_component_ids() -> Vec<&'static str> {
         "spacer",
         "tabs",
         "accordion",
+        "slider",
         "page_content_slot",
         "form",
         "label",
@@ -963,6 +966,236 @@ fn builtin_component_template(id: &str) -> ComponentNode {
                 }
             ]
         }),
+        "slider" => json!({
+            "type": "slider",
+            "tagName": "div",
+            "attributes": {
+                "role": "region",
+                "aria-roledescription": "carousel",
+                "aria-label": "Slider",
+                "data-fly-slider": "true",
+                "data-fly-slider-active": "0"
+            },
+            "style": {
+                "position": "relative",
+                "overflow": "hidden",
+                "width": "100%",
+                "min-height": "280px",
+                "border-radius": "16px"
+            },
+            "components": [
+                {
+                    "type": "container",
+                    "tagName": "div",
+                    "attributes": {
+                        "class": "fly-slider__track",
+                        "data-fly-slider-track": "true"
+                    },
+                    "style": {
+                        "display": "flex",
+                        "width": "100%",
+                        "min-height": "280px"
+                    },
+                    "components": [
+                        {
+                            "type": "container",
+                            "tagName": "div",
+                            "attributes": {
+                                "id": "slide-panel-1",
+                                "role": "group",
+                                "aria-roledescription": "slide",
+                                "aria-label": "1 of 2",
+                                "data-fly-slide": "0",
+                                "class": "fly-slider__slide is-active"
+                            },
+                            "style": {
+                                "flex": "0 0 100%",
+                                "width": "100%",
+                                "min-height": "280px",
+                                "padding": "40px 24px",
+                                "background": "#1e293b",
+                                "color": "#ffffff",
+                                "display": "flex",
+                                "flex-direction": "column",
+                                "justify-content": "center",
+                                "align-items": "center",
+                                "text-align": "center",
+                                "border-radius": "16px"
+                            },
+                            "components": [
+                                {
+                                    "type": "heading",
+                                    "tagName": "h3",
+                                    "content": "First Slide Headline",
+                                    "style": { "margin": "0 0 12px", "font-size": "26px", "color": "#ffffff" }
+                                },
+                                {
+                                    "type": "text",
+                                    "content": "Discover featured collections and announcements.",
+                                    "style": { "margin": "0 0 16px", "font-size": "15px", "color": "#cbd5e1" }
+                                }
+                            ]
+                        },
+                        {
+                            "type": "container",
+                            "tagName": "div",
+                            "attributes": {
+                                "id": "slide-panel-2",
+                                "role": "group",
+                                "aria-roledescription": "slide",
+                                "aria-label": "2 of 2",
+                                "data-fly-slide": "1",
+                                "class": "fly-slider__slide",
+                                "aria-hidden": "true",
+                                "hidden": "hidden"
+                            },
+                            "style": {
+                                "flex": "0 0 100%",
+                                "width": "100%",
+                                "min-height": "280px",
+                                "padding": "40px 24px",
+                                "background": "#0f766e",
+                                "color": "#ffffff",
+                                "display": "none",
+                                "flex-direction": "column",
+                                "justify-content": "center",
+                                "align-items": "center",
+                                "text-align": "center",
+                                "border-radius": "16px"
+                            },
+                            "components": [
+                                {
+                                    "type": "heading",
+                                    "tagName": "h3",
+                                    "content": "Second Slide Headline",
+                                    "style": { "margin": "0 0 12px", "font-size": "26px", "color": "#ffffff" }
+                                },
+                                {
+                                    "type": "text",
+                                    "content": "Explore seasonal arrivals and exclusive offers.",
+                                    "style": { "margin": "0 0 16px", "font-size": "15px", "color": "#ccfbf1" }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "button",
+                    "tagName": "button",
+                    "content": "‹",
+                    "attributes": {
+                        "type": "button",
+                        "aria-label": "Previous slide",
+                        "class": "fly-slider__prev"
+                    },
+                    "flyAction": { "kind": "switch_slide", "slider_id": "self", "direction": "prev" },
+                    "style": {
+                        "position": "absolute",
+                        "left": "16px",
+                        "top": "50%",
+                        "transform": "translateY(-50%)",
+                        "width": "36px",
+                        "height": "36px",
+                        "border-radius": "50%",
+                        "border": "0",
+                        "background": "rgba(0,0,0,0.45)",
+                        "color": "#ffffff",
+                        "font-size": "22px",
+                        "cursor": "pointer",
+                        "display": "flex",
+                        "align-items": "center",
+                        "justify-content": "center"
+                    }
+                },
+                {
+                    "type": "button",
+                    "tagName": "button",
+                    "content": "›",
+                    "attributes": {
+                        "type": "button",
+                        "aria-label": "Next slide",
+                        "class": "fly-slider__next"
+                    },
+                    "flyAction": { "kind": "switch_slide", "slider_id": "self", "direction": "next" },
+                    "style": {
+                        "position": "absolute",
+                        "right": "16px",
+                        "top": "50%",
+                        "transform": "translateY(-50%)",
+                        "width": "36px",
+                        "height": "36px",
+                        "border-radius": "50%",
+                        "border": "0",
+                        "background": "rgba(0,0,0,0.45)",
+                        "color": "#ffffff",
+                        "font-size": "22px",
+                        "cursor": "pointer",
+                        "display": "flex",
+                        "align-items": "center",
+                        "justify-content": "center"
+                    }
+                },
+                {
+                    "type": "container",
+                    "tagName": "div",
+                    "attributes": {
+                        "role": "tablist",
+                        "aria-label": "Slide navigation dots",
+                        "class": "fly-slider__dots"
+                    },
+                    "style": {
+                        "position": "absolute",
+                        "bottom": "14px",
+                        "left": "50%",
+                        "transform": "translateX(-50%)",
+                        "display": "flex",
+                        "gap": "8px"
+                    },
+                    "components": [
+                        {
+                            "type": "button",
+                            "tagName": "button",
+                            "attributes": {
+                                "type": "button",
+                                "aria-label": "Slide 1",
+                                "aria-selected": "true",
+                                "class": "fly-slider__dot is-active"
+                            },
+                            "flyAction": { "kind": "switch_slide", "slider_id": "self", "index": 0 },
+                            "style": {
+                                "width": "10px",
+                                "height": "10px",
+                                "border-radius": "50%",
+                                "border": "0",
+                                "background": "#ffffff",
+                                "cursor": "pointer",
+                                "padding": "0"
+                            }
+                        },
+                        {
+                            "type": "button",
+                            "tagName": "button",
+                            "attributes": {
+                                "type": "button",
+                                "aria-label": "Slide 2",
+                                "aria-selected": "false",
+                                "class": "fly-slider__dot"
+                            },
+                            "flyAction": { "kind": "switch_slide", "slider_id": "self", "index": 1 },
+                            "style": {
+                                "width": "10px",
+                                "height": "10px",
+                                "border-radius": "50%",
+                                "border": "0",
+                                "background": "rgba(255,255,255,0.4)",
+                                "cursor": "pointer",
+                                "padding": "0"
+                            }
+                        }
+                    ]
+                }
+            ]
+        }),
         "page_content_slot" => json!({
             "type": "page_content_slot",
             "tagName": "div",
@@ -1457,6 +1690,7 @@ fn builtin_block_label(id: &str) -> String {
         "pricing_table" => "Pricing table".to_string(),
         "tabs" => "Tabs".to_string(),
         "accordion" => "Accordion (FAQ)".to_string(),
+        "slider" => "Slider / Carousel".to_string(),
         "page_content_slot" => "Page content slot".to_string(),
         _ => humanize_id(id),
     }
@@ -1467,7 +1701,7 @@ fn builtin_category(id: &str) -> &'static str {
         "section" | "container" | "row" | "column" | "grid" | "divider" | "spacer"
         | "page_content_slot" => "layout",
         "image" | "video" | "media" | "embed" => "media",
-        "tabs" | "accordion" => "interactive",
+        "tabs" | "accordion" | "slider" => "interactive",
         "form" | "input" | "textarea" | "select" | "checkbox" | "submit" => "forms",
         "raw_html" => "advanced",
         "product_card" | "product_grid" | "product_price" | "cart_button" | "pricing_table" => {
@@ -1534,7 +1768,7 @@ mod tests {
     #[test]
     fn interactive_blocks_are_registered_and_have_interactive_category() {
         let blocks = builtin_blocks();
-        for id in ["tabs", "accordion"] {
+        for id in ["tabs", "accordion", "slider"] {
             let block = blocks
                 .iter()
                 .find(|b| b.id == id)
@@ -1548,6 +1782,8 @@ mod tests {
         assert!(registries.accepts_child_type(Some("tabs"), "button"));
         assert!(registries.accepts_child_type(Some("tabs"), "container"));
         assert!(registries.accepts_child_type(Some("accordion"), "container"));
+        assert!(registries.accepts_child_type(Some("slider"), "container"));
+        assert!(registries.accepts_child_type(Some("slider"), "button"));
     }
 }
 

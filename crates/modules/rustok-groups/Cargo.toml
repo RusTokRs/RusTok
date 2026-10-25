@@ -11,8 +11,8 @@ async-trait.workspace = true
 chrono.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
-rustok-moderation-api = { path = "../rustok-moderation-api" }
-rustok-notifications-api.workspace = true
+rustok-moderation.workspace = true
+rustok-notifications.workspace = true
 rustok-outbox.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true

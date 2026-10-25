@@ -1,0 +1,40 @@
+[module]
+slug = "calendar"
+name = "Calendar & Appointment Scheduling"
+version = "0.1.0"
+description = "Calendar & Appointment Scheduling capability module for RusToK"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "dual_surface"
+recommended_admin_surfaces = ["leptos-admin"]
+
+[marketplace]
+category = "collaboration"
+tags = ["calendar"]
+
+[dependencies]
+outbox = { version_req = ">=0.1.0" }
+
+[crate]
+entry_type = "CalendarModule"
+
+[provides.admin_ui]
+leptos_crate = "rustok-calendar-admin"
+route_segment = "calendar"
+nav_label = "Calendar & Appointment Scheduling"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-calendar-storefront"
+slot = "home_after_catalog"
+route_segment = "calendar"
+page_title = "Calendar & Appointment Scheduling"
+
+[provides.storefront_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"

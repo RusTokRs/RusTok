@@ -38,6 +38,31 @@ pub enum CommentStatus {
     Trash,
 }
 
+impl CommentStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Approved => "approved",
+            Self::Spam => "spam",
+            Self::Trash => "trash",
+        }
+    }
+
+    pub const fn is_approved(self) -> bool {
+        matches!(self, Self::Approved)
+    }
+
+    pub const fn is_pending(self) -> bool {
+        matches!(self, Self::Pending)
+    }
+}
+
+impl std::fmt::Display for CommentStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateCommentInput {
     pub target_type: String,

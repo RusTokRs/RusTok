@@ -1,5 +1,24 @@
+//! # RusToK Fluid Backend Architecture (FBA)
+//!
+//! Shared Fluid Backend Architecture contracts for RusToK module boundaries.
+//!
+//! Provides the neutral descriptor types for backend topologies (embedded, remote, hybrid,
+//! async companion), transport profiles (in-process, gRPC, HTTP, event), provider
+//! descriptors, and consumer dependencies without coupling to concrete transport engines.
+//!
+//! ## Entry points
+//!
+//! - [`BackendTopology`]: Execution topologies for modular capabilities.
+//! - [`TransportProfile`]: Transport profiles supported by a provider.
+//! - [`CapabilityId`]: Identifies a capability by owning module, name, and semantic version.
+//! - [`FbaProviderDescriptor`]: Provider capability registration descriptor.
+//! - [`FbaConsumerDependency`]: Consumer dependency declaration with fallback modes.
+
 use rustok_api::{PortCallPolicy, PortContext, PortError};
 use serde::{Deserialize, Serialize};
+
+#[cfg(test)]
+mod contract_tests;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

@@ -40,7 +40,6 @@ ssr = [
   "dep:rustok-modules",
   "dep:rustok-outbox",
   "dep:rustok-seo",
-  "dep:rustok-seo-render",
   "dep:rustok-seo-storefront",
   "rustok-seo-storefront/ssr",
   "dep:rustok-tenant",
@@ -86,6 +85,10 @@ ssr = [
   "rustok-search-storefront/ssr",
   "dep:rustok-messenger-storefront",
   "rustok-messenger-storefront/ssr",
+  "dep:rustok-calls-storefront",
+  "rustok-calls-storefront/ssr",
+  "dep:rustok-calendar-storefront",
+  "rustok-calendar-storefront/ssr",
 ]
 
 [dependencies]
@@ -116,8 +119,9 @@ tracing = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 rustok-content = { workspace = true, optional = true }
 rustok-seo = { workspace = true, optional = true }
-rustok-seo-render = { workspace = true, optional = true }
 rustok-seo-storefront = { path = "../../crates/modules/rustok-seo/storefront", default-features = false, optional = true }
+rustok-calendar-storefront = { path = "../../crates/modules/rustok-calendar/storefront", default-features = false, optional = true }
+rustok-calls-storefront = { path = "../../crates/modules/rustok-calls/storefront", default-features = false, optional = true }
 rustok-tenant = { workspace = true, optional = true }
 rustok-modules = { workspace = true, optional = true }
 rustok-web = { workspace = true, optional = true }
@@ -127,7 +131,7 @@ rustok-cart-storefront = { path = "../../crates/modules/rustok-cart/storefront",
 rustok-commerce-storefront = { path = "../../crates/modules/rustok-commerce/storefront", default-features = false, optional = true }
 rustok-fulfillment-storefront = { path = "../../crates/modules/rustok-fulfillment/storefront", default-features = false, optional = true }
 rustok-forum-storefront = { path = "../../crates/modules/rustok-forum/storefront", default-features = false, optional = true }
-rustok-reactions-storefront = { path = "../../crates/modules/rustok-reactions-storefront", default-features = false, optional = true }
+rustok-reactions-storefront = { path = "../../crates/modules/rustok-reactions/storefront", default-features = false, optional = true }
 rustok-groups-storefront = { path = "../../crates/modules/rustok-groups/storefront", default-features = false, optional = true }
 rustok-notifications-storefront = { path = "../../crates/modules/rustok-notifications/storefront", default-features = false, optional = true }
 rustok-order-storefront = { path = "../../crates/modules/rustok-order/storefront", default-features = false, optional = true }
@@ -189,6 +193,8 @@ normal = [
   "rustok-region-storefront",
   "rustok-search-storefront",
   "rustok-messenger-storefront",
+  "rustok-calls-storefront",
+  "rustok-calendar-storefront",
 ]
 
 [package.metadata.cargo-machete]
@@ -209,4 +215,6 @@ ignored = [
   "rustok-profiles-storefront",
   "rustok-region-storefront",
   "rustok-messenger-storefront",
+  "rustok-calls-storefront",
+  "rustok-calendar-storefront",
 ]

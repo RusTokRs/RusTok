@@ -1,5 +1,7 @@
 use super::ApiError;
-use crate::model::{StorefrontMenu, StorefrontMenuItem, StorefrontMenuLocation};
+use crate::model::{StorefrontMenu, StorefrontMenuLocation};
+#[cfg(feature = "ssr")]
+use crate::model::StorefrontMenuItem;
 use leptos::prelude::*;
 
 pub async fn fetch_active_menu_server(
@@ -35,6 +37,9 @@ async fn active_menu_native(
         let Some(channel_id) = request.as_ref().and_then(|ctx| ctx.channel_id) else {
             return Ok(None);
         };
+        if channel_id.is_nil() {
+            return Ok(None);
+        }
         if !ChannelService::new(runtime.db_clone())
             .is_module_enabled(channel_id, "navigation")
             .await
@@ -46,6 +51,9 @@ async fn active_menu_native(
             .await
             .ok();
         let (tenant_id, fallback) = if let Some(tenant) = tenant.as_ref() {
+            if tenant.id.is_nil() {
+                return Err(ServerFnError::new("Tenant context ID must not be nil"));
+            }
             (tenant.id, tenant.default_locale.clone())
         } else {
             let slug = tenant_slug
@@ -61,6 +69,9 @@ async fn active_menu_native(
                 .get_tenant_by_slug(slug)
                 .await
                 .map_err(ServerFnError::new)?;
+            if tenant.id.is_nil() {
+                return Err(ServerFnError::new("Resolved tenant ID must not be nil"));
+            }
             let fallback = request
                 .as_ref()
                 .map(|ctx| ctx.locale.clone())

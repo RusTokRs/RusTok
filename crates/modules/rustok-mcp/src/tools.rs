@@ -338,10 +338,11 @@ pub async fn list_modules_filtered(
 
 /// Check if a module exists by slug
 pub async fn module_exists(state: &McpState, request: ModuleLookupRequest) -> ModuleLookupResponse {
-    let exists = state.registry.contains(&request.slug);
+    let slug = request.slug.trim();
+    let exists = state.registry.contains(slug);
 
     ModuleLookupResponse {
-        slug: request.slug,
+        slug: slug.to_string(),
         exists,
     }
 }
@@ -351,11 +352,12 @@ pub async fn module_details(
     state: &McpState,
     request: ModuleLookupRequest,
 ) -> ModuleDetailsResponse {
-    module_details_by_slug(state, &request.slug)
+    module_details_by_slug(state, request.slug.trim())
 }
 
 /// Fetch module details by slug string
 pub fn module_details_by_slug(state: &McpState, slug: &str) -> ModuleDetailsResponse {
+    let slug = slug.trim();
     let module = state.registry.get(slug).map(to_module_info);
 
     ModuleDetailsResponse {

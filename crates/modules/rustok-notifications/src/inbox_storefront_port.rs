@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError, PortErrorKind};
-use rustok_notifications_api::{NotificationSourceRegistry, NotificationTargetRoute};
+use crate::{NotificationSourceRegistry, NotificationTargetRoute};
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -52,6 +52,18 @@ pub struct NotificationInboxStorefrontOpenRequest {
     pub notification_id: Uuid,
 }
 
+impl NotificationInboxStorefrontOpenRequest {
+    pub fn validate(&self) -> Result<(), PortError> {
+        if self.notification_id.is_nil() {
+            return Err(PortError::validation(
+                "notifications.storefront.notification_invalid",
+                "notification id must not be nil",
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "decision", rename_all = "snake_case")]
 pub enum NotificationInboxStorefrontOpenDecision {
@@ -67,6 +79,20 @@ pub struct NotificationInboxStorefrontGroupStateRequest {
     pub cursor: Option<String>,
     #[serde(default)]
     pub limit: u16,
+}
+
+impl NotificationInboxStorefrontGroupStateRequest {
+    pub fn validate(&self) -> Result<(), PortError> {
+        if self.group_key.trim().is_empty()
+            || self.group_key.len() > crate::inbox_group::MAX_NOTIFICATION_INBOX_GROUP_KEY_BYTES
+        {
+            return Err(PortError::validation(
+                "notifications.storefront.group_key_invalid",
+                "notification group key is invalid",
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Transport-neutral owner boundary for one authenticated user's notification inbox.
@@ -208,6 +234,7 @@ impl NotificationInboxStorefrontPort for NotificationInboxStorefrontService {
         request: NotificationInboxStorefrontOpenRequest,
     ) -> Result<NotificationInboxStorefrontOpenDecision, PortError> {
         let scope = resolve_scope(&context, PortCallPolicy::read())?;
+        request.validate()?;
         let decision = self
             .open
             .authorize_open(NotificationInboxOpenRequest {
@@ -233,6 +260,7 @@ impl NotificationInboxStorefrontPort for NotificationInboxStorefrontService {
         request: NotificationInboxStorefrontGroupStateRequest,
     ) -> Result<NotificationInboxGroupStatePage, PortError> {
         let scope = resolve_scope(&context, PortCallPolicy::write())?;
+        request.validate()?;
         self.group_state
             .apply_page(NotificationInboxGroupStateRequest {
                 tenant_id: scope.tenant_id,

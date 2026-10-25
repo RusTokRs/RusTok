@@ -1,0 +1,15 @@
+calendar-title = Calendar & Appointment Scheduling
+calendar-description = Manage Calendar & Appointment Scheduling configuration and operational workflows
+calendar-empty = No records found
+calendar-save = Save
+calendar-cancel = Cancel
+calendar-success = Operation completed successfully
+calendar-error = An error occurred
+calendar-search-placeholder = Search Calendar & Appointment Scheduling records...
+calendar-col-title = Title
+calendar-col-status = Status
+calendar-col-created = Created At
+calendar-col-actions = Actions
+calendar-action-create = Create New
+calendar-action-edit = Edit
+calendar-action-delete = Delete

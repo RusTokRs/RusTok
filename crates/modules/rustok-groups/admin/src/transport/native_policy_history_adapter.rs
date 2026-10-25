@@ -66,8 +66,11 @@ async fn groups_admin_application_policy_revisions_native(
         if auth.tenant_id != tenant.id {
             return Err(ServerFnError::new("groups tenant mismatch"));
         }
-        let group_id = Uuid::parse_str(&query.group_id)
+        let group_id = Uuid::parse_str(query.group_id.trim())
             .map_err(|_| ServerFnError::new("group_id must be a UUID"))?;
+        if group_id.is_nil() {
+            return Err(ServerFnError::new("group_id must not be nil"));
+        }
         let mut context = PortContext::new(
             tenant.id.to_string(),
             PortActor::user(auth.user_id.to_string()),

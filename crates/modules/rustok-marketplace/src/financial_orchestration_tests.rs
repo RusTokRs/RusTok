@@ -322,6 +322,11 @@ async fn directory_services_reject_nil_identifiers_and_invalid_currency() {
         .read_seller_balance(ctx.clone(), Uuid::new_v4(), "INVALID")
         .await
         .is_err());
+    let normalized = ledger_dir
+        .read_seller_balance(ctx.clone(), Uuid::new_v4(), " usd ")
+        .await
+        .unwrap();
+    assert_eq!(normalized.currency_code, "USD");
 
     // Listing directory
     let listing_dir = crate::MarketplaceListingDirectoryService::new(Arc::new(DummyListingReader));
@@ -437,9 +442,25 @@ impl rustok_marketplace_balance::MarketplaceLedgerReadPort for DummyLedgerReader
     async fn read_seller_balance(
         &self,
         _: PortContext,
-        _: rustok_marketplace_balance::ReadMarketplaceSellerBalanceRequest,
+        req: rustok_marketplace_balance::ReadMarketplaceSellerBalanceRequest,
     ) -> Result<rustok_marketplace_balance::MarketplaceSellerBalanceResponse, PortError> {
-        unreachable!()
+        let now = chrono::Utc::now().fixed_offset();
+        Ok(rustok_marketplace_balance::MarketplaceSellerBalanceResponse {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            seller_id: req.seller_id,
+            currency_code: req.currency_code,
+            pending_amount: 0,
+            available_amount: 0,
+            reserved_amount: 0,
+            paid_amount: 0,
+            negative_amount: 0,
+            source_entry_count: 0,
+            last_entry_id: None,
+            last_entry_created_at: None,
+            rebuilt_at: now,
+            updated_at: now,
+        })
     }
 }
 

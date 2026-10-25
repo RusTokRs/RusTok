@@ -2054,12 +2054,12 @@ impl SeoService {
         let raw_structured_data = explicit
             .as_ref()
             .and_then(|loaded| loaded.meta.structured_data.clone())
-            .filter(|value| is_valid_structured_data_payload(value));
+            .filter(is_valid_structured_data_payload);
         let effective_structured_data = current
             .structured_data
             .as_ref()
             .map(|value| value.0.clone())
-            .filter(|value| is_valid_structured_data_payload(value));
+            .filter(is_valid_structured_data_payload);
 
         let title_plan = plan_bulk_field(
             apply_mode,

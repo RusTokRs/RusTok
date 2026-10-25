@@ -8,6 +8,30 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # RusToK API
+//!
+//! Canonical platform interface and contract library for the RusToK platform.
+//!
+//! `rustok-api` defines shared web, API, context, permissions, and port contracts
+//! required by the host server (`apps/server`) and sovereign domain modules. It remains
+//! decoupled from concrete database entities and business logic, providing the stable
+//! foundation for multi-tenant context propagation, authorization, and transport boundaries.
+//!
+//! ## Core Architecture & Modules
+//!
+//! - **Context Propagation**: [`context`] (including [`ChannelContext`], and under the `server`
+//!   feature: `TenantContext`, `AuthContext`) provides typed tenant isolation, user identity,
+//!   and channel resolution across HTTP, GraphQL, and native server functions.
+//! - **Permissions & RBAC**: [`permissions`] (including [`Permission`], [`Action`], [`Resource`])
+//!   defines the platform-wide resource and action vocabulary.
+//! - **Port Architecture**: [`ports`] (including [`PortContext`], [`PortCallPolicy`], [`PortError`])
+//!   defines cross-boundary application port mechanics, execution policies, and typed error envelopes.
+//! - **Runtime Abstractions**: under the `runtime` feature, `HostRuntimeContext` enables host-managed
+//!   extension registration and state access without importing host-wide dependencies.
+//! - **Rich Text**: [`richtext`] (including [`RichTextDocument`]) provides neutral document AST
+//!   models shared across web, mobile, and API adapters.
+//! - **Locale & I18n**: [`locale`] provides canonical Unicode/CLDR locale tagging and candidate resolution.
+
 pub mod artifact_permissions;
 pub mod artifact_ui;
 pub mod context;

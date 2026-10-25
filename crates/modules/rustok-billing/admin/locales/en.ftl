@@ -1,0 +1,15 @@
+billing-title = B2B Billing & Settlements
+billing-description = Manage B2B Billing & Settlements configuration and operational workflows
+billing-empty = No records found
+billing-save = Save
+billing-cancel = Cancel
+billing-success = Operation completed successfully
+billing-error = An error occurred
+billing-search-placeholder = Search B2B Billing & Settlements records...
+billing-col-title = Title
+billing-col-status = Status
+billing-col-created = Created At
+billing-col-actions = Actions
+billing-action-create = Create New
+billing-action-edit = Edit
+billing-action-delete = Delete

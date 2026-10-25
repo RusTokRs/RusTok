@@ -1,3 +1,10 @@
+//! # RusToK Cache Module
+//!
+//! Centralised bounded cache capability for the RusToK platform.
+//!
+//! Manages Redis connection lifecycle, backend factories, degradation-aware fallbacks,
+//! atomic compare-and-set (CAS), distributed leases, anti-stampede refresh, and durable invalidations.
+
 mod backend_generation;
 mod backend_generation_recovery;
 mod bounded_invalidation;
@@ -18,6 +25,7 @@ mod invalidation_processor;
 mod key;
 mod key_generation;
 mod lease;
+pub mod module;
 mod negative;
 mod observability;
 mod policy;
@@ -32,7 +40,12 @@ mod tenant_generation_observability;
 mod typed;
 mod weighted;
 
+#[cfg(test)]
+mod contract_tests;
+
+pub use module::CacheModule;
 pub use settings::CacheSettings;
+
 
 pub use backend_generation::{
     CacheBackendGenerationError, CacheBackendGenerationSnapshot,
@@ -116,83 +129,3 @@ pub use tenant_generation_observability::{
 };
 pub use typed::{TypedCacheLoadOptions, TypedCacheLoadResult};
 
-use async_trait::async_trait;
-use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
-use sea_orm_migration::MigrationTrait;
-
-/// Core cache module — owns Redis connection lifecycle and cache backend factory.
-///
-/// Other modules obtain cache backends via `CacheService` instead of resolving
-/// Redis URLs themselves. This centralises connection management and health checks.
-pub struct CacheModule {
-    service: CacheService,
-}
-
-impl CacheModule {
-    pub fn new() -> Self {
-        let service = CacheService::from_env();
-        match (
-            service.redis_configuration_present(),
-            service.redis_client_initialized(),
-        ) {
-            (false, _) => tracing::info!("CacheModule: running with in-memory cache only"),
-            (true, true) => tracing::info!("CacheModule: Redis client initialized"),
-            (true, false) => {
-                tracing::error!("CacheModule: Redis is configured but client initialization failed")
-            }
-        }
-        Self { service }
-    }
-
-    pub fn service(&self) -> &CacheService {
-        &self.service
-    }
-
-    pub fn into_service(self) -> CacheService {
-        self.service
-    }
-}
-
-impl Default for CacheModule {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl MigrationSource for CacheModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        Vec::new()
-    }
-}
-
-#[async_trait]
-impl RusToKModule for CacheModule {
-    fn slug(&self) -> &'static str {
-        "cache"
-    }
-
-    fn name(&self) -> &'static str {
-        "Cache"
-    }
-
-    fn description(&self) -> &'static str {
-        "Centralised bounded cache capability — Redis lifecycle/timeouts, weighted fallback, atomic compare-and-set, invalidation and anti-stampede loading."
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn kind(&self) -> ModuleKind {
-        ModuleKind::Core
-    }
-
-    async fn health(&self) -> HealthStatus {
-        let status = self.service.redis_status().await;
-        if status.is_healthy() {
-            HealthStatus::Healthy
-        } else {
-            HealthStatus::Degraded
-        }
-    }
-}

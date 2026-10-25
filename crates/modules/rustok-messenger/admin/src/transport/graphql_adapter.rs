@@ -43,6 +43,14 @@ query MessengerOverview {
 }
 "#;
 
+fn sanitize_token(token: Option<String>) -> Option<String> {
+    token.map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+}
+
+fn sanitize_tenant_slug(tenant_slug: Option<String>) -> Option<String> {
+    tenant_slug.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
 #[derive(Deserialize)]
 struct MessengerOverviewResponse {
     #[serde(rename = "messengerOverview")]
@@ -56,8 +64,8 @@ pub async fn fetch_overview(
     let response: MessengerOverviewResponse = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(MESSENGER_OVERVIEW_QUERY, None::<serde_json::Value>),
-        token,
-        tenant_slug,
+        sanitize_token(token),
+        sanitize_tenant_slug(tenant_slug),
         None,
     )
     .await?;
@@ -91,8 +99,8 @@ pub async fn fetch_channels(
     let response: ListChannelsResponse = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(LIST_CHANNELS_QUERY, None::<serde_json::Value>),
-        token,
-        tenant_slug,
+        sanitize_token(token),
+        sanitize_tenant_slug(tenant_slug),
         None,
     )
     .await?;
@@ -125,8 +133,8 @@ pub async fn fetch_e2ee_devices(
     let response: ListE2eeDevicesResponse = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(LIST_E2EE_DEVICES_QUERY, None::<serde_json::Value>),
-        token,
-        tenant_slug,
+        sanitize_token(token),
+        sanitize_tenant_slug(tenant_slug),
         None,
     )
     .await?;

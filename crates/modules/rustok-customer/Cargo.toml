@@ -5,12 +5,16 @@ edition.workspace = true
 license.workspace = true
 description = "Customer domain module extracted from rustok-commerce"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true
 rustok-core.workspace = true
 rustok-api.workspace = true
-rustok-profiles.workspace = true
+rustok-profiles = { workspace = true, features = ["server"] }
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true

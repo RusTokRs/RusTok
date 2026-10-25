@@ -16,6 +16,9 @@ pub mod services;
 #[cfg(feature = "server")]
 pub mod graphql;
 
+#[cfg(test)]
+mod contract_tests;
+
 // Deliberate public re-exports for crate consumers.
 pub use error::{NewsletterError, NewsletterResult};
 #[cfg(feature = "server")]

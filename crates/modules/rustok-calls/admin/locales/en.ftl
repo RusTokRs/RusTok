@@ -1,0 +1,15 @@
+calls-title = WebRTC Calls & Conferencing
+calls-description = Manage WebRTC Calls & Conferencing configuration and operational workflows
+calls-empty = No records found
+calls-save = Save
+calls-cancel = Cancel
+calls-success = Operation completed successfully
+calls-error = An error occurred
+calls-search-placeholder = Search WebRTC Calls & Conferencing records...
+calls-col-title = Title
+calls-col-status = Status
+calls-col-created = Created At
+calls-col-actions = Actions
+calls-action-create = Create New
+calls-action-edit = Edit
+calls-action-delete = Delete

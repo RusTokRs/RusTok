@@ -148,3 +148,96 @@ fn allocation_request(order_id: Uuid, line_count: usize) -> AllocateMarketplaceO
             .collect(),
     }
 }
+
+#[tokio::test]
+async fn input_validation_and_arithmetic_invariants_are_enforced() {
+    let db = setup_database().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let order_id = Uuid::new_v4();
+    let service = MarketplaceAllocationService::new(db);
+
+    // Nil tenant or actor
+    let req = allocation_request(order_id, 1);
+    assert!(
+        service
+            .allocate_order_lines_with_receipt(Uuid::nil(), actor_id, "key1", req.clone())
+            .await
+            .is_err()
+    );
+    assert!(
+        service
+            .allocate_order_lines_with_receipt(tenant_id, Uuid::nil(), "key2", req.clone())
+            .await
+            .is_err()
+    );
+
+    // Nil order_id
+    let mut bad_order = req.clone();
+    bad_order.order_id = Uuid::nil();
+    assert!(
+        service
+            .allocate_order_lines_with_receipt(tenant_id, actor_id, "key3", bad_order)
+            .await
+            .is_err()
+    );
+
+    // Invalid currency
+    let mut bad_curr = req.clone();
+    bad_curr.currency_code = "US".to_string();
+    assert!(
+        service
+            .allocate_order_lines_with_receipt(tenant_id, actor_id, "key4", bad_curr)
+            .await
+            .is_err()
+    );
+
+    // Zero quantity
+    let mut bad_qty = req.clone();
+    bad_qty.lines[0].quantity = 0;
+    assert!(
+        service
+            .allocate_order_lines_with_receipt(tenant_id, actor_id, "key5", bad_qty)
+            .await
+            .is_err()
+    );
+
+    // Subtotal mismatch (unit 1000 * qty 2 != subtotal 1500)
+    let mut bad_subtotal = req.clone();
+    bad_subtotal.lines[0].subtotal_amount = 1500;
+    assert!(
+        service
+            .allocate_order_lines_with_receipt(tenant_id, actor_id, "key6", bad_subtotal)
+            .await
+            .is_err()
+    );
+
+    // Discount exceeding subtotal
+    let mut bad_disc = req.clone();
+    bad_disc.lines[0].discount_amount = 3000;
+    assert!(
+        service
+            .allocate_order_lines_with_receipt(tenant_id, actor_id, "key7", bad_disc)
+            .await
+            .is_err()
+    );
+
+    // Read methods reject nil UUIDs
+    assert!(service.get_by_order_line(Uuid::nil(), Uuid::new_v4()).await.is_err());
+    assert!(service.get_by_order_line(tenant_id, Uuid::nil()).await.is_err());
+    assert!(service.list_by_order(Uuid::nil(), Uuid::new_v4()).await.is_err());
+    assert!(service.list_by_order(tenant_id, Uuid::nil()).await.is_err());
+    assert!(service.list_by_seller(Uuid::nil(), crate::dto::ListMarketplaceAllocationsBySellerRequest {
+        seller_id: Uuid::new_v4(),
+        page: 1,
+        per_page: 10,
+        status: None,
+    }).await.is_err());
+    assert!(service.list_by_seller(tenant_id, crate::dto::ListMarketplaceAllocationsBySellerRequest {
+        seller_id: Uuid::nil(),
+        page: 1,
+        per_page: 10,
+        status: None,
+    }).await.is_err());
+}
+

@@ -27,5 +27,6 @@
 - Used by module FBA registries, provider descriptors, and future generated runtime
   registries.
 - Does not own gRPC/HTTP implementations, domain services, CLI, runtime composition, or UI.
+See [CRATE_API.md](CRATE_API.md) for the formal public API surface and contract invariants.
 
 See [docs](docs/README.md).

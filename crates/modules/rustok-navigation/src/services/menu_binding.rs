@@ -31,6 +31,15 @@ impl MenuBindingService {
         location: MenuLocation,
         menu_id: Uuid,
     ) -> NavigationResult<ActiveMenuBindingResponse> {
+        if tenant_id.is_nil() {
+            return Err(NavigationError::validation("Tenant ID must not be nil"));
+        }
+        if channel_id.is_nil() {
+            return Err(NavigationError::validation("Channel ID must not be nil"));
+        }
+        if menu_id.is_nil() {
+            return Err(NavigationError::validation("Menu ID must not be nil"));
+        }
         enforce_scope(&security, Resource::Navigation, Action::Update)?;
         self.ensure_channel_scope(tenant_id, channel_id).await?;
 
@@ -86,6 +95,12 @@ impl MenuBindingService {
         channel_id: Uuid,
         location: MenuLocation,
     ) -> NavigationResult<Option<ActiveMenuBindingResponse>> {
+        if tenant_id.is_nil() {
+            return Err(NavigationError::validation("Tenant ID must not be nil"));
+        }
+        if channel_id.is_nil() {
+            return Err(NavigationError::validation("Channel ID must not be nil"));
+        }
         enforce_scope(&security, Resource::Navigation, Action::Read)?;
         let model = menu_binding::Entity::find()
             .filter(menu_binding::Column::TenantId.eq(tenant_id))
@@ -104,6 +119,12 @@ impl MenuBindingService {
         location: MenuLocation,
         effective_locale: &str,
     ) -> NavigationResult<Option<MenuResponse>> {
+        if tenant_id.is_nil() {
+            return Err(NavigationError::validation("Tenant ID must not be nil"));
+        }
+        if channel_id.is_nil() {
+            return Err(NavigationError::validation("Channel ID must not be nil"));
+        }
         let Some(binding) = self
             .get_binding(tenant_id, security.clone(), channel_id, location)
             .await?
@@ -123,6 +144,12 @@ impl MenuBindingService {
         tenant_id: Uuid,
         channel_id: Uuid,
     ) -> NavigationResult<()> {
+        if tenant_id.is_nil() {
+            return Err(NavigationError::validation("Tenant ID must not be nil"));
+        }
+        if channel_id.is_nil() {
+            return Err(NavigationError::validation("Channel ID must not be nil"));
+        }
         let channel = match ChannelService::new(self.db.clone())
             .get_channel(channel_id)
             .await

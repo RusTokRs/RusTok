@@ -62,7 +62,7 @@ rustok-search.workspace = true
 rustok-taxonomy.workspace = true
 rustok-workflow.workspace = true
 rustok-media.workspace = true
-rustok-profiles.workspace = true
+rustok-profiles = { workspace = true, features = ["server"] }
 rustok-social-graph.workspace = true
 rustok-translation.workspace = true
 rustok-ai = { workspace = true, features = ["server"] }

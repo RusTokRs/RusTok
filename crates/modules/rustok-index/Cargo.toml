@@ -5,6 +5,10 @@ edition.workspace = true
 description = "Cross-module relational index and query engine for RusToK"
 license.workspace = true
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 rustok-core.workspace = true
 rustok-runtime.workspace = true

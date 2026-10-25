@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use rustok_api::Permission;
 use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
-use rustok_moderation_api::register_moderation_subject_adapter_factory;
-use rustok_notifications_api::register_notification_source_provider_factory;
+use rustok_moderation::register_moderation_subject_adapter_factory;
+use rustok_notifications::register_notification_source_provider_factory;
 use sea_orm_migration::MigrationTrait;
 
 pub mod application_entities;

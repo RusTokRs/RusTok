@@ -59,6 +59,10 @@ impl NavigationMutation {
         ctx: &Context<'_>,
         input: BindGqlActiveMenuInput,
     ) -> Result<GqlActiveMenuBinding> {
+        if input.menu_id.is_nil() {
+            return Err(async_graphql::Error::new("Menu ID must not be nil")
+                .extend_with(|_, extensions| extensions.set("code", "BAD_REQUEST")));
+        }
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let auth = require_navigation_permission(ctx, Permission::NAVIGATION_UPDATE)?;
@@ -71,6 +75,10 @@ impl NavigationMutation {
                 async_graphql::Error::new("Active menu binding requires a resolved current channel")
                     .extend_with(|_, extensions| extensions.set("code", CHANNEL_CONTEXT_REQUIRED))
             })?;
+        if channel_id.is_nil() {
+            return Err(async_graphql::Error::new("Channel ID must not be nil")
+                .extend_with(|_, extensions| extensions.set("code", CHANNEL_CONTEXT_REQUIRED)));
+        }
         MenuBindingService::new(db.clone())
             .bind(
                 tenant.id,
@@ -111,6 +119,9 @@ fn security(auth: &AuthContext) -> rustok_core::SecurityContext {
     )
 }
 fn ensure_current_tenant(tenant: &TenantContext, auth: &AuthContext) -> Result<()> {
+    if tenant.id.is_nil() || auth.tenant_id.is_nil() || auth.user_id.is_nil() {
+        return Err(<FieldError as GraphQLError>::unauthenticated());
+    }
     if auth.tenant_id == tenant.id {
         Ok(())
     } else {

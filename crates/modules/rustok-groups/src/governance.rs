@@ -29,10 +29,52 @@ pub struct ChangeGroupRoleRequest {
     pub role: GroupRole,
 }
 
+impl ChangeGroupRoleRequest {
+    pub fn validate(&self) -> Result<(), PortError> {
+        if self.group_id.is_nil() {
+            return Err(PortError::validation(
+                "groups.invalid_group_id",
+                "group_id cannot be a nil UUID",
+            ));
+        }
+        if self.target_user_id.is_nil() {
+            return Err(PortError::validation(
+                "groups.invalid_user_id",
+                "target_user_id cannot be a nil UUID",
+            ));
+        }
+        if self.role == GroupRole::Owner {
+            return Err(PortError::validation(
+                "groups.invalid_role_assignment",
+                "use ownership transfer to assign the owner role",
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransferGroupOwnershipRequest {
     pub group_id: Uuid,
     pub new_owner_user_id: Uuid,
+}
+
+impl TransferGroupOwnershipRequest {
+    pub fn validate(&self) -> Result<(), PortError> {
+        if self.group_id.is_nil() {
+            return Err(PortError::validation(
+                "groups.invalid_group_id",
+                "group_id cannot be a nil UUID",
+            ));
+        }
+        if self.new_owner_user_id.is_nil() {
+            return Err(PortError::validation(
+                "groups.invalid_user_id",
+                "new_owner_user_id cannot be a nil UUID",
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,16 +119,14 @@ impl GroupGovernanceService {
         request: ChangeGroupRoleRequest,
     ) -> GroupsResult<GroupGovernanceResult> {
         require_write(context)?;
+        request
+            .validate()
+            .map_err(|err| GroupsError::Validation(err.message))?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
         if actor_user_id == request.target_user_id {
             return Err(GroupsError::Conflict(
                 "a member cannot change their own local role".to_string(),
-            ));
-        }
-        if request.role == GroupRole::Owner {
-            return Err(GroupsError::Validation(
-                "use ownership transfer to assign the owner role".to_string(),
             ));
         }
 
@@ -222,6 +262,9 @@ impl GroupGovernanceService {
         request: TransferGroupOwnershipRequest,
     ) -> GroupsResult<GroupGovernanceResult> {
         require_write(context)?;
+        request
+            .validate()
+            .map_err(|err| GroupsError::Validation(err.message))?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
         if actor_user_id == request.new_owner_user_id {
@@ -743,8 +786,14 @@ fn require_write(context: &PortContext) -> GroupsResult<()> {
 }
 
 fn context_tenant_id(context: &PortContext) -> GroupsResult<Uuid> {
-    Uuid::parse_str(&context.tenant_id)
-        .map_err(|_| GroupsError::Validation("tenant_id must be a UUID".to_string()))
+    let tenant_id = Uuid::parse_str(context.tenant_id.trim())
+        .map_err(|_| GroupsError::Validation("tenant_id must be a UUID".to_string()))?;
+    if tenant_id.is_nil() {
+        return Err(GroupsError::Validation(
+            "tenant_id cannot be a nil UUID".to_string(),
+        ));
+    }
+    Ok(tenant_id)
 }
 
 fn actor_user_id(context: &PortContext) -> GroupsResult<Uuid> {
@@ -753,8 +802,14 @@ fn actor_user_id(context: &PortContext) -> GroupsResult<Uuid> {
             "a user actor is required for group governance".to_string(),
         ));
     }
-    Uuid::parse_str(&context.actor.id)
-        .map_err(|_| GroupsError::Validation("actor.id must be a UUID".to_string()))
+    let actor_id = Uuid::parse_str(context.actor.id.trim())
+        .map_err(|_| GroupsError::Validation("actor.id must be a UUID".to_string()))?;
+    if actor_id.is_nil() {
+        return Err(GroupsError::Validation(
+            "actor.id cannot be a nil UUID".to_string(),
+        ));
+    }
+    Ok(actor_id)
 }
 
 fn idempotency_key(context: &PortContext) -> GroupsResult<String> {

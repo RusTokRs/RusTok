@@ -84,6 +84,16 @@ impl MarketplaceListingService {
                 "tenant_id must not be nil".to_string(),
             ));
         }
+        if input.seller_id.is_some_and(|id| id.is_nil()) {
+            return Err(MarketplaceListingError::Validation(
+                "seller_id must not be nil".to_string(),
+            ));
+        }
+        if input.master_variant_id.is_some_and(|id| id.is_nil()) {
+            return Err(MarketplaceListingError::Validation(
+                "master_variant_id must not be nil".to_string(),
+            ));
+        }
         let page = input.page.max(1);
         let per_page = input.per_page.clamp(1, MAX_LISTINGS_PER_PAGE);
         let mut query = listing::Entity::find().filter(listing::Column::TenantId.eq(tenant_id));

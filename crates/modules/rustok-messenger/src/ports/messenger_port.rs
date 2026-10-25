@@ -47,13 +47,23 @@ impl MessengerPortAdapter {
     }
 
     fn parse_tenant_id(ctx: &PortContext) -> Result<Uuid, PortError> {
-        Uuid::parse_str(&ctx.tenant_id)
-            .map_err(|_| PortError::validation("invalid_tenant_id", "Invalid tenant UUID in PortContext"))
+        let trimmed = ctx.tenant_id.trim();
+        let parsed = Uuid::parse_str(trimmed)
+            .map_err(|_| PortError::validation("invalid_tenant_id", "Invalid tenant UUID in PortContext"))?;
+        if parsed.is_nil() {
+            return Err(PortError::validation("nil_tenant_id", "Tenant UUID cannot be nil in PortContext"));
+        }
+        Ok(parsed)
     }
 
     fn parse_actor_id(ctx: &PortContext) -> Result<Uuid, PortError> {
-        Uuid::parse_str(&ctx.actor.id)
-            .map_err(|_| PortError::forbidden("invalid_actor_id", "Valid actor UUID required in PortContext"))
+        let trimmed = ctx.actor.id.trim();
+        let parsed = Uuid::parse_str(trimmed)
+            .map_err(|_| PortError::forbidden("invalid_actor_id", "Valid actor UUID required in PortContext"))?;
+        if parsed.is_nil() {
+            return Err(PortError::forbidden("nil_actor_id", "Actor UUID cannot be nil in PortContext"));
+        }
+        Ok(parsed)
     }
 }
 
@@ -66,7 +76,11 @@ impl MessengerPort for MessengerPortAdapter {
         content: String,
     ) -> Result<i64, PortError> {
         let tenant_id = Self::parse_tenant_id(ctx)?;
-        let actor_id = Self::parse_actor_id(ctx).unwrap_or(Uuid::nil());
+        let actor_id = Self::parse_actor_id(ctx).unwrap_or(crate::services::SYSTEM_ACTOR_UUID);
+
+        if conversation_id.is_nil() {
+            return Err(PortError::validation("nil_conversation_id", "Conversation ID cannot be nil UUID"));
+        }
 
         let out = self
             .service
@@ -96,6 +110,10 @@ impl MessengerPort for MessengerPortAdapter {
     ) -> Result<i64, PortError> {
         let tenant_id = Self::parse_tenant_id(ctx)?;
         let actor_id = Self::parse_actor_id(ctx)?;
+
+        if recipient_id.is_nil() {
+            return Err(PortError::validation("nil_recipient_id", "Recipient UUID cannot be nil"));
+        }
 
         // 1. Create 1-on-1 direct dialogue
         let conv = self
@@ -147,6 +165,16 @@ impl MessengerPort for MessengerPortAdapter {
     ) -> Result<Uuid, PortError> {
         let tenant_id = Self::parse_tenant_id(ctx)?;
         let actor_id = Self::parse_actor_id(ctx)?;
+
+        if entity_id.is_nil() {
+            return Err(PortError::validation("nil_entity_id", "Entity ID cannot be nil UUID"));
+        }
+
+        for pid in &participant_ids {
+            if pid.is_nil() {
+                return Err(PortError::validation("nil_participant_id", "Participant ID cannot be nil UUID"));
+            }
+        }
 
         let conv = self
             .service

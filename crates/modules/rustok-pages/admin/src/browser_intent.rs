@@ -12,17 +12,20 @@ use rustok_page_builder::runtime_context::{
 };
 use rustok_page_builder_admin::{
     AdminCanvasController, BrowserIntentDispatchError, BrowserIntentDispatchResult,
-    BrowserIntentEffect, InMemorySsrDraftSessionStore, PageBuilderAdminFacade,
+    BrowserIntentEffect, DurableSsrDraftSessionStore, PageBuilderAdminFacade,
     PageBuilderAdminFacadeError, SsrDraftSessionError, SsrDraftSessionStore,
     dispatch_browser_intent,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 const MAX_RUNTIME_CONTEXT_BYTES: usize = 256 * 1024;
 const MAX_RUNTIME_LOCALE_BYTES: usize = 64;
 const MAX_RUNTIME_FALLBACK_LOCALES: usize = 16;
+
+static CUSTOM_STORE: OnceLock<Arc<dyn SsrDraftSessionStore>> = OnceLock::new();
+static DEFAULT_STORE: OnceLock<DurableSsrDraftSessionStore> = OnceLock::new();
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PagesBrowserIntentResponse {
@@ -35,9 +38,25 @@ pub struct PagesBrowserIntentResponse {
     pub runtime_context: Value,
 }
 
-pub fn pages_browser_draft_store() -> &'static InMemorySsrDraftSessionStore {
-    static STORE: OnceLock<InMemorySsrDraftSessionStore> = OnceLock::new();
-    STORE.get_or_init(InMemorySsrDraftSessionStore::editor_default)
+/// Registers a custom or distributed SSR draft session store (e.g. backed by Redis or database KV).
+/// Must be called during host boot before the first intent is processed.
+pub fn set_pages_browser_draft_store(
+    store: Arc<dyn SsrDraftSessionStore>,
+) -> Result<(), &'static str> {
+    CUSTOM_STORE
+        .set(store)
+        .map_err(|_| "Pages browser draft store has already been initialized")
+}
+
+pub fn pages_browser_draft_store() -> &'static dyn SsrDraftSessionStore {
+    if let Some(custom) = CUSTOM_STORE.get() {
+        return custom.as_ref();
+    }
+    DEFAULT_STORE.get_or_init(DurableSsrDraftSessionStore::editor_default)
+}
+
+pub fn pages_browser_default_durable_store() -> &'static DurableSsrDraftSessionStore {
+    DEFAULT_STORE.get_or_init(DurableSsrDraftSessionStore::editor_default)
 }
 
 pub async fn dispatch_pages_browser_intent(
@@ -450,5 +469,13 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn pages_browser_draft_store_resolves_and_stores_session() {
+        let default_durable = pages_browser_default_durable_store();
+        assert_eq!(default_durable.memory().len().unwrap(), 0);
+        let store = pages_browser_draft_store();
+        assert!(store.load("non-existent-token", "home").unwrap().is_none());
     }
 }

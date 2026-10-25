@@ -39,6 +39,12 @@ impl GroupsService {
         tenant_id: Uuid,
         membership_id: Uuid,
     ) -> GroupsResult<Option<GroupMembershipEffectiveState>> {
+        if tenant_id.is_nil() {
+            return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
+        if membership_id.is_nil() {
+            return Err(GroupsError::Validation("membership_id cannot be nil UUID".to_string()));
+        }
         let transaction = self.db.begin().await?;
         let target = crate::membership_enforcement_transaction::lock_membership_enforcement_target_by_id_for_update(
             &transaction,
@@ -66,6 +72,12 @@ impl GroupsService {
     }
 
     async fn group_model(&self, tenant_id: Uuid, group_id: Uuid) -> GroupsResult<group::Model> {
+        if tenant_id.is_nil() {
+            return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
+        if group_id.is_nil() {
+            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+        }
         group::Entity::find()
             .filter(group::Column::TenantId.eq(tenant_id))
             .filter(group::Column::Id.eq(group_id))
@@ -80,6 +92,15 @@ impl GroupsService {
         group_id: Uuid,
         user_id: Uuid,
     ) -> GroupsResult<Option<membership::Model>> {
+        if tenant_id.is_nil() {
+            return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
+        if group_id.is_nil() {
+            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+        }
+        if user_id.is_nil() {
+            return Err(GroupsError::Validation("user_id cannot be nil UUID".to_string()));
+        }
         Ok(membership::Entity::find()
             .filter(membership::Column::TenantId.eq(tenant_id))
             .filter(membership::Column::GroupId.eq(group_id))
@@ -93,6 +114,9 @@ impl GroupsService {
         tenant_id: Uuid,
         group_ids: Vec<Uuid>,
     ) -> GroupsResult<HashMap<Uuid, Vec<translation::Model>>> {
+        if tenant_id.is_nil() {
+            return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
         if group_ids.is_empty() {
             return Ok(HashMap::new());
         }
@@ -115,6 +139,7 @@ impl GroupsService {
         input: CreateGroupInput,
     ) -> GroupsResult<GroupDetails> {
         require_write(context)?;
+        input.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let owner_user_id = actor_user_id(context)?;
         let handle = normalize_group_handle(&input.handle).map_err(GroupsError::Validation)?;
@@ -214,6 +239,7 @@ impl GroupsService {
         request: ReadGroupRequest,
     ) -> GroupsResult<GroupDetails> {
         require_read(context)?;
+        request.validate()?;
         self.read_group_for_locale_owned(context, request, &context.locale)
             .await
     }
@@ -266,6 +292,7 @@ impl GroupsService {
         request: ListGroupsRequest,
     ) -> GroupsResult<GroupConnection> {
         require_read(context)?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let effective_locale = normalize_effective_locale(&context.locale)?;
         let page = request.page.max(1);
@@ -342,6 +369,7 @@ impl GroupsService {
         request: JoinGroupRequest,
     ) -> GroupsResult<GroupMembership> {
         require_write(context)?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let user_id = actor_user_id(context)?;
         let transaction = self.db.begin().await?;
@@ -439,6 +467,7 @@ impl GroupsService {
         request: LeaveGroupRequest,
     ) -> GroupsResult<GroupMembership> {
         require_write(context)?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let user_id = actor_user_id(context)?;
         let transaction = self.db.begin().await?;
@@ -492,6 +521,7 @@ impl GroupsService {
         request: SetGroupFeatureRequest,
     ) -> GroupsResult<GroupFeatureBinding> {
         require_write(context)?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let actor_id = actor_user_id(context)?;
         self.group_model(tenant_id, request.group_id).await?;
@@ -564,6 +594,9 @@ impl GroupsService {
         action: GroupAction,
     ) -> GroupsResult<GroupAccessDecision> {
         require_read(context)?;
+        if group_id.is_nil() {
+            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+        }
         let tenant_id = context_tenant_id(context)?;
         let group_model = self.group_model(tenant_id, group_id).await?;
         let visibility = parse_visibility(&group_model.visibility)?;
@@ -717,6 +750,7 @@ impl GroupSummaryReadPort for GroupsService {
         context: PortContext,
         request: ReadGroupRequest,
     ) -> Result<GroupDetails, PortError> {
+        request.validate()?;
         self.read_group_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -727,6 +761,7 @@ impl GroupSummaryReadPort for GroupsService {
         context: PortContext,
         request: ListGroupsRequest,
     ) -> Result<GroupConnection, PortError> {
+        request.validate()?;
         self.list_groups_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -741,6 +776,7 @@ impl GroupMembershipReadPort for GroupsService {
         request: ReadGroupMembershipRequest,
     ) -> Result<Option<GroupMembership>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        request.validate()?;
         let tenant_id = context_tenant_id(&context).map_err(PortError::from)?;
         self.membership_model(tenant_id, request.group_id, request.user_id)
             .await
@@ -756,6 +792,7 @@ impl GroupMembershipReadPort for GroupsService {
         request: ListGroupMembershipsRequest,
     ) -> Result<GroupMembershipConnection, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        request.validate()?;
         let decision = self
             .decide_access_owned(&context, request.group_id, GroupAction::ViewMembers)
             .await
@@ -806,6 +843,7 @@ impl GroupAccessReadPort for GroupsService {
         context: PortContext,
         request: GroupAccessRequest,
     ) -> Result<GroupAccessDecision, PortError> {
+        request.validate()?;
         self.decide_access_owned(&context, request.group_id, request.action)
             .await
             .map_err(Into::into)
@@ -816,6 +854,12 @@ impl GroupAccessReadPort for GroupsService {
         context: PortContext,
         group_id: Uuid,
     ) -> Result<Vec<GroupFeatureBinding>, PortError> {
+        if group_id.is_nil() {
+            return Err(PortError::validation(
+                "groups.invalid_group_id",
+                "group_id cannot be nil UUID",
+            ));
+        }
         let decision = self
             .decide_access_owned(&context, group_id, GroupAction::View)
             .await
@@ -852,6 +896,7 @@ impl GroupCommandPort for GroupsService {
         context: PortContext,
         input: CreateGroupInput,
     ) -> Result<GroupDetails, PortError> {
+        input.validate()?;
         self.create_group_owned(&context, input)
             .await
             .map_err(Into::into)
@@ -862,6 +907,7 @@ impl GroupCommandPort for GroupsService {
         context: PortContext,
         request: JoinGroupRequest,
     ) -> Result<GroupMembership, PortError> {
+        request.validate()?;
         self.join_group_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -872,6 +918,7 @@ impl GroupCommandPort for GroupsService {
         context: PortContext,
         request: LeaveGroupRequest,
     ) -> Result<GroupMembership, PortError> {
+        request.validate()?;
         self.leave_group_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -882,6 +929,7 @@ impl GroupCommandPort for GroupsService {
         context: PortContext,
         request: SetGroupFeatureRequest,
     ) -> Result<GroupFeatureBinding, PortError> {
+        request.validate()?;
         self.set_group_feature_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -914,13 +962,30 @@ fn actor_user_id(context: &PortContext) -> GroupsResult<Uuid> {
 }
 
 fn optional_actor_user_id(context: &PortContext) -> Option<Uuid> {
-    (context.actor.kind == PortActorKind::User)
-        .then(|| Uuid::parse_str(&context.actor.id).ok())
-        .flatten()
+    if context.actor.kind != PortActorKind::User {
+        return None;
+    }
+    let trimmed = context.actor.id.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    match Uuid::parse_str(trimmed) {
+        Ok(parsed) if !parsed.is_nil() => Some(parsed),
+        _ => None,
+    }
 }
 
 fn parse_uuid(value: &str, field: &str) -> GroupsResult<Uuid> {
-    Uuid::parse_str(value).map_err(|_| GroupsError::Validation(format!("{field} must be a UUID")))
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(GroupsError::Validation(format!("{field} cannot be empty")));
+    }
+    let parsed = Uuid::parse_str(trimmed)
+        .map_err(|_| GroupsError::Validation(format!("{field} must be a UUID")))?;
+    if parsed.is_nil() {
+        return Err(GroupsError::Validation(format!("{field} cannot be nil UUID")));
+    }
+    Ok(parsed)
 }
 
 fn parse_visibility(value: &str) -> GroupsResult<GroupVisibility> {

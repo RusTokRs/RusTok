@@ -35,6 +35,11 @@ impl DeviceKeyRegistry {
         user_id: Uuid,
         input: UploadDeviceKeysInput,
     ) -> MessengerResult<DeviceKey> {
+        if user_id.is_nil() {
+            return Err(MessengerError::Validation(
+                "user_id must not be nil UUID".to_string(),
+            ));
+        }
         let device_id = input.device_id.trim().to_string();
         if device_id.is_empty() {
             return Err(MessengerError::Validation(
@@ -143,6 +148,9 @@ impl DeviceKeyRegistry {
 
     /// Lists all registered public device identities for a user.
     pub fn list_user_devices(&self, user_id: Uuid) -> Vec<DeviceKey> {
+        if user_id.is_nil() {
+            return Vec::new();
+        }
         let read_guard = self.devices.read().unwrap_or_else(|e| e.into_inner());
         read_guard
             .iter()
@@ -182,6 +190,11 @@ impl DeviceKeyRegistry {
         target_user_id: Uuid,
         device_id: &str,
     ) -> MessengerResult<PrekeyBundle> {
+        if target_user_id.is_nil() {
+            return Err(MessengerError::Validation(
+                "target_user_id must not be nil UUID".to_string(),
+            ));
+        }
         let device_id = device_id.trim();
         if device_id.is_empty() {
             return Err(MessengerError::Validation(

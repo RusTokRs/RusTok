@@ -156,6 +156,10 @@ impl SearchProjectionSource for DocsSearchProjectionSource {
         after: Option<String>,
         limit: usize,
     ) -> Result<SearchProjectionPage> {
+        if tenant_id.is_nil() {
+            return Err(Error::Validation("Tenant ID cannot be a nil UUID".to_string()));
+        }
+
         let bounded_limit = limit.clamp(1, MAX_SEARCH_PROJECTION_PAGE_SIZE);
 
         let mut query = page::Entity::find()
@@ -223,6 +227,12 @@ impl SearchProjectionSource for DocsSearchProjectionSource {
         entity_type: &str,
         entity_id: Uuid,
     ) -> Result<Vec<SearchProjectionDocument>> {
+        if tenant_id.is_nil() {
+            return Err(Error::Validation("Tenant ID cannot be a nil UUID".to_string()));
+        }
+        if entity_id.is_nil() {
+            return Err(Error::Validation("Entity ID cannot be a nil UUID".to_string()));
+        }
         if entity_type != DOC_PAGE_ENTITY_TYPE {
             return Ok(Vec::new());
         }

@@ -19,7 +19,7 @@ use crate::services::seo_redirect_cache_reconciliation::start_seo_redirect_cache
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::static_module_registry::static_module_registry_reader_from_context;
 #[cfg(feature = "mod-profiles")]
-use rustok_profiles_api::ProfileSummaryReader;
+use rustok_profiles::ProfileSummaryReader;
 
 /// Keeps at least one watch receiver alive for API-only hosts so `StopHandle::stop()` can publish
 /// the terminal value even when no background worker has subscribed yet.

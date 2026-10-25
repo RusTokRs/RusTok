@@ -16,7 +16,7 @@ use crate::{
 
 const PROFILE_MEDIA_PRESENTATION_DEADLINE: Duration = Duration::from_secs(2);
 
-pub use rustok_profiles_api::{GqlProfileSummary, GqlProfileVisibility};
+pub use crate::api::{GqlProfileSummary, GqlProfileVisibility};
 
 impl From<ProfileVisibility> for GqlProfileVisibility {
     fn from(value: ProfileVisibility) -> Self {
@@ -226,7 +226,7 @@ async fn resolve_public_profile_image(
 
 impl From<ProfileSummary> for GqlProfileSummary {
     fn from(value: ProfileSummary) -> Self {
-        let value: rustok_profiles_api::ProfileSummary = value.into();
+        let value: crate::api::ProfileSummary = value.into();
         value.into()
     }
 }

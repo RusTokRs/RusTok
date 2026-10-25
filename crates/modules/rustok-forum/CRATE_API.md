@@ -3,6 +3,33 @@
 ## Public Modules
 `category_presentation`, `constants`, `controllers`, `dto`, `entities`, `error`, `graphql`, `locale`, `mentions`, `services`.
 
+## Platform Capability Bindings
+
+- **Core Module Registration**: Exposes `ForumModule` implementing `RusToKModule` (slug `"forum"`, dependencies `["content", "media", "taxonomy"]`) and `MigrationSource`.
+- **Domain Services**:
+  - `CategoryService`: Hierarchy trees, move/reorder sibling mutations, subtree archiving/restoration, topic policy, audience policies.
+  - `TopicService`: Topic creation, updates, lifecycle (open/close/archive/lock/pin), solution assignment, and feed ranking (Latest/Top/Solved).
+  - `ReplyService`: Discussion replies, threading, branch splits/forks/merges, and moderation status transitions.
+  - `ModerationService`: Forum moderation actions and audience-authorized administrative operations.
+  - `SubscriptionService` & `UserStatsService` & `VoteService`: Forum engagement, subscription digest preferences, user statistics, and upvote/downvote operations.
+  - `ForumAttachmentRelationService`: Media attachment relations with CAS revision fencing and hold reconciliation.
+- **Runtime Extensions & Capabilities**:
+  - Registers `ForumSearchProjectionSourceFactory` via `rustok-core`.
+  - Registers `ForumCategorySeoTargetProvider` and `ForumTopicSeoTargetProvider` via `rustok-seo-targets`.
+  - Registers `ForumReactionSubjectProviderFactory` via `rustok-reactions`.
+  - Registers `ForumModerationSubjectAdapterFactory` (topic and reply) via `rustok-moderation-api`.
+  - Registers `ForumNotificationSourceProviderFactory` via `rustok-notifications-api`.
+
+## Domain Collaborations
+
+- **`rustok-content`**: Node-based backing storage for forum content items (`forum_category`, `forum_topic`, `forum_reply`).
+- **`rustok-media`**: Retention and release of media asset references associated with forum attachments.
+- **`rustok-taxonomy`**: Shared category route descriptors, localization projections, and topic tag associations.
+- **`rustok-reactions`**: Pluggable engagement provider based on the `forum.useReactions` setting.
+- **`rustok-moderation`**: Subject adapter integration for automated and manual topic/reply moderation.
+- **`rustok-notifications`**: Domain event notifications for user mentions and subscription digests.
+- **`rustok-outbox`**: Transactional outbox event publishing for forum events.
+
 ## Topic feed selection
 
 `ListTopicsFilter` adds optional `search`, typed `ForumTopicListOrder` (`latest` default,

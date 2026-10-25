@@ -1,0 +1,15 @@
+party-title = Counterparty & Legal Entities
+party-description = Manage Counterparty & Legal Entities configuration and operational workflows
+party-empty = No records found
+party-save = Save
+party-cancel = Cancel
+party-success = Operation completed successfully
+party-error = An error occurred
+party-search-placeholder = Search Counterparty & Legal Entities records...
+party-col-title = Title
+party-col-status = Status
+party-col-created = Created At
+party-col-actions = Actions
+party-action-create = Create New
+party-action-edit = Edit
+party-action-delete = Delete

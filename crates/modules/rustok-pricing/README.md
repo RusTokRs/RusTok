@@ -84,7 +84,7 @@
 - `rustok-pricing-admin`
 - `PricingView`
 
-See also `docs/README.md`.
+See also `docs/README.md` and [CRATE_API.md](CRATE_API.md).
 
 ## Pricing public error continuation (2026-10-18)
 

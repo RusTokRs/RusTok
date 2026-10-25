@@ -54,13 +54,10 @@ for (const fragment of contract.forbidden_source_fragments) {
 }
 
 for (const fragment of [
-  'rustok-reactions-api = { path = "../rustok-reactions-api" }',
-  "rustok-notifications-api.workspace = true",
+  'rustok-reactions = { workspace = true, default-features = false }',
+  "rustok-notifications.workspace = true",
 ]) {
   if (!forumCargo.includes(fragment)) fail(`Forum Cargo boundary is missing ${fragment}`);
-}
-if (/^rustok-reactions\s*=/mu.test(forumCargo)) {
-  fail("Forum must depend only on rustok-reactions-api, not the Reactions owner");
 }
 
 for (const fragment of [

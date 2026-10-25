@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::error::{DocsError, DocsResult};
+
 /// Representation of an append-only update item.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DocUpdateItemDto {
@@ -21,4 +23,27 @@ pub struct DocumentSyncDto {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApplyDeltaDto {
     pub deltas: Vec<Vec<u8>>,
+}
+
+impl ApplyDeltaDto {
+    pub fn validate(&self) -> DocsResult<()> {
+        if self.deltas.len() > 500 {
+            return Err(DocsError::Validation(
+                "Delta batch size cannot exceed 500 items".to_string(),
+            ));
+        }
+        for (idx, delta) in self.deltas.iter().enumerate() {
+            if delta.is_empty() {
+                return Err(DocsError::Validation(format!(
+                    "Delta item at index {idx} cannot be empty"
+                )));
+            }
+            if delta.len() > 10 * 1024 * 1024 {
+                return Err(DocsError::Validation(format!(
+                    "Delta item at index {idx} exceeds maximum size of 10MB"
+                )));
+            }
+        }
+        Ok(())
+    }
 }

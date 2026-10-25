@@ -35,6 +35,7 @@ const PAGE_TEMPLATE_KEYS_QUERY: &str = "query PageTemplateKeys($locale: String!)
 const PAGE_TEMPLATES_QUERY: &str = "query PageTemplates($locale: String!) { pageTemplates(locale: $locale) { key locale headerSymbolIds footerSymbolIds revision } }";
 const PREVIEW_PAGE_TEMPLATE_DOCUMENT_QUERY: &str = "query PreviewPageTemplateDocument($key: String!, $locale: String!, $document: String!) { previewPageTemplateDocument(key: $key, locale: $locale, document: $document) }";
 const SITE_SYMBOLS_QUERY: &str = "query SiteSymbols($locale: String!) { siteSymbols(locale: $locale) { symbolId locale name contentJson createdAt updatedAt } }";
+const SITE_SYMBOL_USAGE_QUERY: &str = "query SiteSymbolUsage($symbolId: String!, $locale: String!) { siteSymbolUsage(symbolId: $symbolId, locale: $locale) }";
 const SAVE_PAGE_TEMPLATE_MUTATION: &str = "mutation SavePageTemplate($key: String!, $locale: String!, $headerSymbolIds: [String!]!, $footerSymbolIds: [String!]!, $expectedRevision: Long) { savePageTemplate(key: $key, locale: $locale, headerSymbolIds: $headerSymbolIds, footerSymbolIds: $footerSymbolIds, expectedRevision: $expectedRevision) { key locale headerSymbolIds footerSymbolIds revision } }";
 const DELETE_PAGE_TEMPLATE_MUTATION: &str = "mutation DeletePageTemplate($key: String!, $locale: String!, $expectedRevision: Long!) { deletePageTemplate(key: $key, locale: $locale, expectedRevision: $expectedRevision) }";
 const SAVE_SITE_SYMBOL_MUTATION: &str = "mutation SaveSiteSymbol($input: SaveGqlSiteSymbolInput!) { saveSiteSymbol(input: $input) { symbolId locale name contentJson createdAt updatedAt } }";
@@ -1002,4 +1003,36 @@ pub async fn delete_site_symbol(
     )
     .await?;
     Ok(response.delete_site_symbol)
+}
+
+#[derive(Debug, Serialize)]
+struct SiteSymbolUsageVariables {
+    #[serde(rename = "symbolId")]
+    symbol_id: String,
+    locale: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SiteSymbolUsageResponse {
+    #[serde(rename = "siteSymbolUsage")]
+    site_symbol_usage: Vec<String>,
+}
+
+pub async fn fetch_site_symbol_usage(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    symbol_id: String,
+    locale: String,
+) -> Result<Vec<String>, ApiError> {
+    let response: SiteSymbolUsageResponse = request(
+        SITE_SYMBOL_USAGE_QUERY,
+        SiteSymbolUsageVariables {
+            symbol_id,
+            locale,
+        },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.site_symbol_usage)
 }

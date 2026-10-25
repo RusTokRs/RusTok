@@ -4,7 +4,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::HostRuntimeContext;
-use rustok_notifications_api::{
+use rustok_notifications::{
     AuthorizeNotificationTargetRequest, DescribeNotificationRequest, NotificationAudienceCandidate,
     NotificationAudienceCursor, NotificationAudiencePage, NotificationOpenAuthorization,
     NotificationPriority, NotificationProviderError, NotificationProviderResult,
@@ -141,7 +141,11 @@ impl NotificationSourceProvider for MessengerNotificationSourceProvider {
         } else {
             let trimmed = message.content.trim();
             if trimmed.is_empty() {
-                "Attachment received".to_string()
+                if message.blocks_json.is_some() {
+                    "Interactive message received".to_string()
+                } else {
+                    "Attachment received".to_string()
+                }
             } else if trimmed.chars().count() > 120 {
                 let truncated: String = trimmed.chars().take(120).collect();
                 format!("{truncated}...")
@@ -155,10 +159,8 @@ impl NotificationSourceProvider for MessengerNotificationSourceProvider {
         data.insert("message_id".to_string(), message.id.to_string());
         data.insert("sender_id".to_string(), message.sender_id.to_string());
         data.insert("message_preview".to_string(), preview);
-        if let Some(ref title) = conversation.title {
-            if !title.trim().is_empty() {
-                data.insert("conversation_title".to_string(), title.trim().to_string());
-            }
+        if let Some(title) = conversation.title.as_deref().filter(|t| !t.trim().is_empty()) {
+            data.insert("conversation_title".to_string(), title.trim().to_string());
         }
 
         let template_data = NotificationTemplateData::try_new(data)
@@ -196,6 +198,19 @@ impl NotificationSourceProvider for MessengerNotificationSourceProvider {
         }
 
         let conversation_id = request.descriptor.target.id;
+
+        // Tenant isolation: verify conversation belongs to event tenant
+        let conv_exists = conversation::Entity::find_by_id(conversation_id)
+            .filter(conversation::Column::TenantId.eq(request.event.tenant_id()))
+            .one(&self.db)
+            .await
+            .map_err(retryable_database_error)?
+            .is_some();
+
+        if !conv_exists {
+            return Ok(NotificationAudiencePage::empty());
+        }
+
         let actor_id = request.descriptor.actor_id;
         let now = Utc::now();
 
@@ -267,6 +282,10 @@ impl NotificationSourceProvider for MessengerNotificationSourceProvider {
         &self,
         request: AuthorizeNotificationTargetRequest,
     ) -> NotificationProviderResult<NotificationOpenAuthorization> {
+        if request.validate().is_err() {
+            return Ok(NotificationOpenAuthorization::Unavailable);
+        }
+
         if request.target.owner != messenger_source_slug()
             || request.target.kind != messenger_conversation_target_kind()
         {
@@ -274,6 +293,19 @@ impl NotificationSourceProvider for MessengerNotificationSourceProvider {
         }
 
         let conversation_id = request.target.id;
+
+        // Tenant isolation: verify conversation belongs to request tenant
+        let conv_exists = conversation::Entity::find_by_id(conversation_id)
+            .filter(conversation::Column::TenantId.eq(request.tenant_id))
+            .one(&self.db)
+            .await
+            .map_err(retryable_database_error)?
+            .is_some();
+
+        if !conv_exists {
+            return Ok(NotificationOpenAuthorization::Unavailable);
+        }
+
         let is_member = member::Entity::find()
             .filter(member::Column::ConversationId.eq(conversation_id))
             .filter(member::Column::UserId.eq(request.recipient_id))

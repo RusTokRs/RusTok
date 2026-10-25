@@ -358,3 +358,100 @@ impl MarketplaceAllocationReadPort for FakeAllocationReader {
         })
     }
 }
+
+#[tokio::test]
+async fn nil_uuid_inputs_are_rejected() {
+    let db = setup_database().await;
+    let allocation = Arc::new(FakeAllocationReader {
+        allocations: Vec::new(),
+        reads: AtomicUsize::new(0),
+    });
+    let service = MarketplaceCommissionService::new(db, allocation);
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+
+    // Nil tenant or actor in create_rule_version_with_receipt
+    let rule_input = CreateMarketplaceCommissionRuleVersionInput {
+        rule_key: Uuid::new_v4(),
+        seller_id: None,
+        listing_id: None,
+        rate_bps: 1000,
+        fixed_amount: 0,
+        currency_code: None,
+        priority: 0,
+        effective_from: Utc::now().fixed_offset(),
+        effective_until: None,
+        status: MarketplaceCommissionRuleStatus::Active,
+        metadata: serde_json::json!({}),
+    };
+    assert!(
+        service
+            .create_rule_version_with_receipt(Uuid::nil(), actor_id, "key1", rule_input.clone())
+            .await
+            .is_err()
+    );
+    assert!(
+        service
+            .create_rule_version_with_receipt(tenant_id, Uuid::nil(), "key2", rule_input.clone())
+            .await
+            .is_err()
+    );
+
+    // Nil rule_key
+    let mut bad_rule = rule_input.clone();
+    bad_rule.rule_key = Uuid::nil();
+    assert!(
+        service
+            .create_rule_version_with_receipt(tenant_id, actor_id, "key3", bad_rule)
+            .await
+            .is_err()
+    );
+
+    // Nil tenant or order_id in assess_order_with_receipt
+    let ctx = port_context(tenant_id, actor_id, "assess-nil");
+    let assess_input = AssessMarketplaceOrderCommissionsInput {
+        order_id: Uuid::new_v4(),
+        assessed_at: Utc::now().fixed_offset(),
+    };
+    assert!(
+        service
+            .assess_order_with_receipt(ctx.clone(), Uuid::nil(), actor_id, "k4", assess_input.clone())
+            .await
+            .is_err()
+    );
+    let mut bad_assess = assess_input.clone();
+    bad_assess.order_id = Uuid::nil();
+    assert!(
+        service
+            .assess_order_with_receipt(ctx.clone(), tenant_id, actor_id, "k5", bad_assess)
+            .await
+            .is_err()
+    );
+
+    // Read methods reject nil UUIDs
+    assert!(service.get_assessment_by_allocation(Uuid::nil(), Uuid::new_v4()).await.is_err());
+    assert!(service.get_assessment_by_allocation(tenant_id, Uuid::nil()).await.is_err());
+    assert!(service.list_assessments_by_order(Uuid::nil(), Uuid::new_v4()).await.is_err());
+    assert!(service.list_assessments_by_order(tenant_id, Uuid::nil()).await.is_err());
+    assert!(service.list_assessments_by_seller(Uuid::nil(), crate::dto::ListMarketplaceCommissionAssessmentsBySellerRequest {
+        seller_id: Uuid::new_v4(),
+        page: 1,
+        per_page: 10,
+        status: None,
+    }).await.is_err());
+    assert!(service.list_assessments_by_seller(tenant_id, crate::dto::ListMarketplaceCommissionAssessmentsBySellerRequest {
+        seller_id: Uuid::nil(),
+        page: 1,
+        per_page: 10,
+        status: None,
+    }).await.is_err());
+    assert!(service.list_rules(Uuid::nil(), crate::dto::ListMarketplaceCommissionRulesRequest {
+        rule_key: None,
+        seller_id: None,
+        listing_id: None,
+        status: None,
+        page: 1,
+        per_page: 10,
+    }).await.is_err());
+}
+

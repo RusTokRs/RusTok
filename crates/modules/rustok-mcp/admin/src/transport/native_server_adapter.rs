@@ -161,7 +161,7 @@ pub async fn mcp_client_details_native(
 ) -> Result<Option<McpClientDetailsPayload>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let client_id = uuid::Uuid::parse_str(&client_id).map_err(ServerFnError::new)?;
+        let client_id = parse_non_nil_uuid(&client_id, "client_id")?;
         let (db, auth) = mcp_native_context().await?;
         ensure_mcp_read(&auth)?;
         get_client_details(&db, auth.tenant_id, client_id).await
@@ -234,8 +234,7 @@ pub async fn mcp_rotate_token_native(
             .rotate_token(
                 &context,
                 rustok_mcp::RotateMcpTokenCommand {
-                    client_id: uuid::Uuid::parse_str(&input.client_id)
-                        .map_err(ServerFnError::new)?,
+                    client_id: parse_non_nil_uuid(&input.client_id, "client_id")?,
                     token_name: optional_string(input.token_name),
                     expires_at: optional_string(input.expires_at),
                     revoke_existing_tokens: input.revoke_existing_tokens,
@@ -269,8 +268,7 @@ pub async fn mcp_update_policy_native(input: UpdateMcpPolicyPayload) -> Result<(
             .update_policy(
                 &context,
                 rustok_mcp::UpdateMcpPolicyCommand {
-                    client_id: uuid::Uuid::parse_str(&input.client_id)
-                        .map_err(ServerFnError::new)?,
+                    client_id: parse_non_nil_uuid(&input.client_id, "client_id")?,
                     allowed_tools: input.allowed_tools,
                     denied_tools: input.denied_tools,
                     granted_permissions: input.granted_permissions,
@@ -307,7 +305,7 @@ pub async fn mcp_revoke_token_native(
             .port()
             .revoke_token(
                 &context,
-                uuid::Uuid::parse_str(&token_id).map_err(ServerFnError::new)?,
+                parse_non_nil_uuid(&token_id, "token_id")?,
                 optional_string(reason),
             )
             .await
@@ -338,7 +336,7 @@ pub async fn mcp_deactivate_client_native(
             .port()
             .deactivate_client(
                 &context,
-                uuid::Uuid::parse_str(&client_id).map_err(ServerFnError::new)?,
+                parse_non_nil_uuid(&client_id, "client_id")?,
                 optional_string(reason),
             )
             .await
@@ -366,7 +364,7 @@ pub async fn mcp_stage_scaffold_draft_native(
         let (context, runtime) = mcp_mutation_context().await?;
         let client_id = input
             .client_id
-            .map(|value| uuid::Uuid::parse_str(&value).map_err(ServerFnError::new))
+            .map(|value| parse_non_nil_uuid(&value, "client_id"))
             .transpose()?;
         runtime
             .port()
@@ -414,7 +412,7 @@ pub async fn mcp_apply_scaffold_draft_native(
             .apply_scaffold_draft(
                 &context,
                 rustok_mcp::ApplyMcpScaffoldDraftCommand {
-                    draft_id: uuid::Uuid::parse_str(&input.draft_id).map_err(ServerFnError::new)?,
+                    draft_id: parse_non_nil_uuid(&input.draft_id, "draft_id")?,
                     workspace_root: input.workspace_root,
                     confirm: input.confirm,
                 },
@@ -438,6 +436,9 @@ async fn mcp_native_context()
     let auth = leptos_axum::extract::<rustok_api::AuthContext>()
         .await
         .map_err(ServerFnError::new)?;
+    if auth.tenant_id.is_nil() || auth.user_id.is_nil() {
+        return Err(ServerFnError::new("Unauthorized: tenant_id or user_id is nil"));
+    }
     let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
     Ok((runtime_ctx.db_clone(), auth))
 }
@@ -479,6 +480,9 @@ async fn mcp_mutation_context() -> Result<
     let auth = leptos_axum::extract::<rustok_api::AuthContext>()
         .await
         .map_err(ServerFnError::new)?;
+    if auth.tenant_id.is_nil() || auth.user_id.is_nil() {
+        return Err(ServerFnError::new("Unauthorized: tenant_id or user_id is nil"));
+    }
     ensure_mcp_manage(&auth)?;
     let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
     let extensions = runtime_ctx
@@ -499,6 +503,17 @@ async fn mcp_mutation_context() -> Result<
         },
         runtime,
     ))
+}
+
+#[cfg(feature = "ssr")]
+fn parse_non_nil_uuid(value: &str, field_name: &str) -> Result<uuid::Uuid, ServerFnError> {
+    let id = uuid::Uuid::parse_str(value.trim()).map_err(ServerFnError::new)?;
+    if id.is_nil() {
+        return Err(ServerFnError::new(format!(
+            "{field_name} cannot be empty (nil UUID)"
+        )));
+    }
+    Ok(id)
 }
 
 #[cfg(feature = "ssr")]

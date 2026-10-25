@@ -251,3 +251,8 @@ RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379 \
 
 The focused cache workflow runs formatting, compile, targeted tests, Clippy, module gates and
 isolated Redis 7 integration tests. Do not claim atomic CAS verified until those jobs complete.
+
+## Docs
+
+- [CRATE_API.md](CRATE_API.md)
+- [Platform docs index](../../../docs/index.md)

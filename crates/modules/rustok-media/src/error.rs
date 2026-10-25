@@ -51,6 +51,9 @@ pub enum MediaError {
     #[error("Media asset {0} is still retained by an owner reference")]
     AssetReferenced(Uuid),
 
+    #[error("Tenant ID cannot be nil")]
+    NilTenantId,
+
     #[error("Media asset reference identity is invalid")]
     InvalidAssetReferenceId,
 
@@ -101,6 +104,7 @@ impl From<MediaError> for rustok_core::Error {
             | MediaError::InvalidOwnerModule(_)
             | MediaError::AssetReferenceNotAdmissible(_)
             | MediaError::AssetReferenced(_)
+            | MediaError::NilTenantId
             | MediaError::InvalidAssetReferenceId
             | MediaError::RenditionInProgress(_)
             | MediaError::UploadSessionExpired(_) => Self::Validation(err.to_string()),
@@ -141,6 +145,10 @@ mod tests {
 
         let invalid = MediaError::InvalidAssetReferenceId;
         let core_err: rustok_core::Error = invalid.into();
+        assert!(matches!(core_err, rustok_core::Error::Validation(_)));
+
+        let nil_tenant = MediaError::NilTenantId;
+        let core_err: rustok_core::Error = nil_tenant.into();
         assert!(matches!(core_err, rustok_core::Error::Validation(_)));
     }
 }

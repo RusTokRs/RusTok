@@ -5,10 +5,11 @@ use rustok_api::{PortCallPolicy, PortContext, PortError};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use rustok_comments_api::{
-    CommentListItem, CommentRecord, CommentsThreadPort, CreateCommentInput, ListCommentsFilter,
+use crate::dto::{
+    CommentListItem, CommentRecord, CreateCommentInput, ListCommentsFilter,
     SetCommentStatusRequest, UpdateCommentInput,
 };
+use crate::ports::CommentsThreadPort;
 
 /// Transport-neutral wire request for a remote `CommentsThreadPort` provider.
 ///

@@ -75,6 +75,17 @@ impl ContentProviderRegistry {
         since: Option<DateTime<Utc>>,
         limit_per_source: usize,
     ) -> Result<Vec<NewsletterContentItem>, crate::NewsletterApiError> {
+        if tenant_id.is_nil() {
+            return Err(crate::NewsletterApiError::ContentFetchFailed(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        let limit = limit_per_source.clamp(1, 100);
+        let locale = locale
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from);
         let mut all_items = Vec::new();
         for slug in source_slugs {
             if let Some(provider) = self.find(slug) {
@@ -83,7 +94,7 @@ impl ContentProviderRegistry {
                     source_slug: slug.clone(),
                     locale: locale.clone(),
                     since,
-                    limit: limit_per_source,
+                    limit,
                 };
                 let items = provider.fetch_content(req).await?;
                 all_items.extend(items);

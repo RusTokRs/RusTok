@@ -1,9 +1,9 @@
 use async_trait::async_trait;
-use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError};
+use rustok_api::{PortCallPolicy, PortContext, PortError};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::ports::map_owner_error;
+use crate::ports::{map_owner_error, parse_tenant_id, validate_source_actor};
 use crate::{SocialGraphPairRequest, SocialGraphService, SocialRelationKind};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -30,13 +30,8 @@ impl SocialGraphFollowReadPort for SocialGraphService {
         request: SocialGraphPairRequest,
     ) -> Result<SocialGraphFollowState, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        request.validate()?;
         validate_source_actor(&context, request.source_user_id)?;
-        if request.source_user_id == request.target_user_id {
-            return Err(PortError::validation(
-                "social_graph.self_relation",
-                "social graph relation cannot target the source user",
-            ));
-        }
 
         let relation = self
             .relation_state(
@@ -56,23 +51,20 @@ impl SocialGraphFollowReadPort for SocialGraphService {
     }
 }
 
-fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
-        PortError::validation(
-            "social_graph.tenant_id_invalid",
-            "social graph ports require a valid tenant identifier",
-        )
-    })
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-fn validate_source_actor(context: &PortContext, source_user_id: Uuid) -> Result<(), PortError> {
-    if matches!(&context.actor.kind, PortActorKind::User)
-        && Uuid::parse_str(&context.actor.id).ok() != Some(source_user_id)
-    {
-        return Err(PortError::forbidden(
-            "social_graph.source_actor_mismatch",
-            "user actors may mutate or read only relations they own",
-        ));
+    #[test]
+    fn follow_state_construction() {
+        let target = Uuid::new_v4();
+        let state = SocialGraphFollowState {
+            target_user_id: target,
+            following: true,
+            revision: Some(42),
+        };
+        assert_eq!(state.target_user_id, target);
+        assert!(state.following);
+        assert_eq!(state.revision, Some(42));
     }
-    Ok(())
 }

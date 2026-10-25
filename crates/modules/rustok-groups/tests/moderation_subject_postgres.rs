@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use rustok_api::{HostRuntimeContext, PortActor, PortContext, PortErrorKind};
 use rustok_core::MigrationSource;
 use rustok_groups::{GroupsModerationSubjectAdapterFactory, GroupsModule};
-use rustok_moderation_api::{
+use rustok_moderation::{
     ApplyModerationDecisionCommand, ModerationDecisionEffect, ModerationDecisionEffectAction,
     ModerationDecisionKind, ModerationReasonCode, ModerationScopeKind, ModerationScopeRef,
     ModerationSubjectAdapterFactory, ModerationSubjectCommandPort, ModerationSubjectKind,

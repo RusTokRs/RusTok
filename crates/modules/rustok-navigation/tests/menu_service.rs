@@ -174,3 +174,82 @@ async fn sqlite_rejects_cross_tenant_menu_item_translation() {
         "DB trigger must reject cross-tenant menu item copy"
     );
 }
+
+#[tokio::test]
+async fn test_navigation_nil_uuid_and_bounds_guards() {
+    let (db, service, tenant_id) = setup().await;
+    let binding_service = rustok_navigation::MenuBindingService::new(db);
+
+    // Nil tenant ID in create
+    let err = service
+        .create(
+            Uuid::nil(),
+            SecurityContext::system(),
+            "en",
+            localized_menu(),
+        )
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("Tenant ID must not be nil"));
+
+    // Nil tenant ID in get
+    let err = service
+        .get(Uuid::nil(), SecurityContext::system(), Uuid::new_v4(), "en")
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("Tenant ID must not be nil"));
+
+    // Nil menu ID in get
+    let err = service
+        .get(tenant_id, SecurityContext::system(), Uuid::nil(), "en")
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("Menu ID must not be nil"));
+
+    // Negative position
+    let mut menu_input = localized_menu();
+    menu_input.items[0].position = -1;
+    let err = service
+        .create(tenant_id, SecurityContext::system(), "en", menu_input)
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("position cannot be negative"));
+
+    // Nil checks in MenuBindingService
+    let err = binding_service
+        .bind(
+            Uuid::nil(),
+            SecurityContext::system(),
+            Uuid::new_v4(),
+            MenuLocation::Header,
+            Uuid::new_v4(),
+        )
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("Tenant ID must not be nil"));
+
+    let err = binding_service
+        .bind(
+            tenant_id,
+            SecurityContext::system(),
+            Uuid::nil(),
+            MenuLocation::Header,
+            Uuid::new_v4(),
+        )
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("Channel ID must not be nil"));
+
+    let err = binding_service
+        .bind(
+            tenant_id,
+            SecurityContext::system(),
+            Uuid::new_v4(),
+            MenuLocation::Header,
+            Uuid::nil(),
+        )
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("Menu ID must not be nil"));
+}
+

@@ -34,6 +34,13 @@ mod-accounting = ["dep:rustok-accounting"]
 mod-moderation = ["dep:rustok-moderation"]
 mod-content = ["dep:rustok-content", "rustok-content/graphql", "rustok-content-orchestration/mod-content"]
 mod-blog = ["dep:rustok-blog", "dep:rustok-content", "mod-content", "mod-taxonomy", "rustok-content-orchestration/mod-blog"]
+mod-tasks = ["dep:rustok-tasks"]
+mod-calendar = ["dep:rustok-calendar"]
+mod-calls = ["dep:rustok-calls"]
+mod-finance = ["dep:rustok-finance"]
+mod-billing = ["dep:rustok-billing"]
+mod-deal = ["dep:rustok-deal"]
+mod-party = ["dep:rustok-party"]
 mod-reactions = ["dep:rustok-reactions"]
 mod-forum = ["dep:rustok-forum", "mod-content", "mod-taxonomy", "mod-page_builder", "rustok-content-orchestration/mod-forum"]
 mod-notifications = ["dep:rustok-notifications"]
@@ -56,6 +63,13 @@ mod-ai = ["dep:rustok-ai", "rustok-ai/server"]
 ai-translation = ["mod-ai", "mod-translation", "dep:rustok-ai-translation"]
 
 [dependencies]
+rustok-tasks = { workspace = true, optional = true }
+rustok-calendar = { workspace = true, optional = true }
+rustok-calls = { workspace = true, optional = true }
+rustok-finance = { workspace = true, optional = true }
+rustok-billing = { workspace = true, optional = true }
+rustok-deal = { workspace = true, optional = true }
+rustok-party = { workspace = true, optional = true }
 async-trait.workspace = true
 chrono = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
@@ -81,7 +95,7 @@ rustok-product = { workspace = true, optional = true }
 rustok-product-relations = { workspace = true, optional = true }
 rustok-brand = { workspace = true, optional = true }
 rustok-product-bundles = { workspace = true, optional = true }
-rustok-profiles = { workspace = true, optional = true }
+rustok-profiles = { workspace = true, optional = true, features = ["server"] }
 rustok-social-graph = { path = "../rustok-social-graph" }
 rustok-groups = { path = "../rustok-groups", optional = true }
 rustok-region = { workspace = true, optional = true }
@@ -99,7 +113,7 @@ rustok-marketplace-balance = { workspace = true, optional = true }
 rustok-marketplace-payout = { workspace = true, optional = true }
 rustok-marketplace = { workspace = true, optional = true }
 rustok-accounting = { workspace = true, optional = true }
-rustok-moderation = { workspace = true, optional = true }
+rustok-moderation = { workspace = true, optional = true, features = ["server"] }
 rustok-content = { workspace = true, optional = true }
 rustok-content-orchestration.workspace = true
 rustok-blog = { workspace = true, optional = true }

@@ -210,6 +210,7 @@ Each one has a follow-up task in
 
 ## Docs
 
+- [CRATE_API.md](CRATE_API.md)
 - [Module docs](./docs/README.md)
 - [Implementation plan](./docs/implementation-plan.md)
 - [Platform docs index](../../../docs/index.md)

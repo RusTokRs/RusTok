@@ -1,34 +1,72 @@
+pub mod keys;
+pub mod model;
+pub mod provider;
+pub mod reconciliation;
+
+#[cfg(feature = "server")]
+pub mod domain;
+#[cfg(feature = "server")]
 mod candidate;
+#[cfg(feature = "server")]
 pub mod entities;
+#[cfg(feature = "server")]
 pub mod error;
+#[cfg(feature = "server")]
 mod fanout;
+#[cfg(feature = "server")]
 mod fanout_worker;
 #[cfg(feature = "server")]
 pub mod graphql;
+#[cfg(feature = "server")]
 mod inbox;
+#[cfg(feature = "server")]
 mod inbox_bulk;
+#[cfg(feature = "server")]
 mod inbox_count;
+#[cfg(feature = "server")]
 mod inbox_group;
+#[cfg(feature = "server")]
 mod inbox_group_state;
+#[cfg(feature = "server")]
 mod inbox_group_summary;
+#[cfg(feature = "server")]
 mod inbox_reconcile;
+#[cfg(feature = "server")]
 mod inbox_selected;
+#[cfg(feature = "server")]
 mod inbox_state;
+#[cfg(feature = "server")]
 mod inbox_storefront_port;
+#[cfg(feature = "server")]
 pub mod migrations;
-pub mod model;
+#[cfg(feature = "server")]
+pub mod module;
+#[cfg(feature = "server")]
 mod outbox_intake;
+#[cfg(feature = "server")]
 mod recipient_policy;
+#[cfg(feature = "server")]
 mod service;
+#[cfg(feature = "server")]
 mod worker;
 
-use async_trait::async_trait;
-use std::sync::Arc;
+#[cfg(test)]
+mod contract_tests;
 
-use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
-use rustok_notifications_api::ensure_notification_source_registry;
-use sea_orm_migration::MigrationTrait;
+pub use keys::*;
+pub use model::*;
+pub use provider::*;
+pub use reconciliation::*;
 
+pub mod api {
+    pub use crate::keys::*;
+    pub use crate::model::*;
+    pub use crate::provider::*;
+    pub use crate::reconciliation::*;
+    pub use rustok_api::{PortContext, PortError};
+}
+
+#[cfg(feature = "server")]
 pub use candidate::{
     NotificationCandidateProcessResult, NotificationCandidateService, NotificationRecipientPolicy,
     NotificationRecipientPolicyDecision, NotificationRecipientPolicyError,
@@ -36,10 +74,13 @@ pub use candidate::{
     NotificationTenantCapabilityCommitDecision, NotificationTenantCapabilityCommitError,
     NotificationTenantCapabilityCommitGuard, NotificationTenantCapabilityCommitRequest,
 };
+#[cfg(feature = "server")]
 pub use error::{NotificationError, NotificationResult};
+#[cfg(feature = "server")]
 pub use fanout::{
     NotificationFanoutPageResult, NotificationFanoutService, NotificationSourceInboxReceipt,
 };
+#[cfg(feature = "server")]
 pub use fanout_worker::{
     DEFAULT_NOTIFICATION_FANOUT_BATCH_SIZE, DEFAULT_NOTIFICATION_FANOUT_PAGE_SIZE,
     MAX_NOTIFICATION_FANOUT_BATCH_SIZE, MAX_NOTIFICATION_FANOUT_PAGE_SIZE,
@@ -53,12 +94,14 @@ pub use graphql::{
     GqlNotificationInboxGroupStateAction, GqlNotificationInboxGroupStatePage,
     GqlNotificationInboxUnreadCount, NotificationsMutation, NotificationsQuery,
 };
+#[cfg(feature = "server")]
 pub use inbox::{
     DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE, MAX_NOTIFICATION_INBOX_CURSOR_BYTES,
     MAX_NOTIFICATION_INBOX_PAGE_SIZE, NotificationInboxItem, NotificationInboxListRequest,
     NotificationInboxListService, NotificationInboxOpenDecision, NotificationInboxOpenRequest,
     NotificationInboxOpenService, NotificationInboxPage,
 };
+#[cfg(feature = "server")]
 pub use inbox_bulk::{
     NotificationInboxMarkAllArchivePage, NotificationInboxMarkAllArchiveRequest,
     NotificationInboxMarkAllArchiveService, NotificationInboxMarkAllReadPage,
@@ -66,42 +109,50 @@ pub use inbox_bulk::{
     NotificationInboxMarkAllUnreadPage, NotificationInboxMarkAllUnreadRequest,
     NotificationInboxMarkAllUnreadService,
 };
+#[cfg(feature = "server")]
 pub use inbox_count::{
     NotificationInboxUnreadCount, NotificationInboxUnreadCountRequest,
     NotificationInboxUnreadCountService,
 };
+#[cfg(feature = "server")]
 pub use inbox_group::{
     MAX_NOTIFICATION_INBOX_GROUP_KEY_BYTES, NotificationInboxGroupListRequest,
     NotificationInboxGroupListService,
 };
+#[cfg(feature = "server")]
 pub use inbox_group_state::{
     NotificationInboxGroupStateAction, NotificationInboxGroupStatePage,
     NotificationInboxGroupStateRequest, NotificationInboxGroupStateService,
 };
+#[cfg(feature = "server")]
 pub use inbox_group_summary::{
     NotificationInboxGroupSummary, NotificationInboxGroupSummaryPage,
     NotificationInboxGroupSummaryRequest, NotificationInboxGroupSummaryService,
 };
-use inbox_reconcile::NotificationInboxReconciliationInspectPortFactoryImpl;
+#[cfg(feature = "server")]
 pub use inbox_reconcile::{
     NotificationInboxReconcileInspectionPage, NotificationInboxReconcilePage,
     NotificationInboxReconcileRequest, NotificationInboxReconcileService,
 };
+#[cfg(feature = "server")]
 pub use inbox_selected::{
     MAX_NOTIFICATION_INBOX_SELECTED_IDS, NotificationInboxSelectedAction,
     NotificationInboxSelectedStateRequest, NotificationInboxSelectedStateResult,
     NotificationInboxSelectedStateService,
 };
+#[cfg(feature = "server")]
 pub use inbox_state::{
     NotificationInboxStateDecision, NotificationInboxStateRequest, NotificationInboxStateService,
     NotificationInboxStateSnapshot,
 };
+#[cfg(feature = "server")]
 pub use inbox_storefront_port::{
     NotificationInboxStorefrontGroupItemsRequest, NotificationInboxStorefrontGroupStateRequest,
     NotificationInboxStorefrontGroupSummaryRequest, NotificationInboxStorefrontOpenDecision,
     NotificationInboxStorefrontOpenRequest, NotificationInboxStorefrontPort,
     NotificationInboxStorefrontService, in_process_notification_inbox_storefront_port,
 };
+#[cfg(feature = "server")]
 pub use outbox_intake::{
     DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE, MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE,
     NotificationOutboxEnvelopeDecoder, NotificationOutboxEnvelopeRecord,
@@ -109,108 +160,19 @@ pub use outbox_intake::{
     NotificationOutboxIntakeOutcome, NotificationOutboxIntakeRejection,
     NotificationOutboxIntakeResult, NotificationOutboxIntakeWorker,
 };
+#[cfg(feature = "server")]
 pub use recipient_policy::{
     NotificationBlockReadPort, NotificationBlockReadRuntime, NotificationMuteReadPort,
     NotificationMuteReadRuntime, NotificationRecipientPolicyRuntime,
     NotificationRelationPolicyRequest,
 };
-pub use rustok_notifications_api as api;
+#[cfg(feature = "server")]
 pub use service::NotificationsService;
+#[cfg(feature = "server")]
 pub use worker::{
     DEFAULT_NOTIFICATION_CANDIDATE_BATCH_SIZE, MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE,
     NotificationCandidateBatchResult, NotificationCandidatePolicyDeferral,
     NotificationCandidateWorkItem, NotificationCandidateWorker, NotificationCandidateWorkerFailure,
 };
-
-pub struct NotificationsModule;
-
-#[async_trait]
-impl RusToKModule for NotificationsModule {
-    fn slug(&self) -> &'static str {
-        "notifications"
-    }
-
-    fn name(&self) -> &'static str {
-        "Notifications"
-    }
-
-    fn description(&self) -> &'static str {
-        "Notification inbox, preferences, bounded fan-out, grouping, digests, and delivery orchestration"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn dependencies(&self) -> &[&'static str] {
-        &["outbox"]
-    }
-
-    fn register_runtime_extensions(
-        &self,
-        extensions: &mut ModuleRuntimeExtensions,
-    ) -> rustok_core::Result<()> {
-        let _ = ensure_notification_source_registry(extensions);
-        if extensions.contains::<
-            Arc<dyn rustok_notifications_api::NotificationInboxReconciliationInspectPortFactory>,
-        >() {
-            return Err(rustok_core::Error::Validation(
-                "notifications reconciliation inspection port factory is already registered"
-                    .to_string(),
-            ));
-        }
-        let factory: Arc<
-            dyn rustok_notifications_api::NotificationInboxReconciliationInspectPortFactory,
-        > = Arc::new(NotificationInboxReconciliationInspectPortFactoryImpl);
-        extensions.insert(factory);
-        Ok(())
-    }
-}
-
-impl MigrationSource for NotificationsModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-
-    fn migration_dependencies(&self) -> Vec<rustok_core::MigrationDependencyDescriptor> {
-        migrations::migration_dependencies()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-
-    use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
-    use rustok_notifications_api::{
-        NotificationInboxReconciliationInspectPortFactory,
-        notification_source_registry_from_extensions,
-    };
-
-    use super::{NotificationsModule, NotificationsService};
-
-    #[test]
-    fn module_initializes_source_registry_and_persistence_migrations() {
-        let module = NotificationsModule;
-        assert_eq!(module.slug(), "notifications");
-        assert_eq!(module.dependencies(), &["outbox"]);
-        assert_eq!(module.migrations().len(), 7);
-        assert_eq!(module.migration_dependencies().len(), 7);
-
-        let mut extensions = ModuleRuntimeExtensions::default();
-        module
-            .register_runtime_extensions(&mut extensions)
-            .expect("notification runtime extensions should initialize");
-        assert!(notification_source_registry_from_extensions(&extensions).is_some());
-        assert!(
-            extensions
-                .get::<Arc<dyn NotificationInboxReconciliationInspectPortFactory>>()
-                .is_some()
-        );
-        assert!(module.register_runtime_extensions(&mut extensions).is_err());
-
-        let service = NotificationsService::from_runtime_extensions(&extensions);
-        assert_eq!(service.source_count(), 0);
-        assert!(!service.has_sources());
-    }
-}
+#[cfg(feature = "server")]
+pub use module::NotificationsModule;

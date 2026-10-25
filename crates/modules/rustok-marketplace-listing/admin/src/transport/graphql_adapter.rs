@@ -209,13 +209,13 @@ pub async fn execute_command(
         MarketplaceListingAdminCommand::Create { draft } => (
             CREATE_MUTATION,
             serde_json::json!({
-                "idempotencyKey": idempotency_key,
+                "idempotencyKey": idempotency_key.trim(),
                 "input": {
-                    "sellerId": draft.seller_id,
-                    "masterVariantId": draft.master_variant_id,
-                    "sellerSku": draft.seller_sku,
-                    "marketSlug": draft.market_slug,
-                    "channelSlug": draft.channel_slug,
+                    "sellerId": draft.seller_id.trim(),
+                    "masterVariantId": draft.master_variant_id.trim(),
+                    "sellerSku": draft.seller_sku.trim(),
+                    "marketSlug": draft.market_slug.trim(),
+                    "channelSlug": draft.channel_slug.trim(),
                     "pricingReference": normalize_optional_text(draft.pricing_reference),
                     "inventoryReference": normalize_optional_text(draft.inventory_reference),
                     "fulfillmentProfileSlug": normalize_optional_text(draft.fulfillment_profile_slug),
@@ -226,8 +226,8 @@ pub async fn execute_command(
         MarketplaceListingAdminCommand::UpdateTerms { listing_id, draft } => (
             UPDATE_TERMS_MUTATION,
             serde_json::json!({
-                "idempotencyKey": idempotency_key,
-                "listingId": listing_id,
+                "idempotencyKey": idempotency_key.trim(),
+                "listingId": listing_id.trim(),
                 "input": {
                     "pricingReference": normalize_optional_text(draft.pricing_reference),
                     "inventoryReference": normalize_optional_text(draft.inventory_reference),
@@ -246,8 +246,8 @@ pub async fn execute_command(
         } => (
             REVIEW_MUTATION,
             serde_json::json!({
-                "idempotencyKey": idempotency_key,
-                "listingId": listing_id,
+                "idempotencyKey": idempotency_key.trim(),
+                "listingId": listing_id.trim(),
                 "approved": approved,
                 "note": normalize_optional_text(note),
             }),
@@ -258,9 +258,9 @@ pub async fn execute_command(
         MarketplaceListingAdminCommand::Suspend { listing_id, reason } => (
             SUSPEND_MUTATION,
             serde_json::json!({
-                "idempotencyKey": idempotency_key,
-                "listingId": listing_id,
-                "reason": reason,
+                "idempotencyKey": idempotency_key.trim(),
+                "listingId": listing_id.trim(),
+                "reason": reason.trim(),
             }),
         ),
         MarketplaceListingAdminCommand::Reactivate { listing_id } => (
@@ -356,8 +356,8 @@ impl From<EventWire> for MarketplaceListingAdminEvent {
 
 fn id_variables(idempotency_key: String, listing_id: String) -> serde_json::Value {
     serde_json::json!({
-        "idempotencyKey": idempotency_key,
-        "listingId": listing_id,
+        "idempotencyKey": idempotency_key.trim(),
+        "listingId": listing_id.trim(),
     })
 }
 

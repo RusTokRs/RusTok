@@ -60,7 +60,7 @@ mod validation;
 pub use action::{
     ActionMaterialization, AnimationKind, ComponentAction, ComponentForm,
     FLY_ACTION_DATA_ATTRIBUTE, FLY_ACTION_FIELD, FLY_ACTION_KIND_ATTRIBUTE, FLY_FORM_FIELD,
-    FormEncoding, FormMethod, FormProviderEndpointResolver, VisibilityMode,
+    FormEncoding, FormMethod, FormProviderEndpointResolver, SlideDirection, VisibilityMode,
     materialize_component_actions, materialize_component_actions_with_providers,
     validate_component_actions,
 };

@@ -17,7 +17,7 @@ use rustok_forum::{
     UpdateForumSubscriptionInput,
 };
 use rustok_notifications::NotificationsModule;
-use rustok_notifications_api::{
+use rustok_notifications::{
     AuthorizeNotificationTargetRequest, DescribeNotificationRequest, NotificationAudienceCursor,
     NotificationOpenAuthorization, NotificationProviderError, NotificationSourceEventRef,
     NotificationSourceSlug, NotificationTargetKind, NotificationTargetRef, NotificationTypeKey,

@@ -20,7 +20,7 @@ use rustok_forum::{
     TopicService,
 };
 use rustok_notifications::NotificationsModule;
-use rustok_notifications_api::{
+use rustok_notifications::{
     AuthorizeNotificationTargetRequest, DescribeNotificationRequest, NotificationOpenAuthorization,
     NotificationSourceEventRef, ResolveNotificationAudienceRequest,
     materialize_notification_source_registry,

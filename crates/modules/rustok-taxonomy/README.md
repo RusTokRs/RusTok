@@ -4,6 +4,8 @@
 
 `rustok-taxonomy` owns the scope-aware taxonomy dictionary for RusToK.
 
+See [CRATE_API.md](CRATE_API.md) for the verified public crate API specification and platform capability bindings.
+
 ## Responsibilities
 
 - Provide tenant-scoped taxonomy terms that can be either shared across modules or limited to one module.

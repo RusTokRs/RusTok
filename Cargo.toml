@@ -22,13 +22,13 @@ members = [
     "crates/modules/*",
     "crates/modules/rustok-forms/admin",
     "crates/modules/rustok-seo/admin",
-    "crates/modules/rustok-seo/render",
     "crates/modules/rustok-seo/storefront",
     "crates/modules/rustok-seo/panel",
     "crates/modules/rustok-blog/admin",
     "crates/modules/rustok-ai/admin",
     "crates/modules/rustok-mcp/admin",
     "crates/modules/rustok-comments/admin",
+    "crates/modules/rustok-comments/storefront",
     "crates/modules/rustok-blog/storefront",
     "crates/modules/rustok-commerce/admin",
     "crates/modules/rustok-commerce/storefront",
@@ -54,6 +54,7 @@ members = [
     "crates/modules/rustok-profiles/cli",
     "crates/modules/rustok-auth/cli",
     "crates/modules/rustok-rbac/cli",
+    "crates/modules/rustok-social-graph/cli",
     "crates/modules/rustok-outbox/admin",
     "crates/modules/rustok-events-module",
     "crates/modules/rustok-events-module/admin",
@@ -67,6 +68,7 @@ members = [
     "crates/modules/rustok-pages/admin",
     "crates/modules/rustok-pages/storefront",
     "crates/modules/rustok-navigation/storefront",
+    "crates/modules/rustok-reactions/storefront",
     "crates/modules/rustok-page-builder/admin",
     "crates/modules/rustok-page-builder/storefront",
     "crates/modules/rustok-search/admin",
@@ -82,6 +84,15 @@ members = [
     "crates/modules/rustok-cache/admin",
     "crates/modules/rustok-product-relations/admin",
     "crates/modules/rustok-product-bundles/admin",
+    "crates/modules/rustok-party/admin",
+    "crates/modules/rustok-deal/admin",
+    "crates/modules/rustok-billing/admin",
+    "crates/modules/rustok-finance/admin",
+    "crates/modules/rustok-calls/admin",
+    "crates/modules/rustok-calls/storefront",
+    "crates/modules/rustok-calendar/admin",
+    "crates/modules/rustok-calendar/storefront",
+    "crates/modules/rustok-tasks/admin",
     "tests/e2e-rust",
     "UI/leptos",
     "ops/benches",
@@ -128,6 +139,13 @@ description = "High-performance, modular headless CMS and e-commerce platform bu
 repository = "https://github.com/RusTokRs/RusTok"
 
 [workspace.dependencies]
+rustok-tasks = { path = "crates/modules/rustok-tasks" }
+rustok-calendar = { path = "crates/modules/rustok-calendar" }
+rustok-calls = { path = "crates/modules/rustok-calls" }
+rustok-finance = { path = "crates/modules/rustok-finance" }
+rustok-billing = { path = "crates/modules/rustok-billing" }
+rustok-deal = { path = "crates/modules/rustok-deal" }
+rustok-party = { path = "crates/modules/rustok-party" }
 # Async Runtime
 tokio = { version = "1.52", features = ["full"] }
 
@@ -309,7 +327,7 @@ rustok-marketplace-commission = { path = "crates/modules/rustok-marketplace-comm
 rustok-marketplace-balance = { path = "crates/modules/rustok-marketplace-balance" }
 rustok-marketplace-payout = { path = "crates/modules/rustok-marketplace-payout" }
 rustok-accounting = { path = "crates/modules/rustok-accounting" }
-rustok-moderation = { path = "crates/modules/rustok-moderation" }
+rustok-moderation = { path = "crates/modules/rustok-moderation", default-features = false }
 rustok-cart = { path = "crates/modules/rustok-cart" }
 rustok-cart-storefront = { path = "crates/modules/rustok-cart/storefront" }
 rustok-customer = { path = "crates/modules/rustok-customer" }
@@ -320,11 +338,9 @@ rustok-brand = { path = "crates/modules/rustok-brand" }
 rustok-brand-admin = { path = "crates/modules/rustok-brand/admin" }
 rustok-product-bundles = { path = "crates/modules/rustok-product-bundles" }
 rustok-product-bundles-admin = { path = "crates/modules/rustok-product-bundles/admin" }
-rustok-profiles = { path = "crates/modules/rustok-profiles" }
-rustok-profiles-api = { path = "crates/modules/rustok-profiles-api" }
+rustok-profiles = { path = "crates/modules/rustok-profiles", default-features = false }
 rustok-social-graph = { path = "crates/modules/rustok-social-graph" }
 rustok-comments = { path = "crates/modules/rustok-comments", default-features = false }
-rustok-comments-api = { path = "crates/modules/rustok-comments-api" }
 rustok-region = { path = "crates/modules/rustok-region" }
 rustok-pricing = { path = "crates/modules/rustok-pricing" }
 rustok-pricing-persistence = { path = "crates/modules/rustok-pricing-persistence" }
@@ -338,8 +354,8 @@ rustok-fulfillment = { path = "crates/modules/rustok-fulfillment" }
 rustok-fulfillment-storefront = { path = "crates/modules/rustok-fulfillment/storefront" }
 rustok-blog = { path = "crates/modules/rustok-blog" }
 rustok-content = { path = "crates/modules/rustok-content" }
-rustok-content-portability-api = { path = "crates/libs/rustok-content-portability-api" }
 rustok-content-portability = { path = "crates/libs/rustok-content-portability" }
+rustok-reactions = { path = "crates/modules/rustok-reactions", default-features = false }
 rustok-content-orchestration = { path = "crates/modules/rustok-content-orchestration" }
 rustok-pages = { path = "crates/modules/rustok-pages" }
 rustok-docs = { path = "crates/modules/rustok-docs" }
@@ -353,7 +369,6 @@ rustok-seo = { path = "crates/modules/rustok-seo" }
 rustok-seo-targets = { path = "crates/modules/rustok-seo-targets" }
 rustok-translation-targets = { path = "crates/modules/rustok-translation-targets" }
 rustok-translation = { path = "crates/modules/rustok-translation" }
-rustok-seo-render = { path = "crates/modules/rustok-seo/render" }
 rustok-seo-storefront = { path = "crates/modules/rustok-seo/storefront" }
 rustok-seo-panel = { path = "crates/modules/rustok-seo/panel" }
 rustok-auth = { path = "crates/modules/rustok-auth" }
@@ -431,7 +446,7 @@ rustok-media = { path = "crates/modules/rustok-media" }
 rustok-media-transport = { path = "crates/modules/rustok-media-transport" }
 rustok-media-cli = { path = "crates/modules/rustok-media/cli" }
 rustok-profiles-cli = { path = "crates/modules/rustok-profiles/cli" }
-rustok-social-graph-cli = { path = "crates/modules/rustok-social-graph-cli" }
+rustok-social-graph-cli = { path = "crates/modules/rustok-social-graph/cli" }
 rustok-auth-cli = { path = "crates/modules/rustok-auth/cli" }
 rustok-rbac-cli = { path = "crates/modules/rustok-rbac/cli" }
 flex = { path = "crates/modules/flex" }

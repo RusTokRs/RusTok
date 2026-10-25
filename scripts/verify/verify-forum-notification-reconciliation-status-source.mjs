@@ -25,7 +25,7 @@ function requireAbsent(text, marker, message) {
 
 const ownerPath = "crates/modules/rustok-notifications/src/inbox_reconcile.rs";
 const surfacePath = "crates/modules/rustok-notifications/src/lib.rs";
-const apiPath = "crates/modules/rustok-notifications-api/src/reconciliation.rs";
+const apiPath = "crates/modules/rustok-notifications/src/reconciliation.rs";
 const forumQueryPath = "crates/modules/rustok-forum/src/graphql/reconciliation_query.rs";
 const forumRuntimePath = "crates/modules/rustok-forum/src/graphql/runtime_data.rs";
 const forumGraphqlModPath = "crates/modules/rustok-forum/src/graphql/mod.rs";

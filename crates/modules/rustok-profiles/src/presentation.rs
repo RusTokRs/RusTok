@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use rustok_api::PortError;
-use rustok_profiles_api::{
+use crate::api::{
     ProfileSummary as ApiProfileSummary, ProfileSummaryAudience, ProfileSummaryReadError,
     ProfileSummaryReader,
 };

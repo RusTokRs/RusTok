@@ -54,6 +54,14 @@ pub struct MediaListCardViewModel {
     pub storage_driver: String,
 }
 
+pub fn format_count_template(template: &str, count: impl std::fmt::Display) -> String {
+    let count_str = count.to_string();
+    template
+        .replace("{ $count }", &count_str)
+        .replace("{$count}", &count_str)
+        .replace("{count}", &count_str)
+}
+
 pub fn media_list_card_view_model(
     item: &MediaListItem,
     labels: MediaListCardLabels,
@@ -62,9 +70,7 @@ pub fn media_list_card_view_model(
         original_name: item.original_name.clone(),
         public_url: item.public_url.clone(),
         mime_type: item.mime_type.clone(),
-        size_label: labels
-            .bytes_template
-            .replace("{count}", &item.size.to_string()),
+        size_label: format_count_template(&labels.bytes_template, item.size),
         dimensions_label: media_dimensions_label(
             item.width,
             item.height,
@@ -132,7 +138,7 @@ pub fn media_detail_lines(
         },
         MediaDetailLineViewModel {
             label: labels.size,
-            value: bytes_template.replace("{count}", &item.size.to_string()),
+            value: format_count_template(bytes_template, item.size),
         },
         MediaDetailLineViewModel {
             label: labels.created,
@@ -148,23 +154,24 @@ pub fn non_empty_option(value: &str) -> Option<String> {
     normalize_ui_text(value)
 }
 
-/// Builds the asset dimensions label used by UI adapters. Missing partial
-/// dimensions intentionally fall back to the host-localized `not_available`
-/// label instead of exposing inconsistent `width × ?` strings.
+/// Builds the asset dimensions label used by UI adapters. Missing partial or
+/// non-positive dimensions intentionally fall back to the host-localized `not_available`
+/// label instead of exposing inconsistent `width × ?` or non-positive strings.
 pub fn media_dimensions_label(
     width: Option<i32>,
     height: Option<i32>,
     not_available: &str,
 ) -> String {
     width
-        .zip(height)
+        .filter(|w| *w > 0)
+        .zip(height.filter(|h| *h > 0))
         .map(|(width, height)| format!("{width}×{height}"))
         .unwrap_or_else(|| not_available.to_string())
 }
 
 /// Applies the admin pagination label template to a concrete page number.
 pub fn page_count_label(template: &str, page: i32) -> String {
-    template.replace("{count}", &page.to_string())
+    format_count_template(template, page)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -193,7 +200,7 @@ impl MediaTranslationFormState {
 
     pub fn to_upsert_payload(&self, locale: String) -> UpsertTranslationPayload {
         UpsertTranslationPayload {
-            locale,
+            locale: locale.trim().to_string(),
             title: non_empty_option(&self.title),
             alt_text: non_empty_option(&self.alt_text),
             caption: non_empty_option(&self.caption),
@@ -232,11 +239,11 @@ pub fn media_usage_stat_cards(
     [
         MediaUsageStatCard {
             label: labels.files,
-            value: snapshot.file_count.to_string(),
+            value: snapshot.file_count.max(0).to_string(),
         },
         MediaUsageStatCard {
             label: labels.total_bytes,
-            value: snapshot.total_bytes.to_string(),
+            value: snapshot.total_bytes.max(0).to_string(),
         },
         MediaUsageStatCard {
             label: labels.tenant,
@@ -334,18 +341,36 @@ mod tests {
     }
 
     #[test]
-    fn media_dimensions_label_requires_both_dimensions() {
+    fn media_dimensions_label_requires_positive_dimensions() {
         assert_eq!(
             media_dimensions_label(Some(640), Some(480), "n/a"),
             "640×480"
         );
         assert_eq!(media_dimensions_label(Some(640), None, "n/a"), "n/a");
         assert_eq!(media_dimensions_label(None, Some(480), "n/a"), "n/a");
+        assert_eq!(media_dimensions_label(Some(0), Some(480), "n/a"), "n/a");
+        assert_eq!(media_dimensions_label(Some(640), Some(-10), "n/a"), "n/a");
+    }
+
+    #[test]
+    fn format_count_template_handles_all_placeholder_variants() {
+        assert_eq!(format_count_template("Page {count}", 3), "Page 3");
+        assert_eq!(format_count_template("Page {$count}", 3), "Page 3");
+        assert_eq!(format_count_template("Page { $count }", 3), "Page 3");
+        assert_eq!(
+            format_count_template("Страница { $count }", 5),
+            "Страница 5"
+        );
+        assert_eq!(
+            format_count_template("{ $count } bytes", 1024),
+            "1024 bytes"
+        );
     }
 
     #[test]
     fn page_count_label_replaces_count_placeholder() {
         assert_eq!(page_count_label("Page {count}", 3), "Page 3");
+        assert_eq!(page_count_label("Page { $count }", 3), "Page 3");
     }
 
     #[test]
@@ -375,9 +400,9 @@ mod tests {
         };
 
         assert_eq!(
-            state.to_upsert_payload("en".to_string()),
+            state.to_upsert_payload("  en-US  ".to_string()),
             UpsertTranslationPayload {
-                locale: "en".to_string(),
+                locale: "en-US".to_string(),
                 title: Some("Title".to_string()),
                 alt_text: None,
                 caption: Some("Caption".to_string()),
@@ -386,7 +411,7 @@ mod tests {
     }
 
     #[test]
-    fn media_usage_stat_cards_preserve_label_order() {
+    fn media_usage_stat_cards_preserve_label_order_and_clamp_negatives() {
         let cards = media_usage_stat_cards(
             MediaUsageSnapshot {
                 tenant_id: "tenant-a".to_string(),
@@ -403,6 +428,21 @@ mod tests {
         assert_eq!(cards[0].value, "2");
         assert_eq!(cards[1].value, "2048");
         assert_eq!(cards[2].value, "tenant-a");
+
+        let clamped = media_usage_stat_cards(
+            MediaUsageSnapshot {
+                tenant_id: "tenant-b".to_string(),
+                file_count: -1,
+                total_bytes: -100,
+            },
+            MediaUsageLabels {
+                files: "Files".to_string(),
+                total_bytes: "Total".to_string(),
+                tenant: "Tenant".to_string(),
+            },
+        );
+        assert_eq!(clamped[0].value, "0");
+        assert_eq!(clamped[1].value, "0");
     }
 
     #[test]
@@ -410,7 +450,7 @@ mod tests {
         let vm = media_list_card_view_model(
             &media_item(),
             MediaListCardLabels {
-                bytes_template: "{count} bytes".to_string(),
+                bytes_template: "{ $count } bytes".to_string(),
                 dimensions_not_available: "n/a".to_string(),
             },
         );

@@ -78,7 +78,7 @@ pub struct UpsertProfileInput {
     pub visibility: ProfileVisibility,
 }
 
-impl From<ProfileVisibility> for rustok_profiles_api::ProfileSummaryVisibility {
+impl From<ProfileVisibility> for crate::api::ProfileSummaryVisibility {
     fn from(value: ProfileVisibility) -> Self {
         match value {
             ProfileVisibility::Public => Self::Public,
@@ -89,7 +89,7 @@ impl From<ProfileVisibility> for rustok_profiles_api::ProfileSummaryVisibility {
     }
 }
 
-impl From<ProfileSummary> for rustok_profiles_api::ProfileSummary {
+impl From<ProfileSummary> for crate::api::ProfileSummary {
     fn from(value: ProfileSummary) -> Self {
         Self {
             user_id: value.user_id,

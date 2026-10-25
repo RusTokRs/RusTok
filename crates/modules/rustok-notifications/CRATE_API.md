@@ -219,3 +219,44 @@ intake pre-filter is supplied by the decoder through
 `NotificationOutboxEnvelopeDecoder::accepted_event_types`, so this crate never names
 a module event type and a producer extends its notification vocabulary without
 touching the Notifications owner.
+
+## Platform Capability Bindings
+- **Core Module Registration**: Exposes `NotificationsModule` implementing `RusToKModule` (slug `"notifications"`, kind `ModuleKind::Core`, dependencies `["outbox"]`) and `MigrationSource`.
+- **Notification Services**:
+  - `NotificationsService`: Runtime-assembled facade for source discovery and registration.
+  - `NotificationInboxListService`, `NotificationInboxOpenService`, `NotificationInboxUnreadCountService`.
+  - Grouping and reconciliation services: `NotificationInboxGroupListService`, `NotificationInboxGroupStateService`, `NotificationInboxReconcileService`.
+- **Worker & Intake Fleet**:
+  - `NotificationOutboxIntakeWorker`: Intake decoder consuming transactional outbox events.
+  - `NotificationFanoutWorker`: Fan-out engine materializing recipients.
+  - `NotificationCandidateWorker`: Preference and channel delivery evaluation engine.
+
+## Domain Collaborations
+- **Core Platform**: Integrates with `rustok-core` module system and `rustok-api` port context, permissions, and actor identities.
+- **`rustok-outbox`**: Consumes published domain events and writes delivery receipts.
+- **`rustok-notifications-api`**: Discovers neutral source providers and defines cross-boundary contracts.
+
+## Minimum Contract Set
+
+### Input DTOs/Commands
+- `NotificationInboxListRequest` (`user_id`, `state`, `limit`, `cursor`)
+- `NotificationInboxOpenRequest` (`notification_id`, `user_id`)
+- `NotificationInboxMarkAllReadRequest` (`user_id`, `scope`)
+- `NotificationInboxGroupStateRequest` (`user_id`, `group_key`, `action`)
+- `NotificationInboxReconcileRequest` (`user_id`, `group_key`)
+
+### Domain Invariants
+- Strict tenant and user isolation: All queries, state mutations, and worker operations require non-nil `tenant_id` and `user_id`.
+- Finite inbox cursor size: `MAX_NOTIFICATION_INBOX_CURSOR_BYTES` (512 bytes) and bounded page limits (`MAX_NOTIFICATION_INBOX_PAGE_SIZE` = 100).
+- Idempotent state transitions: Repeated mark-read/mark-archived transitions are idempotent and safe against outbox replay.
+- Atomicity of candidate lease: Commit guards require `Allow` decision with matching policy revision before writing final notification rows.
+
+### Events / Outbox Side Effects
+- Outbox intake consumes committed producer domain events via `NotificationOutboxEnvelopeDecoder`.
+- Notification state changes trigger delivery receipts and outbox notifications for push/email dispatch.
+
+### Errors / Failure Codes
+- `NotificationError::Validation` — invalid cursor, bounds exceeded, or malformed request.
+- `NotificationError::NotFound` — notification item or group does not exist.
+- `NotificationError::Unauthorized` — caller lacks permission for targeted user inbox.
+- `NotificationError::Database` — SeaORM connection or query error.

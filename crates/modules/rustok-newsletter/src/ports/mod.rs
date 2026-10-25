@@ -37,6 +37,14 @@ impl NewsletterSubscriberPort for SubscriberPortImpl {
         email: String,
         name: Option<String>,
     ) -> Result<Uuid, PortError> {
+        if tenant_id.is_nil() {
+            return Err(PortError {
+                kind: rustok_api::PortErrorKind::Validation,
+                code: "newsletter.invalid_tenant_id".to_string(),
+                message: "Tenant ID must not be nil".to_string(),
+                retryable: false,
+            });
+        }
         let service = SubscriberService::new(self.db.clone());
         let input = SubscribeInput {
             email: email.clone(),
@@ -68,6 +76,14 @@ impl NewsletterSubscriberPort for SubscriberPortImpl {
         tenant_id: Uuid,
         subscriber_id: Uuid,
     ) -> Result<(), PortError> {
+        if tenant_id.is_nil() || subscriber_id.is_nil() {
+            return Err(PortError {
+                kind: rustok_api::PortErrorKind::Validation,
+                code: "newsletter.invalid_id".to_string(),
+                message: "Tenant ID and Subscriber ID must not be nil".to_string(),
+                retryable: false,
+            });
+        }
         let service = SubscriberService::new(self.db.clone());
         service
             .confirm(tenant_id, subscriber_id)
@@ -81,6 +97,14 @@ impl NewsletterSubscriberPort for SubscriberPortImpl {
         tenant_id: Uuid,
         subscriber_id: Uuid,
     ) -> Result<(), PortError> {
+        if tenant_id.is_nil() || subscriber_id.is_nil() {
+            return Err(PortError {
+                kind: rustok_api::PortErrorKind::Validation,
+                code: "newsletter.invalid_id".to_string(),
+                message: "Tenant ID and Subscriber ID must not be nil".to_string(),
+                retryable: false,
+            });
+        }
         let service = SubscriberService::new(self.db.clone());
         service
             .unsubscribe(tenant_id, subscriber_id)
@@ -94,6 +118,14 @@ impl NewsletterSubscriberPort for SubscriberPortImpl {
         tenant_id: Uuid,
         subscriber_id: Uuid,
     ) -> Result<SubscriberStatus, PortError> {
+        if tenant_id.is_nil() || subscriber_id.is_nil() {
+            return Err(PortError {
+                kind: rustok_api::PortErrorKind::Validation,
+                code: "newsletter.invalid_id".to_string(),
+                message: "Tenant ID and Subscriber ID must not be nil".to_string(),
+                retryable: false,
+            });
+        }
         let service = SubscriberService::new(self.db.clone());
         let response = service
             .get(tenant_id, subscriber_id)
@@ -138,6 +170,14 @@ impl NewsletterCampaignPort for CampaignPortImpl {
         subject: String,
         content_sources: Vec<ContentSourceSlug>,
     ) -> Result<Uuid, PortError> {
+        if tenant_id.is_nil() {
+            return Err(PortError {
+                kind: rustok_api::PortErrorKind::Validation,
+                code: "newsletter.invalid_tenant_id".to_string(),
+                message: "Tenant ID must not be nil".to_string(),
+                retryable: false,
+            });
+        }
         let service = CampaignService::new(self.db.clone());
         let input = CreateCampaignInput {
             title,
@@ -163,6 +203,14 @@ impl NewsletterCampaignPort for CampaignPortImpl {
         campaign_id: Uuid,
         scheduled_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<(), PortError> {
+        if tenant_id.is_nil() || campaign_id.is_nil() {
+            return Err(PortError {
+                kind: rustok_api::PortErrorKind::Validation,
+                code: "newsletter.invalid_id".to_string(),
+                message: "Tenant ID and Campaign ID must not be nil".to_string(),
+                retryable: false,
+            });
+        }
         let service = CampaignService::new(self.db.clone());
         let input = ScheduleCampaignInput { scheduled_at };
         service
@@ -178,6 +226,14 @@ impl NewsletterCampaignPort for CampaignPortImpl {
         tenant_id: Uuid,
         campaign_id: Uuid,
     ) -> Result<(), PortError> {
+        if tenant_id.is_nil() || campaign_id.is_nil() {
+            return Err(PortError {
+                kind: rustok_api::PortErrorKind::Validation,
+                code: "newsletter.invalid_id".to_string(),
+                message: "Tenant ID and Campaign ID must not be nil".to_string(),
+                retryable: false,
+            });
+        }
         let service = CampaignService::new(self.db.clone());
         service
             .cancel(tenant_id, campaign_id)
@@ -192,6 +248,14 @@ impl NewsletterCampaignPort for CampaignPortImpl {
         tenant_id: Uuid,
         campaign_id: Uuid,
     ) -> Result<Vec<NewsletterContentItem>, PortError> {
+        if tenant_id.is_nil() || campaign_id.is_nil() {
+            return Err(PortError {
+                kind: rustok_api::PortErrorKind::Validation,
+                code: "newsletter.invalid_id".to_string(),
+                message: "Tenant ID and Campaign ID must not be nil".to_string(),
+                retryable: false,
+            });
+        }
         let Some(registry) = &self.content_registry else {
             return Ok(Vec::new());
         };

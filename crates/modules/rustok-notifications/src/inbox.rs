@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, FixedOffset, Utc};
-use rustok_notifications_api::{
+use crate::{
     AuthorizeNotificationTargetRequest, NotificationOpenAuthorization, NotificationPriority,
     NotificationSourceRegistry, NotificationSourceSlug, NotificationTargetKind,
     NotificationTargetRef, NotificationTargetRoute, NotificationTemplateData,

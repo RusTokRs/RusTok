@@ -1,6 +1,4 @@
-//! JSON format handler.
-
-use rustok_content_portability_api::{FormatOptions, PortabilityError};
+use crate::{FormatOptions, PortabilityError};
 use serde::{Serialize, de::DeserializeOwned};
 
 /// JSON format handler for import/export operations.

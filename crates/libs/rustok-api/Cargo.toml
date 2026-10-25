@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Shared RusToK web/API contracts for server adapters and module-facing GraphQL/HTTP integration"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [features]
 default = []
 runtime = ["dep:sea-orm"]

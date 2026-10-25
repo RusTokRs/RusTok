@@ -39,12 +39,36 @@ pub struct SuspendGroupMembershipRequest {
     pub effective_until: Option<DateTime<Utc>>,
 }
 
+impl SuspendGroupMembershipRequest {
+    pub fn validate(&self) -> GroupsResult<()> {
+        validate_identity(
+            self.group_id,
+            self.target_user_id,
+            self.expected_membership_revision,
+        )?;
+        normalize_reason_code(&self.reason_code)?;
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RevokeGroupMembershipSuspensionRequest {
     pub group_id: Uuid,
     pub target_user_id: Uuid,
     pub expected_membership_revision: i64,
     pub reason_code: String,
+}
+
+impl RevokeGroupMembershipSuspensionRequest {
+    pub fn validate(&self) -> GroupsResult<()> {
+        validate_identity(
+            self.group_id,
+            self.target_user_id,
+            self.expected_membership_revision,
+        )?;
+        normalize_reason_code(&self.reason_code)?;
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -106,11 +130,7 @@ impl GroupMembershipEnforcementCommandService {
         context: &PortContext,
         request: SuspendGroupMembershipRequest,
     ) -> GroupsResult<GroupMembershipEnforcementMutationResult> {
-        validate_identity(
-            request.group_id,
-            request.target_user_id,
-            request.expected_membership_revision,
-        )?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
         if actor_user_id == request.target_user_id {
@@ -209,11 +229,7 @@ impl GroupMembershipEnforcementCommandService {
         context: &PortContext,
         request: RevokeGroupMembershipSuspensionRequest,
     ) -> GroupsResult<GroupMembershipEnforcementMutationResult> {
-        validate_identity(
-            request.group_id,
-            request.target_user_id,
-            request.expected_membership_revision,
-        )?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
         if actor_user_id == request.target_user_id {
@@ -309,6 +325,7 @@ impl GroupMembershipEnforcementCommandPort for GroupMembershipEnforcementCommand
         request: SuspendGroupMembershipRequest,
     ) -> Result<GroupMembershipEnforcementMutationResult, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        request.validate().map_err(PortError::from)?;
         self.suspend_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -320,6 +337,7 @@ impl GroupMembershipEnforcementCommandPort for GroupMembershipEnforcementCommand
         request: RevokeGroupMembershipSuspensionRequest,
     ) -> Result<GroupMembershipEnforcementMutationResult, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        request.validate().map_err(PortError::from)?;
         self.revoke_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -1035,8 +1053,16 @@ fn request_hash<T: Serialize>(request: &T) -> GroupsResult<String> {
 }
 
 fn context_tenant_id(context: &PortContext) -> GroupsResult<Uuid> {
-    Uuid::parse_str(context.tenant_id.trim())
-        .map_err(|_| GroupsError::Validation("tenant_id must be a UUID".to_string()))
+    let trimmed = context.tenant_id.trim();
+    if trimmed.is_empty() {
+        return Err(GroupsError::Validation("tenant_id cannot be empty".to_string()));
+    }
+    let parsed = Uuid::parse_str(trimmed)
+        .map_err(|_| GroupsError::Validation("tenant_id must be a UUID".to_string()))?;
+    if parsed.is_nil() {
+        return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+    }
+    Ok(parsed)
 }
 
 fn actor_user_id(context: &PortContext) -> GroupsResult<Uuid> {
@@ -1045,8 +1071,16 @@ fn actor_user_id(context: &PortContext) -> GroupsResult<Uuid> {
             "a user actor is required for direct group membership enforcement".to_string(),
         ));
     }
-    Uuid::parse_str(context.actor.id.trim())
-        .map_err(|_| GroupsError::Validation("actor.id must be a UUID".to_string()))
+    let trimmed = context.actor.id.trim();
+    if trimmed.is_empty() {
+        return Err(GroupsError::Validation("actor.id cannot be empty".to_string()));
+    }
+    let parsed = Uuid::parse_str(trimmed)
+        .map_err(|_| GroupsError::Validation("actor.id must be a UUID".to_string()))?;
+    if parsed.is_nil() {
+        return Err(GroupsError::Validation("actor.id cannot be nil UUID".to_string()));
+    }
+    Ok(parsed)
 }
 
 fn idempotency_key(context: &PortContext) -> GroupsResult<String> {

@@ -1,8 +1,8 @@
 //! Import/export services.
 
-use crate::{CsvFormatHandler, JsonFormatHandler, read_file, write_file};
-use rustok_content_portability_api::{
-    ExportContext, ExportResult, Format, FormatOptions, ImportContext, PortabilityError,
+use crate::{
+    CsvFormatHandler, ExportContext, ExportResult, Format, FormatOptions, ImportContext,
+    JsonFormatHandler, PortabilityError, read_file, write_file,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use std::path::Path;
@@ -160,7 +160,6 @@ impl Default for ExportService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustok_content_portability_api::Format;
     use serde::{Deserialize, Serialize};
     use tempfile::NamedTempFile;
     use uuid::Uuid;

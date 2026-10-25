@@ -5,9 +5,17 @@ use crate::model::{
     UpsertTranslationPayload,
 };
 
-#[cfg(feature = "ssr")]
+#[cfg(any(feature = "ssr", test))]
 fn parse_uuid(value: &str) -> Result<uuid::Uuid, ServerFnError> {
-    uuid::Uuid::parse_str(value).map_err(|err| ServerFnError::new(err.to_string()))
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(ServerFnError::new("media ID cannot be empty"));
+    }
+    let id = uuid::Uuid::parse_str(trimmed).map_err(|err| ServerFnError::new(err.to_string()))?;
+    if id.is_nil() {
+        return Err(ServerFnError::new("media ID cannot be nil"));
+    }
+    Ok(id)
 }
 
 #[cfg(feature = "ssr")]
@@ -50,10 +58,14 @@ pub(super) async fn media_library_native(
             .await
             .map_err(ServerFnError::new)?;
 
+        if tenant.id.is_nil() || auth.tenant_id.is_nil() || auth.user_id.is_nil() {
+            return Err(ServerFnError::new("tenant ID or user ID cannot be nil"));
+        }
+
         require_permission(&auth, Permission::new(Resource::Media, Action::List))?;
         let service = media_service()?;
         let limit = per_page.clamp(1, 100) as u64;
-        let offset = (page.max(1) - 1) as u64 * limit;
+        let offset = u64::from((page.max(1) - 1) as u32).saturating_mul(limit);
         let (items, total) = service
             .list(tenant.id, limit, offset)
             .await
@@ -104,6 +116,10 @@ pub(super) async fn media_detail_native(
             .await
             .map_err(ServerFnError::new)?;
 
+        if tenant.id.is_nil() || auth.tenant_id.is_nil() || auth.user_id.is_nil() {
+            return Err(ServerFnError::new("tenant ID or user ID cannot be nil"));
+        }
+
         require_permission(&auth, Permission::new(Resource::Media, Action::Read))?;
         let service = media_service()?;
         match service.get(tenant.id, parse_uuid(&media_id)?).await {
@@ -149,6 +165,10 @@ pub(super) async fn media_translations_native(
             .await
             .map_err(ServerFnError::new)?;
 
+        if tenant.id.is_nil() || auth.tenant_id.is_nil() || auth.user_id.is_nil() {
+            return Err(ServerFnError::new("tenant ID or user ID cannot be nil"));
+        }
+
         require_permission(&auth, Permission::new(Resource::Media, Action::Read))?;
         let service = media_service()?;
         let items = service
@@ -192,6 +212,15 @@ pub(super) async fn media_upsert_translation_native(
             .await
             .map_err(ServerFnError::new)?;
 
+        if tenant.id.is_nil() || auth.tenant_id.is_nil() || auth.user_id.is_nil() {
+            return Err(ServerFnError::new("tenant ID or user ID cannot be nil"));
+        }
+
+        let locale = payload.locale.trim().to_string();
+        if locale.is_empty() {
+            return Err(ServerFnError::new("translation locale cannot be empty"));
+        }
+
         require_permission(&auth, Permission::new(Resource::Media, Action::Update))?;
         let service = media_service()?;
         let item = service
@@ -199,7 +228,7 @@ pub(super) async fn media_upsert_translation_native(
                 tenant.id,
                 parse_uuid(&media_id)?,
                 rustok_media::UpsertTranslationInput {
-                    locale: payload.locale,
+                    locale,
                     title: payload.title,
                     alt_text: payload.alt_text,
                     caption: payload.caption,
@@ -238,6 +267,10 @@ pub(super) async fn media_delete_native(media_id: String) -> Result<bool, Server
             .await
             .map_err(ServerFnError::new)?;
 
+        if tenant.id.is_nil() || auth.tenant_id.is_nil() || auth.user_id.is_nil() {
+            return Err(ServerFnError::new("tenant ID or user ID cannot be nil"));
+        }
+
         require_permission(&auth, Permission::new(Resource::Media, Action::Delete))?;
         let service = media_service()?;
         service
@@ -268,6 +301,10 @@ pub(super) async fn media_usage_native() -> Result<MediaUsageSnapshot, ServerFnE
             .await
             .map_err(ServerFnError::new)?;
 
+        if tenant.id.is_nil() || auth.tenant_id.is_nil() || auth.user_id.is_nil() {
+            return Err(ServerFnError::new("tenant ID or user ID cannot be nil"));
+        }
+
         require_permission(&auth, Permission::new(Resource::Media, Action::List))?;
 
         let service = media_service()?;
@@ -285,5 +322,40 @@ pub(super) async fn media_usage_native() -> Result<MediaUsageSnapshot, ServerFnE
     #[cfg(not(feature = "ssr"))]
     {
         Err(ServerFnError::new("media/usage requires the `ssr` feature"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_uuid_valid() {
+        let valid = "11111111-2222-3333-4444-555555555555";
+        let parsed = parse_uuid(valid).expect("should parse valid uuid");
+        assert_eq!(parsed.to_string(), valid);
+    }
+
+    #[test]
+    fn parse_uuid_trims_whitespace() {
+        let valid = "  11111111-2222-3333-4444-555555555555 \n ";
+        let parsed = parse_uuid(valid).expect("should parse trimmed uuid");
+        assert_eq!(parsed.to_string(), "11111111-2222-3333-4444-555555555555");
+    }
+
+    #[test]
+    fn parse_uuid_rejects_empty() {
+        assert!(parse_uuid("").is_err());
+        assert!(parse_uuid("   ").is_err());
+    }
+
+    #[test]
+    fn parse_uuid_rejects_nil() {
+        assert!(parse_uuid("00000000-0000-0000-0000-000000000000").is_err());
+    }
+
+    #[test]
+    fn parse_uuid_rejects_invalid_format() {
+        assert!(parse_uuid("not-a-uuid").is_err());
     }
 }

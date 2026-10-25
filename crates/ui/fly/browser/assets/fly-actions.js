@@ -14,6 +14,8 @@
  *   and `.is-active` on tabs and toggling visibility/`aria-hidden` on tab panels.
  * - `toggle_accordion`: expand/collapse accordion panel (payload `target_id`, `exclusive`),
  *   synchronizing `aria-expanded` on trigger, `aria-hidden` on content, and optionally collapsing siblings.
+ * - `switch_slide`: navigate slider/carousel (payload `slider_id`, `direction`: 'next'|'prev', `index`, `target_slide`),
+ *   synchronizing active slide visibility, aria-hidden, and dot indicators, with native swipe/touch support.
  * - `scroll_to`: smooth-scroll the target element (payload `target_id`) into view.
  * - `animate`: play an allow-listed Web Animations keyframe set (payload `animation`,
  *   optional `duration_ms`) on the target element. The keyframe sets below are the only
@@ -196,6 +198,76 @@
     }
   }
 
+  function switchSlide(element, action) {
+    var slider =
+      findTarget(action, element) ||
+      (element && typeof element.closest === "function"
+        ? element.closest("[data-fly-slider]") || element.closest('[aria-roledescription="carousel"]')
+        : null);
+    if (!slider) return;
+
+    var slides = slider.querySelectorAll('[data-fly-slide], [aria-roledescription="slide"]');
+    if (slides.length === 0) return;
+
+    var currentIndex = -1;
+    for (var i = 0; i < slides.length; i++) {
+      if (slides[i].classList.contains("is-active") || (!slides[i].hidden && slides[i].style.display !== "none")) {
+        currentIndex = i;
+        break;
+      }
+    }
+    if (currentIndex === -1) currentIndex = 0;
+
+    var nextIndex = currentIndex;
+    if (action.direction === "next") {
+      nextIndex = (currentIndex + 1) % slides.length;
+    } else if (action.direction === "prev") {
+      nextIndex = (currentIndex - 1 + slides.length) % slides.length;
+    } else if (typeof action.index === "number") {
+      nextIndex = Math.max(0, Math.min(action.index, slides.length - 1));
+    } else if (action.target_slide) {
+      for (var s = 0; s < slides.length; s++) {
+        if (slides[s].id === action.target_slide || slides[s].getAttribute("data-fly-component-id") === action.target_slide) {
+          nextIndex = s;
+          break;
+        }
+      }
+    }
+
+    slider.setAttribute("data-fly-slider-active", String(nextIndex));
+
+    for (var k = 0; k < slides.length; k++) {
+      var slide = slides[k];
+      var isCurrent = k === nextIndex;
+      slide.hidden = !isCurrent;
+      slide.setAttribute("aria-hidden", isCurrent ? "false" : "true");
+      if (isCurrent) {
+        slide.classList.add("is-active");
+        if (slide.style.display === "none") slide.style.display = "";
+      } else {
+        slide.classList.remove("is-active");
+        slide.style.display = "none";
+      }
+    }
+
+    var dots = slider.querySelectorAll(".fly-slider__dot, [data-fly-action*='switch_slide']");
+    for (var d = 0; d < dots.length; d++) {
+      var dot = dots[d];
+      var dotAction = parseAction(dot);
+      if (dotAction && typeof dotAction.index === "number") {
+        var isDotCurrent = dotAction.index === nextIndex;
+        dot.setAttribute("aria-selected", isDotCurrent ? "true" : "false");
+        if (isDotCurrent) {
+          dot.classList.add("is-active");
+          dot.style.background = "#ffffff";
+        } else {
+          dot.classList.remove("is-active");
+          dot.style.background = "rgba(255,255,255,0.4)";
+        }
+      }
+    }
+  }
+
   function scrollToTarget(element, action) {
     var target = findTarget(action, element);
     if (!target) return;
@@ -275,6 +347,9 @@
       case "toggle_accordion":
         toggleAccordion(element, action);
         return true;
+      case "switch_slide":
+        switchSlide(element, action);
+        return true;
       case "scroll_to":
         scrollToTarget(element, action);
         return true;
@@ -298,13 +373,44 @@
     }
   }
 
+  var touchStartX = 0;
+  var touchStartY = 0;
+  var touchSlider = null;
+
+  function onTouchStart(event) {
+    if (!event.touches || event.touches.length !== 1) return;
+    var target = event.target;
+    if (!target || typeof target.closest !== "function") return;
+    touchSlider = target.closest("[data-fly-slider], [aria-roledescription='carousel']");
+    touchStartX = event.touches[0].clientX;
+    touchStartY = event.touches[0].clientY;
+  }
+
+  function onTouchEnd(event) {
+    if (!touchSlider || !event.changedTouches || event.changedTouches.length !== 1) {
+      touchSlider = null;
+      return;
+    }
+    var deltaX = event.changedTouches[0].clientX - touchStartX;
+    var deltaY = event.changedTouches[0].clientY - touchStartY;
+    if (Math.abs(deltaX) > 40 && Math.abs(deltaX) > Math.abs(deltaY)) {
+      var direction = deltaX < 0 ? "next" : "prev";
+      switchSlide(touchSlider, { direction: direction });
+    }
+    touchSlider = null;
+  }
+
   function start(doc) {
     var documentRef = doc || document;
     if (documentRef[ADAPTER_KEY]) return documentRef[ADAPTER_KEY];
     documentRef.addEventListener("click", onClick);
+    documentRef.addEventListener("touchstart", onTouchStart, { passive: true });
+    documentRef.addEventListener("touchend", onTouchEnd, { passive: true });
     var adapter = {
       stop: function () {
         documentRef.removeEventListener("click", onClick);
+        documentRef.removeEventListener("touchstart", onTouchStart);
+        documentRef.removeEventListener("touchend", onTouchEnd);
         delete documentRef[ADAPTER_KEY];
       },
       handleAction: handleAction,

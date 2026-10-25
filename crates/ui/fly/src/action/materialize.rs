@@ -426,6 +426,24 @@ fn apply_action(
             }
             AppliedAction::Custom
         }
+        ComponentAction::SwitchSlide { slider_id, .. } => {
+            mark_action_kind(component, action);
+            component.tag_name = Some("button".to_string());
+            component
+                .attributes
+                .insert("type".to_string(), Value::String("button".to_string()));
+            component.attributes.insert(
+                "data-fly-action-target".to_string(),
+                Value::String(slider_id.clone()),
+            );
+            if let Ok(payload) = serde_json::to_string(action) {
+                component.attributes.insert(
+                    FLY_ACTION_DATA_ATTRIBUTE.to_string(),
+                    Value::String(payload),
+                );
+            }
+            AppliedAction::Custom
+        }
         ComponentAction::EmitEvent { .. } | ComponentAction::ProviderAction { .. } => {
             mark_action_kind(component, action);
             component.tag_name = Some("button".to_string());

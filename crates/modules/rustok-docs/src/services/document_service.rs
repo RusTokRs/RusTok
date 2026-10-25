@@ -27,14 +27,19 @@ impl DocumentService {
         tenant_id: Uuid,
         dto: CreatePageDto,
     ) -> DocsResult<PageSummaryDto> {
+        if tenant_id.is_nil() {
+            return Err(DocsError::Validation("Tenant ID cannot be a nil UUID".to_string()));
+        }
+        dto.validate()?;
+
         let txn = db.begin().await?;
 
         // 1. Slug resolution and uniqueness validation
         let raw_slug = dto.slug.unwrap_or_else(|| slugify(&dto.title));
         let slug = if raw_slug.trim().is_empty() {
-            Uuid::new_v4().to_string()
+            slugify(&dto.title)
         } else {
-            raw_slug.trim().to_lowercase()
+            slugify(&raw_slug)
         };
 
         let existing = page::Entity::find()
@@ -50,6 +55,10 @@ impl DocumentService {
 
         // 2. Validate parent if specified
         if let Some(parent_id) = dto.parent_id {
+            if parent_id.is_nil() {
+                return Err(DocsError::Validation("Parent page ID cannot be a nil UUID".to_string()));
+            }
+
             let parent = page::Entity::find()
                 .filter(page::Column::TenantId.eq(tenant_id))
                 .filter(page::Column::Id.eq(parent_id))
@@ -122,6 +131,13 @@ impl DocumentService {
         tenant_id: Uuid,
         page_id: Uuid,
     ) -> DocsResult<PageSummaryDto> {
+        if tenant_id.is_nil() {
+            return Err(DocsError::Validation("Tenant ID cannot be a nil UUID".to_string()));
+        }
+        if page_id.is_nil() {
+            return Err(DocsError::Validation("Page ID cannot be a nil UUID".to_string()));
+        }
+
         let page_model = page::Entity::find()
             .filter(page::Column::TenantId.eq(tenant_id))
             .filter(page::Column::Id.eq(page_id))
@@ -150,14 +166,22 @@ impl DocumentService {
         tenant_id: Uuid,
         slug: &str,
     ) -> DocsResult<PageSummaryDto> {
+        if tenant_id.is_nil() {
+            return Err(DocsError::Validation("Tenant ID cannot be a nil UUID".to_string()));
+        }
+        let trimmed_slug = slug.trim();
+        if trimmed_slug.is_empty() {
+            return Err(DocsError::Validation("Page slug cannot be empty".to_string()));
+        }
+
         let page_model = page::Entity::find()
             .filter(page::Column::TenantId.eq(tenant_id))
-            .filter(page::Column::Slug.eq(slug))
+            .filter(page::Column::Slug.eq(trimmed_slug))
             .filter(page::Column::DeletedAt.is_null())
             .one(db)
             .await?
             .ok_or_else(|| DocsError::PageSlugNotFound {
-                slug: slug.to_string(),
+                slug: trimmed_slug.to_string(),
                 tenant_id,
             })?;
 
@@ -181,6 +205,10 @@ impl DocumentService {
         tenant_id: Uuid,
         include_archived: bool,
     ) -> DocsResult<Vec<PageSummaryDto>> {
+        if tenant_id.is_nil() {
+            return Err(DocsError::Validation("Tenant ID cannot be a nil UUID".to_string()));
+        }
+
         let mut query = page::Entity::find()
             .filter(page::Column::TenantId.eq(tenant_id))
             .filter(page::Column::DeletedAt.is_null());
@@ -213,6 +241,10 @@ impl DocumentService {
         db: &DatabaseConnection,
         tenant_id: Uuid,
     ) -> DocsResult<Vec<PageTreeNodeDto>> {
+        if tenant_id.is_nil() {
+            return Err(DocsError::Validation("Tenant ID cannot be a nil UUID".to_string()));
+        }
+
         let pages = page::Entity::find()
             .filter(page::Column::TenantId.eq(tenant_id))
             .filter(page::Column::DeletedAt.is_null())
@@ -262,6 +294,14 @@ impl DocumentService {
         page_id: Uuid,
         dto: UpdatePageDto,
     ) -> DocsResult<PageSummaryDto> {
+        if tenant_id.is_nil() {
+            return Err(DocsError::Validation("Tenant ID cannot be a nil UUID".to_string()));
+        }
+        if page_id.is_nil() {
+            return Err(DocsError::Validation("Page ID cannot be a nil UUID".to_string()));
+        }
+        dto.validate()?;
+
         let existing = page::Entity::find()
             .filter(page::Column::TenantId.eq(tenant_id))
             .filter(page::Column::Id.eq(page_id))
@@ -277,7 +317,7 @@ impl DocumentService {
         }
 
         if let Some(slug) = dto.slug {
-            let normalized_slug = slug.trim().to_lowercase();
+            let normalized_slug = slugify(&slug);
             // Validate slug uniqueness if changed
             let slug_conflict = page::Entity::find()
                 .filter(page::Column::TenantId.eq(tenant_id))
@@ -298,6 +338,9 @@ impl DocumentService {
 
         if let Some(parent_opt) = dto.parent_id {
             if let Some(parent_id) = parent_opt {
+                if parent_id.is_nil() {
+                    return Err(DocsError::Validation("Parent page ID cannot be a nil UUID".to_string()));
+                }
                 if parent_id == page_id {
                     return Err(DocsError::InvalidParent(parent_id));
                 }
@@ -312,12 +355,19 @@ impl DocumentService {
 
                 // Check transitive ancestor cycles (page_id cannot become a child of its own descendant)
                 let mut current_ancestor = parent_model.parent_id;
+                let mut depth = 0;
                 while let Some(ancestor_id) = current_ancestor {
+                    depth += 1;
+                    if depth > 100 {
+                        return Err(DocsError::InvalidHierarchy(
+                            "Maximum hierarchy depth exceeded (100)".to_string(),
+                        ));
+                    }
                     if ancestor_id == page_id {
-                        return Err(DocsError::InvalidHierarchy(format!(
-                            "Cycle detected: page '{}' is already an ancestor of target parent '{}'",
-                            page_id, parent_id
-                        )));
+                        return Err(DocsError::CycleDetected {
+                            page_id,
+                            parent_id,
+                        });
                     }
                     let ancestor = page::Entity::find()
                         .filter(page::Column::TenantId.eq(tenant_id))
@@ -368,6 +418,13 @@ impl DocumentService {
         page_id: Uuid,
         hard_delete: bool,
     ) -> DocsResult<()> {
+        if tenant_id.is_nil() {
+            return Err(DocsError::Validation("Tenant ID cannot be a nil UUID".to_string()));
+        }
+        if page_id.is_nil() {
+            return Err(DocsError::Validation("Page ID cannot be a nil UUID".to_string()));
+        }
+
         let existing = page::Entity::find()
             .filter(page::Column::TenantId.eq(tenant_id))
             .filter(page::Column::Id.eq(page_id))
@@ -416,6 +473,13 @@ impl DocumentService {
         tenant_id: Uuid,
         page_id: Uuid,
     ) -> DocsResult<(CollaborativeDoc, i64)> {
+        if tenant_id.is_nil() {
+            return Err(DocsError::Validation("Tenant ID cannot be a nil UUID".to_string()));
+        }
+        if page_id.is_nil() {
+            return Err(DocsError::Validation("Page ID cannot be a nil UUID".to_string()));
+        }
+
         // 1. Verify page existence
         let _ = page::Entity::find()
             .filter(page::Column::TenantId.eq(tenant_id))
@@ -469,7 +533,15 @@ impl DocumentService {
         page_id: Uuid,
         deltas: Vec<Vec<u8>>,
     ) -> DocsResult<i64> {
-        if deltas.is_empty() {
+        if tenant_id.is_nil() {
+            return Err(DocsError::Validation("Tenant ID cannot be a nil UUID".to_string()));
+        }
+        if page_id.is_nil() {
+            return Err(DocsError::Validation("Page ID cannot be a nil UUID".to_string()));
+        }
+
+        let non_empty_deltas: Vec<Vec<u8>> = deltas.into_iter().filter(|d| !d.is_empty()).collect();
+        if non_empty_deltas.is_empty() {
             let (_, latest_seq) = Self::load_document(db, tenant_id, page_id).await?;
             return Ok(latest_seq);
         }
@@ -509,7 +581,7 @@ impl DocumentService {
 
         // 3. Insert each delta with monotonic seq_id
         let now = Utc::now();
-        for delta in deltas {
+        for delta in non_empty_deltas {
             current_seq += 1;
             let record = update::ActiveModel {
                 id: Set(Uuid::new_v4()),
@@ -542,7 +614,9 @@ impl DocumentService {
                 uncompacted = uncompacted_count,
                 "Triggering snapshot compaction for collaborative document"
             );
-            let _ = Self::compact_snapshot(db, tenant_id, page_id).await;
+            if let Err(err) = Self::compact_snapshot(db, tenant_id, page_id).await {
+                tracing::warn!(page_id = %page_id, error = %err, "Background snapshot compaction failed");
+            }
         }
 
         // 6. Refresh entity backlinks ledger
@@ -559,6 +633,13 @@ impl DocumentService {
         tenant_id: Uuid,
         page_id: Uuid,
     ) -> DocsResult<()> {
+        if tenant_id.is_nil() {
+            return Err(DocsError::Validation("Tenant ID cannot be a nil UUID".to_string()));
+        }
+        if page_id.is_nil() {
+            return Err(DocsError::Validation("Page ID cannot be a nil UUID".to_string()));
+        }
+
         let (doc, latest_seq) = Self::load_document(db, tenant_id, page_id).await?;
 
         // Skip redundant compaction if document is already compacted to latest_seq
@@ -616,6 +697,13 @@ impl DocumentService {
         page_id: Uuid,
         client_seq_id: Option<i64>,
     ) -> DocsResult<DocumentSyncDto> {
+        if tenant_id.is_nil() {
+            return Err(DocsError::Validation("Tenant ID cannot be a nil UUID".to_string()));
+        }
+        if page_id.is_nil() {
+            return Err(DocsError::Validation("Page ID cannot be a nil UUID".to_string()));
+        }
+
         // Verify page exists and is not soft-deleted
         let _ = page::Entity::find()
             .filter(page::Column::TenantId.eq(tenant_id))
@@ -678,6 +766,13 @@ impl DocumentService {
         page_id: Uuid,
         doc: &CollaborativeDoc,
     ) -> DocsResult<()> {
+        if tenant_id.is_nil() {
+            return Err(DocsError::Validation("Tenant ID cannot be a nil UUID".to_string()));
+        }
+        if page_id.is_nil() {
+            return Err(DocsError::Validation("Page ID cannot be a nil UUID".to_string()));
+        }
+
         let blocks = doc.get_blocks();
         let mut links: Vec<(String, String, String, String)> = Vec::new();
 
@@ -738,21 +833,35 @@ impl DocumentService {
         tenant_id: Uuid,
         page_id: Uuid,
     ) -> DocsResult<String> {
+        if tenant_id.is_nil() {
+            return Err(DocsError::Validation("Tenant ID cannot be a nil UUID".to_string()));
+        }
+        if page_id.is_nil() {
+            return Err(DocsError::Validation("Page ID cannot be a nil UUID".to_string()));
+        }
+
         let (doc, _) = Self::load_document(db, tenant_id, page_id).await?;
         Ok(doc.render_markdown())
     }
 }
 
 fn slugify(text: &str) -> String {
-    let slug: String = text
-        .to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '-' })
-        .collect();
-    let trimmed = slug.trim_matches('-');
+    let mut slug = String::with_capacity(text.len());
+    let mut last_dash = true;
+
+    for c in text.to_lowercase().chars() {
+        if c.is_alphanumeric() {
+            slug.push(c);
+            last_dash = false;
+        } else if !last_dash {
+            slug.push('-');
+            last_dash = true;
+        }
+    }
+    let trimmed = slug.trim_end_matches('-');
     if trimmed.is_empty() {
         "page".to_string()
     } else {
-        trimmed.to_string()
+        trimmed.chars().take(255).collect()
     }
 }

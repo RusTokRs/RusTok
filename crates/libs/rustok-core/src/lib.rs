@@ -8,6 +8,34 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # RusToK Core
+//!
+//! Platform foundation runtime library for the RusToK platform.
+//!
+//! `rustok-core` defines the minimal platform-wide runtime contracts, kernel types,
+//! and foundational primitives used across the host server (`apps/server`) and all
+//! sovereign domain modules. It owns foundational runtime abstractions while staying
+//! decoupled from host-specific transports and domain-specific business rules.
+//!
+//! ## Core Architecture & Capabilities
+//!
+//! - **Module Lifecycle & Registry**: [`module`] ([`RusToKModule`]) and [`registry`] ([`ModuleRegistry`])
+//!   provide registration, migration sources, and event listener hooks for domain modules.
+//! - **Runtime Context & Caching**: [`context`] ([`AppContext`], [`CacheBackend`], [`SearchBackend`])
+//!   and [`InMemoryCacheBackend`] provide multi-tenant runtime state and atomic CAS caching.
+//! - **Event Bus & Dispatching**: [`events`] ([`EventBus`], [`EventDispatcher`], [`MemoryTransport`])
+//!   and backpressure controls ([`BackpressureController`]) provide decoupled in-process messaging.
+//! - **Identity & Security**: [`id`] ([`generate_id`], [`parse_id`]), [`security`] ([`RateLimiter`],
+//!   [`InputValidator`], [`SecurityHeaders`]), and [`rbac`] ([`Rbac`], [`SecurityContext`]).
+//! - **Resilience Primitives**: [`resilience`] ([`CircuitBreaker`], [`RetryPolicy`]) and [`async_utils`]
+//!   ([`retry`], [`timeout`], [`batch`], [`parallel`], [`Throttler`], [`Debouncer`]).
+//! - **Canonical Money**: [`money`] provides platform-wide ISO 4217 currency exponent normalization,
+//!   rounding, and major/minor unit conversions.
+//! - **Flex & Custom Fields**: [`field_schema`] ([`CustomFieldsSchema`], [`FieldDefinition`]) provides
+//!   schema-driven extensible field validation and JSON operators.
+//! - **Typed Errors**: [`typed_error`] ([`DomainError`], [`ErrorCode`], [`TypedResult`]) and [`error`]
+//!   ([`Error`], [`RichError`]).
+
 pub mod async_utils;
 mod cache;
 mod cache_atomic;

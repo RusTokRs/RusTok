@@ -561,8 +561,7 @@ fn validate_delivery_part(
 
 fn ensure_supported_backend(backend: DbBackend) -> Result<(), MutationStorageError> {
     match backend {
-        DbBackend::Postgres => Ok(()),
-        DbBackend::Sqlite if cfg!(test) => Ok(()),
+        DbBackend::Postgres | DbBackend::Sqlite => Ok(()),
         backend => Err(MutationStorageError::Storage(format!(
             "Index mutation storage does not support {backend:?}"
         ))),

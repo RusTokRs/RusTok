@@ -81,6 +81,16 @@ pub enum ComponentAction {
         #[serde(default)]
         exclusive: bool,
     },
+    /// Switch slide in a slider/carousel, by target slide ID, numeric index, or relative direction (next/prev).
+    SwitchSlide {
+        slider_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target_slide: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        direction: Option<SlideDirection>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        index: Option<usize>,
+    },
     ProviderAction {
         provider: String,
         action: String,
@@ -101,9 +111,17 @@ impl ComponentAction {
             Self::Animate { .. } => "animate",
             Self::SwitchTab { .. } => "switch_tab",
             Self::ToggleAccordion { .. } => "toggle_accordion",
+            Self::SwitchSlide { .. } => "switch_slide",
             Self::ProviderAction { .. } => "provider_action",
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SlideDirection {
+    Next,
+    Prev,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]

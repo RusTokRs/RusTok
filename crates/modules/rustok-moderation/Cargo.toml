@@ -5,19 +5,28 @@ edition.workspace = true
 license.workspace = true
 description = "Cross-domain moderation owner for reports, cases, decisions, and auditable enforcement"
 
+[features]
+default = ["server"]
+server = [
+  "dep:hex",
+  "dep:rustok-runtime",
+  "dep:sea-orm",
+  "dep:sea-orm-migration",
+  "dep:sha2",
+]
+
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true
-hex.workspace = true
-rustok-api.workspace = true
+hex = { workspace = true, optional = true }
+rustok-api = { workspace = true, features = ["runtime"] }
 rustok-core.workspace = true
-rustok-moderation-api = { path = "../rustok-moderation-api" }
-rustok-runtime.workspace = true
-sea-orm.workspace = true
-sea-orm-migration.workspace = true
+rustok-runtime = { workspace = true, optional = true }
+sea-orm = { workspace = true, optional = true }
+sea-orm-migration = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
+sha2 = { workspace = true, optional = true }
 thiserror.workspace = true
 uuid.workspace = true
 

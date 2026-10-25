@@ -248,3 +248,16 @@ claim tests, type-checking, Clippy, or rustfmt evidence. The author verifies
 this branch. Manual verification was limited to source/call-site sweeps,
 SQL bind/placeholder review, migration ordering, `git diff --check`, and
 line-level review. The added regression tests are present but unexecuted.
+
+## 5. 2026-10-25 mainline integration reconciliation
+
+The refreshed `main` moved `ModulesModule` into `src/module.rs`. Its migration
+ordering now uses the module-owned migration identifiers from this branch, and
+`src/lib.rs` re-exports that single implementation. The crate API contract added
+on `main` did not match this branch's current public surface; it was reconciled
+to the actual public modules, root re-exports, owner boundaries, and typed errors,
+and is included in crate rustdoc. The root README now summarizes production
+gaps already tracked in the owner documentation and implementation plan.
+
+No tests, compiler checks, formatters, or verification scripts were run for this
+integration. The maintainer's verification remains outstanding.

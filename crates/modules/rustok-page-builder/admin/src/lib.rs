@@ -62,8 +62,10 @@ pub use contribution_host::{
 };
 pub use core::{EditorSessionAction, EditorSessionEffect, EditorSessionState, gate_error_message};
 pub use draft_session::{
-    InMemorySsrDraftSessionStore, SsrDraftSessionError, SsrDraftSessionSnapshot,
-    SsrDraftSessionStore,
+    DraftSessionKvDriver, DurableSsrDraftSessionStore, ExternalKvDraftSessionBackend,
+    FileSsrDraftSessionStore, InMemorySsrDraftSessionStore, MemoryKvDriver,
+    PersistentDraftSessionBackend, PersistentDraftSessionRecord, SsrDraftSessionError,
+    SsrDraftSessionSnapshot, SsrDraftSessionStore,
 };
 pub use editor::ConsumerPropertiesPanel;
 pub use model::{AdminCanvasController, AdminCanvasEffect, AdminCanvasError};

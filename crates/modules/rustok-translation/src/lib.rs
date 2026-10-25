@@ -22,10 +22,6 @@ mod qa;
 mod scheduler;
 mod workflow;
 
-use async_trait::async_trait;
-use rustok_api::{Action, Permission, Resource};
-use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
-use sea_orm_migration::MigrationTrait;
 
 pub use collaboration::{
     CreateWorkflowNoteInput, ListWorkflowNotesInput, MAX_WORKFLOW_NOTE_BODY_CHARACTERS,
@@ -105,93 +101,9 @@ pub use workflow::{
     SaveProposalInput, SubmitProposalInput, TranslationWorkflowService, UnassignItemInput,
 };
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct TranslationModule;
+pub mod module;
+pub use module::TranslationModule;
 
-impl TranslationModule {
-    pub fn new() -> Self {
-        Self
-    }
-}
+#[cfg(test)]
+mod contract_tests;
 
-#[async_trait]
-impl RusToKModule for TranslationModule {
-    fn slug(&self) -> &'static str {
-        "translation"
-    }
-
-    fn name(&self) -> &'static str {
-        "Translation"
-    }
-
-    fn description(&self) -> &'static str {
-        "Owner-safe translation workflow, inventory, memory, glossary, and machine-translation control plane"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        let workflow_actions = [
-            Action::Create,
-            Action::Read,
-            Action::Update,
-            Action::List,
-            Action::Resolve,
-            Action::Publish,
-            Action::Import,
-            Action::Export,
-            Action::Run,
-            Action::Manage,
-        ];
-        let library_actions = [
-            Action::Create,
-            Action::Read,
-            Action::Update,
-            Action::Delete,
-            Action::List,
-            Action::Import,
-            Action::Export,
-            Action::Manage,
-        ];
-        workflow_actions
-            .into_iter()
-            .map(|action| Permission::new(Resource::Translations, action))
-            .chain(library_actions.into_iter().flat_map(|action| {
-                [
-                    Permission::new(Resource::TranslationMemory, action),
-                    Permission::new(Resource::TranslationGlossaries, action),
-                ]
-            }))
-            .collect()
-    }
-
-    fn register_runtime_extensions(
-        &self,
-        _extensions: &mut rustok_core::ModuleRuntimeExtensions,
-    ) -> rustok_core::Result<()> {
-        #[cfg(feature = "runtime")]
-        {
-            let registrations = _extensions
-                .get_or_insert_with::<rustok_runtime::ModuleWorkRegistrations, _>(Default::default);
-            registrations.register(std::sync::Arc::new(
-                scheduler::TranslationMemoryRetentionWorkRegistration,
-            ));
-            registrations.register(std::sync::Arc::new(
-                scheduler::TranslationInterchangeArtifactExpiryWorkRegistration,
-            ));
-        }
-        Ok(())
-    }
-}
-
-impl MigrationSource for TranslationModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-
-    fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
-        migrations::migration_dependencies()
-    }
-}

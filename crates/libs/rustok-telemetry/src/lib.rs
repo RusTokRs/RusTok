@@ -1,3 +1,24 @@
+//! # RusToK Telemetry
+//!
+//! Canonical telemetry, metrics, structured logging, and distributed tracing library
+//! for the RusToK platform.
+//!
+//! `rustok-telemetry` initializes the process-wide tracing subscriber, Prometheus metrics
+//! registry, and OpenTelemetry OTLP exporters, providing a unified observability foundation
+//! across the host server and sovereign modules.
+//!
+//! ## Core Architecture & Modules
+//!
+//! - **Structured Tracing**: [`init`] sets up global JSON or pretty `tracing` subscribers with
+//!   optional OpenTelemetry distributed trace propagation ([`otel`]).
+//! - **Metrics Registry & Handles**: [`MetricsHandle`], [`metrics_handle`], and [`render_metrics`]
+//!   manage Prometheus metric collection, encoding, and scrapers.
+//! - **Runtime Collectors**: [`register_runtime_collector`] allows dynamic registration of
+//!   bounded runtime metric collectors without creating duplicate global registries.
+//! - **Domain Metrics**: Specialized metrics modules ([`consumer_poison_metrics`],
+//!   [`dlq_duplicate_alert_metrics`], [`rbac_invalidation_metrics`],
+//!   [`social_graph_index_privacy_shadow_metrics`]) enforce bounded cardinality and data privacy.
+
 pub mod consumer_poison_metrics;
 pub mod dlq_duplicate_alert_metrics;
 pub mod factory;

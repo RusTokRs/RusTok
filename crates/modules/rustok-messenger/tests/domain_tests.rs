@@ -262,8 +262,8 @@ async fn messenger_graphql_schema_build_and_execute() {
     use rustok_messenger::graphql::{MessengerMutation, MessengerQuery};
 
     let schema = Schema::build(
-        MessengerQuery::default(),
-        MessengerMutation::default(),
+        MessengerQuery,
+        MessengerMutation,
         EmptySubscription,
     )
     .finish();
@@ -500,6 +500,361 @@ fn member_role_hierarchy_protection() {
     assert!(admin.can_manage());
     assert!(owner.can_manage());
     assert!(!member.can_manage());
+}
+
+#[test]
+fn dto_validation_rejections() {
+    use rustok_messenger::dto::*;
+
+    let conv_id = Uuid::now_v7();
+
+    // 1. CreateConversationInput
+    let nil_participant = CreateConversationInput {
+        conversation_type: ConversationType::Group,
+        title: Some("Valid Title".into()),
+        entity_type: None,
+        entity_id: None,
+        participant_ids: vec![Uuid::nil()],
+        is_encrypted: Some(false),
+        initial_locale: None,
+        initial_channel_description: None,
+    };
+    assert!(nil_participant.validate().is_err());
+
+    let empty_direct = CreateConversationInput {
+        conversation_type: ConversationType::Direct,
+        title: None,
+        entity_type: None,
+        entity_id: None,
+        participant_ids: vec![],
+        is_encrypted: Some(false),
+        initial_locale: None,
+        initial_channel_description: None,
+    };
+    assert!(empty_direct.validate().is_err());
+
+    let invalid_locale_input = CreateConversationInput {
+        conversation_type: ConversationType::Channel,
+        title: Some("Channel".into()),
+        entity_type: None,
+        entity_id: None,
+        participant_ids: vec![],
+        is_encrypted: Some(false),
+        initial_locale: Some("invalid!*locale".into()),
+        initial_channel_description: None,
+    };
+    assert!(invalid_locale_input.validate().is_err());
+
+    // 2. UpdateChannelTranslationInput
+    let nil_channel = UpdateChannelTranslationInput {
+        channel_id: Uuid::nil(),
+        locale: "ru".into(),
+        title: "Заголовок".into(),
+        description: None,
+    };
+    assert!(nil_channel.validate().is_err());
+
+    let empty_title = UpdateChannelTranslationInput {
+        channel_id: conv_id,
+        locale: "ru".into(),
+        title: "   ".into(),
+        description: None,
+    };
+    assert!(empty_title.validate().is_err());
+
+    let invalid_trans_locale = UpdateChannelTranslationInput {
+        channel_id: conv_id,
+        locale: "bad_locale_123".into(),
+        title: "Title".into(),
+        description: None,
+    };
+    assert!(invalid_trans_locale.validate().is_err());
+
+    // 3. SendMessageInput
+    let nil_conv_send = SendMessageInput {
+        conversation_id: Uuid::nil(),
+        message_type: None,
+        content: "hello".into(),
+        blocks_json: None,
+        reply_to_id: None,
+        is_encrypted: None,
+        encryption_algo: None,
+    };
+    assert!(nil_conv_send.validate().is_err());
+
+    let empty_send = SendMessageInput {
+        conversation_id: conv_id,
+        message_type: None,
+        content: "   ".into(),
+        blocks_json: None,
+        reply_to_id: None,
+        is_encrypted: None,
+        encryption_algo: None,
+    };
+    assert!(empty_send.validate().is_err());
+
+    let negative_reply_to = SendMessageInput {
+        conversation_id: conv_id,
+        message_type: None,
+        content: "hello".into(),
+        blocks_json: None,
+        reply_to_id: Some(-1),
+        is_encrypted: None,
+        encryption_algo: None,
+    };
+    assert!(negative_reply_to.validate().is_err());
+
+    let unsupported_algo = SendMessageInput {
+        conversation_id: conv_id,
+        message_type: None,
+        content: "hello".into(),
+        blocks_json: None,
+        reply_to_id: None,
+        is_encrypted: Some(true),
+        encryption_algo: Some("des-ede3-cbc".into()),
+    };
+    assert!(unsupported_algo.validate().is_err());
+
+    // 4. EditMessageInput
+    let empty_edit = EditMessageInput {
+        content: "   \t ".into(),
+    };
+    assert!(empty_edit.validate().is_err());
+
+    // 5. ListMessagesQuery
+    let nil_conv_list = ListMessagesQuery {
+        conversation_id: Uuid::nil(),
+        limit: Some(10),
+        before_id: None,
+        after_id: None,
+    };
+    assert!(nil_conv_list.validate().is_err());
+
+    let zero_limit_list = ListMessagesQuery {
+        conversation_id: conv_id,
+        limit: Some(0),
+        before_id: None,
+        after_id: None,
+    };
+    assert!(zero_limit_list.validate().is_err());
+
+    // 6. UpdateCursorInput
+    let nil_conv_cursor = UpdateCursorInput {
+        conversation_id: Uuid::nil(),
+        last_read_message_id: 10,
+    };
+    assert!(nil_conv_cursor.validate().is_err());
+
+    let negative_seq_cursor = UpdateCursorInput {
+        conversation_id: conv_id,
+        last_read_message_id: -5,
+    };
+    assert!(negative_seq_cursor.validate().is_err());
+
+    // 7. FastSyncRequest
+    let nil_conv_sync = FastSyncRequest {
+        conversation_id: Uuid::nil(),
+        since_seq: 0,
+        limit: Some(50),
+    };
+    assert!(nil_conv_sync.validate().is_err());
+
+    let negative_since_sync = FastSyncRequest {
+        conversation_id: conv_id,
+        since_seq: -1,
+        limit: Some(50),
+    };
+    assert!(negative_since_sync.validate().is_err());
+
+    // 8. AddMemberInput
+    let nil_user_member = AddMemberInput {
+        user_id: Uuid::nil(),
+        role: None,
+    };
+    assert!(nil_user_member.validate().is_err());
+}
+
+#[test]
+fn e2ee_device_registry_nil_uuid_protections() {
+    use rustok_messenger::e2ee::{DeviceKeyRegistry, UploadDeviceKeysInput};
+
+    let registry = DeviceKeyRegistry::new();
+
+    let nil_upload = registry.register_device_keys(
+        Uuid::nil(),
+        UploadDeviceKeysInput {
+            device_id: "dev-1".into(),
+            identity_key: "k1".into(),
+            curve25519_key: "k2".into(),
+            signature: "sig".into(),
+            one_time_prekeys: vec![],
+        },
+    );
+    assert!(nil_upload.is_err());
+
+    assert_eq!(registry.list_user_devices(Uuid::nil()).len(), 0);
+
+    let nil_claim = registry.claim_prekey_bundle(Uuid::nil(), "dev-1");
+    assert!(nil_claim.is_err());
+}
+
+#[tokio::test]
+async fn system_message_dispatch_bypasses_membership() {
+    use sea_orm::Database;
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
+    use rustok_messenger::services::MessengerService;
+    use rustok_messenger::dto::{CreateConversationInput, SendMessageInput};
+    use rustok_messenger::domain::{ConversationType, MessageType};
+    use rustok_outbox::SysEventsMigration;
+
+    let db = Database::connect("sqlite::memory:")
+        .await
+        .expect("in-memory sqlite must connect");
+
+    let manager = SchemaManager::new(&db);
+    SysEventsMigration
+        .up(&manager)
+        .await
+        .expect("outbox migration must succeed");
+    for migration in rustok_messenger::migrations::migrations() {
+        migration.up(&manager).await.expect("migration must succeed");
+    }
+
+    let service = MessengerService::new(db, 1);
+    let tenant_id = Uuid::now_v7();
+    let creator_id = Uuid::now_v7();
+    let member_id = Uuid::now_v7();
+
+    // Create a group conversation
+    let conv = service
+        .create_conversation(
+            tenant_id,
+            creator_id,
+            CreateConversationInput {
+                conversation_type: ConversationType::Group,
+                title: Some("Support Room".into()),
+                entity_type: None,
+                entity_id: None,
+                participant_ids: vec![member_id],
+                is_encrypted: Some(false),
+                initial_locale: None,
+                initial_channel_description: None,
+            },
+        )
+        .await
+        .expect("create conversation succeeds");
+
+    // Regular non-member dispatch MUST be denied
+    let non_member_id = Uuid::now_v7();
+    let denied = service
+        .send_message(
+            tenant_id,
+            non_member_id,
+            SendMessageInput {
+                conversation_id: conv.id,
+                message_type: Some(MessageType::Text),
+                content: "Unauthorized text".into(),
+                blocks_json: None,
+                reply_to_id: None,
+                is_encrypted: None,
+                encryption_algo: None,
+            },
+        )
+        .await;
+    assert!(denied.is_err());
+
+    // Automated system message from non-member MUST SUCCEED
+    let system_msg = service
+        .send_message(
+            tenant_id,
+            non_member_id,
+            SendMessageInput {
+                conversation_id: conv.id,
+                message_type: Some(MessageType::System),
+                content: "Payment received successfully".into(),
+                blocks_json: None,
+                reply_to_id: None,
+                is_encrypted: None,
+                encryption_algo: None,
+            },
+        )
+        .await
+        .expect("system message from service actor must succeed");
+
+    assert_eq!(system_msg.message_type, MessageType::System);
+    assert_eq!(system_msg.content, "Payment received successfully");
+
+    // Automated system message with nil actor MUST ALSO SUCCEED
+    let nil_actor_system_msg = service
+        .send_message(
+            tenant_id,
+            Uuid::nil(),
+            SendMessageInput {
+                conversation_id: conv.id,
+                message_type: Some(MessageType::System),
+                content: "System maintenance scheduled".into(),
+                blocks_json: None,
+                reply_to_id: None,
+                is_encrypted: None,
+                encryption_algo: None,
+            },
+        )
+        .await
+        .expect("system message with nil actor must succeed");
+
+    assert_eq!(nil_actor_system_msg.message_type, MessageType::System);
+    assert_eq!(
+        nil_actor_system_msg.sender_id,
+        rustok_messenger::services::SYSTEM_ACTOR_UUID
+    );
+}
+
+#[tokio::test]
+async fn test_messenger_nil_uuid_and_bounds_guards() {
+    let db = sea_orm::Database::connect("sqlite::memory:")
+        .await
+        .expect("db connect");
+
+    // ensure_messenger_module_enabled nil tenant guard
+    let res = rustok_messenger::controllers::ensure_messenger_module_enabled(&db, Uuid::nil()).await;
+    assert!(res.is_err());
+    let err = res.unwrap_err();
+    assert_eq!(err.code, "INVALID_TENANT");
+
+    let service = rustok_messenger::services::MessengerService::new(db.clone(), 1);
+
+    // nil tenant in get_overview_counts
+    assert!(service.get_overview_counts(Uuid::nil()).await.is_err());
+
+    // nil tenant in list_channels_summary
+    assert!(service.list_channels_summary(Uuid::nil(), 10, 0).await.is_err());
+
+    // nil tenant or actor in create_conversation
+    let input = rustok_messenger::dto::CreateConversationInput {
+        conversation_type: ConversationType::Group,
+        title: Some("Group Chat".into()),
+        entity_type: None,
+        entity_id: None,
+        participant_ids: vec![],
+        is_encrypted: Some(false),
+        initial_locale: None,
+        initial_channel_description: None,
+    };
+    assert!(service.create_conversation(Uuid::nil(), Uuid::now_v7(), input.clone()).await.is_err());
+    assert!(service.create_conversation(Uuid::now_v7(), Uuid::nil(), input).await.is_err());
+
+    // nil tenant or actor in send_message
+    let send_input = rustok_messenger::dto::SendMessageInput {
+        conversation_id: Uuid::now_v7(),
+        message_type: Some(MessageType::Text),
+        content: "Test message".into(),
+        blocks_json: None,
+        reply_to_id: None,
+        is_encrypted: None,
+        encryption_algo: None,
+    };
+    assert!(service.send_message(Uuid::nil(), Uuid::now_v7(), send_input.clone()).await.is_err());
+    assert!(service.send_message(Uuid::now_v7(), Uuid::nil(), send_input).await.is_err());
 }
 
 

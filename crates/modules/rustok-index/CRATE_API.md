@@ -17,6 +17,24 @@ job ownership, lease-fenced checkpoints, cancellation, and host-published replay
 Source-specific Product, Content, Flex, search, scheduler, and long-running worker
 implementations remain outside the engine core.
 
+## Platform Capability Bindings
+- **Core Module Registration**: Exposes `IndexModule` implementing `RusToKModule` (slug `"index"`, kind `ModuleKind::Core`) and `MigrationSource`.
+- **Relational Query Engine**:
+  - `IndexQueryPort`, `PostgresIndexQueryPort`, `SharedIndexQueryRuntime`.
+  - Typed query planner, SQL compiler, and decoded projections.
+- **Source Ingestion & Replay**:
+  - `IndexSource`, `SharedIndexSourceRegistry`, `IndexSourceCatalog`.
+  - `SharedIndexReplayRuntime`, `PostgresIndexReplayRunner`, `IndexReplayWorker`.
+  - `SharedIndexReplayDryRunRuntime`, `IndexReplayDryRunRequest`, `IndexReplayDryRunOutcome`.
+- **Schema & Consistency**:
+  - `SchemaRegistry`, `SharedIndexSchemaRegistry`, `IndexSchemaSourceCatalog`.
+  - Drift diagnosis, candidate confirmation, and repair workflows.
+
+## Domain Collaborations
+- **Core Platform**: Integrates with `rustok-core` module system and runtime extensions.
+- **Source Modules**: Consumes generic schema definitions and replay sources from domain modules (`rustok-product`, `rustok-content`, etc.) without circular coupling.
+- **Search Integration**: Feeds normalized cross-module relational projections into `rustok-search`.
+
 ## Primary Public Types
 
 ### Domain

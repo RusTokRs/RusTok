@@ -12,13 +12,22 @@
 
 use async_trait::async_trait;
 use rustok_api::Permission;
-use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
+use rustok_core::{
+    HealthStatus, MigrationDependencyDescriptor, MigrationSource, ModuleKind, RusToKModule,
+};
 use sea_orm_migration::MigrationTrait;
 
 use crate::migrations;
 
 /// Platform module descriptor for Product Relations.
+#[derive(Debug, Clone, Copy, Default)]
 pub struct ProductRelationsModule;
+
+impl ProductRelationsModule {
+    pub fn new() -> Self {
+        Self
+    }
+}
 
 #[async_trait]
 impl RusToKModule for ProductRelationsModule {
@@ -38,12 +47,20 @@ impl RusToKModule for ProductRelationsModule {
         env!("CARGO_PKG_VERSION")
     }
 
+    fn kind(&self) -> ModuleKind {
+        ModuleKind::Optional
+    }
+
     fn dependencies(&self) -> &[&'static str] {
         &["product"]
     }
 
     fn permissions(&self) -> Vec<Permission> {
         vec![Permission::PRODUCTS_READ, Permission::PRODUCTS_UPDATE]
+    }
+
+    async fn health(&self) -> HealthStatus {
+        HealthStatus::Healthy
     }
 }
 
@@ -54,5 +71,31 @@ impl MigrationSource for ProductRelationsModule {
 
     fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
         migrations::migration_dependencies()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_product_relations_module_metadata() {
+        let module = ProductRelationsModule::new();
+        assert_eq!(module.slug(), "product_relations");
+        assert_eq!(module.name(), "Product Relations");
+        assert_eq!(module.kind(), ModuleKind::Optional);
+        assert_eq!(module.dependencies(), &["product"]);
+        assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
+        assert_eq!(
+            module.permissions(),
+            vec![Permission::PRODUCTS_READ, Permission::PRODUCTS_UPDATE]
+        );
+        assert!(!module.migrations().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_product_relations_module_health() {
+        let module = ProductRelationsModule;
+        assert_eq!(module.health().await, HealthStatus::Healthy);
     }
 }

@@ -8,7 +8,7 @@
       "path": "crates/libs/rustok-api",
       "category": "libs",
       "files": 35,
-      "loc": 7311,
+      "loc": 7335,
       "completed": true,
       "completed_at": "2026-10-17 00:43",
       "notes": "Audited and cleaned."
@@ -18,7 +18,7 @@
       "path": "crates/libs/rustok-core",
       "category": "libs",
       "files": 65,
-      "loc": 17689,
+      "loc": 17717,
       "completed": true,
       "completed_at": "2026-10-17 00:12",
       "notes": "Audited via CodeGraph: added non-blocking async config loader, safe file reading, formatted regex invariants."
@@ -28,7 +28,7 @@
       "path": "crates/libs/rustok-events",
       "category": "libs",
       "files": 34,
-      "loc": 12081,
+      "loc": 12146,
       "completed": true,
       "completed_at": "2026-10-17 00:50",
       "notes": "Audited and cleaned."
@@ -58,7 +58,7 @@
       "path": "crates/libs/rustok-telemetry",
       "category": "libs",
       "files": 15,
-      "loc": 3340,
+      "loc": 3361,
       "completed": true,
       "completed_at": "2026-10-17 01:15",
       "notes": "Audited and cleaned."
@@ -217,8 +217,8 @@
       "name": "rustok-blog",
       "path": "crates/modules/rustok-blog",
       "category": "modules",
-      "files": 162,
-      "loc": 41147,
+      "files": 165,
+      "loc": 43040,
       "completed": false,
       "completed_at": null,
       "notes": "Audited 2026-10-17 (docs/audits/rustok-blog-engineering-audit-2026-10-17.md): 4 High, 8 Medium, 10 Low and 1 governance finding; all remediated (phase 1: 4 High + transport<->schema parity gate; phase 2: 8 Medium, 8 Low, verifier-suite repair). Blog verifier suite 66 passed / 0 failed, 23 verifier self-test suites pass, and the canonical module layout/reference-contract verifiers pass again. Not marked completed: scoped cargo check/test/clippy verification is still outstanding.",
@@ -229,7 +229,7 @@
       "path": "crates/modules/rustok-blog/admin",
       "category": "modules",
       "files": 18,
-      "loc": 6406,
+      "loc": 6398,
       "completed": false,
       "completed_at": null,
       "notes": "Audited 2026-10-17: empty-slug save failure remediated; the category/featured-image/SEO/channel/schedule capability gap is now documented in the module README Known Limitations (L-7). FFA boundary check passed.",
@@ -240,7 +240,7 @@
       "path": "crates/modules/rustok-blog/storefront",
       "category": "modules",
       "files": 14,
-      "loc": 3289,
+      "loc": 3365,
       "completed": false,
       "completed_at": null,
       "notes": "Audited 2026-10-17: no defect found; FFA boundary check passed; known retired-slug redirect gap (M-12) remains documented in the module README.",
@@ -281,7 +281,7 @@
       "path": "crates/modules/rustok-cart",
       "category": "modules",
       "files": 73,
-      "loc": 19962,
+      "loc": 20162,
       "completed": true,
       "completed_at": "2026-10-19 15:05",
       "notes": "Audited and cleaned. Updated normalize_locale_code and validate_locale_code to use canonical normalize_locale_tag with length constraint [2..=10] matching the database schema; enforced validate_non_empty_title on AddCartLineItemInput and trimmed title/blank sku on line item addition; normalized email across create_cart and update_context to trim whitespace and collapse empty strings to None; allowed checkout snapshot preparation to adopt request email when cart email is None. 75/75 tests passed, 0 clippy warnings, gate passed."
@@ -321,7 +321,7 @@
       "path": "crates/modules/rustok-comments",
       "category": "modules",
       "files": 39,
-      "loc": 9823,
+      "loc": 10262,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -331,7 +331,7 @@
       "path": "crates/modules/rustok-comments/admin",
       "category": "modules",
       "files": 8,
-      "loc": 1382,
+      "loc": 1644,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -341,7 +341,7 @@
       "path": "crates/modules/rustok-comments-storefront-support",
       "category": "modules",
       "files": 3,
-      "loc": 171,
+      "loc": 247,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -350,8 +350,8 @@
       "name": "rustok-commerce",
       "path": "crates/modules/rustok-commerce",
       "category": "modules",
-      "files": 299,
-      "loc": 136208,
+      "files": 306,
+      "loc": 139163,
       "completed": true,
       "completed_at": "2026-10-19 10:25",
       "notes": "Audited and cleaned. Fixed pagination parameter normalization and string/numeric deserialization for flattened queries in common controller. Corrected overzealous nil-UUID guards on actor_id in rustok-order services and checkout ports to support guest checkout while preserving strict tenant and order invariants. Fixed items_after_test_module clippy lint in catalog GraphQL mutations. All 205 tests pass, 0 clippy warnings, gate passed."
@@ -391,7 +391,7 @@
       "path": "crates/modules/rustok-content",
       "category": "modules",
       "files": 45,
-      "loc": 6014,
+      "loc": 6097,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -401,7 +401,7 @@
       "path": "crates/modules/rustok-content-orchestration",
       "category": "modules",
       "files": 18,
-      "loc": 3245,
+      "loc": 3283,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -480,8 +480,8 @@
       "name": "rustok-forum",
       "path": "crates/modules/rustok-forum",
       "category": "modules",
-      "files": 629,
-      "loc": 176318,
+      "files": 631,
+      "loc": 177144,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -501,7 +501,7 @@
       "path": "crates/modules/rustok-forum/storefront",
       "category": "modules",
       "files": 26,
-      "loc": 7795,
+      "loc": 7797,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -510,8 +510,8 @@
       "name": "rustok-fulfillment",
       "path": "crates/modules/rustok-fulfillment",
       "category": "modules",
-      "files": 76,
-      "loc": 27305,
+      "files": 77,
+      "loc": 27550,
       "completed": true,
       "completed_at": "2026-10-20 04:35",
       "notes": "Audited; enforced nil-UUID guards on fulfillment_id, order_id, shipping_option_id across service methods, transaction commits, and create/update/list operations; added customer_id nil validation to admin create fulfillment command; trimmed carrier and tracking numbers and delivered notes/cancellation reasons; enabled case-insensitive and whitespace-trimmed status matching in FulfillmentStatusKind::from_raw and list_fulfillments. 167/167 tests passed."
@@ -542,9 +542,9 @@
       "category": "modules",
       "files": 112,
       "loc": 31917,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-22 06:25",
+      "notes": "Audited and verified all 6 Universal Logic Dimensions across 112 source files; enforced nil UUID rejection and string/pagination bounds across all DTO validate() methods and ports; hardened actor and tenant UUID parsing against nil UUIDs and whitespace across all service modules; implemented From<PortError> for GroupsError; 27/27 unit tests passed across all features, 0 clippy warnings, gatekeeper passed."
     },
     "crates/modules/rustok-groups/admin": {
       "name": "admin",
@@ -552,9 +552,9 @@
       "category": "modules",
       "files": 34,
       "loc": 8525,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-22 07:10",
+      "notes": "Audited and verified FFA invariants across all 34 source files; enforced nil UUID rejection and trimmed whitespace across core command preparation and all native server function transport adapters; added comprehensive unit tests for core, application_core, and application_bulk_core; 12/12 unit tests passed across default and SSR features, 0 clippy warnings, gatekeeper passed."
     },
     "crates/modules/rustok-groups/storefront": {
       "name": "storefront",
@@ -562,9 +562,9 @@
       "category": "modules",
       "files": 17,
       "loc": 3119,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-22 07:25",
+      "notes": "Audited and verified FFA invariants across all 17 source files; enforced non-nil UUID validation in targeted invitation acceptance, application queries, submission policy verification, and native server functions; added comprehensive unit tests for core and application_core; 8/8 unit tests passed across default and SSR features, 0 clippy warnings, gatekeeper passed."
     },
     "crates/modules/rustok-iggy": {
       "name": "rustok-iggy",
@@ -630,8 +630,8 @@
       "name": "rustok-inventory",
       "path": "crates/modules/rustok-inventory",
       "category": "modules",
-      "files": 35,
-      "loc": 13269,
+      "files": 38,
+      "loc": 13732,
       "completed": true,
       "completed_at": "2026-10-19 23:35",
       "notes": "Audited; enforced non-negative available_quantity bounds, SKU normalization, nil-UUID slice guards in bootstrap and translation services, and saturating arithmetic across inventory services. 42/42 tests passed."
@@ -651,7 +651,7 @@
       "path": "crates/modules/rustok-marketplace",
       "category": "modules",
       "files": 10,
-      "loc": 1485,
+      "loc": 2046,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -661,7 +661,7 @@
       "path": "crates/modules/rustok-marketplace-allocation",
       "category": "modules",
       "files": 12,
-      "loc": 1486,
+      "loc": 1637,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -671,7 +671,7 @@
       "path": "crates/modules/rustok-marketplace-commission",
       "category": "modules",
       "files": 16,
-      "loc": 2662,
+      "loc": 2911,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -691,7 +691,7 @@
       "path": "crates/modules/rustok-marketplace-listing",
       "category": "modules",
       "files": 31,
-      "loc": 6455,
+      "loc": 6758,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -701,7 +701,7 @@
       "path": "crates/modules/rustok-marketplace-listing/admin",
       "category": "modules",
       "files": 9,
-      "loc": 1911,
+      "loc": 1966,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -711,7 +711,7 @@
       "path": "crates/modules/rustok-marketplace-payout",
       "category": "modules",
       "files": 13,
-      "loc": 1702,
+      "loc": 1981,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -721,7 +721,7 @@
       "path": "crates/modules/rustok-marketplace-seller",
       "category": "modules",
       "files": 48,
-      "loc": 10566,
+      "loc": 10881,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -731,7 +731,7 @@
       "path": "crates/modules/rustok-marketplace-seller/admin",
       "category": "modules",
       "files": 13,
-      "loc": 2387,
+      "loc": 2462,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -761,30 +761,30 @@
       "path": "crates/modules/rustok-media",
       "category": "modules",
       "files": 44,
-      "loc": 13356,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 13453,
+      "completed": true,
+      "completed_at": "2026-10-21 21:20",
+      "notes": "Audited; verified Universal Logic Dimensions across lifecycles, content-addressed storage, worker concurrency and timeouts, CAS translation revisions with outbox event recording, and retained reference locks; added zero-dimension guard to contained_dimensions, saturating arithmetic to alpha channel buffer allocation, NilTenantId error variant and upfront nil UUID validation across all service methods, clamped pagination/reconciliation limits, cleaned redundant borrows in formatting; 54/54 unit tests and 13 integration tests passed (67 total), 0 clippy warnings, remediation gate passed."
     },
     "crates/modules/rustok-media/admin": {
       "name": "admin",
       "path": "crates/modules/rustok-media/admin",
       "category": "modules",
       "files": 10,
-      "loc": 2125,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 2435,
+      "completed": true,
+      "completed_at": "2026-10-21 22:40",
+      "notes": "Audited; verified framework-agnostic FFA architecture in core.rs with zero Leptos imports, full Fluent en/ru parity, dual-path transport isolation (GraphQL / ServerFn), and REST upload adapter; fixed Fluent placeholder template handling to support all variations ({ $count }, {$count}, {count}), guarded against non-positive dimensions in media_dimensions_label, clamped negative usage counts in media_usage_stat_cards, eliminated i32 overflow in GraphQL pagination offset calculation, enforced non-empty trimmed tenant and media IDs across all GraphQL operations, added nil-UUID and empty-string guards to parse_uuid and native server function handlers, enforced trimmed non-empty locale on translation upsert, hardened REST upload with input validation on empty filenames and empty data, and captured HTTP status codes on REST failures; added comprehensive unit tests for core view models, GraphQL offset/ID guards, native UUID parsing, and REST upload validation; 31/31 unit tests passed (including SSR feature), 0 clippy warnings, remediation gate passed."
     },
     "crates/modules/rustok-media/cli": {
       "name": "cli",
       "path": "crates/modules/rustok-media/cli",
       "category": "modules",
       "files": 1,
-      "loc": 175,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 389,
+      "completed": true,
+      "completed_at": "2026-10-21 22:50",
+      "notes": "Audited; verified operational command routing to MediaService reconciliation, typed ReconcileOptions derivation with optional tenant-scoping (service.reconcile_storage(tenant_id, limit)) and all-tenant fallback (service.reconcile_storage_all_tenants(limit)), explicit typed rejection of unsupported --dry-run requests via CliCoreError::DryRunNotSupported preventing unintended mutations, robust limit parsing supporting both numeric and trimmed string inputs with lower/upper bound checks (1 <= limit <= 1000), and strict UUID validation rejecting nil or malformed tenant IDs; added comprehensive unit tests covering descriptors, limit defaults, limit bounds/rejections, tenant UUID parsing/rejection, dry-run rejection, and unknown commands; 8/8 tests passed, 0 clippy warnings, remediation gate passed."
     },
     "crates/modules/rustok-media-transport": {
       "name": "rustok-media-transport",
@@ -792,9 +792,9 @@
       "category": "modules",
       "files": 6,
       "loc": 1889,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-21 22:00",
+      "notes": "Audited; verified gRPC envelope framing, deadline timeout propagation, typed PortError detail preservation across gRPC status mappings, and server-side trusted authority enforcement; enforced non-empty validation on authority tenant and actor IDs, enforced tenant match between claimed and trusted authority, trimmed whitespace in UUID parsing with nil/invalid UUID rejection, added fallback status description when gRPC message is empty, safely trimmed trailing slashes in public origin descriptor rebasing, recognized .localhost subdomains under RFC 6761; added comprehensive unit tests for authority, ID, error mapping, and unconfigured provider branches, and expanded integration tests to verify end-to-end descriptor rebasing with GrpcMediaPublicImageConnectionConfig over loopback gRPC; 23/23 unit tests passed, 1/1 integration test passed (24 total), 0 clippy warnings, remediation gate passed."
     },
     "crates/modules/rustok-moderation": {
       "name": "rustok-moderation",
@@ -802,9 +802,9 @@
       "category": "modules",
       "files": 36,
       "loc": 9292,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-22 02:45",
+      "notes": "Audited; verified Universal Logic Dimensions across moderation reports, cases, assignments, decisions, and decision-application operations; enforced nil-UUID guards on get_application_operation, list_due_application_operations, claim_application_operation, mark_application_applied, and finish_with_error; enforced nil-tenant rejection on idempotency replay_existing and admit; added unit tests for seconds bounds, text normalization bounds, and idempotency key length/whitespace bounds. 16/16 tests passed, 0 clippy warnings, remediation gate passed."
     },
     "crates/modules/rustok-moderation-api": {
       "name": "rustok-moderation-api",
@@ -812,9 +812,9 @@
       "category": "modules",
       "files": 3,
       "loc": 835,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-22 03:35",
+      "notes": "Audited; verified Universal Logic Dimensions across moderation subjects, scope claims, effect actions, and command port adapter/factory registries; implemented validate methods on ModerationScopeRef, ModerationSubjectRef, ApplyModerationDecisionCommand, and ModerationDecisionApplication; added ModerationCommandValidationError; added get, contains, and keys to ModerationSubjectAdapterFactoryRegistry; added comprehensive unit tests for scope, subject, command, application, adapter key, and factory registry invariants. 10/10 tests passed (both default and no-default-features), 0 clippy warnings, remediation gate passed."
     },
     "crates/modules/rustok-modules": {
       "name": "rustok-modules",
@@ -871,7 +871,7 @@
       "path": "crates/modules/rustok-notifications",
       "category": "modules",
       "files": 75,
-      "loc": 22202,
+      "loc": 22765,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -881,7 +881,7 @@
       "path": "crates/modules/rustok-notifications/admin",
       "category": "modules",
       "files": 6,
-      "loc": 127,
+      "loc": 264,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -891,7 +891,7 @@
       "path": "crates/modules/rustok-notifications/storefront",
       "category": "modules",
       "files": 16,
-      "loc": 3152,
+      "loc": 3235,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -901,7 +901,7 @@
       "path": "crates/modules/rustok-notifications-api",
       "category": "modules",
       "files": 5,
-      "loc": 1196,
+      "loc": 1486,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -911,7 +911,7 @@
       "path": "crates/modules/rustok-order",
       "category": "modules",
       "files": 85,
-      "loc": 23343,
+      "loc": 23387,
       "completed": true,
       "completed_at": "2026-10-19 17:05",
       "notes": "Audited and cleaned. Aligned DB bounds: normalized and trimmed cancellation reason (<=500), delivery signature (<=255), payment ID (<=100), payment method (<=100), tracking number (<=100), carrier (<=100) across services, DTOs, and checkout settlement; enforced case-insensitive status filtering in order listing; added unit & integration tests; 56/56 tests passed, 0 clippy warnings, gate passed."
@@ -940,8 +940,8 @@
       "name": "rustok-outbox",
       "path": "crates/modules/rustok-outbox",
       "category": "modules",
-      "files": 26,
-      "loc": 5092,
+      "files": 27,
+      "loc": 5139,
       "completed": true,
       "completed_at": "2026-10-17 08:43",
       "notes": "Audited and cleaned."
@@ -961,7 +961,7 @@
       "path": "crates/modules/rustok-page-builder",
       "category": "modules",
       "files": 119,
-      "loc": 36379,
+      "loc": 36377,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1041,7 +1041,7 @@
       "path": "crates/modules/rustok-pricing",
       "category": "modules",
       "files": 49,
-      "loc": 20211,
+      "loc": 20238,
       "completed": true,
       "completed_at": "2026-10-19 21:30",
       "notes": "Audited; normalized ISO-4217 currency, 10k char bounds on descriptions, 25/25 tests passed."
@@ -1082,9 +1082,9 @@
       "category": "modules",
       "files": 197,
       "loc": 85389,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-23 04:30",
+      "notes": "Standardized ProductModule into src/module.rs with ModuleKind::Optional and health check; created canonical CRATE_API.md with 7 mandatory contract sections; updated contract_tests.rs; 142/142 tests passed, 0 clippy warnings, zero defects."
     },
     "crates/modules/rustok-product/admin": {
       "name": "admin",
@@ -1141,7 +1141,7 @@
       "path": "crates/modules/rustok-product-relations",
       "category": "modules",
       "files": 25,
-      "loc": 4177,
+      "loc": 4211,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1151,7 +1151,7 @@
       "path": "crates/modules/rustok-product-relations/admin",
       "category": "modules",
       "files": 9,
-      "loc": 1678,
+      "loc": 1712,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1172,9 +1172,9 @@
       "category": "modules",
       "files": 52,
       "loc": 9224,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-23 04:45",
+      "notes": "Standardized ProfilesModule into src/module.rs with ModuleKind::Optional and health check; created canonical CRATE_API.md with 7 contract sections; created contract_tests.rs; 31/31 tests passed, 0 clippy warnings, zero defects."
     },
     "crates/modules/rustok-profiles/cli": {
       "name": "cli",
@@ -1231,7 +1231,7 @@
       "path": "crates/modules/rustok-reactions",
       "category": "modules",
       "files": 8,
-      "loc": 2961,
+      "loc": 3323,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1241,7 +1241,7 @@
       "path": "crates/modules/rustok-reactions-api",
       "category": "modules",
       "files": 3,
-      "loc": 1262,
+      "loc": 1576,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1251,7 +1251,7 @@
       "path": "crates/modules/rustok-reactions-storefront",
       "category": "modules",
       "files": 6,
-      "loc": 615,
+      "loc": 743,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1261,7 +1261,7 @@
       "path": "crates/modules/rustok-region",
       "category": "modules",
       "files": 39,
-      "loc": 8915,
+      "loc": 9043,
       "completed": true,
       "completed_at": "2026-10-20 21:36",
       "notes": "Audited; enforced non-nil UUID validation across service/translation/target/ports, bounded tax_rate [0..=100] across inputs and policies, enforced alphabetic currency and unique country codes, aligned country tax policies with region countries, fixed order of operations in update_region to delete old policies before country mutation preventing trigger violation, applied migrations in test schema setup, aligned read port admission/tenant diagnostics with error safety contract, added 7 unit tests covering bounds and invariants; 11/11 tests passed, 0 clippy warnings, all 5 boundary/FBA scripts passed, gate passed."
@@ -1271,7 +1271,7 @@
       "path": "crates/modules/rustok-region/admin",
       "category": "modules",
       "files": 8,
-      "loc": 2944,
+      "loc": 3059,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1281,7 +1281,7 @@
       "path": "crates/modules/rustok-region/storefront",
       "category": "modules",
       "files": 9,
-      "loc": 1738,
+      "loc": 1751,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1292,9 +1292,9 @@
       "category": "modules",
       "files": 101,
       "loc": 35305,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-23 04:50",
+      "notes": "Verified SearchModule in src/module.rs, canonical CRATE_API.md, and contract_tests.rs; 104/104 tests passed, 0 clippy warnings, zero defects."
     },
     "crates/modules/rustok-search/admin": {
       "name": "admin",
@@ -1322,9 +1322,9 @@
       "category": "modules",
       "files": 83,
       "loc": 36550,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-23 05:00",
+      "notes": "Standardized SeoModule into src/module.rs with ModuleKind::Optional and health check; created canonical CRATE_API.md with 7 contract sections; created contract_tests.rs; remediated 2 redundant closure clippy warnings in bulk_legacy; 153/153 tests passed, 0 clippy warnings, zero defects."
     },
     "crates/modules/rustok-seo/admin": {
       "name": "admin",
@@ -1372,9 +1372,9 @@
       "category": "modules",
       "files": 36,
       "loc": 8796,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-22 04:26",
+      "notes": "Audited; verified Universal Logic Dimensions across relations, follow reads, maintenance operations, receipts, and GraphQL adapters; fixed SQLite dialect detection in rustok-index::PostgresMutationStore; added InvalidUserId error variant; added input validation on nil UUIDs, negative revisions, self-relations, out-of-range limits, and invalid timestamps to command and request DTOs; hardened parse_tenant_id and validate_source_actor; hardened service layer with validate_tenant and validate_pair; added nil-UUID guards to GraphQL operations; added comprehensive unit tests. 40/40 tests passed (all-features), 12/12 integration tests passed, 0 clippy warnings, remediation gate passed."
     },
     "crates/modules/rustok-social-graph-cli": {
       "name": "rustok-social-graph-cli",
@@ -1382,19 +1382,19 @@
       "category": "modules",
       "files": 1,
       "loc": 324,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-22 04:35",
+      "notes": "Audited; verified Universal Logic Dimensions across operational command descriptors, option parsing, and maintenance dispatch; hardened required_uuid to reject nil UUIDs, reject empty strings, and trim whitespace; hardened required_u32 and optional_u32 to accept both JSON numbers and strings with positive/bounds checks; hardened flag to support JSON booleans, numbers, and case-insensitive strings; enforced cutoff timestamp > 0 in retention_duration preventing negative unix timestamps; preserved typed error code in CliCoreError::CommandFailed; added comprehensive unit tests for nil/invalid UUIDs, whitespace, numbers, booleans, and unknown commands. 6/6 tests passed (all-features), 0 clippy warnings, remediation gate passed."
     },
     "crates/modules/rustok-tax": {
       "name": "rustok-tax",
       "path": "crates/modules/rustok-tax",
       "category": "modules",
       "files": 5,
-      "loc": 1574,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 1668,
+      "completed": true,
+      "completed_at": "2026-10-23 05:29",
+      "notes": "Standardized TaxModule into src/module.rs with ModuleKind::Optional, health check, and empty MigrationSource; created canonical CRATE_API.md with 7 contract sections; created contract_tests.rs; 16/16 tests passed, 0 clippy warnings, zero defects."
     },
     "crates/modules/rustok-taxonomy": {
       "name": "rustok-taxonomy",
@@ -1402,9 +1402,9 @@
       "category": "modules",
       "files": 53,
       "loc": 14871,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-23 05:13",
+      "notes": "Standardized TaxonomyModule into src/module.rs with ModuleKind::Optional and health check; created canonical CRATE_API.md with 7 contract sections; created contract_tests.rs; 37/37 tests passed, 0 clippy warnings, zero defects."
     },
     "crates/modules/rustok-tenant": {
       "name": "rustok-tenant",
@@ -1432,9 +1432,9 @@
       "category": "modules",
       "files": 81,
       "loc": 45996,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-23 05:24",
+      "notes": "Standardized TranslationModule into src/module.rs with ModuleKind::Optional, health check, and runtime extensions; created canonical CRATE_API.md with 7 contract sections; created contract_tests.rs; 38/38 tests passed (+1 ignored internal child test), 0 clippy warnings, zero defects."
     },
     "crates/modules/rustok-translation/admin": {
       "name": "admin",
@@ -1452,9 +1452,9 @@
       "category": "modules",
       "files": 3,
       "loc": 1729,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-23 05:31",
+      "notes": "Verified owner-neutral translation target contracts, identity validation, protected token ledger, and runtime registry; 10/10 tests passed, 0 clippy warnings, zero defects."
     },
     "crates/modules/rustok-workflow": {
       "name": "rustok-workflow",
@@ -2113,7 +2113,7 @@
       "path": "apps/server",
       "category": "apps",
       "files": 487,
-      "loc": 191307,
+      "loc": 191357,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2123,7 +2123,7 @@
       "path": "apps/storefront",
       "category": "apps",
       "files": 34,
-      "loc": 5987,
+      "loc": 6062,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2133,7 +2133,7 @@
       "path": "crates/integration/rustok-content-revisions",
       "category": "integration",
       "files": 6,
-      "loc": 903,
+      "loc": 1239,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2183,7 +2183,7 @@
       "path": "crates/modules/rustok-comments-api",
       "category": "modules",
       "files": 3,
-      "loc": 154,
+      "loc": 330,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2223,7 +2223,7 @@
       "path": "crates/modules/rustok-marketplace-balance",
       "category": "modules",
       "files": 29,
-      "loc": 6779,
+      "loc": 7060,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2562,8 +2562,8 @@
       "name": "rustok-messenger",
       "path": "crates/modules/rustok-messenger",
       "category": "modules",
-      "files": 49,
-      "loc": 6244,
+      "files": 61,
+      "loc": 10088,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2583,7 +2583,7 @@
       "path": "crates/modules/rustok-page-builder/storefront",
       "category": "modules",
       "files": 6,
-      "loc": 1766,
+      "loc": 1764,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2624,6 +2624,16 @@
       "category": "apps",
       "files": 8,
       "loc": 801,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
+    },
+    "crates/modules/rustok-messenger/storefront": {
+      "name": "storefront",
+      "path": "crates/modules/rustok-messenger/storefront",
+      "category": "modules",
+      "files": 9,
+      "loc": 1851,
       "completed": false,
       "completed_at": null,
       "notes": ""

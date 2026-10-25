@@ -1,7 +1,3 @@
-use async_trait::async_trait;
-use rustok_api::Permission;
-use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
-use sea_orm_migration::MigrationTrait;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -55,44 +51,12 @@ pub fn scoped_caller_idempotency_key(
     )
 }
 
-pub struct ProductBundlesModule;
+pub mod module;
+pub use module::ProductBundlesModule;
 
-#[async_trait]
-impl RusToKModule for ProductBundlesModule {
-    fn slug(&self) -> &'static str {
-        "product_bundles"
-    }
+#[cfg(test)]
+mod contract_tests;
 
-    fn name(&self) -> &'static str {
-        "Product Bundles"
-    }
-
-    fn description(&self) -> &'static str {
-        "Product bundles, kits, configurable sets, and package discounts"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn dependencies(&self) -> &[&'static str] {
-        &["product"]
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![Permission::PRODUCTS_READ, Permission::PRODUCTS_UPDATE]
-    }
-}
-
-impl MigrationSource for ProductBundlesModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-
-    fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
-        migrations::migration_dependencies()
-    }
-}
 
 #[cfg(test)]
 mod tests {

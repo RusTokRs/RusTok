@@ -2,6 +2,8 @@
 
 `rustok-region` is the default region submodule in the `ecommerce` family.
 
+See [CRATE_API.md](CRATE_API.md) for the verified public crate API specification and platform capability bindings.
+
 ## Purpose
 
 - own commerce regions as a first-class domain module;

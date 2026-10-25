@@ -53,11 +53,11 @@ const serverCargoPath = "apps/server/Cargo.toml";
 const serverRuntimePath = "apps/server/src/services/module_event_dispatcher.rs";
 const adminCargoPath = "apps/admin/Cargo.toml";
 const storefrontCargoPath = "apps/storefront/Cargo.toml";
-const apiCargoPath = "crates/modules/rustok-notifications-api/Cargo.toml";
-const providerPath = "crates/modules/rustok-notifications-api/src/provider.rs";
-const keysPath = "crates/modules/rustok-notifications-api/src/keys.rs";
+const apiCargoPath = "crates/modules/rustok-notifications/Cargo.toml";
+const providerPath = "crates/modules/rustok-notifications/src/provider.rs";
+const keysPath = "crates/modules/rustok-notifications/src/keys.rs";
 const forumCargoPath = "crates/modules/rustok-forum/Cargo.toml";
-const forumLibPath = "crates/modules/rustok-forum/src/lib.rs";
+const forumLibPath = "crates/modules/rustok-forum/src/module.rs";
 const forumSourcePath = "crates/modules/rustok-forum/src/notification_source.rs";
 const runtimeTestPath = "crates/modules/rustok-forum/tests/notification_source_sqlite.rs";
 const localPlanPath = "crates/modules/rustok-notifications/docs/implementation-plan.md";
@@ -93,7 +93,7 @@ for (const [source, marker, message] of [
   [serverRuntime, 'apply_to_host_runtime', `${serverRuntimePath}: provider factories do not receive neutral host context`],
   [adminCargo, 'rustok-notifications-admin', `${adminCargoPath}: notifications admin package is not composed`],
   [storefrontCargo, 'rustok-notifications-storefront', `${storefrontCargoPath}: notifications storefront package is not composed`],
-  [apiCargo, 'dep:rustok-api', `${apiCargoPath}: server contract cannot use HostRuntimeContext`],
+  [apiCargo, 'rustok-api =', `${apiCargoPath}: server contract cannot use HostRuntimeContext`],
 ]) {
   requireText(source, marker, message);
 }
@@ -113,8 +113,8 @@ requireText(keys, "safe_route_query", `${keysPath}: target route query policy is
 reject(keys, /url::Url|reqwest/, `${keysPath}: safe internal route validation must not become an external URL resolver`);
 
 const forumProductionCargo = forumCargo.split("[dev-dependencies]")[0];
-requireText(forumProductionCargo, "rustok-notifications-api.workspace = true", `${forumCargoPath}: Forum must depend on the neutral API`);
-reject(forumProductionCargo, /rustok-notifications\s*\.(workspace|path)|rustok-notifications\s*=\s*\{/, `${forumCargoPath}: Forum production code depends on the notifications owner`);
+requireText(forumProductionCargo, "rustok-notifications.workspace = true", `${forumCargoPath}: Forum must depend on the neutral API`);
+reject(forumProductionCargo, /features\s*=\s*\[[^\]]*"server"[^\]]*\]/, `${forumCargoPath}: Forum production code depends on the notifications server feature`);
 requireText(forumLib, "register_notification_source_provider_factory", `${forumLibPath}: Forum does not publish its source factory`);
 
 for (const marker of [
@@ -135,7 +135,7 @@ for (const marker of [
 ]) {
   requireText(forumSource, marker, `${forumSourcePath}: missing source-provider invariant ${marker}`);
 }
-reject(forumSource, /rustok_notifications::/, `${forumSourcePath}: Forum imports the notifications owner`);
+reject(forumSource, /entities::|source_inbox|fanout_job/, `${forumSourcePath}: Forum imports notifications persistence`);
 reject(forumSource, /email_address|phone_number|smtp|rendered_html/i, `${forumSourcePath}: Forum source leaks channel/contact/rendered data`);
 
 for (const marker of [

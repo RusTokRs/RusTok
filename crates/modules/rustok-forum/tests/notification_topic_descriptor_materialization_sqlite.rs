@@ -21,7 +21,7 @@ use rustok_forum::{
     SubscriptionService, TopicService,
 };
 use rustok_notifications::NotificationsModule;
-use rustok_notifications_api::{
+use rustok_notifications::{
     DescribeNotificationRequest, NotificationSourceEventRef, ResolveNotificationAudienceRequest,
     materialize_notification_source_registry,
 };

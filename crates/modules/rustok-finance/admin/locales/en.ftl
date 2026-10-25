@@ -1,0 +1,15 @@
+finance-title = Operational Finance & Cash Desks
+finance-description = Manage Operational Finance & Cash Desks configuration and operational workflows
+finance-empty = No records found
+finance-save = Save
+finance-cancel = Cancel
+finance-success = Operation completed successfully
+finance-error = An error occurred
+finance-search-placeholder = Search Operational Finance & Cash Desks records...
+finance-col-title = Title
+finance-col-status = Status
+finance-col-created = Created At
+finance-col-actions = Actions
+finance-action-create = Create New
+finance-action-edit = Edit
+finance-action-delete = Delete

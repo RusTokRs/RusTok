@@ -21,7 +21,7 @@ use rustok_moderation::{
     ModerationSubjectKind, ModerationSubjectRef, OpenModerationCaseCommand,
     SubmitModerationReportCommand,
 };
-use rustok_moderation_api::{
+use rustok_moderation::{
     ApplyModerationDecisionCommand, ModerationDecisionApplication, ModerationSubjectCommandPort,
 };
 use rustok_runtime::{ModuleWorkRegistrations, ModuleWorkScheduler};

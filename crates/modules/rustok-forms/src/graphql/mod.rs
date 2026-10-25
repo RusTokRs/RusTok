@@ -70,6 +70,9 @@ impl FormsQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        if tenant.id.is_nil() {
+            return Err(async_graphql::Error::new("tenant_id must not be nil"));
+        }
         let filter = filter.unwrap_or(ListGqlFormSubmissionsFilter {
             form_id: None,
             state: None,
@@ -117,6 +120,12 @@ impl FormsMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        if tenant.id.is_nil() {
+            return Err(async_graphql::Error::new("tenant_id must not be nil"));
+        }
+        if id.is_nil() {
+            return Err(async_graphql::Error::new("submission id must not be nil"));
+        }
         let state = FormSubmissionState::parse(input.state.as_str())
             .ok_or_else(|| async_graphql::Error::new("unknown submission state"))?;
         FormsService::new(db.clone(), event_bus.clone(), None)

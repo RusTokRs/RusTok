@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description.workspace = true
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 anyhow.workspace = true
 async-graphql = { workspace = true, features = ["dataloader"] }
@@ -29,11 +33,11 @@ uuid.workspace = true
 rustok-content.workspace = true
 rustok-core = { workspace = true, features = ["server"] }
 rustok-events.workspace = true
-rustok-moderation-api = { path = "../rustok-moderation-api" }
-rustok-notifications-api.workspace = true
+rustok-moderation.workspace = true
+rustok-notifications.workspace = true
 rustok-outbox.workspace = true
-rustok-profiles.workspace = true
-rustok-reactions-api = { path = "../rustok-reactions-api" }
+rustok-profiles = { workspace = true, features = ["server"] }
+rustok-reactions = { workspace = true, default-features = false }
 rustok-seo-targets.workspace = true
 rustok-translation-targets.workspace = true
 rustok-media.workspace = true

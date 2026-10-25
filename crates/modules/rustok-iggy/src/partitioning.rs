@@ -8,6 +8,9 @@ pub fn partition_key(tenant_id: Uuid) -> String {
 }
 
 pub fn calculate_partition(key: &str, num_partitions: u32) -> u32 {
+    if num_partitions == 0 {
+        return 0;
+    }
     let mut hasher = DefaultHasher::new();
     key.hash(&mut hasher);
     let hash = hasher.finish();
@@ -61,5 +64,10 @@ mod tests {
                 partition
             );
         }
+    }
+
+    #[test]
+    fn calculate_partition_handles_zero_partitions() {
+        assert_eq!(calculate_partition("test-key", 0), 0);
     }
 }

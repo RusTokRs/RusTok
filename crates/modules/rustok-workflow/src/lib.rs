@@ -18,13 +18,6 @@
 //! - Event trigger via `WorkflowTriggerHandler`
 //! - Basic steps: `action`, `emit_event`, `condition`
 
-use async_trait::async_trait;
-use rustok_api::{Action, Permission, Resource};
-use rustok_core::{
-    MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry, RusToKModule,
-};
-use sea_orm_migration::MigrationTrait;
-
 pub mod controllers;
 pub mod dto;
 pub mod entities;
@@ -32,6 +25,7 @@ pub mod error;
 pub mod graphql;
 pub mod migration;
 pub mod migrations;
+pub mod module;
 pub mod ports;
 pub mod services;
 pub mod steps;
@@ -41,6 +35,7 @@ pub use dto::*;
 pub use error::{WorkflowError, WorkflowResult};
 pub use graphql::{WorkflowMutation, WorkflowQuery};
 pub use migration::{WorkflowPhase4Migration, WorkflowsMigration};
+pub use module::WorkflowModule;
 pub use ports::*;
 pub use services::{
     WorkflowCronScheduler, WorkflowEngine, WorkflowService, WorkflowTriggerHandler,
@@ -48,58 +43,13 @@ pub use services::{
 pub use steps::{AlloyScriptStep, NotificationSender, NotifyStep, ScriptRunner};
 pub use templates::{BUILTIN_TEMPLATES, WorkflowTemplate};
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct WorkflowModule;
-
-#[async_trait]
-impl RusToKModule for WorkflowModule {
-    fn slug(&self) -> &'static str {
-        "workflow"
-    }
-
-    fn name(&self) -> &'static str {
-        "Workflow"
-    }
-
-    fn description(&self) -> &'static str {
-        "Visual workflow automation and event orchestration"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::new(Resource::Workflows, Action::Create),
-            Permission::new(Resource::Workflows, Action::Read),
-            Permission::new(Resource::Workflows, Action::Update),
-            Permission::new(Resource::Workflows, Action::Delete),
-            Permission::new(Resource::Workflows, Action::List),
-            Permission::new(Resource::Workflows, Action::Execute),
-            Permission::new(Resource::Workflows, Action::Manage),
-            Permission::new(Resource::WorkflowExecutions, Action::Read),
-            Permission::new(Resource::WorkflowExecutions, Action::List),
-        ]
-    }
-
-    fn register_event_listeners(
-        &self,
-        registry: &mut ModuleEventListenerRegistry,
-        ctx: &ModuleEventListenerContext<'_>,
-    ) {
-        registry.register(WorkflowTriggerHandler::new(ctx.db.clone()));
-    }
-}
-
-impl MigrationSource for WorkflowModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-}
+#[cfg(test)]
+mod contract_tests;
 
 #[cfg(test)]
 mod tests {
+    use rustok_core::module::RusToKModule;
+
     use super::*;
 
     #[test]
@@ -117,12 +67,14 @@ mod tests {
         assert!(
             perms
                 .iter()
-                .any(|p| p.resource == Resource::Workflows && p.action == Action::Execute)
+                .any(|p| p.resource == rustok_api::Resource::Workflows
+                    && p.action == rustok_api::Action::Execute)
         );
         assert!(
             perms
                 .iter()
-                .any(|p| p.resource == Resource::WorkflowExecutions && p.action == Action::List)
+                .any(|p| p.resource == rustok_api::Resource::WorkflowExecutions
+                    && p.action == rustok_api::Action::List)
         );
     }
 }

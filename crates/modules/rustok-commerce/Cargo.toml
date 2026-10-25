@@ -6,6 +6,10 @@ license.workspace = true
 description.workspace = true
 autotests = false
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [features]
 default = []
 marketplace-financial = [

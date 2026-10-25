@@ -90,6 +90,13 @@ alloy = { crate = "alloy", source = "path", path = "crates/modules/alloy" }
 flex = { crate = "flex", source = "path", path = "crates/modules/flex" }
 docs = { crate = "rustok-docs", source = "path", path = "crates/modules/rustok-docs", depends_on = ["outbox", "flex"] }
 messenger = { crate = "rustok-messenger", source = "path", path = "crates/modules/rustok-messenger", depends_on = ["outbox"] }
+party = { crate = "rustok-party", source = "path", path = "crates/modules/rustok-party", depends_on = ["outbox"] }
+deal = { crate = "rustok-deal", source = "path", path = "crates/modules/rustok-deal", depends_on = ["outbox"] }
+billing = { crate = "rustok-billing", source = "path", path = "crates/modules/rustok-billing", depends_on = ["outbox"] }
+finance = { crate = "rustok-finance", source = "path", path = "crates/modules/rustok-finance", depends_on = ["outbox"] }
+calls = { crate = "rustok-calls", source = "path", path = "crates/modules/rustok-calls", depends_on = ["outbox"] }
+calendar = { crate = "rustok-calendar", source = "path", path = "crates/modules/rustok-calendar", depends_on = ["outbox"] }
+tasks = { crate = "rustok-tasks", source = "path", path = "crates/modules/rustok-tasks", depends_on = ["outbox"] }
 # Capability extensions are deployment-scoped `RusToKModule` entries. They are
 # globally active when compiled and never tenant-toggled; the generic
 # runtime-extension host seam composes their handles and workers.

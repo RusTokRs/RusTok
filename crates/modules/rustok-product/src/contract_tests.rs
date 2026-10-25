@@ -54,3 +54,23 @@ fn product_module_publishes_only_a_typed_selection_marker_for_cross_module_bridg
     assert!(extensions.contains::<crate::ProductRuntimeSelected>());
     assert!(!include_str!("lib.rs").contains("rustok_index"));
 }
+
+#[test]
+fn product_module_matches_canonical_contract() {
+    let api = include_str!("../CRATE_API.md");
+    assert!(api.contains("## Public Modules"));
+    assert!(api.contains("## Platform Capability Bindings"));
+    assert!(api.contains("## Domain Collaborations"));
+    assert!(api.contains("## Minimum Contract Set"));
+    assert!(api.contains("### Input DTOs/Commands"));
+    assert!(api.contains("### Domain Invariants"));
+    assert!(api.contains("### Events / Outbox Side Effects"));
+    assert!(api.contains("### Errors / Failure Codes"));
+
+    use rustok_core::{ModuleKind, RusToKModule};
+    let module = crate::ProductModule;
+    assert_eq!(module.slug(), "product");
+    assert_eq!(module.name(), "Product");
+    assert_eq!(module.kind(), ModuleKind::Optional);
+    assert_eq!(module.dependencies(), &["taxonomy"]);
+}

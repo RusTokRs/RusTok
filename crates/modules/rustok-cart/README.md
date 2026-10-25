@@ -75,4 +75,8 @@ digital-only checkout. See
 - `entities::*`
 - `CartView`
 
-See also `docs/README.md`.
+## Docs
+
+- [CRATE_API](./CRATE_API.md)
+- [Module docs](./docs/README.md)
+

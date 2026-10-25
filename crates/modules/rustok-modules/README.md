@@ -1,5 +1,7 @@
 # rustok-modules
 
+See [CRATE_API.md](CRATE_API.md) for the formal public API surface, capability bindings, and minimum contract set.
+
 ## Purpose
 
 `rustok-modules` is the mandatory Core owner of module artifact, marketplace,
@@ -152,5 +154,32 @@ around the owner contracts.
   workspace from its owner projection and verified CAS bytes; it does not own
   Alloy drafts, catalog DTOs, or mutable OCI references.
 - `apps/server` bootstraps this Core module without owning marketplace policy.
+
+## Known Limitations / Pending Implementation
+
+Owner-level and bounded SQLite/local-storage evidence does not establish
+production readiness. The documented implementation and operational gaps include:
+
+- Artifact-data object migration and the physical namespace cutover still need
+  production fleet/job/write/recovery/retention fences, actual migration-object
+  copy publication, PostgreSQL crash/race evidence, a separate full-manifest
+  serving cutover, and safe orphan collection.
+- Post-purge recovery and structured copy still need production policy and host
+  transport composition, lifecycle outbox facts, whole-operation source
+  retention, full-snapshot verification, and production hold/fleet fences.
+- Static settings rows do not yet persist the exact schema digest and the
+  `not_applicable`/`ready`/`migration_required` state.
+- Production secret management/revocation and value-use authorization remain
+  open; stateless MCP runtime verification is pending.
+- Release-safety closure still needs the release-admission installer and update
+  coordinator, admission/recovery reconcilers and executor prefetch/readiness,
+  authenticated outside-candidate deployment/process supervision, singular
+  static publisher/rollout identity, operations-tool fleet coordination, and
+  complete retention collection.
+
+The [owner documentation](./docs/README.md) and
+[implementation plan](./docs/implementation-plan.md) track the current boundaries
+and evidence. These items must not be presented as production-ready until their
+owner contracts, runtime composition, and production evidence are complete.
 
 See the [local documentation](./docs/README.md).

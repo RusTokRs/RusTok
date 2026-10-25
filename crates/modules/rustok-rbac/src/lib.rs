@@ -1,24 +1,35 @@
+//! # RusToK RBAC Module
+//!
+//! Role-based access control (RBAC) helpers, permission evaluation, and catalog management.
+//!
+//! Provides permission resolution, policy enforcement, role mutation, system role repair,
+//! localized permission presentations, and transport-neutral permission decision ports.
+
 mod artifact_permission_assignment;
 mod artifact_permission_catalog;
 pub mod bootstrap;
 pub mod catalog;
+pub mod consistency;
 mod control_plane;
 pub mod dto;
 pub mod error;
 #[cfg(feature = "graphql")]
 pub mod graphql;
 mod invalidation_generation;
-mod m20260714_900001_enforce_rbac_relation_tenant_integrity;
-mod m20260714_900002_create_rbac_invalidation_state;
-mod m20260716_000001_artifact_permission_catalog;
-mod m20260717_000001_artifact_role_permissions;
-mod m20260803_000001_canonicalize_artifact_permissions;
-mod m20260914_000001_localized_presentations;
+pub(crate) mod m20260714_900001_enforce_rbac_relation_tenant_integrity;
+pub(crate) mod m20260714_900002_create_rbac_invalidation_state;
+pub(crate) mod m20260716_000001_artifact_permission_catalog;
+pub(crate) mod m20260717_000001_artifact_role_permissions;
+pub(crate) mod m20260803_000001_canonicalize_artifact_permissions;
+pub(crate) mod m20260914_000001_localized_presentations;
+pub mod module;
 pub mod ports;
 pub mod presentation;
 mod repair;
 mod role_mutation;
 pub mod services;
+
+pub use module::RbacModule;
 
 pub use artifact_permission_assignment::{
     ArtifactPermissionAssignmentError, ArtifactPermissionAssignmentScope,
@@ -38,11 +49,15 @@ pub use invalidation_generation::{
     RBAC_PERMISSION_INVALIDATION_SCOPE, RbacInvalidationGenerationError,
     read_permission_invalidation_generation, reserve_permission_invalidation_generation,
 };
-pub use ports::*;
+pub use ports::{
+    RbacPermissionCheckMode, RbacPermissionCheckRequest, RbacPermissionCheckResponse,
+    RbacPermissionDecisionPort, RbacPermissionDecisionProvider,
+};
 pub use presentation::{
     RbacLocalizedPresentation, RbacPresentationResourceKind, RbacPresentationStore,
     RbacPresentationStoreError, SeaOrmRbacPresentationStore,
 };
+
 pub use repair::{
     RbacAffectedUser, RbacSystemRoleRepairError, RbacSystemRoleRepairOptions,
     RbacSystemRoleRepairReport,
@@ -111,78 +126,6 @@ pub async fn apply_system_role_repair_in_transaction(
     .await
 }
 
-use async_trait::async_trait;
-use rustok_api::{Permission, SharedTenantRbacCatalog};
-use rustok_core::module::{
-    HealthStatus, MigrationSource, ModuleKind, ModuleRuntimeExtensions, RusToKModule,
-};
-use sea_orm_migration::MigrationTrait;
-use std::sync::Arc;
-
-pub struct RbacModule;
-
-impl MigrationSource for RbacModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        vec![
-            Box::new(m20260714_900001_enforce_rbac_relation_tenant_integrity::Migration),
-            Box::new(m20260714_900002_create_rbac_invalidation_state::Migration),
-            Box::new(m20260716_000001_artifact_permission_catalog::Migration),
-            Box::new(m20260717_000001_artifact_role_permissions::Migration),
-            Box::new(m20260803_000001_canonicalize_artifact_permissions::Migration),
-            Box::new(m20260914_000001_localized_presentations::Migration),
-        ]
-    }
-}
-
-#[async_trait]
-impl RusToKModule for RbacModule {
-    fn slug(&self) -> &'static str {
-        "rbac"
-    }
-
-    fn name(&self) -> &'static str {
-        "RBAC"
-    }
-
-    fn description(&self) -> &'static str {
-        "Role-based access control helpers."
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn dependencies(&self) -> &[&'static str] {
-        &["outbox"]
-    }
-
-    fn kind(&self) -> ModuleKind {
-        ModuleKind::Core
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::SETTINGS_READ,
-            Permission::SETTINGS_UPDATE,
-            Permission::SETTINGS_MANAGE,
-            Permission::LOGS_READ,
-            Permission::LOGS_LIST,
-        ]
-    }
-
-    fn register_runtime_extensions(
-        &self,
-        extensions: &mut ModuleRuntimeExtensions,
-    ) -> rustok_core::Result<()> {
-        extensions.insert(SharedTenantRbacCatalog(Arc::new(BuiltinTenantRbacCatalog)));
-        Ok(())
-    }
-
-    async fn health(&self) -> HealthStatus {
-        HealthStatus::Healthy
-    }
-}
-
-pub mod consistency;
 #[cfg(test)]
 mod contract_tests;
+

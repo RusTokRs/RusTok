@@ -1,0 +1,29 @@
+[module]
+slug = "deal"
+name = "CRM Deals & Pipelines"
+version = "0.1.0"
+description = "CRM Deals & Pipelines capability module for RusToK"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "admin_only"
+recommended_admin_surfaces = ["leptos-admin"]
+
+[marketplace]
+category = "crm"
+tags = ["deal"]
+
+[dependencies]
+outbox = { version_req = ">=0.1.0" }
+
+[crate]
+entry_type = "DealModule"
+
+[provides.admin_ui]
+leptos_crate = "rustok-deal-admin"
+route_segment = "deal"
+nav_label = "CRM Deals & Pipelines"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"

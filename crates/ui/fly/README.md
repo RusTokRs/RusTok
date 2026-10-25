@@ -212,7 +212,8 @@ the owner of the missing half.
   smooth scroll, closed Web Animations keyframe sets) against the server-materialized
   `data-fly-action` contract. Hosts include the asset on published pages and listen for
   `fly:action`; without the asset the buttons stay inert by design. Interactive primitives
-  such as tabs, accordion, and slider components do not exist yet.
+  such as tabs (`switch_tab`), accordion (`toggle_accordion`), and slider / carousel (`switch_slide`
+  with swipe/touch gestures and dot indicators) are implemented in `builtin_blocks` and `fly-actions.js`.
 - **Rich text renders through the host's capability, not Fly's fallback.** A component carrying
   `flyRichText` stores a `RichTextPayload`; `fly` validates its shape, projects plain text, and
   can render a conservative escaped fallback. Production HTML must come from the host binding

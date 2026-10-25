@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Email module for RusTok — SMTP transport, templates"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 rustok-core = { workspace = true }
 rustok-api = { workspace = true }

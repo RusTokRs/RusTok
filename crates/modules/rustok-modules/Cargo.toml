@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 description = "Module platform control plane and artifact contracts for RusToK"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [features]
 default = ["oci-distribution"]
 oci-distribution = ["dep:oci-distribution"]

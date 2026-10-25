@@ -11,7 +11,7 @@ use rustok_comments::{
     CommentsTcpDelegationSigner, CommentsThreadTransport, MAX_COMMENTS_TCP_DELEGATION_KEYS,
     PlaintextLoopbackCommentsTcpChannel, TcpJsonCommentsTransport, remote_comments_thread_port,
 };
-use rustok_comments_api::CommentsThreadPort;
+use rustok_comments::CommentsThreadPort;
 use rustok_core::ModuleRuntimeExtensions;
 use serde::Deserialize;
 use uuid::Uuid;

@@ -32,7 +32,23 @@ impl CampaignService {
         tenant_id: Uuid,
         input: CreateCampaignInput,
     ) -> NewsletterResult<CampaignResponse> {
+        if tenant_id.is_nil() {
+            return Err(NewsletterError::validation("Tenant ID must not be nil"));
+        }
         validate_campaign_input(&input.title, &input.subject)?;
+        if input.content_sources.len() > 50 {
+            return Err(NewsletterError::validation("Cannot have more than 50 content sources"));
+        }
+        if let Some(ref p) = input.preheader {
+            if p.len() > 512 {
+                return Err(NewsletterError::validation("Preheader exceeds 512 characters"));
+            }
+        }
+        if let Some(segment_id) = input.segment_id {
+            if segment_id.is_nil() {
+                return Err(NewsletterError::validation("Segment ID must not be nil"));
+            }
+        }
 
         let now = Utc::now();
         let content_sources: Vec<String> = input.content_sources;
@@ -65,6 +81,12 @@ impl CampaignService {
         campaign_id: Uuid,
         input: UpdateCampaignInput,
     ) -> NewsletterResult<CampaignResponse> {
+        if tenant_id.is_nil() {
+            return Err(NewsletterError::validation("Tenant ID must not be nil"));
+        }
+        if campaign_id.is_nil() {
+            return Err(NewsletterError::validation("Campaign ID must not be nil"));
+        }
         let campaign = self.find_campaign(tenant_id, campaign_id).await?;
         let status = parse_status(&campaign.status)?;
 
@@ -82,21 +104,36 @@ impl CampaignService {
             if title.trim().is_empty() {
                 return Err(NewsletterError::validation("Title cannot be empty"));
             }
+            if title.len() > 512 {
+                return Err(NewsletterError::validation("Title exceeds 512 characters"));
+            }
             active_model.title = Set(title);
         }
         if let Some(subject) = input.subject {
             if subject.trim().is_empty() {
                 return Err(NewsletterError::validation("Subject cannot be empty"));
             }
+            if subject.len() > 512 {
+                return Err(NewsletterError::validation("Subject exceeds 512 characters"));
+            }
             active_model.subject = Set(subject);
         }
         if let Some(preheader) = input.preheader {
+            if preheader.len() > 512 {
+                return Err(NewsletterError::validation("Preheader exceeds 512 characters"));
+            }
             active_model.preheader = Set(Some(preheader));
         }
         if let Some(sources) = input.content_sources {
+            if sources.len() > 50 {
+                return Err(NewsletterError::validation("Cannot have more than 50 content sources"));
+            }
             active_model.content_sources = Set(serde_json::to_value(&sources).unwrap_or_default());
         }
         if let Some(segment_id) = input.segment_id {
+            if segment_id.is_nil() {
+                return Err(NewsletterError::validation("Segment ID must not be nil"));
+            }
             active_model.segment_id = Set(Some(segment_id));
         }
 
@@ -113,6 +150,12 @@ impl CampaignService {
         campaign_id: Uuid,
         input: ScheduleCampaignInput,
     ) -> NewsletterResult<CampaignResponse> {
+        if tenant_id.is_nil() {
+            return Err(NewsletterError::validation("Tenant ID must not be nil"));
+        }
+        if campaign_id.is_nil() {
+            return Err(NewsletterError::validation("Campaign ID must not be nil"));
+        }
         let campaign = self.find_campaign(tenant_id, campaign_id).await?;
         let status = parse_status(&campaign.status)?;
 
@@ -145,6 +188,12 @@ impl CampaignService {
         tenant_id: Uuid,
         campaign_id: Uuid,
     ) -> NewsletterResult<CampaignResponse> {
+        if tenant_id.is_nil() {
+            return Err(NewsletterError::validation("Tenant ID must not be nil"));
+        }
+        if campaign_id.is_nil() {
+            return Err(NewsletterError::validation("Campaign ID must not be nil"));
+        }
         let campaign = self.find_campaign(tenant_id, campaign_id).await?;
         let status = parse_status(&campaign.status)?;
 
@@ -170,6 +219,10 @@ impl CampaignService {
         query: CampaignListQuery,
     ) -> NewsletterResult<CampaignListResponse> {
         use sea_orm::PaginatorTrait;
+
+        if tenant_id.is_nil() {
+            return Err(NewsletterError::validation("Tenant ID must not be nil"));
+        }
 
         let page = query.page.unwrap_or(1).max(1);
         let per_page = query.per_page.unwrap_or(25).clamp(1, 100);
@@ -213,6 +266,12 @@ impl CampaignService {
         tenant_id: Uuid,
         campaign_id: Uuid,
     ) -> NewsletterResult<CampaignResponse> {
+        if tenant_id.is_nil() {
+            return Err(NewsletterError::validation("Tenant ID must not be nil"));
+        }
+        if campaign_id.is_nil() {
+            return Err(NewsletterError::validation("Campaign ID must not be nil"));
+        }
         let campaign = self.find_campaign(tenant_id, campaign_id).await?;
         self.to_response(campaign)
     }
@@ -220,6 +279,12 @@ impl CampaignService {
     /// Delete a draft or cancelled campaign.
     #[instrument(skip(self), fields(tenant_id = %tenant_id, campaign_id = %campaign_id))]
     pub async fn delete(&self, tenant_id: Uuid, campaign_id: Uuid) -> NewsletterResult<()> {
+        if tenant_id.is_nil() {
+            return Err(NewsletterError::validation("Tenant ID must not be nil"));
+        }
+        if campaign_id.is_nil() {
+            return Err(NewsletterError::validation("Campaign ID must not be nil"));
+        }
         let campaign = self.find_campaign(tenant_id, campaign_id).await?;
         let status = parse_status(&campaign.status)?;
 
@@ -240,6 +305,11 @@ impl CampaignService {
         tenant_id: Uuid,
         campaign_id: Uuid,
     ) -> NewsletterResult<campaign::Model> {
+        if tenant_id.is_nil() || campaign_id.is_nil() {
+            return Err(NewsletterError::validation(
+                "Tenant ID and Campaign ID must not be nil",
+            ));
+        }
         Campaign::find_by_id(campaign_id)
             .filter(campaign::Column::TenantId.eq(tenant_id))
             .one(&self.db)

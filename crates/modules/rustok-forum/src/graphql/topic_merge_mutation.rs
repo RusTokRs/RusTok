@@ -307,7 +307,8 @@ mod tests {
                     (X'{tgt_id}', X'{t_id}', X'{c_id}', 'open', '{{}}', 0, 0, 0);
              INSERT INTO forum_topic_translations (id, topic_id, tenant_id, locale, title, body)
              VALUES (X'{st_id}', X'{s_id}', X'{t_id}', 'en', 'GraphQL source', 'Source'),
-                    (X'{tt_id}', X'{tgt_id}', X'{t_id}', 'en', 'GraphQL target', 'Target');",
+                    (X'{tt_id}', X'{tgt_id}', X'{t_id}', 'en', 'GraphQL target', 'Target');
+             UPDATE forum_categories SET topic_count = 2 WHERE id = X'{c_id}';",
             s_id = source_topic_id.simple().to_string().to_uppercase(),
             tgt_id = target_topic_id.simple().to_string().to_uppercase(),
             t_id = tenant_id.simple().to_string().to_uppercase(),

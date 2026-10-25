@@ -41,9 +41,12 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod migrations;
-mod module;
+pub mod module;
 pub mod ports;
 pub mod services;
+
+#[cfg(test)]
+mod contract_tests;
 
 pub use dto::{
     CreateProductRelationInput, ProductRelationDto, RelationType, ReorderProductRelationsInput,

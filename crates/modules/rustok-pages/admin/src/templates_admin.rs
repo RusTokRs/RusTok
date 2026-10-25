@@ -36,6 +36,8 @@ pub fn TemplatesAdmin(default_locale: String) -> impl IntoView {
     let symbol_content_json = RwSignal::new(core::default_symbol_content_json("Header"));
     let symbol_is_editing = RwSignal::new(false);
     let symbol_busy = RwSignal::new(false);
+    let delete_dialog_target = RwSignal::new(None::<(String, Option<core::SiteSymbolUsageInfo>, bool)>);
+    let delete_busy = RwSignal::new(false);
 
     let templates_token = token;
     let templates_tenant = tenant;
@@ -535,76 +537,109 @@ pub fn TemplatesAdmin(default_locale: String) -> impl IntoView {
                                                 "No site symbols found for this locale. Define headers, footers, or promo banners to attach to layout templates."
                                             </div>
                                         }.into_any(),
-                                        Ok(symbols) => view! {
-                                            <div class="space-y-3">
-                                                {symbols.into_iter().map(|symbol| {
-                                                    let edit_id = symbol.symbol_id.clone();
-                                                    let edit_name = symbol.name.clone().unwrap_or_default();
-                                                    let edit_json = symbol.content_json.clone();
-                                                    let delete_id = symbol.symbol_id.clone();
-                                                    let tok = token;
-                                                    let ten = tenant;
-                                                    let loc = selected_locale;
+                                        Ok(symbols) => {
+                                            let current_templates = templates_resource.get().and_then(Result::ok).unwrap_or_default();
+                                            view! {
+                                                <div class="space-y-3">
+                                                    {symbols.into_iter().map(|symbol| {
+                                                        let edit_id = symbol.symbol_id.clone();
+                                                        let edit_name = symbol.name.clone().unwrap_or_default();
+                                                        let edit_json = symbol.content_json.clone();
+                                                        let delete_id = symbol.symbol_id.clone();
+                                                        let sym_id_check = symbol.symbol_id.clone();
+                                                        let tok = token;
+                                                        let ten = tenant;
+                                                        let loc = selected_locale;
+                                                        let templates_res = templates_resource;
+                                                        let target_sig = delete_dialog_target;
 
-                                                    view! {
-                                                        <div class="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm sm:flex-row sm:items-center">
-                                                            <div class="space-y-1">
-                                                                <div class="flex items-center gap-2">
-                                                                    <span class="font-mono text-base font-semibold text-card-foreground">
-                                                                        {symbol.symbol_id.clone()}
-                                                                    </span>
-                                                                    {symbol.name.map(|n| view! {
-                                                                        <span class="text-sm text-muted-foreground">
-                                                                            {format!("({n})")}
+                                                        let used_in_templates: Vec<String> = current_templates
+                                                            .iter()
+                                                            .filter(|tpl| {
+                                                                tpl.header_symbol_ids.iter().any(|id| id.eq_ignore_ascii_case(&sym_id_check))
+                                                                    || tpl.footer_symbol_ids.iter().any(|id| id.eq_ignore_ascii_case(&sym_id_check))
+                                                            })
+                                                            .map(|tpl| tpl.key.clone())
+                                                            .collect();
+                                                        let has_template_refs = !used_in_templates.is_empty();
+                                                        let tpl_count = used_in_templates.len();
+                                                        let tpl_preview = used_in_templates.join(", ");
+
+                                                        view! {
+                                                            <div class="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm sm:flex-row sm:items-center">
+                                                                <div class="space-y-1.5">
+                                                                    <div class="flex items-center gap-2">
+                                                                        <span class="font-mono text-base font-semibold text-card-foreground">
+                                                                            {symbol.symbol_id.clone()}
                                                                         </span>
-                                                                    })}
+                                                                        {symbol.name.map(|n| view! {
+                                                                            <span class="text-sm text-muted-foreground">
+                                                                                {format!("({n})")}
+                                                                            </span>
+                                                                        })}
+                                                                    </div>
+                                                                    <div class="flex flex-wrap items-center gap-2">
+                                                                        {if has_template_refs {
+                                                                            view! {
+                                                                                <span class="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-medium text-amber-800 dark:text-amber-300">
+                                                                                    <span class="inline-block h-1.5 w-1.5 rounded-full bg-amber-500"></span>
+                                                                                    {format!("In {tpl_count} template(s): {tpl_preview}")}
+                                                                                </span>
+                                                                            }.into_any()
+                                                                        } else {
+                                                                            view! {
+                                                                                <span class="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                                                                                    <span class="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/50"></span>
+                                                                                    "No template references"
+                                                                                </span>
+                                                                            }.into_any()
+                                                                        }}
+                                                                        <span class="text-xs text-muted-foreground">
+                                                                            {format!("AST: {} bytes", symbol.content_json.len())}
+                                                                        </span>
+                                                                    </div>
                                                                 </div>
-                                                                <div class="text-xs text-muted-foreground">
-                                                                    {format!("JSON payload: {} bytes", symbol.content_json.len())}
+                                                                <div class="flex items-center gap-2 self-end sm:self-center">
+                                                                    <button
+                                                                        type="button"
+                                                                        class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                                                                        on:click=move |_| {
+                                                                            symbol_id.set(edit_id.clone());
+                                                                            symbol_name.set(edit_name.clone());
+                                                                            symbol_content_json.set(edit_json.clone());
+                                                                            symbol_is_editing.set(true);
+                                                                        }
+                                                                    >
+                                                                        "Edit"
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        class="rounded-lg border border-destructive/40 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10"
+                                                                        on:click=move |_| {
+                                                                            let id = delete_id.clone();
+                                                                            target_sig.set(Some((id.clone(), None, true)));
+                                                                            let t = tok.get_untracked();
+                                                                            let tn = ten.get_untracked();
+                                                                            let l = loc.get_untracked();
+                                                                            spawn_local(async move {
+                                                                                let pages = transport::fetch_site_symbol_usage(t, tn, id.clone(), l)
+                                                                                    .await
+                                                                                    .unwrap_or_default();
+                                                                                let templates = templates_res.get_untracked().and_then(Result::ok).unwrap_or_default();
+                                                                                let usage = core::compute_symbol_usage(&id, &templates, pages);
+                                                                                target_sig.set(Some((id, Some(usage), false)));
+                                                                            });
+                                                                        }
+                                                                    >
+                                                                        "Delete"
+                                                                    </button>
                                                                 </div>
                                                             </div>
-                                                            <div class="flex items-center gap-2 self-end sm:self-center">
-                                                                <button
-                                                                    type="button"
-                                                                    class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted"
-                                                                    on:click=move |_| {
-                                                                        symbol_id.set(edit_id.clone());
-                                                                        symbol_name.set(edit_name.clone());
-                                                                        symbol_content_json.set(edit_json.clone());
-                                                                        symbol_is_editing.set(true);
-                                                                    }
-                                                                >
-                                                                    "Edit"
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    class="rounded-lg border border-destructive/40 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10"
-                                                                    on:click=move |_| {
-                                                                        let id = delete_id.clone();
-                                                                        let t = tok.get_untracked();
-                                                                        let tn = ten.get_untracked();
-                                                                        let l = loc.get_untracked();
-                                                                        spawn_local(async move {
-                                                                            match transport::delete_site_symbol(t, tn, id.clone(), l).await {
-                                                                                Ok(_) => {
-                                                                                    feedback.set(Some((false, format!("Symbol `{id}` deleted"))));
-                                                                                    refresh_generation.update(|g| *g = g.wrapping_add(1));
-                                                                                }
-                                                                                Err(err) => {
-                                                                                    feedback.set(Some((true, format!("Failed to delete symbol: {err}"))));
-                                                                                }
-                                                                            }
-                                                                        });
-                                                                    }
-                                                                >
-                                                                    "Delete"
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    }
-                                                }).collect_view()}
-                                            </div>
-                                        }.into_any(),
+                                                        }
+                                                    }).collect_view()}
+                                                </div>
+                                            }.into_any()
+                                        }
                                         Err(err) => view! {
                                             <div class="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
                                                 {format!("Error loading site symbols: {err}")}
@@ -692,6 +727,188 @@ pub fn TemplatesAdmin(default_locale: String) -> impl IntoView {
                         </aside>
                     </div>
                 }.into_any(),
+            }}
+
+            // Safe Deletion Modal Dialog
+            {move || {
+                delete_dialog_target.get().map(|(sym_id, usage_opt, is_loading)| {
+                    let sym_id_for_delete = sym_id.clone();
+                    let is_deleting = delete_busy.get();
+
+                    view! {
+                        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4" role="dialog" aria-modal="true">
+                            <div class="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-xl space-y-4">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div>
+                                        <h3 class="text-lg font-semibold text-card-foreground">
+                                            "Safe Symbol Deletion"
+                                        </h3>
+                                        <p class="text-xs font-mono text-muted-foreground mt-0.5">
+                                            {format!("Symbol ID: {sym_id}")}
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        class="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                        on:click=move |_| delete_dialog_target.set(None)
+                                    >
+                                        <span class="sr-only">"Close"</span>
+                                        "✕"
+                                    </button>
+                                </div>
+
+                                {if is_loading {
+                                    view! {
+                                        <div class="flex items-center gap-3 py-6 text-sm text-muted-foreground">
+                                            <div class="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent shrink-0"></div>
+                                            <span>"Analyzing site-wide symbol references across templates and pages..."</span>
+                                        </div>
+                                    }.into_any()
+                                } else if let Some(usage) = usage_opt {
+                                    if !usage.can_delete_safely() {
+                                        let dep_count = usage.total_dependents();
+                                        view! {
+                                            <div class="space-y-4">
+                                                <div class="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-200 space-y-2" role="alert">
+                                                    <div class="font-semibold flex items-center gap-1.5">
+                                                        <span>{format!("⚠️ Symbol is in active use ({dep_count} reference(s))")}</span>
+                                                    </div>
+                                                    <p class="text-xs leading-relaxed">
+                                                        {usage.deletion_warning().unwrap_or_default()}
+                                                    </p>
+                                                </div>
+
+                                                <div class="rounded-xl border border-border bg-muted/40 p-3 space-y-2 text-xs">
+                                                    <div class="font-medium text-foreground">"Dependency Breakdown:"</div>
+                                                    {(!usage.dependent_templates.is_empty()).then(|| view! {
+                                                        <div>
+                                                            <span class="text-muted-foreground">"Layout Templates (" {usage.dependent_templates.len()} "): "</span>
+                                                            <span class="font-mono font-medium">{usage.dependent_templates.join(", ")}</span>
+                                                        </div>
+                                                    })}
+                                                    {(!usage.dependent_page_ids.is_empty()).then(|| view! {
+                                                        <div>
+                                                            <span class="text-muted-foreground">"Page Documents: "</span>
+                                                            <span class="font-mono font-medium">{format!("{} page(s)", usage.dependent_page_ids.len())}</span>
+                                                        </div>
+                                                    })}
+                                                </div>
+
+                                                <p class="text-xs text-muted-foreground">
+                                                    "To safely delete this symbol, detach it from the layout templates above and re-publish referencing pages."
+                                                </p>
+
+                                                <div class="flex items-center justify-end gap-2 pt-2 border-t border-border">
+                                                    <button
+                                                        type="button"
+                                                        class="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
+                                                        on:click=move |_| delete_dialog_target.set(None)
+                                                    >
+                                                        "Cancel"
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground disabled:opacity-50"
+                                                        disabled=is_deleting
+                                                        on:click={
+                                                            let id = sym_id_for_delete.clone();
+                                                            let tok = token;
+                                                            let ten = tenant;
+                                                            let loc = selected_locale;
+                                                            move |_| {
+                                                                delete_busy.set(true);
+                                                                let sym = id.clone();
+                                                                let t = tok.get_untracked();
+                                                                let tn = ten.get_untracked();
+                                                                let l = loc.get_untracked();
+                                                                spawn_local(async move {
+                                                                    match transport::delete_site_symbol(t, tn, sym.clone(), l).await {
+                                                                        Ok(_) => {
+                                                                            feedback.set(Some((false, format!("Symbol `{sym}` deleted"))));
+                                                                            delete_dialog_target.set(None);
+                                                                            refresh_generation.update(|g| *g = g.wrapping_add(1));
+                                                                        }
+                                                                        Err(err) => {
+                                                                            feedback.set(Some((true, format!("Server rejected deletion: {err}"))));
+                                                                            delete_dialog_target.set(None);
+                                                                        }
+                                                                    }
+                                                                    delete_busy.set(false);
+                                                                });
+                                                            }
+                                                        }
+                                                    >
+                                                        {if is_deleting { "Deleting..." } else { "Force Delete Attempt" }}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        }.into_any()
+                                    } else {
+                                        view! {
+                                            <div class="space-y-4">
+                                                <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-800 dark:text-emerald-300">
+                                                    <p class="text-xs leading-relaxed">
+                                                        "No dependencies found. This symbol is not referenced by any layout templates or page documents and can be safely deleted."
+                                                    </p>
+                                                </div>
+
+                                                <p class="text-sm text-foreground">
+                                                    "Are you sure you want to permanently delete site symbol " <code class="font-mono font-semibold">{sym_id.clone()}</code> "?"
+                                                </p>
+
+                                                <div class="flex items-center justify-end gap-2 pt-2 border-t border-border">
+                                                    <button
+                                                        type="button"
+                                                        class="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
+                                                        on:click=move |_| delete_dialog_target.set(None)
+                                                    >
+                                                        "Cancel"
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:opacity-90 disabled:opacity-50"
+                                                        disabled=is_deleting
+                                                        on:click={
+                                                            let id = sym_id_for_delete.clone();
+                                                            let tok = token;
+                                                            let ten = tenant;
+                                                            let loc = selected_locale;
+                                                            move |_| {
+                                                                delete_busy.set(true);
+                                                                let sym = id.clone();
+                                                                let t = tok.get_untracked();
+                                                                let tn = ten.get_untracked();
+                                                                let l = loc.get_untracked();
+                                                                spawn_local(async move {
+                                                                    match transport::delete_site_symbol(t, tn, sym.clone(), l).await {
+                                                                        Ok(_) => {
+                                                                            feedback.set(Some((false, format!("Symbol `{sym}` deleted successfully"))));
+                                                                            delete_dialog_target.set(None);
+                                                                            refresh_generation.update(|g| *g = g.wrapping_add(1));
+                                                                        }
+                                                                        Err(err) => {
+                                                                            feedback.set(Some((true, format!("Failed to delete symbol: {err}"))));
+                                                                            delete_dialog_target.set(None);
+                                                                        }
+                                                                    }
+                                                                    delete_busy.set(false);
+                                                                });
+                                                            }
+                                                        }
+                                                    >
+                                                        {if is_deleting { "Deleting..." } else { "Confirm Delete" }}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        }.into_any()
+                                    }
+                                } else {
+                                    view! { <div /> }.into_any()
+                                }}
+                            </div>
+                        </div>
+                    }
+                })
             }}
         </div>
     }

@@ -107,14 +107,17 @@ pub(crate) fn strip_layout_nodes(content: &str) -> PagesResult<String> {
     let mut document = GrapesJsCodec::decode_str(content)
         .map_err(|error| PagesError::validation(format!("Invalid document: {error}")))?;
     for page in &mut document.project.pages {
-        if let Some(root) = page.component.as_mut().and_then(ComponentNode::as_object_mut) {
-            if let Some(children) = root.children_mut() {
-                children.retain(|node| {
-                    node.as_object().map_or(true, |obj| {
-                        !obj.attributes.contains_key("data-fly-layout-slot")
-                    })
-                });
-            }
+        if let Some(children) = page
+            .component
+            .as_mut()
+            .and_then(ComponentNode::as_object_mut)
+            .and_then(ComponentObject::children_mut)
+        {
+            children.retain(|node| {
+                node.as_object().is_none_or(|obj| {
+                    !obj.attributes.contains_key("data-fly-layout-slot")
+                })
+            });
         }
     }
     let value = GrapesJsCodec::encode_value(&document)

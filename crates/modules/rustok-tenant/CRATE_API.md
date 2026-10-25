@@ -1,7 +1,20 @@
 # rustok-tenant / CRATE_API
 
 ## Public Modules
-`dto`, `entities`, `error`, `services`.
+`dto`, `entities`, `error`, `module`, `ports`, `services`.
+
+## Platform Capability Bindings
+- **Core Module Registration**: Exposes `TenantModule` implementing `RusToKModule` (slug `"tenant"`, kind `ModuleKind::Core`) and `MigrationSource`.
+- **Tenant Management**: Exposes `TenantService` for tenant CRUD, domain resolution, and module state inspection.
+- **Port Capabilities**:
+  - `TenantReadPort` (`tenant.read_projection.v1`): Transport-neutral read projections by tenant id, slug, or domain.
+  - `TenantLocalePolicyPort`: Revisioned reads and CAS/idempotent atomic replacement of locale policies.
+  - In-process factory `in_process_tenant_storefront_ports(db)`.
+
+## Domain Collaborations
+- **Database & Migrations**: Runs schema migrations for `tenants` and `tenant_locales` with dependency descriptor on locale storage expansion.
+- **Outbox & Events**: Publishes `tenant.created`, `tenant.updated`, `tenant.module.toggled`, `tenant.locale.enabled`, and `tenant.locale.disabled` atomically via `rustok-outbox` (`TransactionalEventBus::publish_root_in_tx`).
+- **RBAC**: Registers typed permissions (`tenants:*`, `modules:*`) via `rustok-api::Permission`.
 
 ## Primary Public Types and Signatures
 - `pub struct TenantModule`
@@ -15,6 +28,7 @@
 - Consumes: N/A.
 
 ## Dependencies on Other RusToK Crates
+- `rustok-api`
 - `rustok-core`
 - `rustok-events`
 - `rustok-outbox`

@@ -28,6 +28,14 @@ impl NavigationQuery {
         require_public_channel_enabled(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        if tenant.id.is_nil() {
+            return Err(async_graphql::Error::new("Tenant ID must not be nil")
+                .extend_with(|_, extensions| extensions.set("code", "BAD_REQUEST")));
+        }
+        if id.is_nil() {
+            return Err(async_graphql::Error::new("Menu ID must not be nil")
+                .extend_with(|_, extensions| extensions.set("code", "BAD_REQUEST")));
+        }
         let effective_locale = resolve_graphql_locale(ctx, locale.as_deref());
         match MenuService::new(db.clone())
             .get(
@@ -59,12 +67,19 @@ impl NavigationQuery {
         require_public_channel_enabled(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        if tenant.id.is_nil() {
+            return Err(async_graphql::Error::new("Tenant ID must not be nil")
+                .extend_with(|_, extensions| extensions.set("code", "BAD_REQUEST")));
+        }
         let Some(channel_id) = ctx
             .data_opt::<RequestContext>()
             .and_then(|request| request.channel_id)
         else {
             return Ok(None);
         };
+        if channel_id.is_nil() {
+            return Ok(None);
+        }
         let effective_locale = resolve_graphql_locale(ctx, locale.as_deref());
         match MenuBindingService::new(db.clone())
             .get_active(

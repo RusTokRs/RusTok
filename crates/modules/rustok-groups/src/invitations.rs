@@ -78,12 +78,54 @@ pub struct ListGroupInvitationsRequest {
     pub include_inactive: bool,
 }
 
+impl ListGroupInvitationsRequest {
+    pub fn validate(&self) -> GroupsResult<()> {
+        if self.group_id.is_nil() {
+            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+        }
+        if self.page == 0 {
+            return Err(GroupsError::Validation("page must be greater than zero".to_string()));
+        }
+        if self.per_page == 0 || self.per_page > 100 {
+            return Err(GroupsError::Validation("per_page must be between 1 and 100".to_string()));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreateGroupInvitationRequest {
     pub group_id: Uuid,
     pub target_user_id: Option<Uuid>,
     pub expires_in_seconds: u64,
     pub max_uses: u32,
+}
+
+impl CreateGroupInvitationRequest {
+    pub fn validate(&self) -> GroupsResult<()> {
+        if self.group_id.is_nil() {
+            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+        }
+        if self.target_user_id.is_some_and(|target_user_id| target_user_id.is_nil()) {
+            return Err(GroupsError::Validation("target_user_id cannot be nil UUID".to_string()));
+        }
+        if !(MIN_EXPIRY_SECONDS..=MAX_EXPIRY_SECONDS).contains(&self.expires_in_seconds) {
+            return Err(GroupsError::Validation(format!(
+                "invitation expiry must be between {MIN_EXPIRY_SECONDS} and {MAX_EXPIRY_SECONDS} seconds"
+            )));
+        }
+        if !(1..=MAX_INVITATION_USES).contains(&self.max_uses) {
+            return Err(GroupsError::Validation(format!(
+                "invitation max_uses must be between 1 and {MAX_INVITATION_USES}"
+            )));
+        }
+        if self.target_user_id.is_some() && self.max_uses != 1 {
+            return Err(GroupsError::Validation(
+                "a targeted invitation must have max_uses equal to 1".to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -99,6 +141,15 @@ pub struct RevokeGroupInvitationRequest {
     pub invitation_id: Uuid,
 }
 
+impl RevokeGroupInvitationRequest {
+    pub fn validate(&self) -> GroupsResult<()> {
+        if self.invitation_id.is_nil() {
+            return Err(GroupsError::Validation("invitation_id cannot be nil UUID".to_string()));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RevokeGroupInvitationResult {
     pub invitation: GroupInvitation,
@@ -109,6 +160,19 @@ pub struct RevokeGroupInvitationResult {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AcceptGroupInvitationRequest {
     pub token: String,
+}
+
+impl AcceptGroupInvitationRequest {
+    pub fn validate(&self) -> GroupsResult<()> {
+        let token = self.token.trim();
+        if token.is_empty() {
+            return Err(invalid_invitation_token());
+        }
+        if token.len() < 32 || token.len() > 160 {
+            return Err(invalid_invitation_token());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -166,6 +230,7 @@ impl GroupInvitationService {
         request: ListGroupInvitationsRequest,
     ) -> GroupsResult<GroupInvitationConnection> {
         require_read(context)?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
         let group_model = group::Entity::find()
@@ -326,6 +391,7 @@ impl GroupInvitationService {
         request: RevokeGroupInvitationRequest,
     ) -> GroupsResult<RevokeGroupInvitationResult> {
         require_write(context)?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
         let idempotency_key = idempotency_key(context)?;
@@ -411,6 +477,7 @@ impl GroupInvitationService {
         request: AcceptGroupInvitationRequest,
     ) -> GroupsResult<AcceptGroupInvitationResult> {
         require_write(context)?;
+        request.validate()?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
         let token = request.token.trim();
@@ -575,6 +642,7 @@ impl GroupInvitationReadPort for GroupInvitationService {
         context: PortContext,
         request: ListGroupInvitationsRequest,
     ) -> Result<GroupInvitationConnection, PortError> {
+        request.validate().map_err(PortError::from)?;
         self.list_group_invitations_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -588,6 +656,7 @@ impl GroupInvitationCommandPort for GroupInvitationService {
         context: PortContext,
         request: CreateGroupInvitationRequest,
     ) -> Result<CreateGroupInvitationResult, PortError> {
+        request.validate().map_err(PortError::from)?;
         self.create_group_invitation_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -598,6 +667,7 @@ impl GroupInvitationCommandPort for GroupInvitationService {
         context: PortContext,
         request: RevokeGroupInvitationRequest,
     ) -> Result<RevokeGroupInvitationResult, PortError> {
+        request.validate().map_err(PortError::from)?;
         self.revoke_group_invitation_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -608,6 +678,7 @@ impl GroupInvitationCommandPort for GroupInvitationService {
         context: PortContext,
         request: AcceptGroupInvitationRequest,
     ) -> Result<AcceptGroupInvitationResult, PortError> {
+        request.validate().map_err(PortError::from)?;
         self.accept_group_invitation_owned(&context, request)
             .await
             .map_err(Into::into)
@@ -615,22 +686,7 @@ impl GroupInvitationCommandPort for GroupInvitationService {
 }
 
 fn validate_create_request(request: &CreateGroupInvitationRequest) -> GroupsResult<()> {
-    if !(MIN_EXPIRY_SECONDS..=MAX_EXPIRY_SECONDS).contains(&request.expires_in_seconds) {
-        return Err(GroupsError::Validation(format!(
-            "invitation expiry must be between {MIN_EXPIRY_SECONDS} and {MAX_EXPIRY_SECONDS} seconds"
-        )));
-    }
-    if !(1..=MAX_INVITATION_USES).contains(&request.max_uses) {
-        return Err(GroupsError::Validation(format!(
-            "invitation max_uses must be between 1 and {MAX_INVITATION_USES}"
-        )));
-    }
-    if request.target_user_id.is_some() && request.max_uses != 1 {
-        return Err(GroupsError::Validation(
-            "a targeted invitation must have max_uses equal to 1".to_string(),
-        ));
-    }
-    Ok(())
+    request.validate()
 }
 
 async fn authorize_invitation_management<C: sea_orm::ConnectionTrait>(
@@ -931,8 +987,16 @@ fn require_write(context: &PortContext) -> GroupsResult<()> {
 }
 
 fn context_tenant_id(context: &PortContext) -> GroupsResult<Uuid> {
-    Uuid::parse_str(&context.tenant_id)
-        .map_err(|_| GroupsError::Validation("tenant_id must be a UUID".to_string()))
+    let trimmed = context.tenant_id.trim();
+    if trimmed.is_empty() {
+        return Err(GroupsError::Validation("tenant_id cannot be empty".to_string()));
+    }
+    let parsed = Uuid::parse_str(trimmed)
+        .map_err(|_| GroupsError::Validation("tenant_id must be a UUID".to_string()))?;
+    if parsed.is_nil() {
+        return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+    }
+    Ok(parsed)
 }
 
 fn actor_user_id(context: &PortContext) -> GroupsResult<Uuid> {
@@ -941,8 +1005,16 @@ fn actor_user_id(context: &PortContext) -> GroupsResult<Uuid> {
             "a user actor is required for group invitations".to_string(),
         ));
     }
-    Uuid::parse_str(&context.actor.id)
-        .map_err(|_| GroupsError::Validation("actor.id must be a UUID".to_string()))
+    let trimmed = context.actor.id.trim();
+    if trimmed.is_empty() {
+        return Err(GroupsError::Validation("actor.id cannot be empty".to_string()));
+    }
+    let parsed = Uuid::parse_str(trimmed)
+        .map_err(|_| GroupsError::Validation("actor.id must be a UUID".to_string()))?;
+    if parsed.is_nil() {
+        return Err(GroupsError::Validation("actor.id cannot be nil UUID".to_string()));
+    }
+    Ok(parsed)
 }
 
 fn idempotency_key(context: &PortContext) -> GroupsResult<String> {

@@ -2,8 +2,29 @@
 
 ## Public modules
 
-`controllers`, `dto`, `entities`, `error`, `graphql`, `migrations`, `openapi`,
-`services`.
+`controllers`, `dto`, `entities`, `error`, `graphql`, `http`, `migrations`, `openapi`, `provider_health_binding`, `search_projection`, `services`, `module`.
+
+## Platform Capability Bindings
+
+- **Core Module Registration**: Exposes `PagesModule` implementing `RusToKModule` (slug `"pages"`) and `MigrationSource`.
+- **Page Services**:
+  - `PageService`: Manages page creation, localization, template bindings, inline editing, draft updates, and status transitions.
+  - `PageBuilderArtifactService`: Compiles and audits deterministic landing artifacts for storefront rendering.
+  - `PageBuilderScenarioBaselineService`: Manages scenario baselines for visual regression testing and release readiness.
+  - `PageRouteService` & `PageRouteHistoryImportService`: Handles canonical page routes, aliases, and redirects.
+  - `MenuService`: Exact-locale navigation menus and item hierarchies.
+- **Cache & Search Integration**:
+  - `PageCacheInvalidationEventHandler`: Subscribes to page lifecycle events to invalidate cached storefront landing projections.
+  - `PageSearchProjectionSource`: Feeds search indexing with localized page content.
+- **Provider Health Authority**:
+  - `PagesProviderHealthAuthority`: Verifies visual builder provider health and deployment identity.
+
+## Domain Collaborations
+
+- **`rustok-page-builder`**: Core engine for parsing and compiling page builder documents.
+- **`rustok-content`**: Shares locale resolution and canonical route formatting.
+- **`rustok-outbox` / `rustok-events`**: Emits transactional events upon page lifecycle mutations.
+- **`rustok-seo-targets`**: Registers page entity metadata as an SEO target.
 
 ## Primary public types
 
@@ -66,3 +87,27 @@ transaction as the domain mutation.
 Changes to public DTO fields require synchronized GraphQL, HTTP, admin and
 storefront updates. Error classes for validation, authorization, conflict,
 feature-disabled, integrity and not-found outcomes must retain their semantics.
+
+## Minimum Contract Set
+
+### Input DTOs/Commands
+
+- `CreatePageInput`, `UpdatePageInput`, `PageTranslationInput`, `PageBodyInput`: Control core page attributes and visual document bindings.
+- `CreateMenuInput`, `UpdateMenuInput`, `MenuItemInput`: Manage localized menu hierarchy.
+- `ImportPageRouteHistoryInput`, `AuditPageArtifactsInput`: Manage routing history and artifact integrity.
+
+### Domain Invariants
+
+- Tenant isolation and permission enforcement are non-negotiable across all mutations.
+- Unique slug constraints per tenant and locale prevent routing collisions.
+- Published state requires pre-compiled, validated deterministic landing artifacts.
+
+### Events / Outbox Side Effects
+
+- Page creations, updates, publishings, rollbacks, and deletions publish domain events via `TransactionalEventBus`.
+- Event payloads adhere to platform-wide JSON schema invariants.
+
+### Errors / Failure Codes
+
+- `PagesError` variants: `Validation`, `NotFound`, `Forbidden`, `Conflict`, `Database`, `Internal`.
+- Typed error codes (e.g. `CANNOT_DELETE_PUBLISHED_ERROR_CODE`) are mapped to consistent client status codes.

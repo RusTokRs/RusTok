@@ -296,7 +296,7 @@ mod tests {
 
     use super::{
         FORUM_TOPIC_CREATED, FORUM_TOPIC_REPLIED, FORUM_USER_MENTION_ADDED,
-        ServerNotificationOutboxEnvelopeDecoder,
+        MESSENGER_MESSAGE_DISPATCHED, MESSENGER_SOURCE, ServerNotificationOutboxEnvelopeDecoder,
     };
 
     #[test]

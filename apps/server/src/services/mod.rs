@@ -162,7 +162,7 @@ pub mod module_event_dispatcher {
                 selection.profile
                     == super::comments_provider_runtime::CommentsProviderProfile::InProcess
             }) && extensions
-                .get::<Arc<dyn rustok_comments_api::CommentsThreadPort>>()
+                .get::<Arc<dyn rustok_comments::CommentsThreadPort>>()
                 .is_none()
             {
                 let provider = rustok_comments::in_process_comments_thread_port(

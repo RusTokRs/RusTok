@@ -5,11 +5,14 @@ edition.workspace = true
 description = "Content import/export implementation for RusTok platform"
 license.workspace = true
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true
 csv = "1.3"
-rustok-content-portability-api = { path = "../rustok-content-portability-api" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, FixedOffset, Utc};
-use rustok_notifications_api::NotificationSourceEventRef;
+use crate::NotificationSourceEventRef;
 use sea_orm::{
     ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect, QueryTrait, TransactionTrait, sea_query::OnConflict,

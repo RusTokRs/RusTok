@@ -589,7 +589,7 @@ fn redirect_response(location: &str, status_code: Option<i32>) -> Response {
 #[cfg(feature = "ssr")]
 fn build_seo_head(context: &ResolvedSeoPageContext, csp_nonce: Option<&CspNonce>) -> String {
     let context = crate::shared::context::seo_page_context::to_seo_page_context(context);
-    rustok_seo_render::render_head_html_with_nonce(&context, csp_nonce.map(|n| n.as_str()))
+    rustok_seo_storefront::render_head_html_with_nonce(&context, csp_nonce.map(|n| n.as_str()))
 }
 
 #[cfg(feature = "ssr")]

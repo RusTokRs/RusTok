@@ -56,6 +56,12 @@ pub async fn ensure_messenger_module_enabled(
     db: &DatabaseConnection,
     tenant_id: Uuid,
 ) -> HttpResult<()> {
+    if tenant_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "INVALID_TENANT",
+            "Tenant ID must not be nil",
+        ));
+    }
     match rustok_api::is_tenant_module_enabled(db, tenant_id, "messenger").await {
         Ok(true) => Ok(()),
         Ok(false) => Err(HttpError::new(

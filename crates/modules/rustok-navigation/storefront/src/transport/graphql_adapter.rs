@@ -19,6 +19,11 @@ pub async fn fetch_active_menu(
     location: StorefrontMenuLocation,
     locale: Option<String>,
 ) -> Result<Option<StorefrontMenu>, ApiError> {
+    let locale = locale
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
     let response: Response = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(QUERY, Some(Variables { location, locale })),

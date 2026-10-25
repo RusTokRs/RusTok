@@ -47,7 +47,7 @@ const evidencePath =
   "crates/modules/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json";
 const sharedPolicyPath = "crates/libs/rustok-api/src/ports.rs";
 const providerPath = "crates/modules/rustok-comments/src/ports.rs";
-const providerApiPath = "crates/modules/rustok-comments-api/src/provider.rs";
+const providerApiPath = "crates/modules/rustok-comments/src/ports.rs";
 const publicReadPath = "crates/modules/rustok-comments/src/public_read.rs";
 const dtoPath = "crates/modules/rustok-comments/src/dto.rs";
 const richtextPath = "crates/modules/rustok-comments/src/richtext.rs";
@@ -248,27 +248,24 @@ requireNoMarker(
   `${providerApiPath}: public projection must not be a trait-level stub`,
 );
 
+const implStart = provider.indexOf("impl CommentsThreadPort for InProcessCommentsThreadProvider");
+const traitSlice = provider.slice(0, implStart === -1 ? provider.length : implStart);
+const implSlice = implStart === -1 ? "" : provider.slice(implStart);
+
 for (const marker of [
   "pub trait CommentsThreadPort: Send + Sync",
-  "async fn create_comment(",
-  "async fn get_comment(",
-  "async fn list_comments_for_target(",
-  "async fn list_public_comments_for_target(",
-  "async fn update_comment(",
-  "async fn set_comment_status(",
-  "async fn delete_comment(",
   "use rustok_api::{PortContext, PortError};",
-]) requireMarker(providerApi, marker, providerApiPath);
+]) requireMarker(traitSlice, marker, providerApiPath);
 
 for (const operation of expectedOperations) {
-  requireMarker(provider, `async fn ${operation}(`, `${providerPath}:${operation}`);
+  requireMarker(traitSlice, `async fn ${operation}(`, providerApiPath);
+  requireMarker(implSlice, `async fn ${operation}(`, providerPath);
 }
 
-const implStart = provider.indexOf("impl CommentsThreadPort for InProcessCommentsThreadProvider");
 if (implStart === -1) {
   failures.push(`${providerPath}: missing in-process implementation`);
 } else {
-  const implementation = provider.slice(implStart);
+  const implementation = implSlice;
   for (const operation of writeOperations) {
     const start = implementation.indexOf(`async fn ${operation}(`);
     const next = implementation.indexOf("\n    async fn ", start + 1);

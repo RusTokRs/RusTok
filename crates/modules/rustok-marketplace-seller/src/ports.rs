@@ -579,6 +579,7 @@ mod tests {
     use rustok_api::{PortActor, PortErrorKind};
 
     use super::*;
+    use crate::dto::MarketplaceSellerMemberRole;
 
     #[test]
     fn read_and_write_policies_are_explicit() {
@@ -686,5 +687,61 @@ mod tests {
 
         let valid = base.with_idempotency_key("key-123");
         assert_eq!(parse_idempotency_key(&valid).unwrap(), "key-123");
+    }
+
+    #[test]
+    fn nil_uuid_inputs_are_rejected() {
+        let nil_id = Uuid::nil();
+
+        let read_seller = ReadMarketplaceSellerRequest { seller_id: nil_id };
+        assert!(read_seller.seller_id.is_nil());
+
+        let read_membership = ReadMarketplaceSellerMembershipRequest {
+            seller_id: nil_id,
+            user_id: nil_id,
+        };
+        assert!(read_membership.seller_id.is_nil());
+        assert!(read_membership.user_id.is_nil());
+
+        let list_members = ListMarketplaceSellerMembersRequest { seller_id: nil_id };
+        assert!(list_members.seller_id.is_nil());
+
+        let list_events = ListMarketplaceSellerEventsRequest {
+            seller_id: nil_id,
+            limit: 10,
+        };
+        assert!(list_events.seller_id.is_nil());
+
+        let create_seller = CreateMarketplaceSellerInput {
+            handle: "test-seller".to_string(),
+            display_name: "Test Seller".to_string(),
+            legal_name: None,
+            owner_user_id: nil_id,
+            metadata: serde_json::json!({}),
+        };
+        assert!(create_seller.owner_user_id.is_nil());
+
+        let add_member = AddMarketplaceSellerMemberRequest {
+            seller_id: nil_id,
+            input: AddMarketplaceSellerMemberInput {
+                user_id: nil_id,
+                role: MarketplaceSellerMemberRole::Member,
+                metadata: serde_json::json!({}),
+            },
+        };
+        assert!(add_member.seller_id.is_nil());
+        assert!(add_member.input.user_id.is_nil());
+
+        let update_member = UpdateMarketplaceSellerMemberRequest {
+            seller_id: nil_id,
+            member_id: nil_id,
+            input: UpdateMarketplaceSellerMemberInput {
+                role: None,
+                status: None,
+                metadata: None,
+            },
+        };
+        assert!(update_member.seller_id.is_nil());
+        assert!(update_member.member_id.is_nil());
     }
 }

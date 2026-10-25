@@ -80,6 +80,11 @@ pub struct FollowStateGql {
 async fn read_follow_state(ctx: &Context<'_>, user_id: Uuid) -> Result<SocialGraphFollowState> {
     require_module_enabled(ctx, MODULE_SLUG).await?;
     let auth = require_human_user(ctx)?;
+    if user_id.is_nil() {
+        return Err(<FieldError as GraphQLError>::bad_user_input(
+            "userId must not be nil",
+        ));
+    }
     if auth.user_id == user_id {
         return Ok(SocialGraphFollowState {
             target_user_id: user_id,
@@ -110,6 +115,11 @@ async fn set_follow_state(
 ) -> Result<FollowStateGql> {
     require_module_enabled(ctx, MODULE_SLUG).await?;
     let auth = require_human_user(ctx)?;
+    if user_id.is_nil() {
+        return Err(<FieldError as GraphQLError>::bad_user_input(
+            "userId must not be nil",
+        ));
+    }
     let service = write_service(ctx)?;
     let relation = SocialGraphCommandPort::set_relation(
         &service,
@@ -167,6 +177,11 @@ fn require_human_user<'a>(ctx: &'a Context<'a>) -> Result<&'a AuthContext> {
             "follow operations require human-user credentials",
         ));
     }
+    if auth.user_id.is_nil() {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "authenticated user id must not be nil",
+        ));
+    }
     require_tenant(ctx, auth)?;
     Ok(auth)
 }
@@ -177,6 +192,11 @@ fn require_tenant<'a>(ctx: &'a Context<'a>, auth: &AuthContext) -> Result<&'a Te
             "Social Graph tenant context is not registered",
         )
     })?;
+    if tenant.id.is_nil() {
+        return Err(<FieldError as GraphQLError>::internal_error(
+            "Social Graph tenant id must not be nil",
+        ));
+    }
     if auth.tenant_id != tenant.id {
         return Err(<FieldError as GraphQLError>::permission_denied(
             "follow operations must use the authenticated tenant",

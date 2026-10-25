@@ -1,59 +1,45 @@
 # rustok-docs / CRATE_API
 
-## Role
+## Platform Capability Bindings
+- `DocsModule` implements `rustok_core::module::RusToKModule` and `MigrationSource`.
+- Declared as `ModuleKind::Optional`.
+- Self-check returns `HealthStatus::Healthy`.
+- Slug: `docs`.
+- Dependencies: `outbox`, `flex`.
+- Permissions: `PAGES_CREATE`, `PAGES_READ`, `PAGES_UPDATE`, `PAGES_DELETE`, `PAGES_LIST`, `PAGES_MANAGE`.
+- Search Projection: registers `DocsSearchProjectionSourceFactory` for full-text search indexing.
 
-`rustok-docs` is the sovereign module owner for collaborative documents, wiki pages,
-hierarchical page trees, and real-time Notion-grade knowledge bases across RusToK.
+## Domain Collaborations
+- Sovereign module owner for collaborative documents, wiki pages, hierarchical page trees, and real-time knowledge bases powered by Loro CRDT.
+- Universal Entity Reference (UER): embeds entities across modules (`commerce`, `blog`, `media`, `flex`) with backlinks recorded in `docs_entity_links`.
+- Offline-first delta synchronization and multiplayer WebSockets (`DocsRoomHub`).
+- Entities are crate-private; consumers use owner DTOs, services, and ports.
 
-Persistence entities are **not** public API. Consumers use owner DTOs, services,
-transport roots, or explicit ports.
+## Minimum Contract Set
 
-## Public Surface
+### Input DTOs/Commands
+- `CreatePageDto`: title, parent_id, slug, metadata JSON.
+- `UpdatePageDto`: title, slug, metadata JSON, parent_id.
+- `PageSummaryDto`: id, slug, title, parent_id, created_at, updated_at.
+- `PageTreeNodeDto`: recursive tree structure for page hierarchies.
+- `DocumentSyncDto`: client version vector and frontiers for differential syncing.
+- `DocUpdateItemDto`: individual Loro delta update binary data.
+- `ApplyDeltaDto`: sequence of updates to apply to a document.
 
-Deliberate public modules and facades:
+### Domain Invariants
+- Multi-tenant isolation: every read, write, snapshot, delta, and link enforces tenant authority. Slugs are unique per tenant (`idx_docs_pages_tenant_slug`).
+- Hierarchical page tree: cycle detection prevents a page from becoming its own ancestor.
+- Delta monotonicity: delta updates have monotonically increasing sequence numbers per document.
+- Snapshot compaction: when uncompacted delta count reaches `COMPACTION_THRESHOLD` (50), deltas are folded into a new snapshot and older deltas are pruned.
+- Offline-first conflict resolution: Loro CRDT guarantees eventual consistency without merge conflicts.
 
-- `controllers` — Axum REST endpoints (`router`, `axum_router`, `DocsHttpRuntime`, page CRUD, tree hierarchy, markdown export, delta sync) and WebSocket session management (`ws_handler`, `DocsRoomHub`, `ClientMessage`, `ServerMessage`);
-- `domain` — CRDT core (`CollaborativeDoc`), block models (`DocBlock`, `BlockType`), Universal Entity Reference (`EntityRef`, `EntityDisplayMode`);
-- `dto` — Owner command/query/response contracts (`CreatePageDto`, `UpdatePageDto`, `PageSummaryDto`, `PageTreeNodeDto`, `DocumentSyncDto`, `DocUpdateItemDto`, `ApplyDeltaDto`);
-- `error` — `DocsError`, `DocsResult`;
-- `migrations` — Module migration source (`migrations()`, `migration_dependencies()`);
-- `module` — `DocsModule` implementing `RusToKModule` and `MigrationSource`;
-- `services` — Owner service (`DocumentService`, `COMPACTION_THRESHOLD`).
+### Events / Outbox Side Effects
+- Emits outbox events upon page creation, update, deletion, and hierarchy movement.
+- Bi-directional entity backlinks maintained in `docs_entity_links`.
 
-`entities` is crate-private. Direct cross-crate SeaORM access is strictly forbidden by repository platform rules.
-
-Primary entry points:
-
-- `DocsModule`
-- `DocumentService`
-- `CollaborativeDoc`
-- `DocBlock`
-- `EntityRef`
-
-## Persistence & Compaction Contract
-
-1. **Storage Topology:**
-   - `docs_pages`: Metadata, tenant isolation, hierarchical `parent_id` tree, unique slug.
-   - `docs_snapshots`: Periodic full Loro binary snapshots (`seq_id`, `snapshot_data`, `frontiers`).
-   - `docs_updates`: Monotonically sequenced append-only binary delta updates (`(page_id, seq_id)` composite uniqueness).
-   - `docs_entity_links`: Reverse backlinks ledger for all embedded UER (`EntityRef`) blocks.
-
-2. **Snapshot Compaction Invariant:**
-   - Delta updates are logged monotonically with atomic sequence numbers.
-   - When the uncompacted delta count reaches `COMPACTION_THRESHOLD` (50), `DocumentService` compacts accumulated updates into a new `docs_snapshots` record and prunes old updates up to that sequence number.
-   - At least the latest snapshot is always preserved.
-
-3. **Multi-Tenant Authority:**
-   - Every read, mutation, snapshot, and backlink operation enforces `tenant_id` authority.
-   - Slugs are uniquely constrained per tenant (`idx_docs_pages_tenant_slug`).
-   - Cross-tenant document lookups fail closed with `PageNotFound`.
-
-## Universal Entity Reference (UER) Embedding Contract
-
-Embedded entities are declared via `BlockType::EntityEmbed(EntityRef)`:
-- `module`: Target module slug (e.g. `commerce`, `blog`, `media`, `flex`);
-- `entity_type`: Target entity identifier (e.g. `product`, `post`, `asset`);
-- `entity_id`: Entity UUID;
-- `display_mode`: `Inline`, `Card`, `Embed`, or `DatabaseRow`.
-
-Embedded entity backlinks are indexed into `docs_entity_links` to support bi-directional cross-module graph navigation.
+### Errors / Failure Codes
+- `DocsError::PageNotFound`: document page does not exist in tenant.
+- `DocsError::Validation`: invalid title, malformed slug, or schema violation.
+- `DocsError::CycleDetected`: circular dependency in page parent hierarchy.
+- `DocsError::Crdt`: corruption or error during Loro CRDT decoding or delta merge.
+- `DocsError::Storage`: underlying database or persistence failure.

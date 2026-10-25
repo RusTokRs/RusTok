@@ -32,9 +32,22 @@ impl SubscriberService {
         tenant_id: Uuid,
         input: SubscribeInput,
     ) -> NewsletterResult<SubscriberResponse> {
+        if tenant_id.is_nil() {
+            return Err(NewsletterError::validation("Tenant ID must not be nil"));
+        }
         let email = input.email.trim().to_lowercase();
-        if email.is_empty() || !email.contains('@') {
+        if email.is_empty() || !email.contains('@') || email.len() > 255 {
             return Err(NewsletterError::validation("Invalid email address"));
+        }
+        if let Some(ref name) = input.name {
+            if name.trim().len() > 255 {
+                return Err(NewsletterError::validation("Name exceeds 255 characters"));
+            }
+        }
+        if let Some(ref locale) = input.locale {
+            if locale.trim().len() > 35 {
+                return Err(NewsletterError::validation("Locale exceeds 35 characters"));
+            }
         }
 
         // Check for existing subscriber
@@ -83,6 +96,12 @@ impl SubscriberService {
     /// Confirm a pending subscription.
     #[instrument(skip(self), fields(tenant_id = %tenant_id, subscriber_id = %subscriber_id))]
     pub async fn confirm(&self, tenant_id: Uuid, subscriber_id: Uuid) -> NewsletterResult<()> {
+        if tenant_id.is_nil() {
+            return Err(NewsletterError::validation("Tenant ID must not be nil"));
+        }
+        if subscriber_id.is_nil() {
+            return Err(NewsletterError::validation("Subscriber ID must not be nil"));
+        }
         let subscriber = self.find_subscriber(tenant_id, subscriber_id).await?;
         let current = parse_status(&subscriber.status)?;
 
@@ -107,6 +126,12 @@ impl SubscriberService {
     /// Unsubscribe an active or pending subscriber.
     #[instrument(skip(self), fields(tenant_id = %tenant_id, subscriber_id = %subscriber_id))]
     pub async fn unsubscribe(&self, tenant_id: Uuid, subscriber_id: Uuid) -> NewsletterResult<()> {
+        if tenant_id.is_nil() {
+            return Err(NewsletterError::validation("Tenant ID must not be nil"));
+        }
+        if subscriber_id.is_nil() {
+            return Err(NewsletterError::validation("Subscriber ID must not be nil"));
+        }
         let subscriber = self.find_subscriber(tenant_id, subscriber_id).await?;
         let current = parse_status(&subscriber.status)?;
 
@@ -135,6 +160,22 @@ impl SubscriberService {
         subscriber_id: Uuid,
         input: UpdateSubscriberInput,
     ) -> NewsletterResult<SubscriberResponse> {
+        if tenant_id.is_nil() {
+            return Err(NewsletterError::validation("Tenant ID must not be nil"));
+        }
+        if subscriber_id.is_nil() {
+            return Err(NewsletterError::validation("Subscriber ID must not be nil"));
+        }
+        if let Some(ref name) = input.name {
+            if name.trim().len() > 255 {
+                return Err(NewsletterError::validation("Name exceeds 255 characters"));
+            }
+        }
+        if let Some(ref locale) = input.locale {
+            if locale.trim().len() > 35 {
+                return Err(NewsletterError::validation("Locale exceeds 35 characters"));
+            }
+        }
         let subscriber = self.find_subscriber(tenant_id, subscriber_id).await?;
         let now = Utc::now();
 
@@ -159,6 +200,10 @@ impl SubscriberService {
     ) -> NewsletterResult<SubscriberListResponse> {
         use sea_orm::PaginatorTrait;
 
+        if tenant_id.is_nil() {
+            return Err(NewsletterError::validation("Tenant ID must not be nil"));
+        }
+
         let page = query.page.unwrap_or(1).max(1);
         let per_page = query.per_page.unwrap_or(25).clamp(1, 100);
 
@@ -169,12 +214,16 @@ impl SubscriberService {
         }
 
         if let Some(search) = &query.search {
-            let search_pattern = format!("%{}%", search);
-            find = find.filter(
-                Condition::any()
-                    .add(subscriber::Column::Email.like(&search_pattern))
-                    .add(subscriber::Column::Name.like(&search_pattern)),
-            );
+            let search = search.trim();
+            if !search.is_empty() {
+                let search_clipped = &search[..search.len().min(255)];
+                let search_pattern = format!("%{}%", search_clipped);
+                find = find.filter(
+                    Condition::any()
+                        .add(subscriber::Column::Email.like(&search_pattern))
+                        .add(subscriber::Column::Name.like(&search_pattern)),
+                );
+            }
         }
 
         let total = find.clone().count(&self.db).await?;
@@ -209,6 +258,12 @@ impl SubscriberService {
         tenant_id: Uuid,
         subscriber_id: Uuid,
     ) -> NewsletterResult<SubscriberResponse> {
+        if tenant_id.is_nil() {
+            return Err(NewsletterError::validation("Tenant ID must not be nil"));
+        }
+        if subscriber_id.is_nil() {
+            return Err(NewsletterError::validation("Subscriber ID must not be nil"));
+        }
         let subscriber = self.find_subscriber(tenant_id, subscriber_id).await?;
         self.to_response(subscriber)
     }
@@ -219,6 +274,9 @@ impl SubscriberService {
         tenant_id: Uuid,
         email: &str,
     ) -> NewsletterResult<Option<SubscriberResponse>> {
+        if tenant_id.is_nil() {
+            return Err(NewsletterError::validation("Tenant ID must not be nil"));
+        }
         let email = email.trim().to_lowercase();
         let subscriber = Subscriber::find()
             .filter(subscriber::Column::TenantId.eq(tenant_id))
@@ -231,6 +289,12 @@ impl SubscriberService {
     /// Delete a subscriber permanently.
     #[instrument(skip(self), fields(tenant_id = %tenant_id, subscriber_id = %subscriber_id))]
     pub async fn delete(&self, tenant_id: Uuid, subscriber_id: Uuid) -> NewsletterResult<()> {
+        if tenant_id.is_nil() {
+            return Err(NewsletterError::validation("Tenant ID must not be nil"));
+        }
+        if subscriber_id.is_nil() {
+            return Err(NewsletterError::validation("Subscriber ID must not be nil"));
+        }
         let subscriber = self.find_subscriber(tenant_id, subscriber_id).await?;
         subscriber.delete(&self.db).await?;
         Ok(())
@@ -243,6 +307,11 @@ impl SubscriberService {
         tenant_id: Uuid,
         subscriber_id: Uuid,
     ) -> NewsletterResult<subscriber::Model> {
+        if tenant_id.is_nil() || subscriber_id.is_nil() {
+            return Err(NewsletterError::validation(
+                "Tenant ID and Subscriber ID must not be nil",
+            ));
+        }
         Subscriber::find_by_id(subscriber_id)
             .filter(subscriber::Column::TenantId.eq(tenant_id))
             .one(&self.db)

@@ -84,8 +84,11 @@ async fn groups_admin_application_policy_locale_catalog_native(
         if auth.tenant_id != tenant.id {
             return Err(ServerFnError::new("groups tenant mismatch"));
         }
-        let group_id = Uuid::parse_str(&query.group_id)
+        let group_id = Uuid::parse_str(query.group_id.trim())
             .map_err(|_| ServerFnError::new("group_id must be a UUID"))?;
+        if group_id.is_nil() {
+            return Err(ServerFnError::new("group_id must not be nil"));
+        }
         let mut context = PortContext::new(
             tenant.id.to_string(),
             PortActor::user(auth.user_id.to_string()),
@@ -155,8 +158,11 @@ async fn groups_admin_application_policy_for_management_native(
         if auth.tenant_id != tenant.id {
             return Err(ServerFnError::new("groups tenant mismatch"));
         }
-        let group_id = Uuid::parse_str(&query.group_id)
+        let group_id = Uuid::parse_str(query.group_id.trim())
             .map_err(|_| ServerFnError::new("group_id must be a UUID"))?;
+        if group_id.is_nil() {
+            return Err(ServerFnError::new("group_id must not be nil"));
+        }
         let mut context = PortContext::new(
             tenant.id.to_string(),
             PortActor::user(auth.user_id.to_string()),
@@ -224,15 +230,22 @@ async fn groups_admin_upsert_application_policy_if_current_native(
         if auth.tenant_id != tenant.id {
             return Err(ServerFnError::new("groups tenant mismatch"));
         }
-        let group_id = Uuid::parse_str(&command.group_id)
+        let group_id = Uuid::parse_str(command.group_id.trim())
             .map_err(|_| ServerFnError::new("group_id must be a UUID"))?;
+        if group_id.is_nil() {
+            return Err(ServerFnError::new("group_id must not be nil"));
+        }
         let expected_policy = command
             .expected_policy
             .map(|expected| {
+                let policy_id = Uuid::parse_str(expected.policy_id.trim())
+                    .map_err(|_| ServerFnError::new("policy_id must be a UUID"))?;
+                if policy_id.is_nil() {
+                    return Err(ServerFnError::new("policy_id must not be nil"));
+                }
                 Ok::<GroupApplicationPolicyPrecondition, ServerFnError>(
                     GroupApplicationPolicyPrecondition {
-                        policy_id: Uuid::parse_str(&expected.policy_id)
-                            .map_err(|_| ServerFnError::new("policy_id must be a UUID"))?,
+                        policy_id,
                         revision: expected.revision,
                         locale: expected.locale,
                     },

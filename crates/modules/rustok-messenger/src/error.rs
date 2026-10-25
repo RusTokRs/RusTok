@@ -176,3 +176,18 @@ impl From<MessengerError> for rustok_api::PortError {
         }
     }
 }
+
+impl From<rustok_api::PortError> for MessengerError {
+    fn from(err: rustok_api::PortError) -> Self {
+        match err.kind {
+            rustok_api::PortErrorKind::NotFound => Self::NotFound(err.message),
+            rustok_api::PortErrorKind::Forbidden => Self::Unauthorized,
+            rustok_api::PortErrorKind::Validation | rustok_api::PortErrorKind::Conflict => {
+                Self::Validation(err.message)
+            }
+            rustok_api::PortErrorKind::Unavailable
+            | rustok_api::PortErrorKind::Timeout
+            | rustok_api::PortErrorKind::InvariantViolation => Self::Internal(err.message),
+        }
+    }
+}

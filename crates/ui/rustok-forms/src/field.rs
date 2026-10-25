@@ -622,7 +622,7 @@ mod tests {
         assert!(constraints.validate("age", "abc").is_ok());
 
         let descriptor = FieldDescriptor::new("score", FieldKind::Number).constraints(constraints);
-        assert!(descriptor.validate("50").is_ok());
+        assert!(descriptor.validate("50.0").is_ok());
     }
 
     #[test]

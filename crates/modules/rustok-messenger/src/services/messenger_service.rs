@@ -24,6 +24,9 @@ pub const MAX_MESSAGE_CONTENT_SIZE: usize = 65_536;
 /// Default page limit for message queries.
 pub const DEFAULT_MESSAGE_PAGE_LIMIT: u64 = 50;
 
+/// Canonical system actor UUID for automated dispatches when actor_id is nil.
+pub const SYSTEM_ACTOR_UUID: Uuid = Uuid::from_u128(1);
+
 /// Application service owning messaging business transactions.
 #[derive(Clone)]
 pub struct MessengerService {
@@ -52,6 +55,9 @@ impl MessengerService {
 
     /// Retrieve active conversation count and registered E2EE device count for a tenant.
     pub async fn get_overview_counts(&self, tenant_id: Uuid) -> MessengerResult<(usize, usize)> {
+        if tenant_id.is_nil() {
+            return Err(MessengerError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
         let conv_count = Conversation::find()
             .filter(conversation::Column::TenantId.eq(tenant_id))
             .count(&self.db)
@@ -68,6 +74,9 @@ impl MessengerService {
         limit: u64,
         offset: u64,
     ) -> MessengerResult<Vec<(conversation::Model, Option<String>, Option<String>, usize)>> {
+        if tenant_id.is_nil() {
+            return Err(MessengerError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
         let convs = Conversation::find()
             .filter(conversation::Column::TenantId.eq(tenant_id))
             .filter(conversation::Column::ConversationType.ne(ConversationType::Direct as i16))
@@ -132,17 +141,19 @@ impl MessengerService {
         actor_id: Uuid,
         input: CreateConversationInput,
     ) -> MessengerResult<ConversationOutput> {
+        if tenant_id.is_nil() {
+            return Err(MessengerError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
+        if actor_id.is_nil() {
+            return Err(MessengerError::Validation("actor_id cannot be nil UUID".to_string()));
+        }
+        input.validate()?;
+
         let conv_id = Uuid::now_v7();
         let now = Utc::now();
 
         let conv_type = input.conversation_type as i16;
         let is_encrypted = input.is_encrypted.unwrap_or(false);
-
-        if let Some(locale) = input.initial_locale.as_deref().filter(|l| l.len() > 32) {
-            return Err(MessengerError::InvalidLocale {
-                locale: locale.to_string(),
-            });
-        }
 
         let txn = self.db.begin().await?;
 
@@ -242,6 +253,24 @@ impl MessengerService {
         conversation_id: Uuid,
         locale: Option<&str>,
     ) -> MessengerResult<ConversationOutput> {
+        if tenant_id.is_nil() {
+            return Err(MessengerError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
+        if actor_id.is_nil() {
+            return Err(MessengerError::Validation("actor_id cannot be nil UUID".to_string()));
+        }
+        if conversation_id.is_nil() {
+            return Err(MessengerError::Validation("conversation_id cannot be nil UUID".to_string()));
+        }
+        if let Some(loc) = locale {
+            let trimmed = loc.trim();
+            if trimmed.is_empty() || trimmed.len() > 32 || rustok_api::normalize_locale_tag(trimmed).is_none() {
+                return Err(MessengerError::InvalidLocale {
+                    locale: loc.to_string(),
+                });
+            }
+        }
+
         let conv = Conversation::find_by_id(conversation_id)
             .filter(conversation::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -292,6 +321,13 @@ impl MessengerService {
         limit: u64,
         offset: u64,
     ) -> MessengerResult<Vec<ConversationOutput>> {
+        if tenant_id.is_nil() {
+            return Err(MessengerError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
+        if actor_id.is_nil() {
+            return Err(MessengerError::Validation("actor_id cannot be nil UUID".to_string()));
+        }
+
         let member_conv_ids: Vec<Uuid> = Member::find()
             .filter(member::Column::UserId.eq(actor_id))
             .select_only()
@@ -343,6 +379,14 @@ impl MessengerService {
         actor_id: Uuid,
         input: UpdateChannelTranslationInput,
     ) -> MessengerResult<ChannelTranslationOutput> {
+        if tenant_id.is_nil() {
+            return Err(MessengerError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
+        if actor_id.is_nil() {
+            return Err(MessengerError::Validation("actor_id cannot be nil UUID".to_string()));
+        }
+        input.validate()?;
+
         let conv = Conversation::find_by_id(input.channel_id)
             .filter(conversation::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -358,12 +402,6 @@ impl MessengerService {
 
         if member_record.role != MemberRole::Owner as i16 && member_record.role != MemberRole::Admin as i16 {
             return Err(MessengerError::ConversationAccessDenied(input.channel_id));
-        }
-
-        if input.locale.len() > 32 {
-            return Err(MessengerError::InvalidLocale {
-                locale: input.locale,
-            });
         }
 
         let now = Utc::now();
@@ -408,18 +446,10 @@ impl MessengerService {
         actor_id: Uuid,
         input: SendMessageInput,
     ) -> MessengerResult<MessageOutput> {
-        let content_len = input.content.len();
-        if content_len > MAX_MESSAGE_CONTENT_SIZE {
-            return Err(MessengerError::PayloadTooLarge {
-                actual: content_len,
-                max: MAX_MESSAGE_CONTENT_SIZE,
-            });
+        if tenant_id.is_nil() {
+            return Err(MessengerError::Validation("tenant_id cannot be nil UUID".to_string()));
         }
-        if input.content.trim().is_empty() && input.blocks_json.is_none() {
-            return Err(MessengerError::Validation(
-                "Message content cannot be empty".to_string(),
-            ));
-        }
+        input.validate()?;
 
         let conv = Conversation::find_by_id(input.conversation_id)
             .filter(conversation::Column::TenantId.eq(tenant_id))
@@ -427,7 +457,19 @@ impl MessengerService {
             .await?
             .ok_or(MessengerError::ConversationNotFound(input.conversation_id))?;
 
-        self.ensure_active_member(conv.id, actor_id).await?;
+        let is_system = input.message_type == Some(MessageType::System);
+        let effective_actor_id = if is_system && actor_id.is_nil() {
+            SYSTEM_ACTOR_UUID
+        } else {
+            actor_id
+        };
+
+        if !is_system {
+            if effective_actor_id.is_nil() {
+                return Err(MessengerError::Validation("actor_id cannot be nil UUID".to_string()));
+            }
+            self.ensure_active_member(conv.id, effective_actor_id).await?;
+        }
 
         // Enforce E2EE invariants: encrypted conversation requires encrypted messages
         let is_encrypted = input.is_encrypted.unwrap_or(conv.is_encrypted);
@@ -467,7 +509,7 @@ impl MessengerService {
             id: Set(message_id),
             tenant_id: Set(tenant_id),
             conversation_id: Set(conv.id),
-            sender_id: Set(actor_id),
+            sender_id: Set(effective_actor_id),
             message_type: Set(msg_type),
             content: Set(input.content.clone()),
             blocks_json: Set(input.blocks_json.clone()),
@@ -487,18 +529,28 @@ impl MessengerService {
         conv_active.updated_at = Set(now);
         conv_active.update(&txn).await?;
 
-        // Monotonically advance sender's cursor automatically within the same transaction
-        Self::update_cursor_in_tx(&txn, input.conversation_id, actor_id, message_id).await?;
+        // Monotonically advance sender's cursor automatically within the same transaction if actor is a member
+        if !effective_actor_id.is_nil() && effective_actor_id != SYSTEM_ACTOR_UUID {
+            let is_member = Member::find()
+                .filter(member::Column::ConversationId.eq(input.conversation_id))
+                .filter(member::Column::UserId.eq(effective_actor_id))
+                .one(&txn)
+                .await?
+                .is_some();
+            if is_member {
+                Self::update_cursor_in_tx(&txn, input.conversation_id, effective_actor_id, message_id).await?;
+            }
+        }
 
         // Emit transactional outbox event for notifications & streaming fanout
         rustok_outbox::TransactionalEventBus::publish_root_in_tx(
             &txn,
             tenant_id,
-            Some(actor_id),
+            Some(effective_actor_id),
             rustok_events::DomainEvent::MessengerMessageDispatched {
                 conversation_id: input.conversation_id,
                 message_id,
-                sender_id: actor_id,
+                sender_id: effective_actor_id,
             },
         )
         .await
@@ -512,7 +564,7 @@ impl MessengerService {
             id: message_id,
             tenant_id,
             conversation_id: input.conversation_id,
-            sender_id: actor_id,
+            sender_id: effective_actor_id,
             message_type: res_type,
             content: input.content,
             blocks_json: input.blocks_json,
@@ -531,6 +583,14 @@ impl MessengerService {
         actor_id: Uuid,
         query: ListMessagesQuery,
     ) -> MessengerResult<Vec<MessageOutput>> {
+        if tenant_id.is_nil() {
+            return Err(MessengerError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
+        if actor_id.is_nil() {
+            return Err(MessengerError::Validation("actor_id cannot be nil UUID".to_string()));
+        }
+        query.validate()?;
+
         self.ensure_membership(query.conversation_id, actor_id).await?;
 
         let limit = query.limit.unwrap_or(DEFAULT_MESSAGE_PAGE_LIMIT).min(100);
@@ -580,6 +640,14 @@ impl MessengerService {
         actor_id: Uuid,
         request: FastSyncRequest,
     ) -> MessengerResult<FastSyncResponse> {
+        if tenant_id.is_nil() {
+            return Err(MessengerError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
+        if actor_id.is_nil() {
+            return Err(MessengerError::Validation("actor_id cannot be nil UUID".to_string()));
+        }
+        request.validate()?;
+
         self.ensure_membership(request.conversation_id, actor_id).await?;
 
         let limit = request.limit.unwrap_or(100).min(500);
@@ -640,18 +708,16 @@ impl MessengerService {
         message_id: i64,
         input: EditMessageInput,
     ) -> MessengerResult<MessageOutput> {
-        let content_len = input.content.len();
-        if content_len > MAX_MESSAGE_CONTENT_SIZE {
-            return Err(MessengerError::PayloadTooLarge {
-                actual: content_len,
-                max: MAX_MESSAGE_CONTENT_SIZE,
-            });
+        if tenant_id.is_nil() {
+            return Err(MessengerError::Validation("tenant_id cannot be nil UUID".to_string()));
         }
-        if input.content.trim().is_empty() {
-            return Err(MessengerError::Validation(
-                "Message content cannot be empty".to_string(),
-            ));
+        if actor_id.is_nil() {
+            return Err(MessengerError::Validation("actor_id cannot be nil UUID".to_string()));
         }
+        if message_id <= 0 {
+            return Err(MessengerError::Validation("message_id must be a positive Snowflake ID".to_string()));
+        }
+        input.validate()?;
 
         let msg = Message::find_by_id(message_id)
             .filter(message::Column::TenantId.eq(tenant_id))
@@ -692,6 +758,16 @@ impl MessengerService {
         actor_id: Uuid,
         message_id: i64,
     ) -> MessengerResult<Uuid> {
+        if tenant_id.is_nil() {
+            return Err(MessengerError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
+        if actor_id.is_nil() {
+            return Err(MessengerError::Validation("actor_id cannot be nil UUID".to_string()));
+        }
+        if message_id <= 0 {
+            return Err(MessengerError::Validation("message_id must be a positive Snowflake ID".to_string()));
+        }
+
         let msg = Message::find_by_id(message_id)
             .filter(message::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -744,6 +820,17 @@ impl MessengerService {
         conversation_id: Uuid,
         input: AddMemberInput,
     ) -> MessengerResult<MemberOutput> {
+        if tenant_id.is_nil() {
+            return Err(MessengerError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
+        if actor_id.is_nil() {
+            return Err(MessengerError::Validation("actor_id cannot be nil UUID".to_string()));
+        }
+        if conversation_id.is_nil() {
+            return Err(MessengerError::Validation("conversation_id cannot be nil UUID".to_string()));
+        }
+        input.validate()?;
+
         let conv = Conversation::find_by_id(conversation_id)
             .filter(conversation::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -814,6 +901,19 @@ impl MessengerService {
         conversation_id: Uuid,
         target_user_id: Uuid,
     ) -> MessengerResult<()> {
+        if tenant_id.is_nil() {
+            return Err(MessengerError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
+        if actor_id.is_nil() {
+            return Err(MessengerError::Validation("actor_id cannot be nil UUID".to_string()));
+        }
+        if conversation_id.is_nil() {
+            return Err(MessengerError::Validation("conversation_id cannot be nil UUID".to_string()));
+        }
+        if target_user_id.is_nil() {
+            return Err(MessengerError::Validation("target_user_id cannot be nil UUID".to_string()));
+        }
+
         let conv = Conversation::find_by_id(conversation_id)
             .filter(conversation::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -877,6 +977,16 @@ impl MessengerService {
         actor_id: Uuid,
         conversation_id: Uuid,
     ) -> MessengerResult<Vec<MemberOutput>> {
+        if tenant_id.is_nil() {
+            return Err(MessengerError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
+        if actor_id.is_nil() {
+            return Err(MessengerError::Validation("actor_id cannot be nil UUID".to_string()));
+        }
+        if conversation_id.is_nil() {
+            return Err(MessengerError::Validation("conversation_id cannot be nil UUID".to_string()));
+        }
+
         let _conv = Conversation::find_by_id(conversation_id)
             .filter(conversation::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -919,6 +1029,17 @@ impl MessengerService {
     where
         C: sea_orm::ConnectionTrait,
     {
+        if conversation_id.is_nil() || actor_id.is_nil() {
+            return Err(MessengerError::Validation(
+                "conversation_id and actor_id must not be nil UUID".to_string(),
+            ));
+        }
+        if last_read_message_id < 0 {
+            return Err(MessengerError::Validation(
+                "last_read_message_id cannot be negative".to_string(),
+            ));
+        }
+
         let existing = Cursor::find()
             .filter(cursor::Column::ConversationId.eq(conversation_id))
             .filter(cursor::Column::UserId.eq(actor_id))
@@ -959,15 +1080,27 @@ impl MessengerService {
     /// Monotonically advance user read cursor.
     pub async fn update_cursor(
         &self,
-        _tenant_id: Uuid,
+        tenant_id: Uuid,
         actor_id: Uuid,
         input: UpdateCursorInput,
     ) -> MessengerResult<crate::dto::CursorOutput> {
+        if tenant_id.is_nil() {
+            return Err(MessengerError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
+        if actor_id.is_nil() {
+            return Err(MessengerError::Validation("actor_id cannot be nil UUID".to_string()));
+        }
+        input.validate()?;
+
         self.ensure_membership(input.conversation_id, actor_id).await?;
         Self::update_cursor_in_tx(&self.db, input.conversation_id, actor_id, input.last_read_message_id).await
     }
 
     pub async fn ensure_membership(&self, conversation_id: Uuid, user_id: Uuid) -> MessengerResult<()> {
+        if conversation_id.is_nil() || user_id.is_nil() {
+            return Err(MessengerError::ConversationAccessDenied(conversation_id));
+        }
+
         let is_member = Member::find()
             .filter(member::Column::ConversationId.eq(conversation_id))
             .filter(member::Column::UserId.eq(user_id))
@@ -982,6 +1115,10 @@ impl MessengerService {
     }
 
     pub async fn ensure_active_member(&self, conversation_id: Uuid, user_id: Uuid) -> MessengerResult<member::Model> {
+        if conversation_id.is_nil() || user_id.is_nil() {
+            return Err(MessengerError::ConversationAccessDenied(conversation_id));
+        }
+
         let m = Member::find()
             .filter(member::Column::ConversationId.eq(conversation_id))
             .filter(member::Column::UserId.eq(user_id))
@@ -1024,6 +1161,14 @@ impl MessengerService {
         actor_id: Uuid,
         query: crate::dto::SearchMessagesQuery,
     ) -> MessengerResult<Vec<MessageOutput>> {
+        if tenant_id.is_nil() {
+            return Err(MessengerError::Validation("tenant_id cannot be nil UUID".to_string()));
+        }
+        if actor_id.is_nil() {
+            return Err(MessengerError::Validation("actor_id cannot be nil UUID".to_string()));
+        }
+        query.validate()?;
+
         let trimmed = query.query.trim();
         if trimmed.is_empty() {
             return Ok(Vec::new());

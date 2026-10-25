@@ -7,6 +7,10 @@ license.workspace = true
 description = "Shared event contracts for RusToK"
 repository.workspace = true
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 chrono.workspace = true
 hex.workspace = true
