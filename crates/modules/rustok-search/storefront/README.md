@@ -36,4 +36,5 @@ Leptos storefront UI package for the `rustok-search` module.
 
 ## Documentation
 
+- [CRATE_API.md](CRATE_API.md) — Public API contract, FFA view-models, and capability bindings.
 - See [platform docs](../../../../docs/index.md).
