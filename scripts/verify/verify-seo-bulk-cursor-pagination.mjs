@@ -22,7 +22,7 @@ const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
 
-const seoTargets = read('crates/modules/rustok-seo-targets/src/lib.rs');
+const seoTargets = read('crates/libs/rustok-seo-targets/src/lib.rs');
 const readModel = read('crates/modules/rustok-seo/src/services/bulk_read_model.rs');
 const dto = read('crates/modules/rustok-seo/src/dto.rs');
 const adminCore = read('crates/modules/rustok-seo/admin/src/core.rs');

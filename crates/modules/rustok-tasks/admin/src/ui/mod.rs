@@ -19,6 +19,8 @@ use rustok_grid_leptos::prelude::*;
 use crate::core::{filter_rows, TasksAdminTableRow};
 use crate::i18n::t;
 
+pub use TasksAdminPage as TasksAdmin;
+
 #[component]
 pub fn TasksAdminPage() -> impl IntoView {
     let (search_query, set_search_query) = signal(String::new());

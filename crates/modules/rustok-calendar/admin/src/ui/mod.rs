@@ -19,6 +19,8 @@ use rustok_grid_leptos::prelude::*;
 use crate::core::{filter_rows, CalendarAdminTableRow};
 use crate::i18n::t;
 
+pub use CalendarAdminPage as CalendarAdmin;
+
 #[component]
 pub fn CalendarAdminPage() -> impl IntoView {
     let (search_query, set_search_query) = signal(String::new());

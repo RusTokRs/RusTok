@@ -19,6 +19,8 @@ use rustok_grid_leptos::prelude::*;
 use crate::core::{filter_rows, CallsAdminTableRow};
 use crate::i18n::t;
 
+pub use CallsAdminPage as CallsAdmin;
+
 #[component]
 pub fn CallsAdminPage() -> impl IntoView {
     let (search_query, set_search_query) = signal(String::new());

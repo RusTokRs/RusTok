@@ -343,7 +343,7 @@ rustok-social-graph = { path = "crates/modules/rustok-social-graph" }
 rustok-comments = { path = "crates/modules/rustok-comments", default-features = false }
 rustok-region = { path = "crates/modules/rustok-region" }
 rustok-pricing = { path = "crates/modules/rustok-pricing" }
-rustok-pricing-persistence = { path = "crates/modules/rustok-pricing-persistence" }
+rustok-pricing-persistence = { path = "crates/libs/rustok-pricing-persistence" }
 rustok-tax = { path = "crates/modules/rustok-tax" }
 rustok-inventory = { path = "crates/modules/rustok-inventory" }
 rustok-order = { path = "crates/modules/rustok-order" }
@@ -366,8 +366,8 @@ rustok-taxonomy = { path = "crates/modules/rustok-taxonomy" }
 rustok-index = { path = "crates/modules/rustok-index" }
 rustok-search = { path = "crates/modules/rustok-search" }
 rustok-seo = { path = "crates/modules/rustok-seo" }
-rustok-seo-targets = { path = "crates/modules/rustok-seo-targets" }
-rustok-translation-targets = { path = "crates/modules/rustok-translation-targets" }
+rustok-seo-targets = { path = "crates/libs/rustok-seo-targets" }
+rustok-translation-targets = { path = "crates/libs/rustok-translation-targets" }
 rustok-translation = { path = "crates/modules/rustok-translation" }
 rustok-seo-storefront = { path = "crates/modules/rustok-seo/storefront" }
 rustok-seo-panel = { path = "crates/modules/rustok-seo/panel" }

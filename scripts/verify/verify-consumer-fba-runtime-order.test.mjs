@@ -21,7 +21,7 @@ const files = [
   'crates/modules/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json',
   'crates/modules/rustok-media/src/ports.rs',
   'crates/modules/rustok-media/src/dto.rs',
-  'crates/modules/rustok-seo-targets/src/lib.rs',
+  'crates/libs/rustok-seo-targets/src/lib.rs',
 ];
 
 function fixture() {
@@ -55,7 +55,7 @@ fs.writeFileSync(
 expectFailure(blogDrift, /blog create_comment source marker missing: ensure_post_exists/);
 
 const seoImageBoundaryDrift = fixture();
-const seoTargets = path.join(seoImageBoundaryDrift, 'crates/modules/rustok-seo-targets/src/lib.rs');
+const seoTargets = path.join(seoImageBoundaryDrift, 'crates/libs/rustok-seo-targets/src/lib.rs');
 fs.writeFileSync(
   seoTargets,
   fs.readFileSync(seoTargets, 'utf8').replace(

@@ -19,6 +19,8 @@ use rustok_grid_leptos::prelude::*;
 use crate::core::{filter_rows, FinanceAdminTableRow};
 use crate::i18n::t;
 
+pub use FinanceAdminPage as FinanceAdmin;
+
 #[component]
 pub fn FinanceAdminPage() -> impl IntoView {
     let (search_query, set_search_query) = signal(String::new());

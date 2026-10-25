@@ -19,6 +19,8 @@ use rustok_grid_leptos::prelude::*;
 use crate::core::{filter_rows, PartyAdminTableRow};
 use crate::i18n::t;
 
+pub use PartyAdminPage as PartyAdmin;
+
 #[component]
 pub fn PartyAdminPage() -> impl IntoView {
     let (search_query, set_search_query) = signal(String::new());

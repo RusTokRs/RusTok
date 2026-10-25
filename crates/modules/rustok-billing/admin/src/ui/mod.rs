@@ -19,6 +19,8 @@ use rustok_grid_leptos::prelude::*;
 use crate::core::{filter_rows, BillingAdminTableRow};
 use crate::i18n::t;
 
+pub use BillingAdminPage as BillingAdmin;
+
 #[component]
 pub fn BillingAdminPage() -> impl IntoView {
     let (search_query, set_search_query) = signal(String::new());

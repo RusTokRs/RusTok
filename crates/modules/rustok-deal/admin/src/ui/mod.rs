@@ -19,6 +19,8 @@ use rustok_grid_leptos::prelude::*;
 use crate::core::{filter_rows, DealAdminTableRow};
 use crate::i18n::t;
 
+pub use DealAdminPage as DealAdmin;
+
 #[component]
 pub fn DealAdminPage() -> impl IntoView {
     let (search_query, set_search_query) = signal(String::new());

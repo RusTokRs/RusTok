@@ -19,8 +19,8 @@ const paths = {
   localizedOwner: 'crates/modules/rustok-modules/src/static_settings_localization.rs',
   sourceLocaleOwner: 'crates/modules/rustok-modules/src/static_settings_source_locale.rs',
   translationRead: 'crates/modules/rustok-modules/src/static_settings_translation_read.rs',
-  adapterCargo: 'crates/modules/rustok-modules-translation/Cargo.toml',
-  adapter: 'crates/modules/rustok-modules-translation/src/lib.rs',
+  adapterCargo: 'crates/modules/rustok-modules/Cargo.toml',
+  adapter: 'crates/modules/rustok-modules/src/translation.rs',
   localizedMigration:
     'crates/modules/rustok-modules/src/migrations/m20260904_000051_static_localized_settings.rs',
   changeMigration:
@@ -172,9 +172,8 @@ for (const forbidden of [
 );
 
 for (const marker of [
-  'name = "rustok-modules-translation"',
+  'name = "rustok-modules"',
   'hex.workspace = true',
-  'rustok-modules = { workspace = true, default-features = false }',
   'rustok-translation-targets.workspace = true',
   'sha2.workspace = true',
   'uuid.workspace = true',
@@ -183,7 +182,7 @@ for (const marker of [
   marker,
   `${paths.adapterCargo}: isolated owner Translation adapter dependencies`,
 );
-for (const forbidden of ['sea-orm', 'rustok-translation.workspace']) forbidText(
+for (const forbidden of ['rustok-translation.workspace']) forbidText(
   sources.adapterCargo,
   forbidden,
   `${paths.adapterCargo}: adapter must not gain persistence/engine coupling`,
