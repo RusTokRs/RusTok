@@ -1,35 +1,31 @@
-use crate::{build_tenant_policy_enforcer, resolved_permissions_subject};
+//! Tenant permission evaluation over an already-resolved permission set.
+//!
+//! There is exactly one decision engine: the relation graph is resolved to a
+//! permission set, and this evaluator checks that set (with the canonical
+//! `manage` wildcard semantics from `permission_policy`). No external policy
+//! engine or policy-file model is involved.
+
+use crate::services::permission_policy::{check_all_permissions, check_any_permission, check_permission};
 use rustok_api::Permission;
 
 use super::permission_check::PermissionCheck;
 
 pub async fn evaluate_policy_permissions(
-    tenant_id: &uuid::Uuid,
+    _tenant_id: &uuid::Uuid,
     resolved_permissions: &[Permission],
     permission_check: PermissionCheck<'_>,
 ) -> bool {
-    let enforcer = build_tenant_policy_enforcer(tenant_id, resolved_permissions);
-    let tenant_domain = tenant_id.to_string();
-
     match permission_check {
         PermissionCheck::Single(permission) => {
-            enforce_permission(&enforcer, &tenant_domain, permission)
+            check_permission(resolved_permissions, permission).allowed
         }
-        PermissionCheck::Any(required_permissions) => required_permissions
-            .iter()
-            .any(|permission| enforce_permission(&enforcer, &tenant_domain, permission)),
-        PermissionCheck::All(required_permissions) => required_permissions
-            .iter()
-            .all(|permission| enforce_permission(&enforcer, &tenant_domain, permission)),
+        PermissionCheck::Any(required) => {
+            check_any_permission(resolved_permissions, required).allowed
+        }
+        PermissionCheck::All(required) => {
+            check_all_permissions(resolved_permissions, required).allowed
+        }
     }
-}
-
-fn enforce_permission(
-    enforcer: &crate::TenantPolicyEnforcer,
-    tenant_domain: &str,
-    permission: &Permission,
-) -> bool {
-    enforcer.enforce(resolved_permissions_subject(), tenant_domain, permission)
 }
 
 #[cfg(test)]
@@ -46,7 +42,6 @@ mod tests {
             PermissionCheck::Single(&Permission::USERS_READ),
         )
         .await;
-
         assert!(result);
     }
 
@@ -58,7 +53,6 @@ mod tests {
             PermissionCheck::Single(&Permission::USERS_UPDATE),
         )
         .await;
-
         assert!(!result);
     }
 
@@ -66,7 +60,6 @@ mod tests {
     async fn policy_evaluator_any_all_respect_manage_wildcard() {
         let tenant_id = uuid::Uuid::new_v4();
         let permissions = [Permission::USERS_MANAGE];
-
         let allows_any = evaluate_policy_permissions(
             &tenant_id,
             &permissions,
@@ -79,7 +72,6 @@ mod tests {
             PermissionCheck::All(&[Permission::USERS_READ, Permission::USERS_UPDATE]),
         )
         .await;
-
         assert!(allows_any);
         assert!(allows_all);
     }

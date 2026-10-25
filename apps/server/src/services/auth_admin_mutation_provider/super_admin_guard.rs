@@ -32,6 +32,9 @@ pub(super) fn persistence_error(
         rustok_rbac::RbacRolePersistenceError::TargetNotFound => {
             AuthAdminMutationError::NotFound("user".to_string())
         }
+        rustok_rbac::RbacRolePersistenceError::RoleNotFound(slug) => {
+            AuthAdminMutationError::NotFound(format!("role '{slug}'"))
+        }
         rustok_rbac::RbacRolePersistenceError::Policy(policy) => {
             super::user_admin::map_role_mutation_policy_error(policy)
         }

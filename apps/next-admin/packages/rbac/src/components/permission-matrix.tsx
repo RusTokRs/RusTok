@@ -77,8 +77,15 @@ export function PermissionMatrix({
     [selectedPermissions]
   );
 
+  const isDormant = (item: PlatformPermissionItem) =>
+    item.moduleStatus === 'disabled';
+
   const togglePermission = (id: string) => {
     if (disabled || isSuperAdmin) return;
+    const item = permissions.find((p) => p.id === id);
+    // Dormant grants can be removed but never newly added while the owning
+    // module is disabled.
+    if (item && isDormant(item) && !selectedSet.has(id)) return;
     const next = new Set(selectedSet);
     if (next.has(id)) {
       next.delete(id);
@@ -92,7 +99,9 @@ export function PermissionMatrix({
     if (disabled || isSuperAdmin) return;
     const next = new Set(selectedSet);
     for (const item of items) {
-      next.add(item.id);
+      if (!isDormant(item)) {
+        next.add(item.id);
+      }
     }
     onChange(Array.from(next));
   };
@@ -108,7 +117,7 @@ export function PermissionMatrix({
 
   const selectAll = () => {
     if (disabled || isSuperAdmin) return;
-    onChange(permissions.map((p) => p.id));
+    onChange(permissions.filter((p) => !isDormant(p)).map((p) => p.id));
   };
 
   const clearAll = () => {
@@ -203,6 +212,14 @@ export function PermissionMatrix({
                   <Badge variant='secondary' className='font-mono text-[10px]'>
                     {moduleSelectedCount}/{items.length}
                   </Badge>
+                  {items.some((i) => i.moduleStatus === 'disabled') && (
+                    <Badge
+                      variant='outline'
+                      className='border-zinc-400/40 font-mono text-[10px] text-zinc-500'
+                    >
+                      {t('module-disabled-badge')}
+                    </Badge>
+                  )}
                 </div>
 
                 {!disabled && !isSuperAdmin && (
@@ -230,19 +247,25 @@ export function PermissionMatrix({
               <div className='grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6'>
                 {items.map((item) => {
                   const isChecked = isSuperAdmin || selectedSet.has(item.id);
+                  const dormant = isDormant(item);
                   return (
                     <label
                       key={item.id}
+                      title={dormant ? t('module-disabled-badge') : undefined}
                       className={`flex cursor-pointer items-center gap-2 rounded-md border p-2 text-xs transition-colors select-none ${
                         isChecked
                           ? 'border-primary/40 bg-primary/5 text-foreground font-medium'
                           : 'border-border/60 bg-background/50 text-muted-foreground hover:bg-muted/30'
-                      } ${disabled || isSuperAdmin ? 'cursor-not-allowed opacity-80' : ''}`}
+                      } ${disabled || isSuperAdmin ? 'cursor-not-allowed opacity-80' : ''} ${
+                        dormant ? 'opacity-50 saturate-0' : ''
+                      }`}
                     >
                       <Checkbox
                         checked={isChecked}
                         onCheckedChange={() => togglePermission(item.id)}
-                        disabled={disabled || isSuperAdmin}
+                        disabled={
+                          disabled || isSuperAdmin || (dormant && !isChecked)
+                        }
                         className='data-[state=checked]:bg-primary'
                       />
                       <span
