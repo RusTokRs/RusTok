@@ -1,3 +1,10 @@
+//! # rustok-pages-admin
+//!
+//! SSR-first Leptos admin UI package for the `rustok-pages` CMS static pages module.
+//!
+//! Provides the canonical `PagesAdmin` and `TemplatesAdmin` root views, visual page builder integration,
+//! SSR draft session stores, browser intent dispatch bridge, and page metadata property panels.
+
 #![recursion_limit = "256"]
 
 mod access;
@@ -8,6 +15,8 @@ mod builder;
 mod builder_contract;
 mod builder_rollout_settings;
 mod composition;
+#[cfg(test)]
+mod contract_tests;
 mod contribution_browser_intent;
 mod contributions;
 mod core;
