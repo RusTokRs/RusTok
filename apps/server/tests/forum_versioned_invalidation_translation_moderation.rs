@@ -1233,13 +1233,13 @@ async fn assert_storefront_exact(
         })?;
     let engine = PgSearchEngine::new(db.clone());
     let request_context = RequestContext {
-                tenant_id: fixture.tenant_id,
-                user_id: None,
-                correlation_id: "test-correlation-id".to_string(),
-                channel_id: None,
-                channel_slug: None,
-                channel_resolution_source: None,
-                locale: locale.to_string(),
+        tenant_id: fixture.tenant_id,
+        user_id: None,
+        correlation_id: "test-correlation-id".to_string(),
+        channel_id: None,
+        channel_slug: None,
+        channel_resolution_source: None,
+        locale: locale.to_string(),
     };
     let channel = resolve_trusted_storefront_channel(&request_context, fixture.tenant_id, None)
         .map_err(|error| test_error(error.to_string()))?;

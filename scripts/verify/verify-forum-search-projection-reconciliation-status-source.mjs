@@ -91,7 +91,7 @@ for (const marker of [
 }
 
 for (const marker of [
-  "ForumSearchProjectionReconciliationQuery, ForumStorefrontSearchQuery",
+  "use rustok_search::graphql::ForumSearchProjectionReconciliationQuery;",
   "#[cfg(feature = \"mod-forum\")] ForumSearchProjectionReconciliationQuery",
   ".data(runtime_extensions)",
 ]) {
