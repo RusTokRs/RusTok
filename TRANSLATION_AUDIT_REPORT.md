@@ -355,4 +355,8 @@ node scripts/verify/verify-db-multilingual-contract.mjs
 ### Итерация 12 — паритет busy_timeout для workflow (d7a352a)
 * `workflow.rs` — все 13 транзакций `create_job/add_item/save_proposal/submit/approve/assign/unassign/cancel/retry/apply/recover/claim/record_pending` получили `PRAGMA busy_timeout = 5000` best-effort для `DbBackend::Sqlite` после `begin()` — завершает паритет P0-2 по всему модулю (ранее `inventory/memory/glossary/policy/collaboration` уже покрыты, workflow был последним без `busy_timeout`).
 * Верификация: `grep -rn busy_timeout -- workflow.rs` — 13 точек; `grep -rn busy_timeout -- crates/modules/rustok-translation/src` — 27+ точек (все CAS-пути); `git diff --stat` 1 file 104 ins; pushed d7a352a.
+### Итерация 13 — финальный паритет и test-aware линт (9670d6a / 573f11c)
+* `progress.rs:rebuild_job_progress` — добавлен `PRAGMA busy_timeout = 5000` best-effort для `Sqlite` — закрывает последний CAS-путь без `busy_timeout` (progress rebuild) — теперь все 27+ `begin()` точек в модуле имеют паритет (inventory 2 + memory 3 + glossary 4 + policy 1 + collaboration 2 + workflow 13 + progress 1 + inventory 2 = 27).
+* `lib.rs` — `#![deny(clippy::unwrap_used, clippy::expect_used)]` → `#![cfg_attr(not(test), deny(...))]` — `cargo test` может использовать `unwrap/expect` в `#[cfg(test)]`/`tests/` без ложных срабатываний, прод остаётся под `deny` (AGENTS §14, §4 Ideal Standard).
+* Верификация: `grep -rn busy_timeout -- crates/modules/rustok-translation/src` — 27+ точек; `grep -n cfg_attr.*deny -- lib.rs` — 1; `git diff --stat` 1+1 файл 9 ins; pushed 573f11c→9670d6a.
 
