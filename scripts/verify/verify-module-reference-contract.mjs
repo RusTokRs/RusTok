@@ -93,9 +93,13 @@ requireOrdered("crates/modules/rustok-blog/src/services/post/commands.rs", "enfo
 
 requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
   "Column::Version.eq(version)",
-  "ensure_transition(current, BlogPostStatus::Published)?",
-  "ensure_transition(current, BlogPostStatus::Draft)?",
-  "ensure_transition(current, BlogPostStatus::Archived)?",
+  // One transition gate for the whole lifecycle instead of one literal call per
+  // target status: the command table maps a command to the target and the gate
+  // rejects an impossible transition with `BlogError::invalid_transition`.
+  "ensure_transition(current, target)?",
+  "fn ensure_transition(current: BlogPostStatus, next: BlogPostStatus) -> BlogResult<()>",
+  "if current.can_transition_to(next) {",
+  "Err(BlogError::invalid_transition(current, next))",
   "pub async fn restore_post(",
   '"Locale is required when changing localized Blog post copy or tags"',
 ]);
@@ -206,7 +210,10 @@ requireAll("crates/modules/rustok-blog/src/services/category_name_projection.rs"
   "load_scoped_categories_strict",
   "BlogError::invariant(",
   ".map_err(BlogError::from)?",
-  "Category without localized copy",
+  // The read projection degrades a damaged Category reference instead of failing the
+  // page; only the owner-invariant case (a duplicate identity) still fails closed.
+  "Blog post Category Taxonomy projection contains duplicate identities",
+  "reference Categories without a canonical Taxonomy projection",
 ]);
 requireAll("crates/modules/rustok-blog/src/services/category.rs", [
   "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
@@ -461,7 +468,7 @@ forbid("scripts/verify/verify-blog-comments-event-projection.test.mjs", [
 ]);
 
 requireAll("crates/modules/rustok-blog/src/graphql/query.rs", [
-  "Err(BlogError::Forbidden(_)) if is_public_request(ctx) => return Ok(None)",
+  "Err(BlogError::Forbidden(_)) if is_public_request(ctx) => Ok(None)",
   "query_tenant_id(ctx, tenant, tenant_id)?",
   '"Blog queries must use the current tenant"',
   '"Blog is not available for the current channel"',
