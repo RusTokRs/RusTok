@@ -13,7 +13,8 @@ use crate::pages::{
 use crate::shared::ui::LanguageToggle;
 use crate::widgets::app_shell::AppLayout;
 use rustok_auth_admin::{
-    Login, OAuthAppsPage, Profile, Register, ResetPassword, Security, UserDetails, Users,
+    AcceptInvite, Login, OAuthAppsPage, Profile, Register, ResetPassword, Security, UserDetails,
+    Users,
 };
 
 #[component]
@@ -25,6 +26,7 @@ pub fn App() -> impl IntoView {
                     <Routes fallback=|| view! { <NotFound /> }>
                         <Route path=path!("/login") view=|| view! { <Login language_toggle=|| view! { <LanguageToggle /> } /> } />
                         <Route path=path!("/register") view=|| view! { <Register language_toggle=|| view! { <LanguageToggle /> } /> } />
+                        <Route path=path!("/accept-invite") view=|| view! { <AcceptInvite language_toggle=|| view! { <LanguageToggle /> } /> } />
                         <Route path=path!("/reset") view=|| view! { <ResetPassword language_toggle=|| view! { <LanguageToggle /> } /> } />
                         <Route path=path!("/install") view=InstallerPage />
 

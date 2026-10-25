@@ -230,6 +230,47 @@ pub(super) async fn refresh_token_native(
     }
 }
 
+#[cfg(feature = "ssr")]
+#[derive(Debug, Deserialize)]
+struct RestAcceptInviteResponse {
+    #[allow(dead_code)]
+    status: String,
+    email: String,
+    #[allow(dead_code)]
+    role: String,
+}
+
+#[server(prefix = "/api/fn", endpoint = "auth/accept-invite")]
+pub(super) async fn accept_invite_native(
+    invite_token: String,
+    password: String,
+    name: Option<String>,
+    tenant: String,
+) -> Result<String, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let response: RestAcceptInviteResponse = auth_rest_post(
+            "/api/auth/invite/accept",
+            &json!({
+                "token": invite_token,
+                "password": password,
+                "name": name,
+            }),
+            None,
+            Some(tenant),
+        )
+        .await?;
+        Ok(response.email)
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (invite_token, password, name, tenant);
+        Err(ServerFnError::new(
+            "auth/accept-invite requires the `ssr` feature",
+        ))
+    }
+}
+
 #[server(prefix = "/api/fn", endpoint = "auth/forgot-password")]
 pub(super) async fn forgot_password_native(
     email: String,

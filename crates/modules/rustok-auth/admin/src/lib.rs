@@ -7,5 +7,6 @@ pub mod transport;
 pub mod ui;
 
 pub use ui::{
-    AuthAdmin, Login, OAuthAppsPage, Profile, Register, ResetPassword, Security, UserDetails, Users,
+    AcceptInvite, AuthAdmin, Login, OAuthAppsPage, Profile, Register, ResetPassword, Security,
+    UserDetails, Users,
 };

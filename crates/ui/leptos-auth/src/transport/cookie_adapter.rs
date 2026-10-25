@@ -128,6 +128,46 @@ pub(super) async fn refresh_session_cookie(
     Ok((session, user))
 }
 
+#[derive(Debug, Deserialize)]
+struct AcceptInviteResponse {
+    #[allow(dead_code)]
+    status: String,
+    email: String,
+    #[allow(dead_code)]
+    role: String,
+}
+
+/// Accept an admin-issued invite directly against the REST API.
+/// Returns the new account's email; the caller signs in with the
+/// password it just set to establish the cookie session.
+pub(super) async fn accept_invite_direct(
+    invite_token: String,
+    password: String,
+    name: Option<String>,
+    tenant: String,
+) -> Result<String, AuthError> {
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("{}/api/auth/invite/accept", get_api_url()))
+        .header("X-Tenant-ID", tenant)
+        .json(&json!({
+            "token": invite_token,
+            "password": password,
+            "name": name,
+        }))
+        .send()
+        .await
+        .map_err(|_| AuthError::Network)?;
+    if !response.status().is_success() {
+        return Err(AuthError::from_status(response.status().as_u16(), false));
+    }
+    let payload = response
+        .json::<AcceptInviteResponse>()
+        .await
+        .map_err(|_| AuthError::Network)?;
+    Ok(payload.email)
+}
+
 pub(super) async fn sign_out_cookie(tenant: String) -> Result<(), AuthError> {
     let client = reqwest::Client::new();
     let response = client

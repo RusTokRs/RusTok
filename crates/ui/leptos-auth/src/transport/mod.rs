@@ -315,6 +315,28 @@ pub async fn exchange_refresh_token_ssr(
     Ok((payload.user, payload.session, rotated))
 }
 
+/// Accept an admin-issued invite: creates the account with the
+/// chosen password and returns its email. Establishing the session
+/// is a normal sign-in afterwards, so cookie handling stays in one
+/// place for both transports.
+pub async fn accept_invite(
+    invite_token: String,
+    password: String,
+    name: Option<String>,
+    tenant: String,
+) -> Result<String, AuthError> {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => {
+            native_server_adapter::accept_invite_native(invite_token, password, name, tenant)
+                .await
+                .map_err(|error| map_server_auth_error(error, false))
+        }
+        UiTransportPath::Graphql => {
+            cookie_adapter::accept_invite_direct(invite_token, password, name, tenant).await
+        }
+    }
+}
+
 pub async fn forgot_password(email: String, tenant: String) -> Result<String, AuthError> {
     match selected_transport_path() {
         UiTransportPath::NativeServer => {
