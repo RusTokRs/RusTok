@@ -366,7 +366,7 @@ rustok-taxonomy = { path = "crates/modules/rustok-taxonomy" }
 rustok-index = { path = "crates/modules/rustok-index" }
 rustok-search = { path = "crates/modules/rustok-search" }
 rustok-seo = { path = "crates/modules/rustok-seo" }
-rustok-seo-targets = { path = "crates/libs/rustok-seo-targets" }
+rustok-seo-targets = { path = "crates/libs/rustok-seo-targets", default-features = false }
 rustok-translation-targets = { path = "crates/libs/rustok-translation-targets" }
 rustok-translation = { path = "crates/modules/rustok-translation" }
 rustok-seo-storefront = { path = "crates/modules/rustok-seo/storefront" }

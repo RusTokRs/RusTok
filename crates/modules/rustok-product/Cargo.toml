@@ -19,7 +19,7 @@ rustok-core.workspace = true
 rustok-api.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
-rustok-seo-targets.workspace = true
+rustok-seo-targets = { workspace = true, features = ["server"] }
 rustok-translation-targets.workspace = true
 flex.workspace = true
 rustok-taxonomy.workspace = true
