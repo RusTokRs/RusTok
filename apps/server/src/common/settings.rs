@@ -485,6 +485,8 @@ pub struct RuntimeBackgroundWorkerSettings {
     pub seo_sitemap_enabled: bool,
     #[serde(default = "default_true")]
     pub seo_index_repair_enabled: bool,
+    #[serde(default = "default_true")]
+    pub auth_retention_enabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, Eq, PartialEq)]
@@ -743,6 +745,7 @@ impl Default for RuntimeBackgroundWorkerSettings {
             seo_bulk_enabled: true,
             seo_sitemap_enabled: true,
             seo_index_repair_enabled: true,
+            auth_retention_enabled: true,
         }
     }
 }

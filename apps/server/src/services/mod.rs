@@ -14,6 +14,7 @@ pub mod auth_invite;
 pub mod auth_lifecycle;
 pub mod auth_lifecycle_provider;
 pub mod auth_password_reset;
+pub mod auth_retention;
 pub mod build_control;
 pub mod build_event_hub;
 pub mod build_executor;
