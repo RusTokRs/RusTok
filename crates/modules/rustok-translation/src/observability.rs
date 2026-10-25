@@ -100,9 +100,11 @@ struct TranslationObservabilityMetrics {
     interchange_artifact_bytes: HistogramVec,
     interchange_import_items_total: IntCounterVec,
     interchange_expiry_cleanup_total: IntCounterVec,
+    workflow_job_lifecycle_total: IntCounterVec,
 }
 
 impl TranslationObservabilityMetrics {
+    #[allow(clippy::expect_used)]
     fn new() -> Self {
         Self {
             provider_operations_total: IntCounterVec::new(
@@ -276,6 +278,14 @@ impl TranslationObservabilityMetrics {
                 &["outcome"],
             )
             .expect("translation interchange expiry cleanup metric must be valid"),
+            workflow_job_lifecycle_total: IntCounterVec::new(
+                Opts::new(
+                    "rustok_translation_workflow_job_lifecycle_total",
+                    "Translation job lifecycle transitions by bounded state",
+                ),
+                &["transition"],
+            )
+            .expect("translation job lifecycle metric must be valid"),
         }
     }
 
@@ -388,6 +398,7 @@ impl Collector for TranslationObservabilityMetrics {
         descriptions.extend(self.interchange_artifact_bytes.desc());
         descriptions.extend(self.interchange_import_items_total.desc());
         descriptions.extend(self.interchange_expiry_cleanup_total.desc());
+        descriptions.extend(self.workflow_job_lifecycle_total.desc());
         descriptions
     }
 
@@ -414,6 +425,7 @@ impl Collector for TranslationObservabilityMetrics {
         families.extend(self.interchange_artifact_bytes.collect());
         families.extend(self.interchange_import_items_total.collect());
         families.extend(self.interchange_expiry_cleanup_total.collect());
+        families.extend(self.workflow_job_lifecycle_total.collect());
         families
     }
 }
@@ -632,6 +644,21 @@ pub(crate) fn record_interchange_import_report(report: &TranslationInterchangeCo
         .inc_by(u64::from(report.rejected_items));
 }
 
+pub(crate) fn record_job_lifecycle(transition: &'static str) {
+    ensure_registered();
+    let transition = workflow_job_transition(transition);
+    metrics()
+        .workflow_job_lifecycle_total
+        .with_label_values(&[transition])
+        .inc();
+    tracing::debug!(
+        component = "translation",
+        operation = "job_lifecycle",
+        transition,
+        "Observed Translation job lifecycle transition"
+    );
+}
+
 pub(crate) fn record_interchange_expiry_cleanup(storage_deleted: bool) {
     ensure_registered();
     metrics()
@@ -718,10 +745,14 @@ fn freshness_label(freshness: ProviderProjectionFreshness) -> &'static str {
 }
 
 fn checkpoint_age(timestamp: DateTime<FixedOffset>) -> Option<Duration> {
-    Utc::now()
-        .signed_duration_since(timestamp.with_timezone(&Utc))
-        .to_std()
-        .ok()
+    const MAX_CHECKPOINT_AGE_SECS: u64 = 30 * 24 * 60 * 60;
+    let age = Utc::now().signed_duration_since(timestamp.with_timezone(&Utc));
+    let std_age = if age.num_seconds() < 0 {
+        Duration::from_secs(0)
+    } else {
+        age.to_std().unwrap_or(Duration::from_secs(0))
+    };
+    Some(std::cmp::min(std_age, Duration::from_secs(MAX_CHECKPOINT_AGE_SECS)))
 }
 
 fn error_category(error: &TranslationError) -> &'static str {
@@ -768,6 +799,13 @@ fn error_category(error: &TranslationError) -> &'static str {
         | TranslationError::InterchangeArtifactNotReady
         | TranslationError::InterchangeArtifactAlreadyProcessed => "artifact_state",
         _ => "workflow",
+    }
+}
+
+fn workflow_job_transition(transition: &'static str) -> &'static str {
+    match transition {
+        "created" | "cancelled" | "completed" | "retry" | "proposal_approved" | "proposal_applied" => transition,
+        _ => "other",
     }
 }
 

@@ -163,10 +163,20 @@ impl TranslationInventoryService {
         .await?;
 
         let transaction = self.database.begin().await?;
+        if matches!(self.database.get_database_backend(), DbBackend::Sqlite) {
+            use sea_orm::ConnectionTrait;
+            if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                tracing::debug!(error = %error, "translation inventory busy_timeout PRAGMA best-effort failed");
+            }
+        }
         let current_checkpoint_query = provider_checkpoint::Entity::find()
             .filter(provider_checkpoint::Column::TenantId.eq(tenant_id))
             .filter(provider_checkpoint::Column::OwnerSlug.eq(owner_slug.as_str()))
             .filter(provider_checkpoint::Column::ResourceKind.eq(resource_kind.as_str()));
+        // SQLite lacks SELECT FOR UPDATE; sync relies on transaction isolation via
+        // `BEGIN IMMEDIATE` semantics and checkpoint CAS. In production SQLite is not
+        // intended for concurrent inventory sync; set `PRAGMA busy_timeout = 5000` at
+        // connection pool level to avoid `database is locked` under tests.
         let current_checkpoint = match self.database.get_database_backend() {
             DbBackend::Postgres | DbBackend::MySql => {
                 current_checkpoint_query
@@ -183,6 +193,7 @@ impl TranslationInventoryService {
         if current_checkpoint.revision != expected_revision
             || current_checkpoint.cursor.as_deref() != expected_cursor
         {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::CheckpointConflict);
         }
 
@@ -272,6 +283,7 @@ impl TranslationInventoryService {
             .exec(&transaction)
             .await?;
         if update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::CheckpointConflict);
         }
         transaction.commit().await?;
@@ -415,10 +427,20 @@ impl TranslationInventoryService {
 
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        if matches!(self.database.get_database_backend(), DbBackend::Sqlite) {
+            use sea_orm::ConnectionTrait;
+            if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                tracing::debug!(error = %error, "translation inventory busy_timeout PRAGMA best-effort failed");
+            }
+        }
         let current_checkpoint_query = provider_checkpoint::Entity::find()
             .filter(provider_checkpoint::Column::TenantId.eq(tenant_id))
             .filter(provider_checkpoint::Column::OwnerSlug.eq(owner_slug.as_str()))
             .filter(provider_checkpoint::Column::ResourceKind.eq(resource_kind.as_str()));
+        // SQLite lacks SELECT FOR UPDATE; sync relies on transaction isolation via
+        // `BEGIN IMMEDIATE` semantics and checkpoint CAS. In production SQLite is not
+        // intended for concurrent inventory sync; set `PRAGMA busy_timeout = 5000` at
+        // connection pool level to avoid `database is locked` under tests.
         let current_checkpoint = match self.database.get_database_backend() {
             DbBackend::Postgres | DbBackend::MySql => {
                 current_checkpoint_query
@@ -433,6 +455,7 @@ impl TranslationInventoryService {
         if current_checkpoint.revision != expected_checkpoint.revision
             || current_checkpoint.cursor != expected_checkpoint.cursor
         {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::CheckpointConflict);
         }
 

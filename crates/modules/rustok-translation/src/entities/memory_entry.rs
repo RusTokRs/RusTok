@@ -32,6 +32,7 @@ pub struct Model {
     pub owner_lifecycle_revision: Option<String>,
     pub owner_deleted_at: Option<DateTimeWithTimeZone>,
     pub tombstoned_at: Option<DateTimeWithTimeZone>,
+    pub data_classification: String,
     pub revision: i64,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

@@ -705,7 +705,10 @@ impl TranslationExchangeService {
         document: TranslationInterchangeDocument,
     ) -> TranslationInterchangeConflictReport {
         let mut report = TranslationInterchangeConflictReport {
-            total_items: u16::try_from(document.items.len()).unwrap_or(u16::MAX),
+            total_items: u16::try_from(document.items.len()).unwrap_or_else(|_| {
+                tracing::warn!(document_len = document.items.len(), "translation interchange document exceeded u16 capacity; capping report");
+                u16::MAX
+            }),
             accepted_items: 0,
             conflict_items: 0,
             rejected_items: 0,
@@ -1083,13 +1086,7 @@ fn authorize(
 }
 
 fn idempotency_key(context: &PortContext) -> TranslationResult<String> {
-    let key = context.idempotency_key.as_deref().unwrap_or_default();
-    if key.is_empty() || key.len() > 191 || key.trim() != key {
-        return Err(TranslationError::InvalidRequest(
-            "translation interchange artifact idempotency key is invalid".to_string(),
-        ));
-    }
-    Ok(key.to_string())
+    Ok(crate::idempotency::IdempotencyKey::require(context)?.into_string())
 }
 
 fn child_context(

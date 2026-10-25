@@ -331,6 +331,14 @@ impl TranslationProgressService {
     ) -> TranslationResult<JobProgressRecord> {
         let tenant_id = authorize_translation(&context, PortCallPolicy::write(), Action::Manage)?;
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation progress busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         let progress = refresh_job_progress(&transaction, tenant_id, job_id).await?;
         transaction.commit().await?;
         Ok(progress)
@@ -768,6 +776,11 @@ fn count_item(
 
     let applied_keys = match (item.status.as_str(), receipt) {
         ("applied", Some(receipt)) => {
+            if receipt.proposal_id != item.current_proposal_id.unwrap_or(receipt.proposal_id) {
+                return Err(TranslationError::InvalidProgressSource(
+                    "applied job item receipt proposal does not match current proposal".to_string(),
+                ));
+            }
             serde_json::from_value::<Vec<FieldKey>>(receipt.applied_field_keys.clone())?
                 .into_iter()
                 .collect::<BTreeSet<_>>()

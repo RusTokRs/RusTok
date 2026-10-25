@@ -99,7 +99,7 @@ impl TranslationPolicyService {
         }
         normalize_required_target_locales(&mut input.required_target_locales)?;
         let request_hash = hash_manifest(&input)?;
-        let idempotency_key = context.idempotency_key.clone().unwrap_or_default();
+        let idempotency_key = require_idempotency_key(&context)?;
         if let Some(receipt) =
             find_policy_receipt(&self.database, tenant_id, &idempotency_key).await?
         {
@@ -143,6 +143,14 @@ impl TranslationPolicyService {
         let response = serde_json::to_value(&record)?;
         let receipt_id = generate_id();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation glossary busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
 
         match existing {
             Some(model) => {
@@ -460,4 +468,8 @@ fn actor_kind(context: &PortContext) -> &'static str {
         PortActorKind::Service => "service",
         PortActorKind::System => "system",
     }
+}
+
+fn require_idempotency_key(context: &PortContext) -> TranslationResult<String> {
+    Ok(crate::idempotency::IdempotencyKey::require(context)?.into_string())
 }

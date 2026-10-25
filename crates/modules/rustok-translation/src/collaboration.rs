@@ -124,7 +124,25 @@ impl TranslationCollaborationService {
         }
 
         let transaction = self.database.begin().await?;
-        ensure_job(&transaction, tenant_id, input.job_id).await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation collaboration busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
+        let job = ensure_job(&transaction, tenant_id, input.job_id).await?;
+        // Job-level notes inherit job writability: cancelled jobs are not annotatable.
+        if input.item_id.is_none() && !matches!(job.status.as_str(), "open" | "in_progress") {
+            return Err(TranslationError::JobNotWritable(job.status));
+        }
+        // Job-level notes require Manage — Update is assignment-bound to item, Resolve only for in_review item.
+        if input.item_id.is_none()
+            && security.get_scope(Resource::Translations, Action::Manage) == PermissionScope::None
+        {
+            return Err(TranslationError::Forbidden);
+        }
         if let Some(item_id) = input.item_id {
             let item = ensure_item(&transaction, tenant_id, input.job_id, item_id).await?;
             ensure_item_note_writer(&security, &context.actor, &item)?;
@@ -205,6 +223,14 @@ impl TranslationCollaborationService {
         }
 
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation collaboration busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         let note = workflow_note::Entity::find_by_id(input.note_id)
             .filter(workflow_note::Column::TenantId.eq(tenant_id))
             .one(&transaction)
@@ -242,6 +268,7 @@ impl TranslationCollaborationService {
             .exec(&transaction)
             .await?;
         if update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::WorkflowRevisionConflict);
         }
         let persisted = workflow_note::Entity::find_by_id(input.note_id)
@@ -289,13 +316,7 @@ fn validate_note_body(body: &str) -> TranslationResult<()> {
 }
 
 fn idempotency_key(context: &PortContext) -> TranslationResult<String> {
-    let key = context.idempotency_key.as_deref().unwrap_or_default();
-    if key.is_empty() || key.len() > 191 || key.trim() != key {
-        return Err(TranslationError::InvalidRequest(
-            "workflow note idempotency key is invalid".to_string(),
-        ));
-    }
-    Ok(key.to_string())
+    Ok(crate::idempotency::IdempotencyKey::require(context)?.into_string())
 }
 
 fn authorize_note_writer(context: &PortContext) -> TranslationResult<(Uuid, SecurityContext)> {

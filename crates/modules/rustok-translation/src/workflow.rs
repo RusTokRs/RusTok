@@ -274,11 +274,7 @@ impl TranslationWorkflowService {
             )
             .await?;
         }
-        let idempotency_key = context
-            .idempotency_key
-            .as_deref()
-            .unwrap_or_default()
-            .to_string();
+        let idempotency_key = require_idempotency_key(&context)?;
         let request_hash = hash_manifest(&input)?;
         if let Some(existing) =
             find_job_by_idempotency(&self.database, tenant_id, &idempotency_key).await?
@@ -289,6 +285,14 @@ impl TranslationWorkflowService {
         let now = Utc::now().fixed_offset();
         let job_id = generate_id();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         job::Entity::insert(job::ActiveModel {
             id: Set(job_id),
             tenant_id: Set(tenant_id),
@@ -334,6 +338,7 @@ impl TranslationWorkflowService {
             )
             .await?;
         transaction.commit().await?;
+        crate::observability::record_job_lifecycle("created");
         replay_job(persisted, &request_hash)
     }
 
@@ -343,11 +348,7 @@ impl TranslationWorkflowService {
         input: AddItemInput,
     ) -> TranslationResult<JobItemRecord> {
         let tenant_id = authorize_write(&context, Action::Update)?;
-        let idempotency_key = context
-            .idempotency_key
-            .as_deref()
-            .unwrap_or_default()
-            .to_string();
+        let idempotency_key = require_idempotency_key(&context)?;
         let request_hash = hash_manifest(&input)?;
         if let Some(existing) =
             find_item_by_idempotency(&self.database, tenant_id, &idempotency_key).await?
@@ -399,6 +400,13 @@ impl TranslationWorkflowService {
         snapshot
             .validate()
             .map_err(|error| TranslationError::InvalidRequest(error.to_string()))?;
+        if let Some(fallback) = snapshot.rendered_fallback_locale.as_ref() {
+            if fallback == &target_locale {
+                return Err(TranslationError::InvalidRequest(
+                    "rendered_fallback_locale must differ from target_locale".to_string(),
+                ));
+            }
+        }
         if snapshot.summary.identity != input.identity {
             return Err(TranslationError::ProviderIdentityMismatch);
         }
@@ -419,6 +427,14 @@ impl TranslationWorkflowService {
             .ok_or(TranslationError::WorkflowRevisionConflict)?;
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         job_item::Entity::insert(job_item::ActiveModel {
             id: Set(generate_id()),
             tenant_id: Set(tenant_id),
@@ -474,6 +490,7 @@ impl TranslationWorkflowService {
             .exec(&transaction)
             .await?;
         if update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::WorkflowRevisionConflict);
         }
         let persisted = find_item_by_idempotency(&transaction, tenant_id, &idempotency_key)
@@ -517,7 +534,7 @@ impl TranslationWorkflowService {
             Action::Update
         };
         let tenant_id = authorize_write(&context, action)?;
-        let idempotency_key = operation_idempotency_key(&context);
+        let idempotency_key = require_idempotency_key(&context)?;
         let request_hash = hash_manifest(&input)?;
         if let Some(existing) =
             find_proposal_by_idempotency(&self.database, tenant_id, &idempotency_key).await?
@@ -552,6 +569,14 @@ impl TranslationWorkflowService {
         let next_item_revision = next_revision(item.revision)?;
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         proposal::Entity::insert(proposal::ActiveModel {
             id: Set(proposal_id),
             tenant_id: Set(tenant_id),
@@ -605,6 +630,7 @@ impl TranslationWorkflowService {
             .exec(&transaction)
             .await?;
         if update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::WorkflowRevisionConflict);
         }
         refresh_job_progress(&transaction, tenant_id, item.job_id).await?;
@@ -618,7 +644,7 @@ impl TranslationWorkflowService {
         input: SubmitProposalInput,
     ) -> TranslationResult<ProposalRecord> {
         let tenant_id = authorize_write(&context, Action::Update)?;
-        let idempotency_key = operation_idempotency_key(&context);
+        let idempotency_key = require_idempotency_key(&context)?;
         let request_hash = hash_manifest(&input)?;
         if let Some(existing) =
             find_proposal_by_submission_idempotency(&self.database, tenant_id, &idempotency_key)
@@ -673,6 +699,14 @@ impl TranslationWorkflowService {
         let next_item_revision = next_revision(item.revision)?;
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         let proposal_update = proposal::Entity::update_many()
             .col_expr(proposal::Column::SubmittedAt, Expr::value(Some(now)))
             .col_expr(
@@ -694,6 +728,7 @@ impl TranslationWorkflowService {
             .exec(&transaction)
             .await?;
         if proposal_update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::WorkflowRevisionConflict);
         }
         update_item_state(
@@ -729,7 +764,7 @@ impl TranslationWorkflowService {
         input: ApproveProposalInput,
     ) -> TranslationResult<ProposalRecord> {
         let tenant_id = authorize_write(&context, Action::Resolve)?;
-        let idempotency_key = operation_idempotency_key(&context);
+        let idempotency_key = require_idempotency_key(&context)?;
         let request_hash = hash_manifest(&input)?;
         if let Some(existing) =
             find_proposal_by_approval_idempotency(&self.database, tenant_id, &idempotency_key)
@@ -785,6 +820,14 @@ impl TranslationWorkflowService {
         let next_item_revision = next_revision(item.revision)?;
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         let proposal_update = proposal::Entity::update_many()
             .col_expr(
                 proposal::Column::ApprovedByActorKind,
@@ -818,6 +861,7 @@ impl TranslationWorkflowService {
             .exec(&transaction)
             .await?;
         if proposal_update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::WorkflowRevisionConflict);
         }
         update_item_state(
@@ -844,6 +888,7 @@ impl TranslationWorkflowService {
             )
             .await?;
         transaction.commit().await?;
+        crate::observability::record_job_lifecycle("proposal_approved");
         proposal_record(persisted)
     }
 
@@ -895,7 +940,7 @@ impl TranslationWorkflowService {
         assignee: Option<rustok_api::PortActor>,
         request_hash: String,
     ) -> TranslationResult<AssignmentRecord> {
-        let idempotency_key = operation_idempotency_key(&context);
+        let idempotency_key = require_idempotency_key(&context)?;
         if let Some(existing) =
             find_assignment_by_idempotency(&self.database, tenant_id, &idempotency_key).await?
         {
@@ -926,6 +971,14 @@ impl TranslationWorkflowService {
         let next_item_revision = next_revision(item.revision)?;
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         assignment::Entity::insert(assignment::ActiveModel {
             id: Set(operation_id),
             tenant_id: Set(tenant_id),
@@ -981,6 +1034,7 @@ impl TranslationWorkflowService {
             .exec(&transaction)
             .await?;
         if update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::WorkflowRevisionConflict);
         }
 
@@ -1017,7 +1071,7 @@ impl TranslationWorkflowService {
         let tenant_id = authorize_write(&context, Action::Manage)?;
         validate_expected_revision(input.expected_revision)?;
         validate_cancellation_reason(&input.reason)?;
-        let idempotency_key = operation_idempotency_key(&context);
+        let idempotency_key = require_idempotency_key(&context)?;
         let request_hash = hash_manifest(&input)?;
         if let Some(existing) =
             find_cancellation_by_idempotency(&self.database, tenant_id, &idempotency_key).await?
@@ -1050,6 +1104,24 @@ impl TranslationWorkflowService {
         let cancellation_id = generate_id();
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
+        // Re-check for in-flight apply under transaction isolation to prevent TOCTOU.
+        let applying_inside_tx = job_item::Entity::find()
+            .filter(job_item::Column::TenantId.eq(tenant_id))
+            .filter(job_item::Column::JobId.eq(job_model.id))
+            .filter(job_item::Column::Status.eq("applying"))
+            .one(&transaction)
+            .await?;
+        if applying_inside_tx.is_some() {
+            return Err(TranslationError::JobCancellationInProgress);
+        }
         let job_update = job::Entity::update_many()
             .col_expr(job::Column::Status, Expr::value("cancelled"))
             .col_expr(job::Column::Revision, Expr::value(next_job_revision))
@@ -1091,6 +1163,7 @@ impl TranslationWorkflowService {
                 .exec(&transaction)
                 .await?;
             if update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
                 return Err(TranslationError::WorkflowRevisionConflict);
             }
         }
@@ -1124,6 +1197,7 @@ impl TranslationWorkflowService {
             )
             .await?;
         transaction.commit().await?;
+        crate::observability::record_job_lifecycle("cancelled");
         Ok(CancellationRecord {
             cancellation_id,
             job_id: job_model.id,
@@ -1140,7 +1214,7 @@ impl TranslationWorkflowService {
         let tenant_id = authorize_write(&context, Action::Manage)?;
         validate_expected_revision(input.expected_revision)?;
         validate_retry_reason(&input.reason)?;
-        let idempotency_key = operation_idempotency_key(&context);
+        let idempotency_key = require_idempotency_key(&context)?;
         let request_hash = hash_manifest(&input)?;
         if let Some(existing) =
             find_retry_by_idempotency(&self.database, tenant_id, &idempotency_key).await?
@@ -1171,6 +1245,14 @@ impl TranslationWorkflowService {
         let next_item_revision = next_revision(item.revision)?;
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         retry::Entity::insert(retry::ActiveModel {
             id: Set(retry_id),
             tenant_id: Set(tenant_id),
@@ -1211,6 +1293,7 @@ impl TranslationWorkflowService {
             .exec(&transaction)
             .await?;
         if update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::WorkflowRevisionConflict);
         }
         refresh_job_progress(&transaction, tenant_id, item.job_id).await?;
@@ -1249,7 +1332,7 @@ impl TranslationWorkflowService {
         input: ApplyProposalInput,
     ) -> TranslationResult<ApplyRecord> {
         let tenant_id = authorize_write(&context, Action::Publish)?;
-        let idempotency_key = operation_idempotency_key(&context);
+        let idempotency_key = require_idempotency_key(&context)?;
         let request_hash = hash_manifest(&input)?;
         if let Some(existing) =
             find_apply_operation_by_idempotency(&self.database, tenant_id, &idempotency_key).await?
@@ -1281,6 +1364,14 @@ impl TranslationWorkflowService {
         let applying_item_revision = next_revision(item.revision)?;
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         apply_operation::Entity::insert(apply_operation::ActiveModel {
             id: Set(operation_id),
             tenant_id: Set(tenant_id),
@@ -1345,6 +1436,7 @@ impl TranslationWorkflowService {
             .exec(&transaction)
             .await?;
         if item_update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::WorkflowRevisionConflict);
         }
         refresh_job_progress(&transaction, tenant_id, item.job_id).await?;
@@ -1387,7 +1479,7 @@ impl TranslationWorkflowService {
         if input.expected_attempt_count < 0 {
             return Err(TranslationError::ApplyRecoveryAttemptMismatch);
         }
-        let idempotency_key = operation_idempotency_key(&context);
+        let idempotency_key = require_idempotency_key(&context)?;
         let request_hash = hash_manifest(&input)?;
         if let Some(existing) =
             find_apply_recovery_by_idempotency(&self.database, tenant_id, &idempotency_key).await?
@@ -1429,6 +1521,14 @@ impl TranslationWorkflowService {
         let recovery_id = generate_id();
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         apply_recovery::Entity::insert(apply_recovery::ActiveModel {
             id: Set(recovery_id),
             tenant_id: Set(tenant_id),
@@ -1677,6 +1777,14 @@ impl TranslationWorkflowService {
         let terminal_item_revision = next_revision(operation.applying_item_revision)?;
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         let operation_update = apply_operation::Entity::update_many()
             .col_expr(
                 apply_operation::Column::Status,
@@ -1718,6 +1826,7 @@ impl TranslationWorkflowService {
             .exec(&transaction)
             .await?;
         if operation_update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::WorkflowRevisionConflict);
         }
         let item_update = job_item::Entity::update_many()
@@ -1739,6 +1848,7 @@ impl TranslationWorkflowService {
             .exec(&transaction)
             .await?;
         if item_update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::WorkflowRevisionConflict);
         }
         let item = find_item(&transaction, operation.tenant_id, operation.item_id).await?;
@@ -1823,6 +1933,7 @@ impl TranslationWorkflowService {
                 },
             )
             .await?;
+        crate::observability::record_job_lifecycle("completed");
         Ok(true)
     }
 
@@ -1834,6 +1945,14 @@ impl TranslationWorkflowService {
         event_actor_id: Option<Uuid>,
     ) -> TranslationResult<ApplyRecord> {
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         if let Some(existing) = find_apply_receipt_by_idempotency(
             &transaction,
             operation.tenant_id,
@@ -2027,6 +2146,7 @@ impl TranslationWorkflowService {
         .await?;
         refresh_job_progress(&transaction, operation.tenant_id, item.job_id).await?;
         transaction.commit().await?;
+        crate::observability::record_job_lifecycle("proposal_applied");
         apply_record(&operation, persisted)
     }
 }
@@ -2064,8 +2184,12 @@ pub(crate) fn event_actor_id(context: &PortContext) -> Option<Uuid> {
         .filter(|actor_id| !actor_id.is_nil())
 }
 
-fn operation_idempotency_key(context: &PortContext) -> String {
-    context.idempotency_key.clone().unwrap_or_default()
+fn operation_idempotency_key(context: &PortContext) -> TranslationResult<String> {
+    require_idempotency_key(context)
+}
+
+fn require_idempotency_key(context: &PortContext) -> TranslationResult<String> {
+    Ok(crate::idempotency::IdempotencyKey::require(context)?.into_string())
 }
 
 fn validate_expected_revision(revision: i64) -> TranslationResult<()> {
@@ -2126,6 +2250,12 @@ fn enforce_assignment(item: &job_item::Model, context: &PortContext) -> Translat
     };
     if assignee == context.actor {
         return Ok(());
+    }
+    // System actor (scheduler/recovered machine proposals) is explicitly allowed to bypass
+    // assignment when called via `save_recovered_machine_proposal` with enforce_current_assignment=false.
+    // For direct workflow writes, Manage scope is still required.
+    if context.actor.kind == PortActorKind::System {
+        return Err(TranslationError::ItemAssignedToAnotherActor);
     }
     let security = SecurityContext::try_from_port_context(context)?;
     if security.get_scope(Resource::Translations, Action::Manage) != PermissionScope::None {
@@ -2414,6 +2544,7 @@ where
         .filter(apply_operation::Column::Id.eq(operation.id))
         .filter(apply_operation::Column::TenantId.eq(operation.tenant_id))
         .filter(apply_operation::Column::Status.eq("pending"))
+        .filter(apply_operation::Column::AttemptCount.eq(operation.attempt_count))
         .filter(
             Condition::any()
                 .add(apply_operation::Column::LeaseToken.is_null())
@@ -2442,6 +2573,14 @@ async fn record_pending_apply_error(
     error: PendingApplyError<'_>,
 ) -> TranslationResult<()> {
     let transaction = database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
     let update = apply_operation::Entity::update_many()
         .col_expr(
             apply_operation::Column::LastErrorKind,
@@ -2482,6 +2621,7 @@ async fn record_pending_apply_error(
         .exec(&transaction)
         .await?;
     if update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
         return Err(TranslationError::WorkflowRevisionConflict);
     }
     event_bus
@@ -2515,6 +2655,16 @@ fn validate_provider_receipt(
     {
         return Err(TranslationError::InvalidProviderReceipt(
             "provider_receipt_id must contain 1..=191 trimmed non-whitespace bytes".to_string(),
+        ));
+    }
+    if receipt.resource_revision.as_str().trim().is_empty()
+        || receipt.resource_revision.as_str().len() > 256
+        || receipt.target_revision.as_str().trim().is_empty()
+        || receipt.target_revision.as_str().len() > 256
+    {
+        return Err(TranslationError::InvalidProviderReceipt(
+            "provider resource and target revisions must contain 1..=256 trimmed non-empty bytes"
+                .to_string(),
         ));
     }
     let requested = request

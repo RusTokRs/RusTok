@@ -5,6 +5,9 @@
 //! Provides translation memory, glossaries, reviewer queues, interchange artifacts,
 //! and provider-safe translation application.
 
+#![doc = include_str!("../CRATE_API.md")]
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
+mod idempotency;
 mod collaboration;
 pub mod entities;
 mod error;
