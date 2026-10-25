@@ -555,6 +555,10 @@ async fn change_password(
 ) -> Result<Response> {
     tracing::debug!(user_id = %current.user.id, "auth::change_password entry");
     let runtime_ctx = ctx.runtime_ctx();
+    let config = ctx
+        .auth_config()
+        .cloned()
+        .ok_or(Error::InternalServerError)?;
     AuthLifecycleService::change_password_runtime(
         runtime_ctx,
         tenant.id,
@@ -562,6 +566,7 @@ async fn change_password(
         current.session_id,
         &params.current_password,
         &params.new_password,
+        config.min_password_length,
     )
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;

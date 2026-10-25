@@ -3,6 +3,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, TransactionTrait, sea_query
 
 use crate::auth::{
     AuthConfig, decode_password_reset_token, hash_password_async, password_reset_credential_matches,
+    validate_password_policy,
 };
 use crate::models::{sessions, users};
 
@@ -44,6 +45,9 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::InvalidResetToken);
         }
 
+        validate_password_policy(new_password, config.min_password_length)
+            .map_err(AuthLifecycleError::from)?;
+
         let previous_hash = user.password_hash;
         let new_hash = hash_password_async(new_password.to_string())
             .await
@@ -74,6 +78,12 @@ impl AuthLifecycleService {
             .exec(&tx)
             .await
             .map_err(AuthLifecycleError::from)?;
+
+        tx.commit().await.map_err(AuthLifecycleError::from)?;
+        Ok(())
+    }
+}
+:from)?;
 
         tx.commit().await.map_err(AuthLifecycleError::from)?;
         Ok(())

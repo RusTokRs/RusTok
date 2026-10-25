@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
 use sha2::{Digest, Sha256};
 
-use crate::auth::{AuthConfig, decode_invite_token};
+use crate::auth::{AuthConfig, decode_invite_token, normalize_email, validate_password_policy};
 use crate::error::Error;
 use crate::models::{auth_invite_consumptions, users};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
@@ -12,6 +12,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 pub enum InviteAcceptanceError {
     InvalidToken,
     EmailAlreadyExists,
+    Validation(String),
     Internal(Error),
 }
 
@@ -24,6 +25,7 @@ impl From<InviteAcceptanceError> for Error {
             InviteAcceptanceError::EmailAlreadyExists => {
                 Error::BadRequest("A user with this email already exists".to_string())
             }
+            InviteAcceptanceError::Validation(message) => Error::Validation(message),
             InviteAcceptanceError::Internal(error) => error,
         }
     }
@@ -62,9 +64,19 @@ impl AuthLifecycleService {
             return Err(InviteAcceptanceError::InvalidToken);
         }
 
-        let email = claims.sub.trim().to_lowercase();
-        if email.is_empty() {
-            return Err(InviteAcceptanceError::InvalidToken);
+        // A signed invite carrying a malformed address is an invalid token,
+        // not caller input worth a distinct validation response. Validate
+        // the password *before* reserving the token digest so a policy
+        // failure never burns a single-use invite.
+        let email = normalize_email(&claims.sub)
+            .map_err(|_| InviteAcceptanceError::InvalidToken)?;
+        if let Err(error) = validate_password_policy(password, config.min_password_length) {
+            return Err(match error {
+                crate::auth::AuthError::Validation(message) => {
+                    InviteAcceptanceError::Validation(message)
+                }
+                _ => InviteAcceptanceError::Internal(crate::auth::auth_err(error)),
+            });
         }
         let role = claims.role;
         let token_hash = hex::encode(Sha256::digest(token.as_bytes()));
@@ -116,6 +128,7 @@ impl AuthLifecycleService {
             name,
             role.clone(),
             Some(rustok_core::UserStatus::Active),
+            config.min_password_length,
         )
         .await
         {
@@ -155,6 +168,7 @@ impl AuthLifecycleService {
 fn map_lifecycle_error(error: AuthLifecycleError) -> InviteAcceptanceError {
     match error {
         AuthLifecycleError::EmailAlreadyExists => InviteAcceptanceError::EmailAlreadyExists,
+        AuthLifecycleError::Validation(message) => InviteAcceptanceError::Validation(message),
         other => InviteAcceptanceError::Internal(Error::from(other)),
     }
 }

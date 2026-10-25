@@ -41,6 +41,9 @@ fn map_lifecycle_error(error: AuthLifecycleError) -> AuthLifecycleMutationError 
         AuthLifecycleError::SessionExpired => AuthLifecycleMutationError::SessionExpired,
         AuthLifecycleError::UserNotFound => AuthLifecycleMutationError::UserNotFound,
         AuthLifecycleError::InvalidResetToken => AuthLifecycleMutationError::InvalidResetToken,
+        AuthLifecycleError::Validation(message) => {
+            AuthLifecycleMutationError::Validation(message)
+        }
         AuthLifecycleError::Internal(err) => AuthLifecycleMutationError::Internal(err.to_string()),
     }
 }
@@ -49,6 +52,9 @@ fn map_invite_error(error: InviteAcceptanceError) -> AuthLifecycleMutationError 
     match error {
         InviteAcceptanceError::InvalidToken => AuthLifecycleMutationError::InvalidInviteToken,
         InviteAcceptanceError::EmailAlreadyExists => AuthLifecycleMutationError::EmailAlreadyExists,
+        InviteAcceptanceError::Validation(message) => {
+            AuthLifecycleMutationError::Validation(message)
+        }
         InviteAcceptanceError::Internal(err) => {
             AuthLifecycleMutationError::Internal(err.to_string())
         }
@@ -428,6 +434,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
             Self::require_direct_session_id(context)?,
             &current_password,
             &new_password,
+            self.auth_config.min_password_length,
         )
         .await
         .map_err(map_lifecycle_error)

@@ -39,6 +39,7 @@ pub enum AuthLifecycleError {
     SessionExpired,
     UserNotFound,
     InvalidResetToken,
+    Validation(String),
     Internal(Error),
 }
 
@@ -56,7 +57,10 @@ impl From<sea_orm::DbErr> for AuthLifecycleError {
 
 impl From<rustok_auth::AuthError> for AuthLifecycleError {
     fn from(value: rustok_auth::AuthError) -> Self {
-        Self::Internal(crate::auth::auth_err(value))
+        match value {
+            rustok_auth::AuthError::Validation(message) => Self::Validation(message),
+            other => Self::Internal(crate::auth::auth_err(other)),
+        }
     }
 }
 
@@ -133,8 +137,19 @@ impl AuthLifecycleService {
         name: Option<String>,
         role: rustok_core::UserRole,
         status: Option<rustok_core::UserStatus>,
+        min_password_length: usize,
     ) -> std::result::Result<users::Model, AuthLifecycleError> {
-        Self::create_user_db(ctx.db(), tenant_id, email, password, name, role, status).await
+        Self::create_user_db(
+            ctx.db(),
+            tenant_id,
+            email,
+            password,
+            name,
+            role,
+            status,
+            min_password_length,
+        )
+        .await
     }
 
     pub(crate) async fn create_user_db(
@@ -145,11 +160,21 @@ impl AuthLifecycleService {
         name: Option<String>,
         role: rustok_core::UserRole,
         status: Option<rustok_core::UserStatus>,
+        min_password_length: usize,
     ) -> std::result::Result<users::Model, AuthLifecycleError> {
         let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
 
-        let user =
-            Self::create_user_in_tx(&tx, tenant_id, email, password, name, role, status).await?;
+        let user = Self::create_user_in_tx(
+            &tx,
+            tenant_id,
+            email,
+            password,
+            name,
+            role,
+            status,
+            min_password_length,
+        )
+        .await?;
 
         tx.commit().await.map_err(AuthLifecycleError::from)?;
 
@@ -164,13 +189,23 @@ impl AuthLifecycleService {
         name: Option<String>,
         role: rustok_core::UserRole,
         status: Option<rustok_core::UserStatus>,
+        min_password_length: usize,
     ) -> std::result::Result<users::Model, AuthLifecycleError>
     where
         C: ConnectionTrait,
     {
+        // Single canonical validation point for every account-creation path
+        // (registration, admin provisioning, invite acceptance, bootstrap
+        // seeds): no caller can persist an unnormalized email, an over-long
+        // display name, or a password below policy.
+        let email = normalize_email(email).map_err(AuthLifecycleError::from)?;
+        let name = normalize_display_name(name.as_deref()).map_err(AuthLifecycleError::from)?;
+        validate_password_policy(password, min_password_length)
+            .map_err(AuthLifecycleError::from)?;
+
         if users::Entity::find()
             .filter(users::Column::TenantId.eq(tenant_id))
-            .filter(users::Column::Email.eq(email.to_lowercase()))
+            .filter(users::Column::Email.eq(email.as_str()))
             .one(db)
             .await
             .map_err(AuthLifecycleError::from)?
@@ -183,7 +218,7 @@ impl AuthLifecycleService {
             .await
             .map_err(AuthLifecycleError::from)?;
 
-        let mut user = users::ActiveModel::new(tenant_id, email, &password_hash);
+        let mut user = users::ActiveModel::new(tenant_id, &email, &password_hash);
         user.name = Set(name);
         if let Some(status) = status {
             user.status = Set(status);
@@ -192,14 +227,14 @@ impl AuthLifecycleService {
         let user = match user.insert(db).await {
             Ok(user) => user,
             Err(err) => {
-                if users::Entity::find()
-                    .filter(users::Column::TenantId.eq(tenant_id))
-                    .filter(users::Column::Email.eq(email.to_lowercase()))
-                    .one(db)
-                    .await
-                    .map_err(AuthLifecycleError::from)?
-                    .is_some()
-                {
+                // Do not re-SELECT here: on PostgreSQL the failed INSERT
+                // aborts the transaction, so a follow-up query errors out
+                // and the duplicate-email race degrades into a 500. The
+                // unique (tenant_id, email) constraint is the authority.
+                if matches!(
+                    err.sql_err(),
+                    Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+                ) {
                     return Err(AuthLifecycleError::EmailAlreadyExists);
                 }
 
@@ -262,14 +297,12 @@ impl AuthLifecycleService {
             .map_err(AuthLifecycleError::from)?
             .ok_or(AuthLifecycleError::UserNotFound)?;
 
-        let next_name = name.map(|value| {
-            let normalized = value.trim().to_string();
-            if normalized.is_empty() {
-                None
-            } else {
-                Some(normalized)
+        let next_name = match name {
+            Some(value) => {
+                Some(normalize_display_name(Some(&value)).map_err(AuthLifecycleError::from)?)
             }
-        });
+            None => None,
+        };
         let name_changed = next_name.as_ref().is_some_and(|next| user.name != *next);
 
         let mut user_active: users::ActiveModel = user.into();
@@ -318,6 +351,7 @@ impl AuthLifecycleService {
             name,
             rustok_core::UserRole::Customer,
             None,
+            config.min_password_length,
         )
         .await?;
         let tokens =
@@ -358,7 +392,12 @@ impl AuthLifecycleService {
         ip_address: Option<String>,
         user_agent: Option<String>,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
-        let user = users::Entity::find_by_email(db, tenant_id, email)
+        // Lookup-only canonicalization: login must not reject malformed
+        // input with a distinct validation error (that would be an account
+        // enumeration oracle), it simply finds no user and fails as
+        // InvalidCredentials below.
+        let email = email.trim().to_lowercase();
+        let user = users::Entity::find_by_email(db, tenant_id, &email)
             .await
             .map_err(AuthLifecycleError::from)?
             .ok_or(AuthLifecycleError::InvalidCredentials)?;
@@ -690,7 +729,11 @@ impl AuthLifecycleService {
         current_session_id: uuid::Uuid,
         current_password: &str,
         new_password: &str,
+        min_password_length: usize,
     ) -> std::result::Result<(), AuthLifecycleError> {
+        validate_password_policy(new_password, min_password_length)
+            .map_err(AuthLifecycleError::from)?;
+
         let initial_user = users::Entity::find_by_id(user_id)
             .filter(users::Column::TenantId.eq(tenant_id))
             .one(db)
@@ -1286,6 +1329,7 @@ mod tests {
             Some("Manager".to_string()),
             rustok_core::UserRole::Manager,
             Some(rustok_core::UserStatus::Active),
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await
         .expect("failed to create user via auth lifecycle");
@@ -1330,6 +1374,7 @@ mod tests {
             None,
             rustok_core::UserRole::Customer,
             None,
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await
         .expect("failed to create user");
@@ -1364,6 +1409,7 @@ mod tests {
             Some("Original Name".to_string()),
             rustok_core::UserRole::Customer,
             None,
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await
         .expect("failed to create user");
@@ -1411,6 +1457,7 @@ mod tests {
             Some("Tenant A User".to_string()),
             rustok_core::UserRole::Customer,
             None,
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await
         .expect("failed to create user in tenant A");
@@ -1442,6 +1489,7 @@ mod tests {
             Some("Lifecycle User".to_string()),
             rustok_core::UserRole::Manager,
             None,
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await
         .expect("create_user via lifecycle path should succeed");
@@ -1528,6 +1576,7 @@ mod tests {
             Some("Default Status".to_string()),
             rustok_core::UserRole::Customer,
             None,
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await
         .expect("create_user with default status should succeed");
@@ -1542,6 +1591,7 @@ mod tests {
             Some("Explicit Inactive".to_string()),
             rustok_core::UserRole::Customer,
             Some(rustok_core::UserStatus::Inactive),
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await
         .expect("create_user with explicit inactive status should succeed");
@@ -1569,6 +1619,7 @@ mod tests {
             Some("First User".to_string()),
             rustok_core::UserRole::Customer,
             None,
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await
         .expect("first create_user should succeed");
@@ -1581,6 +1632,7 @@ mod tests {
             Some("Second User".to_string()),
             rustok_core::UserRole::Customer,
             None,
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await;
 
@@ -1764,6 +1816,7 @@ mod tests {
             session.id,
             "OldPassword123!",
             "NewPassword123!",
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await;
 
@@ -2329,6 +2382,7 @@ mod tests {
             Some("Tenant A User".to_string()),
             rustok_core::UserRole::Customer,
             None,
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await
         .expect("create_user in tenant A should succeed");
@@ -2341,6 +2395,7 @@ mod tests {
             Some("Tenant B User".to_string()),
             rustok_core::UserRole::Manager,
             None,
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await
         .expect("same email in another tenant should be allowed");

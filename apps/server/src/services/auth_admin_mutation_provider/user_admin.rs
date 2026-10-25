@@ -115,7 +115,15 @@ fn map_lifecycle_error(error: AuthLifecycleError) -> AuthAdminMutationError {
         AuthLifecycleError::EmailAlreadyExists => {
             AuthAdminMutationError::Conflict("user email already exists".to_string())
         }
+        AuthLifecycleError::Validation(message) => AuthAdminMutationError::Validation(message),
         other => super::internal_admin_error(crate::error::Error::from(other)),
+    }
+}
+
+fn map_auth_input_error(error: rustok_auth::AuthError) -> AuthAdminMutationError {
+    match error {
+        rustok_auth::AuthError::Validation(message) => AuthAdminMutationError::Validation(message),
+        other => super::internal_admin_error(other),
     }
 }
 
@@ -382,6 +390,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             command.name,
             role.clone(),
             status.clone(),
+            rustok_auth::DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
         )
         .await
         .map_err(map_lifecycle_error)?;
@@ -483,7 +492,20 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await?;
         }
 
-        if let Some(email) = command.email.as_deref() {
+        let normalized_email = match command.email.as_deref() {
+            Some(email) => {
+                Some(rustok_auth::normalize_email(email).map_err(map_auth_input_error)?)
+            }
+            None => None,
+        };
+        let normalized_name = match command.name.as_deref() {
+            Some(name) => Some(
+                rustok_auth::normalize_display_name(Some(name)).map_err(map_auth_input_error)?,
+            ),
+            None => None,
+        };
+
+        if let Some(email) = normalized_email.as_deref() {
             let existing = users::Entity::find_by_email(&self.db, context.tenant_id, email)
                 .await
                 .map_err(super::internal_admin_error)?;
@@ -543,6 +565,24 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         .await
         .map_err(map_custom_field_error)?;
         let password_changed = command.password.is_some();
+        // Validate and hash a replacement password before locking the user
+        // row: Argon2 is deliberately expensive and must not run while the
+        // transaction holds the row lock.
+        let new_password_hash = match command.password.as_deref() {
+            Some(password) => {
+                rustok_auth::validate_password_policy(
+                    password,
+                    rustok_auth::DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
+                )
+                .map_err(map_auth_input_error)?;
+                Some(
+                    hash_password_async(password.to_string())
+                        .await
+                        .map_err(super::internal_admin_error)?,
+                )
+            }
+            None => None,
+        };
 
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
         let locked_user = lock_user_for_mutation(&tx, context.tenant_id, command.id).await?;
@@ -616,19 +656,22 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             || command.password.is_some()
             || prepared.metadata.is_some();
         let mut active: users::ActiveModel = locked_user.clone().into();
-        if let Some(email) = command.email {
-            active.email = Set(email.to_lowercase());
+        if let Some(email) = normalized_email {
+            if email != locked_user.email {
+                // A different address has not proven mailbox control; never
+                // carry the previous address's verification over.
+                active.email_verified_at = Set(None);
+            }
+            active.email = Set(email);
         }
-        if let Some(name) = command.name {
-            active.name = Set(Some(name));
+        if let Some(name) = normalized_name {
+            active.name = Set(name);
         }
         if status_changed && let Some(status) = requested_status.as_ref() {
             active.status = Set(status.clone());
         }
-        if let Some(password) = command.password {
-            active.password_hash = Set(hash_password_async(password)
-                .await
-                .map_err(super::internal_admin_error)?);
+        if let Some(password_hash) = new_password_hash {
+            active.password_hash = Set(password_hash);
         }
         if let Some(metadata) = prepared.metadata {
             active.metadata = Set(metadata);
@@ -651,10 +694,19 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await?;
         }
         let user = if user_row_update_requested {
-            active
-                .update(&tx)
-                .await
-                .map_err(super::internal_admin_error)?
+            active.update(&tx).await.map_err(|error| {
+                // The uniqueness pre-check above runs outside this
+                // transaction; a concurrent claim of the same email loses
+                // here and must surface as Conflict, not Internal.
+                if matches!(
+                    error.sql_err(),
+                    Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+                ) {
+                    AuthAdminMutationError::Conflict("user email already exists".to_string())
+                } else {
+                    super::internal_admin_error(error)
+                }
+            })?
         } else {
             locked_user
         };

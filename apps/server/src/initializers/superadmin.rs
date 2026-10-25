@@ -76,6 +76,7 @@ pub async fn ensure_default_superadmin(ctx: &ServerRuntimeContext) -> Result<()>
         Some("Super Admin".to_string()),
         rustok_core::UserRole::SuperAdmin,
         Some(rustok_core::UserStatus::Active),
+        crate::auth::DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
     )
     .await?;
 
