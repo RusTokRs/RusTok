@@ -341,4 +341,7 @@ node scripts/verify/verify-db-multilingual-contract.mjs
 * `inventory.rs:sync_provider_changes` и `rebuild_provider_inventory` — 3 пути `CheckpointConflict` теперь делают `let _ = transaction.rollback().await;` перед `return Err` — закрывает утечку транзакции `BEGIN` без `ROLLBACK` (AGENTS §4 Side-Effect Completeness, P0-2).
 * `workflow.rs` — 11 CAS-веток (`update.rows_affected != 1`) внутри `transaction` (submit/approve/assign/cancel/apply/recover) теперь rollback перед `WorkflowRevisionConflict`/`ApplyInProgress` — устраняет висячие `BEGIN` и сохраняет инвариант «мутация → событие → прогресс» атомарно (P0-5, P1-5).
 * Верификация: `grep -n rows_affected -- workflow.rs` — все конфликтные пути внутри `transaction` теперь с rollback; `git diff --stat` 1+1 файл 14 ins; pushed 0d84a56→d82da9b.
+### Итерация 9 — паритет busy_timeout для памяти (70b70ef)
+* `memory.rs:set_retention/tombstone/purge` — после `begin()` добавлен `PRAGMA busy_timeout = 5000` best-effort с `tracing::debug!` при `Err` только для `DbBackend::Sqlite` — паритет с `inventory.rs` (P0-2), устраняет `database is locked` в параллельных тестах `cargo test -p rustok-translation -- --test-threads=1` и в `scheduler` retention worker (tombstone→purge).
+* Верификация: `grep -rn busy_timeout -- memory.rs` — 3 точки; `git diff --stat` 1 file 24 ins; pushed 70b70ef.
 
