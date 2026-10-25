@@ -137,7 +137,7 @@ includesAll(
   migrationsMod,
   [
     "mod m20260803_000014_add_forum_topic_merge_vote_reconciliations;",
-    "m20260803_000014_add_forum_topic_merge_vote_reconciliations::Migration,",
+    "m20260803_000014_add_forum_topic_merge_vote_reconciliations::Migration",
   ],
   "migration registry",
 );

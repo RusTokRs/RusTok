@@ -612,7 +612,7 @@ is deferred to the final production-validation phase.
 | `FORUM-20` | `in_progress` | FORUM-20A-G provide rich visibility and recipient-aware source/inbox slices. Reply anchoring on the Next.js surfaces is delivered through the `?reply=<uuid>` route contract (`DECISIONS/2026-10-11-forum-reply-anchor-route-contract.md`); remaining: an owner-side read for the page containing a reply, remaining reads, reconciliation, delivery and PostgreSQL evidence. |
 | `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |
 | `FORUM-22` | `planned` | Forum-owned Q&A/wiki/announcement kinds and scheduled lifecycle. |
-| `FORUM-23` | `in_progress` | Search projection/filtering, ordering, owner revisions and repair exist. PostgreSQL/Iggy and cross-module evidence remain. |
+| `FORUM-23` | `in_progress` | Search projection/filtering, ordering, owner revisions and repair exist; maintainer PostgreSQL/Iggy plus LINK-FORUM-03 runtime evidence remain. |
 | `FORUM-24` | `in_progress` | A-S plus descriptor correction provide category/topic routes, transports, mounts, SEO/hreflang and Search URLs. Execute registered-host, HTTP, browser and reindex evidence. |
 | `FORUM-25` | `done` | Category backend/Translation implementation is complete: canonical Category copy/routes/hierarchy are Taxonomy-owned, the duplicate Forum provider/cursor/progress runtime and legacy donor storage are retired, and Arabic/admin/storefront locale boundaries are source-ready. Mounted multilingual/RTL browser execution is deferred to the final production-validation phase and does not keep FORUM-25 open; topic/reply UGC translation remains opt-in rather than an automatic provider. |
 | `FORUM-26` | `in_progress` | Forum trust/posting facts exist. Add Moderation/Reputation facts, persistence/enforcement, shared rate limits, transports/UI and evidence. |
@@ -636,7 +636,7 @@ is deferred to the final production-validation phase.
 | `NOTIFY-09` | `planned` | FBA/degraded profiles. |
 | `LINK-FORUM-01` | `planned` | Forum-to-Notifications proof. |
 | `LINK-FORUM-02` | `planned` | Profiles/Media/Forum proof. |
-| `LINK-FORUM-03` | `planned` | Forum/Search/Index ordering and visibility proof. |
+| `LINK-FORUM-03` | `planned` | Forum/index/search ordering and visibility proof. |
 | `LINK-FORUM-04` | `planned` | Capability profiles and startup validation. |
 | `LINK-FORUM-05` | `planned` | Waiver-free production release gate. |
 
@@ -971,11 +971,12 @@ one-attempt dispatch path.
 ## `LINK-FORUM-03` — index and search
 
 **Status:** `planned` (source-ready proofs only; maintainer execution pending)
+**Dependencies:** FORUM-20/23
 
 Prove publish, translation, moderation approval, move, hide/delete, ACL change,
-attachment and reader-state transitions end to end: Forum owner commit, outbox event,
-Search inbox and projector, owner checkpoint, and the storefront read that must not
-return a document the owner no longer exposes. The reconciliation queries
+attachment and reader-state transitions, out-of-order events and search-disabled behavior
+end to end: Forum owner commit, outbox event, Search inbox and projector, owner checkpoint,
+and the storefront read that must not return a document the owner no longer exposes. The reconciliation queries
 (`forum_search_projection_reconciliation_report`) and the versioned-invalidation
 delivery proofs are the source side of that link; they are `source_ready` and explicitly
 do not claim PostgreSQL, Iggy, restart, DLQ, ACL or LINK-FORUM-03 runtime evidence, and

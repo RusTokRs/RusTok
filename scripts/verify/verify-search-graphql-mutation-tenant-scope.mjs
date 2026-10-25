@@ -14,13 +14,17 @@ const moduleSource = read('crates/modules/rustok-search/src/graphql/mod.rs');
 const mutationSource = read('crates/modules/rustok-search/src/graphql/mutation.rs');
 const failures = [];
 
+// Rust method chains in this file are hard-wrapped (`let auth = ctx\n.data::<...>()`),
+// so a marker must not depend on where the line breaks fall.
+const spaced = (value) => value.replace(/\s+/g, " ");
 const requireText = (content, value, label) => {
-  if (!content.includes(value)) failures.push(`${label}: missing ${value}`);
+  if (!spaced(content).includes(spaced(value))) failures.push(`${label}: missing ${value}`);
 };
 
 for (const [value, label] of [
   ['async fn ensure_search_admin_permission(', 'shared admin permission helper'],
-  ['ctx.data::<rustok_api::AuthContext>()', 'authenticated context'],
+  // The call is split after `ctx`, so the marker starts at the method call.
+  ['.data::<rustok_api::AuthContext>()', 'authenticated context'],
   ['ctx.data::<rustok_api::TenantContext>()?', 'resolved tenant context'],
   ['if auth.tenant_id != tenant.id', 'tenant equality'],
   ['Search administration access is denied', 'static public denial'],

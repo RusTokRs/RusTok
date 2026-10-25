@@ -88,7 +88,7 @@ hasNone(projectorCore, ['try_get::<i64>("", "total").ok())', 'unwrap_or(0)'], 'p
 hasNone(projectorFacade, ['try_get::<i64>("", "total").ok())'], 'projector facade bootstrap count handling');
 
 const lib = read('crates/modules/rustok-search/src/lib.rs');
-hasAll(lib, ['pub mod ports;', 'pub use ports::*;', 'canonical_search_result_url'], 'lib.rs');
+hasAll(lib, ['pub mod ports;', 'pub use ports::{SearchQueryPort, SearchSuggestionPort};', 'canonical_search_result_url'], 'lib.rs');
 const source = read('crates/modules/rustok-search/src/ports.rs');
 hasAll(source, ['pub trait SearchQueryPort', 'pub trait SearchSuggestionPort', 'impl SearchQueryPort for PgSearchEngine', 'impl SearchSuggestionPort for PgSearchEngine', 'PortCallPolicy', 'PortContext', 'PortError', 'search_error_to_port_error'], 'ports.rs');
 const queryImpl = source.slice(source.indexOf('impl SearchQueryPort for PgSearchEngine'));

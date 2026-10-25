@@ -144,7 +144,7 @@ includesAll(
   source.migrationsMod,
   [
     "mod m20260801_000011_add_forum_topic_merge_subscription_reconciliations;",
-    "m20260801_000011_add_forum_topic_merge_subscription_reconciliations::Migration,",
+    "m20260801_000011_add_forum_topic_merge_subscription_reconciliations::Migration",
   ],
   "migration registration",
 );

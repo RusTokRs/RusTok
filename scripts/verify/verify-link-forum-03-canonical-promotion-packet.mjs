@@ -81,7 +81,7 @@ assert.deepEqual(contract.output_packet, {
   automatic_canonical_source_mutation: false,
 });
 assert.deepEqual(contract.required_plan_state, {
-  forum_21: "planned",
+  forum_21: "in_progress",
   forum_23: "in_progress",
   link_forum_03: "planned",
 });
@@ -133,7 +133,7 @@ assert.equal(count(plan, plannedRow), 1);
 assert.equal(count(plan, doneRow), 0);
 assert.ok(
   plan.includes(
-    "| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |",
+    "| `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |",
   ),
 );
 assert.ok(plan.includes("| `FORUM-23` | `in_progress` |"));

@@ -133,7 +133,7 @@ contains(
   migrations,
   [
     "mod m20260803_000015_add_forum_topic_merge_audience_reconciliations;",
-    "m20260803_000015_add_forum_topic_merge_audience_reconciliations::Migration,",
+    "m20260803_000015_add_forum_topic_merge_audience_reconciliations::Migration",
   ],
   "migration registry",
 );

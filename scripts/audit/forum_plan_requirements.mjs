@@ -71,8 +71,18 @@ function planVariables(source) {
   return [...names].filter((name) => !name.endsWith("Path"));
 }
 
-/** String or regular-expression literals inside a marker array. */
-function markerLiterals(block) {
+/**
+ * String or regular-expression literals inside a marker array.
+ *
+ * Full-line `//` comments are stripped first: a comment that quotes the plan needs no
+ * marker from the plan, and treating quoted prose in a comment as a requirement reports
+ * drift that no guard can ever fail on.
+ */
+function markerLiterals(rawBlock) {
+  const block = rawBlock
+    .split("\n")
+    .filter((line) => !/^\s*\/\//.test(line))
+    .join("\n");
   const literals = [];
   for (const match of block.matchAll(/"((?:[^"\\]|\\.)*)"|(\/(?:[^/\n\\]|\\.)*\/[a-z]*)/g)) {
     if (match[2]) {

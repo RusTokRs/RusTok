@@ -27,8 +27,10 @@ const plannedRow =
   "| `LINK-FORUM-03` | `planned` | Forum/index/search ordering and visibility proof. |";
 const doneRow =
   "| `LINK-FORUM-03` | `done` | D13-D18 provide reviewed and retained Forum/index/search ordering, recovery, multilingual, moderation, private/trusted exclusion and topic-move evidence. |";
+// FORUM-21 is an independent owner task that advanced to `in_progress` in the
+// canonical plan; this packet only has to prove it does not touch that row.
 const forum21Row =
-  "| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |";
+  "| `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |";
 const forum23Marker = "| `FORUM-23` | `in_progress` |";
 
 const scenarioIds = [
@@ -240,13 +242,13 @@ function validatePlan(plan, planDigest) {
     fail("canonical plan already contains the D19 done row");
   }
   if (!plan.includes(forum21Row) || !plan.includes(forum23Marker)) {
-    fail("canonical plan no longer preserves FORUM-21 planned and FORUM-23 in_progress");
+    fail("canonical plan no longer preserves the FORUM-21 in_progress and FORUM-23 in_progress rows");
   }
   return {
     path: planPath,
     sha256_before: planDigest,
     statuses_before: {
-      forum_21: "planned",
+      forum_21: "in_progress",
       forum_23: "in_progress",
       link_forum_03: "planned",
     },
@@ -368,7 +370,7 @@ function validateCandidate(candidate, candidateBytes, reviewContractBytes, planB
   if (
     candidate.canonical_plan?.path !== planPath ||
     candidate.canonical_plan?.sha256 !== planDigest ||
-    candidate.canonical_plan?.forum_21_status_at_review !== "planned" ||
+    candidate.canonical_plan?.forum_21_status_at_review !== "in_progress" ||
     candidate.canonical_plan?.forum_23_status_at_review !== "in_progress" ||
     candidate.canonical_plan?.link_forum_03_status_at_review !== "planned"
   ) {
@@ -483,7 +485,7 @@ const output = {
     retained_complete_artifact_sha256:
       validated.candidate.retention.attested_sha256,
     explicit_boundaries: {
-      forum_21_remains_planned: true,
+      forum_21_status_preserved: true,
       forum_23_remains_in_progress: true,
       link_forum_03_is_the_only_proposed_status_change: true,
     },
@@ -491,7 +493,7 @@ const output = {
   canonical_pull_request_requirements: {
     revalidate_packet_against_exact_head: true,
     update_ledger_and_completion_evidence_together: true,
-    preserve_forum_21_status: "planned",
+    preserve_forum_21_status: "in_progress",
     preserve_forum_23_status: "in_progress",
     cite_reviewer_and_retention_attestation: true,
     claim_runtime_execution_only_from_retained_candidate: true,

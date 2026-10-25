@@ -6,14 +6,19 @@ import { resolve } from "node:path";
 
 const root = process.cwd();
 const read = (path) => readFileSync(resolve(root, path), "utf8");
+// Prose in these documents is hand-wrapped; compare with whitespace collapsed so a
+// correct sentence cannot fail because of where a newline landed.
+const spaced = (value) => value.replace(/\s+/g, " ");
 const requireAll = (text, markers, label) => {
+  const haystack = spaced(text);
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing marker: ${marker}`);
+    assert.ok(haystack.includes(spaced(marker)), `${label} is missing marker: ${marker}`);
   }
 };
 const forbidAll = (text, markers, label) => {
+  const haystack = spaced(text);
   for (const marker of markers) {
-    assert.ok(!text.includes(marker), `${label} contains forbidden marker: ${marker}`);
+    assert.ok(!haystack.includes(spaced(marker)), `${label} contains forbidden marker: ${marker}`);
   }
 };
 
