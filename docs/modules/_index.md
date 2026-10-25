@@ -93,7 +93,7 @@ Module local documentation lives inside the crates themselves at
 | `rustok-ai-alloy` | [docs](../../crates/modules/rustok-ai-alloy/docs/README.md) | [plan](../../crates/modules/rustok-ai-alloy/docs/implementation-plan.md) |
 | `alloy` | [docs](../../crates/modules/alloy/docs/README.md) | [plan](../../crates/modules/alloy/docs/implementation-plan.md) |
 | `flex` | [docs](../../crates/modules/flex/docs/README.md) | [plan](../../crates/modules/flex/docs/implementation-plan.md) |
-| `rustok-commerce-foundation` | [docs](../../crates/modules/rustok-commerce-foundation/docs/README.md) | [plan](../../crates/modules/rustok-commerce-foundation/docs/implementation-plan.md) |
+| `rustok-commerce-foundation` | [docs](../../crates/libs/rustok-commerce-foundation/docs/README.md) | [plan](../../crates/libs/rustok-commerce-foundation/docs/implementation-plan.md) |
 | `rustok-seo-render` | [docs](../../crates/modules/rustok-seo/render/docs/README.md) | [plan](../../crates/modules/rustok-seo/render/docs/implementation-plan.md) |
 | `rustok-seo-panel` | [docs](../../crates/modules/rustok-seo/panel/docs/README.md) | [plan](../../crates/modules/rustok-seo/panel/docs/implementation-plan.md) |
 

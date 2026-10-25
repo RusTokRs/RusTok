@@ -3,7 +3,7 @@
   "status": "inventory_port_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
     "crates/modules/rustok-inventory/src/ports.rs",
-    "crates/modules/rustok-commerce-foundation/src/error.rs",
+    "crates/libs/rustok-commerce-foundation/src/error.rs",
     "scripts/verify/verify-inventory-port-diagnostic-safety.mjs",
     "crates/modules/rustok-inventory/contracts/evidence/inventory-port-diagnostic-safety-source.json",
     "crates/modules/rustok-inventory/docs/inventory-port-diagnostic-safety.md",

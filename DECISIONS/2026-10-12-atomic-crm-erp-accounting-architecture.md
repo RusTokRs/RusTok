@@ -36,7 +36,7 @@ RusToK adopts a **Sovereign Domain Modules + Operational Finance + Universal Acc
    - **`rustok-billing`**: Commercial invoices for payment, proforma invoices, supplier bills, payment allocation (`PaymentAllocation`), acts of reconciliation, monotonic document sequence numbering (`document_sequences` with `SELECT ... FOR UPDATE`), and PDF print forms with facsimile stamps.
    - **`rustok-finance`**: Operational bank accounts, cash registers, bank statement import/parsing (1C/ClientBank, ISO 20022), cash inflow/outflow orders (PKO/RKO), daily central bank currency rates (ЦБ РФ), automated exchange difference calculation, and Cash Flow (ДДС) tracking.
    - **`rustok-accounting`**: Universal double-entry accounting engine (chart of accounts, immutable journal transactions, debit/credit postings, configurable Posting Rules Engine, typed relational subconto analytics, balance sheet, trial balance OSV).
-   - **Foundation Primitives**: Foundational Units of Measure (UoM) reside in `crates/modules/rustok-commerce-foundation`. Tax rates are calculated via `crates/modules/rustok-tax`. E-commerce checkout orders remain in `crates/modules/rustok-order`.
+   - **Foundation Primitives**: Foundational Units of Measure (UoM) reside in `crates/libs/rustok-commerce-foundation`. Tax rates are calculated via `crates/modules/rustok-tax`. E-commerce checkout orders remain in `crates/modules/rustok-order`.
 
 2. **Decoupling Double-Entry Accounting from Feature Domains:**
    - Double-entry accounting is decoupled from feature modules. `rustok-accounting` is the sole platform owner of the chart of accounts and journal transactions.
