@@ -185,7 +185,7 @@ fn spawn_application(
     adapter: Arc<dyn ModerationSubjectCommandPort>,
     tenant_id: Uuid,
     command: ApplyModerationDecisionCommand,
-) -> tokio::task::JoinHandle<Result<rustok_moderation::ModerationDecisionApplication, PortError>>
+) -> tokio::task::JoinHandle<Result<ModerationDecisionApplication, PortError>>
 {
     tokio::spawn(async move {
         adapter
@@ -232,7 +232,7 @@ async fn wait_for_processing_receipt(
 
 async fn assert_application_waits_while_edit_owns_revision(
     application: &mut tokio::task::JoinHandle<
-        Result<rustok_moderation::ModerationDecisionApplication, PortError>,
+        Result<ModerationDecisionApplication, PortError>,
     >,
     label: &str,
 ) -> TestResult<()> {

@@ -817,7 +817,7 @@ mod tests {
             let Some(row) = row else {
                 return Ok(None);
             };
-            let enabled: bool = row.try_get("", "enabled").map_err(|_| {
+            let enabled: Option<bool> = row.try_get("", "enabled").map_err(|_| {
                 PortError::invariant_violation(
                     "tests.static_settings_corrupt",
                     "Static module settings test row is invalid",

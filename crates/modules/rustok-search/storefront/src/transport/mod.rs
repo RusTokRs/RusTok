@@ -336,7 +336,10 @@ mod tests {
 
     #[test]
     fn default_test_profile_uses_graphql_transport() {
+        #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
         assert_eq!(selected_transport_path(), UiTransportPath::Graphql);
+        #[cfg(any(feature = "ssr", feature = "hydrate"))]
+        assert_eq!(selected_transport_path(), UiTransportPath::NativeServer);
     }
 
     #[test]
