@@ -285,6 +285,14 @@ impl TranslationWorkflowService {
         let now = Utc::now().fixed_offset();
         let job_id = generate_id();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         job::Entity::insert(job::ActiveModel {
             id: Set(job_id),
             tenant_id: Set(tenant_id),
@@ -419,6 +427,14 @@ impl TranslationWorkflowService {
             .ok_or(TranslationError::WorkflowRevisionConflict)?;
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         job_item::Entity::insert(job_item::ActiveModel {
             id: Set(generate_id()),
             tenant_id: Set(tenant_id),
@@ -553,6 +569,14 @@ impl TranslationWorkflowService {
         let next_item_revision = next_revision(item.revision)?;
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         proposal::Entity::insert(proposal::ActiveModel {
             id: Set(proposal_id),
             tenant_id: Set(tenant_id),
@@ -675,6 +699,14 @@ impl TranslationWorkflowService {
         let next_item_revision = next_revision(item.revision)?;
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         let proposal_update = proposal::Entity::update_many()
             .col_expr(proposal::Column::SubmittedAt, Expr::value(Some(now)))
             .col_expr(
@@ -788,6 +820,14 @@ impl TranslationWorkflowService {
         let next_item_revision = next_revision(item.revision)?;
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         let proposal_update = proposal::Entity::update_many()
             .col_expr(
                 proposal::Column::ApprovedByActorKind,
@@ -931,6 +971,14 @@ impl TranslationWorkflowService {
         let next_item_revision = next_revision(item.revision)?;
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         assignment::Entity::insert(assignment::ActiveModel {
             id: Set(operation_id),
             tenant_id: Set(tenant_id),
@@ -1056,6 +1104,14 @@ impl TranslationWorkflowService {
         let cancellation_id = generate_id();
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         // Re-check for in-flight apply under transaction isolation to prevent TOCTOU.
         let applying_inside_tx = job_item::Entity::find()
             .filter(job_item::Column::TenantId.eq(tenant_id))
@@ -1189,6 +1245,14 @@ impl TranslationWorkflowService {
         let next_item_revision = next_revision(item.revision)?;
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         retry::Entity::insert(retry::ActiveModel {
             id: Set(retry_id),
             tenant_id: Set(tenant_id),
@@ -1300,6 +1364,14 @@ impl TranslationWorkflowService {
         let applying_item_revision = next_revision(item.revision)?;
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         apply_operation::Entity::insert(apply_operation::ActiveModel {
             id: Set(operation_id),
             tenant_id: Set(tenant_id),
@@ -1449,6 +1521,14 @@ impl TranslationWorkflowService {
         let recovery_id = generate_id();
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         apply_recovery::Entity::insert(apply_recovery::ActiveModel {
             id: Set(recovery_id),
             tenant_id: Set(tenant_id),
@@ -1697,6 +1777,14 @@ impl TranslationWorkflowService {
         let terminal_item_revision = next_revision(operation.applying_item_revision)?;
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         let operation_update = apply_operation::Entity::update_many()
             .col_expr(
                 apply_operation::Column::Status,
@@ -1857,6 +1945,14 @@ impl TranslationWorkflowService {
         event_actor_id: Option<Uuid>,
     ) -> TranslationResult<ApplyRecord> {
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         if let Some(existing) = find_apply_receipt_by_idempotency(
             &transaction,
             operation.tenant_id,
@@ -2477,6 +2573,14 @@ async fn record_pending_apply_error(
     error: PendingApplyError<'_>,
 ) -> TranslationResult<()> {
     let transaction = database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
     let update = apply_operation::Entity::update_many()
         .col_expr(
             apply_operation::Column::LastErrorKind,
