@@ -34,22 +34,19 @@ jobs:
           toolchain: "1.96.0"
           components: rustfmt
       - name: Format files changed vs merge-base
+        shell: bash {0}
         run: |
-          set -x
           BASE=$(git merge-base origin/main HEAD)
-          echo "::notice::autofmt merge-base=$BASE"
           git diff --name-only "$BASE"...HEAD -- '*.rs' > /tmp/changed_rs.txt
-          # Drop deleted paths; git add --pathspec-from-file is fatal on them.
           : > /tmp/existing_rs.txt
           while IFS= read -r f; do
             if [ -f "$f" ]; then echo "$f" >> /tmp/existing_rs.txt; fi
           done < /tmp/changed_rs.txt
           echo "::notice::autofmt changed .rs files: $(wc -l < /tmp/existing_rs.txt)"
           while IFS= read -r f; do
-            rustfmt --edition 2024 "$f"
+            rustfmt --edition 2024 "$f" || echo "::error::rustfmt failed on $f"
           done < /tmp/existing_rs.txt
           git add --pathspec-from-file=/tmp/existing_rs.txt
-          git diff --cached --stat | tail -3
           if git diff --cached --quiet; then
             echo "::notice::autofmt: no formatting changes needed"
             exit 0
@@ -57,8 +54,11 @@ jobs:
           git config user.name "diag-autofmt"
           git config user.email "diag-autofmt@users.noreply.github.com"
           git commit -m "style: rustfmt on PR-changed files (diag autofmt)"
-          git push origin HEAD:arena/551d146c-rustok
-          echo "::notice::autofmt: pushed formatting commit
+          for i in 1 2 3; do
+            git pull --rebase origin arena/551d146c-rustok && git push origin HEAD:arena/551d146c-rustok && break
+            sleep 5
+          done
+          echo "::notice::autofmt: done"
 
   regen-event-artifact:
     name: Regenerate event contract digests
@@ -71,11 +71,13 @@ jobs:
           toolchain: "1.96.0"
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
       - name: Regenerate and push if changed
+        shell: bash {0}
         env:
           RUSTFLAGS: ""
           CARGO_ENCODED_RUSTFLAGS: ""
         run: |
-          cargo run -q -p rustok-events --example event_contract_digests -- --write
+          cargo run -q -p rustok-events --example event_contract_digests -- --write \
+            || echo "::error::event digest generator failed"
           if git diff --quiet -- crates/libs/rustok-events/contracts/event-contract-digests.json; then
             echo "::notice::event artifact already up to date"
             exit 0
@@ -84,31 +86,28 @@ jobs:
           git config user.email "diag-artifact@users.noreply.github.com"
           git add crates/libs/rustok-events/contracts/event-contract-digests.json
           git commit -m "chore(events): regenerate event contract digests for auth audit events"
-          git push origin HEAD:arena/551d146c-rustok
-          echo "::notice::event artifact regenerated and pushed"
+          for i in 1 2 3; do
+            git pull --rebase origin arena/551d146c-rustok && git push origin HEAD:arena/551d146c-rustok && break
+            sleep 5
+          done
+          echo "::notice::event artifact regen done"
 
-  diagnose:
-    name: Diagnose check/clippy/fmt
+  diagnose-check:
+    name: Diagnose check/clippy/fmt/wasm
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
         with:
           toolchain: "1.96.0"
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
-      - name: fmt check (file list)
+      - name: Prepare touched list + extractor
         shell: bash {0}
         run: |
-          cargo fmt --all -- --check 2>/dev/null \
-            | grep '^Diff in ' \
-            | sed 's/^Diff in //; s/ at line.*//' \
-            | sort -u > /tmp/fmt_files.txt
-          echo "fmt-dirty files: $(wc -l < /tmp/fmt_files.txt)"
-      - name: Extract errors helper
-        run: |
-          git fetch origin main --depth=200 >/dev/null 2>&1 || true
           BASE=$(git merge-base origin/main HEAD 2>/dev/null || echo HEAD)
           git diff --name-only "$BASE"...HEAD > /tmp/touched_files.txt 2>/dev/null || : > /tmp/touched_files.txt
           cat > /tmp/extract.py <<'PY'
@@ -159,12 +158,21 @@ jobs:
               if span and len(ann) < 40:
                   ann.append(f"::{level} file={span['file_name']},line={span['line_start']},col={span['column_start']}::{esc(first)}")
           with open(sys.argv[1], 'w') as fh:
-              fh.write('\n'.join(out[:400]))
+              fh.write('\n'.join(out[:600]))
               fh.write(f"\n-- total unique: {len(out)}\n")
           for a in ann:
               print(a)
           PY
-      - name: cargo check (json)
+      - name: fmt check (touched files)
+        shell: bash {0}
+        run: |
+          cargo fmt --all -- --check 2>/dev/null \
+            | grep '^Diff in ' \
+            | sed 's/^Diff in //; s/ at line.*//; s|/home/runner/work/RusTok/RusTok/||' \
+            | cut -d: -f1 | sort -u > /tmp/fmt_all.txt
+          grep -Fxf /tmp/touched_files.txt /tmp/fmt_all.txt > /tmp/fmt_touched.txt || true
+          echo "fmt dirty total: $(wc -l < /tmp/fmt_all.txt), touched: $(wc -l < /tmp/fmt_touched.txt)"
+      - name: cargo check workspace (json)
         shell: bash {0}
         run: |
           cargo check --workspace --all-targets --all-features --keep-going --message-format=json 2>/dev/null \
@@ -192,12 +200,54 @@ jobs:
           cargo check -p leptos-auth --features csr --target wasm32-unknown-unknown --message-format=json 2>/dev/null \
             | python3 /tmp/extract.py /tmp/wasm_errors.txt
           tail -1 /tmp/wasm_errors.txt || true
+      - name: Post PR comment (check)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash {0}
+        run: |
+          {
+            echo "### 🔬 Diag CHECK results for ${GITHUB_SHA:0:8} (temporary workflow)"
+            echo
+            echo "#### cargo fmt --check — dirty TOUCHED files ($(wc -l < /tmp/fmt_touched.txt 2>/dev/null || echo '?') of $(wc -l < /tmp/fmt_all.txt 2>/dev/null || echo '?') total)"
+            echo '```'
+            head -c 4000 /tmp/fmt_touched.txt 2>/dev/null
+            echo '```'
+            echo "#### cargo check --workspace --all-targets --all-features --keep-going"
+            echo '```'
+            head -c 16000 /tmp/check_errors.txt 2>/dev/null
+            echo '```'
+            echo "#### cargo check apps (server/admin/storefront, dead_code demoted)"
+            echo '```'
+            grep -v '^FOREIGN warning dead_code' /tmp/apps_errors.txt 2>/dev/null | head -c 16000
+            echo '```'
+            echo "#### cargo clippy — TOUCHED files only"
+            echo '```'
+            grep '^TOUCHED' /tmp/clippy_errors.txt 2>/dev/null | head -c 12000
+            echo "-- foreign clippy total: $(grep -c '^FOREIGN' /tmp/clippy_errors.txt 2>/dev/null || echo 0)"
+            echo '```'
+            echo "#### wasm check (leptos-auth csr)"
+            echo '```'
+            head -c 8000 /tmp/wasm_errors.txt 2>/dev/null
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment 4646 --body-file /tmp/comment.md
+
+  diagnose-test:
+    name: Diagnose tests (touched crates)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+        with:
+          toolchain: "1.96.0"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
       - name: cargo test (touched crates)
         shell: bash {0}
         run: |
           run_tests() {
             echo "=== cargo test $* ==="
-            cargo test "$@" 2>&1 | tail -n 600 | grep -E "^test .* FAILED|panicked at|assertion .* failed|^failures:|test result:|error\[|^error:" | head -100
+            cargo test "$@" 2>&1 | tail -n 800 | grep -E "^test .* FAILED|panicked at|assertion .* failed|^failures:|test result:|error\[|^error:" | head -120
           }
           {
             run_tests -p rustok-auth --lib --tests
@@ -209,38 +259,15 @@ jobs:
             run_tests -p rustok-server --lib auth
           } > /tmp/test_results.txt 2>&1
           wc -l /tmp/test_results.txt
-      - name: Post PR comment with results
+      - name: Post PR comment (tests)
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash {0}
         run: |
           {
-            echo "### 🔬 Diag results for ${GITHUB_SHA:0:8} (temporary workflow)"
-            echo
-            echo "#### cargo fmt --check — dirty files ($(wc -l < /tmp/fmt_files.txt 2>/dev/null || echo '?'))"
+            echo "### 🧪 Diag TEST results for ${GITHUB_SHA:0:8} (temporary workflow)"
             echo '```'
-            head -c 6000 /tmp/fmt_files.txt 2>/dev/null
-            echo '```'
-            echo "#### cargo check --workspace --all-targets --all-features"
-            echo '```'
-            head -c 24000 /tmp/check_errors.txt 2>/dev/null
-            echo '```'
-            echo "#### cargo check apps (rustok-server/admin/storefront, dead_code demoted)"
-            echo '```'
-            grep -v '^FOREIGN warning dead_code' /tmp/apps_errors.txt 2>/dev/null | head -c 24000
-            echo '```'
-            echo "#### cargo clippy — TOUCHED files only (foreign count at end)"
-            echo '```'
-            grep '^TOUCHED' /tmp/clippy_errors.txt 2>/dev/null | head -c 12000
-            echo "-- foreign clippy total: $(grep -c '^FOREIGN' /tmp/clippy_errors.txt 2>/dev/null || echo 0)"
-            echo '```'
-            echo "#### wasm check (leptos-auth csr)"
-            echo '```'
-            head -c 8000 /tmp/wasm_errors.txt 2>/dev/null
-            echo '```'
-            echo "#### cargo test (touched crates; failures + result lines)"
-            echo '```'
-            head -c 20000 /tmp/test_results.txt 2>/dev/null
+            head -c 30000 /tmp/test_results.txt 2>/dev/null
             echo '```'
           } > /tmp/comment.md
           gh pr comment 4646 --body-file /tmp/comment.md
