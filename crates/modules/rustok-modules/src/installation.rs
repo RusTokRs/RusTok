@@ -5291,7 +5291,7 @@ where
                         &request_digest,
                     )
                     .await;
-                crate::oci::remove_staged_file_best_effort(&path).await;
+                crate::remove_staged_file_best_effort(&path).await;
                 result?
             }
         };

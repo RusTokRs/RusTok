@@ -60,6 +60,33 @@ jobs:
           git push origin HEAD:arena/551d146c-rustok
           echo "::notice::autofmt: pushed formatting commit
 
+  regen-event-artifact:
+    name: Regenerate event contract digests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+        with:
+          toolchain: "1.96.0"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - name: Regenerate and push if changed
+        env:
+          RUSTFLAGS: ""
+          CARGO_ENCODED_RUSTFLAGS: ""
+        run: |
+          cargo run -q -p rustok-events --example event_contract_digests -- --write
+          if git diff --quiet -- crates/libs/rustok-events/contracts/event-contract-digests.json; then
+            echo "::notice::event artifact already up to date"
+            exit 0
+          fi
+          git config user.name "diag-artifact"
+          git config user.email "diag-artifact@users.noreply.github.com"
+          git add crates/libs/rustok-events/contracts/event-contract-digests.json
+          git commit -m "chore(events): regenerate event contract digests for auth audit events"
+          git push origin HEAD:arena/551d146c-rustok
+          echo "::notice::event artifact regenerated and pushed"
+
   diagnose:
     name: Diagnose check/clippy/fmt
     runs-on: ubuntu-latest
