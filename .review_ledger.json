@@ -1002,9 +1002,9 @@
       "category": "modules",
       "files": 27,
       "loc": 8723,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-25 07:00",
+      "notes": "Audited Leptos admin FFA package across all source files; verified strict FFA separation (pure Rust models, intent dispatcher, session state, and property editor with zero UI imports); verified canonical CRATE_API.md and contract_tests.rs; added repository, readme, and docs.rs metadata; 55/55 lib tests and 55/55 SSR tests passed, zero defects."
     },
     "crates/modules/rustok-pages/storefront": {
       "name": "storefront",
@@ -1012,9 +1012,9 @@
       "category": "modules",
       "files": 17,
       "loc": 4935,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-25 07:00",
+      "notes": "Audited Leptos storefront package; verified strict FFA separation (pure Rust view models in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn) and Fly artifact rendering; verified canonical CRATE_API.md; added repository, readme, and docs.rs metadata; 18/18 lib tests and 26/26 SSR tests passed, zero defects."
     },
     "crates/modules/rustok-payment": {
       "name": "rustok-payment",

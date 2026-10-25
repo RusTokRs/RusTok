@@ -1,4 +1,14 @@
+//! # rustok-pages-storefront
+//!
+//! Leptos storefront UI package for the `rustok-pages` CMS static pages module.
+//!
+//! Provides the canonical `PagesView` root component for published page delivery,
+//! headless/monolith dual-path data access, direct SSR rendering for Page Builder landing pages,
+//! and interactive action bridges without `<iframe>` wrappers.
+
 mod builder;
+#[cfg(test)]
+mod contract_tests;
 mod core;
 mod i18n;
 #[cfg(feature = "inline-edit")]
