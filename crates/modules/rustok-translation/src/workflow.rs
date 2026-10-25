@@ -844,6 +844,7 @@ impl TranslationWorkflowService {
             )
             .await?;
         transaction.commit().await?;
+        crate::observability::record_job_lifecycle("proposal_approved");
         proposal_record(persisted)
     }
 
@@ -2039,6 +2040,7 @@ impl TranslationWorkflowService {
         .await?;
         refresh_job_progress(&transaction, operation.tenant_id, item.job_id).await?;
         transaction.commit().await?;
+        crate::observability::record_job_lifecycle("proposal_applied");
         apply_record(&operation, persisted)
     }
 }
