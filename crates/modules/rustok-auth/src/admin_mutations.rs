@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use rustok_api::AuthPrincipalKind;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -21,6 +22,17 @@ pub struct AuthAdminMutationContext {
     pub tenant_id: Uuid,
     pub request_id: Option<String>,
     pub locale: Option<String>,
+    /// Trusted principal classification of the caller, when the command
+    /// arrives through an authenticated request boundary.
+    ///
+    /// `None` is reserved for host-internal compositions that invoke the
+    /// administration ports without a request principal (for example RBAC
+    /// runtime wiring). Operations that act on the actor's own behalf —
+    /// above all OAuth consent grant/revoke/list — must require
+    /// `Some(AuthPrincipalKind::DirectUser)` and fail closed for delegated
+    /// (`authorization_code`) and service (`client_credentials`) tokens:
+    /// an application must never consent to applications as the user.
+    pub principal_kind: Option<AuthPrincipalKind>,
 }
 
 #[derive(Clone, PartialEq, Eq)]

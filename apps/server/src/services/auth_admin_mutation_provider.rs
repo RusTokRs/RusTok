@@ -1,5 +1,7 @@
 use async_trait::async_trait;
-use rustok_api::{Permission, has_any_effective_permission, has_effective_permission};
+use rustok_api::{
+    AuthPrincipalKind, Permission, has_any_effective_permission, has_effective_permission,
+};
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, AuthorizedOAuthAppRecord,
     CreateOAuthAppCommand, OAuthAdminPort, OAuthAppMutationRecord, OAuthAppSecretResult,
@@ -24,6 +26,23 @@ const MAX_AUTH_ADMIN_LIST_LIMIT: u64 = 100;
 
 fn clamp_auth_admin_list_limit(limit: u64) -> u64 {
     limit.clamp(1, MAX_AUTH_ADMIN_LIST_LIMIT)
+}
+
+/// Consent is the user personally delegating authority to an application.
+/// A delegated (`authorization_code`) or service (`client_credentials`)
+/// token must never grant, revoke, or enumerate consent as the user —
+/// otherwise any low-scope application could pre-seed or approve consent
+/// for other applications. Fail closed unless the caller is a direct
+/// user session.
+fn require_direct_user_context(
+    context: &AuthAdminMutationContext,
+) -> Result<(), AuthAdminMutationError> {
+    match context.principal_kind {
+        Some(AuthPrincipalKind::DirectUser) => Ok(()),
+        _ => Err(AuthAdminMutationError::Forbidden(
+            "oauth consent operations require a direct user session".to_string(),
+        )),
+    }
 }
 
 fn internal_admin_error<E>(error: E) -> AuthAdminMutationError
@@ -289,6 +308,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         context: &AuthAdminMutationContext,
         limit: u64,
     ) -> Result<Vec<AuthorizedOAuthAppRecord>, AuthAdminMutationError> {
+        require_direct_user_context(context)?;
         let consents = oauth_consents::Entity::find()
             .filter(oauth_consents::Column::UserId.eq(context.actor_id))
             .filter(oauth_consents::Column::TenantId.eq(context.tenant_id))
@@ -424,6 +444,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         app_id: Uuid,
         scopes: Vec<String>,
     ) -> Result<(), AuthAdminMutationError> {
+        require_direct_user_context(context)?;
         let app = oauth_apps::Entity::find_by_id(app_id)
             .filter(oauth_apps::Column::TenantId.eq(context.tenant_id))
             .one(&self.db)
@@ -447,6 +468,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         context: &AuthAdminMutationContext,
         app_id: Uuid,
     ) -> Result<(), AuthAdminMutationError> {
+        require_direct_user_context(context)?;
         OAuthAppService::revoke_user_consent(&self.db, app_id, context.actor_id, context.tenant_id)
             .await
             .map_err(map_service_error)

@@ -234,6 +234,11 @@ fn user_mutation_context(
         tenant_id: tenant.id,
         request_id: None,
         locale: Some(locale),
+        principal_kind: rustok_api::AuthPrincipalKind::from_authenticated_facts(
+            &auth.grant_type,
+            auth.client_id,
+            auth.session_id,
+        ),
     }
 }
 

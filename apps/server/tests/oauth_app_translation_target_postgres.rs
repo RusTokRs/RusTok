@@ -792,6 +792,7 @@ fn owner_context(
         tenant_id,
         request_id: Some(format!("oauth-owner-postgres-{suffix}")),
         locale: Some(locale.to_string()),
+        principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
     }
 }
 

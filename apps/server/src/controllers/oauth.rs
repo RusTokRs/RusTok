@@ -15,6 +15,7 @@ use axum::{
     routing::{get, post},
 };
 use reqwest::Url;
+use rustok_api::AuthPrincipalKind;
 pub use rustok_auth::{
     AuthorizeRequest, BrowserAuthorizeRequest, BrowserSessionResponse, ConsentRequest,
     RevokeRequest, TokenErrorResponse, TokenRequest, TokenResponse,
@@ -49,6 +50,13 @@ fn oauth_error_response(error: TokenErrorResponse) -> axum::response::Response {
         .headers_mut()
         .insert(PRAGMA, axum::http::HeaderValue::from_static("no-cache"));
     response
+}
+
+fn direct_user_required_error() -> TokenErrorResponse {
+    TokenErrorResponse {
+        error: "access_denied".to_string(),
+        error_description: "This authorization must be completed with a direct user session; delegated and service tokens cannot authorize or consent".to_string(),
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -187,6 +195,13 @@ async fn authorize_handler_inner(
     current_user: CurrentUser,
     req: AuthorizeRequest,
 ) -> Result<Json<serde_json::Value>, TokenErrorResponse> {
+    // Authorization is the user personally delegating authority: a
+    // delegated token presented by application A must never mint codes or
+    // trigger consent decisions for application B.
+    if current_user.principal_kind != AuthPrincipalKind::DirectUser {
+        return Err(direct_user_required_error());
+    }
+
     let validated = validate_authorize_request(
         &ctx,
         tenant_ctx.id,
@@ -303,6 +318,17 @@ pub(crate) async fn authorize_browser_handler(
                     .into_response();
             }
         };
+
+    if current_user.principal_kind != AuthPrincipalKind::DirectUser {
+        return (
+            StatusCode::FORBIDDEN,
+            Html(render_error_page(
+                "Access denied",
+                "This authorization must be completed with a direct user session.",
+            )),
+        )
+            .into_response();
+    }
 
     if !validated.app.requires_user_consent() {
         return match issue_authorization_code(
@@ -424,6 +450,10 @@ pub(crate) async fn consent_handler(
             }
         };
 
+    if current_user.principal_kind != AuthPrincipalKind::DirectUser {
+        return oauth_error_response(direct_user_required_error());
+    }
+
     if req.action == "deny" {
         return redirect_with_error(
             &validated.redirect_uri,
@@ -480,8 +510,12 @@ pub(crate) async fn create_browser_session_handler(
     State(ctx): State<ServerRuntimeContext>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    _current_user: CurrentUser,
+    current_user: CurrentUser,
 ) -> axum::response::Response {
+    if current_user.principal_kind != AuthPrincipalKind::DirectUser {
+        return oauth_error_response(direct_user_required_error());
+    }
+
     let Some(access_token) = extract_bearer_token(&headers) else {
         return oauth_error_response(TokenErrorResponse {
             error: "invalid_request".to_string(),

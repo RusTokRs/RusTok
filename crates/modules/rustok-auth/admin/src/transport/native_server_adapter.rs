@@ -528,6 +528,11 @@ async fn user_mutation_context() -> Result<
             tenant_id: auth.tenant_id,
             request_id: None,
             locale,
+            principal_kind: rustok_api::AuthPrincipalKind::from_authenticated_facts(
+                &auth.grant_type,
+                auth.client_id,
+                auth.session_id,
+            ),
         },
         runtime,
     ))
@@ -849,6 +854,11 @@ async fn oauth_mutation_context() -> Result<
             tenant_id: auth.tenant_id,
             request_id: None,
             locale: Some(request_context.locale),
+            principal_kind: rustok_api::AuthPrincipalKind::from_authenticated_facts(
+                &auth.grant_type,
+                auth.client_id,
+                auth.session_id,
+            ),
         },
         runtime,
     ))

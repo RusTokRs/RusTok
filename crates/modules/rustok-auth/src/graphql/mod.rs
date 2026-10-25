@@ -56,11 +56,16 @@ fn auth_runtime(ctx: &Context<'_>) -> Result<AuthLifecycleRuntime> {
 
 fn mutation_context(ctx: &Context<'_>, auth: &AuthContext) -> AuthAdminMutationContext {
     let locale = ctx.data::<Locale>().copied().unwrap_or_default();
+    let principal_kind = ctx
+        .data::<AuthPrincipalContext>()
+        .ok()
+        .map(|context| context.kind);
     AuthAdminMutationContext {
         actor_id: auth.user_id,
         tenant_id: auth.tenant_id,
         request_id: None,
         locale: Some(locale.as_str().to_string()),
+        principal_kind,
     }
 }
 

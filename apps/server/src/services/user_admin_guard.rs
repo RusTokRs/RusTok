@@ -192,6 +192,7 @@ mod tests {
             tenant_id: Uuid::new_v4(),
             request_id: None,
             locale: None,
+            principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
         }
     }
 
