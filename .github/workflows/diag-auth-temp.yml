@@ -1,0 +1,162 @@
+name: Diag auth (TEMPORARY arena/551d146c)
+
+# Temporary diagnostic workflow for PR #4646. Delete before merge.
+on:
+  push:
+    branches:
+      - "arena/551d146c-rustok"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  RUSTFLAGS: "-Dwarnings"
+  CARGO_ENCODED_RUSTFLAGS: "-Dwarnings"
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  SQLX_OFFLINE: true
+  TMPDIR: /var/tmp
+
+jobs:
+  autofmt-changed:
+    name: Autofmt PR-changed files
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt
+      - name: Format files changed vs merge-base
+        shell: bash {0}
+        run: |
+          BASE=$(git merge-base origin/main HEAD)
+          git diff --name-only "$BASE"...HEAD -- '*.rs' > /tmp/changed_rs.txt
+          wc -l /tmp/changed_rs.txt
+          while IFS= read -r f; do
+            [ -f "$f" ] && rustfmt --edition 2024 "$f" || true
+          done < /tmp/changed_rs.txt
+          # Only commit formatting changes to PR-changed files.
+          git checkout -- . ':(exclude,glob)**' 2>/dev/null || true
+          while IFS= read -r f; do
+            [ -f "$f" ] && rustfmt --edition 2024 "$f" || true
+          done < /tmp/changed_rs.txt
+          git add --pathspec-from-file=/tmp/changed_rs.txt
+          if git diff --cached --quiet; then
+            echo "No formatting changes needed"
+            exit 0
+          fi
+          git config user.name "diag-autofmt"
+          git config user.email "diag-autofmt@users.noreply.github.com"
+          git commit -m "style: rustfmt on PR-changed files (diag autofmt)"
+          git push origin HEAD:arena/551d146c-rustok
+
+  diagnose:
+    name: Diagnose check/clippy/fmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - name: fmt check (file list)
+        shell: bash {0}
+        run: |
+          cargo fmt --all -- --check 2>/dev/null \
+            | grep '^Diff in ' \
+            | sed 's/^Diff in //; s/ at line.*//' \
+            | sort -u > /tmp/fmt_files.txt
+          echo "fmt-dirty files: $(wc -l < /tmp/fmt_files.txt)"
+      - name: Extract errors helper
+        run: |
+          cat > /tmp/extract.py <<'PY'
+          import json, sys
+          seen = set()
+          out = []
+          ann = []
+          def esc(s):
+              return s.replace('%','%25').replace('\r','%0D').replace('\n','%0A')
+          for line in sys.stdin:
+              line = line.strip()
+              if not line.startswith('{'):
+                  continue
+              try:
+                  obj = json.loads(line)
+              except Exception:
+                  continue
+              if obj.get('reason') != 'compiler-message':
+                  continue
+              msg = obj.get('message') or {}
+              level = msg.get('level')
+              if level not in ('error', 'warning'):
+                  continue
+              rendered = (msg.get('rendered') or msg.get('message') or '').strip()
+              first = rendered.split('\n')[0] if rendered else ''
+              code = (msg.get('code') or {}).get('code', '') if msg.get('code') else ''
+              span = None
+              for sp in msg.get('spans') or []:
+                  if sp.get('is_primary'):
+                      span = sp
+                      break
+              if span is None and msg.get('spans'):
+                  span = msg['spans'][0]
+              if span:
+                  loc = f"[E_{span['file_name']}:{span['line_start']}:{span['column_start']}]"
+              else:
+                  loc = "[E_nolocation]"
+              key = loc + first
+              if key in seen:
+                  continue
+              seen.add(key)
+              out.append(f"{level} {code} {loc} {first}")
+              if span and len(ann) < 40:
+                  ann.append(f"::{level} file={span['file_name']},line={span['line_start']},col={span['column_start']}::{esc(first)}")
+          with open(sys.argv[1], 'w') as fh:
+              fh.write('\n'.join(out[:400]))
+              fh.write(f"\n-- total unique: {len(out)}\n")
+          for a in ann:
+              print(a)
+          PY
+      - name: cargo check (json)
+        shell: bash {0}
+        run: |
+          cargo check --workspace --all-targets --all-features --message-format=json 2>/dev/null \
+            | python3 /tmp/extract.py /tmp/check_errors.txt
+          tail -1 /tmp/check_errors.txt || true
+      - name: cargo clippy (json)
+        shell: bash {0}
+        run: |
+          cargo clippy --workspace --all-targets --no-deps --message-format=json -- -D warnings 2>/dev/null \
+            | python3 /tmp/extract.py /tmp/clippy_errors.txt
+          tail -1 /tmp/clippy_errors.txt || true
+      - name: Post PR comment with results
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash {0}
+        run: |
+          {
+            echo "### 🔬 Diag results for ${GITHUB_SHA:0:8} (temporary workflow)"
+            echo
+            echo "#### cargo fmt --check — dirty files ($(wc -l < /tmp/fmt_files.txt 2>/dev/null || echo '?'))"
+            echo '```'
+            head -c 6000 /tmp/fmt_files.txt 2>/dev/null
+            echo '```'
+            echo "#### cargo check --workspace --all-targets --all-features"
+            echo '```'
+            head -c 24000 /tmp/check_errors.txt 2>/dev/null
+            echo '```'
+            echo "#### cargo clippy --workspace --all-targets --no-deps"
+            echo '```'
+            head -c 24000 /tmp/clippy_errors.txt 2>/dev/null
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment 4646 --body-file /tmp/comment.md
