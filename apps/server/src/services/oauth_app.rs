@@ -1943,6 +1943,7 @@ mod tests {
             user_id: Set(Some(Uuid::new_v4())),
             tenant_id: Set(tenant.id),
             token_hash: Set("refresh-token-hash".to_string()),
+            family_id: Set(None),
             grant_type: Set("authorization_code".to_string()),
             scopes: Set(serde_json::json!(["catalog:*"])),
             expires_at: Set((Utc::now() + chrono::Duration::days(1)).into()),

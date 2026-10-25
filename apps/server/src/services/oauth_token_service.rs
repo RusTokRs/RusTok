@@ -3,8 +3,8 @@ use chrono::Utc;
 use rustok_api::context::scope_matches;
 use rustok_auth::{TokenRequest, TokenResponse};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    Set, TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
+    QueryFilter, Set, TransactionTrait, sea_query::Expr,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -27,6 +27,14 @@ const REFRESH_TOKEN_GRANT: &str = "refresh_token";
 const SERVICE_ACCESS_TOKEN_TTL_SECS: u64 = 60 * 60;
 const USER_ACCESS_TOKEN_TTL_SECS: u64 = 15 * 60;
 const USER_REFRESH_TOKEN_TTL_DAYS: i64 = 30;
+/// Absolute cap for one OAuth refresh-token lineage, mirroring the
+/// first-party session cap: rotation slides the per-token expiry but
+/// never past 90 days from the family's first token.
+const USER_REFRESH_FAMILY_ABSOLUTE_LIFETIME_DAYS: i64 = 90;
+/// Replaying a rotated-away OAuth refresh token inside this window is
+/// treated as a client retry race; after it, as theft (whole family
+/// revoked). Mirrors the first-party session grace window.
+const OAUTH_REFRESH_REUSE_GRACE_SECONDS: i64 = 30;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OAuthTokenProtocolError {
@@ -138,6 +146,7 @@ impl OAuthTokenService {
                     authorization.user_id,
                     &scopes,
                     app.supports_grant_type(REFRESH_TOKEN_GRANT),
+                    None,
                 )
                 .await?;
 
@@ -156,9 +165,19 @@ impl OAuthTokenService {
                 let user_id = current.user_id.ok_or_else(|| {
                     OAuthTokenProtocolError::invalid_grant("Refresh token has no associated user")
                 })?;
+                let family = resolve_refresh_family(db, &current).await?;
+                if Utc::now()
+                    >= family.created_at
+                        + chrono::Duration::days(USER_REFRESH_FAMILY_ABSOLUTE_LIFETIME_DAYS)
+                {
+                    return Err(OAuthTokenProtocolError::invalid_grant(
+                        "Refresh token family exceeded its maximum lifetime",
+                    ));
+                }
                 let scopes = current.scopes_list();
                 let prepared =
-                    prepare_user_tokens(db, &app, auth_config, user_id, &scopes, true).await?;
+                    prepare_user_tokens(db, &app, auth_config, user_id, &scopes, true, Some(&family))
+                        .await?;
 
                 commit_refresh_rotation(db, &current, &prepared).await?;
                 prepared.into_response(&scopes)
@@ -367,12 +386,20 @@ async fn validate_refresh_token(
         .filter(oauth_tokens::Column::ExpiresAt.gt(Utc::now()))
         .one(db)
         .await
-        .map_err(|_| OAuthTokenProtocolError::server_error("Failed to validate refresh token"))?
-        .ok_or_else(|| {
-            OAuthTokenProtocolError::invalid_grant(
+        .map_err(|_| OAuthTokenProtocolError::server_error("Failed to validate refresh token"))?;
+    let token = match token {
+        Some(token) => token,
+        None => {
+            // No live token holds this hash. If it is a rotated-away
+            // token replayed after the grace window, that is theft
+            // evidence: revoke the whole family before failing closed
+            // (RFC 9700 refresh-token reuse guidance).
+            detect_oauth_refresh_reuse(db, app.id, tenant_id, &token_hash).await;
+            return Err(OAuthTokenProtocolError::invalid_grant(
                 "Refresh token is invalid, expired, or already used",
-            )
-        })?;
+            ));
+        }
+    };
     let user_id = token.user_id.ok_or_else(|| {
         OAuthTokenProtocolError::invalid_grant("Refresh token has no associated user")
     })?;
@@ -380,6 +407,97 @@ async fn validate_refresh_token(
     validate_scope_subset(&app.scopes_list(), &scopes)?;
     validate_active_subject_and_consent(db, app, tenant_id, user_id, &scopes).await?;
     Ok(token)
+}
+
+struct RefreshTokenFamily {
+    family_id: Uuid,
+    created_at: chrono::DateTime<Utc>,
+}
+
+/// Resolve the lineage of the presented refresh token. Pre-migration
+/// rows have no family id and start their own family rooted at
+/// themselves; a missing root row (already purged) falls back to the
+/// current token's creation time.
+async fn resolve_refresh_family(
+    db: &DatabaseConnection,
+    current: &oauth_tokens::Model,
+) -> Result<RefreshTokenFamily, OAuthTokenProtocolError> {
+    let family_id = current.family_id.unwrap_or(current.id);
+    let created_at = if family_id == current.id {
+        current.created_at.with_timezone(&Utc)
+    } else {
+        OAuthTokens::find_by_id(family_id)
+            .one(db)
+            .await
+            .map_err(|_| {
+                OAuthTokenProtocolError::server_error("Failed to resolve refresh token family")
+            })?
+            .map(|root| root.created_at.with_timezone(&Utc))
+            .unwrap_or_else(|| current.created_at.with_timezone(&Utc))
+    };
+
+    Ok(RefreshTokenFamily {
+        family_id,
+        created_at,
+    })
+}
+
+/// OAuth refresh-token reuse detection: a presented hash that belongs
+/// to an already-rotated (revoked) token and is replayed after the
+/// grace window can only have been copied, so every live token in the
+/// family is revoked. Best-effort by design — the caller fails closed
+/// with invalid_grant regardless of the outcome here.
+async fn detect_oauth_refresh_reuse(
+    db: &DatabaseConnection,
+    app_id: Uuid,
+    tenant_id: Uuid,
+    token_hash: &str,
+) {
+    let stale = OAuthTokens::find()
+        .filter(oauth_tokens::Column::TokenHash.eq(token_hash))
+        .filter(oauth_tokens::Column::AppId.eq(app_id))
+        .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
+        .filter(oauth_tokens::Column::GrantType.eq(AUTHORIZATION_CODE_GRANT))
+        .filter(oauth_tokens::Column::RevokedAt.is_not_null())
+        .one(db)
+        .await;
+    let Ok(Some(stale)) = stale else {
+        return;
+    };
+    let Some(revoked_at) = stale.revoked_at else {
+        return;
+    };
+    if Utc::now().timestamp() - revoked_at.timestamp() < OAUTH_REFRESH_REUSE_GRACE_SECONDS {
+        return;
+    }
+
+    let family_id = stale.family_id.unwrap_or(stale.id);
+    tracing::warn!(
+        app_id = %app_id,
+        user_id = ?stale.user_id,
+        family_id = %family_id,
+        "OAuth refresh token reuse detected; revoking token family"
+    );
+
+    let now = Utc::now();
+    if let Err(error) = OAuthTokens::update_many()
+        .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
+        .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
+        .filter(oauth_tokens::Column::RevokedAt.is_null())
+        .filter(
+            Condition::any()
+                .add(oauth_tokens::Column::FamilyId.eq(family_id))
+                .add(oauth_tokens::Column::Id.eq(family_id)),
+        )
+        .exec(db)
+        .await
+    {
+        tracing::error!(
+            %error,
+            family_id = %family_id,
+            "failed to revoke OAuth refresh token family after reuse detection"
+        );
+    }
 }
 
 async fn validate_active_subject_and_consent(
@@ -442,6 +560,7 @@ async fn prepare_user_tokens(
     user_id: Uuid,
     scopes: &[String],
     include_refresh_token: bool,
+    family: Option<&RefreshTokenFamily>,
 ) -> Result<PreparedUserTokens, OAuthTokenProtocolError> {
     validate_active_subject_and_consent(db, app, app.tenant_id, user_id, scopes).await?;
     let permissions = RbacService::get_user_permissions_authoritative(db, &app.tenant_id, &user_id)
@@ -475,17 +594,29 @@ async fn prepare_user_tokens(
         .map_err(|_| OAuthTokenProtocolError::server_error("Failed to generate refresh token"))?;
     let refresh_hash = auth::hash_refresh_token(&refresh_token);
     let now = Utc::now();
+    let token_id = Uuid::new_v4();
+    // A fresh authorization-code exchange starts a new family rooted
+    // at this token; a rotation inherits the family. Either way the
+    // sliding expiry is clamped to the family's absolute deadline.
+    let (family_id, family_created_at) = match family {
+        Some(family) => (family.family_id, family.created_at),
+        None => (token_id, now),
+    };
+    let expires_at = (now + chrono::Duration::days(USER_REFRESH_TOKEN_TTL_DAYS)).min(
+        family_created_at + chrono::Duration::days(USER_REFRESH_FAMILY_ABSOLUTE_LIFETIME_DAYS),
+    );
     let refresh_model = oauth_tokens::ActiveModel {
-        id: Set(Uuid::new_v4()),
+        id: Set(token_id),
         app_id: Set(app.id),
         user_id: Set(Some(user_id)),
         tenant_id: Set(app.tenant_id),
         token_hash: Set(refresh_hash),
+        family_id: Set(Some(family_id)),
         grant_type: Set(AUTHORIZATION_CODE_GRANT.to_string()),
         scopes: Set(serde_json::to_value(scopes).map_err(|_| {
             OAuthTokenProtocolError::server_error("Failed to serialize token scopes")
         })?),
-        expires_at: Set((now + chrono::Duration::days(USER_REFRESH_TOKEN_TTL_DAYS)).into()),
+        expires_at: Set(expires_at.into()),
         revoked_at: Set(None),
         last_used_at: Set(None),
         created_at: Set(now.into()),
@@ -739,7 +870,8 @@ mod tests {
                 revoked_at TEXT NULL,
                 last_used_at TEXT NULL,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                family_id TEXT NULL
             )"#,
         )
         .await
@@ -752,6 +884,7 @@ mod tests {
             user_id: Set(Some(Uuid::new_v4())),
             tenant_id: Set(Uuid::new_v4()),
             token_hash: Set("current-hash".to_string()),
+            family_id: Set(None),
             grant_type: Set("refresh_token".to_string()),
             scopes: Set(serde_json::json!(["profile"])),
             expires_at: Set((now + chrono::Duration::hours(1)).into()),
@@ -773,6 +906,7 @@ mod tests {
                 user_id: Set(current.user_id),
                 tenant_id: Set(current.tenant_id),
                 token_hash: Set(hash.to_string()),
+                family_id: Set(None),
                 grant_type: Set("refresh_token".to_string()),
                 scopes: Set(serde_json::json!(["profile"])),
                 expires_at: Set((now + chrono::Duration::hours(1)).into()),
