@@ -304,6 +304,28 @@ mod tests {
         };
         assert!(AuthUserBootstrapDbWriter::ensure_user_on(&db, req_empty_name).await.is_err());
 
+        let req_invalid_email = AuthUserBootstrapRequest {
+            tenant_id: Uuid::new_v4(),
+            email: "not-an-email".to_string(),
+            name: "Admin".to_string(),
+            password: "long-enough-password".to_string(),
+        };
+        assert!(matches!(
+            AuthUserBootstrapDbWriter::ensure_user_on(&db, req_invalid_email).await,
+            Err(AuthLifecycleMutationError::Validation(_))
+        ));
+
+        let req_weak_password = AuthUserBootstrapRequest {
+            tenant_id: Uuid::new_v4(),
+            email: "admin@example.com".to_string(),
+            name: "Admin".to_string(),
+            password: "short".to_string(),
+        };
+        assert!(matches!(
+            AuthUserBootstrapDbWriter::ensure_user_on(&db, req_weak_password).await,
+            Err(AuthLifecycleMutationError::Validation(_))
+        ));
+
         // find_user_on with nil tenant or empty email returns Ok(None)
         assert_eq!(
             AuthUserBootstrapDbWriter::find_user_on(&db, Uuid::nil(), "admin@example.com").await.unwrap(),
