@@ -198,7 +198,7 @@ impl ResolutionSnapshot {
         let mut requested = BTreeSet::new();
         while let Some(constraint) = queued.pop_front() {
             validate_constraint(&constraint)?;
-            let request_key = format!("{}@{}", constraint.slug, constraint.version_requirement);
+            let request_key = (constraint.slug.clone(), constraint.version_requirement.clone());
             if !requested.insert(request_key) {
                 continue;
             }
@@ -295,16 +295,23 @@ impl DependencyProvider for ResolutionSnapshot {
         if package == ROOT_PACKAGE && version == &ROOT_VERSION {
             return Ok(Dependencies::Available(self.root_dependencies.clone()));
         }
+        // Candidate declarations are proven convertible by
+        // `validate_candidate` before snapshot insertion, so the error
+        // arm is unreachable; it still degrades to `Unavailable` (a
+        // solver-visible conflict cause) rather than panicking on
+        // admitted-descriptor data.
         let dependencies = self
             .candidate(package, version)
             .map(|candidate| constraints_for(&candidate.dependencies))
-            .transpose()
-            .expect("candidate dependencies are validated while creating the snapshot");
+            .transpose();
         Ok(match dependencies {
-            Some(dependencies) => Dependencies::Available(dependencies),
-            None => {
+            Ok(Some(dependencies)) => Dependencies::Available(dependencies),
+            Ok(None) => {
                 Dependencies::Unavailable(format!("admitted release {package} {version} is absent"))
             }
+            Err(error) => Dependencies::Unavailable(format!(
+                "admitted release {package} {version} has unusable dependency constraints: {error}"
+            )),
         })
     }
 }
@@ -384,6 +391,13 @@ fn validate_candidate(candidate: &ModuleResolutionCandidate) -> Result<(), Modul
     for dependency in &candidate.dependencies {
         validate_constraint(dependency)?;
     }
+    // The solver consumes range conversions of these declarations through
+    // `get_dependencies`, whose trait contract is infallible. Prove here
+    // that every declaration converts (some parse-valid requirements, such
+    // as a caret over u64::MAX, have no representable upper bound) so the
+    // failure surfaces once as a typed resolution error instead of
+    // stranding the conversion inside the solver.
+    constraints_for(&candidate.dependencies)?;
     Ok(())
 }
 
@@ -509,7 +523,12 @@ fn upper_for_caret(
         (major, _, _) if major > 0 => next_major(major, original),
         (0, Some(minor), _) if minor > 0 => next_minor(0, minor, original),
         (0, Some(0), Some(patch)) => Ok(Version::new(0, 0, next(patch, original)?)),
-        (0, Some(0), None) | (0, None, _) => Ok(Version::new(0, 1, 0)),
+        // `^0.0` admits only the 0.0.x line, but bare `^0` (and `0`)
+        // admits the whole 0.x line under semver caret rules; collapsing
+        // both at 0.1.0 would report false conflicts for every 0.x
+        // candidate admitted by the eligibility check.
+        (0, Some(0), None) => Ok(Version::new(0, 1, 0)),
+        (0, None, _) => next_major(0, original),
         _ => Err(ModuleResolutionError::UnsupportedRequirement(
             original.into(),
         )),
@@ -740,6 +759,32 @@ mod tests {
             !version_requirement_range("1")
                 .unwrap()
                 .contains(&Version::new(2, 0, 0))
+        );
+        // Bare `^0` admits the whole 0.x line; `^0.0` only 0.0.x.
+        assert!(
+            version_requirement_range("^0")
+                .unwrap()
+                .contains(&Version::new(0, 5, 0))
+        );
+        assert!(
+            !version_requirement_range("^0")
+                .unwrap()
+                .contains(&Version::new(1, 0, 0))
+        );
+        assert!(
+            version_requirement_range("^0.0")
+                .unwrap()
+                .contains(&Version::new(0, 0, 7))
+        );
+        assert!(
+            !version_requirement_range("^0.0")
+                .unwrap()
+                .contains(&Version::new(0, 1, 0))
+        );
+        assert!(
+            !version_requirement_range("^0.0.3")
+                .unwrap()
+                .contains(&Version::new(0, 0, 4))
         );
     }
 }

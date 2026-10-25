@@ -2,21 +2,22 @@
 //! Source facts and records are read under root locks; exact replay precedes
 //! mutable preconditions. A page receipt never authorizes serving selection.
 
+use crate::backend::SupportedBackend;
 use crate::{
     ArtifactDataNamespace, ArtifactDataQuota, ArtifactDataRecord, ArtifactDataScope,
     ModuleArtifactDescriptor, ModuleCommandContext,
     artifact_schema::ArtifactSchemaValidatorCache,
     data::{
         configure_tenant_scope, ensure_namespace_not_migration_held_on, index_contract_digest,
-        lock_artifact_data_namespace_on, now_expression, placeholder, revision_value,
-        synchronize_artifact_data_indexes, uuid_from_row, uuid_value,
-        validate_artifact_data_index_contract, validate_artifact_data_key,
+        lock_artifact_data_namespace_on, revision_value, synchronize_artifact_data_indexes,
+        uuid_from_row, validate_artifact_data_index_contract, validate_artifact_data_key,
     },
-    promotion::{digest_json, valid_digest},
+    installation::valid_digest,
+    promotion::digest_json,
 };
 use async_trait::async_trait;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, QueryResult, Statement,
     TransactionTrait, Value as SqlValue,
 };
 use serde::{Deserialize, Serialize};
@@ -218,11 +219,12 @@ impl<A: ArtifactDataCopyAuthorizer> ArtifactDataCopier<A> {
             transaction.commit().await.map_err(storage_error)?;
             return Ok(operation.reservation());
         }
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let mut values = vec![
-            uuid_value(request.tenant_id, backend),
-            uuid_value(request.data_owner_id, backend),
-            uuid_value(source.namespace_instance_id, backend),
+            backend.uuid_value(request.tenant_id),
+            backend.uuid_value(request.data_owner_id),
+            backend.uuid_value(source.namespace_instance_id),
         ];
         let after = if let Some(cursor) = &request.page_cursor {
             values.push(cursor.clone().into());
@@ -294,14 +296,14 @@ impl<A: ArtifactDataCopyAuthorizer> ArtifactDataCopier<A> {
              (operation_id,tenant_id,data_owner_id,source_namespace_instance_id,target_namespace_instance_id,
               expected_source_namespace_revision,expected_target_namespace_revision,idempotency_key,request_digest,
               request_json,frozen_page_json,frozen_page_digest,status,actor_id,trace_id,correlation_id,reason,created_at)
-             VALUES ({{1}},{{2}},{{3}},{{4}},{{5}},{{6}},{{7}},{{8}},{{9}},{{10}},{{11}},{{12}},'preparing',{{13}},{{14}},{{15}},{{16}},{})",now_expression(backend)),
-            vec![uuid_value(operation.operation_id,backend),uuid_value(operation.request.tenant_id,backend),uuid_value(operation.request.data_owner_id,backend),
-                uuid_value(operation.request.source_namespace_instance_id,backend),uuid_value(operation.request.target_namespace_instance_id,backend),
+             VALUES ({{1}},{{2}},{{3}},{{4}},{{5}},{{6}},{{7}},{{8}},{{9}},{{10}},{{11}},{{12}},'preparing',{{13}},{{14}},{{15}},{{16}},{})",backend.now_sql()),
+            vec![backend.uuid_value(operation.operation_id),backend.uuid_value(operation.request.tenant_id),backend.uuid_value(operation.request.data_owner_id),
+                backend.uuid_value(operation.request.source_namespace_instance_id),backend.uuid_value(operation.request.target_namespace_instance_id),
                 revision_value(operation.request.expected_source_namespace_revision).map_err(storage_error)?,
                 revision_value(operation.request.expected_target_namespace_revision).map_err(storage_error)?,
-                uuid_value(operation.request.context.idempotency_key,backend),operation.request_digest.clone().into(),json_value(&operation.request)?,
-                json_value(&operation.frozen)?,operation.frozen_digest.clone().into(),uuid_value(operation.request.context.actor_id,backend),
-                operation.request.context.trace_id.clone().into(),uuid_value(operation.request.context.correlation_id,backend),operation.request.reason.clone().into()]))
+                backend.uuid_value(operation.request.context.idempotency_key),operation.request_digest.clone().into(),json_value(&operation.request)?,
+                json_value(&operation.frozen)?,operation.frozen_digest.clone().into(),backend.uuid_value(operation.request.context.actor_id),
+                operation.request.context.trace_id.clone().into(),backend.uuid_value(operation.request.context.correlation_id),operation.request.reason.clone().into()]))
             .await.map_err(storage_error)?;
         transaction.commit().await.map_err(storage_error)?;
         Ok(operation.reservation())
@@ -355,11 +357,12 @@ impl<A: ArtifactDataCopyAuthorizer> ArtifactDataCopier<A> {
             authority.quota,
         )
         .await?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let committing=transaction.execute_raw(statement(backend,
             "UPDATE module_artifact_data_copy_operations SET status='committing'
              WHERE operation_id={1} AND request_digest={2} AND frozen_page_digest={3} AND status='preparing'",
-            vec![uuid_value(operation.operation_id,backend),operation.request_digest.clone().into(),operation.frozen_digest.clone().into()]))
+            vec![backend.uuid_value(operation.operation_id),operation.request_digest.clone().into(),operation.frozen_digest.clone().into()]))
             .await.map_err(storage_error)?;
         if committing.rows_affected() != 1 {
             return Err(ArtifactDataCopyError::NamespacePrecondition);
@@ -384,12 +387,12 @@ impl<A: ArtifactDataCopyAuthorizer> ArtifactDataCopier<A> {
                 &format!(
             "UPDATE module_artifact_data_namespaces SET namespace_revision={{1}},updated_at={}
              WHERE tenant_id={{2}} AND data_owner_id={{3}} AND namespace_instance_id={{4}}
-              AND state='staging' AND namespace_revision={{5}}",now_expression(backend)),
+              AND state='staging' AND namespace_revision={{5}}",backend.now_sql()),
                 vec![
                     revision_value(revision).map_err(storage_error)?,
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.data_owner_id, backend),
-                    uuid_value(target.namespace_instance_id, backend),
+                    backend.uuid_value(request.tenant_id),
+                    backend.uuid_value(request.data_owner_id),
+                    backend.uuid_value(target.namespace_instance_id),
                     revision_value(target.namespace_revision).map_err(storage_error)?,
                 ],
             ))
@@ -415,8 +418,8 @@ impl<A: ArtifactDataCopyAuthorizer> ArtifactDataCopier<A> {
         };
         let committed=transaction.execute_raw(statement(backend,&format!(
             "UPDATE module_artifact_data_copy_operations SET status='committed',receipt_json={{1}},receipt_digest={{2}},committed_at={}
-             WHERE operation_id={{3}} AND request_digest={{4}} AND frozen_page_digest={{5}} AND status='committing'",now_expression(backend)),
-            vec![json_value(&receipt)?,digest_json(&receipt).map_err(storage_error)?.into(),uuid_value(operation.operation_id,backend),
+             WHERE operation_id={{3}} AND request_digest={{4}} AND frozen_page_digest={{5}} AND status='committing'",backend.now_sql()),
+            vec![json_value(&receipt)?,digest_json(&receipt).map_err(storage_error)?.into(),backend.uuid_value(operation.operation_id),
                 operation.request_digest.into(),operation.frozen_digest.into()])).await.map_err(storage_error)?;
         if committed.rows_affected() != 1 {
             return Err(ArtifactDataCopyError::NamespacePrecondition);
@@ -439,11 +442,12 @@ impl<A: ArtifactDataCopyAuthorizer> ArtifactDataCopier<A> {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let rows=transaction.query_all_raw(statement(backend,&format!(
             "SELECT {OPERATION_COLUMNS} FROM module_artifact_data_copy_operations WHERE tenant_id={{1}} AND data_owner_id={{2}}
              AND status='preparing' ORDER BY created_at,operation_id LIMIT 100"),
-            vec![uuid_value(tenant_id,backend),uuid_value(data_owner_id,backend)])).await.map_err(storage_error)?;
+            vec![backend.uuid_value(tenant_id),backend.uuid_value(data_owner_id)])).await.map_err(storage_error)?;
         let requests = rows
             .iter()
             .map(|row| {
@@ -531,11 +535,11 @@ async fn locked_namespaces(
     {
         return Err(ArtifactDataCopyError::NamespacePrecondition);
     }
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(storage_error)?;
     if db.query_one_raw(statement(backend,
         "SELECT 1 FROM module_artifact_data_owner_references WHERE tenant_id={1} AND data_owner_id={2} AND namespace_instance_id IN ({3},{4})",
-        vec![uuid_value(request.tenant_id,backend),uuid_value(request.data_owner_id,backend),
-            uuid_value(source.namespace_instance_id,backend),uuid_value(target.namespace_instance_id,backend)]))
+        vec![backend.uuid_value(request.tenant_id),backend.uuid_value(request.data_owner_id),
+            backend.uuid_value(source.namespace_instance_id),backend.uuid_value(target.namespace_instance_id)]))
         .await.map_err(storage_error)?.is_some(){return Err(ArtifactDataCopyError::NamespacePrecondition);}
     for namespace in [source, target] {
         ensure_namespace_not_migration_held_on(
@@ -558,11 +562,11 @@ async fn validate_continuation(
     request: &ArtifactDataCopyRequest,
     own_pending: Option<Uuid>,
 ) -> Result<Option<CopyOperation>, ArtifactDataCopyError> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(storage_error)?;
     let pending=db.query_one_raw(statement(backend,
         "SELECT operation_id FROM module_artifact_data_copy_operations
          WHERE tenant_id={1} AND data_owner_id={2} AND target_namespace_instance_id={3} AND status='preparing'",
-        vec![uuid_value(request.tenant_id,backend),uuid_value(request.data_owner_id,backend),uuid_value(request.target_namespace_instance_id,backend)]))
+        vec![backend.uuid_value(request.tenant_id),backend.uuid_value(request.data_owner_id),backend.uuid_value(request.target_namespace_instance_id)]))
         .await.map_err(storage_error)?;
     if let Some(row) = pending
         && own_pending != Some(uuid_from_row(&row, "operation_id", backend).map_err(storage_error)?)
@@ -573,7 +577,7 @@ async fn validate_continuation(
         "SELECT {OPERATION_COLUMNS} FROM module_artifact_data_copy_operations
          WHERE tenant_id={{1}} AND data_owner_id={{2}} AND target_namespace_instance_id={{3}} AND status='committed'
          ORDER BY expected_target_namespace_revision DESC LIMIT 1"),
-        vec![uuid_value(request.tenant_id,backend),uuid_value(request.data_owner_id,backend),uuid_value(request.target_namespace_instance_id,backend)]))
+        vec![backend.uuid_value(request.tenant_id),backend.uuid_value(request.data_owner_id),backend.uuid_value(request.target_namespace_instance_id)]))
         .await.map_err(storage_error)?;
     if let Some(row) = previous {
         let previous = decode_operation(&row, backend)?;
@@ -597,7 +601,7 @@ async fn validate_continuation(
         }
         if db.query_one_raw(statement(backend,
             "SELECT 1 FROM module_artifact_data WHERE tenant_id={1} AND data_owner_id={2} AND namespace_instance_id={3} LIMIT 1",
-            vec![uuid_value(request.tenant_id,backend),uuid_value(request.data_owner_id,backend),uuid_value(request.target_namespace_instance_id,backend)]))
+            vec![backend.uuid_value(request.tenant_id),backend.uuid_value(request.data_owner_id),backend.uuid_value(request.target_namespace_instance_id)]))
             .await.map_err(storage_error)?.is_some(){return Err(ArtifactDataCopyError::NamespacePrecondition);}
         Ok(None)
     }
@@ -630,11 +634,11 @@ async fn validate_projected_quota(
     records: &[ArtifactDataRecord],
     quota: ArtifactDataQuota,
 ) -> Result<(), ArtifactDataCopyError> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(storage_error)?;
     let row=db.query_one_raw(statement(backend,
         "SELECT COUNT(*) AS records,CAST(COALESCE(SUM(value_size_bytes),0) AS BIGINT) AS bytes FROM module_artifact_data
          WHERE tenant_id={1} AND data_owner_id={2} AND namespace_instance_id={3}",
-        vec![uuid_value(request.tenant_id,backend),uuid_value(request.data_owner_id,backend),uuid_value(request.target_namespace_instance_id,backend)]))
+        vec![backend.uuid_value(request.tenant_id),backend.uuid_value(request.data_owner_id),backend.uuid_value(request.target_namespace_instance_id)]))
         .await.map_err(storage_error)?.ok_or(ArtifactDataCopyError::Integrity)?;
     let mut count = u64::try_from(row.try_get::<i64>("", "records").map_err(storage_error)?)
         .map_err(storage_error)?;
@@ -644,8 +648,8 @@ async fn validate_projected_quota(
         let existing=db.query_one_raw(statement(backend,
             "SELECT CAST(value AS TEXT) AS value_text,value_size_bytes,revision FROM module_artifact_data
              WHERE tenant_id={1} AND data_owner_id={2} AND namespace_instance_id={3} AND data_key={4}",
-            vec![uuid_value(request.tenant_id,backend),uuid_value(request.data_owner_id,backend),
-                uuid_value(request.target_namespace_instance_id,backend),record.key.clone().into()])).await.map_err(storage_error)?;
+            vec![backend.uuid_value(request.tenant_id),backend.uuid_value(request.data_owner_id),
+                backend.uuid_value(request.target_namespace_instance_id),record.key.clone().into()])).await.map_err(storage_error)?;
         if let Some(row) = existing {
             let value: serde_json::Value = serde_json::from_str(
                 &row.try_get::<String>("", "value_text")
@@ -684,7 +688,8 @@ async fn write_records(
     authority: &ArtifactDataCopyAuthorization,
     records: &[ArtifactDataRecord],
 ) -> Result<(), ArtifactDataCopyError> {
-    let backend = transaction.get_database_backend();
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
     let contract = authority
         .target_descriptor
         .persistence_contract
@@ -705,8 +710,8 @@ async fn write_records(
         let existing = transaction.query_one_raw(statement(backend,
                 "SELECT CAST(value AS TEXT) AS value_text,value_size_bytes,revision FROM module_artifact_data
                  WHERE tenant_id={1} AND data_owner_id={2} AND namespace_instance_id={3} AND data_key={4}",
-                vec![uuid_value(request.tenant_id,backend),uuid_value(request.data_owner_id,backend),
-                    uuid_value(target.namespace_instance_id,backend),record.key.clone().into()]))
+                vec![backend.uuid_value(request.tenant_id),backend.uuid_value(request.data_owner_id),
+                    backend.uuid_value(target.namespace_instance_id),record.key.clone().into()]))
                 .await.map_err(storage_error)?;
         let encoded = serde_json::to_vec(&record.value).map_err(storage_error)?;
         let size = u64::try_from(encoded.len()).map_err(storage_error)?;
@@ -728,8 +733,8 @@ async fn write_records(
             transaction.execute_raw(statement(backend,
                     "INSERT INTO module_artifact_data (tenant_id,data_owner_id,namespace_instance_id,
                      data_key,value,value_size_bytes,revision,updated_at) VALUES ({1},{2},{3},{4},{5},{6},{7},{8})",
-                    vec![uuid_value(request.tenant_id,backend),uuid_value(request.data_owner_id,backend),
-                        uuid_value(target.namespace_instance_id,backend),record.key.clone().into(),
+                    vec![backend.uuid_value(request.tenant_id),backend.uuid_value(request.data_owner_id),
+                        backend.uuid_value(target.namespace_instance_id),record.key.clone().into(),
                         SqlValue::Json(Some(Box::new(record.value.clone()))),
                         revision_value(size).map_err(storage_error)?,
                         revision_value(record.revision).map_err(storage_error)?,chrono::Utc::now().into()]))
@@ -830,10 +835,10 @@ async fn load_operation<C: ConnectionTrait>(
     db: &C,
     request: &ArtifactDataCopyRequest,
 ) -> Result<Option<CopyOperation>, ArtifactDataCopyError> {
-    let backend = db.get_database_backend();
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(storage_error)?;
     let row=db.query_one_raw(statement(backend,&format!(
         "SELECT {OPERATION_COLUMNS} FROM module_artifact_data_copy_operations WHERE tenant_id={{1}} AND data_owner_id={{2}} AND idempotency_key={{3}}"),
-        vec![uuid_value(request.tenant_id,backend),uuid_value(request.data_owner_id,backend),uuid_value(request.context.idempotency_key,backend)]))
+        vec![backend.uuid_value(request.tenant_id),backend.uuid_value(request.data_owner_id),backend.uuid_value(request.context.idempotency_key)]))
         .await.map_err(storage_error)?;
     let Some(row) = row else {
         return Ok(None);
@@ -850,7 +855,7 @@ async fn load_operation<C: ConnectionTrait>(
 }
 fn decode_operation(
     row: &QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<CopyOperation, ArtifactDataCopyError> {
     let request: ArtifactDataCopyRequest = serde_json::from_str(
         &row.try_get::<String>("", "request_json")
@@ -1037,10 +1042,10 @@ fn json_value(value: &impl Serialize) -> Result<SqlValue, ArtifactDataCopyError>
         serde_json::to_value(value).map_err(storage_error)?,
     ))))
 }
-fn statement(backend: DbBackend, template: &str, values: Vec<SqlValue>) -> Statement {
+fn statement(backend: SupportedBackend, template: &str, values: Vec<SqlValue>) -> Statement {
     let mut sql = template.to_string();
     for index in 1..=values.len() {
-        sql = sql.replace(&format!("{{{index}}}"), &placeholder(backend, index));
+        sql = sql.replace(&format!("{{{index}}}"), &backend.placeholder(index));
     }
-    Statement::from_sql_and_values(backend, sql, values)
+    Statement::from_sql_and_values(backend.db_backend(), sql, values)
 }

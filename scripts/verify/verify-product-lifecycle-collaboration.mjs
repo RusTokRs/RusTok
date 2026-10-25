@@ -29,9 +29,11 @@ const lifecycleWriter = read('crates/modules/rustok-modules/src/lifecycle_writer
 const lifecycleExecutor = read('crates/modules/rustok-modules/src/executor.rs');
 const recovery = read('crates/modules/rustok-modules/src/recovery.rs');
 const recoveryMigration = read(
-  'crates/utils/rustok-migrations/src/m20260808_000099_create_module_operation_override_states.rs',
+  'crates/modules/rustok-modules/src/migrations/m20260808_000075_create_module_operation_override_states.rs',
 );
-const platformMigrator = read('crates/utils/rustok-migrations/src/lib.rs');
+const ownerMigrations = read(
+  'crates/modules/rustok-modules/src/migrations/mod.rs',
+);
 const runbook = read('apps/server/docs/module-lifecycle-retry-compensation-runbook.md');
 const note = read('crates/modules/rustok-product/docs/product-lifecycle-collaboration.md');
 const evidence = JSON.parse(
@@ -141,7 +143,7 @@ for (const [source, value, label] of [
   [ownerPolicy, 'pub struct ModuleEffectivePolicyCoRequisite', 'owner co-requisite input'],
   [ownerPolicy, 'CoRequisiteUnavailable { module_slug: String }', 'owner unavailable denial'],
   [ownerPolicy, 'CoRequisiteVersionMismatch { module_slug: String }', 'owner version denial'],
-  [ownerPolicy, 'contract: "rustok.module_effective_policy.v2"', 'effective policy v2 identity'],
+  [ownerPolicy, 'contract: "rustok.module_effective_policy.v3"', 'effective policy v3 identity'],
   [ownerPolicy, 'normalize_corequisites(self.catalog, self.co_requisites)', 'owner co-requisite normalization'],
   [lifecycleWriter, 'ordering_policy_from_overrides', 'ordinary ordering projection'],
   [lifecycleExecutor, '&request.ordering_enabled_modules', 'ordinary toggle validation input'],
@@ -156,7 +158,7 @@ for (const [source, value, label] of [
   [recovery, 'selected_intent_state_unavailable', 'legacy recovery fail-closed reason'],
   [recovery, 'request.current_override_enabled != plan.requested_override_enabled', 'retry exact override state match'],
   [recovery, 'plan.previous_override_enabled,\n                plan.requested_override_enabled', 'retry predecessor retention'],
-  [recovery, 'DELETE FROM tenant_modules', 'inherited override restoration'],
+  [recovery, 'UPDATE tenant_modules SET enabled = NULL', 'inherited override restoration'],
   [lifecycleExecutor, 'pub previous_override_enabled: Option<bool>', 'executor exact override predecessor'],
   [lifecycleExecutor, 'pub requested_override_enabled: Option<bool>', 'executor exact override target'],
   [lifecycleExecutor, 'record_operation_override_state(', 'executor recovery-state retention'],
@@ -167,15 +169,15 @@ for (const [source, value, label] of [
   [compensationBlock, 'plan.previous_override_enabled', 'exact compensation target'],
   [compensationBlock, 'current_override_enabled != plan.requested_override_enabled', 'compensation exact current-state match'],
   [tenantLifecycle, 'explicit module toggle did not persist a tenant override row', 'normal explicit-row server assertion'],
-  [tenantLifecycle, '(state.enabled, result.settings)', 'explicit compensation response state'],
+  [tenantLifecycle, 'enabled,\n            settings: result.settings,', 'explicit compensation response state'],
   [tenantLifecycle, 'None => (policy.contains(&module_slug), serde_json::json!({}))', 'inherited compensation availability fallback'],
 
   [recoveryMigration, 'module_operation_override_states', 'recovery side-table migration'],
   [recoveryMigration, 'PreviousOverrideEnabled', 'nullable predecessor migration column'],
   [recoveryMigration, 'RequestedOverrideEnabled', 'nullable target migration column'],
   [recoveryMigration, 'ForeignKeyAction::Cascade', 'recovery side-table operation ownership'],
-  [platformMigrator, 'mod m20260808_000099_create_module_operation_override_states;', 'migration module registration'],
-  [platformMigrator, 'Box::new(m20260808_000099_create_module_operation_override_states::Migration)', 'migration execution registration'],
+  [ownerMigrations, 'mod m20260808_000075_create_module_operation_override_states;', 'migration module registration'],
+  [ownerMigrations, 'Box::new(m20260808_000075_create_module_operation_override_states::Migration)', 'migration execution registration'],
 
   [runbook, '`inherit`', 'operational inherited-state contract'],
   [runbook, 'selected_intent_state_unavailable', 'operational legacy fail-closed contract'],

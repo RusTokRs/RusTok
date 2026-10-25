@@ -13,6 +13,8 @@ use thiserror::Error;
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
+use crate::installation::sha256_digest;
+use crate::trust::is_sha256_digest;
 use crate::{
     ALLOY_WORKSPACE_PUBLICATION_BUILD_TYPE, ALLOY_WORKSPACE_PUBLICATION_BUILDER_ID,
     ALLOY_WORKSPACE_PUBLICATION_SOURCE_REF, ALLOY_WORKSPACE_PUBLICATION_SOURCE_URI,
@@ -20,7 +22,7 @@ use crate::{
     ArtifactRegistry, ControlPlaneInfrastructure, ModuleArtifactDescriptor, ModuleArtifactPackage,
     ModuleBuildOutcome, ModuleBuildRequest, ModuleBuildResult, ModuleInstallationError,
     OciArtifactReference,
-    oci_transport::{Blob, OciRegistryTransport, RegistryReference},
+    oci_transport::{Blob, OciRegistryTransport, OciTransportError, RegistryReference},
 };
 
 /// Stable OCI config media type for a serialized immutable module descriptor.
@@ -81,7 +83,7 @@ impl OciRegistryTransportPolicy {
         }
     }
 
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), OciTransportError> {
         if self.allow_redirects
             || self.allow_cross_host_auth
             || !self.verify_tls
@@ -94,7 +96,7 @@ impl OciRegistryTransportPolicy {
             || self.max_concurrent_requests == 0
             || self.max_concurrent_requests > 4
         {
-            return Err("OCI registry transport policy is not fail-closed".to_string());
+            return Err(OciTransportError::InvalidPolicy);
         }
         Ok(())
     }
@@ -134,10 +136,19 @@ impl Drop for ArtifactStagingFile {
     }
 }
 
+/// Best-effort removal of a persisted staging temp file on a path whose
+/// primary result is already determined: a leftover file under the system
+/// temp dir is janitorial, and a removal failure must not mask that
+/// result. Same policy as
+/// [`crate::installation::DurableArtifactBlobStore::discard_best_effort`].
+pub(crate) async fn remove_staged_file_best_effort(path: &std::path::Path) {
+    let _ = tokio::fs::remove_file(path).await;
+}
+
 /// Constructs the only OCI registry transport used by module artifact
 /// publication and admission. Its policy is enforced by the client rather than
 /// delegated to process environment or network defaults.
-fn strict_oci_registry_transport() -> Result<OciRegistryTransport, String> {
+fn strict_oci_registry_transport() -> Result<OciRegistryTransport, OciTransportError> {
     OciRegistryTransport::with_policy(OciRegistryTransportPolicy::strict())
 }
 
@@ -162,7 +173,7 @@ impl OciArtifactPublicationTarget {
 
     fn tag_reference(&self, tag: String) -> Result<RegistryReference, OciArtifactPublicationError> {
         RegistryReference::new(self.registry.clone(), self.repository.clone(), tag)
-            .map_err(OciArtifactPublicationError::InvalidTarget)
+            .map_err(|error| OciArtifactPublicationError::InvalidTarget(error.to_string()))
     }
 
     fn digest_reference(&self, digest: String) -> OciArtifactReference {
@@ -448,7 +459,7 @@ impl OciDistributionArtifactPublisher {
     pub fn strict(auth: RegistryAuth) -> Result<Self, OciArtifactPublicationError> {
         Ok(Self {
             client: strict_oci_registry_transport()
-                .map_err(OciArtifactPublicationError::Registry)?,
+                .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?,
             auth,
         })
     }
@@ -660,7 +671,7 @@ impl OciDistributionArtifactPublisher {
             reference.repository.clone(),
             reference.digest.clone(),
         )
-        .map_err(OciArtifactPublicationError::Registry)?;
+        .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
         let (body, digest) = self
             .client
             .pull_manifest(&image, &self.auth)
@@ -888,15 +899,6 @@ fn canonical_alloy_workspace_provenance(
     .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))
 }
 
-fn is_sha256_digest(value: &str) -> bool {
-    value.strip_prefix("sha256:").is_some_and(|digest| {
-        digest.len() == 64
-            && digest
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    })
-}
-
 fn validate_build_blob(
     kind: &str,
     blob: &OciBuildPublicationBlob,
@@ -913,10 +915,6 @@ fn validate_build_blob(
         )));
     }
     validate_publication_bytes(kind, &blob.bytes, &blob.digest, maximum_bytes)
-}
-
-fn sha256_digest(bytes: &[u8]) -> String {
-    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
 
 fn derived_tag(kind: &str, fields: &[&str]) -> String {
@@ -988,7 +986,8 @@ impl OciDistributionArtifactRegistry {
         infrastructure: ControlPlaneInfrastructure,
     ) -> Result<Self, ModuleInstallationError> {
         Ok(Self {
-            client: strict_oci_registry_transport().map_err(ModuleInstallationError::Registry)?,
+            client: strict_oci_registry_transport()
+                .map_err(|error| ModuleInstallationError::Registry(error.to_string()))?,
             auth,
             infrastructure,
         })
@@ -1015,7 +1014,7 @@ impl OciDistributionArtifactRegistry {
             reference.repository.clone(),
             reference.digest.clone(),
         )
-        .map_err(ModuleInstallationError::Registry)
+        .map_err(|error| ModuleInstallationError::Registry(error.to_string()))
     }
 }
 
@@ -1052,7 +1051,7 @@ impl ArtifactRegistry for OciDistributionArtifactRegistry {
                 .pull_config_to_memory(&image, &manifest.config, limits)
                 .await?;
             let _config_size = config.len() as u64;
-            let config_digest = format!("sha256:{}", hex::encode(Sha256::digest(&config)));
+            let config_digest = crate::installation::sha256_digest(&config);
             if manifest.config.digest != config_digest {
                 return Err(ModuleInstallationError::Registry(format!(
                     "OCI artifact config digest mismatch: manifest declares `{}`, received `{config_digest}`",

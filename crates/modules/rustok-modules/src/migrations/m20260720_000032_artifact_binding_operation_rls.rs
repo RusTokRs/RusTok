@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
+
+use crate::backend::SupportedBackend;
 
 /// Adds the missing tenant RLS boundary to durable artifact binding operations.
 #[derive(DeriveMigrationName)]
@@ -11,7 +13,10 @@ const TABLE: &str = "module_artifact_binding_operations";
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        if manager.get_database_backend() != DbBackend::Postgres {
+        // Row-level security exists only on PostgreSQL; SQLite is an
+        // explicit no-op, anything else is rejected by the validation.
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        if backend != SupportedBackend::Postgres {
             return Ok(());
         }
 
@@ -25,14 +30,15 @@ impl MigrationTrait for Migration {
         ] {
             manager
                 .get_connection()
-                .execute_raw(Statement::from_string(DbBackend::Postgres, statement))
+                .execute_raw(Statement::from_string(backend.db_backend(), statement))
                 .await?;
         }
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        if manager.get_database_backend() != DbBackend::Postgres {
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        if backend != SupportedBackend::Postgres {
             return Ok(());
         }
 
@@ -42,7 +48,7 @@ impl MigrationTrait for Migration {
         ] {
             manager
                 .get_connection()
-                .execute_raw(Statement::from_string(DbBackend::Postgres, statement))
+                .execute_raw(Statement::from_string(backend.db_backend(), statement))
                 .await?;
         }
         Ok(())

@@ -2,8 +2,8 @@
 
 use rustok_events::DomainEvent;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
-    TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
+    Value as SqlValue,
 };
 use uuid::Uuid;
 
@@ -62,7 +62,8 @@ where
         // still purge-eligible.
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, tenant_id).await?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         if let Some(existing) = find_artifact_data_purge_operation(
             &transaction,
             tenant_id,
@@ -102,14 +103,14 @@ where
 
         let namespace = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT namespace_revision, CASE WHEN purged_at IS NULL THEN 0 ELSE 1 END AS is_purged
                      FROM module_artifact_data_namespaces
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}{}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                     namespace_lock_clause(backend),
                 ),
                 namespace_values(scope, backend)?,
@@ -146,13 +147,13 @@ where
         })?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "DELETE FROM module_artifact_data_index_contracts
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
                 namespace_values(scope, backend)?,
             ))
@@ -160,13 +161,13 @@ where
             .map_err(storage_error)?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "DELETE FROM module_artifact_data_indexes
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
                 namespace_values(scope, backend)?,
             ))
@@ -174,13 +175,13 @@ where
             .map_err(storage_error)?;
         let structured_records = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "DELETE FROM module_artifact_data
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
                 namespace_values(scope, backend)?,
             ))
@@ -189,13 +190,13 @@ where
             .rows_affected();
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "DELETE FROM module_artifact_data_operations
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
                 namespace_values(scope, backend)?,
             ))
@@ -203,13 +204,13 @@ where
             .map_err(storage_error)?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "DELETE FROM module_artifact_data_delete_operations
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
                 namespace_values(scope, backend)?,
             ))
@@ -217,13 +218,13 @@ where
             .map_err(storage_error)?;
         let object_storage_keys = transaction
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT storage_key FROM module_artifact_data_objects
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
                 namespace_values(scope, backend)?,
             ))
@@ -241,13 +242,13 @@ where
         }
         let object_records = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "DELETE FROM module_artifact_data_objects
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
                 namespace_values(scope, backend)?,
             ))
@@ -256,13 +257,13 @@ where
             .rows_affected();
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "DELETE FROM module_artifact_data_object_operations
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
                 namespace_values(scope, backend)?,
             ))
@@ -270,43 +271,111 @@ where
             .map_err(storage_error)?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "DELETE FROM module_artifact_data_object_delete_operations
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
                 namespace_values(scope, backend)?,
             ))
             .await
             .map_err(storage_error)?;
+
+        // Open/completing uploads own staged object bytes outside the main
+        // object catalog. Queue every chunk before removing its durable row,
+        // then clear those sessions in the same purge transaction so a
+        // terminal namespace cannot retain inaccessible staging data until
+        // the ordinary expiry reaper runs.
+        let upload_chunk_keys = transaction
+            .query_all_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "SELECT chunk.storage_key
+                     FROM module_artifact_data_object_upload_chunks chunk
+                     JOIN module_artifact_data_object_upload_sessions session
+                       ON session.tenant_id = chunk.tenant_id
+                      AND session.session_id = chunk.session_id
+                     WHERE session.tenant_id = {} AND session.data_owner_id = {}
+                       AND session.namespace_instance_id = {}",
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                ),
+                namespace_values(scope, backend)?,
+            ))
+            .await
+            .map_err(storage_error)?;
+        for row in upload_chunk_keys {
+            let storage_key: String = row.try_get("", "storage_key").map_err(storage_error)?;
+            queue_artifact_data_object_gc_candidate(
+                &transaction,
+                &self.infrastructure,
+                scope,
+                &storage_key,
+            )
+            .await?;
+        }
+        transaction
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "DELETE FROM module_artifact_data_object_upload_chunks
+                     WHERE tenant_id = {} AND session_id IN (
+                         SELECT session_id FROM module_artifact_data_object_upload_sessions
+                         WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
+                     )",
+                    backend.placeholder(1),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                ),
+                namespace_values(scope, backend)?,
+            ))
+            .await
+            .map_err(storage_error)?;
+        transaction
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "DELETE FROM module_artifact_data_object_upload_sessions
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                ),
+                namespace_values(scope, backend)?,
+            ))
+            .await
+            .map_err(storage_error)?;
+
         let next_revision = u64::try_from(current_revision)
             .ok()
             .and_then(|value| value.checked_add(1))
             .ok_or(ArtifactDataError::PurgePrecondition)?;
         let updated = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_data_namespaces
                      SET namespace_revision = {}, state = 'purged', purged_at = {}, updated_at = {}
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND namespace_revision = {} AND purged_at IS NULL",
-                    placeholder(backend, 1),
-                    now_expression(backend),
-                    now_expression(backend),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
+                    backend.placeholder(1),
+                    backend.now_sql(),
+                    backend.now_sql(),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
                 ),
                 vec![
                     revision_value(next_revision)?,
-                    uuid_value(scope.tenant_id, backend),
-                    uuid_value(scope.data_owner_id, backend),
-                    uuid_value(scope.namespace_instance_id, backend),
+                    backend.uuid_value(scope.tenant_id),
+                    backend.uuid_value(scope.data_owner_id),
+                    backend.uuid_value(scope.namespace_instance_id),
                     revision_value(request.expected_namespace_revision)?,
                 ],
             ))
@@ -321,39 +390,39 @@ where
             .ok_or(ArtifactDataError::PurgePrecondition)?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_data_purge_operations
                      (tenant_id, installation_id, data_owner_id, namespace_instance_id, policy_revision, idempotency_key, expected_namespace_revision,
                       namespace_revision, actor_id, trace_id, correlation_id, reason, purged_records, completed_at)
                      VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
-                    placeholder(backend, 8),
-                    placeholder(backend, 9),
-                    placeholder(backend, 10),
-                    placeholder(backend, 11),
-                    placeholder(backend, 12),
-                    placeholder(backend, 13),
-                    now_expression(backend),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
+                    backend.placeholder(8),
+                    backend.placeholder(9),
+                    backend.placeholder(10),
+                    backend.placeholder(11),
+                    backend.placeholder(12),
+                    backend.placeholder(13),
+                    backend.now_sql(),
                 ),
                 vec![
-                    uuid_value(scope.tenant_id, backend),
-                    uuid_value(request.installation_id, backend),
-                    uuid_value(scope.data_owner_id, backend),
-                    uuid_value(scope.namespace_instance_id, backend),
+                    backend.uuid_value(scope.tenant_id),
+                    backend.uuid_value(request.installation_id),
+                    backend.uuid_value(scope.data_owner_id),
+                    backend.uuid_value(scope.namespace_instance_id),
                     revision_value(scope.policy_revision)?,
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.context.idempotency_key),
                     revision_value(request.expected_namespace_revision)?,
                     revision_value(next_revision)?,
-                    uuid_value(request.context.actor_id, backend),
+                    backend.uuid_value(request.context.actor_id),
                     request.context.trace_id.clone().into(),
-                    uuid_value(request.context.correlation_id, backend),
+                    backend.uuid_value(request.context.correlation_id),
                     request.reason.clone().into(),
                     purged_records.into(),
                 ],
@@ -440,18 +509,19 @@ impl ArtifactDataPurgePreviewService {
             return Err(error);
         }
 
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let scope = &target.authorization.scope;
         let namespace = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT namespace_revision, CASE WHEN purged_at IS NULL THEN 0 ELSE 1 END AS is_purged
                      FROM module_artifact_data_namespaces
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
                 namespace_values(scope, backend)?,
             ))
@@ -523,22 +593,23 @@ async fn find_artifact_data_purge_operation<C: ConnectionTrait>(
     installation_id: Uuid,
     request: &ArtifactDataPurgeRequest,
 ) -> Result<Option<ArtifactDataPurgeResult>, ArtifactDataError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT expected_namespace_revision, actor_id, trace_id, correlation_id, reason, namespace_revision, purged_records
                  FROM module_artifact_data_purge_operations
                  WHERE tenant_id = {} AND installation_id = {} AND idempotency_key = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
             ),
             vec![
-                uuid_value(tenant_id, backend),
-                uuid_value(installation_id, backend),
-                uuid_value(request.context.idempotency_key, backend),
+                backend.uuid_value(tenant_id),
+                backend.uuid_value(installation_id),
+                backend.uuid_value(request.context.idempotency_key),
             ],
         ))
         .await

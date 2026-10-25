@@ -76,4 +76,10 @@ pub enum ArtifactDataError {
     PolicyDenied,
     #[error("artifact data storage failed: {0}")]
     Storage(String),
+    #[error("artifact data rollback failed after operation error ({primary}): {rollback}")]
+    RollbackFailed {
+        #[source]
+        primary: Box<ArtifactDataError>,
+        rollback: String,
+    },
 }

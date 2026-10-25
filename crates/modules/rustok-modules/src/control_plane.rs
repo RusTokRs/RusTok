@@ -2,6 +2,7 @@ use sea_orm::DatabaseConnection;
 use std::{collections::HashSet, sync::Arc};
 
 use rustok_core::ModuleRegistry;
+use rustok_sandbox::SandboxResult;
 use rustok_secrets::SecretResolverRegistry;
 
 use crate::{
@@ -18,7 +19,7 @@ use crate::{
     ArtifactSecretHandleAuthorizer, ArtifactSecretUseAuthorizer, ArtifactSecretValueConsumer,
     ArtifactSettingsPurgePreviewService, ArtifactSettingsRecoveryAuthorizer,
     ArtifactSettingsRecoveryCipher, ControlPlaneInfrastructure, DurableArtifactBlobStore,
-    DynamicLifecycleService, ExecutorReadinessService, ExternalPrebuiltIngressService,
+    ExecutorReadinessService, ExternalPrebuiltIngressService,
     ModuleArtifactNodeReconciliationAuthorizer, ModuleArtifactNodeTopologyResolver,
     ModuleArtifactSecurityAuthorizer, ModuleDefinitionCatalog, ModuleDefinitionError,
     ModuleEffectivePolicy, ModuleEffectivePolicyChannelInput,
@@ -449,13 +450,6 @@ impl ModuleControlPlane {
             .with_infrastructure(self.infrastructure.clone())
     }
 
-    /// Returns the dynamic lifecycle service for distinct lifecycle semantics
-    /// (install, enable, update, disable, remove, uninstall, rollback, data_purge,
-    /// settings_purge), atomic uninstall with work generation, and publisher continuity.
-    pub fn dynamic_lifecycle(&self) -> DynamicLifecycleService {
-        DynamicLifecycleService::new(self.db.clone())
-    }
-
     /// Returns the unified operator service for release projections, preview generation,
     /// status reporting, and diagnostic support bundle retrieval.
     pub fn operator(&self) -> crate::operator::ModuleOperatorService {
@@ -537,7 +531,9 @@ impl ModuleControlPlane {
 
     /// Returns the owner-scoped outbound HTTP capability resolver for exact
     /// admitted artifact executions under `platform.http`.
-    pub fn artifact_http_capability(&self) -> SeaOrmArtifactHttpCapabilityBrokerResolver {
+    pub fn artifact_http_capability(
+        &self,
+    ) -> SandboxResult<SeaOrmArtifactHttpCapabilityBrokerResolver> {
         SeaOrmArtifactHttpCapabilityBrokerResolver::new(self.db.clone())
     }
 
@@ -545,7 +541,7 @@ impl ModuleControlPlane {
     pub fn artifact_http_capability_with_timeout(
         &self,
         timeout: std::time::Duration,
-    ) -> SeaOrmArtifactHttpCapabilityBrokerResolver {
+    ) -> SandboxResult<SeaOrmArtifactHttpCapabilityBrokerResolver> {
         SeaOrmArtifactHttpCapabilityBrokerResolver::with_timeout(self.db.clone(), timeout)
     }
 

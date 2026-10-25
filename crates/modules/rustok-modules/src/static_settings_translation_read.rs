@@ -7,11 +7,12 @@
 use std::collections::BTreeMap;
 
 use rustok_api::TenantLocale;
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::data::configure_tenant_scope;
 use crate::operation_store::{StaticTenantLifecycleStore, StaticTenantLifecycleStoreError};
 use crate::static_settings_localization::StaticSettingsLocalizationRegistry;
@@ -342,15 +343,16 @@ async fn load_high_watermark<C: ConnectionTrait>(
     tenant_id: Uuid,
     module_slug: &str,
 ) -> Result<Option<u64>, StaticSettingsTranslationReadError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(database_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             match backend {
-                DbBackend::Postgres => {
+                SupportedBackend::Postgres => {
                     "SELECT MAX(change_seq) AS max_change_seq FROM module_static_settings_changes WHERE tenant_id = $1 AND module_slug = $2"
                 }
-                _ => {
+                SupportedBackend::Sqlite => {
                     "SELECT MAX(change_seq) AS max_change_seq FROM module_static_settings_changes WHERE tenant_id = ?1 AND module_slug = ?2"
                 }
             },
@@ -377,18 +379,19 @@ async fn load_change_rows<C: ConnectionTrait>(
     through_seq: u64,
     limit: u64,
 ) -> Result<Vec<StaticSettingsChangeRecord>, StaticSettingsTranslationReadError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(database_error)?;
     let rows = connection
         .query_all_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             match backend {
-                DbBackend::Postgres => {
+                SupportedBackend::Postgres => {
                     "SELECT change_seq, change_kind, field_id, locale, owner_revision, target_revision \
                      FROM module_static_settings_changes \
                      WHERE tenant_id = $1 AND module_slug = $2 AND change_seq > $3 AND change_seq <= $4 \
                      ORDER BY change_seq ASC LIMIT $5"
                 }
-                _ => {
+                SupportedBackend::Sqlite => {
                     "SELECT change_seq, change_kind, field_id, locale, owner_revision, target_revision \
                      FROM module_static_settings_changes \
                      WHERE tenant_id = ?1 AND module_slug = ?2 AND change_seq > ?3 AND change_seq <= ?4 \
@@ -470,17 +473,18 @@ async fn load_exact_locale_rows<C: ConnectionTrait>(
     module_slug: &str,
     locale: &str,
 ) -> Result<BTreeMap<String, ExactTargetRow>, StaticSettingsTranslationReadError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(database_error)?;
     let rows = connection
         .query_all_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             match backend {
-                DbBackend::Postgres => {
+                SupportedBackend::Postgres => {
                     "SELECT field_id, value, revision, owner_revision \
                      FROM module_static_localized_settings \
                      WHERE tenant_id = $1 AND module_slug = $2 AND locale = $3 ORDER BY field_id ASC"
                 }
-                _ => {
+                SupportedBackend::Sqlite => {
                     "SELECT field_id, value, revision, owner_revision \
                      FROM module_static_localized_settings \
                      WHERE tenant_id = ?1 AND module_slug = ?2 AND locale = ?3 ORDER BY field_id ASC"

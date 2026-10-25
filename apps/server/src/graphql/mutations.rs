@@ -82,6 +82,10 @@ fn toggle_err_missing_dependencies(missing: &str) -> String {
     format!("Missing module dependencies: {missing}")
 }
 
+fn toggle_err_incompatible_dependencies(incompatible: &str) -> String {
+    format!("Module dependencies with incompatible versions: {incompatible}")
+}
+
 fn toggle_err_has_dependents(dependents: &str) -> String {
     format!("Module is required by: {dependents}")
 }
@@ -518,6 +522,11 @@ fn map_toggle_module_error(error: ToggleModuleError) -> FieldError {
         }
         ToggleModuleError::MissingDependencies(missing) => {
             <FieldError as GraphQLError>::bad_user_input(&toggle_err_missing_dependencies(&missing))
+        }
+        ToggleModuleError::IncompatibleDependencies(incompatible) => {
+            <FieldError as GraphQLError>::bad_user_input(
+                &toggle_err_incompatible_dependencies(&incompatible),
+            )
         }
         ToggleModuleError::HasDependents(dependents) => {
             <FieldError as GraphQLError>::bad_user_input(&toggle_err_has_dependents(&dependents))
@@ -1859,8 +1868,8 @@ mod tests {
         map_platform_composition_build_error, map_platform_composition_error,
         map_toggle_module_error, prepare_user_custom_fields_write,
         require_platform_composition_operator, toggle_err_core_module_cannot_be_disabled,
-        toggle_err_has_dependents, toggle_err_hook_failed, toggle_err_missing_dependencies,
-        validate_custom_fields,
+        toggle_err_has_dependents, toggle_err_hook_failed, toggle_err_incompatible_dependencies,
+        toggle_err_missing_dependencies, validate_custom_fields,
     };
     use crate::graphql::artifact_lifecycle::{
         map_artifact_installation_lifecycle_error, map_artifact_tenant_lifecycle_error,
@@ -2113,6 +2122,12 @@ mod tests {
                 expected_message: toggle_err_missing_dependencies("pricing"),
                 expected_code: Some("BAD_USER_INPUT"),
                 case_name: "missing-dependencies",
+            },
+            ToggleCase {
+                error: ToggleModuleError::IncompatibleDependencies("pricing".into()),
+                expected_message: toggle_err_incompatible_dependencies("pricing"),
+                expected_code: Some("BAD_USER_INPUT"),
+                case_name: "incompatible-dependencies",
             },
             ToggleCase {
                 error: ToggleModuleError::HasDependents("checkout".into()),

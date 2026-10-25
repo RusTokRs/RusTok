@@ -6,7 +6,7 @@ pub(crate) use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 pub(crate) use bytes::Bytes;
 pub(crate) use object_store::{ObjectStoreExt, path::Path};
 pub(crate) use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, QueryResult, Statement,
     TransactionTrait, Value as SqlValue,
 };
 pub(crate) use serde::{Deserialize, Serialize};
@@ -26,6 +26,7 @@ pub(crate) use rustok_sandbox::{
 };
 pub(crate) use rustok_storage::{ObjectKey, ObjectScope, ObjectZone, StorageRuntime};
 
+pub(crate) use crate::backend::SupportedBackend;
 pub(crate) use crate::{
     ArtifactBindingDispatch, ArtifactBindingExecutor, ArtifactCapabilityBrokerResolver,
     ArtifactCapabilityExecution, ArtifactDataIndexField, ArtifactDataIndexValueType,

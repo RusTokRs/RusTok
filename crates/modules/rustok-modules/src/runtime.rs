@@ -15,8 +15,9 @@ use rustok_sandbox::{
 
 use crate::{
     ArtifactBindingDispatch, ArtifactBindingDispatchEnvelope, ArtifactBindingDispatchEnvelopeError,
-    ArtifactBindingExecutor, ArtifactBlobStore, ArtifactReleaseRef, InstalledModuleArtifact,
-    ModuleArtifactError, ModuleEffectivePolicy, ModuleInstallationError, ModuleRuntimeBinding,
+    ArtifactBindingDispatchError, ArtifactBindingExecutor, ArtifactBlobStore, ArtifactReleaseRef,
+    InstalledModuleArtifact, ModuleArtifactError, ModuleEffectivePolicy, ModuleInstallationError,
+    ModuleRuntimeBinding,
     artifact_schema::{ArtifactSchemaValidationError, ArtifactSchemaValidatorCache},
 };
 
@@ -246,6 +247,50 @@ impl BindingSchemaStage {
     }
 }
 
+/// Failure of an [`ArtifactInstallationResolver`] port. `Unavailable` and
+/// `NotActiveSelection` are durable-state denials (no active installation can
+/// satisfy the request); callers must be able to distinguish them from the
+/// infrastructure failures carried by `Store`.
+#[derive(Debug, Error)]
+pub enum ArtifactInstallationResolveError {
+    #[error("active artifact installation is unavailable for the requested tenant")]
+    Unavailable,
+    #[error("requested artifact installation is no longer the active tenant selection")]
+    NotActiveSelection,
+    #[error("{0}")]
+    InvalidRequest(String),
+    #[error("{0}")]
+    Invariant(String),
+    #[error("artifact installation resolution failed: {0}")]
+    Store(String),
+}
+
+/// Failure of an [`ArtifactSandboxPolicyResolver`] port.
+#[derive(Debug, Error)]
+pub enum ArtifactSandboxPolicyResolveError {
+    #[error("no eligible durable sandbox policy exists for the artifact installation")]
+    Unavailable,
+    #[error("{0}")]
+    InvalidRequest(String),
+    #[error("sandbox policy revision does not match the admitted installation")]
+    RevisionMismatch,
+    #[error("{0}")]
+    Invariant(String),
+    #[error("artifact sandbox policy resolution failed: {0}")]
+    Store(String),
+}
+
+/// Failure of an [`ArtifactEffectivePolicyResolver`] port.
+#[derive(Debug, Error)]
+pub enum ArtifactEffectivePolicyResolveError {
+    #[error("{0}")]
+    InvalidRequest(String),
+    #[error("artifact node is not ready for the admitted installation: {0}")]
+    NodeNotReady(String),
+    #[error("artifact effective policy resolution failed: {0}")]
+    Store(String),
+}
+
 /// Resolves the immutable installation selected for an artifact lifecycle
 /// dispatch. Implementations must apply platform/tenant scope and RLS.
 #[async_trait]
@@ -254,7 +299,7 @@ pub trait ArtifactInstallationResolver: Send + Sync {
         &self,
         release: &ArtifactReleaseRef,
         tenant_id: uuid::Uuid,
-    ) -> Result<InstalledModuleArtifact, String>;
+    ) -> Result<InstalledModuleArtifact, ArtifactInstallationResolveError>;
 
     /// Resolves the immutable installation carried by a durable work item.
     /// Implementations may override this with a direct installation lookup.
@@ -265,12 +310,10 @@ pub trait ArtifactInstallationResolver: Send + Sync {
         installation_id: uuid::Uuid,
         release: &ArtifactReleaseRef,
         tenant_id: uuid::Uuid,
-    ) -> Result<InstalledModuleArtifact, String> {
+    ) -> Result<InstalledModuleArtifact, ArtifactInstallationResolveError> {
         let artifact = self.resolve(release, tenant_id).await?;
         if artifact.installation_id != installation_id {
-            return Err(
-                "requested artifact installation is no longer the active tenant selection".into(),
-            );
+            return Err(ArtifactInstallationResolveError::NotActiveSelection);
         }
         Ok(artifact)
     }
@@ -284,7 +327,7 @@ pub trait ArtifactSandboxPolicyResolver: Send + Sync {
         &self,
         artifact: &InstalledModuleArtifact,
         tenant_id: uuid::Uuid,
-    ) -> Result<SandboxPolicy, String>;
+    ) -> Result<SandboxPolicy, ArtifactSandboxPolicyResolveError>;
 }
 
 /// Resolves the canonical effective module policy and node-admission evidence
@@ -297,7 +340,7 @@ pub trait ArtifactEffectivePolicyResolver: Send + Sync {
         &self,
         tenant_id: uuid::Uuid,
         artifact: &InstalledModuleArtifact,
-    ) -> Result<ModuleEffectivePolicy, String>;
+    ) -> Result<ModuleEffectivePolicy, ArtifactEffectivePolicyResolveError>;
 }
 
 /// Production adapter from admitted dispatcher bindings to the shared sandbox.
@@ -331,12 +374,12 @@ fn effective_binding_policy(
     binding: &ModuleRuntimeBinding,
     phase: ExecutionPhase,
     mut policy: SandboxPolicy,
-) -> Result<SandboxPolicy, String> {
+) -> Result<SandboxPolicy, ArtifactBindingDispatchError> {
     if phase == ExecutionPhase::Http {
         let timeout_ms = binding
             .http
             .as_ref()
-            .ok_or_else(|| "HTTP dispatch requires an admitted HTTP binding".to_string())?
+            .ok_or(ArtifactBindingDispatchError::HttpBindingRequired)?
             .timeout_ms;
         policy.limits.wall_clock_ms = policy.limits.wall_clock_ms.min(timeout_ms);
     }
@@ -358,9 +401,9 @@ where
     async fn dispatch_binding(
         &self,
         dispatch: ArtifactBindingDispatch<'_>,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, ArtifactBindingDispatchError> {
         if !dispatch.context.is_valid() {
-            return Err("artifact binding execution context is invalid".to_string());
+            return Err(ArtifactBindingDispatchError::InvalidContext);
         }
         let artifact = match dispatch.target {
             crate::ArtifactInstallationTarget::CurrentRelease => {
@@ -380,11 +423,10 @@ where
                 .resolve(dispatch.tenant_id, &artifact)
                 .await?;
             if !policy.contains(&artifact.release.slug) {
-                return Err(format!(
-                    "module `{}` is denied by effective policy revision {}",
-                    artifact.release.slug,
-                    policy.policy_revision()
-                ));
+                return Err(ArtifactBindingDispatchError::DeniedByPolicy {
+                    slug: artifact.release.slug.clone(),
+                    policy_revision: policy.policy_revision().to_string(),
+                });
             }
         }
         let policy = effective_binding_policy(
@@ -399,11 +441,11 @@ where
         context.audit_label = Some(dispatch.binding.id.clone());
         let input =
             ArtifactBindingDispatchEnvelope::new(dispatch.binding, dispatch.phase, dispatch.input);
-        self.runtime
+        Ok(self
+            .runtime
             .execute_binding(&artifact, dispatch.binding, context, input, policy)
-            .await
-            .map(|outcome| outcome.output)
-            .map_err(|error| error.to_string())
+            .await?
+            .output)
     }
 }
 
@@ -526,9 +568,9 @@ mod tests {
             &self,
             release: &ArtifactReleaseRef,
             _tenant_id: Uuid,
-        ) -> Result<InstalledModuleArtifact, String> {
+        ) -> Result<InstalledModuleArtifact, ArtifactInstallationResolveError> {
             if release != &self.0.release {
-                return Err("fixture installation release does not match dispatch".to_string());
+                return Err(ArtifactInstallationResolveError::Unavailable);
             }
             Ok(self.0.clone())
         }
@@ -542,8 +584,8 @@ mod tests {
             &self,
             _artifact: &InstalledModuleArtifact,
             _tenant_id: Uuid,
-        ) -> Result<SandboxPolicy, String> {
-            Err("sandbox policy must not resolve after a policy-gate denial".to_string())
+        ) -> Result<SandboxPolicy, ArtifactSandboxPolicyResolveError> {
+            Err(ArtifactSandboxPolicyResolveError::Unavailable)
         }
     }
 
@@ -555,9 +597,11 @@ mod tests {
             &self,
             _tenant_id: Uuid,
             artifact: &InstalledModuleArtifact,
-        ) -> Result<ModuleEffectivePolicy, String> {
+        ) -> Result<ModuleEffectivePolicy, ArtifactEffectivePolicyResolveError> {
             *self.0.lock().expect("effective policy lock") = Some(artifact.installation_id);
-            Err("durable node assignment is unavailable".to_string())
+            Err(ArtifactEffectivePolicyResolveError::NodeNotReady(
+                "durable node assignment is unavailable".to_string(),
+            ))
         }
     }
 
@@ -664,7 +708,7 @@ mod tests {
             },
             descriptor: package.descriptor.clone(),
             payload_media_type: package.media_type.clone(),
-            dependency_lock: ModuleDependencyLockGraph::create(0, Vec::new())
+            dependency_lock: ModuleDependencyLockGraph::create(1, Vec::new())
                 .expect("empty dependency lock"),
             capability_grant_revision: 1,
             installed_at: Utc::now(),
@@ -739,7 +783,12 @@ mod tests {
             .await
             .expect_err("durable policy gate must deny before sandbox execution");
 
-        assert_eq!(error, "durable node assignment is unavailable");
+        assert!(matches!(
+            error,
+            ArtifactBindingDispatchError::EffectivePolicy(
+                ArtifactEffectivePolicyResolveError::NodeNotReady(message)
+            ) if message == "durable node assignment is unavailable"
+        ));
         assert_eq!(
             *observed.lock().expect("effective policy lock"),
             Some(installed.installation_id)

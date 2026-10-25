@@ -79,7 +79,7 @@ where
                 context: crate::ArtifactBindingExecutionContext::default(),
             })
             .await
-            .map_err(ArtifactDataError::UpgradeHook)
+            .map_err(|error| ArtifactDataError::UpgradeHook(error.to_string()))
     }
 }
 

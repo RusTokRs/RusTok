@@ -14,27 +14,19 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use rustok_sandbox::SandboxExecutorPlacement;
 
+use crate::backend::SupportedBackend;
+use crate::installation::{sha256_digest, valid_digest};
 use crate::{
     ArtifactBlobStore, ControlPlaneInfrastructure, InstalledModuleArtifact,
     ModuleArtifactDescriptor, ModuleInstallationError,
 };
-
-fn sha256_digest(bytes: &[u8]) -> String {
-    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
-}
-
-fn valid_digest(digest: &str) -> bool {
-    digest.starts_with("sha256:")
-        && digest.len() == 71
-        && digest[7..].chars().all(|c| c.is_ascii_hexdigit())
-}
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExecutorReadinessError {
@@ -221,16 +213,45 @@ pub struct CachedPreparedPayload {
     pub verified_at: DateTime<Utc>,
 }
 
-/// Thread-safe verified payload cache keyed by `(payload_digest, runtime_fingerprint)`.
-#[derive(Debug, Default)]
+/// Default entry bound for [`VerifiedPayloadCache`].
+pub const DEFAULT_VERIFIED_PAYLOAD_CACHE_MAX_ENTRIES: usize = 128;
+/// Default aggregate payload-bytes bound for [`VerifiedPayloadCache`].
+pub const DEFAULT_VERIFIED_PAYLOAD_CACHE_MAX_BYTES: usize = 256 * 1024 * 1024;
+
+/// Thread-safe, bounded verified payload cache keyed by
+/// `(payload_digest, runtime_fingerprint)`.
+///
+/// The cache is an optimization over re-reading verified CAS payloads, never
+/// an authority: a poisoned lock degrades to cache misses/no-ops instead of
+/// panicking, and insertion evicts the oldest-verified entries until both
+/// the entry count and aggregate byte bounds hold. An entry larger than the
+/// byte bound is not retained.
+#[derive(Debug)]
 pub struct VerifiedPayloadCache {
     entries: RwLock<HashMap<(String, String), CachedPreparedPayload>>,
+    max_entries: usize,
+    max_bytes: usize,
+}
+
+impl Default for VerifiedPayloadCache {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl VerifiedPayloadCache {
     pub fn new() -> Self {
+        Self::with_limits(
+            DEFAULT_VERIFIED_PAYLOAD_CACHE_MAX_ENTRIES,
+            DEFAULT_VERIFIED_PAYLOAD_CACHE_MAX_BYTES,
+        )
+    }
+
+    pub fn with_limits(max_entries: usize, max_bytes: usize) -> Self {
         Self {
             entries: RwLock::new(HashMap::new()),
+            max_entries,
+            max_bytes,
         }
     }
 
@@ -241,36 +262,63 @@ impl VerifiedPayloadCache {
     ) -> Option<CachedPreparedPayload> {
         self.entries
             .read()
-            .unwrap()
+            .ok()?
             .get(&(payload_digest.to_string(), fingerprint_digest.to_string()))
             .cloned()
     }
 
     pub fn put(&self, entry: CachedPreparedPayload) {
+        if entry.payload_bytes.len() > self.max_bytes || self.max_entries == 0 {
+            return;
+        }
         let key = (
             entry.payload_digest.clone(),
             entry.runtime_fingerprint.clone(),
         );
-        self.entries.write().unwrap().insert(key, entry);
+        let Ok(mut entries) = self.entries.write() else {
+            return;
+        };
+        entries.insert(key, entry);
+        // Evict oldest-verified entries until both bounds hold.
+        while entries.len() > self.max_entries
+            || entries
+                .values()
+                .map(|cached| cached.payload_bytes.len())
+                .sum::<usize>()
+                > self.max_bytes
+        {
+            let Some(oldest_key) = entries
+                .iter()
+                .min_by_key(|(_, cached)| cached.verified_at)
+                .map(|(key, _)| key.clone())
+            else {
+                break;
+            };
+            entries.remove(&oldest_key);
+        }
     }
 
     pub fn invalidate_fingerprint(&self, fingerprint_digest: &str) {
-        self.entries
-            .write()
-            .unwrap()
-            .retain(|(_, fp), _| fp != fingerprint_digest);
+        if let Ok(mut entries) = self.entries.write() {
+            entries.retain(|(_, fp), _| fp != fingerprint_digest);
+        }
     }
 
     pub fn clear(&self) {
-        self.entries.write().unwrap().clear();
+        if let Ok(mut entries) = self.entries.write() {
+            entries.clear();
+        }
     }
 
     pub fn len(&self) -> usize {
-        self.entries.read().unwrap().len()
+        self.entries
+            .read()
+            .map(|entries| entries.len())
+            .unwrap_or(0)
     }
 
     pub fn is_empty(&self) -> bool {
-        self.entries.read().unwrap().is_empty()
+        self.len() == 0
     }
 }
 
@@ -468,15 +516,16 @@ impl ExecutorReadinessService {
         &self,
         receipt: &ExecutorSmokeReceipt,
     ) -> Result<(), ExecutorReadinessError> {
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
         let placement_str = match receipt.placement {
             SandboxExecutorPlacement::InProcess => "in_process",
             SandboxExecutorPlacement::IsolatedWorker => "isolated_worker",
         };
 
         let statement = match backend {
-            DbBackend::Postgres => Statement::from_sql_and_values(
-                DbBackend::Postgres,
+            SupportedBackend::Postgres => Statement::from_sql_and_values(
+                SupportedBackend::Postgres.db_backend(),
                 "INSERT INTO module_executor_readiness_receipts (\
                     id, operation_id, installation_id, release_digest, payload_digest,\
                     runtime_fingerprint, pool_id, pool_generation, placement,\
@@ -499,8 +548,8 @@ impl ExecutorReadinessService {
                     receipt.evaluated_at.into(),
                 ],
             ),
-            DbBackend::Sqlite => Statement::from_sql_and_values(
-                DbBackend::Sqlite,
+            SupportedBackend::Sqlite => Statement::from_sql_and_values(
+                SupportedBackend::Sqlite.db_backend(),
                 "INSERT INTO module_executor_readiness_receipts (\
                     id, operation_id, installation_id, release_digest, payload_digest,\
                     runtime_fingerprint, pool_id, pool_generation, placement,\
@@ -528,11 +577,6 @@ impl ExecutorReadinessService {
                     receipt.evaluated_at.to_rfc3339().into(),
                 ],
             ),
-            _ => {
-                return Err(ExecutorReadinessError::Store(
-                    "Unsupported database backend".to_string(),
-                ));
-            }
         };
 
         self.db
@@ -551,10 +595,11 @@ impl ExecutorReadinessService {
         pool_generation: u64,
         runtime_fingerprint: &str,
     ) -> Result<Option<ExecutorSmokeReceipt>, ExecutorReadinessError> {
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend())
+            .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
         let statement = match backend {
-            DbBackend::Postgres => Statement::from_sql_and_values(
-                DbBackend::Postgres,
+            SupportedBackend::Postgres => Statement::from_sql_and_values(
+                SupportedBackend::Postgres.db_backend(),
                 "SELECT id, operation_id, installation_id, release_digest, payload_digest,\
                         runtime_fingerprint, pool_id, pool_generation, placement,\
                         placement_policy_revision, capability_routes_verified, smoke_passed,\
@@ -570,8 +615,8 @@ impl ExecutorReadinessService {
                     runtime_fingerprint.to_owned().into(),
                 ],
             ),
-            DbBackend::Sqlite => Statement::from_sql_and_values(
-                DbBackend::Sqlite,
+            SupportedBackend::Sqlite => Statement::from_sql_and_values(
+                SupportedBackend::Sqlite.db_backend(),
                 "SELECT id, operation_id, installation_id, release_digest, payload_digest,\
                         runtime_fingerprint, pool_id, pool_generation, placement,\
                         placement_policy_revision, capability_routes_verified, smoke_passed,\
@@ -587,11 +632,6 @@ impl ExecutorReadinessService {
                     runtime_fingerprint.to_owned().into(),
                 ],
             ),
-            _ => {
-                return Err(ExecutorReadinessError::Store(
-                    "Unsupported database backend".to_string(),
-                ));
-            }
         };
 
         let row = self
@@ -624,36 +664,35 @@ impl ExecutorReadinessService {
             .try_get("", "placement_policy_revision")
             .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
         let routes_verified = match backend {
-            DbBackend::Postgres => row
+            SupportedBackend::Postgres => row
                 .try_get::<bool>("", "capability_routes_verified")
                 .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
-            _ => {
+            SupportedBackend::Sqlite => {
                 row.try_get::<i32>("", "capability_routes_verified")
                     .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?
                     != 0
             }
         };
         let smoke_passed = match backend {
-            DbBackend::Postgres => row
+            SupportedBackend::Postgres => row
                 .try_get::<bool>("", "smoke_passed")
                 .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
-            _ => {
+            SupportedBackend::Sqlite => {
                 row.try_get::<i32>("", "smoke_passed")
                     .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?
                     != 0
             }
         };
         let evaluated_at = match backend {
-            DbBackend::Postgres => row
+            SupportedBackend::Postgres => row
                 .try_get::<DateTime<Utc>>("", "evaluated_at")
                 .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
-            _ => {
+            SupportedBackend::Sqlite => {
                 let s: String = row
                     .try_get("", "evaluated_at")
                     .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
-                DateTime::parse_from_rfc3339(&s)
+                crate::backend::parse_sqlite_datetime(&s)
                     .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?
-                    .with_timezone(&Utc)
             }
         };
 

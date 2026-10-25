@@ -96,7 +96,7 @@ impl CommentService {
         let Some(snapshot) = snapshot else {
             return Ok(BlogCommentsMode::Disabled);
         };
-        if !snapshot.enabled {
+        if snapshot.enabled != Some(true) {
             return Ok(BlogCommentsMode::Disabled);
         }
 

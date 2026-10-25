@@ -10,22 +10,25 @@ use std::{collections::BTreeMap, str::FromStr};
 use chrono::{DateTime, Duration, Timelike, Utc};
 use chrono_tz::Tz;
 use cron::Schedule;
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement, TransactionTrait,
-    Value as SqlValue,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, QueryResult, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ArtifactScheduleDeliveryError, ArtifactScheduleDeliveryRequest, ModuleArtifactDescriptor,
     ModuleRuntimeBindingKind, ModuleScheduleBinding, ModuleScheduleMisfirePolicy,
     ModuleScheduleOverlapPolicy, SeaOrmArtifactScheduleDeliveryQueue,
     artifact::schedule_cron_expression,
-    data::{configure_tenant_scope, now_expression, placeholder, uuid_from_row, uuid_value},
+    data::{configure_tenant_scope, uuid_from_row},
     schedule_binding_digest,
 };
+
+/// Upper bound on installations evaluated for one tenant in a single poll.
+/// Exceeding it fails the poll with `BacklogLimitExceeded` rather than
+/// silently truncating the schedule set.
+pub const MAX_SCHEDULE_CANDIDATES_PER_POLL: usize = 10_000;
 
 /// Bounded owner policy for clock catch-up. The descriptor selects behavior;
 /// this configuration limits how much durable work one scheduler poll creates.
@@ -158,14 +161,15 @@ impl ArtifactScheduleMaterializer {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let enabled = match backend {
-            DbBackend::Postgres => "COALESCE(lifecycle.enabled, TRUE) = TRUE",
-            _ => "COALESCE(lifecycle.enabled, 1) = 1",
+            SupportedBackend::Postgres => "COALESCE(lifecycle.enabled, TRUE) = TRUE",
+            SupportedBackend::Sqlite => "COALESCE(lifecycle.enabled, 1) = 1",
         };
         let rows = transaction
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT installation.installation_id, installation.slug, installation.scope_kind, \
                             CAST(installation.descriptor AS TEXT) AS descriptor \
@@ -181,13 +185,18 @@ impl ArtifactScheduleMaterializer {
                        AND {enabled} \
                        AND ((installation.scope_kind = 'tenant' AND installation.tenant_id = {}) \
                             OR (installation.scope_kind = 'platform' AND installation.tenant_id IS NULL))",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
                 ),
-                vec![uuid_value(tenant_id, backend), uuid_value(tenant_id, backend)],
+                vec![backend.uuid_value(tenant_id), backend.uuid_value(tenant_id)],
             ))
             .await
             .map_err(storage_error)?;
+        if rows.len() > MAX_SCHEDULE_CANDIDATES_PER_POLL {
+            // Fail loud instead of loading an unbounded installation set
+            // (with a full descriptor parse per row) into one poll.
+            return Err(ArtifactScheduleMaterializationError::BacklogLimitExceeded);
+        }
         let mut effective = BTreeMap::<String, ScheduleCandidate>::new();
         for row in rows {
             let candidate = candidate_from_row(&row, backend)?;
@@ -239,21 +248,22 @@ impl ArtifactScheduleMaterializer {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT schedule_digest, materialized_through \
                      FROM module_artifact_schedule_cursors \
                      WHERE tenant_id = {} AND installation_id = {} AND binding_id = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
                 vec![
-                    uuid_value(tenant_id, backend),
-                    uuid_value(binding.installation_id, backend),
+                    backend.uuid_value(tenant_id),
+                    backend.uuid_value(binding.installation_id),
                     binding.binding_id.clone().into(),
                 ],
             ))
@@ -287,10 +297,11 @@ impl ArtifactScheduleMaterializer {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_schedule_cursors \
                      (tenant_id, installation_id, binding_id, schedule_digest, materialized_through, updated_at) \
@@ -304,19 +315,19 @@ impl ArtifactScheduleMaterializer {
                              ELSE excluded.materialized_through \
                          END, \
                          updated_at = excluded.updated_at",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    now_expression(backend),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.now_sql(),
                 ),
                 vec![
-                    uuid_value(tenant_id, backend),
-                    uuid_value(binding.installation_id, backend),
+                    backend.uuid_value(tenant_id),
+                    backend.uuid_value(binding.installation_id),
                     binding.binding_id.clone().into(),
                     binding.schedule_digest.clone().into(),
-                    datetime_value(materialized_through, backend),
+                    backend.datetime_value(materialized_through),
                 ],
             ))
             .await
@@ -334,22 +345,23 @@ impl ArtifactScheduleMaterializer {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT 1 AS active_delivery FROM module_artifact_schedule_deliveries \
                      WHERE tenant_id = {} AND installation_id = {} AND binding_id = {} \
                        AND schedule_digest = {} AND status IN ('pending', 'running') LIMIT 1",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
                 ),
                 vec![
-                    uuid_value(tenant_id, backend),
-                    uuid_value(binding.installation_id, backend),
+                    backend.uuid_value(tenant_id),
+                    backend.uuid_value(binding.installation_id),
                     binding.binding_id.clone().into(),
                     binding.schedule_digest.clone().into(),
                 ],
@@ -385,7 +397,7 @@ struct DueSlots {
 
 fn candidate_from_row(
     row: &QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<ScheduleCandidate, ArtifactScheduleMaterializationError> {
     let slug: String = row.try_get("", "slug").map_err(storage_error)?;
     let tenant_scoped = match row
@@ -438,7 +450,10 @@ fn due_slots(
     let cutoff = now - Duration::seconds(i64::from(config.misfire_grace_seconds));
     let (slots, skipped_misfires, advance_through) = match binding.misfire {
         ModuleScheduleMisfirePolicy::Skip => {
+            // Slots older than the grace cutoff are skipped, and counted
+            // honestly instead of vanishing from the report.
             let start = through.max(cutoff - Duration::seconds(1));
+            let skipped_misfires = count_due_between(&schedule, timezone, through, start);
             let slots = due_after(
                 &schedule,
                 timezone,
@@ -446,11 +461,24 @@ fn due_slots(
                 now,
                 config.max_slots_per_binding,
             );
-            (slots, 0, now)
+            (slots, skipped_misfires, now)
         }
         ModuleScheduleMisfirePolicy::RunOnce => {
-            let slots = due_after(&schedule, timezone, through, now, 1);
-            (slots, 0, now)
+            // Run the most recently missed slot once; every earlier missed
+            // slot is a skipped misfire. (Previously the *oldest* slot ran,
+            // which executes the stalest possible work and hides the rest.)
+            let (latest, due_count, exhausted) = latest_due(&schedule, timezone, through, now);
+            match latest {
+                Some(latest) => {
+                    let skipped_misfires = due_count.saturating_sub(1);
+                    // If the scan hit its bound before reaching `now`, do
+                    // not pretend the backlog is drained: advance only to
+                    // the last scanned slot so the next poll continues.
+                    let advance_through = if exhausted { now } else { latest };
+                    (vec![latest], skipped_misfires, advance_through)
+                }
+                None => (Vec::new(), 0, now),
+            }
         }
         ModuleScheduleMisfirePolicy::CatchUp => {
             let slots = due_after(
@@ -469,6 +497,54 @@ fn due_slots(
         advance_through,
         skipped_misfires,
     })
+}
+
+/// Upper bound on cron occurrences inspected while counting skipped
+/// misfires. Counting saturates at this bound rather than scanning an
+/// unbounded backlog (a minutely schedule reaches it after ~69 days).
+const MAX_MISFIRE_COUNT_SCAN: u32 = 100_000;
+
+/// Counts occurrences in `(after, through_inclusive]`, saturating at
+/// [`MAX_MISFIRE_COUNT_SCAN`].
+fn count_due_between(
+    schedule: &Schedule,
+    timezone: Tz,
+    after: DateTime<Utc>,
+    through_inclusive: DateTime<Utc>,
+) -> u32 {
+    let mut count = 0u32;
+    for occurrence in schedule.after(&after.with_timezone(&timezone)) {
+        if occurrence.with_timezone(&Utc) > through_inclusive || count >= MAX_MISFIRE_COUNT_SCAN {
+            break;
+        }
+        count += 1;
+    }
+    count
+}
+
+/// Finds the latest occurrence in `(after, now]` and how many occurrences
+/// the bounded scan saw. `exhausted` is false when the scan stopped at
+/// [`MAX_MISFIRE_COUNT_SCAN`] before reaching `now`.
+fn latest_due(
+    schedule: &Schedule,
+    timezone: Tz,
+    after: DateTime<Utc>,
+    now: DateTime<Utc>,
+) -> (Option<DateTime<Utc>>, u32, bool) {
+    let mut latest = None;
+    let mut count = 0u32;
+    for occurrence in schedule.after(&after.with_timezone(&timezone)) {
+        let occurrence = occurrence.with_timezone(&Utc);
+        if occurrence > now {
+            return (latest, count, true);
+        }
+        if count >= MAX_MISFIRE_COUNT_SCAN {
+            return (latest, count, false);
+        }
+        latest = Some(occurrence);
+        count += 1;
+    }
+    (latest, count, true)
 }
 
 fn due_after(
@@ -492,27 +568,16 @@ fn due_after(
 fn datetime_from_row(
     row: &QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<DateTime<Utc>, ArtifactScheduleMaterializationError> {
     match backend {
-        DbBackend::Postgres => row
+        SupportedBackend::Postgres => row
             .try_get::<DateTime<Utc>>("", column)
             .map_err(storage_error),
-        _ => row
+        SupportedBackend::Sqlite => row
             .try_get::<String>("", column)
             .map_err(storage_error)
-            .and_then(|value| {
-                DateTime::parse_from_rfc3339(&value)
-                    .map(|timestamp| timestamp.with_timezone(&Utc))
-                    .map_err(storage_error)
-            }),
-    }
-}
-
-fn datetime_value(value: DateTime<Utc>, backend: DbBackend) -> SqlValue {
-    match backend {
-        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(value)),
-        _ => value.to_rfc3339().into(),
+            .and_then(|value| crate::backend::parse_sqlite_datetime(&value).map_err(storage_error)),
     }
 }
 
@@ -540,4 +605,81 @@ pub enum ArtifactScheduleMaterializationError {
     Queue(ArtifactScheduleDeliveryError),
     #[error("artifact schedule materializer storage failed: {0}")]
     Storage(String),
+}
+
+#[cfg(test)]
+mod due_slot_tests {
+    use super::*;
+    use crate::{ModuleScheduleDeduplication, ModuleScheduleOverlapPolicy};
+
+    fn binding(misfire: ModuleScheduleMisfirePolicy) -> ModuleScheduleBinding {
+        ModuleScheduleBinding {
+            // Every 10 minutes.
+            cron: "*/10 * * * *".to_string(),
+            timezone: "UTC".to_string(),
+            misfire,
+            overlap: ModuleScheduleOverlapPolicy::Queue,
+            deduplication: ModuleScheduleDeduplication::PerSlot,
+        }
+    }
+
+    fn at(hour: u32, minute: u32) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(&format!("2026-10-21T{hour:02}:{minute:02}:00Z"))
+            .expect("test timestamp")
+            .with_timezone(&Utc)
+    }
+
+    #[test]
+    fn run_once_selects_latest_missed_slot_and_counts_the_rest() {
+        let config = ArtifactScheduleMaterializationConfig::default();
+        // Cursor at 00:00, now 01:05 → due 00:10..01:00 (6 slots).
+        let decision = due_slots(
+            &binding(ModuleScheduleMisfirePolicy::RunOnce),
+            at(0, 0),
+            at(1, 5),
+            &config,
+        )
+        .expect("due slots");
+        assert_eq!(decision.slots, vec![at(1, 0)]);
+        assert_eq!(decision.skipped_misfires, 5);
+        assert_eq!(decision.advance_through, at(1, 5));
+    }
+
+    #[test]
+    fn skip_counts_slots_older_than_the_grace_cutoff() {
+        let config = ArtifactScheduleMaterializationConfig {
+            misfire_grace_seconds: 60,
+            max_slots_per_binding: 100,
+        };
+        // Cursor at 00:00, now 01:05, grace 60s → cutoff 01:04, start
+        // 01:03:59: every due slot (00:10..01:00) is older than the grace
+        // window, so all six are skipped and none is materialized.
+        let decision = due_slots(
+            &binding(ModuleScheduleMisfirePolicy::Skip),
+            at(0, 0),
+            at(1, 5),
+            &config,
+        )
+        .expect("due slots");
+        assert!(decision.slots.is_empty());
+        assert_eq!(decision.skipped_misfires, 6);
+    }
+
+    #[test]
+    fn catch_up_paginates_from_the_cursor() {
+        let config = ArtifactScheduleMaterializationConfig {
+            misfire_grace_seconds: 60,
+            max_slots_per_binding: 2,
+        };
+        let decision = due_slots(
+            &binding(ModuleScheduleMisfirePolicy::CatchUp),
+            at(0, 0),
+            at(1, 5),
+            &config,
+        )
+        .expect("due slots");
+        assert_eq!(decision.slots, vec![at(0, 10), at(0, 20)]);
+        assert_eq!(decision.advance_through, at(0, 20));
+        assert_eq!(decision.skipped_misfires, 0);
+    }
 }

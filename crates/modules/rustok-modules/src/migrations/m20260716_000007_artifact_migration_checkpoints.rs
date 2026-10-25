@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
+
+use crate::backend::SupportedBackend;
 
 /// Durable data-migration state belongs to the admitted installation, not to a
 /// guest payload. An irreversible checkpoint prevents an unsafe rollback or
@@ -10,8 +12,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "ALTER TABLE module_artifact_installations ADD COLUMN migration_checkpoint JSONB NULL",
                 "ALTER TABLE module_artifact_installations ADD COLUMN has_irreversible_migration BOOLEAN NOT NULL DEFAULT FALSE",
                 "CREATE TABLE module_artifact_migration_checkpoint_operations (\
@@ -34,7 +37,7 @@ impl MigrationTrait for Migration {
                         WHERE installation.installation_id = module_artifact_migration_checkpoint_operations.installation_id \
                         AND (installation.scope_kind = 'platform' OR installation.tenant_id::text = current_setting('rustok.tenant_id', true))))",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "ALTER TABLE module_artifact_installations ADD COLUMN migration_checkpoint JSON NULL",
                 "ALTER TABLE module_artifact_installations ADD COLUMN has_irreversible_migration INTEGER NOT NULL DEFAULT 0 CHECK (has_irreversible_migration IN (0, 1))",
                 "CREATE TABLE module_artifact_migration_checkpoint_operations (\
@@ -52,17 +55,12 @@ impl MigrationTrait for Migration {
                     UNIQUE (installation_id, idempotency_key)\
                 )",
             ],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "artifact migration checkpoint does not support database backend {backend:?}"
-                )));
-            }
         };
         for statement in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;

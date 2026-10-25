@@ -1113,7 +1113,7 @@ mod tests {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
             module_slug: Set(module_slug.to_string()),
-            enabled: Set(true),
+            enabled: Set(Some(true)),
             settings: Set(serde_json::json!({})),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),

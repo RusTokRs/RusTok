@@ -16,7 +16,8 @@ use rustok_modules::{
     ModuleAlloyPublicationEvidenceCommand, ModuleAlloyPublicationEvidenceProducer,
     ModuleGovernanceAutomatedCheck, ModulePlatformPublicationEvidenceCommand,
     ModulePlatformPublicationEvidenceProducer, ModulePublicationArtifactOrigin,
-    ModulePublicationArtifactRegistryProvider, ModulePublishBundleValidation,
+    ModulePublicationArtifactRegistryProvider, ModulePublicationRegistryError,
+    ModulePublishBundleValidation,
     ModuleValidationJobResultCommand, ModuleValidationJobResultOutcome,
     ModuleValidationJobRetryCommand, OciArtifactPublicationBundle, OciArtifactPublicationTarget,
     OciArtifactReference, OciDistributionArtifactRegistry, OciRhaiWorkspacePublicationProvenance,
@@ -227,8 +228,10 @@ impl ModulePublicationArtifactRegistryProvider for CredentialedOciRegistryProvid
     async fn registry_for(
         &self,
         reference: &OciArtifactReference,
-    ) -> Result<Arc<dyn rustok_modules::ArtifactRegistry>, String> {
-        reference.validate().map_err(|error| error.to_string())?;
+    ) -> Result<Arc<dyn rustok_modules::ArtifactRegistry>, ModulePublicationRegistryError> {
+        reference
+            .validate()
+            .map_err(|error| ModulePublicationRegistryError::InvalidRequest(error.to_string()))?;
         let target = OciArtifactPublicationTarget {
             registry: reference.registry.clone(),
             repository: reference.repository.clone(),
@@ -238,21 +241,27 @@ impl ModulePublicationArtifactRegistryProvider for CredentialedOciRegistryProvid
             .acquire(&target, OCI_CREDENTIAL_MINIMUM_TTL)
             .await
             .map_err(|error| match error {
-                RegistryCredentialError::Rejected => {
-                    "registry credential request was rejected".to_string()
-                }
+                RegistryCredentialError::Rejected => ModulePublicationRegistryError::Denied(
+                    "registry credential request was rejected".to_string(),
+                ),
                 RegistryCredentialError::TimedOut => {
-                    "registry credential request timed out".to_string()
+                    ModulePublicationRegistryError::Unavailable(
+                        "registry credential request timed out".to_string(),
+                    )
                 }
                 RegistryCredentialError::Unavailable(_) => {
-                    "registry credential broker is unavailable".to_string()
+                    ModulePublicationRegistryError::Unavailable(
+                        "registry credential broker is unavailable".to_string(),
+                    )
                 }
             })?;
-        lease
-            .ensure_valid()
-            .map_err(|_| "registry credential broker returned an expired credential".to_string())?;
+        lease.ensure_valid().map_err(|_| {
+            ModulePublicationRegistryError::InvalidResponse(
+                "registry credential broker returned an expired credential".to_string(),
+            )
+        })?;
         let registry = OciDistributionArtifactRegistry::strict(lease.registry_auth())
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| ModulePublicationRegistryError::InvalidRequest(error.to_string()))?;
         Ok(Arc::new(registry))
     }
 }

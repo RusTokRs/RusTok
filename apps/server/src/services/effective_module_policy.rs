@@ -242,7 +242,9 @@ impl EffectiveModulePolicyService {
             });
         }
         let snapshot = Self::resolve_snapshot(db, registry, tenant_id).await?;
-        let _ = cache.insert(tenant_id, snapshot.policy.clone());
+        cache
+            .insert(tenant_id, snapshot.policy.clone())
+            .map_err(|error| PlatformCompositionError::EffectivePolicy(error.to_string()))?;
         Ok(snapshot)
     }
 

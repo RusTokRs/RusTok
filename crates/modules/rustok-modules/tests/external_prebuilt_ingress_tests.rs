@@ -356,8 +356,8 @@ async fn test_external_prebuilt_admission_success() {
             idempotency_key: Uuid::new_v4(),
         },
         evidence: valid_evidence(),
-        trust_policy_revision: Some(1),
-        capability_policy_revision: Some(1),
+        trust_policy_revision: 1,
+        capability_policy_revision: 1,
     };
 
     let receipt = service
@@ -440,8 +440,8 @@ async fn test_external_prebuilt_context_must_match_requested_scope() {
                 idempotency_key: Uuid::new_v4(),
             },
             evidence: valid_evidence(),
-            trust_policy_revision: Some(1),
-            capability_policy_revision: Some(1),
+            trust_policy_revision: 1,
+            capability_policy_revision: 1,
         })
         .await
         .expect_err("a platform ingress cannot carry tenant command context");
@@ -480,8 +480,8 @@ async fn test_external_prebuilt_rejection_does_not_mutate_quarantine_state() {
             idempotency_key: Uuid::new_v4(),
         },
         evidence,
-        trust_policy_revision: Some(1),
-        capability_policy_revision: Some(1),
+        trust_policy_revision: 1,
+        capability_policy_revision: 1,
     };
     let err = service.admit_external_prebuilt(command).await.unwrap_err();
     assert!(matches!(
@@ -503,8 +503,8 @@ async fn test_external_prebuilt_rejection_does_not_mutate_quarantine_state() {
             idempotency_key: Uuid::new_v4(),
         },
         evidence,
-        trust_policy_revision: Some(1),
-        capability_policy_revision: Some(1),
+        trust_policy_revision: 1,
+        capability_policy_revision: 1,
     };
     let err = service.admit_external_prebuilt(command).await.unwrap_err();
     assert!(matches!(
@@ -526,8 +526,8 @@ async fn test_external_prebuilt_rejection_does_not_mutate_quarantine_state() {
             idempotency_key: Uuid::new_v4(),
         },
         evidence,
-        trust_policy_revision: Some(1),
-        capability_policy_revision: Some(1),
+        trust_policy_revision: 1,
+        capability_policy_revision: 1,
     };
     let err = service.admit_external_prebuilt(command).await.unwrap_err();
     assert!(matches!(
@@ -590,8 +590,8 @@ async fn test_external_prebuilt_strict_native_promotion_denial() {
             idempotency_key: Uuid::new_v4(),
         },
         evidence: valid_evidence(),
-        trust_policy_revision: Some(1),
-        capability_policy_revision: Some(1),
+        trust_policy_revision: 1,
+        capability_policy_revision: 1,
     };
 
     let receipt = service
@@ -660,8 +660,8 @@ async fn test_external_prebuilt_idempotent_replay_and_conflict() {
             idempotency_key,
         },
         evidence: valid_evidence(),
-        trust_policy_revision: Some(1),
-        capability_policy_revision: Some(1),
+        trust_policy_revision: 1,
+        capability_policy_revision: 1,
     };
 
     let receipt1 = service
@@ -693,7 +693,7 @@ async fn test_external_prebuilt_idempotent_replay_and_conflict() {
     // Independently verified policy facts are part of the same immutable
     // replay identity.
     let mut changed_policy = command1.clone();
-    changed_policy.trust_policy_revision = Some(2);
+    changed_policy.trust_policy_revision = 2;
     assert!(matches!(
         service.admit_external_prebuilt(changed_policy).await,
         Err(ExternalPrebuiltIngressError::IdempotencyConflict(key, _)) if key == idempotency_key
@@ -707,8 +707,8 @@ async fn test_external_prebuilt_idempotent_replay_and_conflict() {
         scope: ModuleInstallationScope::Platform,
         context: command1.context.clone(),
         evidence: valid_evidence(),
-        trust_policy_revision: Some(1),
-        capability_policy_revision: Some(1),
+        trust_policy_revision: 1,
+        capability_policy_revision: 1,
     };
 
     let conflict_err = service
@@ -770,8 +770,8 @@ async fn test_runtime_and_recovery_read_cas_only_and_never_query_oci() {
             idempotency_key: Uuid::new_v4(),
         },
         evidence,
-        trust_policy_revision: Some(1),
-        capability_policy_revision: Some(1),
+        trust_policy_revision: 1,
+        capability_policy_revision: 1,
     };
 
     let _receipt = service
@@ -817,7 +817,7 @@ async fn test_runtime_and_recovery_read_cas_only_and_never_query_oci() {
         },
         descriptor: descriptor.clone(),
         payload_media_type: descriptor.payload_kind.oci_layer_media_type().to_string(),
-        dependency_lock: ModuleDependencyLockGraph::create(0, Vec::new())
+        dependency_lock: ModuleDependencyLockGraph::create(1, Vec::new())
             .expect("empty dependency lock"),
         capability_grant_revision: 1,
         installed_at: chrono::Utc::now(),

@@ -1,11 +1,10 @@
 //! Low-level database operations for structured artifact data records.
 
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, QueryResult, Statement,
     TransactionTrait, Value as SqlValue,
 };
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::constants::*;
@@ -20,27 +19,28 @@ pub(crate) async fn find_artifact_data_delete_operation<C: ConnectionTrait>(
     scope: &ArtifactDataScope,
     request: &ArtifactDataDeleteRequest,
 ) -> Result<Option<ArtifactDataDeleteResult>, ArtifactDataError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT data_key, expected_revision, deleted_revision
                  FROM module_artifact_data_delete_operations
                  WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                  AND policy_revision = {} AND idempotency_key = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
             ),
             vec![
-                uuid_value(scope.tenant_id, backend),
-                uuid_value(scope.data_owner_id, backend),
-                uuid_value(scope.namespace_instance_id, backend),
+                backend.uuid_value(scope.tenant_id),
+                backend.uuid_value(scope.data_owner_id),
+                backend.uuid_value(scope.namespace_instance_id),
                 revision_value(scope.policy_revision)?,
-                uuid_value(request.idempotency_key, backend),
+                backend.uuid_value(request.idempotency_key),
             ],
         ))
         .await
@@ -74,31 +74,32 @@ pub(crate) async fn persist_artifact_data_delete_operation<C: ConnectionTrait>(
     scope: &ArtifactDataScope,
     request: &ArtifactDataDeleteRequest,
 ) -> Result<(), ArtifactDataError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     connection
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_artifact_data_delete_operations
                  (tenant_id, data_owner_id, namespace_instance_id, policy_revision,
                   idempotency_key, data_key, expected_revision, deleted_revision, completed_at)
                  VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {})",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.now_sql(),
             ),
             vec![
-                uuid_value(scope.tenant_id, backend),
-                uuid_value(scope.data_owner_id, backend),
-                uuid_value(scope.namespace_instance_id, backend),
+                backend.uuid_value(scope.tenant_id),
+                backend.uuid_value(scope.data_owner_id),
+                backend.uuid_value(scope.namespace_instance_id),
                 revision_value(scope.policy_revision)?,
-                uuid_value(request.idempotency_key, backend),
+                backend.uuid_value(request.idempotency_key),
                 request.key.clone().into(),
                 revision_value(request.expected_revision)?,
                 revision_value(request.expected_revision)?,
@@ -118,7 +119,8 @@ pub(crate) async fn persist_artifact_data_write(
     quota: ArtifactDataQuota,
 ) -> Result<ArtifactDataRecord, ArtifactDataError> {
     let quota = quota.validate()?;
-    let backend = transaction.get_database_backend();
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
     ensure_active_namespace(transaction, scope, backend).await?;
     if let Some(index_contract_digest) = index_contract_digest {
         validate_artifact_data_index_contract(
@@ -132,23 +134,23 @@ pub(crate) async fn persist_artifact_data_write(
     }
     if let Some(row) = transaction
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT data_key, value, revision, expected_revision FROM module_artifact_data_operations
                  WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                  AND policy_revision = {} AND idempotency_key = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
             ),
             vec![
-                uuid_value(scope.tenant_id, backend),
-                uuid_value(scope.data_owner_id, backend),
-                uuid_value(scope.namespace_instance_id, backend),
+                backend.uuid_value(scope.tenant_id),
+                backend.uuid_value(scope.data_owner_id),
+                backend.uuid_value(scope.namespace_instance_id),
                 revision_value(scope.policy_revision)?,
-                uuid_value(write.idempotency_key, backend),
+                backend.uuid_value(write.idempotency_key),
             ],
         ))
         .await
@@ -174,14 +176,14 @@ pub(crate) async fn persist_artifact_data_write(
     let value_size_bytes = artifact_data_value_size(&write.value)?;
     let current = transaction
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT data_key, value, value_size_bytes, revision FROM module_artifact_data
                  WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} AND data_key = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
             ),
             scope_values(scope, backend, &write.key)?,
         ))
@@ -214,28 +216,28 @@ pub(crate) async fn persist_artifact_data_write(
             .ok_or(ArtifactDataError::RevisionConflict)?;
         let result = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE module_artifact_data SET value = {}, value_size_bytes = {}, revision = {}, updated_at = {}
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND data_key = {} AND revision = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    now_expression(backend),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
-                    placeholder(backend, 8),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.now_sql(),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
+                    backend.placeholder(8),
                 ),
                 vec![
                     SqlValue::Json(Some(Box::new(write.value.clone()))),
                     revision_value(value_size_bytes)?,
                     revision_value(next_revision)?,
-                    uuid_value(scope.tenant_id, backend),
-                    uuid_value(scope.data_owner_id, backend),
-                    uuid_value(scope.namespace_instance_id, backend),
+                    backend.uuid_value(scope.tenant_id),
+                    backend.uuid_value(scope.data_owner_id),
+                    backend.uuid_value(scope.namespace_instance_id),
                     write.key.clone().into(),
                     revision_value(current.revision)?,
                 ],
@@ -252,23 +254,23 @@ pub(crate) async fn persist_artifact_data_write(
         }
         let result = transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_data
                      (tenant_id, data_owner_id, namespace_instance_id, data_key, value, value_size_bytes, revision, updated_at)
                      VALUES ({}, {}, {}, {}, {}, {}, 1, {}) ON CONFLICT DO NOTHING",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    now_expression(backend),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.now_sql(),
                 ),
                 vec![
-                    uuid_value(scope.tenant_id, backend),
-                    uuid_value(scope.data_owner_id, backend),
-                    uuid_value(scope.namespace_instance_id, backend),
+                    backend.uuid_value(scope.tenant_id),
+                    backend.uuid_value(scope.data_owner_id),
+                    backend.uuid_value(scope.namespace_instance_id),
                     write.key.clone().into(),
                     SqlValue::Json(Some(Box::new(write.value.clone()))),
                     revision_value(value_size_bytes)?,
@@ -289,28 +291,28 @@ pub(crate) async fn persist_artifact_data_write(
     synchronize_artifact_data_indexes(transaction, scope, &record, indexes).await?;
     transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_artifact_data_operations
                  (tenant_id, data_owner_id, namespace_instance_id, policy_revision, idempotency_key, data_key, value, expected_revision, revision, completed_at)
                  VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                placeholder(backend, 9),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.placeholder(9),
+                backend.now_sql(),
             ),
             vec![
-                uuid_value(scope.tenant_id, backend),
-                uuid_value(scope.data_owner_id, backend),
-                uuid_value(scope.namespace_instance_id, backend),
+                backend.uuid_value(scope.tenant_id),
+                backend.uuid_value(scope.data_owner_id),
+                backend.uuid_value(scope.namespace_instance_id),
                 revision_value(scope.policy_revision)?,
-                uuid_value(write.idempotency_key, backend),
+                backend.uuid_value(write.idempotency_key),
                 record.key.clone().into(),
                 SqlValue::Json(Some(Box::new(record.value.clone()))),
                 optional_revision_value(write.expected_revision)?,
@@ -329,17 +331,18 @@ pub(crate) async fn enforce_structured_data_quota<C: ConnectionTrait>(
     current_size_bytes: Option<u64>,
     requested_size_bytes: u64,
 ) -> Result<(), ArtifactDataError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT COUNT(*) AS record_count, COALESCE(SUM(value_size_bytes), 0) AS total_bytes
                  FROM module_artifact_data
                  WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
             ),
             namespace_values(scope, backend)?,
         ))
@@ -376,7 +379,8 @@ pub(crate) async fn synchronize_artifact_data_indexes(
     indexes: &[ArtifactDataIndexField],
 ) -> Result<(), ArtifactDataError> {
     delete_artifact_data_indexes(transaction, scope, &record.key).await?;
-    let backend = transaction.get_database_backend();
+    let backend =
+        SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
     for index in indexes {
         let Some(value) = record.value.pointer(&index.json_pointer) else {
             continue;
@@ -384,29 +388,28 @@ pub(crate) async fn synchronize_artifact_data_indexes(
         if !artifact_data_index_value_matches(value, index.value_type) {
             return Err(ArtifactDataError::InvalidIndexQuery);
         }
-        let index_value = serde_json::to_string(value)
-            .map_err(|error| ArtifactDataError::Storage(error.to_string()))?;
+        let index_value = canonical_index_value(value)?;
         if index_value.len() > MAX_ARTIFACT_DATA_INDEX_VALUE_BYTES {
             return Err(ArtifactDataError::InvalidIndexQuery);
         }
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_data_indexes
                      (tenant_id, data_owner_id, namespace_instance_id, index_name, index_value, data_key)
                      VALUES ({}, {}, {}, {}, {}, {})",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
                 ),
                 vec![
-                    uuid_value(scope.tenant_id, backend),
-                    uuid_value(scope.data_owner_id, backend),
-                    uuid_value(scope.namespace_instance_id, backend),
+                    backend.uuid_value(scope.tenant_id),
+                    backend.uuid_value(scope.data_owner_id),
+                    backend.uuid_value(scope.namespace_instance_id),
                     index.name.clone().into(),
                     index_value.into(),
                     record.key.clone().into(),
@@ -423,18 +426,19 @@ pub(crate) async fn delete_artifact_data_indexes<C: ConnectionTrait>(
     scope: &ArtifactDataScope,
     key: &str,
 ) -> Result<(), ArtifactDataError> {
-    let backend = connection.get_database_backend();
+    let backend =
+        SupportedBackend::new(connection.get_database_backend()).map_err(storage_error)?;
     connection
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "DELETE FROM module_artifact_data_indexes
                  WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                    AND data_key = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
             ),
             scope_values(scope, backend, key)?,
         ))
@@ -445,9 +449,18 @@ pub(crate) async fn delete_artifact_data_indexes<C: ConnectionTrait>(
 
 pub(crate) fn index_contract_digest(indexes: &[ArtifactDataIndexField]) -> Option<String> {
     (!indexes.is_empty()).then(|| {
-        let encoded = serde_json::to_vec(indexes)
+        // Canonical (order-independent) contract identity: the same index
+        // set declared in a different order is the same contract.
+        let mut canonical = indexes.to_vec();
+        canonical.sort_by(|left, right| {
+            left.name
+                .cmp(&right.name)
+                .then_with(|| left.json_pointer.cmp(&right.json_pointer))
+                .then_with(|| (left.value_type as u8).cmp(&(right.value_type as u8)))
+        });
+        let encoded = serde_json::to_vec(&canonical)
             .expect("artifact data index declarations are always serializable");
-        format!("sha256:{}", hex::encode(Sha256::digest(encoded)))
+        crate::installation::sha256_digest(&encoded)
     })
 }
 

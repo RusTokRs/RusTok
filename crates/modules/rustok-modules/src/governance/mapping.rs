@@ -425,14 +425,21 @@ pub(crate) fn governance_actor_can_manage_request_principals(
                 || principal_matches_governance_actor(publisher_principal, actor_principal)))
 }
 
+/// Namespace policy for publish-request creation: the bound owner of a slug,
+/// or an actor holding the `can_manage_modules` capability. There is no
+/// first-comer claim for unowned slugs: the first published release binds
+/// its publisher as the durable owner (see `publication.rs`), so letting any
+/// authenticated user open a request for an unowned slug would be namespace
+/// squatting by first-comer. Bootstrapping a new namespace is therefore a
+/// module-manager action; a future self-service marketplace must introduce
+/// an explicit, separately authorized namespace-claim flow instead of
+/// widening this gate again.
 pub(crate) fn governance_actor_can_create_publish_request(
     owner_principal: Option<&serde_json::Value>,
     actor_principal: &serde_json::Value,
     actor_can_manage_modules: bool,
 ) -> bool {
-    actor_can_manage_modules
-        || principal_matches_governance_actor(owner_principal, actor_principal)
-        || (owner_principal.is_none() && governance_principal_user_id(actor_principal).is_some())
+    actor_can_manage_modules || principal_matches_governance_actor(owner_principal, actor_principal)
 }
 
 pub(crate) fn governance_actor_can_manage_release(
@@ -544,18 +551,68 @@ pub(crate) fn principal_matches_governance_actor(
     let Some(persisted_principal) = persisted_principal else {
         return false;
     };
-    let persisted_user_id = governance_principal_user_id(persisted_principal);
-    let actor_user_id = governance_principal_user_id(actor_principal);
-    if let (Some(persisted_user_id), Some(actor_user_id)) = (persisted_user_id, actor_user_id) {
-        return persisted_user_id == actor_user_id;
+    // Identity is matched on stable identifiers only: the `user_id` of a
+    // `user` principal or the namespaced subject of a `runner` principal.
+    // Display/legacy labels are presentation data — they are neither unique
+    // nor unforgeable and must never authorize ownership or review actions.
+    // Legacy principals therefore never match here; only actors with
+    // `can_manage_modules` may act on legacy-bound records until they are
+    // rebound to a stable identity.
+    match (
+        governance_principal_identity(persisted_principal),
+        governance_principal_identity(actor_principal),
+    ) {
+        (
+            Some(GovernancePrincipalIdentity::User(persisted)),
+            Some(GovernancePrincipalIdentity::User(actor)),
+        ) => persisted.eq_ignore_ascii_case(actor),
+        (
+            Some(GovernancePrincipalIdentity::Runner(persisted)),
+            Some(GovernancePrincipalIdentity::Runner(actor)),
+        ) => persisted == actor,
+        _ => false,
     }
+}
 
-    governance_principal_subject(persisted_principal)
-        .zip(governance_principal_subject(actor_principal))
-        .is_some_and(|(persisted_subject, actor_subject)| persisted_subject == actor_subject)
-        || governance_principal_label(persisted_principal)
-            .zip(governance_principal_label(actor_principal))
-            .is_some_and(|(persisted_label, actor_label)| persisted_label == actor_label)
+/// Stable identity extracted from a governance principal document. Anything
+/// that is only a human-readable label yields `None` and cannot authorize.
+enum GovernancePrincipalIdentity<'a> {
+    User(&'a str),
+    Runner(&'a str),
+}
+
+fn governance_principal_identity(
+    principal: &serde_json::Value,
+) -> Option<GovernancePrincipalIdentity<'_>> {
+    if let Some(user_id) = governance_principal_user_id(principal) {
+        return Some(GovernancePrincipalIdentity::User(user_id));
+    }
+    if principal.get("kind").and_then(serde_json::Value::as_str) == Some("runner")
+        && let Some(subject) = principal
+            .get("subject")
+            .and_then(serde_json::Value::as_str)
+            .filter(|subject| {
+                subject
+                    .strip_prefix("remote-runner:")
+                    .is_some_and(|id| !id.trim().is_empty())
+            })
+    {
+        return Some(GovernancePrincipalIdentity::Runner(subject));
+    }
+    // Legacy persisted principals may be a bare namespaced subject string.
+    // Only a parseable stable identity (`user:<uuid>` / `remote-runner:<id>`)
+    // is honored; a bare label is not an identity.
+    let bare = principal.as_str()?;
+    if let Some(user_id) = bare.strip_prefix("user:") {
+        let is_uuid_shaped = user_id.len() == 36
+            && user_id
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() || byte == b'-');
+        return is_uuid_shaped.then_some(GovernancePrincipalIdentity::User(user_id));
+    }
+    bare.strip_prefix("remote-runner:")
+        .filter(|id| !id.trim().is_empty())
+        .map(|_| GovernancePrincipalIdentity::Runner(bare))
 }
 
 pub(crate) fn governance_principal_user_id(principal: &serde_json::Value) -> Option<&str> {
@@ -567,25 +624,6 @@ pub(crate) fn governance_principal_user_id(principal: &serde_json::Value) -> Opt
                 .and_then(serde_json::Value::as_str)
         })
         .flatten()
-}
-
-pub(crate) fn governance_principal_subject(principal: &serde_json::Value) -> Option<&str> {
-    principal.as_str().or_else(|| {
-        principal
-            .get("subject")
-            .and_then(serde_json::Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-    })
-}
-
-pub(crate) fn governance_principal_label(principal: &serde_json::Value) -> Option<&str> {
-    principal.as_str().or_else(|| {
-        principal
-            .get("legacy_label")
-            .or_else(|| principal.get("display_label"))
-            .and_then(serde_json::Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-    })
 }
 
 pub(crate) fn derive_governance_actions(
@@ -849,5 +887,70 @@ pub(crate) fn governance_stage_blocked_reason_code(key: &str) -> Option<&'static
         "security_policy_review" => Some("security_findings"),
         "compile_smoke" | "targeted_tests" => Some("other"),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod principal_identity_tests {
+    use super::principal_matches_governance_actor;
+
+    #[test]
+    fn display_label_collision_does_not_authorize() {
+        let persisted = serde_json::json!({
+            "kind": "legacy",
+            "subject": "alice",
+            "display_label": "alice",
+            "legacy_label": "alice"
+        });
+        let actor = serde_json::json!({
+            "kind": "legacy",
+            "subject": "alice",
+            "display_label": "alice",
+            "legacy_label": "alice"
+        });
+        assert!(!principal_matches_governance_actor(
+            Some(&persisted),
+            &actor
+        ));
+    }
+
+    #[test]
+    fn stable_user_and_runner_identities_still_match() {
+        let persisted_user = serde_json::json!({
+            "kind": "user",
+            "user_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+            "subject": "user:7c9e6679-7425-40de-944b-e07fc1f90ae7",
+            "display_label": "Alice"
+        });
+        let actor_user = serde_json::json!({
+            "kind": "user",
+            "user_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+            "subject": "user:7c9e6679-7425-40de-944b-e07fc1f90ae7",
+            "display_label": "Mallory"
+        });
+        assert!(principal_matches_governance_actor(
+            Some(&persisted_user),
+            &actor_user
+        ));
+
+        let legacy_bare = serde_json::json!("user:7c9e6679-7425-40de-944b-e07fc1f90ae7");
+        assert!(principal_matches_governance_actor(
+            Some(&legacy_bare),
+            &actor_user
+        ));
+
+        let persisted_runner = serde_json::json!({
+            "kind": "runner",
+            "subject": "remote-runner:ci-1",
+            "display_label": "remote-runner:ci-1"
+        });
+        assert!(principal_matches_governance_actor(
+            Some(&persisted_runner),
+            &persisted_runner
+        ));
+        assert!(!principal_matches_governance_actor(
+            Some(&persisted_runner),
+            &actor_user
+        ));
     }
 }

@@ -3,6 +3,11 @@ pub enum ModuleOperationStatus {
     Validated,
     Running,
     Committed,
+    /// The state transition committed durably, but the post-hook failed.
+    /// The operation must never be reported as `Failed`: its state change is
+    /// in effect, and only the hook remains outstanding (recovery retries it
+    /// via `ModuleOperationRecoveryAction::RetryPostHook`).
+    CommittedHookFailed,
     Failed,
 }
 
@@ -12,6 +17,7 @@ impl ModuleOperationStatus {
             Self::Validated => "validated",
             Self::Running => "running",
             Self::Committed => "committed",
+            Self::CommittedHookFailed => "committed_hook_failed",
             Self::Failed => "failed",
         }
     }
@@ -20,11 +26,17 @@ impl ModuleOperationStatus {
         matches!(self, Self::Committed | Self::Failed)
     }
 
+    /// Whether the operation's durable state change is in effect.
+    pub const fn state_committed(self) -> bool {
+        matches!(self, Self::Committed | Self::CommittedHookFailed)
+    }
+
     pub fn parse(value: &str) -> Option<Self> {
         match value {
             "validated" => Some(Self::Validated),
             "running" => Some(Self::Running),
             "committed" => Some(Self::Committed),
+            "committed_hook_failed" => Some(Self::CommittedHookFailed),
             "failed" => Some(Self::Failed),
             _ => None,
         }

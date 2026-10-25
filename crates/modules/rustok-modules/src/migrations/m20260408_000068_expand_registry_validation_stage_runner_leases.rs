@@ -1,6 +1,6 @@
 use sea_orm_migration::prelude::*;
 
-use sea_orm_migration::sea_orm::DatabaseBackend;
+use crate::backend::SupportedBackend;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -8,7 +8,7 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        if manager.get_database_backend() == DatabaseBackend::Sqlite {
+        if SupportedBackend::new(manager.get_database_backend())? == SupportedBackend::Sqlite {
             for statement in [
                 Table::alter()
                     .table(RegistryValidationStages::Table)
@@ -129,7 +129,7 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
-        if manager.get_database_backend() == DatabaseBackend::Sqlite {
+        if SupportedBackend::new(manager.get_database_backend())? == SupportedBackend::Sqlite {
             for statement in [
                 Table::alter()
                     .table(RegistryValidationStages::Table)

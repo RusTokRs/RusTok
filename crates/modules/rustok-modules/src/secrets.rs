@@ -5,17 +5,16 @@ use rustok_sandbox::{
     ExecutionPhase, SandboxError, SandboxResult, SandboxSubject,
 };
 use rustok_secrets::{SecretRef, SecretResolverRegistry, SecretString};
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, QueryResult, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::backend::SupportedBackend;
 use crate::data::{
-    configure_tenant_scope, namespace_lock_clause, optional_revision_value, placeholder,
-    revision_value, uuid_from_row, uuid_value,
+    configure_tenant_scope, namespace_lock_clause, optional_revision_value, revision_value,
+    uuid_from_row,
 };
 use crate::{
     ArtifactCapabilityBrokerResolver, ArtifactCapabilityExecution, ArtifactCapabilityScope,
@@ -387,25 +386,26 @@ where
         configure_tenant_scope(&transaction, request.scope.capability.tenant_id)
             .await
             .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
 
         if let Some(row) = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT request_digest, reference_name, resolver_alias, resolver_key, expected_revision, actor_id, trace_id, correlation_id, idempotency_key, reason, revision
                      FROM module_artifact_secret_binding_operations
                      WHERE tenant_id = {} AND data_owner_id = {} AND secret_instance_id = {} AND idempotency_key = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
                 ),
                 vec![
-                    uuid_value(request.scope.capability.tenant_id, backend),
-                    uuid_value(request.scope.capability.data_owner_id, backend),
-                    uuid_value(request.scope.secret_instance_id, backend),
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.scope.capability.tenant_id),
+                    backend.uuid_value(request.scope.capability.data_owner_id),
+                    backend.uuid_value(request.scope.secret_instance_id),
+                    backend.uuid_value(request.context.idempotency_key),
                 ],
             ))
             .await
@@ -444,15 +444,15 @@ where
 
         let current = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT revision FROM module_artifact_secret_bindings
                      WHERE tenant_id = {} AND data_owner_id = {} AND secret_instance_id = {}
                      AND reference_name = {}{}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
                     namespace_lock_clause(backend),
                 ),
                 binding_values(&request, backend)?,
@@ -470,34 +470,34 @@ where
                 .ok_or(ArtifactSecretError::RevisionConflict)?;
             let updated = transaction
                 .execute_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "UPDATE module_artifact_secret_bindings
                          SET resolver_alias = {}, resolver_key = {}, revision = {}, actor_id = {}, reason = {}, updated_at = {}
                          WHERE tenant_id = {} AND data_owner_id = {} AND secret_instance_id = {}
                          AND reference_name = {} AND revision = {}",
-                        placeholder(backend, 1),
-                        placeholder(backend, 2),
-                        placeholder(backend, 3),
-                        placeholder(backend, 4),
-                        placeholder(backend, 5),
-                        crate::data::now_expression(backend),
-                        placeholder(backend, 6),
-                        placeholder(backend, 7),
-                        placeholder(backend, 8),
-                        placeholder(backend, 9),
-                        placeholder(backend, 10),
+                        backend.placeholder(1),
+                        backend.placeholder(2),
+                        backend.placeholder(3),
+                        backend.placeholder(4),
+                        backend.placeholder(5),
+                        backend.now_sql(),
+                        backend.placeholder(6),
+                        backend.placeholder(7),
+                        backend.placeholder(8),
+                        backend.placeholder(9),
+                        backend.placeholder(10),
                     ),
                     vec![
                         request.secret.resolver.clone().into(),
                         request.secret.key.clone().into(),
                         revision_value(revision)
                             .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?,
-                        uuid_value(request.context.actor_id, backend),
+                        backend.uuid_value(request.context.actor_id),
                         request.reason.clone().into(),
-                        uuid_value(request.scope.capability.tenant_id, backend),
-                        uuid_value(request.scope.capability.data_owner_id, backend),
-                        uuid_value(request.scope.secret_instance_id, backend),
+                        backend.uuid_value(request.scope.capability.tenant_id),
+                        backend.uuid_value(request.scope.capability.data_owner_id),
+                        backend.uuid_value(request.scope.secret_instance_id),
                         request.reference.clone().into(),
                         revision_value(current_revision)
                             .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?,
@@ -515,31 +515,31 @@ where
             }
             transaction
                 .execute_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "INSERT INTO module_artifact_secret_bindings
                          (tenant_id, data_owner_id, secret_instance_id, reference_name, resolver_alias, resolver_key,
                           revision, actor_id, reason, created_at, updated_at)
                          VALUES ({}, {}, {}, {}, {}, {}, 1, {}, {}, {}, {})",
-                        placeholder(backend, 1),
-                        placeholder(backend, 2),
-                        placeholder(backend, 3),
-                        placeholder(backend, 4),
-                        placeholder(backend, 5),
-                        placeholder(backend, 6),
-                        placeholder(backend, 7),
-                        placeholder(backend, 8),
-                        crate::data::now_expression(backend),
-                        crate::data::now_expression(backend),
+                        backend.placeholder(1),
+                        backend.placeholder(2),
+                        backend.placeholder(3),
+                        backend.placeholder(4),
+                        backend.placeholder(5),
+                        backend.placeholder(6),
+                        backend.placeholder(7),
+                        backend.placeholder(8),
+                        backend.now_sql(),
+                        backend.now_sql(),
                     ),
                     vec![
-                        uuid_value(request.scope.capability.tenant_id, backend),
-                        uuid_value(request.scope.capability.data_owner_id, backend),
-                        uuid_value(request.scope.secret_instance_id, backend),
+                        backend.uuid_value(request.scope.capability.tenant_id),
+                        backend.uuid_value(request.scope.capability.data_owner_id),
+                        backend.uuid_value(request.scope.secret_instance_id),
                         request.reference.clone().into(),
                         request.secret.resolver.clone().into(),
                         request.secret.key.clone().into(),
-                        uuid_value(request.context.actor_id, backend),
+                        backend.uuid_value(request.context.actor_id),
                         request.reason.clone().into(),
                     ],
                 ))
@@ -550,41 +550,41 @@ where
 
         transaction
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO module_artifact_secret_binding_operations
                      (tenant_id, data_owner_id, secret_instance_id, idempotency_key, reference_name, resolver_alias,
                       resolver_key, expected_revision, actor_id, trace_id, correlation_id, reason, revision, request_digest, completed_at)
                      VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
-                    placeholder(backend, 8),
-                    placeholder(backend, 9),
-                    placeholder(backend, 10),
-                    placeholder(backend, 11),
-                    placeholder(backend, 12),
-                    placeholder(backend, 13),
-                    placeholder(backend, 14),
-                    crate::data::now_expression(backend),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                    backend.placeholder(6),
+                    backend.placeholder(7),
+                    backend.placeholder(8),
+                    backend.placeholder(9),
+                    backend.placeholder(10),
+                    backend.placeholder(11),
+                    backend.placeholder(12),
+                    backend.placeholder(13),
+                    backend.placeholder(14),
+                    backend.now_sql(),
                 ),
                 vec![
-                    uuid_value(request.scope.capability.tenant_id, backend),
-                    uuid_value(request.scope.capability.data_owner_id, backend),
-                    uuid_value(request.scope.secret_instance_id, backend),
-                    uuid_value(request.context.idempotency_key, backend),
+                    backend.uuid_value(request.scope.capability.tenant_id),
+                    backend.uuid_value(request.scope.capability.data_owner_id),
+                    backend.uuid_value(request.scope.secret_instance_id),
+                    backend.uuid_value(request.context.idempotency_key),
                     request.reference.clone().into(),
                     request.secret.resolver.clone().into(),
                     request.secret.key.clone().into(),
                     optional_revision_value(request.expected_revision)
                         .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?,
-                    uuid_value(request.context.actor_id, backend),
+                    backend.uuid_value(request.context.actor_id),
                     request.context.trace_id.clone().into(),
-                    uuid_value(request.context.correlation_id, backend),
+                    backend.uuid_value(request.context.correlation_id),
                     request.reason.clone().into(),
                     revision_value(revision)
                         .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?,
@@ -647,18 +647,19 @@ where
         configure_tenant_scope(&transaction, request.scope.capability.tenant_id)
             .await
             .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?;
-        let backend = transaction.get_database_backend();
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT reference_name, revision FROM module_artifact_secret_bindings
                      WHERE tenant_id = {} AND data_owner_id = {} AND secret_instance_id = {}
                      AND reference_name = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
                 ),
                 binding_values_for_scope(&request.scope, &request.reference, backend)?,
             ))
@@ -720,37 +721,66 @@ where
         configure_tenant_scope(&transaction, request.scope.capability.tenant_id)
             .await
             .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?;
-        let backend = transaction.get_database_backend();
-        let row = transaction
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        // Acquire a write lock on the exact bound revision before resolving
+        // or consuming its secret. PostgreSQL UPDATE locks the row; SQLite's
+        // write transaction serializes competing binding changes. Keep this
+        // transaction open through the fixed trusted consumer so a rotation
+        // cannot slip between the final revision check and use.
+        let locked = transaction
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
                 format!(
-                    "SELECT resolver_alias, resolver_key, revision
-                     FROM module_artifact_secret_bindings
+                    "UPDATE module_artifact_secret_bindings SET revision = revision
                      WHERE tenant_id = {} AND data_owner_id = {} AND secret_instance_id = {}
                      AND reference_name = {} AND revision = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
                 ),
                 binding_values_for_use(&request, backend)?,
             ))
             .await
             .map_err(storage_error)?;
-        transaction.commit().await.map_err(storage_error)?;
-        let row = row.ok_or(ArtifactSecretError::HandleUnavailable)?;
+        if locked.rows_affected() != 1 {
+            return Err(ArtifactSecretError::HandleUnavailable);
+        }
+        let row = transaction
+            .query_one_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "SELECT resolver_alias, resolver_key, revision
+                     FROM module_artifact_secret_bindings
+                     WHERE tenant_id = {} AND data_owner_id = {} AND secret_instance_id = {}
+                     AND reference_name = {} AND revision = {}",
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
+                ),
+                binding_values_for_use(&request, backend)?,
+            ))
+            .await
+            .map_err(storage_error)?
+            .ok_or(ArtifactSecretError::HandleUnavailable)?;
         let resolver: String = row.try_get("", "resolver_alias").map_err(storage_error)?;
         let key: String = row.try_get("", "resolver_key").map_err(storage_error)?;
         let revision: i64 = row.try_get("", "revision").map_err(storage_error)?;
-        let revision = positive_receipt_revision(revision)
-            .map_err(|_| ArtifactSecretError::HandleUnavailable)?;
+        // See acquire_handle: a non-positive stored revision is corrupted
+        // state and must not be masked as a missing handle.
+        let revision = positive_receipt_revision(revision)?;
         let secret = self
             .resolvers
             .resolve_for_tenant(
                 request.scope.capability.tenant_id,
-                &SecretRef { resolver, key },
+                &SecretRef {
+                    resolver: resolver.clone(),
+                    key: key.clone(),
+                },
             )
             .await
             .map_err(|_| ArtifactSecretError::ResolutionUnavailable)?;
@@ -769,6 +799,7 @@ where
             .consume_secret(&context, &secret)
             .await
             .map_err(|_| ArtifactSecretError::ConsumerUnavailable)?;
+        transaction.commit().await.map_err(storage_error)?;
         Ok(ArtifactSecretUseReceipt {
             reference: context.reference,
             secret_instance_id: context.scope.secret_instance_id,
@@ -925,7 +956,7 @@ fn valid_command_context(tenant_id: Uuid, context: &ModuleCommandContext) -> boo
 fn command_context_from_receipt_row(
     row: &QueryResult,
     tenant_id: Uuid,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<ModuleCommandContext, ArtifactSecretError> {
     let context = ModuleCommandContext {
         actor_id: uuid_from_row(row, "actor_id", backend)
@@ -1022,12 +1053,12 @@ fn valid_resolver_alias(value: &str) -> bool {
 
 fn binding_values(
     request: &ArtifactSecretBindingRequest,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Vec<sea_orm::Value>, ArtifactSecretError> {
     Ok(vec![
-        uuid_value(request.scope.capability.tenant_id, backend),
-        uuid_value(request.scope.capability.data_owner_id, backend),
-        uuid_value(request.scope.secret_instance_id, backend),
+        backend.uuid_value(request.scope.capability.tenant_id),
+        backend.uuid_value(request.scope.capability.data_owner_id),
+        backend.uuid_value(request.scope.secret_instance_id),
         request.reference.clone().into(),
     ])
 }
@@ -1035,19 +1066,19 @@ fn binding_values(
 fn binding_values_for_scope(
     scope: &ArtifactSecretScope,
     reference: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Vec<sea_orm::Value>, ArtifactSecretError> {
     Ok(vec![
-        uuid_value(scope.capability.tenant_id, backend),
-        uuid_value(scope.capability.data_owner_id, backend),
-        uuid_value(scope.secret_instance_id, backend),
+        backend.uuid_value(scope.capability.tenant_id),
+        backend.uuid_value(scope.capability.data_owner_id),
+        backend.uuid_value(scope.secret_instance_id),
         reference.to_owned().into(),
     ])
 }
 
 fn binding_values_for_use(
     request: &ArtifactSecretUseRequest,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Vec<sea_orm::Value>, ArtifactSecretError> {
     let mut values = binding_values_for_scope(&request.scope, &request.handle.reference, backend)?;
     values.push(
@@ -1251,7 +1282,7 @@ mod tests {
         };
         descriptor.validate().expect("valid fixture descriptor");
         let dependency_lock =
-            ModuleDependencyLockGraph::create(0, Vec::new()).expect("empty dependency lock");
+            ModuleDependencyLockGraph::create(1, Vec::new()).expect("empty dependency lock");
         let sandbox_policy = SandboxPolicy {
             grants: vec![CapabilityGrant {
                 name: capability,
@@ -1581,67 +1612,7 @@ mod tests {
             binding.context.trace_id
         );
         assert_eq!(
-            receipt
-                .try_get::<String>("", "correlation_id")
-                .expect("receipt correlation"),
-            binding.context.correlation_id.to_string()
-        );
-        assert_eq!(
-            receipt
-                .try_get::<String>("", "idempotency_key")
-                .expect("receipt idempotency"),
-            binding.context.idempotency_key.to_string()
-        );
-
-        let event = database
-            .query_one_raw(Statement::from_string(
-                DbBackend::Sqlite,
-                "SELECT payload FROM sys_events WHERE event_type = 'module.artifact.secret_bound'"
-                    .to_string(),
-            ))
-            .await
-            .expect("secret binding event query")
-            .expect("secret binding event");
-        let payload: serde_json::Value = event
-            .try_get("", "payload")
-            .expect("secret binding event payload");
-        let envelope: rustok_events::EventEnvelope =
-            serde_json::from_value(payload).expect("secret binding event envelope");
-        assert_eq!(envelope.tenant_id, binding.scope.capability.tenant_id);
-        assert_eq!(envelope.actor_id, Some(binding.context.actor_id));
-        assert_eq!(envelope.correlation_id, binding.context.correlation_id);
-        assert_eq!(
-            envelope.trace_id.as_deref(),
-            Some(binding.context.trace_id.as_str())
-        );
-
-        for field in ["policy", "installation", "version", "digest"] {
-            let mut altered = binding.clone();
-            match field {
-                "policy" => altered.scope.capability.policy_revision += 1,
-                "installation" => altered.scope.capability.installation_id = Uuid::new_v4(),
-                "version" => altered.scope.capability.release.version = "1.1.0".to_string(),
-                "digest" => {
-                    altered.scope.capability.release.digest =
-                        crate::promotion::digest_json(&field).expect("changed digest")
-                }
-                _ => unreachable!("bounded fixture field"),
-            }
-            assert_eq!(
-                service.bind(altered).await,
-                Err(ArtifactSecretError::IdempotencyConflict),
-                "changed {field}"
-            );
-        }
-        let mut conflicting_replay = binding;
-        conflicting_replay.context.trace_id = "test:changed-trace".to_string();
-        assert!(matches!(
-            service.bind(conflicting_replay).await,
-            Err(ArtifactSecretError::IdempotencyConflict)
-        ));
-    }
-
-    #[tokio::test]
+            st]
     async fn registry_authorizer_checks_secret_ref_without_resolving_it() {
         let registry = SecretResolverRegistry::builder()
             .resolver(
@@ -1931,9 +1902,72 @@ mod tests {
                 "INSERT INTO module_artifact_secret_bindings
                  (tenant_id, data_owner_id, secret_instance_id, reference_name, resolver_alias,
                   resolver_key, revision, actor_id, reason, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, datetime('now'), datetime('now'))",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))",
                 vec![
                     binding.scope.capability.tenant_id.to_string().into(),
+                    binding.scope.capability.data_owner_id.to_string().into(),
+                    binding.scope.secret_instance_id.to_string().into(),
+                    binding.reference.clone().into(),
+                    "fixed".into(),
+                    "allowed-key".into(),
+                    binding.context.actor_id.to_string().into(),
+                    binding.reason.clone().into(),
+                ],
+            ))
+            .await
+            .expect("secret binding fixture");
+        let resolvers = SecretResolverRegistry::builder()
+            .resolver(
+                "fixed",
+                FixedSecretResolver,
+                SecretAccessPolicy::Exact(vec!["allowed-key".to_string()]),
+            )
+            .build();
+        let authorizer =
+            RegistryArtifactSecretAuthorizer::new(resolvers.clone(), AllowSecretPolicy);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let service = SeaOrmArtifactSecretUseService::new(
+            database,
+            resolvers,
+            authorizer,
+            RecordingSecretConsumer {
+                calls: Arc::clone(&calls),
+            },
+        );
+        let receipt = service
+            .use_secret(ArtifactSecretUseRequest {
+                scope: binding.scope.clone(),
+                handle: ArtifactSecretHandle {
+                    reference: binding.reference.clone(),
+                    secret_instance_id: binding.scope.secret_instance_id,
+                    revision: 1,
+                },
+                execution_id: Uuid::new_v4(),
+                subject: SandboxSubject::ModuleArtifact {
+                    installation_id: binding.scope.capability.installation_id,
+                    slug: binding.scope.capability.release.slug,
+                    version: binding.scope.capability.release.version,
+                    digest: binding.scope.capability.release.digest,
+                },
+                phase: ExecutionPhase::Manual,
+                actor_id: Some("artifact-actor".to_string()),
+                trace_id: Some("trace-1".to_string()),
+            })
+            .await
+            .expect("secret use receipt");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(receipt.reference, binding.reference);
+        assert_eq!(receipt.revision, 1);
+        assert_eq!(receipt.purpose, "http.authorization");
+        assert!(
+            !serde_json::to_string(&receipt)
+                .expect("receipt JSON")
+                .contains("top-secret-value")
+        );
+    }
+}
+string().into(),
                     binding.scope.capability.data_owner_id.to_string().into(),
                     binding.scope.secret_instance_id.to_string().into(),
                     binding.reference.clone().into(),

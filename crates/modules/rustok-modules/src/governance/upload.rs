@@ -1,6 +1,6 @@
 //! Publish artifact upload slots and request initialization.
 
-use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait, Value};
+use sea_orm::{ConnectionTrait, Statement, TransactionTrait, Value};
 
 use super::commands::valid_command_context_actor;
 use super::helpers::*;
@@ -59,15 +59,15 @@ impl SeaOrmModuleGovernanceService {
         if !can_manage {
             return Err(ModuleGovernanceError::PublishRequestArtifactUploadUnauthorized);
         }
-        let backend = self.db.get_database_backend();
+        let backend = SupportedBackend::new(self.db.get_database_backend()).map_err(store_error)?;
         let row = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT artifact_storage_key, artifact_checksum_sha256, artifact_size, artifact_content_type \
                      FROM registry_publish_requests WHERE id = {} LIMIT 1",
-                    placeholder(backend, 1)
+                    backend.placeholder(1)
                 ),
                 vec![snapshot.request.id.clone().into()],
             ))
@@ -111,9 +111,12 @@ impl SeaOrmModuleGovernanceService {
         let default_locale = rustok_api::normalize_locale_tag(&command.default_locale)
             .ok_or(ModuleGovernanceError::InvalidPublishRequestCreateCommand)?;
         let tx = self.db.begin().await.map_err(store_error)?;
-        let backend = tx.get_database_backend();
-        let mark = |n| placeholder(backend, n);
-        let now = database_now(backend);
+        crate::backend::set_platform_scope(&tx)
+            .await
+            .map_err(store_error)?;
+        let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
+        let mark = |n| backend.placeholder(n);
+        let now = backend.now_sql();
         let owner_principal = if command.actor_can_manage_modules {
             None
         } else {
@@ -128,7 +131,7 @@ impl SeaOrmModuleGovernanceService {
         }
         let existing = tx
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT command_digest, CAST(actor_id AS TEXT) AS actor_id, trace_id, \
                      CAST(correlation_id AS TEXT) AS correlation_id, CAST(actor_principal AS TEXT) AS actor_principal, \
@@ -136,7 +139,7 @@ impl SeaOrmModuleGovernanceService {
                      WHERE request_id = {} AND idempotency_key = {}",
                     mark(1), mark(2),
                 ),
-                vec![request_id.clone().into(), registry_uuid_value(command.context.idempotency_key, backend)],
+                vec![request_id.clone().into(), backend.uuid_value(command.context.idempotency_key)],
             ))
             .await
             .map_err(store_error)?;
@@ -176,7 +179,7 @@ impl SeaOrmModuleGovernanceService {
         }
         let already_created = tx
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT id FROM registry_publish_requests WHERE id = {}",
                     mark(1)
@@ -190,7 +193,7 @@ impl SeaOrmModuleGovernanceService {
         }
         let active_release = tx
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT id FROM registry_module_releases WHERE slug = {} AND version = {} AND status = 'active' LIMIT 1",
                     mark(1), mark(2)
@@ -207,17 +210,17 @@ impl SeaOrmModuleGovernanceService {
         }
         let warnings = dedupe_validation_messages(warnings);
         tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!("INSERT INTO registry_publish_requests (id, slug, version, crate_name, default_locale, ownership, trust_level, license, entry_type, artifact_origin, marketplace, ui_packages, status, requested_by_principal, publisher_principal, approved_by_principal, rejected_by_principal, rejection_reason, changes_requested_by_principal, changes_requested_reason, changes_requested_reason_code, changes_requested_at, held_by_principal, held_reason, held_reason_code, held_at, held_from_status, validation_warnings, validation_errors, artifact_storage_key, artifact_checksum_sha256, artifact_size, artifact_content_type, submitted_at, validated_at, approved_at, published_at, created_at, updated_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'draft', {}, {}, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, {}, {}, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, {now}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8), mark(9), mark(10), mark(11), mark(12), mark(13), mark(14), mark(15), mark(16)),
             vec![request_id.clone().into(), command.slug.clone().into(), command.version.clone().into(), command.crate_name.into(), default_locale.clone().into(), command.ownership.into(), command.trust_level.into(), command.license.into(), command.entry_type.into(), command.artifact_origin.as_str().into(), Value::Json(Some(Box::new(command.marketplace))), Value::Json(Some(Box::new(command.ui_packages))), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!([]))))],
         )).await.map_err(store_error)?;
         tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!("INSERT INTO registry_publish_request_create_operations (operation_id, request_id, idempotency_key, command_digest, actor_id, trace_id, correlation_id, actor_principal, actor_can_manage_modules, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8), mark(9)),
-            vec![registry_uuid_value(self.infrastructure.new_id(), backend), request_id.clone().into(), registry_uuid_value(command.context.idempotency_key, backend), command_digest.clone().into(), registry_uuid_value(command.context.actor_id, backend), command.context.trace_id.clone().into(), registry_uuid_value(command.context.correlation_id, backend), Value::Json(Some(Box::new(command.actor_principal.clone()))), command.actor_can_manage_modules.into()],
+            vec![backend.uuid_value(self.infrastructure.new_id()), request_id.clone().into(), backend.uuid_value(command.context.idempotency_key), command_digest.clone().into(), backend.uuid_value(command.context.actor_id), command.context.trace_id.clone().into(), backend.uuid_value(command.context.correlation_id), Value::Json(Some(Box::new(command.actor_principal.clone()))), command.actor_can_manage_modules.into()],
         )).await.map_err(store_error)?;
         tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!("INSERT INTO registry_publish_request_translations (request_id, locale, name, description, created_at, updated_at) VALUES ({}, {}, {}, {}, {now}, {now})", mark(1), mark(2), mark(3), mark(4)),
             vec![request_id.clone().into(), default_locale.into(), marketplace_content.name.into(), marketplace_content.description.into()],
         )).await.map_err(store_error)?;
@@ -229,7 +232,7 @@ impl SeaOrmModuleGovernanceService {
             "warnings": warnings,
         });
         tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, 'request_created', {}, {}, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)),
             vec![self.infrastructure.prefixed_id("rge").into(), command.slug.into(), request_id.clone().into(), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(command.actor_principal))), Value::Json(Some(Box::new(details)))],
         )).await.map_err(store_error)?;
@@ -247,17 +250,20 @@ impl SeaOrmModuleGovernanceService {
         let upload_slot = self.prepare_publish_artifact_upload(&command).await?;
         let artifact_storage_key = upload_slot.artifact_storage_key;
         let tx = self.db.begin().await.map_err(store_error)?;
-        let backend = tx.get_database_backend();
-        let mark = |n| placeholder(backend, n);
-        let now = database_now(backend);
-        let request_lock = if backend == DbBackend::Postgres {
+        crate::backend::set_platform_scope(&tx)
+            .await
+            .map_err(store_error)?;
+        let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
+        let mark = |n| backend.placeholder(n);
+        let now = backend.now_sql();
+        let request_lock = if backend == SupportedBackend::Postgres {
             " FOR UPDATE"
         } else {
             ""
         };
         let receipt = PublishArtifactReceipt { command: &command };
         let request = tx.query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!("SELECT slug, version, revision, status, artifact_storage_key, artifact_checksum_sha256, artifact_size, artifact_content_type, CAST(validation_warnings AS TEXT) AS validation_warnings, CAST(requested_by_principal AS TEXT) AS requested_by_principal FROM registry_publish_requests WHERE id = {}{request_lock}", mark(1)),
             vec![command.request_id.clone().into()],
         )).await.map_err(store_error)?.ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
@@ -339,7 +345,7 @@ impl SeaOrmModuleGovernanceService {
         }
         let warnings = dedupe_validation_messages(warnings);
         let request_updated = tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!("UPDATE registry_publish_requests SET status = 'submitted', artifact_storage_key = {}, artifact_checksum_sha256 = {}, artifact_size = {}, artifact_content_type = {}, submitted_at = {now}, validation_warnings = {}, validation_errors = {}, approved_by_principal = NULL, rejected_by_principal = NULL, rejection_reason = NULL, validated_at = NULL, approved_at = NULL, published_at = NULL, revision = revision + 1, updated_at = {now} WHERE id = {} AND status IN ('draft', 'changes_requested') AND revision = {}", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8)),
             vec![artifact_storage_key.clone().into(), command.checksum_sha256.clone().into(), command.artifact_size.into(), command.content_type.clone().into(), Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!([])))), command.request_id.clone().into(), command.expected_revision.into()],
         )).await.map_err(store_error)?;
@@ -355,7 +361,7 @@ impl SeaOrmModuleGovernanceService {
         if reuploaded {
             for table in ["registry_validation_stages", "registry_validation_jobs"] {
                 tx.execute_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!("DELETE FROM {table} WHERE request_id = {}", mark(1)),
                     vec![command.request_id.clone().into()],
                 ))
@@ -374,7 +380,7 @@ impl SeaOrmModuleGovernanceService {
             if event_type == "artifact_reuploaded_after_changes_requested" && !reuploaded {
                 continue;
             }
-            tx.execute_raw(Statement::from_sql_and_values(backend, format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, {}, {}, NULL, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)), vec![self.infrastructure.prefixed_id("rge").into(), slug.clone().into(), command.request_id.clone().into(), event_type.into(), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(details)))] )).await.map_err(store_error)?;
+            tx.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, {}, {}, NULL, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)), vec![self.infrastructure.prefixed_id("rge").into(), slug.clone().into(), command.request_id.clone().into(), event_type.into(), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(details)))] )).await.map_err(store_error)?;
         }
         let result = ModulePublishArtifactAttachResult {
             request_id: command.request_id.clone(),

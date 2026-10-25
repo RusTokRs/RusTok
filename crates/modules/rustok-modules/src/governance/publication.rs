@@ -24,26 +24,19 @@ impl SeaOrmModuleGovernanceService {
             .begin()
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-        let backend = tx.get_database_backend();
-        let mark = |n| {
-            if backend == sea_orm::DbBackend::Postgres {
-                format!("${n}")
-            } else {
-                format!("?{n}")
-            }
-        };
-        let now = if backend == sea_orm::DbBackend::Postgres {
-            "NOW()"
-        } else {
-            "datetime('now')"
-        };
-        let request_lock = if backend == sea_orm::DbBackend::Postgres {
+        crate::backend::set_platform_scope(&tx)
+            .await
+            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
+        let mark = |n| backend.placeholder(n);
+        let now = backend.now_sql();
+        let request_lock = if backend == SupportedBackend::Postgres {
             " FOR UPDATE"
         } else {
             ""
         };
         tx.query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT id FROM registry_publish_requests WHERE id = {}{request_lock}",
                 mark(1)
@@ -61,7 +54,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
         let existing_operation = tx
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT CAST(actor_principal AS TEXT) AS actor_principal, \
                      CAST(publisher_principal AS TEXT) AS publisher_principal, \
@@ -76,7 +69,7 @@ impl SeaOrmModuleGovernanceService {
                 ),
                 vec![
                     command.request_id.clone().into(),
-                    registry_uuid_value(command.context.idempotency_key, backend),
+                    backend.uuid_value(command.context.idempotency_key),
                 ],
             ))
             .await
@@ -112,7 +105,7 @@ impl SeaOrmModuleGovernanceService {
             let stored_correlation_id = operation
                 .try_get::<String>("", "correlation_id")
                 .map_err(store_error)?;
-            let expected_allow_owner_rebind = if backend == sea_orm::DbBackend::Postgres {
+            let expected_allow_owner_rebind = if backend == SupportedBackend::Postgres {
                 if command.allow_owner_rebind {
                     "true"
                 } else {
@@ -136,7 +129,7 @@ impl SeaOrmModuleGovernanceService {
             let release_id: String = operation.try_get("", "release_id").map_err(store_error)?;
             let release_exists = tx
                 .query_one_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "SELECT release.id FROM registry_module_releases AS release \
                          INNER JOIN registry_module_release_artifacts AS artifact \
@@ -197,7 +190,7 @@ impl SeaOrmModuleGovernanceService {
         let marketplace_approval_id = self.infrastructure.prefixed_id("rpe");
         let marketplace_approval_inserted = tx
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO registry_publication_evidence \
                  (id, request_id, authority, subject_digest_sha256, evidence_reference, \
@@ -229,7 +222,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
         if marketplace_approval_inserted.rows_affected() == 1 {
             tx.execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO registry_governance_events \
                      (id, slug, request_id, release_id, event_type, actor_principal, \
@@ -254,7 +247,7 @@ impl SeaOrmModuleGovernanceService {
 
         if let Some(override_evidence) = &command.approval_override {
             tx.execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO registry_governance_events \
                      (id, slug, request_id, release_id, event_type, actor_principal, \
@@ -299,7 +292,7 @@ impl SeaOrmModuleGovernanceService {
 
         let release_id = tx
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT id FROM registry_module_releases WHERE slug = {} AND version = {}",
                     mark(1),
@@ -317,7 +310,7 @@ impl SeaOrmModuleGovernanceService {
             .unwrap_or_else(|| self.infrastructure.prefixed_id("rrel"));
         let release_exists = tx
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT id FROM registry_module_releases WHERE id = {}",
                     mark(1)
@@ -329,7 +322,7 @@ impl SeaOrmModuleGovernanceService {
             .is_some();
         if release_exists {
             tx.execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE registry_module_releases SET request_id = {}, crate_name = {}, \
                      default_locale = {}, ownership = {}, trust_level = {}, license = {}, \
@@ -375,7 +368,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         } else {
             tx.execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO registry_module_releases \
                      (id, request_id, slug, version, crate_name, default_locale, ownership, trust_level, \
@@ -412,7 +405,7 @@ impl SeaOrmModuleGovernanceService {
         .await?;
 
         tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "DELETE FROM registry_module_release_translations WHERE release_id = {}",
                 mark(1)
@@ -423,7 +416,7 @@ impl SeaOrmModuleGovernanceService {
         .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         for (locale, name, description) in translations {
             tx.execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO registry_module_release_translations \
                      (release_id, locale, name, description, created_at, updated_at) \
@@ -446,7 +439,7 @@ impl SeaOrmModuleGovernanceService {
 
         let existing_owner = tx
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT CAST(owner_principal AS TEXT) AS owner_principal \
                      FROM registry_module_owners WHERE slug = {}",
@@ -465,7 +458,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
             if previous_owner == command.publisher_principal {
                 tx.execute_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "UPDATE registry_module_owners SET bound_by_principal = {}, updated_at = {now} \
                          WHERE slug = {}",
@@ -484,7 +477,7 @@ impl SeaOrmModuleGovernanceService {
                     return Err(ModuleGovernanceError::OwnerAlreadyBound);
                 }
                 tx.execute_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "UPDATE registry_module_owners SET owner_principal = {}, bound_by_principal = {}, \
                          bound_at = {now}, updated_at = {now} WHERE slug = {}",
@@ -502,7 +495,7 @@ impl SeaOrmModuleGovernanceService {
             }
         } else {
             tx.execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO registry_module_owners \
                      (slug, owner_principal, bound_by_principal, bound_at, updated_at) \
@@ -523,7 +516,7 @@ impl SeaOrmModuleGovernanceService {
         };
         if let Some((mode, previous_owner)) = owner_transition {
             tx.execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "INSERT INTO registry_governance_events \
                      (id, slug, request_id, release_id, event_type, actor_principal, \
@@ -559,7 +552,7 @@ impl SeaOrmModuleGovernanceService {
         }
 
         tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO registry_publication_operations \
                  (operation_id, request_id, idempotency_key, actor_id, trace_id, correlation_id, \
@@ -579,12 +572,12 @@ impl SeaOrmModuleGovernanceService {
                 mark(11),
             ),
             vec![
-                registry_uuid_value(self.infrastructure.new_id(), backend),
+                backend.uuid_value(self.infrastructure.new_id()),
                 command.request_id.clone().into(),
-                registry_uuid_value(command.context.idempotency_key, backend),
-                registry_uuid_value(command.context.actor_id, backend),
+                backend.uuid_value(command.context.idempotency_key),
+                backend.uuid_value(command.context.actor_id),
                 command.context.trace_id.clone().into(),
-                registry_uuid_value(command.context.correlation_id, backend),
+                backend.uuid_value(command.context.correlation_id),
                 Value::Json(Some(Box::new(command.actor_principal.clone()))),
                 Value::Json(Some(Box::new(command.publisher_principal.clone()))),
                 command.allow_owner_rebind.into(),
@@ -596,7 +589,7 @@ impl SeaOrmModuleGovernanceService {
         .map_err(store_error)?;
 
         let request_updated = tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE registry_publish_requests SET status = 'published', approved_by_principal = {}, \
                  approved_at = {now}, published_at = {now}, revision = revision + 1, updated_at = {now} \
@@ -621,7 +614,7 @@ impl SeaOrmModuleGovernanceService {
             .await?);
         }
         tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
                  (id, slug, request_id, release_id, event_type, actor_principal, \

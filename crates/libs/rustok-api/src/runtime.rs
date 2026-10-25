@@ -43,8 +43,10 @@ impl SharedStaticModuleSettingsTransactionReader {
     }
 }
 
-/// Returns whether an optional module is enabled for the tenant snapshot that
-/// owns the current request.
+/// Returns whether an optional module is explicitly enabled for the tenant
+/// snapshot that owns the current request. A row without recorded enablement
+/// intent (NULL) does not count as enabled: optional modules are off until
+/// the tenant explicitly enables them.
 ///
 /// GraphQL and native server-function transports share this query so neither
 /// transport can bypass tenant module lifecycle policy.
@@ -81,8 +83,10 @@ pub async fn is_tenant_module_enabled(
         .map(|row| row.is_some())
 }
 
-/// Returns the settings snapshot for one exact enabled tenant module while
-/// participating in a caller-owned transaction.
+/// Returns the settings snapshot for one exact tenant module that is not
+/// explicitly disabled, while participating in a caller-owned transaction.
+/// A row without recorded enablement intent (NULL, "settings without
+/// intent") exposes its settings; only an explicit disable hides them.
 ///
 /// PostgreSQL and MySQL use a shared row lock so a domain transaction cannot
 /// decide on stale module intent while lifecycle state is being changed.
@@ -94,13 +98,13 @@ pub async fn tenant_module_settings_in_tx(
     let backend = txn.get_database_backend();
     let query = match backend {
         sea_orm::DbBackend::Sqlite => {
-            "SELECT CAST(settings AS TEXT) AS settings_json FROM tenant_modules WHERE (tenant_id = ?1 OR tenant_id = ?2) AND module_slug = ?3 AND enabled = 1 LIMIT 1"
+            "SELECT CAST(settings AS TEXT) AS settings_json FROM tenant_modules WHERE (tenant_id = ?1 OR tenant_id = ?2) AND module_slug = ?3 AND enabled IS NOT 0 LIMIT 1"
         }
         sea_orm::DbBackend::Postgres => {
-            "SELECT settings::text AS settings_json FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 AND enabled = true LIMIT 1 FOR SHARE"
+            "SELECT settings::text AS settings_json FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 AND enabled IS NOT FALSE LIMIT 1 FOR SHARE"
         }
         sea_orm::DbBackend::MySql => {
-            "SELECT CAST(settings AS CHAR) AS settings_json FROM tenant_modules WHERE tenant_id = ? AND module_slug = ? AND enabled = true LIMIT 1 FOR SHARE"
+            "SELECT CAST(settings AS CHAR) AS settings_json FROM tenant_modules WHERE tenant_id = ? AND module_slug = ? AND enabled IS NOT FALSE LIMIT 1 FOR SHARE"
         }
         _ => {
             return Err(DbErr::Custom(format!(
@@ -137,14 +141,16 @@ pub async fn tenant_module_settings_in_tx(
     })
 }
 
-/// Returns the settings snapshot for one exact enabled tenant module.
+/// Returns the settings snapshot for one exact tenant module that is not
+/// explicitly disabled.
 ///
 /// This is the read-only counterpart to [`is_tenant_module_enabled`]. Internal
 /// GraphQL and native server-function adapters can consume the same persisted
 /// tenant-module control-plane snapshot without importing tenant persistence
 /// entities or inventing a parallel settings store. The caller must supply the
 /// tenant id from a trusted request context; this helper only applies the exact
-/// tenant/module/enabled-row lookup. Disabled or missing rows return `None`.
+/// tenant/module/not-disabled-row lookup. Explicitly disabled or missing rows
+/// return `None`; a row without recorded intent (NULL) exposes its settings.
 pub async fn tenant_module_settings(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -153,13 +159,13 @@ pub async fn tenant_module_settings(
     let backend = db.get_database_backend();
     let query = match backend {
         sea_orm::DbBackend::Sqlite => {
-            "SELECT CAST(settings AS TEXT) AS settings_json FROM tenant_modules WHERE (tenant_id = ?1 OR tenant_id = ?2) AND module_slug = ?3 AND enabled = 1 LIMIT 1"
+            "SELECT CAST(settings AS TEXT) AS settings_json FROM tenant_modules WHERE (tenant_id = ?1 OR tenant_id = ?2) AND module_slug = ?3 AND enabled IS NOT 0 LIMIT 1"
         }
         sea_orm::DbBackend::Postgres => {
-            "SELECT settings::text AS settings_json FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 AND enabled = true LIMIT 1"
+            "SELECT settings::text AS settings_json FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 AND enabled IS NOT FALSE LIMIT 1"
         }
         _ => {
-            "SELECT CAST(settings AS CHAR) AS settings_json FROM tenant_modules WHERE tenant_id = ? AND module_slug = ? AND enabled = true LIMIT 1"
+            "SELECT CAST(settings AS CHAR) AS settings_json FROM tenant_modules WHERE tenant_id = ? AND module_slug = ? AND enabled IS NOT FALSE LIMIT 1"
         }
     };
 
@@ -281,7 +287,7 @@ mod tests {
 CREATE TABLE tenant_modules (
     tenant_id TEXT NOT NULL,
     module_slug TEXT NOT NULL,
-    enabled INTEGER NOT NULL,
+    enabled INTEGER NULL,
     settings TEXT NOT NULL DEFAULT '{}',
     PRIMARY KEY (tenant_id, module_slug)
 );
@@ -337,6 +343,7 @@ CREATE TABLE tenant_modules (
             r#"INSERT INTO tenant_modules (tenant_id, module_slug, enabled, settings) VALUES
              ('{tenant_id}', 'forum', 1, '{{"use_reactions":true}}'),
              ('{tenant_id}', 'forum-disabled', 0, '{{"use_reactions":true}}'),
+             ('{tenant_id}', 'forum-inherited', NULL, '{{"use_reactions":true}}'),
              ('{foreign_tenant_id}', 'forum', 1, '{{"use_reactions":false}}')"#
         ))
         .await
@@ -355,6 +362,20 @@ CREATE TABLE tenant_modules (
                 .await
                 .expect("disabled settings lookup should succeed")
                 .is_none()
+        );
+        // A row without recorded intent still exposes its settings.
+        assert_eq!(
+            tenant_module_settings_in_tx(&txn, tenant_id, "forum-inherited")
+                .await
+                .expect("inherited settings lookup should succeed")
+                .expect("row without intent should be visible")["use_reactions"],
+            true
+        );
+        // ... but does not count as explicitly enabled.
+        assert!(
+            !is_tenant_module_enabled(&db, tenant_id, "forum-inherited")
+                .await
+                .expect("inherited enablement lookup should succeed")
         );
         assert_eq!(
             tenant_module_settings_in_tx(&txn, foreign_tenant_id, "forum")

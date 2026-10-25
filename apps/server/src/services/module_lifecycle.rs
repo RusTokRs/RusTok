@@ -93,6 +93,8 @@ pub enum ToggleModuleError {
     CoreModuleCannotBeDisabled(String),
     #[error("Missing module dependencies: {0}")]
     MissingDependencies(String),
+    #[error("Module dependencies with incompatible versions: {0}")]
+    IncompatibleDependencies(String),
     #[error("Module is required by: {0}")]
     HasDependents(String),
     #[error("Database error: {0}")]
@@ -206,9 +208,14 @@ impl ModuleLifecycleService {
                 "explicit module toggle did not persist a tenant override row".to_string(),
             )
         })?;
+        let enabled = state.enabled.ok_or_else(|| {
+            ToggleModuleError::Policy(
+                "explicit module toggle did not record tenant enablement intent".to_string(),
+            )
+        })?;
         Ok(ModuleLifecycleStateSnapshot {
             module_slug: module_slug.to_string(),
-            enabled: state.enabled,
+            enabled,
             settings: result.settings,
             operation_id: result.operation_id,
             revision: result.revision.ok_or_else(|| {
@@ -315,7 +322,14 @@ impl ModuleLifecycleService {
             .await
             .map_err(map_lifecycle_writer_recovery_error)?;
         let (enabled, settings) = match result.state {
-            Some(state) => (state.enabled, result.settings),
+            // A restored "no recorded intent" state falls back to the
+            // effective policy, exactly like a missing row.
+            Some(state) => (
+                state
+                    .enabled
+                    .unwrap_or_else(|| policy.contains(&module_slug)),
+                result.settings,
+            ),
             None => (policy.contains(&module_slug), serde_json::json!({})),
         };
         Ok(ModuleLifecycleStateSnapshot {
@@ -478,6 +492,9 @@ fn map_toggle_validation_error(error: ModuleToggleValidationError) -> ToggleModu
         ModuleToggleValidationError::MissingDependencies(dependencies) => {
             ToggleModuleError::MissingDependencies(dependencies.join(", "))
         }
+        ModuleToggleValidationError::IncompatibleDependencies(dependencies) => {
+            ToggleModuleError::IncompatibleDependencies(dependencies.join(", "))
+        }
         ModuleToggleValidationError::HasDependents(dependents) => {
             ToggleModuleError::HasDependents(dependents.join(", "))
         }
@@ -546,6 +563,9 @@ fn map_lifecycle_writer_error(error: ModuleLifecycleDbWriterError) -> ToggleModu
         error @ ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery => {
             ToggleModuleError::Policy(error.to_string())
         }
+        error @ ModuleLifecycleDbWriterError::Security(_) => {
+            ToggleModuleError::Policy(error.to_string())
+        }
     }
 }
 
@@ -612,6 +632,9 @@ fn map_lifecycle_writer_recovery_error(
         error @ ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery => {
             ModuleOperationRecoveryError::Policy(error.to_string())
         }
+        error @ ModuleLifecycleDbWriterError::Security(_) => {
+            ModuleOperationRecoveryError::Policy(error.to_string())
+        }
     }
 }
 
@@ -666,6 +689,9 @@ pub(crate) fn map_lifecycle_writer_settings_error(
             map_lifecycle_settings_receipt_error(error)
         }
         error @ ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery => {
+            UpdateModuleSettingsError::Policy(error.to_string())
+        }
+        error @ ModuleLifecycleDbWriterError::Security(_) => {
             UpdateModuleSettingsError::Policy(error.to_string())
         }
     }
@@ -1146,7 +1172,10 @@ mod tests {
             .expect("load stored core settings")
             .expect("tenant_modules row");
         assert_eq!(stored.settings["workspaceName"], serde_json::json!("Acme"));
-        assert!(stored.enabled);
+        // A settings save records no enablement intent (tri-state): the
+        // Core module stays available through the platform default, not
+        // through a frozen flag.
+        assert_eq!(stored.enabled, None);
     }
 
     #[tokio::test]

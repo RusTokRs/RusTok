@@ -484,30 +484,58 @@ pub(crate) fn data_capability_error(
     error: ArtifactDataError,
 ) -> SandboxError {
     match error {
-        ArtifactDataError::InvalidScope
-        | ArtifactDataError::InvalidKey
+        // Limits and optimistic-concurrency conflicts are actionable by
+        // the guest (shrink the value, re-read, retry); masking them as
+        // an undifferentiated denial makes correct guest behavior
+        // impossible to distinguish from a policy refusal.
+        ArtifactDataError::ValueTooLarge { limit, .. } => SandboxError::LimitExceeded {
+            resource: "artifact_data_value_bytes".to_string(),
+            limit: limit as u64,
+        },
+        ArtifactDataError::QuotaExceeded {
+            resource, limit, ..
+        } => SandboxError::LimitExceeded {
+            resource: format!("artifact_data_{resource}"),
+            limit,
+        },
+        ArtifactDataError::RevisionConflict => {
+            SandboxError::CapabilityConstraintDenied {
+                capability: capability.clone(),
+                reason: "artifact data revision conflict; re-read and retry".to_string(),
+            }
+        }
+        ArtifactDataError::IdempotencyConflict => {
+            SandboxError::CapabilityConstraintDenied {
+                capability: capability.clone(),
+                reason: "artifact data idempotency key was reused for a different write"
+                    .to_string(),
+            }
+        }
+        error @ (ArtifactDataError::InvalidKey
         | ArtifactDataError::InvalidObject
         | ArtifactDataError::InvalidPage
         | ArtifactDataError::InvalidIndexQuery
-        | ArtifactDataError::IndexQueryUnavailable
         | ArtifactDataError::InvalidBatch
-        | ArtifactDataError::RevisionConflict
+        | ArtifactDataError::InvalidIdempotencyKey
+        | ArtifactDataError::DataContractSchemaViolation
         | ArtifactDataError::NamespacePurged
+        | ArtifactDataError::NamespaceHeld) => {
+            SandboxError::CapabilityConstraintDenied {
+                capability: capability.clone(),
+                reason: error.to_string(),
+            }
+        }
+        ArtifactDataError::InvalidScope
         | ArtifactDataError::PurgePrecondition
-        | ArtifactDataError::NamespaceHeld
         | ArtifactDataError::ExportPrecondition
         | ArtifactDataError::SnapshotPrecondition
         | ArtifactDataError::SnapshotLimitExceeded
         | ArtifactDataError::RestorePrecondition
         | ArtifactDataError::SnapshotRetentionPrecondition
         | ArtifactDataError::SnapshotCollectionPrecondition
-        | ArtifactDataError::InvalidIdempotencyKey
-        | ArtifactDataError::IdempotencyConflict
-        | ArtifactDataError::ValueTooLarge { .. }
-        | ArtifactDataError::QuotaExceeded { .. }
-        | ArtifactDataError::DataContractSchemaViolation
         | ArtifactDataError::PolicyDenied => SandboxError::CapabilityDenied(capability.clone()),
-        ArtifactDataError::InvalidUpgrade
+        ArtifactDataError::IndexQueryUnavailable
+        | ArtifactDataError::InvalidUpgrade
         | ArtifactDataError::UpgradeHook(_)
         | ArtifactDataError::StaleUpgradePlan
         | ArtifactDataError::MigrationCheckpoint(_)
@@ -516,9 +544,48 @@ pub(crate) fn data_capability_error(
         | ArtifactDataError::InvalidQuota
         | ArtifactDataError::ObjectIntegrity
         | ArtifactDataError::SnapshotIntegrity
-        | ArtifactDataError::Storage(_) => SandboxError::HostCapability {
+        | ArtifactDataError::Storage(_)
+        | ArtifactDataError::RollbackFailed { .. } => SandboxError::HostCapability {
             capability: capability.clone(),
             message: "artifact data capability is unavailable".to_string(),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rustok_sandbox::{CapabilityName, SandboxError};
+
+    use super::data_capability_error;
+    use crate::ArtifactDataError;
+
+    #[test]
+    fn data_capability_errors_keep_limits_conflicts_and_host_failures_distinct() {
+        let capability = CapabilityName::new("platform.data").expect("valid capability name");
+        assert_eq!(
+            data_capability_error(
+                &capability,
+                ArtifactDataError::ValueTooLarge {
+                    limit: 1_024,
+                    actual: 2_048,
+                },
+            ),
+            SandboxError::LimitExceeded {
+                resource: "artifact_data_value_bytes".to_string(),
+                limit: 1_024,
+            },
+        );
+        assert!(matches!(
+            data_capability_error(&capability, ArtifactDataError::RevisionConflict),
+            SandboxError::CapabilityConstraintDenied { .. }
+        ));
+        assert!(matches!(
+            data_capability_error(&capability, ArtifactDataError::NamespacePurged),
+            SandboxError::CapabilityConstraintDenied { .. }
+        ));
+        assert!(matches!(
+            data_capability_error(&capability, ArtifactDataError::Storage("db".to_string())),
+            SandboxError::HostCapability { .. }
+        ));
     }
 }

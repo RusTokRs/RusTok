@@ -33,11 +33,17 @@ fn publish_request_authorization_is_derived_from_durable_owner_facts() {
     let unrelated = serde_json::json!({ "kind": "user", "id": "unrelated" });
     let worker = serde_json::json!({ "kind": "service", "id": "worker" });
 
-    assert!(governance_actor_can_create_publish_request(
+    // No first-comer namespace claim: an unowned slug can only be
+    // bootstrapped by a module manager, because the first published release
+    // durably binds its publisher as the slug owner.
+    assert!(!governance_actor_can_create_publish_request(
         None, &publisher, false,
     ));
     assert!(!governance_actor_can_create_publish_request(
         None, &worker, false,
+    ));
+    assert!(governance_actor_can_create_publish_request(
+        None, &publisher, true,
     ));
     assert!(governance_actor_can_create_publish_request(
         Some(&owner),
@@ -134,6 +140,34 @@ async fn owner_rejects_unprivileged_publish_request_creation_before_writing() {
         ))
         .await
         .expect("owner fixture");
+    let service = SeaOrmModuleGovernanceService::new(database);
+    assert_eq!(
+        service
+            .create_publish_request(publish_request_create_command())
+            .await,
+        Err(ModuleGovernanceError::PublishRequestCreationUnauthorized)
+    );
+}
+
+#[tokio::test]
+async fn unowned_slug_publish_request_creation_requires_module_manager() {
+    let database = Database::connect("sqlite::memory:")
+        .await
+        .expect("database");
+    database
+            .execute_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "CREATE TABLE registry_module_owners (\
+                    slug TEXT PRIMARY KEY, owner_principal TEXT NOT NULL, \
+                    bound_by_principal TEXT NOT NULL, bound_at TEXT NOT NULL, updated_at TEXT NOT NULL\
+                 )"
+                .to_string(),
+            ))
+            .await
+            .expect("owner schema");
+    // `registry_module_owners` is empty: without the manager capability the
+    // fixture actor must not be able to open the namespace by first-comer
+    // claim, and the rejection happens before any request row is written.
     let service = SeaOrmModuleGovernanceService::new(database);
     assert_eq!(
         service

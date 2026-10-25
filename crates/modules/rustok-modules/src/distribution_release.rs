@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, QueryResult, Statement,
     TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
@@ -14,18 +14,20 @@ use uuid::Uuid;
 
 use rustok_events::DomainEvent;
 
+use crate::backend::SupportedBackend;
 use crate::{
     ControlPlaneInfrastructure, ModuleCommandContext, ModuleStaticDistributionBuild,
     ModuleStaticDistributionBuildEvidence, ModuleStaticDistributionBuildStatus,
     ModuleStaticDistributionCompletionCommand, ModuleStaticDistributionCompletionOutcome,
     ModuleStaticDistributionItem, ModuleStaticPromotionError, ModuleStaticPromotionStatus,
-    data::{now_expression, placeholder, uuid_from_row, uuid_value},
+    data::uuid_from_row,
     distribution::{
         load_build, load_distribution_state, module_static_distribution_composition_digest,
     },
+    installation::valid_digest,
     promotion::{
         digest_json, load_platform_build_evidence, load_promotion, valid_cas_source_reference,
-        valid_digest, valid_reference, validate_promotion_review,
+        valid_reference, validate_promotion_review,
     },
 };
 
@@ -86,12 +88,24 @@ pub struct ModuleStaticDistributionReleaseVerificationRequest {
     pub policy_revision: String,
 }
 
+/// Failure of a [`ModuleStaticDistributionReleaseVerifier`] port. A
+/// completed verification reports its verdict inside
+/// [`ModuleStaticDistributionReleaseAdmission`]; this error means the
+/// verification could not be performed.
+#[derive(Debug, Error)]
+pub enum ModuleStaticDistributionReleaseVerifyError {
+    #[error("{0}")]
+    Unavailable(String),
+    #[error("{0}")]
+    Store(String),
+}
+
 #[async_trait]
 pub trait ModuleStaticDistributionReleaseVerifier: Send + Sync {
     async fn verify(
         &self,
         request: ModuleStaticDistributionReleaseVerificationRequest,
-    ) -> Result<ModuleStaticDistributionReleaseAdmission, String>;
+    ) -> Result<ModuleStaticDistributionReleaseAdmission, ModuleStaticDistributionReleaseVerifyError>;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -180,6 +194,9 @@ pub async fn resolve_static_distribution_install_binding(
         return Err(ModuleStaticDistributionReleaseError::InvalidCommand);
     }
     let transaction = db.begin().await.map_err(store_error)?;
+    crate::backend::set_platform_scope(&transaction)
+        .await
+        .map_err(store_error)?;
     let state = lock_release_state(&transaction).await?;
     let release = load_release_record(&transaction, distribution_release_id, true).await?;
     let selectable = (release.status == ModuleStaticDistributionReleaseStatus::Admitted
@@ -294,6 +311,9 @@ where
         validate_admission(&admission, &command.verification_policy_revision)?;
 
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction)
+            .await
+            .map_err(store_error)?;
         if let Some(receipt) =
             reserve_admission_operation(&transaction, &command.context, &request_digest).await?
         {
@@ -419,6 +439,9 @@ where
             return Ok(receipt);
         }
         let transaction = self.db.begin().await.map_err(store_error)?;
+        crate::backend::set_platform_scope(&transaction)
+            .await
+            .map_err(store_error)?;
         if let Some(receipt) =
             reserve_revocation_operation(&transaction, &command.context, &request_digest).await?
         {
@@ -530,7 +553,7 @@ pub enum ModuleStaticDistributionReleaseError {
     #[error("static distribution release command was not authorized")]
     AuthorizationDenied,
     #[error("static distribution release verification failed: {0}")]
-    VerificationFailed(String),
+    VerificationFailed(#[from] ModuleStaticDistributionReleaseVerifyError),
     #[error("static distribution release verification decision was not admitted")]
     VerificationDenied,
     #[error("static distribution build is not successfully completed")]
@@ -617,10 +640,10 @@ fn valid_policy_revision(value: &str) -> bool {
 async fn ensure_no_static_transition_in_progress(
     transaction: &DatabaseTransaction,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let row = transaction
         .query_one_raw(Statement::from_string(
-            backend,
+            backend.db_backend(),
             "SELECT rollout.status
              FROM module_static_distribution_rollout_state AS state
              JOIN module_static_distribution_rollouts AS rollout
@@ -836,21 +859,21 @@ async fn lock_build_for_admission(
     transaction: &DatabaseTransaction,
     distribution_build_id: Uuid,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend = transaction.get_database_backend();
-    let lock = if backend == DbBackend::Postgres {
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let lock = if backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
         ""
     };
     let row = transaction
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT status FROM module_static_distribution_builds
                  WHERE distribution_build_id = {}{lock}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(distribution_build_id, backend)],
+            vec![backend.uuid_value(distribution_build_id)],
         ))
         .await
         .map_err(store_error)?
@@ -891,10 +914,10 @@ pub(crate) async fn insert_release(
     } = insert;
     let role_artifacts_json = serde_json::to_string(&evidence.roles)
         .map_err(|error| ModuleStaticDistributionReleaseError::Store(error.to_string()))?;
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_static_distribution_releases
                  (distribution_release_id, distribution_build_id, predecessor_release_id,
@@ -906,31 +929,31 @@ pub(crate) async fn insert_release(
                  VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},
                          'admitted', {}, {}, NULL)
                  ON CONFLICT (distribution_build_id) DO NOTHING",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                placeholder(backend, 9),
-                placeholder(backend, 10),
-                placeholder(backend, 11),
-                placeholder(backend, 12),
-                placeholder(backend, 13),
-                placeholder(backend, 14),
-                placeholder(backend, 15),
-                placeholder(backend, 16),
-                placeholder(backend, 17),
-                placeholder(backend, 18),
-                placeholder(backend, 19),
-                placeholder(backend, 20),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.placeholder(9),
+                backend.placeholder(10),
+                backend.placeholder(11),
+                backend.placeholder(12),
+                backend.placeholder(13),
+                backend.placeholder(14),
+                backend.placeholder(15),
+                backend.placeholder(16),
+                backend.placeholder(17),
+                backend.placeholder(18),
+                backend.placeholder(19),
+                backend.placeholder(20),
             ),
             vec![
-                uuid_value(distribution_release_id, backend),
-                uuid_value(distribution_build_id, backend),
-                optional_uuid_value(predecessor_release_id, backend),
+                backend.uuid_value(distribution_release_id),
+                backend.uuid_value(distribution_build_id),
+                backend.optional_uuid_value(predecessor_release_id),
                 revision_value(release_revision)?,
                 revision_value(composition_revision)?,
                 composition_digest.to_owned().into(),
@@ -946,8 +969,8 @@ pub(crate) async fn insert_release(
                 evidence.signature_digest.clone().into(),
                 evidence.test_evidence_reference.clone().into(),
                 evidence.test_evidence_digest.clone().into(),
-                uuid_value(actor_id, backend),
-                datetime_value(admitted_at, backend),
+                backend.uuid_value(actor_id),
+                backend.datetime_value(admitted_at),
             ],
         ))
         .await
@@ -965,10 +988,10 @@ pub(crate) async fn insert_admission(
     admission: &ModuleStaticDistributionReleaseAdmission,
     verified_at: chrono::DateTime<chrono::Utc>,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_static_distribution_release_admissions
                  (admission_id, distribution_release_id, verifier_identity, policy_revision,
@@ -976,22 +999,22 @@ pub(crate) async fn insert_admission(
                   provenance_verified, sbom_verified, test_evidence_verified,
                   dependency_policy_verified, verified_at)
                  VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                placeholder(backend, 9),
-                placeholder(backend, 10),
-                placeholder(backend, 11),
-                placeholder(backend, 12),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
+                backend.placeholder(9),
+                backend.placeholder(10),
+                backend.placeholder(11),
+                backend.placeholder(12),
             ),
             vec![
-                uuid_value(admission_id, backend),
-                uuid_value(distribution_release_id, backend),
+                backend.uuid_value(admission_id),
+                backend.uuid_value(distribution_release_id),
                 admission.verifier_identity.clone().into(),
                 admission.policy_revision.clone().into(),
                 admission.evidence_reference.clone().into(),
@@ -1001,7 +1024,7 @@ pub(crate) async fn insert_admission(
                 admission.sbom_verified.into(),
                 admission.test_evidence_verified.into(),
                 admission.dependency_policy_verified.into(),
-                datetime_value(verified_at, backend),
+                backend.datetime_value(verified_at),
             ],
         ))
         .await
@@ -1013,18 +1036,18 @@ async fn supersede_release(
     transaction: &DatabaseTransaction,
     distribution_release_id: Uuid,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_releases
                  SET status = 'superseded', superseded_at = {}
                  WHERE distribution_release_id = {} AND status = 'active'",
-                now_expression(backend),
-                placeholder(backend, 1),
+                backend.now_sql(),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(distribution_release_id, backend)],
+            vec![backend.uuid_value(distribution_release_id)],
         ))
         .await
         .map_err(store_error)?;
@@ -1058,18 +1081,18 @@ pub(crate) async fn commit_admitted_release(
     if let Some(predecessor_release_id) = predecessor_release_id {
         supersede_release(transaction, predecessor_release_id).await?;
     }
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let activated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_releases
                  SET status = 'active', activated_at = {}
                  WHERE distribution_release_id = {} AND status = 'admitted'",
-                now_expression(backend),
-                placeholder(backend, 1),
+                backend.now_sql(),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(target_release_id, backend)],
+            vec![backend.uuid_value(target_release_id)],
         ))
         .await
         .map_err(store_error)?;
@@ -1117,18 +1140,18 @@ pub(crate) async fn commit_recovery_release(
         return Err(ModuleStaticDistributionReleaseError::RollbackTargetInvalid);
     }
     supersede_release(transaction, from_release_id).await?;
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let activated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_releases
                  SET status = 'active', activated_at = {}, superseded_at = NULL
                  WHERE distribution_release_id = {} AND status = 'superseded'",
-                now_expression(backend),
-                placeholder(backend, 1),
+                backend.now_sql(),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(target_release_id, backend)],
+            vec![backend.uuid_value(target_release_id)],
         ))
         .await
         .map_err(store_error)?;
@@ -1159,19 +1182,19 @@ pub(crate) async fn load_release_state<C: ConnectionTrait>(
     connection: &C,
     lock_row: bool,
 ) -> Result<ModuleStaticDistributionReleaseState, ModuleStaticDistributionReleaseError> {
-    let backend = connection.get_database_backend();
-    let lock = if lock_row && backend == DbBackend::Postgres {
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
         ""
     };
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT revision, active_release_id
                  FROM module_static_distribution_release_state WHERE state_id = {}{lock}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
             vec![DISTRIBUTION_RELEASE_STATE_ID.into()],
         ))
@@ -1209,25 +1232,25 @@ pub(crate) async fn advance_release_state_optional(
     next_revision: u64,
     distribution_release_id: Option<Uuid>,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_release_state
                  SET revision = {}, active_release_id = {}, updated_at = {}
                  WHERE state_id = {} AND revision = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                now_expression(backend),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.now_sql(),
+                backend.placeholder(3),
+                backend.placeholder(4),
             ),
             vec![
                 revision_value(next_revision)?,
-                optional_uuid_value(distribution_release_id, backend),
+                backend.optional_uuid_value(distribution_release_id),
                 DISTRIBUTION_RELEASE_STATE_ID.into(),
-                revision_value_allow_zero(expected_revision)?,
+                revision_value(expected_revision)?,
             ],
         ))
         .await
@@ -1248,17 +1271,17 @@ async fn validate_release_idempotency_key<C: ConnectionTrait>(
     context: &ModuleCommandContext,
     request_digest: &str,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT operation_kind, request_digest, actor_id, trace_id, correlation_id
                  FROM module_static_distribution_release_idempotency_keys
                  WHERE idempotency_key = {}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(context.idempotency_key, backend)],
+            vec![backend.uuid_value(context.idempotency_key)],
         ))
         .await
         .map_err(store_error)?;
@@ -1284,29 +1307,29 @@ async fn reserve_release_idempotency_key(
     context: &ModuleCommandContext,
     request_digest: &str,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_static_distribution_release_idempotency_keys
                  (idempotency_key, operation_kind, request_digest, actor_id, trace_id, correlation_id, created_at)
                  VALUES ({}, {}, {}, {}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.now_sql(),
             ),
             vec![
-                uuid_value(context.idempotency_key, backend),
+                backend.uuid_value(context.idempotency_key),
                 operation_kind.to_owned().into(),
                 request_digest.to_owned().into(),
-                uuid_value(context.actor_id, backend),
+                backend.uuid_value(context.actor_id),
                 context.trace_id.clone().into(),
-                uuid_value(context.correlation_id, backend),
+                backend.uuid_value(context.correlation_id),
             ],
         ))
         .await
@@ -1316,14 +1339,14 @@ async fn reserve_release_idempotency_key(
     }
     let row = transaction
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT operation_kind, request_digest, actor_id, trace_id, correlation_id
                  FROM module_static_distribution_release_idempotency_keys
                  WHERE idempotency_key = {}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(context.idempotency_key, backend)],
+            vec![backend.uuid_value(context.idempotency_key)],
         ))
         .await
         .map_err(store_error)?
@@ -1343,7 +1366,7 @@ async fn reserve_release_idempotency_key(
 
 fn stored_release_command_context(
     row: &QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
     idempotency_key: Uuid,
 ) -> Result<ModuleCommandContext, ModuleStaticDistributionReleaseError> {
     Ok(ModuleCommandContext {
@@ -1361,24 +1384,24 @@ async fn reserve_admission_operation(
     request_digest: &str,
 ) -> Result<Option<ModuleStaticDistributionAdmissionReceipt>, ModuleStaticDistributionReleaseError>
 {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     reserve_release_idempotency_key(transaction, "admit", context, request_digest).await?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_static_distribution_admission_operations
                  (idempotency_key, request_digest, actor_id, created_at)
                  VALUES ({}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.now_sql(),
             ),
             vec![
-                uuid_value(context.idempotency_key, backend),
+                backend.uuid_value(context.idempotency_key),
                 request_digest.to_owned().into(),
-                uuid_value(context.actor_id, backend),
+                backend.uuid_value(context.actor_id),
             ],
         ))
         .await
@@ -1388,15 +1411,15 @@ async fn reserve_admission_operation(
     }
     let row = transaction
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT request_digest, actor_id, distribution_release_id,
                         release_revision,
                         CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END AS completed
                  FROM module_static_distribution_admission_operations WHERE idempotency_key = {}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(context.idempotency_key, backend)],
+            vec![backend.uuid_value(context.idempotency_key)],
         ))
         .await
         .map_err(store_error)?
@@ -1415,18 +1438,18 @@ async fn load_admission_operation<C: ConnectionTrait>(
     request_digest: &str,
 ) -> Result<Option<ModuleStaticDistributionAdmissionReceipt>, ModuleStaticDistributionReleaseError>
 {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let Some(row) = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT request_digest, actor_id, distribution_release_id,
                         release_revision,
                         CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END AS completed
                  FROM module_static_distribution_admission_operations WHERE idempotency_key = {}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(context.idempotency_key, backend)],
+            vec![backend.uuid_value(context.idempotency_key)],
         ))
         .await
         .map_err(store_error)?
@@ -1447,23 +1470,23 @@ async fn complete_admission_operation(
     distribution_release_id: Uuid,
     release_revision: u64,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_admission_operations
                  SET distribution_release_id = {}, release_revision = {}, completed_at = {}
                  WHERE idempotency_key = {} AND distribution_release_id IS NULL",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                now_expression(backend),
-                placeholder(backend, 3),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.now_sql(),
+                backend.placeholder(3),
             ),
             vec![
-                uuid_value(distribution_release_id, backend),
+                backend.uuid_value(distribution_release_id),
                 revision_value(release_revision)?,
-                uuid_value(idempotency_key, backend),
+                backend.uuid_value(idempotency_key),
             ],
         ))
         .await
@@ -1476,7 +1499,7 @@ async fn complete_admission_operation(
 
 fn replay_admission_receipt(
     row: &QueryResult,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<ModuleStaticDistributionAdmissionReceipt, ModuleStaticDistributionReleaseError> {
     let distribution_release_id = optional_uuid_from_row(row, "distribution_release_id", backend)?
         .ok_or(ModuleStaticDistributionReleaseError::IdempotencyConflict)?;
@@ -1500,26 +1523,26 @@ async fn revoke_release(
     reason: &str,
     policy_revision: &str,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_releases
                  SET status = 'revoked', revoked_by = {}, revoked_at = {},
                      revocation_reason = {}, revocation_policy_revision = {}
                  WHERE distribution_release_id = {} AND status IN ('admitted', 'active', 'superseded')",
-                placeholder(backend, 1),
-                now_expression(backend),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
+                backend.placeholder(1),
+                backend.now_sql(),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
             ),
             vec![
-                uuid_value(actor_id, backend),
+                backend.uuid_value(actor_id),
                 reason.to_owned().into(),
                 policy_revision.to_owned().into(),
-                uuid_value(distribution_release_id, backend),
+                backend.uuid_value(distribution_release_id),
             ],
         ))
         .await
@@ -1536,24 +1559,24 @@ async fn reserve_revocation_operation(
     request_digest: &str,
 ) -> Result<Option<ModuleStaticDistributionRevocationReceipt>, ModuleStaticDistributionReleaseError>
 {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     reserve_release_idempotency_key(transaction, "revoke", context, request_digest).await?;
     let inserted = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO module_static_distribution_revocation_operations
                  (idempotency_key, request_digest, actor_id, created_at)
                  VALUES ({}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                now_expression(backend),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.now_sql(),
             ),
             vec![
-                uuid_value(context.idempotency_key, backend),
+                backend.uuid_value(context.idempotency_key),
                 request_digest.to_owned().into(),
-                uuid_value(context.actor_id, backend),
+                backend.uuid_value(context.actor_id),
             ],
         ))
         .await
@@ -1579,19 +1602,19 @@ async fn query_revocation_operation<C: ConnectionTrait>(
     request_digest: &str,
 ) -> Result<Option<ModuleStaticDistributionRevocationReceipt>, ModuleStaticDistributionReleaseError>
 {
-    let backend = connection.get_database_backend();
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let Some(row) = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT request_digest, actor_id, distribution_release_id,
                         release_state_revision, was_active,
                         CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END AS completed
                  FROM module_static_distribution_revocation_operations
                  WHERE idempotency_key = {}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(context.idempotency_key, backend)],
+            vec![backend.uuid_value(context.idempotency_key)],
         ))
         .await
         .map_err(store_error)?
@@ -1625,26 +1648,26 @@ async fn complete_revocation_operation(
     release_state_revision: u64,
     was_active: bool,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend = transaction.get_database_backend();
+    let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "UPDATE module_static_distribution_revocation_operations
                  SET distribution_release_id = {}, release_state_revision = {}, was_active = {},
                      completed_at = {}
                  WHERE idempotency_key = {} AND distribution_release_id IS NULL",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                now_expression(backend),
-                placeholder(backend, 4),
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.now_sql(),
+                backend.placeholder(4),
             ),
             vec![
-                uuid_value(distribution_release_id, backend),
+                backend.uuid_value(distribution_release_id),
                 revision_value(release_state_revision)?,
                 was_active.into(),
-                uuid_value(idempotency_key, backend),
+                backend.uuid_value(idempotency_key),
             ],
         ))
         .await
@@ -1660,15 +1683,15 @@ pub(crate) async fn load_release_record<C: ConnectionTrait>(
     distribution_release_id: Uuid,
     lock_row: bool,
 ) -> Result<ModuleStaticDistributionRelease, ModuleStaticDistributionReleaseError> {
-    let backend = connection.get_database_backend();
-    let lock = if lock_row && backend == DbBackend::Postgres {
+    let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
+    let lock = if lock_row && backend == SupportedBackend::Postgres {
         " FOR UPDATE"
     } else {
         ""
     };
     let row = connection
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT release.distribution_release_id, release.distribution_build_id,
                         release.predecessor_release_id, release.release_revision,
@@ -1691,9 +1714,9 @@ pub(crate) async fn load_release_record<C: ConnectionTrait>(
                  JOIN module_static_distribution_release_admissions AS admission
                    ON admission.distribution_release_id = release.distribution_release_id
                  WHERE release.distribution_release_id = {}{lock}",
-                placeholder(backend, 1),
+                backend.placeholder(1),
             ),
-            vec![uuid_value(distribution_release_id, backend)],
+            vec![backend.uuid_value(distribution_release_id)],
         ))
         .await
         .map_err(store_error)?
@@ -1775,68 +1798,45 @@ pub(crate) async fn load_release_record<C: ConnectionTrait>(
     Ok(release)
 }
 
-fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> sea_orm::Value {
-    match (backend, value) {
-        (DbBackend::Postgres, value) => sea_orm::Value::Uuid(value),
-        (_, Some(value)) => value.to_string().into(),
-        (_, None) => sea_orm::Value::String(None),
-    }
-}
-
-fn datetime_value(value: chrono::DateTime<chrono::Utc>, backend: DbBackend) -> sea_orm::Value {
-    match backend {
-        DbBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(value)),
-        _ => value.to_rfc3339().into(),
-    }
-}
-
 fn datetime_from_row(
     row: &QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<chrono::DateTime<chrono::Utc>, ModuleStaticDistributionReleaseError> {
     match backend {
-        DbBackend::Postgres => row.try_get("", column).map_err(store_error),
-        _ => parse_sqlite_datetime(&row.try_get::<String>("", column).map_err(store_error)?),
+        SupportedBackend::Postgres => row.try_get("", column).map_err(store_error),
+        SupportedBackend::Sqlite => crate::backend::parse_sqlite_datetime(
+            &row.try_get::<String>("", column).map_err(store_error)?,
+        )
+        .map_err(store_error),
     }
 }
 
 fn optional_datetime_from_row(
     row: &QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Option<chrono::DateTime<chrono::Utc>>, ModuleStaticDistributionReleaseError> {
     match backend {
-        DbBackend::Postgres => row.try_get("", column).map_err(store_error),
-        _ => row
+        SupportedBackend::Postgres => row.try_get("", column).map_err(store_error),
+        SupportedBackend::Sqlite => row
             .try_get::<Option<String>>("", column)
             .map_err(store_error)?
             .as_deref()
-            .map(parse_sqlite_datetime)
-            .transpose(),
+            .map(crate::backend::parse_sqlite_datetime)
+            .transpose()
+            .map_err(store_error),
     }
-}
-
-fn parse_sqlite_datetime(
-    value: &str,
-) -> Result<chrono::DateTime<chrono::Utc>, ModuleStaticDistributionReleaseError> {
-    chrono::DateTime::parse_from_rfc3339(value)
-        .map(|timestamp| timestamp.with_timezone(&chrono::Utc))
-        .or_else(|_| {
-            chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S")
-                .map(|timestamp| timestamp.and_utc())
-        })
-        .map_err(store_error)
 }
 
 fn optional_uuid_from_row(
     row: &QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Option<Uuid>, ModuleStaticDistributionReleaseError> {
     match backend {
-        DbBackend::Postgres => row.try_get("", column).map_err(store_error),
-        _ => row
+        SupportedBackend::Postgres => row.try_get("", column).map_err(store_error),
+        SupportedBackend::Sqlite => row
             .try_get::<Option<String>>("", column)
             .map_err(store_error)?
             .map(|value| Uuid::parse_str(&value).map_err(store_error))
@@ -1847,11 +1847,11 @@ fn optional_uuid_from_row(
 fn optional_bool_from_row(
     row: &QueryResult,
     column: &str,
-    backend: DbBackend,
+    backend: SupportedBackend,
 ) -> Result<Option<bool>, ModuleStaticDistributionReleaseError> {
     match backend {
-        DbBackend::Postgres => row.try_get("", column).map_err(store_error),
-        _ => row
+        SupportedBackend::Postgres => row.try_get("", column).map_err(store_error),
+        SupportedBackend::Sqlite => row
             .try_get::<Option<i64>>("", column)
             .map_err(store_error)
             .and_then(|value| match value {
@@ -1869,12 +1869,6 @@ fn revision_value(value: u64) -> Result<sea_orm::Value, ModuleStaticDistribution
     i64::try_from(value)
         .map(Into::into)
         .map_err(|_| ModuleStaticDistributionReleaseError::RevisionOverflow)
-}
-
-fn revision_value_allow_zero(
-    value: u64,
-) -> Result<sea_orm::Value, ModuleStaticDistributionReleaseError> {
-    revision_value(value)
 }
 
 fn revision_from_row(

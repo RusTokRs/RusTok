@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use thiserror::Error;
 use uuid::Uuid;
 
 use crate::ArtifactBindingExecutor;
@@ -15,9 +16,18 @@ use crate::ArtifactBindingExecutor;
 ///
 /// Implementations must return only concrete tenant identities; adapters
 /// validate that no nil identity reaches a tenant-RLS queue.
+/// Failure of an [`ArtifactDeliveryTenantSource`] port.
+#[derive(Debug, Error)]
+pub enum ArtifactDeliveryTenantSourceError {
+    #[error("{0}")]
+    Invariant(String),
+    #[error("artifact delivery tenant enumeration failed: {0}")]
+    Store(String),
+}
+
 #[async_trait]
 pub trait ArtifactDeliveryTenantSource: Send + Sync {
-    async fn tenant_ids(&self) -> Result<Vec<Uuid>, String>;
+    async fn tenant_ids(&self) -> Result<Vec<Uuid>, ArtifactDeliveryTenantSourceError>;
 }
 
 /// The host-owned sandbox-backed dispatcher for immutable artifact bindings.

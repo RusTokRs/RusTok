@@ -1,6 +1,6 @@
 //! Artifact contract generation, admission persistence, and marketplace installation contracts.
 
-use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, Statement, Value};
+use sea_orm::{ConnectionTrait, DatabaseTransaction, Statement, Value};
 use semver::Version;
 
 use super::evidence::*;
@@ -10,7 +10,7 @@ use super::*;
 
 pub(crate) async fn canonical_marketplace_artifact_contract(
     transaction: &DatabaseTransaction,
-    backend: DbBackend,
+    backend: SupportedBackend,
     request_id: &str,
     slug: &str,
     version: &str,
@@ -24,10 +24,10 @@ pub(crate) async fn canonical_marketplace_artifact_contract(
     ),
     ModuleGovernanceError,
 > {
-    let mark = |position| placeholder(backend, position);
+    let mark = |position| backend.placeholder(position);
     let admitted = transaction
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT registry_id, repository, manifest_digest, payload_digest, \
                  descriptor_digest, CAST(descriptor AS TEXT) AS descriptor, runtime_kind, \
@@ -84,7 +84,7 @@ pub(crate) async fn canonical_marketplace_artifact_contract(
         ModulePublicationArtifactOrigin::PlatformBuilt => {
             let source = transaction
                 .query_one_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "SELECT source_reference, source_digest, \
                                 parent_release_slug, parent_release_version, parent_release_digest \
@@ -124,7 +124,7 @@ pub(crate) async fn canonical_marketplace_artifact_contract(
         ModulePublicationArtifactOrigin::ExternalPrebuilt => {
             let source = transaction
                 .query_one_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "SELECT source_reference, source_digest \
                          FROM registry_publish_external_staging \
@@ -155,7 +155,7 @@ pub(crate) async fn canonical_marketplace_artifact_contract(
         ModulePublicationArtifactOrigin::AlloyAuthored => {
             let source = transaction
                 .query_one_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     format!(
                         "SELECT CAST(alloy_tenant_id AS TEXT) AS alloy_tenant_id, \
                          CAST(alloy_script_id AS TEXT) AS alloy_script_id, \
@@ -340,21 +340,21 @@ pub(crate) async fn canonical_marketplace_artifact_contract(
 
 pub(crate) async fn persist_published_artifact_contract(
     transaction: &DatabaseTransaction,
-    backend: DbBackend,
+    backend: SupportedBackend,
     release_id: &str,
     request_id: &str,
     artifact: &crate::ModuleMarketplaceArtifactRelease,
     descriptor: &crate::ModuleArtifactDescriptor,
     lineage: &crate::ArtifactSourceLineage,
 ) -> Result<(), ModuleGovernanceError> {
-    let mark = |position| placeholder(backend, position);
-    let now = database_now(backend);
+    let mark = |position| backend.placeholder(position);
+    let now = backend.now_sql();
     let artifact_json = serde_json::to_value(artifact).map_err(store_error)?;
     let descriptor_json = serde_json::to_value(descriptor).map_err(store_error)?;
     let lineage_json = serde_json::to_value(lineage).map_err(store_error)?;
     transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO registry_module_release_artifacts \
                  (release_id, request_id, artifact, descriptor, lineage, created_at) \
@@ -378,7 +378,7 @@ pub(crate) async fn persist_published_artifact_contract(
         .map_err(store_error)?;
     let stored = transaction
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT request_id, CAST(artifact AS TEXT) AS artifact, \
                  CAST(descriptor AS TEXT) AS descriptor, CAST(lineage AS TEXT) AS lineage \
@@ -423,7 +423,7 @@ pub(crate) async fn persist_published_artifact_contract(
 
 pub(crate) async fn persist_platform_admission_contract(
     transaction: &DatabaseTransaction,
-    backend: DbBackend,
+    backend: SupportedBackend,
     command: &ModulePlatformAdmissionCommand,
     admission_reference: &str,
     admission_digest: &str,
@@ -449,11 +449,11 @@ pub(crate) async fn persist_platform_admission_contract(
     let provenance = evidence(crate::TrustEvidenceKind::Provenance)?;
     let sbom = evidence(crate::TrustEvidenceKind::Sbom)?;
     let descriptor = serde_json::to_value(&command.descriptor).map_err(store_error)?;
-    let mark = |position| placeholder(backend, position);
-    let now = database_now(backend);
+    let mark = |position| backend.placeholder(position);
+    let now = backend.now_sql();
     transaction
         .execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO registry_publish_platform_admissions \
                  (request_id, registry_id, registry, repository, manifest_digest, payload_digest, \
@@ -508,7 +508,7 @@ pub(crate) async fn persist_platform_admission_contract(
 
     let stored = transaction
         .query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "SELECT registry_id, registry, repository, manifest_digest, payload_digest, \
                  descriptor_digest, CAST(descriptor AS TEXT) AS descriptor, runtime_kind, \

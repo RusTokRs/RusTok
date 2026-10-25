@@ -10,8 +10,9 @@ use rustok_api::{ModuleCompositionSnapshotView, PortError, StaticInstalledModule
 use rustok_build::build::Model as Build;
 use rustok_build::{BuildEventPublisher, BuildRequest, BuildService};
 use rustok_modules::{
-    ModuleCommandContext, ModuleCompositionBuildAdmission, ModuleCompositionBuildEnqueueResult,
-    ModuleCompositionBuildEnqueuer, ModuleCompositionBuildLease, ModuleCompositionError,
+    ModuleCommandContext, ModuleCompositionBuildAdmission, ModuleCompositionBuildEnqueueError,
+    ModuleCompositionBuildEnqueueResult, ModuleCompositionBuildEnqueuer,
+    ModuleCompositionBuildLease, ModuleCompositionError,
     ModuleCompositionOperation, ModuleCompositionSnapshot, ModuleCompositionUpdate,
     ModuleControlPlane, ModuleDefinitionError, SeaOrmModuleCompositionService,
     SharedStaticInstalledModuleReader, StaticInstalledModuleReader,
@@ -130,7 +131,7 @@ impl ModuleCompositionBuildEnqueuer for ServerCompositionBuildEnqueuer {
         &self,
         transaction: &DatabaseTransaction,
         snapshot: &ModuleCompositionSnapshot,
-    ) -> Result<Self::Output, String> {
+    ) -> Result<Self::Output, ModuleCompositionBuildEnqueueError> {
         let (build, _created) = BuildService::request_build_on_connection(
             transaction,
             BuildRequest {
@@ -147,7 +148,7 @@ impl ModuleCompositionBuildEnqueuer for ServerCompositionBuildEnqueuer {
             },
         )
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| ModuleCompositionBuildEnqueueError::Store(error.to_string()))?;
         Ok(build)
     }
 }

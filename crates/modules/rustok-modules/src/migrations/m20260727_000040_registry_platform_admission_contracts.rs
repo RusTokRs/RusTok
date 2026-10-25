@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
+
+use crate::backend::SupportedBackend;
 
 /// Retains the complete immutable platform-admission contract needed to
 /// materialize an installable registry release. The generic evidence ledger
@@ -11,8 +13,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &["CREATE TABLE registry_publish_platform_admissions (\
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &["CREATE TABLE registry_publish_platform_admissions (\
                     request_id TEXT PRIMARY KEY REFERENCES registry_publish_requests(id) ON DELETE RESTRICT,\
                     registry_id TEXT NOT NULL CHECK (length(trim(registry_id)) BETWEEN 1 AND 96),\
                     registry TEXT NOT NULL CHECK (length(trim(registry)) BETWEEN 1 AND 255),\
@@ -33,7 +36,7 @@ impl MigrationTrait for Migration {
                     admission_digest TEXT NOT NULL CHECK (length(admission_digest) = 64),\
                     recorded_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP\
                 )"],
-            DbBackend::Sqlite => &["CREATE TABLE registry_publish_platform_admissions (\
+            SupportedBackend::Sqlite => &["CREATE TABLE registry_publish_platform_admissions (\
                     request_id TEXT PRIMARY KEY NOT NULL REFERENCES registry_publish_requests(id) ON DELETE RESTRICT,\
                     registry_id TEXT NOT NULL CHECK (length(trim(registry_id)) BETWEEN 1 AND 96),\
                     registry TEXT NOT NULL CHECK (length(trim(registry)) BETWEEN 1 AND 255),\
@@ -54,17 +57,12 @@ impl MigrationTrait for Migration {
                     admission_digest TEXT NOT NULL CHECK (length(admission_digest) = 64),\
                     recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
                 )"],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "registry platform admission contracts do not support database backend {backend:?}"
-                )));
-            }
         };
         for statement in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;

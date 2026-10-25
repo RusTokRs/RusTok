@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
+
+use crate::backend::SupportedBackend;
 
 /// Stores explicit authoring-locale provenance for the latest static Settings
 /// base projection. The revision is the owner revision recorded by the
@@ -12,8 +14,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE module_static_settings_source_locales (\
                     tenant_id UUID NOT NULL,\
                     module_slug TEXT NOT NULL,\
@@ -29,7 +32,7 @@ impl MigrationTrait for Migration {
                  USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
                  WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
             ],
-            DbBackend::Sqlite => &["CREATE TABLE module_static_settings_source_locales (\
+            SupportedBackend::Sqlite => &["CREATE TABLE module_static_settings_source_locales (\
                     tenant_id TEXT NOT NULL,\
                     module_slug TEXT NOT NULL,\
                     locale TEXT NOT NULL CHECK (length(locale) BETWEEN 2 AND 32),\
@@ -38,14 +41,13 @@ impl MigrationTrait for Migration {
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\
                     PRIMARY KEY (tenant_id, module_slug)\
                 )"],
-            _ => return Err(DbErr::Custom("Unsupported database backend".to_string())),
         };
 
         for sql in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*sql).to_string(),
                 ))
                 .await?;

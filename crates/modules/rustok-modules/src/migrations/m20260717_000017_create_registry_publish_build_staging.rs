@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
+
+use crate::backend::SupportedBackend;
 
 /// Records the immutable build result selected for one registry publication
 /// stage. The record is append-only: a reupload must create a new stage rather
@@ -10,8 +12,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE registry_publish_build_staging (\
                     id TEXT PRIMARY KEY,\
                     request_id TEXT NOT NULL REFERENCES registry_publish_requests(id),\
@@ -39,7 +42,7 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX registry_publish_build_staging_request_current_idx \
                  ON registry_publish_build_staging (request_id, component_digest, staged_at DESC)",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "CREATE TABLE registry_publish_build_staging (\
                     id TEXT PRIMARY KEY NOT NULL,\
                     request_id TEXT NOT NULL REFERENCES registry_publish_requests(id),\
@@ -67,17 +70,12 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX registry_publish_build_staging_request_current_idx \
                  ON registry_publish_build_staging (request_id, component_digest, staged_at DESC)",
             ],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "registry publish build staging does not support database backend {backend:?}"
-                )));
-            }
         };
         for statement in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;

@@ -1,10 +1,20 @@
 use chrono::{DateTime, Utc};
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::ModuleOperationStatus;
+use crate::backend::SupportedBackend;
+
+/// Maximum number of attention-needed operations returned per tenant query.
+pub const MAX_FAILED_OPERATIONS_FOR_TENANT: u32 = 200;
+
+/// Lease granted to a static lifecycle aggregate claim. A claim whose owner
+/// crashed (or never released) may be reclaimed by a later command only
+/// after this interval; the previous holder is fenced out because every
+/// subsequent advance/release matches on its own idempotency key.
+pub const STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS: i64 = 300;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ModuleOperationRequest {
@@ -81,9 +91,16 @@ pub struct TenantModuleStateRequest {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TenantModuleStateRecord {
     pub id: Uuid,
-    /// Explicit enablement persisted by this operation.
-    pub enabled: bool,
-    pub previous_enabled: bool,
+    /// Tenant enablement intent recorded after this operation, or `None`
+    /// when the tenant has recorded no intent and the module inherits the
+    /// platform default.
+    pub enabled: Option<bool>,
+    /// Tenant enablement intent recorded before this operation, or `None`
+    /// when none was recorded (no `tenant_modules` row existed, or the row
+    /// carried settings without intent). (Previously the insert path
+    /// fabricated `!enabled` here, inventing a predecessor state that never
+    /// existed.)
+    pub previous_enabled: Option<bool>,
     pub changed: bool,
 }
 
@@ -92,15 +109,15 @@ pub struct TenantModuleSettingsRequest {
     pub tenant_id: Uuid,
     pub module_slug: String,
     pub settings: serde_json::Value,
-    pub is_core: bool,
-    pub is_effectively_enabled: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TenantModuleSettingsRecord {
     pub id: Uuid,
     pub module_slug: String,
-    pub enabled: bool,
+    /// Recorded tenant enablement intent after the save, or `None` when the
+    /// row carries settings without intent (platform default applies).
+    pub enabled: Option<bool>,
     pub settings: serde_json::Value,
 }
 
@@ -154,13 +171,13 @@ impl ModuleOperationJournal {
         db: &C,
         operation_id: Uuid,
     ) -> Result<Option<ModuleOperationSnapshot>, ModuleOperationStoreError> {
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         let sql = match backend {
-            DbBackend::Postgres => format!("{} WHERE id = $1", operation_select_sql()),
-            _ => format!("{} WHERE id = ?1", operation_select_sql()),
+            SupportedBackend::Postgres => format!("{} WHERE id = $1", operation_select_sql()),
+            SupportedBackend::Sqlite => format!("{} WHERE id = ?1", operation_select_sql()),
         };
         db.query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             sql,
             vec![operation_id.into()],
         ))
@@ -170,62 +187,65 @@ impl ModuleOperationJournal {
         .transpose()
     }
 
+    /// Lists operations needing operator attention for one tenant: hard
+    /// failures plus state-committed operations whose post-hook is still
+    /// outstanding. Bounded to the most recent
+    /// [`MAX_FAILED_OPERATIONS_FOR_TENANT`] rows.
     pub async fn failed_for_tenant<C: ConnectionTrait>(
         db: &C,
         tenant_id: Uuid,
         module_slug: Option<&str>,
     ) -> Result<Vec<ModuleOperationSnapshot>, ModuleOperationStoreError> {
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
+        let statuses = format!(
+            "status IN ('{}', '{}')",
+            ModuleOperationStatus::Failed.as_str(),
+            ModuleOperationStatus::CommittedHookFailed.as_str()
+        );
         let (sql, values) = match (backend, module_slug) {
-            (DbBackend::Postgres, Some(module_slug)) => (
+            (SupportedBackend::Postgres, Some(module_slug)) => (
                 format!(
-                    "{} WHERE tenant_id = $1 AND status = $2 AND module_slug = $3 ORDER BY created_at DESC",
-                    operation_select_sql()
+                    "{} WHERE tenant_id = $1 AND {statuses} AND module_slug = $2 ORDER BY created_at DESC LIMIT {}",
+                    operation_select_sql(),
+                    MAX_FAILED_OPERATIONS_FOR_TENANT
                 ),
-                vec![
-                    tenant_id.into(),
-                    ModuleOperationStatus::Failed.as_str().into(),
-                    module_slug.into(),
-                ],
+                vec![tenant_id.into(), module_slug.into()],
             ),
-            (DbBackend::Postgres, None) => (
+            (SupportedBackend::Postgres, None) => (
                 format!(
-                    "{} WHERE tenant_id = $1 AND status = $2 ORDER BY created_at DESC",
-                    operation_select_sql()
+                    "{} WHERE tenant_id = $1 AND {statuses} ORDER BY created_at DESC LIMIT {}",
+                    operation_select_sql(),
+                    MAX_FAILED_OPERATIONS_FOR_TENANT
                 ),
-                vec![
-                    tenant_id.into(),
-                    ModuleOperationStatus::Failed.as_str().into(),
-                ],
+                vec![tenant_id.into()],
             ),
-            (_, Some(module_slug)) => (
+            (SupportedBackend::Sqlite, Some(module_slug)) => (
                 format!(
-                    "{} WHERE tenant_id = ?1 AND status = ?2 AND module_slug = ?3 ORDER BY created_at DESC",
-                    operation_select_sql()
+                    "{} WHERE tenant_id = ?1 AND {statuses} AND module_slug = ?2 ORDER BY created_at DESC LIMIT {}",
+                    operation_select_sql(),
+                    MAX_FAILED_OPERATIONS_FOR_TENANT
                 ),
-                vec![
-                    tenant_id.into(),
-                    ModuleOperationStatus::Failed.as_str().into(),
-                    module_slug.into(),
-                ],
+                vec![tenant_id.into(), module_slug.into()],
             ),
-            (_, None) => (
+            (SupportedBackend::Sqlite, None) => (
                 format!(
-                    "{} WHERE tenant_id = ?1 AND status = ?2 ORDER BY created_at DESC",
-                    operation_select_sql()
+                    "{} WHERE tenant_id = ?1 AND {statuses} ORDER BY created_at DESC LIMIT {}",
+                    operation_select_sql(),
+                    MAX_FAILED_OPERATIONS_FOR_TENANT
                 ),
-                vec![
-                    tenant_id.into(),
-                    ModuleOperationStatus::Failed.as_str().into(),
-                ],
+                vec![tenant_id.into()],
             ),
         };
-        db.query_all_raw(Statement::from_sql_and_values(backend, sql, values))
-            .await
-            .map_err(database_error)?
-            .into_iter()
-            .map(operation_snapshot)
-            .collect()
+        db.query_all_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            sql,
+            values,
+        ))
+        .await
+        .map_err(database_error)?
+        .into_iter()
+        .map(operation_snapshot)
+        .collect()
     }
 
     pub async fn record_idempotent<C: ConnectionTrait>(
@@ -308,7 +328,7 @@ impl ModuleOperationJournal {
         request: ModuleOperationRequest,
     ) -> Result<ModuleOperationRecord, ModuleOperationStoreError> {
         let id = rustok_core::generate_id();
-        execute(
+        execute_one(
             db,
             "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, trace_id, correlation_id, idempotency_key, expected_revision, error_message) VALUES ({1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, NULL)",
             vec![
@@ -341,19 +361,19 @@ impl ModuleOperationJournal {
         tenant_id: Uuid,
         idempotency_key: Uuid,
     ) -> Result<Option<ModuleOperationSnapshot>, ModuleOperationStoreError> {
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         let sql = match backend {
-            DbBackend::Postgres => format!(
+            SupportedBackend::Postgres => format!(
                 "{} WHERE tenant_id = $1 AND idempotency_key = $2 LIMIT 1",
                 operation_select_sql()
             ),
-            _ => format!(
+            SupportedBackend::Sqlite => format!(
                 "{} WHERE tenant_id = ?1 AND idempotency_key = ?2 LIMIT 1",
                 operation_select_sql()
             ),
         };
         db.query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             sql,
             vec![tenant_id.into(), idempotency_key.into()],
         ))
@@ -367,14 +387,52 @@ impl ModuleOperationJournal {
         db: &C,
         operation_id: Uuid,
     ) -> Result<(), ModuleOperationStoreError> {
-        Self::mark_status(db, operation_id, ModuleOperationStatus::Running, None).await
+        Self::mark_status(
+            db,
+            operation_id,
+            ModuleOperationStatus::Running,
+            &[ModuleOperationStatus::Validated],
+            None,
+        )
+        .await
     }
 
     pub async fn mark_committed<C: ConnectionTrait>(
         db: &C,
         operation_id: Uuid,
     ) -> Result<(), ModuleOperationStoreError> {
-        Self::mark_status(db, operation_id, ModuleOperationStatus::Committed, None).await
+        Self::mark_status(
+            db,
+            operation_id,
+            ModuleOperationStatus::Committed,
+            &[
+                ModuleOperationStatus::Validated,
+                ModuleOperationStatus::Running,
+                // Post-hook recovery resolves a committed-but-hook-failed
+                // operation once the hook finally succeeds.
+                ModuleOperationStatus::CommittedHookFailed,
+            ],
+            None,
+        )
+        .await
+    }
+
+    /// Records that the operation's state commit is durable but its post-hook
+    /// failed. This is the only transition allowed out of `Committed`; the
+    /// operation must never be rewritten to `Failed` after its state applied.
+    pub async fn mark_committed_hook_failed<C: ConnectionTrait>(
+        db: &C,
+        operation_id: Uuid,
+        error_message: &str,
+    ) -> Result<(), ModuleOperationStoreError> {
+        Self::mark_status(
+            db,
+            operation_id,
+            ModuleOperationStatus::CommittedHookFailed,
+            &[ModuleOperationStatus::Committed],
+            Some(error_message),
+        )
+        .await
     }
 
     pub async fn mark_failed<C: ConnectionTrait>(
@@ -386,31 +444,66 @@ impl ModuleOperationJournal {
             db,
             operation_id,
             ModuleOperationStatus::Failed,
+            &[
+                ModuleOperationStatus::Validated,
+                ModuleOperationStatus::Running,
+            ],
             Some(error_message),
         )
         .await
     }
 
+    /// Guarded status transition: the update only applies from one of
+    /// `allowed_from`, and a missing or already-advanced operation is an
+    /// error rather than a silently ignored no-op.
     async fn mark_status<C: ConnectionTrait>(
         db: &C,
         operation_id: Uuid,
         status: ModuleOperationStatus,
+        allowed_from: &[ModuleOperationStatus],
         error_message: Option<&str>,
     ) -> Result<(), ModuleOperationStoreError> {
-        match error_message {
-            Some(error_message) => execute(
-                db,
-                "UPDATE module_operations SET status = {1}, error_message = {2}, updated_at = CURRENT_TIMESTAMP WHERE id = {3}",
-                vec![status.as_str().into(), error_message.into(), operation_id.into()],
-            )
-            .await,
-            None => execute(
-                db,
-                "UPDATE module_operations SET status = {1}, updated_at = CURRENT_TIMESTAMP WHERE id = {2}",
+        let allowed_from_sql = allowed_from
+            .iter()
+            .map(|status| format!("'{}'", status.as_str()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let (sql_template, values) = match error_message {
+            Some(error_message) => (
+                format!(
+                    "UPDATE module_operations SET status = {{1}}, error_message = {{2}}, \
+                     updated_at = {{now}} WHERE id = {{3}} AND status IN ({allowed_from_sql})"
+                ),
+                vec![
+                    status.as_str().into(),
+                    error_message.into(),
+                    operation_id.into(),
+                ],
+            ),
+            None => (
+                format!(
+                    "UPDATE module_operations SET status = {{1}}, updated_at = {{now}} \
+                     WHERE id = {{2}} AND status IN ({allowed_from_sql})"
+                ),
                 vec![status.as_str().into(), operation_id.into()],
-            )
-            .await,
+            ),
+        };
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
+        let result = db
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                render_parameters(&sql_template, backend),
+                values,
+            ))
+            .await
+            .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?;
+        if result.rows_affected() != 1 {
+            return Err(ModuleOperationStoreError::Database(format!(
+                "module operation {operation_id} cannot transition to `{status}` \
+                 from its current status"
+            )));
         }
+        Ok(())
     }
 }
 
@@ -440,21 +533,22 @@ impl StaticTenantLifecycleStore {
         tenant_id: Uuid,
         module_slug: &str,
     ) -> Result<Option<StaticTenantLifecycleSnapshot>, StaticTenantLifecycleStoreError> {
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(static_lifecycle_database_error)?;
         let sql = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "SELECT revision, active_idempotency_key FROM module_static_tenant_lifecycle \
                  WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
             }
-            _ => {
+            SupportedBackend::Sqlite => {
                 "SELECT revision, active_idempotency_key FROM module_static_tenant_lifecycle \
                  WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
             }
         };
         db.query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             sql,
-            vec![uuid_query_value(backend, tenant_id), module_slug.into()],
+            vec![backend.uuid_value(tenant_id), module_slug.into()],
         ))
         .await
         .map_err(static_lifecycle_database_error)?
@@ -475,26 +569,21 @@ impl StaticTenantLifecycleStore {
         if module_slugs.is_empty() {
             return Ok(BTreeMap::new());
         }
-        let backend = db.get_database_backend();
-        let mut values = vec![uuid_query_value(backend, tenant_id)];
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(static_lifecycle_database_error)?;
+        let mut values = vec![backend.uuid_value(tenant_id)];
         let placeholders = module_slugs
             .iter()
             .enumerate()
             .map(|(index, module_slug)| {
                 values.push(module_slug.clone().into());
-                match backend {
-                    DbBackend::Postgres => format!("${}", index + 2),
-                    _ => format!("?{}", index + 2),
-                }
+                backend.placeholder(index + 2)
             })
             .collect::<Vec<_>>();
-        let tenant_placeholder = match backend {
-            DbBackend::Postgres => "$1",
-            _ => "?1",
-        };
+        let tenant_placeholder = backend.placeholder(1);
         let rows = db
             .query_all_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT module_slug, revision, active_idempotency_key \
                      FROM module_static_tenant_lifecycle WHERE tenant_id = {tenant_placeholder} \
@@ -530,8 +619,12 @@ impl StaticTenantLifecycleStore {
     }
 
     /// Admits one command only when its reviewed aggregate revision is current.
-    /// The claim is intentionally durable and is cleared only by the owner when
-    /// that same operation reaches a terminal lifecycle boundary.
+    /// The claim is durable and is cleared by its owner at a terminal
+    /// lifecycle boundary. As a crash-safety net the claim also carries a
+    /// lease ([`STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS`]): once it expires, a
+    /// later command at the same expected revision may CAS-reclaim the
+    /// aggregate, fencing out the previous holder (its advance/release match
+    /// on its own idempotency key and will fail).
     pub async fn claim<C: ConnectionTrait>(
         db: &C,
         tenant_id: Uuid,
@@ -547,13 +640,35 @@ impl StaticTenantLifecycleStore {
             active_idempotency_key: None,
         });
         if let Some(active_idempotency_key) = current.active_idempotency_key {
-            return if active_idempotency_key == idempotency_key {
-                Ok(StaticTenantLifecycleClaim::AlreadyHeld(current))
-            } else {
-                Err(StaticTenantLifecycleStoreError::OperationInProgress {
-                    module_slug: module_slug.to_string(),
-                })
-            };
+            if active_idempotency_key == idempotency_key {
+                return Ok(StaticTenantLifecycleClaim::AlreadyHeld(current));
+            }
+            // The holder may have crashed without releasing. Reclaim is only
+            // attempted at the exact expected revision and only when the
+            // recorded claim lease has expired in database time.
+            if current.revision == expected_revision
+                && Self::reclaim_expired_claim(
+                    db,
+                    tenant_id,
+                    module_slug,
+                    expected_revision,
+                    active_idempotency_key,
+                    idempotency_key,
+                )
+                .await?
+            {
+                return Ok(StaticTenantLifecycleClaim::Acquired(
+                    StaticTenantLifecycleSnapshot {
+                        tenant_id,
+                        module_slug: module_slug.to_string(),
+                        revision: expected_revision,
+                        active_idempotency_key: Some(idempotency_key),
+                    },
+                ));
+            }
+            return Err(StaticTenantLifecycleStoreError::OperationInProgress {
+                module_slug: module_slug.to_string(),
+            });
         }
         if current.revision != expected_revision {
             return Err(StaticTenantLifecycleStoreError::RevisionConflict {
@@ -563,25 +678,26 @@ impl StaticTenantLifecycleStore {
             });
         }
 
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(static_lifecycle_database_error)?;
         if persisted.is_none() {
             let insert = db
                 .execute_raw(Statement::from_sql_and_values(
-                    backend,
+                    backend.db_backend(),
                     match backend {
-                        DbBackend::Postgres => {
+                        SupportedBackend::Postgres => {
                             "INSERT INTO module_static_tenant_lifecycle \
-                             (tenant_id, module_slug, revision, active_idempotency_key) \
-                             VALUES ($1, $2, $3, $4)"
+                             (tenant_id, module_slug, revision, active_idempotency_key, active_claimed_at) \
+                             VALUES ($1, $2, $3, $4, NOW())"
                         }
-                        _ => {
+                        SupportedBackend::Sqlite => {
                             "INSERT INTO module_static_tenant_lifecycle \
-                             (tenant_id, module_slug, revision, active_idempotency_key) \
-                             VALUES (?1, ?2, ?3, ?4)"
+                             (tenant_id, module_slug, revision, active_idempotency_key, active_claimed_at) \
+                             VALUES (?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"
                         }
                     },
                     vec![
-                        uuid_query_value(backend, tenant_id),
+                        backend.uuid_value(tenant_id),
                         module_slug.into(),
                         i64::try_from(expected_revision)
                             .map_err(|_| {
@@ -590,7 +706,7 @@ impl StaticTenantLifecycleStore {
                                 )
                             })?
                             .into(),
-                        uuid_query_value(backend, idempotency_key),
+                        backend.uuid_value(idempotency_key),
                     ],
                 ))
                 .await;
@@ -633,17 +749,18 @@ impl StaticTenantLifecycleStore {
 
         let result = db
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 render_parameters(
                     "UPDATE module_static_tenant_lifecycle \
-                     SET active_idempotency_key = {1}, updated_at = CURRENT_TIMESTAMP \
+                     SET active_idempotency_key = {1}, active_claimed_at = {now}, \
+                         updated_at = {now} \
                      WHERE tenant_id = {2} AND module_slug = {3} \
                        AND revision = {4} AND active_idempotency_key IS NULL",
                     backend,
                 ),
                 vec![
-                    uuid_query_value(backend, idempotency_key),
-                    uuid_query_value(backend, tenant_id),
+                    backend.uuid_value(idempotency_key),
+                    backend.uuid_value(tenant_id),
                     module_slug.into(),
                     i64::try_from(expected_revision)
                         .map_err(|_| {
@@ -683,6 +800,61 @@ impl StaticTenantLifecycleStore {
         }
     }
 
+    /// CAS-reclaims an aggregate whose recorded claim lease has expired.
+    /// Returns `true` when this command now holds the claim. A claim recorded
+    /// before the lease column existed (`NULL`) is treated as expired: fresh
+    /// claims always record their timestamp.
+    async fn reclaim_expired_claim<C: ConnectionTrait>(
+        db: &C,
+        tenant_id: Uuid,
+        module_slug: &str,
+        expected_revision: u64,
+        expired_idempotency_key: Uuid,
+        idempotency_key: Uuid,
+    ) -> Result<bool, StaticTenantLifecycleStoreError> {
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(static_lifecycle_database_error)?;
+        let claim_expired = match backend {
+            SupportedBackend::Postgres => format!(
+                "(active_claimed_at IS NULL OR active_claimed_at <= CURRENT_TIMESTAMP - INTERVAL '{STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS} seconds')"
+            ),
+            SupportedBackend::Sqlite => format!(
+                "(active_claimed_at IS NULL OR datetime(active_claimed_at) <= datetime('now', '-{STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS} seconds'))"
+            ),
+        };
+        let result = db
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                render_parameters(
+                    &format!(
+                        "UPDATE module_static_tenant_lifecycle \
+                         SET active_idempotency_key = {{1}}, active_claimed_at = {{now}}, \
+                             updated_at = {{now}} \
+                         WHERE tenant_id = {{2}} AND module_slug = {{3}} \
+                           AND revision = {{4}} AND active_idempotency_key = {{5}} \
+                           AND {claim_expired}"
+                    ),
+                    backend,
+                ),
+                vec![
+                    backend.uuid_value(idempotency_key),
+                    backend.uuid_value(tenant_id),
+                    module_slug.into(),
+                    i64::try_from(expected_revision)
+                        .map_err(|_| {
+                            StaticTenantLifecycleStoreError::RevisionOverflow(
+                                module_slug.to_string(),
+                            )
+                        })?
+                        .into(),
+                    backend.uuid_value(expired_idempotency_key),
+                ],
+            ))
+            .await
+            .map_err(static_lifecycle_database_error)?;
+        Ok(result.rows_affected() == 1)
+    }
+
     /// Advances a claimed aggregate while deliberately retaining the claim for
     /// the subsequent post-hook. The caller must clear it after the hook's
     /// terminal journal state is durable.
@@ -696,13 +868,14 @@ impl StaticTenantLifecycleStore {
         let next_revision = expected_revision.checked_add(1).ok_or_else(|| {
             StaticTenantLifecycleStoreError::RevisionOverflow(module_slug.to_string())
         })?;
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(static_lifecycle_database_error)?;
         let result = db
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 render_parameters(
                     "UPDATE module_static_tenant_lifecycle \
-                     SET revision = {1}, updated_at = CURRENT_TIMESTAMP \
+                     SET revision = {1}, updated_at = {now} \
                      WHERE tenant_id = {2} AND module_slug = {3} \
                        AND revision = {4} AND active_idempotency_key = {5}",
                     backend,
@@ -715,7 +888,7 @@ impl StaticTenantLifecycleStore {
                             )
                         })?
                         .into(),
-                    uuid_query_value(backend, tenant_id),
+                    backend.uuid_value(tenant_id),
                     module_slug.into(),
                     i64::try_from(expected_revision)
                         .map_err(|_| {
@@ -724,7 +897,7 @@ impl StaticTenantLifecycleStore {
                             )
                         })?
                         .into(),
-                    uuid_query_value(backend, idempotency_key),
+                    backend.uuid_value(idempotency_key),
                 ],
             ))
             .await
@@ -745,21 +918,23 @@ impl StaticTenantLifecycleStore {
         module_slug: &str,
         idempotency_key: Uuid,
     ) -> Result<(), StaticTenantLifecycleStoreError> {
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(static_lifecycle_database_error)?;
         let result = db
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 render_parameters(
                     "UPDATE module_static_tenant_lifecycle \
-                     SET active_idempotency_key = NULL, updated_at = CURRENT_TIMESTAMP \
+                     SET active_idempotency_key = NULL, active_claimed_at = NULL, \
+                         updated_at = {now} \
                      WHERE tenant_id = {1} AND module_slug = {2} \
                        AND active_idempotency_key = {3}",
                     backend,
                 ),
                 vec![
-                    uuid_query_value(backend, tenant_id),
+                    backend.uuid_value(tenant_id),
                     module_slug.into(),
-                    uuid_query_value(backend, idempotency_key),
+                    backend.uuid_value(idempotency_key),
                 ],
             ))
             .await
@@ -877,24 +1052,24 @@ impl TenantModuleStateStore {
         tenant_id: Uuid,
         module_slug: &str,
     ) -> Result<Option<TenantModuleStateRecord>, ModuleOperationStoreError> {
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         let sql = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "SELECT id, enabled FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
             }
-            _ => {
+            SupportedBackend::Sqlite => {
                 "SELECT id, enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
             }
         };
         db.query_one_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             sql,
-            vec![uuid_query_value(backend, tenant_id), module_slug.into()],
+            vec![backend.uuid_value(tenant_id), module_slug.into()],
         ))
         .await
         .map_err(database_error)?
         .map(|row| {
-            let enabled: bool = row.try_get("", "enabled").map_err(database_error)?;
+            let enabled: Option<bool> = row.try_get("", "enabled").map_err(database_error)?;
             Ok(TenantModuleStateRecord {
                 id: row.try_get("", "id").map_err(database_error)?,
                 enabled,
@@ -909,21 +1084,21 @@ impl TenantModuleStateStore {
         db: &C,
         request: TenantModuleStateRequest,
     ) -> Result<TenantModuleStateRecord, ModuleOperationStoreError> {
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         let select = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "SELECT id, enabled FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
             }
-            _ => {
+            SupportedBackend::Sqlite => {
                 "SELECT id, enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
             }
         };
         if let Some(row) = db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 select,
                 vec![
-                    uuid_query_value(backend, request.tenant_id),
+                    backend.uuid_value(request.tenant_id),
                     request.module_slug.clone().into(),
                 ],
             ))
@@ -933,32 +1108,32 @@ impl TenantModuleStateStore {
             let id: Uuid = row
                 .try_get("", "id")
                 .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?;
-            let previous_enabled = row
+            let previous_enabled: Option<bool> = row
                 .try_get("", "enabled")
                 .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?;
-            if previous_enabled != request.enabled {
-                execute(
+            if previous_enabled != Some(request.enabled) {
+                execute_one(
                     db,
-                    "UPDATE tenant_modules SET enabled = {1}, updated_at = CURRENT_TIMESTAMP WHERE id = {2}",
+                    "UPDATE tenant_modules SET enabled = {1}, updated_at = {now} WHERE id = {2}",
                     vec![request.enabled.into(), id.into()],
                 )
                 .await?;
             }
             return Ok(TenantModuleStateRecord {
                 id,
-                enabled: request.enabled,
+                enabled: Some(request.enabled),
                 previous_enabled,
-                changed: previous_enabled != request.enabled,
+                changed: previous_enabled != Some(request.enabled),
             });
         }
 
         let id = rustok_core::generate_id();
-        execute(
+        execute_one(
             db,
             "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings) VALUES ({1}, {2}, {3}, {4}, '{}')",
             vec![
                 id.into(),
-                uuid_query_value(backend, request.tenant_id),
+                backend.uuid_value(request.tenant_id),
                 request.module_slug.into(),
                 request.enabled.into(),
             ],
@@ -966,33 +1141,44 @@ impl TenantModuleStateStore {
         .await?;
         Ok(TenantModuleStateRecord {
             id,
-            enabled: request.enabled,
-            previous_enabled: !request.enabled,
+            enabled: Some(request.enabled),
+            // The row was just created: there is no predecessor state.
+            previous_enabled: None,
             changed: true,
         })
     }
 
+    /// Persists tenant module settings without creating or changing
+    /// enablement intent.
+    ///
+    /// An existing row keeps its recorded intent untouched (the column is
+    /// not part of the UPDATE). A newly created row stores NULL intent —
+    /// "settings without intent" — so the platform default keeps applying
+    /// until the tenant explicitly toggles the module; freezing a default
+    /// (or, worse, derived effective availability such as a transient
+    /// denial) into the column would fabricate tenant intent that outlives
+    /// the condition that produced it (audit M-5).
     pub async fn persist_settings<C: ConnectionTrait>(
         db: &C,
         request: TenantModuleSettingsRequest,
     ) -> Result<TenantModuleSettingsRecord, ModuleOperationStoreError> {
         let module_slug = request.module_slug.clone();
         let settings = request.settings.clone();
-        let backend = db.get_database_backend();
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         let select = match backend {
-            DbBackend::Postgres => {
+            SupportedBackend::Postgres => {
                 "SELECT id, enabled FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
             }
-            _ => {
+            SupportedBackend::Sqlite => {
                 "SELECT id, enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
             }
         };
         let existing = db
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 select,
                 vec![
-                    uuid_query_value(backend, request.tenant_id),
+                    backend.uuid_value(request.tenant_id),
                     request.module_slug.clone().into(),
                 ],
             ))
@@ -1000,16 +1186,13 @@ impl TenantModuleStateStore {
             .map_err(database_error)?;
         if let Some(row) = existing {
             let id: Uuid = row.try_get("", "id").map_err(database_error)?;
-            let previous_enabled: bool = row.try_get("", "enabled").map_err(database_error)?;
-            let enabled = request.is_core || previous_enabled;
-            execute(
+            let enabled: Option<bool> = row.try_get("", "enabled").map_err(database_error)?;
+            // A settings save never changes recorded enablement intent:
+            // the column is not part of this UPDATE at all.
+            execute_one(
                 db,
-                "UPDATE tenant_modules SET enabled = {1}, settings = {2}, updated_at = CURRENT_TIMESTAMP WHERE id = {3}",
-                vec![
-                    enabled.into(),
-                    json_value(request.settings),
-                    id.into(),
-                ],
+                "UPDATE tenant_modules SET settings = {1}, updated_at = {now} WHERE id = {2}",
+                vec![json_value(request.settings), id.into()],
             )
             .await?;
             return Ok(TenantModuleSettingsRecord {
@@ -1021,15 +1204,17 @@ impl TenantModuleStateStore {
         }
 
         let id = rustok_core::generate_id();
-        let enabled = request.is_core || request.is_effectively_enabled;
-        execute(
+        // A first row created by a settings save records no enablement
+        // intent (NULL): the platform default keeps applying until the
+        // tenant explicitly toggles the module.
+        execute_one(
             db,
             "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings) VALUES ({1}, {2}, {3}, {4}, {5})",
             vec![
                 id.into(),
-                uuid_query_value(backend, request.tenant_id),
+                backend.uuid_value(request.tenant_id),
                 request.module_slug.into(),
-                enabled.into(),
+                Option::<bool>::None.into(),
                 json_value(request.settings),
             ],
         )
@@ -1037,7 +1222,7 @@ impl TenantModuleStateStore {
         Ok(TenantModuleSettingsRecord {
             id,
             module_slug,
-            enabled,
+            enabled: None,
             settings,
         })
     }
@@ -1047,44 +1232,49 @@ fn json_value(value: serde_json::Value) -> sea_orm::Value {
     sea_orm::Value::Json(Some(Box::new(value)))
 }
 
-pub(crate) fn uuid_query_value(backend: DbBackend, value: Uuid) -> sea_orm::Value {
-    if backend == DbBackend::Sqlite {
-        value.to_string().into()
-    } else {
-        value.into()
-    }
-}
-
-async fn execute<C: ConnectionTrait>(
+/// Executes a statement that must affect exactly one row.
+///
+/// The tenant-module writes select the target row first and then update it
+/// by id; silently accepting zero affected rows would report a persisted
+/// record for a row that no longer exists (concurrently purged), so the
+/// affected-row count is part of the success contract.
+async fn execute_one<C: ConnectionTrait>(
     db: &C,
     sql_template: &str,
     values: Vec<sea_orm::Value>,
 ) -> Result<(), ModuleOperationStoreError> {
-    let backend = db.get_database_backend();
-    db.execute_raw(Statement::from_sql_and_values(
-        backend,
-        render_parameters(sql_template, backend),
-        values,
-    ))
-    .await
-    .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?;
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
+    let affected = db
+        .execute_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            render_parameters(sql_template, backend),
+            values,
+        ))
+        .await
+        .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?
+        .rows_affected();
+    if affected != 1 {
+        return Err(ModuleOperationStoreError::Database(format!(
+            "expected statement to affect exactly one row, affected {affected}"
+        )));
+    }
     Ok(())
 }
 
-fn render_parameters(sql_template: &str, backend: DbBackend) -> String {
-    (1..=11).fold(sql_template.to_string(), |sql, index| {
-        let parameter = match backend {
-            DbBackend::Postgres => format!("${index}"),
-            _ => format!("?{index}"),
-        };
+fn render_parameters(sql_template: &str, backend: SupportedBackend) -> String {
+    let rendered = (1..=11).fold(sql_template.to_string(), |sql, index| {
+        let parameter = backend.placeholder(index);
         sql.replace(format!("{{{index}}}").as_str(), parameter.as_str())
-    })
+    });
+    // `{now}` renders the backend's canonical SQL-side clock expression
+    // so templates never spell a backend-specific timestamp literal.
+    rendered.replace("{now}", backend.now_sql())
 }
 
 #[cfg(test)]
 mod tests {
     use rustok_api::StaticModuleSettingsReader;
-    use sea_orm::{Database, Statement};
+    use sea_orm::{Database, DbBackend, Statement};
     use serde_json::json;
 
     use super::*;
@@ -1100,7 +1290,7 @@ mod tests {
                     id TEXT PRIMARY KEY NOT NULL, \
                     tenant_id TEXT NOT NULL, \
                     module_slug TEXT NOT NULL, \
-                    enabled BOOLEAN NOT NULL, \
+                    enabled BOOLEAN NULL, \
                     settings JSON NOT NULL, \
                     updated_at TEXT\
                  )"
@@ -1112,57 +1302,71 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn settings_persistence_persists_dormant_settings_and_keeps_core_enabled() {
+    async fn settings_persistence_creates_no_intent_and_preserves_recorded_intent() {
         let database = database().await;
         let tenant_id = Uuid::new_v4();
+        // A first settings save records no enablement intent: the row
+        // carries settings only and the platform default keeps applying.
         let dormant = TenantModuleStateStore::persist_settings(
             &database,
             TenantModuleSettingsRequest {
                 tenant_id,
                 module_slug: "optional_module".to_string(),
                 settings: json!({ "value": 1 }),
-                is_core: false,
-                is_effectively_enabled: false,
             },
         )
         .await
-        .expect("dormant settings for disabled module");
+        .expect("settings without intent");
         assert_eq!(dormant.module_slug, "optional_module");
-        assert!(!dormant.enabled);
+        assert_eq!(dormant.enabled, None);
         assert_eq!(dormant.settings, json!({ "value": 1 }));
 
-        let core = TenantModuleStateStore::persist_settings(
+        // An explicit toggle records intent on the same row; the previous
+        // state reports "no recorded intent", not a fabricated boolean.
+        let toggled = TenantModuleStateStore::persist(
             &database,
-            TenantModuleSettingsRequest {
+            TenantModuleStateRequest {
                 tenant_id,
-                module_slug: "modules".to_string(),
-                settings: json!({ "value": 2 }),
-                is_core: true,
-                is_effectively_enabled: false,
+                module_slug: "optional_module".to_string(),
+                enabled: false,
             },
         )
         .await
-        .expect("core settings");
-        assert_eq!(core.module_slug, "modules");
-        assert!(core.enabled);
-        assert_eq!(core.settings, json!({ "value": 2 }));
+        .expect("explicit disable");
+        assert_eq!(toggled.id, dormant.id);
+        assert_eq!(toggled.enabled, Some(false));
+        assert_eq!(toggled.previous_enabled, None);
+        assert!(toggled.changed);
 
-        let updated = TenantModuleStateStore::persist_settings(
+        // A later settings save must not disturb the recorded intent.
+        let refreshed = TenantModuleStateStore::persist_settings(
             &database,
             TenantModuleSettingsRequest {
                 tenant_id,
-                module_slug: "modules".to_string(),
-                settings: json!({ "value": 3 }),
-                is_core: true,
-                is_effectively_enabled: false,
+                module_slug: "optional_module".to_string(),
+                settings: json!({ "value": 11 }),
             },
         )
         .await
-        .expect("updated core settings");
-        assert_eq!(updated.id, core.id);
-        assert_eq!(updated.module_slug, "modules");
-        assert!(updated.enabled);
-        assert_eq!(updated.settings, json!({ "value": 3 }));
+        .expect("refreshed settings");
+        assert_eq!(refreshed.id, dormant.id);
+        assert_eq!(refreshed.enabled, Some(false));
+        assert_eq!(refreshed.settings, json!({ "value": 11 }));
+
+        // Re-recording the same intent is not a change.
+        let repeated = TenantModuleStateStore::persist(
+            &database,
+            TenantModuleStateRequest {
+                tenant_id,
+                module_slug: "optional_module".to_string(),
+                enabled: false,
+            },
+        )
+        .await
+        .expect("repeated disable");
+        assert_eq!(repeated.enabled, Some(false));
+        assert_eq!(repeated.previous_enabled, Some(false));
+        assert!(!repeated.changed);
     }
 
     #[tokio::test]
@@ -1175,8 +1379,6 @@ mod tests {
                 tenant_id,
                 module_slug: "blog".to_string(),
                 settings: json!({ "use_reactions": true }),
-                is_core: false,
-                is_effectively_enabled: true,
             },
         )
         .await
@@ -1199,7 +1401,7 @@ mod tests {
             .await
             .expect("disabled settings read")
             .expect("disabled settings row");
-        assert!(!disabled.enabled);
+        assert_eq!(disabled.enabled, Some(false));
         assert_eq!(disabled.settings, json!({ "use_reactions": true }));
 
         TenantModuleStateStore::persist(
@@ -1218,7 +1420,7 @@ mod tests {
             .await
             .expect("re-enabled settings read")
             .expect("re-enabled settings row");
-        assert!(reenabled.enabled);
+        assert_eq!(reenabled.enabled, Some(true));
         assert_eq!(reenabled.settings, json!({ "use_reactions": true }));
     }
 }

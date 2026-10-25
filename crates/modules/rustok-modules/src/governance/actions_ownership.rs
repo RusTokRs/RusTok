@@ -1,6 +1,6 @@
 //! Governance transitions for release yanking and ownership transfer.
 
-use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait, Value};
+use sea_orm::{ConnectionTrait, Statement, TransactionTrait, Value};
 
 use super::helpers::*;
 use super::mapping::*;
@@ -14,17 +14,20 @@ impl SeaOrmModuleGovernanceService {
     ) -> Result<ModuleReleaseYankResult, ModuleGovernanceError> {
         command.validate()?;
         let tx = self.db.begin().await.map_err(store_error)?;
-        let backend = tx.get_database_backend();
-        let mark = |n| placeholder(backend, n);
-        let now = database_now(backend);
-        let release_lock = if backend == DbBackend::Postgres {
+        crate::backend::set_platform_scope(&tx)
+            .await
+            .map_err(store_error)?;
+        let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
+        let mark = |n| backend.placeholder(n);
+        let now = backend.now_sql();
+        let release_lock = if backend == SupportedBackend::Postgres {
             " FOR UPDATE"
         } else {
             ""
         };
         let release = tx
             .query_one_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "SELECT id, request_id, status, CAST(publisher_principal AS TEXT) AS publisher_principal \
                      FROM registry_module_releases WHERE slug = {} AND version = {}{release_lock}",
@@ -76,7 +79,7 @@ impl SeaOrmModuleGovernanceService {
         }
         let update = tx
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE registry_module_releases SET status = 'yanked', yanked_reason = {}, \
                      yanked_by_principal = {}, yanked_at = {now}, updated_at = {now} WHERE id = {}",
@@ -96,7 +99,7 @@ impl SeaOrmModuleGovernanceService {
             return Err(ModuleGovernanceError::ReleaseNotFound);
         }
         tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
                  (id, slug, request_id, release_id, event_type, actor_principal, \
@@ -147,19 +150,12 @@ impl SeaOrmModuleGovernanceService {
             .begin()
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-        let backend = tx.get_database_backend();
-        let mark = |n| {
-            if backend == sea_orm::DbBackend::Postgres {
-                format!("${n}")
-            } else {
-                format!("?{n}")
-            }
-        };
-        let now = if backend == sea_orm::DbBackend::Postgres {
-            "NOW()"
-        } else {
-            "datetime('now')"
-        };
+        crate::backend::set_platform_scope(&tx)
+            .await
+            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        let backend = SupportedBackend::new(tx.get_database_backend()).map_err(store_error)?;
+        let mark = |n| backend.placeholder(n);
+        let now = backend.now_sql();
         let previous_owner = governance_owner_principal_for_slug(&tx, backend, &command.slug, true)
             .await?
             .ok_or(ModuleGovernanceError::OwnerBindingNotFound)?;
@@ -190,7 +186,7 @@ impl SeaOrmModuleGovernanceService {
 
         let update = tx
             .execute_raw(Statement::from_sql_and_values(
-                backend,
+                backend.db_backend(),
                 format!(
                     "UPDATE registry_module_owners \
                      SET owner_principal = {}, bound_by_principal = {}, \
@@ -212,7 +208,7 @@ impl SeaOrmModuleGovernanceService {
             return Err(ModuleGovernanceError::OwnerBindingNotFound);
         }
         tx.execute_raw(Statement::from_sql_and_values(
-            backend,
+            backend.db_backend(),
             format!(
                 "INSERT INTO registry_governance_events \
                  (id, slug, request_id, release_id, event_type, actor_principal, \

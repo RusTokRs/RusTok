@@ -5,7 +5,8 @@ use rustok_modules::{
     ModuleArtifactNodeAssignmentClaimCommand, ModuleArtifactNodeAssignmentHeartbeatCommand,
     ModuleArtifactNodeAssignmentReport, ModuleArtifactNodeReconciliationAuthorizer,
     ModuleArtifactNodeReconciliationError, ModuleArtifactNodeReconciliationRequest,
-    ModuleArtifactNodeTopologyResolver, ModuleArtifactNodeTopologySnapshot, ModuleCommandContext,
+    ModuleArtifactNodeTopologyResolveError, ModuleArtifactNodeTopologyResolver,
+    ModuleArtifactNodeTopologySnapshot, ModuleCommandContext,
     ModuleControlPlane,
 };
 use rustok_worker_transport::{
@@ -316,12 +317,9 @@ impl ModuleArtifactNodeTopologyResolver for SubmittedTopologyResolver {
     async fn resolve(
         &self,
         policy_revision: &str,
-    ) -> Result<ModuleArtifactNodeTopologySnapshot, String> {
+    ) -> Result<ModuleArtifactNodeTopologySnapshot, ModuleArtifactNodeTopologyResolveError> {
         if policy_revision != self.policy_revision {
-            return Err(
-                "artifact node reconciliation policy revision changed during topology resolution"
-                    .to_string(),
-            );
+            return Err(ModuleArtifactNodeTopologyResolveError::PolicyRevisionChanged);
         }
         Ok(self.topology.clone())
     }

@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
+
+use crate::backend::SupportedBackend;
 
 /// Creates platform-scoped trusted static-promotion review and immutable
 /// distribution build-intent aggregates. Neither aggregate edits the running
@@ -10,8 +12,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements: &[&str] = match manager.get_database_backend() {
-            DbBackend::Postgres => &[
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statements: &[&str] = match backend {
+            SupportedBackend::Postgres => &[
                 "CREATE TABLE module_static_promotions (\
                     promotion_id UUID PRIMARY KEY,\
                     release_id TEXT NOT NULL REFERENCES registry_module_releases(id) ON DELETE RESTRICT,\
@@ -270,7 +273,7 @@ impl MigrationTrait for Migration {
                     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP\
                 )",
             ],
-            DbBackend::Sqlite => &[
+            SupportedBackend::Sqlite => &[
                 "CREATE TABLE module_static_promotions (\
                     promotion_id TEXT PRIMARY KEY,\
                     release_id TEXT NOT NULL REFERENCES registry_module_releases(id) ON DELETE RESTRICT,\
@@ -529,17 +532,12 @@ impl MigrationTrait for Migration {
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
                 )",
             ],
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "static promotion migration does not support database backend {backend:?}"
-                )));
-            }
         };
         for statement in statements {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     (*statement).to_string(),
                 ))
                 .await?;

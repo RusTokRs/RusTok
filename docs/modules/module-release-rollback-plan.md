@@ -1744,8 +1744,11 @@ backend preflight.
   never compiles on the incident path.
 - [x] Make `rustok-modules` the one operator-level transition owner while
   retaining `rustok-build`, `rustok-migrations`, sandbox, and deployment as
-  narrow execution/evidence ports. Implemented via `ModuleControlPlane`,
-  `DynamicLifecycleService`, `ModuleOperatorService`, and `TransitionCoordinatorService`.
+  narrow execution/evidence ports. Implemented via `ModuleControlPlane`, the
+  canonical installation/lifecycle services, and `TransitionCoordinatorService`;
+  `ModuleOperatorService` is the read-model projection over their state. (The
+  parallel `DynamicLifecycleService` was removed 2026-10-21; see
+  `crates/modules/rustok-modules/docs/logic-audit-remediation-2026-10-21.md` §5.1.)
 - [x] Keep one static build layering: `rustok-build` owns the canonical role
   plan/validation primitives, `rustok-static-distribution-worker` is the sole
   complete role-bundle executor/publisher, and one unversioned role-bundle
@@ -1797,7 +1800,7 @@ backend preflight.
   (`OperationsToolService`, `OperationsToolRelease`, `OperationsToolReleasePayload`,
   `VerifiedOperationsToolRelease`, `OperationsToolProtocolMatrix`,
   `OperationsToolMaintenanceOperation`, `OperationsToolAssignment`) backed by migration
-  `m20260904_000053_module_operations_tool.rs` (`module_operations_tool_releases`,
+  `m20261022_000059_module_operations_tool.rs` (`module_operations_tool_releases`,
   `module_operations_tool_maintenance_operations`, `module_operations_tool_assignments`).
   Fleet-level exclusion uses `ConflictKey::fleet_operations_tool()` in `ConflictFenceSet`.
   Verified by `crates/modules/rustok-modules/tests/operations_tool_tests.rs` (5 passed).
@@ -1822,7 +1825,7 @@ backend preflight.
   archive-specialized client; route reviewed Rhai bounded-workspace bytes
   through the same generic owner without tar wrapping or a second writer.
   Implemented `SourceObjectStore` in `crates/modules/rustok-modules/src/source_object.rs`
-  backed by migration `m20260904_000052_module_source_objects.rs` with tables
+  backed by migration `m20261022_000058_module_source_objects.rs` with tables
   `module_source_object_receipts` and `module_source_object_retention_holds`.
   Blobs are stored media-type neutral directly under `<cas_root>/<digest_hex>` without
   extension, supporting deterministic archives and reviewed Rhai bounded-workspace objects
@@ -1840,7 +1843,12 @@ backend preflight.
   (active generation claim fencing, candidate authorization, symmetric rollback without duplicate claims).
   Implemented `WaveRolloutCoordinator` in `crates/modules/rustok-modules/src/wave_rollout.rs` (dual pre-staging
   barrier across all nodes before mutation, sequential canary/wave mutation, untouched cohort capacity
-  retention, and bounded wave rollback). Verified by `crates/workers/rustok-artifact-node-agent/tests/slot_supervisor_and_watchdog_tests.rs`
+  retention, and bounded wave rollback). Status correction (2026-10-21):
+  `WaveRolloutCoordinator` is an unwired in-memory policy state machine — no
+  durable rollout store, node transport, or health-evidence source consumes
+  it, and `verify_wave` records caller attestation rather than observed
+  evidence; the tests below verify the state machine only, not a production
+  rollout. Verified by `crates/workers/rustok-artifact-node-agent/tests/slot_supervisor_and_watchdog_tests.rs`
   (5 passed) and `crates/modules/rustok-modules/tests/wave_rollout_tests.rs` (3 passed).
 - [x] Make every browser asset release-qualified/content-addressed, retain N
   and N+1 for the measured client/cache lifetime, and return strict not-found
@@ -1870,6 +1878,13 @@ backend preflight.
   schema descriptor roots), `BrowserAssetGcAdapter`, `NodeSlotGcAdapter`, `OperationsToolGcAdapter` (protecting
   predecessor slots for crash recovery), and `DiagnosticLogGcAdapter`.
   Verified by `crates/modules/rustok-modules/tests/gc_adapters_tests.rs` (all 10 tests passing).
+  Status correction (2026-10-21): `gc.rs` is an unwired design surface —
+  coordinator state (tombstones, receipts) and all 11 adapters are in-memory,
+  `execute_physical_purge` mutates process-local sets rather than CAS,
+  registry, or node storage, and no scheduler or production caller exists.
+  The named tests verify coordinator/adapter logic against in-memory sets
+  only. Production GC still requires a durable tombstone/receipt store and
+  adapters backed by the real owner stores.
 - [x] Replace first-install per-role activation with one base-bundle install
   operation that consumes an admitted bundle, pre-stages candidate-only roles,
   verifies the pre-install recovery boundary, then applies schema/seed/admin and
@@ -2000,15 +2015,23 @@ backend preflight.
   then reconcile affected tenants in bounded independently fenced pages.
 - [x] Add the outside-candidate automatic evaluator/control path with
   atomically reserved same-operation replay authority.
-- [x] Advance one binding/work generation and its outbox facts atomically with
+- [ ] Advance one binding/work generation and its outbox facts atomically with
   dynamic serving selection; delayed events cannot reactivate an obsolete
-  generation. Implemented in `DynamicLifecycleService` and verified by
-  `test_atomic_uninstall_advances_generation_retires_and_rejects_delayed_work`.
+  generation. Status correction (2026-10-21): work-generation creation and
+  retirement are implemented in the canonical owners
+  (`installation.rs::commit_admission`, `uninstall_artifact`) after folding
+  them out of the removed parallel `DynamicLifecycleService`; the previously
+  named test was deleted with that service. Atomic advance together with
+  serving selection and delayed-event rejection still require canonical test
+  evidence.
 - [x] Bring activation-only enable/disable under the same coordinator: fence
   claims, classify lifecycle hooks and external effects, persist idempotent
   receipts, drain pinned work, and deny automatic return when outcomes are
-  irreversible or uncertain. Verified by `dynamic_lifecycle_tests.rs` and
-  `queue_drain_and_security_revalidation_tests.rs`.
+  irreversible or uncertain. Verified by
+  `queue_drain_and_security_revalidation_tests.rs`. (Citation correction
+  2026-10-21: the previously cited `dynamic_lifecycle_tests.rs` exercised the
+  removed parallel simulation and was deleted with it; enable/disable
+  evidence rests on the canonical lifecycle owners.)
 - [x] Enforce the acceptance gate across runtime convergence and every
   update-owned migration/backfill invariant, hook, serving-generation/outbox
   materialization, and external-effect reconciliation. Move optional compatible
@@ -2217,14 +2240,14 @@ backend preflight.
   Admission validates a scope-matched `ModuleCommandContext` before I/O and
   persists a complete-command request digest, so changed replay evidence cannot
   be accepted merely because the immutable release already exists.
-  Verified by `m20260904_000051_admitted_oci_releases.rs`, `oci_admission.rs`,
+  Verified by `m20261022_000057_admitted_oci_releases.rs`, `oci_admission.rs`,
   `OciReleaseAdmissionService`, and `oci_admission_tests.rs` (7 passed).
 - [x] Complete external-prebuilt ingress with independently verified ownership,
   lineage, signature, SBOM/provenance, ABI/capability and policy evidence; an
   external prebuilt remains dynamic and cannot enter native promotion. Its
   scope-matched context and complete evidence packet are also part of the
   durable replay digest.
-  Verified by consolidated migration `m20260904_000051_admitted_oci_releases.rs` (`module_external_prebuilt_ingress` with foreign key to `module_admitted_oci_releases`), `external_prebuilt_ingress.rs` (`ExternalPrebuiltIngressService`), `promotion.rs` (`ExternalPrebuiltCannotBePromoted` denial), and `external_prebuilt_ingress_tests.rs` (8 passed).
+  Verified by consolidated migration `m20261022_000057_admitted_oci_releases.rs` (`module_external_prebuilt_ingress` with foreign key to `module_admitted_oci_releases`), `external_prebuilt_ingress.rs` (`ExternalPrebuiltIngressService`), `promotion.rs` (`ExternalPrebuiltCannotBePromoted` denial), and `external_prebuilt_ingress_tests.rs` (8 passed).
 - [x] Compose verified payload caching and authenticated prefetch/readiness for
   candidate and predecessor across every required executor pool/generation,
   including exact executor/engine binary digest, engine-config revision,
@@ -2232,7 +2255,7 @@ backend preflight.
   placement-attestation checks. An engine change invalidates old receipts, and
   automatic mode is denied unless both releases smoke on every serving or
   recovery fingerprint.
-  Verified by consolidated migration `m20260904_000051_admitted_oci_releases.rs` (`module_executor_readiness_receipts`), `executor_readiness.rs` (`ExecutorReadinessService`, `RuntimeFingerprint`, `VerifiedPayloadCache`), and `executor_readiness_tests.rs` (tests `test_verified_payload_caching_and_cas_rehash`, `test_engine_change_invalidates_readiness_receipts`, `test_monotonic_pool_generation_gating`, `test_capability_route_checks_fail_closed_on_missing_route`, `test_dual_candidate_and_predecessor_smoke_readiness_for_automatic_mode`).
+  Verified by consolidated migration `m20261022_000057_admitted_oci_releases.rs` (`module_executor_readiness_receipts`), `executor_readiness.rs` (`ExecutorReadinessService`, `RuntimeFingerprint`, `VerifiedPayloadCache`), and `executor_readiness_tests.rs` (tests `test_verified_payload_caching_and_cas_rehash`, `test_engine_change_invalidates_readiness_receipts`, `test_monotonic_pool_generation_gating`, `test_capability_route_checks_fail_closed_on_missing_route`, `test_dual_candidate_and_predecessor_smoke_readiness_for_automatic_mode`).
 - [x] Add the canonical owner-selected executor-placement fact and policy
   revision to scoped install/update preflight/readiness evidence. Global
   admission validates only immutable kind/ABI/global constraints. Authors may declare
@@ -2255,25 +2278,38 @@ backend preflight.
   sandbox evidence, then compose exact dependency/dependent closure,
   data-contract checkpoint, inactive installation, prefetch/readiness,
   selection, binding reconciliation, tenant intent, and observed serving state.
-  Implemented `DynamicLifecycleService` in `crates/modules/rustok-modules/src/dynamic_lifecycle.rs`
-  revalidating admitted releases against `module_admitted_oci_releases`, composing
-  dependency graph, inactive installation, non-routable admission, and transactional
-  operation journaling in `module_production_operations`.
+  Implemented by the canonical admission path: `release_admission_journal`
+  staging plus `installation.rs::commit_admission` revalidate the admitted
+  release against `module_admitted_oci_releases`, compose the dependency
+  graph, and write the inactive installation, its non-routable admission,
+  and its work generation in one transaction. (The parallel
+  `DynamicLifecycleService` and its `module_production_operations` journal
+  were removed 2026-10-21; the table is dropped by migration `m20261021_000056`.)
 - [x] Implement distinct admit/install/enable/update/disable/remove/uninstall/
   rollback/`dynamic_artifact_data_purge`/`dynamic_artifact_settings_purge`
   semantics, first-install disabled/absent recovery, a rollback-window
   predecessor for remove, retained data on uninstall, and new audited preflight
-  on reinstall. Implemented in `crates/modules/rustok-modules/src/dynamic_lifecycle.rs`:
-  first-install failure retains candidate in database for incident diagnosis while
-  recovering serving baseline to absent; uninstall preserves data/settings intact;
-  purge requires explicit retirement. Verified by `crates/modules/rustok-modules/tests/dynamic_lifecycle_tests.rs`.
+  on reinstall. Implemented by canonical owners: `installation.rs` (admit,
+  install, uninstall; uninstall retains data/settings) and the
+  `artifact_settings_recovery` / `data` purge services (both require a
+  retired identity). Status correction (2026-10-21): the previously cited
+  `dynamic_lifecycle_tests.rs` exercised the removed parallel
+  `dynamic_lifecycle.rs` simulation — including its first-install
+  absent-recovery narrative — and was deleted with it; first-install
+  absent-recovery and reinstall-preflight coverage must be re-verified
+  against the canonical path before this item is treated as evidenced.
 - [x] Make uninstall of a disabled-selected installation atomically clear
   selected/desired state and tenant intent to absent, advance/invalidate the
   binding/work generation, and only then retire the identity. An already absent
   installation retires directly; delayed enable/outbox work cannot reactivate
-  either path. Implemented in `execute_uninstall` with monotonic `work_generation += 1`
-  and `retired = true` in `module_artifact_work_generations` with RLS; delayed enable
-  and workers reject stale generation (`StaleWorkGeneration`, `DelayedWorkRejected`).
+  either path. Implemented in canonical
+  `SeaOrmArtifactInstallationStore::uninstall_artifact` (`installation.rs`),
+  which clears tenant lifecycle intent and retires/advances
+  `module_artifact_work_generations` in the uninstall transaction (folded
+  from the removed parallel service, 2026-10-21). The former simulation's
+  `StaleWorkGeneration` / `DelayedWorkRejected` rejections were deleted with
+  it; stale-generation rejection evidence on the canonical enable path is
+  still pending.
 - [ ] Replace slug/revision-only artifact data scope with a stable opaque
   `(scope_id, data_owner_id, namespace/settings instance, revision)` boundary
   bound to verified ownership/publisher lineage. First install creates only
@@ -2313,8 +2349,11 @@ backend preflight.
   scoped install/update creates one inactive installation and its non-routable
   binding/work intent under the production operation. Implemented via
   `OciReleaseAdmissionService` (global supply admission in `module_admitted_oci_releases`)
-  and `DynamicLifecycleService` (scoped inactive install/work-generation in `module_artifact_installations`).
-  Verified by `dynamic_lifecycle_tests.rs` and `oci_admission_tests.rs`.
+  and the canonical installation store (`installation.rs::commit_admission`
+  writes the scoped inactive installation and its work generation).
+  Verified by `oci_admission_tests.rs`; the previously cited
+  `dynamic_lifecycle_tests.rs` was deleted with the parallel service
+  (2026-10-21).
 - [x] Implement the restricted inactive-installation executor for exact pinned
   item drain only; it creates no traffic, schedules, subscriptions, or
   follow-on work and is revoked by current security state. Implemented in
@@ -2366,18 +2405,29 @@ backend preflight.
 
 ### 7. Deliver the Operator Experience
 
-- [x] Expose one owner projection and command surface through the existing CLI,
-  native, and public/headless-capable transports as applicable. Unified in
-  `crates/modules/rustok-modules/src/operator.rs` under `ModuleOperatorService` and
-  `ModuleControlPlane::operator`.
-- [x] Cover the complete lifecycle command vocabulary and status reads from
+- [ ] Expose one owner projection and command surface through the existing CLI,
+  native, and public/headless-capable transports as applicable. Status
+  correction (2026-10-21): `ModuleOperatorService`
+  (`crates/modules/rustok-modules/src/operator.rs`, reachable via
+  `ModuleControlPlane::operator`) is a read-model projection service only —
+  it exposes no lifecycle commands and is not wired into any CLI, native, or
+  public transport. Its projections were rewritten on canonical sources
+  (2026-10-21); transport exposure remains open.
+- [ ] Cover the complete lifecycle command vocabulary and status reads from
   source/prebuilt submission through admission, install/add/update/enable/
   disable/remove/uninstall/reinstall, rollback/containment, distinct
   finalization, `dynamic_artifact_data_purge`, and
   `dynamic_artifact_settings_purge`, retention/GC status,
   and authorized support-bundle
   retrieval without adding raw pointer/registry/delete/restore controls.
-  Verified by `crates/modules/rustok-modules/tests/operator_projection_tests.rs`.
+  Status correction (2026-10-21): lifecycle commands are owned by the
+  canonical installation/lifecycle/transition services, not by the operator
+  projection; the operator surface covers status reads, transition preview,
+  and support-bundle aggregation, and performs no authorization itself.
+  `operator_projection_tests.rs` verifies those projections against SQLite
+  fixtures; transport-level and retention/GC status coverage do not exist
+  yet. Verified (projections only) by
+  `crates/modules/rustok-modules/tests/operator_projection_tests.rs`.
 - [x] Render the WordPress-like flow from the exact canonical tokens `ready`,
   `running`, `observing`, `accepted`, `recovering`, `recovered`, `rejected`,
   `cancelled`, and `recovery_required`. Friendly labels such as "Updating" or
@@ -2416,7 +2466,11 @@ backend preflight.
   `point_of_no_return_and_irreversibility_tests.rs` and migration preflight safety.
 - [x] Keep cross-module ownership, financial/external effects, compensation,
   and irreversible conversion maintenance-only until their exact procedures
-  are rehearsed. Enforced in `ModuleOperatorService::generate_preview` blast radius.
+  are rehearsed. Automatic-mode denial for data-schema migration and
+  cross-module impact is enforced in `ModuleOperatorService::generate_preview`
+  (rewritten on canonical sources 2026-10-21); irreversibility is evaluated
+  from operation evidence in `data_upgrade`, and financial/external-effect
+  rehearsal gates are not yet represented in the projection.
 - [x] Enable automatic mode per exact transition, never for an entire module by
   assertion. Verified by `test_wave_4_exact_transition_evaluation_automatic_mode_policy`
   and `test_preview_denies_automatic_mode_for_schema_migrations`.

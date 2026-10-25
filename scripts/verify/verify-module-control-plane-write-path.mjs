@@ -159,7 +159,7 @@ const operationsToolOwnerPath = path.join(
 );
 const operationsToolMigrationPath = path.join(
   root,
-  "crates/modules/rustok-modules/src/migrations/m20260904_000053_module_operations_tool.rs",
+  "crates/modules/rustok-modules/src/migrations/m20261022_000059_module_operations_tool.rs",
 );
 const ociAdmissionOwnerPath = path.join(
   root,
@@ -171,7 +171,7 @@ const externalPrebuiltIngressOwnerPath = path.join(
 );
 const admittedOciReleasesMigrationPath = path.join(
   root,
-  "crates/modules/rustok-modules/src/migrations/m20260904_000051_admitted_oci_releases.rs",
+  "crates/modules/rustok-modules/src/migrations/m20261022_000057_admitted_oci_releases.rs",
 );
 const runtimeManifestPath = path.join(
   root,
@@ -217,11 +217,11 @@ const staticLifecycleJournalPath = path.join(ownerRoot, "operation_store.rs");
 const alloyOwnerSourcePath = path.join(ownerRoot, "governance");
 const registryPublicationEvidenceMigrationPath = path.join(
   root,
-  "crates/utils/rustok-migrations/src/m20260717_000001_create_registry_publication_evidence.rs",
+  "crates/modules/rustok-modules/src/migrations/m20260717_000072_create_registry_publication_evidence.rs",
 );
 const registryPublicationMigrationPath = path.join(
   root,
-  "crates/utils/rustok-migrations/src/m20260718_000002_add_registry_publication_idempotency.rs",
+  "crates/modules/rustok-modules/src/migrations/m20260718_000074_add_registry_publication_idempotency.rs",
 );
 const registryHttpControllerPath = path.join(
   root,
@@ -2641,7 +2641,7 @@ try {
     "target_storage_key",
     "PutMode::Create",
     "self.storage.objects.get",
-    "Sha256::digest(bytes)",
+    "crate::installation::sha256_digest(bytes)",
     "operation.committed",
     "ensure_namespace_not_migration_held_on",
   ]) {

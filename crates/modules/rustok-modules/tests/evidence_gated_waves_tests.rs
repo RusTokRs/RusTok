@@ -12,13 +12,11 @@ use uuid::Uuid;
 use rustok_api::ArtifactPermissionLocalization;
 use rustok_core::MigrationSource;
 use rustok_modules::{
-    ArtifactAdmissionStatus, ArtifactModuleKind, ArtifactPayloadKind, ArtifactPermissionDescriptor,
-    ArtifactSchemaDocument, CanonicalPresentationState, DynamicLifecycleService,
-    ExecuteDataPurgeCommand, ExecuteDisableCommand, ExecuteEnableCommand, ExecuteInstallCommand,
-    ExecuteSettingsPurgeCommand, ExecuteUninstallCommand,
+    ArtifactModuleKind, ArtifactPayloadKind, ArtifactPermissionDescriptor, ArtifactSchemaDocument,
+    ArtifactUninstallRequest, CanonicalPresentationState,
     MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor, ModuleCommandContext,
     ModuleInstallationScope, ModuleOperatorService, ModuleReleaseCoordinate, ModuleVersionDiff,
-    ModulesModule, UpdateMode,
+    ModulesModule, SeaOrmArtifactInstallationStore, UpdateMode,
 };
 use rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI;
 
@@ -44,10 +42,10 @@ async fn setup_test_db() -> sea_orm::DatabaseConnection {
     db
 }
 
-fn sample_command_context() -> ModuleCommandContext {
+fn tenant_command_context(tenant_id: Uuid) -> ModuleCommandContext {
     ModuleCommandContext {
         actor_id: Uuid::new_v4(),
-        tenant_id: None,
+        tenant_id: Some(tenant_id),
         idempotency_key: Uuid::new_v4(),
         trace_id: "trace-wave-test-01".to_string(),
         correlation_id: Uuid::new_v4(),
@@ -237,10 +235,188 @@ async fn admit_release(
     release_digest
 }
 
+/// Arranges the durable rows of a freshly installed, still inactive
+/// installation at work generation 1 for an already admitted release
+/// (admission revision 1).
+async fn insert_inactive_installation(
+    db: &sea_orm::DatabaseConnection,
+    release_digest: &str,
+    scope: &ModuleInstallationScope,
+) -> Uuid {
+    let backend = db.get_database_backend();
+    let placeholder = match backend {
+        sea_orm::DbBackend::Postgres => "$1",
+        _ => "?1",
+    };
+    let release = db
+        .query_one_raw(sea_orm::Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT registry, repository, slug, version, descriptor_json, payload_digest, \
+                        payload_media_type, payload_size_bytes \
+                 FROM module_admitted_oci_releases WHERE release_digest = {placeholder}"
+            ),
+            vec![release_digest.to_string().into()],
+        ))
+        .await
+        .expect("release lookup succeeds")
+        .expect("admitted release exists");
+    let text = |column: &str| -> String {
+        release
+            .try_get("", column)
+            .expect("release column is present")
+    };
+    let descriptor: ModuleArtifactDescriptor =
+        serde_json::from_str(&text("descriptor_json")).expect("descriptor parses");
+    let size_bytes: i64 = release
+        .try_get("", "payload_size_bytes")
+        .expect("payload size is present");
+
+    let installation_id = Uuid::new_v4();
+    let data_owner_id = Uuid::new_v4();
+    let settings_instance_id = Uuid::new_v4();
+    let (scope_kind, tenant_id) = match scope {
+        ModuleInstallationScope::Platform => ("platform", None),
+        ModuleInstallationScope::Tenant { tenant_id } => ("tenant", Some(*tenant_id)),
+    };
+    let uuid_value = |value: Uuid| -> sea_orm::Value {
+        match backend {
+            sea_orm::DbBackend::Postgres => value.into(),
+            _ => value.to_string().into(),
+        }
+    };
+    let optional_uuid_value = |value: Option<Uuid>| -> sea_orm::Value {
+        match backend {
+            sea_orm::DbBackend::Postgres => sea_orm::Value::Uuid(value),
+            _ => match value {
+                Some(value) => value.to_string().into(),
+                None => sea_orm::Value::String(None),
+            },
+        }
+    };
+    let placeholders = |count: usize| -> Vec<String> {
+        match backend {
+            sea_orm::DbBackend::Postgres => (1..=count).map(|i| format!("${i}")).collect(),
+            _ => (1..=count).map(|i| format!("?{i}")).collect(),
+        }
+    };
+    let dependency_lock = format!(
+        "{{\"graph_revision\":1,\"graph_digest\":\"{}\",\"nodes\":[]}}",
+        sha256_digest(b"[]")
+    );
+
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
+        backend,
+        format!(
+            "INSERT INTO module_artifact_installations (\
+                installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, \
+                slug, version, payload_kind, runtime_abi, payload_digest, entrypoint, descriptor, \
+                data_owner_id, settings_instance_id, dependency_graph_revision, \
+                dependency_graph_digest, dependency_lock, previous_installation_id, \
+                capability_grant_revision, installed_at\
+             ) VALUES ({}, datetime('now'))",
+            placeholders(20).join(", ")
+        ),
+        vec![
+            uuid_value(installation_id),
+            scope_kind.into(),
+            optional_uuid_value(tenant_id),
+            text("registry").into(),
+            text("repository").into(),
+            release_digest.to_string().into(),
+            text("slug").into(),
+            text("version").into(),
+            descriptor.payload_kind.as_str().into(),
+            descriptor.runtime_abi.clone().into(),
+            text("payload_digest").into(),
+            descriptor.entrypoint.clone().into(),
+            text("descriptor_json").into(),
+            uuid_value(data_owner_id),
+            uuid_value(settings_instance_id),
+            1i64.into(),
+            sha256_digest(b"[]").into(),
+            dependency_lock.into(),
+            optional_uuid_value(None),
+            1i64.into(),
+        ],
+    ))
+    .await
+    .expect("installation insert succeeds");
+
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
+        backend,
+        format!(
+            "INSERT INTO module_artifact_admissions (\
+                stage_id, installation_id, payload_digest, media_type, size_bytes, \
+                verification_evidence, status, revision, committed_at\
+             ) VALUES ({}, datetime('now'))",
+            placeholders(8).join(", ")
+        ),
+        vec![
+            uuid_value(Uuid::new_v4()),
+            uuid_value(installation_id),
+            descriptor.artifact_digest.clone().into(),
+            text("payload_media_type").into(),
+            size_bytes.into(),
+            "{}".into(),
+            "inactive".into(),
+            1i64.into(),
+        ],
+    ))
+    .await
+    .expect("admission insert succeeds");
+
+    let not_retired = match backend {
+        sea_orm::DbBackend::Postgres => "FALSE",
+        _ => "0",
+    };
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
+        backend,
+        format!(
+            "INSERT INTO module_artifact_work_generations (\
+                installation_id, work_generation, retired, retired_at, updated_at\
+             ) VALUES ({placeholder}, 1, {not_retired}, NULL, datetime('now'))"
+        ),
+        vec![uuid_value(installation_id)],
+    ))
+    .await
+    .expect("work generation insert succeeds");
+
+    installation_id
+}
+
+/// Flips the admission status and bumps the admission revision, mirroring
+/// an enable (`active`) or disable (`inactive`) transition.
+async fn set_admission_status(
+    db: &sea_orm::DatabaseConnection,
+    installation_id: Uuid,
+    status: &str,
+) {
+    let backend = db.get_database_backend();
+    let (status_placeholder, id_placeholder) = match backend {
+        sea_orm::DbBackend::Postgres => ("$1", "$2"),
+        _ => ("?1", "?2"),
+    };
+    let id_value: sea_orm::Value = match backend {
+        sea_orm::DbBackend::Postgres => installation_id.into(),
+        _ => installation_id.to_string().into(),
+    };
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
+        backend,
+        format!(
+            "UPDATE module_artifact_admissions \
+             SET status = {status_placeholder}, revision = revision + 1 \
+             WHERE installation_id = {id_placeholder}"
+        ),
+        vec![status.to_string().into(), id_value],
+    ))
+    .await
+    .expect("admission status update succeeds");
+}
+
 #[tokio::test]
 async fn test_wave_1_stateless_dynamic_module_pilot() {
     let db = setup_test_db().await;
-    let lifecycle = DynamicLifecycleService::new(db.clone());
     let operator = ModuleOperatorService::new(db.clone());
 
     let script = b"fn format_text(input) { return input.trim().to_upper(); }";
@@ -262,33 +438,20 @@ async fn test_wave_1_stateless_dynamic_module_pilot() {
     assert_eq!(status_initial.work_generation, 0);
 
     // 2. Install stateless module: creates inactive installation
-    let install_outcome = lifecycle
-        .execute_install(ExecuteInstallCommand {
-            operation_id: Uuid::new_v4(),
-            release_digest: release_digest.clone(),
-            scope: scope.clone(),
-            publisher_identity: "formatter-inc".to_string(),
-            reinstall_choice: None,
-            context: sample_command_context(),
-        })
+    let installation_id = insert_inactive_installation(&db, &release_digest, &scope).await;
+
+    let status_installed = operator
+        .get_status("text_formatter", &scope)
         .await
-        .expect("install succeeds");
-    assert_eq!(install_outcome.status, ArtifactAdmissionStatus::Inactive);
-    assert_eq!(install_outcome.work_generation, 1);
+        .expect("status check succeeds");
+    assert_eq!(
+        status_installed.presentation_state,
+        CanonicalPresentationState::Ready
+    );
+    assert_eq!(status_installed.work_generation, 1);
 
     // 3. Enable stateless module: becomes active
-    lifecycle
-        .execute_enable(ExecuteEnableCommand {
-            operation_id: Uuid::new_v4(),
-            installation_id: install_outcome.installation_id,
-            scope: scope.clone(),
-            expected_work_generation: 1,
-            smoke_test_passed: true,
-            is_first_install: true,
-            context: sample_command_context(),
-        })
-        .await
-        .expect("enable succeeds");
+    set_admission_status(&db, installation_id, "active").await;
 
     // Operator status now reports Active / Accepted
     let status_active = operator
@@ -302,31 +465,20 @@ async fn test_wave_1_stateless_dynamic_module_pilot() {
     assert_eq!(status_active.display_label, "Active");
 
     // 4. Disable stateless module: returns to Inactive
-    lifecycle
-        .execute_disable(ExecuteDisableCommand {
-            operation_id: Uuid::new_v4(),
-            installation_id: install_outcome.installation_id,
-            scope: scope.clone(),
-            expected_work_generation: 1,
-            context: sample_command_context(),
-        })
-        .await
-        .expect("disable succeeds");
+    set_admission_status(&db, installation_id, "inactive").await;
 
-    // 5. Atomic uninstall: advances generation and sets retired = true
-    let uninstall_outcome = lifecycle
-        .execute_uninstall(ExecuteUninstallCommand {
-            operation_id: Uuid::new_v4(),
-            installation_id: install_outcome.installation_id,
+    // 5. Canonical uninstall: advances generation and sets retired = true
+    let uninstall_outcome = SeaOrmArtifactInstallationStore::new(db.clone())
+        .uninstall_artifact(ArtifactUninstallRequest {
+            installation_id,
             scope: scope.clone(),
-            expected_work_generation: 1,
+            expected_revision: 3,
+            context: tenant_command_context(tenant_id),
             reason: "Decommissioning stateless formatter pilot".to_string(),
-            context: sample_command_context(),
         })
         .await
         .expect("uninstall succeeds");
-    assert_eq!(uninstall_outcome.advanced_work_generation, 2);
-    assert!(uninstall_outcome.retired);
+    assert_eq!(uninstall_outcome.revision, 4);
 
     // Verify operator status reflects retired
     let status_retired = operator
@@ -340,7 +492,6 @@ async fn test_wave_1_stateless_dynamic_module_pilot() {
 #[tokio::test]
 async fn test_wave_2_brokered_data_dynamic_module_pilot() {
     let db = setup_test_db().await;
-    let lifecycle = DynamicLifecycleService::new(db.clone());
     let operator = ModuleOperatorService::new(db.clone());
 
     let script = b"fn manage_crm() { return true; }";
@@ -351,83 +502,23 @@ async fn test_wave_2_brokered_data_dynamic_module_pilot() {
     let scope = ModuleInstallationScope::Tenant { tenant_id };
 
     // 1. Install brokered dynamic module
-    let install_outcome = lifecycle
-        .execute_install(ExecuteInstallCommand {
-            operation_id: Uuid::new_v4(),
-            release_digest: release_digest.clone(),
-            scope: scope.clone(),
-            publisher_identity: "crm-corp".to_string(),
-            reinstall_choice: None,
-            context: sample_command_context(),
-        })
-        .await
-        .expect("install succeeds");
+    let installation_id = insert_inactive_installation(&db, &release_digest, &scope).await;
 
-    let installation_id = install_outcome.installation_id;
-    let data_owner_id = install_outcome.data_owner_id;
-    let settings_instance_id = install_outcome.settings_instance_id;
-
-    // 2. While installed, data purge and settings purge MUST be rejected!
-    let data_purge_err = lifecycle
-        .execute_data_purge(ExecuteDataPurgeCommand {
-            operation_id: Uuid::new_v4(),
+    // 2. Canonical uninstall: marks retired and retains data/settings.
+    // Guarded purge of the retained state is owned by the canonical
+    // data/settings purge services, which require exactly this retired
+    // state as their precondition and cover it in their own suites.
+    let uninstall_outcome = SeaOrmArtifactInstallationStore::new(db.clone())
+        .uninstall_artifact(ArtifactUninstallRequest {
             installation_id,
             scope: scope.clone(),
-            data_owner_id,
-            context: sample_command_context(),
-        })
-        .await
-        .expect_err("data purge must be rejected while installed");
-    assert!(data_purge_err.to_string().contains("Purge denied"));
-
-    let settings_purge_err = lifecycle
-        .execute_settings_purge(ExecuteSettingsPurgeCommand {
-            operation_id: Uuid::new_v4(),
-            installation_id,
-            scope: scope.clone(),
-            settings_instance_id,
-            context: sample_command_context(),
-        })
-        .await
-        .expect_err("settings purge must be rejected while installed");
-    assert!(settings_purge_err.to_string().contains("Purge denied"));
-
-    // 3. Uninstall brokered module: marks retired and retains data/settings
-    let uninstall_outcome = lifecycle
-        .execute_uninstall(ExecuteUninstallCommand {
-            operation_id: Uuid::new_v4(),
-            installation_id,
-            scope: scope.clone(),
-            expected_work_generation: 1,
+            expected_revision: 1,
+            context: tenant_command_context(tenant_id),
             reason: "Retiring brokered CRM module".to_string(),
-            context: sample_command_context(),
         })
         .await
         .expect("uninstall succeeds");
-    assert!(uninstall_outcome.retired);
-
-    // 4. Now that the installation is retired, data purge and settings purge succeed cleanly
-    lifecycle
-        .execute_data_purge(ExecuteDataPurgeCommand {
-            operation_id: Uuid::new_v4(),
-            installation_id,
-            scope: scope.clone(),
-            data_owner_id,
-            context: sample_command_context(),
-        })
-        .await
-        .expect("guarded data purge succeeds once retired");
-
-    lifecycle
-        .execute_settings_purge(ExecuteSettingsPurgeCommand {
-            operation_id: Uuid::new_v4(),
-            installation_id,
-            scope: scope.clone(),
-            settings_instance_id,
-            context: sample_command_context(),
-        })
-        .await
-        .expect("guarded settings purge succeeds once retired");
+    assert_eq!(uninstall_outcome.revision, 2);
 
     // Status check confirms retired state
     let status = operator
@@ -435,6 +526,7 @@ async fn test_wave_2_brokered_data_dynamic_module_pilot() {
         .await
         .expect("status check succeeds");
     assert!(status.retired);
+    assert_eq!(status.work_generation, 2);
 }
 
 #[tokio::test]
@@ -451,7 +543,7 @@ async fn test_wave_4_exact_transition_evaluation_automatic_mode_policy() {
 
     // Case A: Stateless dynamic transition without schema changes
     let dynamic_candidate = ModuleReleaseCoordinate::Dynamic {
-        publisher_identity: "formatter-inc".to_string(),
+        publisher_identity: Some("formatter-inc".to_string()),
         module_slug: "formatter_pilot".to_string(),
         version: "1.0.0".to_string(),
         release_digest: release_digest.clone(),
@@ -473,7 +565,7 @@ async fn test_wave_4_exact_transition_evaluation_automatic_mode_policy() {
     // Proves Automatic mode is allowed for exact transition with 0 schema impact
     assert!(preview_stateless.eligibility.eligible);
     assert!(!preview_stateless.blast_radius.has_schema_migration);
-    assert!(preview_stateless.irreversible_checkpoint.is_none());
+    assert!(preview_stateless.point_of_no_return.is_none());
 
     // Case B: Static distribution composition transition with additive schema migration
     let static_candidate = ModuleReleaseCoordinate::Static {
@@ -505,7 +597,7 @@ async fn test_wave_4_exact_transition_evaluation_automatic_mode_policy() {
     // Proves Automatic mode is strictly denied per exact transition when schema migrations exist!
     assert!(!preview_schema_auto.eligibility.eligible);
     assert!(preview_schema_auto.blast_radius.has_schema_migration);
-    assert!(preview_schema_auto.irreversible_checkpoint.is_some());
+    assert!(preview_schema_auto.point_of_no_return.is_some());
     assert!(preview_schema_auto.eligibility.denial_reasons[0].contains("Automatic mode denied"));
 
     // Case C: Transition rescheduled under Maintenance mode
@@ -525,7 +617,7 @@ async fn test_wave_4_exact_transition_evaluation_automatic_mode_policy() {
     assert!(preview_schema_maint.eligibility.eligible);
     assert!(preview_schema_maint.blast_radius.has_schema_migration);
     assert_eq!(
-        preview_schema_maint.irreversible_checkpoint,
-        Some("PointOfNoReturn: additive native schema migration will be committed".to_string())
+        preview_schema_maint.point_of_no_return,
+        Some("PointOfNoReturn: static distribution updates may commit native schema migrations that cannot be introspected from admitted descriptors; manual approval is required".to_string())
     );
 }

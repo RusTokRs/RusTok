@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
+
+use crate::backend::SupportedBackend;
 
 /// Persists immutable registry publication, review, and release-yank commands
 /// for exact replay after their durable transitions commit.
@@ -9,8 +11,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statement = match manager.get_database_backend() {
-            DbBackend::Postgres => {
+        let backend = SupportedBackend::new(manager.get_database_backend())?;
+        let statement = match backend {
+            SupportedBackend::Postgres => {
                 "CREATE TABLE registry_publication_operations (\
                 operation_id UUID PRIMARY KEY,\
                 request_id TEXT NOT NULL REFERENCES registry_publish_requests(id),\
@@ -111,7 +114,7 @@ impl MigrationTrait for Migration {
                 UNIQUE (request_id, idempotency_key)\
             )"
             }
-            DbBackend::Sqlite => {
+            SupportedBackend::Sqlite => {
                 "CREATE TABLE registry_publication_operations (\
                 operation_id TEXT PRIMARY KEY NOT NULL,\
                 request_id TEXT NOT NULL REFERENCES registry_publish_requests(id),\
@@ -215,11 +218,6 @@ impl MigrationTrait for Migration {
                 UNIQUE (request_id, idempotency_key)\
             )"
             }
-            backend => {
-                return Err(DbErr::Migration(format!(
-                    "registry publication idempotency migration does not support database backend {backend:?}"
-                )));
-            }
         };
         for statement in statement
             .split(';')
@@ -229,7 +227,7 @@ impl MigrationTrait for Migration {
             manager
                 .get_connection()
                 .execute_raw(Statement::from_string(
-                    manager.get_database_backend(),
+                    backend.db_backend(),
                     statement.to_string(),
                 ))
                 .await?;

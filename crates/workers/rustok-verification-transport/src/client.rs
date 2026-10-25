@@ -1,5 +1,7 @@
 use async_trait::async_trait;
-use rustok_modules::{TrustVerificationDecision, TrustVerificationRequest, TrustVerifier};
+use rustok_modules::{
+    TrustVerificationDecision, TrustVerificationError, TrustVerificationRequest, TrustVerifier,
+};
 use tokio::sync::Mutex;
 use tonic::Request;
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
@@ -68,8 +70,9 @@ impl TrustVerifier for GrpcTrustVerifier {
     async fn verify(
         &self,
         request: TrustVerificationRequest,
-    ) -> Result<TrustVerificationDecision, String> {
-        let payload = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
+    ) -> Result<TrustVerificationDecision, TrustVerificationError> {
+        let payload = serde_json::to_vec(&request)
+            .map_err(|error| TrustVerificationError::InvalidRequest(error.to_string()))?;
         let response = self
             .client
             .lock()
@@ -78,9 +81,9 @@ impl TrustVerifier for GrpcTrustVerifier {
                 trust_verification_request_json: payload,
             }))
             .await
-            .map_err(|error| error.to_string())?
+            .map_err(|error| TrustVerificationError::Unavailable(error.to_string()))?
             .into_inner();
         serde_json::from_slice(&response.trust_verification_decision_json)
-            .map_err(|error| error.to_string())
+            .map_err(|error| TrustVerificationError::Unavailable(error.to_string()))
     }
 }

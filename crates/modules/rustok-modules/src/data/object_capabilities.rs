@@ -275,6 +275,14 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataObjectCapabilityBrok
         let installation =
             resolve_granted_artifact_capability(&self.db, execution, capability).await?;
         let scope = artifact_data_scope_for_execution(&installation, execution, capability)?;
+        // Structured and binary data share the same tenant-owned namespace.
+        // Resolve (and, for the first admitted serving installation,
+        // initialize) that owner reference here too; otherwise an object-only
+        // capability cannot write before `platform.data` happens to run, and
+        // a later release may be handed its stale installation namespace ID.
+        let scope = resolve_serving_artifact_data_scope(&self.db, &installation, scope)
+            .await
+            .map_err(|error| data_capability_error(capability, error))?;
         let quota = self
             .quota_policy
             .quota_for(&scope)
