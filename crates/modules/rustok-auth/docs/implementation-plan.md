@@ -123,17 +123,22 @@ does not create a package-local locale fallback.
    compiled or tested. Run the Verification list below plus targeted server
    suites (`auth_lifecycle`, `oauth_app`, `oauth_token_service`,
    `auth_admin_mutation_provider`) and `cargo fmt` before merge.
-   **Remaining risks deferred from the same audit:** native-transport invite
-   operations are not wired (GraphQL only); the browser consent form relies
-   on `SameSite=Lax` rather than a signed consent state; admin UI still
-   stores tokens in LocalStorage; expired/revoked session retention has no
-   server-side cleanup (CLI `sessions-cleanup` exists); per-request
-   role/permission resolution performs duplicate reads; the default JWT
-   issuer is not an absolute URL, so the discovery endpoint requires an
-   explicitly configured issuer; `reset_password_and_revoke_sessions` tests
-   exercise a `#[cfg(test)]` helper instead of the production
-   `auth_password_reset` service; entity `Debug` output still includes
-   credential fields (serialization is sanitized, logs are server-side only).
+   **Remaining risks deferred from the same audit (architectural, need a
+   dedicated change with local verification):** the admin UI still stores
+   tokens in LocalStorage (migration to an httpOnly cookie session needs new
+   server endpoints + CSRF handling + frontend rewrite); per-request
+   role/permission resolution performs duplicate reads (request snapshot in
+   the extractor plus authoritative re-derivation in providers — kept as
+   defense in depth until profiling justifies consolidation); Argon2 hashing
+   runs inside the `create_user_in_tx` transaction (moving it out requires
+   restructuring the register/invite atomic flows); OAuth `oauth_tokens`
+   have no reuse detection comparable to first-party sessions; two
+   concurrent first-time consent grants can race into a unique-violation 500
+   (no data corruption); invite management UI screens are not built yet
+   (admin transports are wired); invites accept built-in roles only, custom
+   role slugs are rejected explicitly; auth audit events beyond
+   `user.account.registered` (login, password reset, invite issued/accepted)
+   are not published yet.
 
 ## Verification
 
