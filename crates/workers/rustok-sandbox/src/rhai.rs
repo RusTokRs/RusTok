@@ -3,6 +3,8 @@
 mod config;
 mod engine;
 mod error;
+#[cfg(test)]
+mod regression;
 
 pub use config::{RhaiConfig, RhaiLimits};
 pub use engine::{CompiledRhai, RhaiEngine, RhaiScopeProvider};

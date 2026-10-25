@@ -47,6 +47,24 @@ waiver must also fail the gate.
 | Evidence required | `cargo audit` and `cargo deny check` output, inverse dependency tree via `cargo tree -i lru` |
 | Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2026-0253.html> |
 
+### RUSTSEC-2026-0249 — `smartstring` unmaintained (archived repository)
+
+| Field | Value |
+|---|---|
+| Severity | Unmaintained (informational advisory; no known code-execution vulnerability) |
+| Risk | The `smartstring` repository was archived by its owner on 2026-05-03, so no further bug or security fixes are published; every released version is affected and the advisory lists no patched version |
+| Patched version | None exists (`patched = []`); rhai still carries `smartstring` as a non-optional dependency in the 1.x line and schedules its removal for rhai 2.0, where `compact_str` becomes the default string type |
+| Repository policy location | `deny.toml`, `.cargo/audit.toml` |
+| Accountable owner | Platform security / dependency maintainers |
+| Dependency path | Transitive dependency reached only through `rhai 1.27.0` (and its proc-macro helper `rhai_codegen`); `cargo tree -i smartstring` shows rhai as the sole reverse dependency in the resolved graph |
+| Reachability | RusToK reaches rhai through `rustok-sandbox` (`RhaiEngine`, `RhaiExecutor`, workspace resolution), the `alloy` scripting module, `rustok-ai`, `rustok-mcp`, `rustok-sandbox-worker` and `rustok-artifact-node-agent`; no RusToK crate names `SmartString` in its own API, and strings cross the scripting boundary only through `String`/`&str` conversions; the crate performs in-memory string handling with no network, filesystem or foreign-function behavior, so the exposure is the unmaintained status rather than a known exploitable defect |
+| Compensating controls | The rhai `compact_str` feature is enabled workspace-wide, so identifiers and object-map keys, including the sandbox HTTP header maps, are stored as `CompactString` instead of `SmartString`; every script still runs under the strict `RhaiConfig` limits (operation budget, wall-clock timeout, string/array/map size caps) inside the sandbox; `MPL-2.0+` remains on the accepted license list and no direct `smartstring` API usage exists in RusToK code |
+| Remediation | Track rhai 2.0, where `compact_str` is the default and `smartstring` leaves the dependency graph; on that upgrade remove both ignore entries and this register entry, and re-run `cargo audit` and `cargo deny check`; review quarterly for rhai 2.0 pre-releases |
+| Approved | 2026-10-25, transitive dependency exception |
+| Expires | 2027-01-25 |
+| Evidence required | `cargo audit` and `cargo deny check` output, inverse dependency tree via `cargo tree -i smartstring`, and feature-edge confirmation via `cargo tree -e features -i compact_str` |
+| Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2026-0249.html> |
+
 ## Closed Exceptions
 
 ### RUSTSEC-2026-0257 — `webbrowser` Unix `BROWSER` handling argument injection

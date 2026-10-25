@@ -173,6 +173,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   there is no backfill and existing baselines are untouched.
 
 ### Changed
+- Upgraded the embedded `rhai` scripting runtime from 1.26.1 to 1.27.0 (workspace requirement
+  moved from `1.25.0` to `1.27.0`) and enabled the `compact_str` feature workspace-wide, so rhai
+  identifiers and object-map keys use `CompactString` instead of `SmartString`. The public RusToK
+  scripting API is unchanged; the upgrade brings corrected `on_progress` operation counting inside
+  native callbacks, `ErrorDataRace` instead of a process panic for shared-value closures under
+  `sync`, panic unwind safety for by-value native arguments, and source positions on built-in
+  binary-operation errors. Regression coverage in `rustok-sandbox`
+  (`src/rhai/regression.rs`) pins the progress-counter, data-race and error-position behaviors.
 - Blog `published_at` is the first publication time: republishing, unpublishing, archiving, and
   restoring no longer change or clear it. `updated_at` tracks the last change.
 - Blog public list, RSS feed, and related-article reads use the requested locale instead of the
@@ -204,7 +212,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - _No unreleased removals yet._
 
 ### Security
-- _No unreleased security updates yet._
+- Registered a time-bounded exception for RUSTSEC-2026-0249 (`smartstring` unmaintained, archived
+  2026-05-03). It is reached only through rhai; the `compact_str` feature moves the RusToK data
+  plane off `SmartString`, and full removal is tracked with rhai 2.0. The waiver in `deny.toml` and
+  `.cargo/audit.toml` expires 2027-01-25 and is documented in
+  `docs/security/advisory-exceptions.md`.
 
 ---
 
