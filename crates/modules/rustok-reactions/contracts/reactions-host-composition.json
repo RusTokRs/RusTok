@@ -56,8 +56,8 @@
   "required_files": [
     "modules.toml",
     "crates/modules/rustok-forum/Cargo.toml",
-    "crates/modules/rustok-distribution/Cargo.toml",
-    "crates/modules/rustok-distribution/src/lib.rs",
+    "crates/utils/rustok-distribution/Cargo.toml",
+    "crates/utils/rustok-distribution/src/lib.rs",
     "apps/server/Cargo.toml",
     "apps/server/src/services/module_event_dispatcher.rs",
     "apps/server/tests/reactions_composition_profiles.rs",

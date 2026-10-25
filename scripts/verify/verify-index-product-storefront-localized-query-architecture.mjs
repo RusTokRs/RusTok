@@ -39,7 +39,7 @@ requireMarkers('crates/modules/rustok-product/src/services/catalog/types.rs', [
   'pub search: Option<String>',
   'search: normalize_optional_text(search)',
 ]);
-requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/utils/rustok-distribution/src/product_index/mod.rs', [
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
   'Lower keys are historical storage identities only.',
 ]);

@@ -74,9 +74,9 @@ if (devDependencies.includes('tokio.workspace = true')) {
 }
 
 for (const bridgePath of [
-  'crates/modules/rustok-distribution/src/channel_index.rs',
-  'crates/modules/rustok-distribution/src/product_index/product.rs',
-  'crates/modules/rustok-distribution/src/product_variant_index.rs',
+  'crates/utils/rustok-distribution/src/channel_index.rs',
+  'crates/utils/rustok-distribution/src/product_index/product.rs',
+  'crates/utils/rustok-distribution/src/product_variant_index.rs',
 ]) {
   const bridge = requireMarkers(bridgePath, ['register_index_source(']);
   if (bridge.includes('IndexSourceCatalog::register')) {

@@ -89,7 +89,7 @@ requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/query_ru
   'PostgresIndexQueryPort::with_admissions(',
 ]);
 
-const ownerPath = 'crates/modules/rustok-distribution/src/product_index/query_admission.rs';
+const ownerPath = 'crates/utils/rustok-distribution/src/product_index/query_admission.rs';
 const owner = requireMarkers(ownerPath, [
   'PRODUCT_VARIANT_QUERY_MATERIALIZED_FRESHNESS',
   'FROM product_variants owner_variant',
@@ -105,12 +105,12 @@ const owner = requireMarkers(ownerPath, [
 ]);
 forbidMarkers(ownerPath, owner, ['index_entities', 'index_links', '$1']);
 
-requireMarkers('crates/modules/rustok-distribution/src/product_variant_index.rs', [
+requireMarkers('crates/utils/rustok-distribution/src/product_variant_index.rs', [
   'v.index_revision',
   'tombstone.source_version AS index_revision',
   'PRODUCT_VARIANT_SCHEMA_VERSION: u32 = 2',
 ]);
-requireMarkers('crates/modules/rustok-distribution/src/channel_index.rs', [
+requireMarkers('crates/utils/rustok-distribution/src/channel_index.rs', [
   'c.index_revision',
   'tombstone.source_version AS index_revision',
   'SchemaVersion::INITIAL',

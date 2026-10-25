@@ -43,7 +43,7 @@ if (ownerValidation < 0 || ownerQuery <= ownerValidation) {
   fail(`${ownerPath} must validate the Storefront search before constructing owner SQL`);
 }
 
-const shadowPath = 'crates/modules/rustok-distribution/src/product_index/storefront_shadow.rs';
+const shadowPath = 'crates/utils/rustok-distribution/src/product_index/storefront_shadow.rs';
 const shadow = requireMarkers(shadowPath, [
   'services::MAX_STOREFRONT_PRODUCT_SEARCH_BYTES',
   'if search.len() > MAX_STOREFRONT_PRODUCT_SEARCH_BYTES',

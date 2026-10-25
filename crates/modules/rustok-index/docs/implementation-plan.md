@@ -184,7 +184,7 @@ crates/modules/rustok-index/src/
     query_port.rs
   api/
 
-crates/modules/rustok-distribution/src/
+crates/utils/rustok-distribution/src/
   product_index/
   channel_index.rs
 

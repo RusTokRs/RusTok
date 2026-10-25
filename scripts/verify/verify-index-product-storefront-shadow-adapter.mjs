@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const shadowPath = 'crates/modules/rustok-distribution/src/product_index/storefront_shadow.rs';
+const shadowPath = 'crates/utils/rustok-distribution/src/product_index/storefront_shadow.rs';
 const shadow = requireMarkers(shadowPath, [
   'pub(crate) fn build_product_storefront_index_shadow_query(',
   'resolved_attribute_filters: Vec<ProductResolvedAttributeFilter>',
@@ -66,7 +66,7 @@ requireMarkers('crates/modules/rustok-product/src/catalog_schema_read_port.rs', 
   'async fn resolve_storefront_attribute_filters(',
   'ProductResolvedAttributeFilter',
 ]);
-requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/utils/rustok-distribution/src/product_index/mod.rs', [
   'mod storefront_shadow;',
   'build_product_storefront_index_shadow_query',
   'ProductStorefrontIndexShadowError',

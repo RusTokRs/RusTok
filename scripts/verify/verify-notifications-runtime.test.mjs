@@ -50,11 +50,11 @@ const files = {
     [settings]
     default_enabled = ["content"]
   `,
-  "crates/modules/rustok-distribution/Cargo.toml": `
+  "crates/utils/rustok-distribution/Cargo.toml": `
     [features]
     mod-notifications = ["dep:rustok-notifications"]
   `,
-  "crates/modules/rustok-distribution/src/lib.rs": `
+  "crates/utils/rustok-distribution/src/lib.rs": `
     registry.register(rustok_notifications::NotificationsModule);
   `,
   "apps/server/Cargo.toml": `

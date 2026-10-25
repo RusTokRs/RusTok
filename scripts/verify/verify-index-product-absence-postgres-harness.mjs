@@ -3,8 +3,8 @@
 import { readFile } from "node:fs/promises";
 
 const files = {
-  test: "crates/modules/rustok-distribution/tests/product_locale_absence_postgres.rs",
-  provider: "crates/modules/rustok-distribution/src/product_index/absence.rs",
+  test: "crates/utils/rustok-distribution/tests/product_locale_absence_postgres.rs",
+  provider: "crates/utils/rustok-distribution/src/product_index/absence.rs",
   reader: "crates/modules/rustok-index/src/infrastructure/postgres/drift_snapshot_reader.rs",
   productMigration:
     "crates/modules/rustok-product/src/migrations/m20260731_000004_add_product_index_tombstones.rs",

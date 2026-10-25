@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const executorPath = 'crates/modules/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
+const executorPath = 'crates/utils/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
 const source = requireMarkers(executorPath, [
   'pub(crate) struct ProductStorefrontIndexShadowExecutor',
   'product: ProductCatalogReadRuntime',
@@ -93,7 +93,7 @@ for (const forbidden of [
   if (source.includes(forbidden)) fail(`${executorPath} must remain the unbudgeted evidence executor; found ${forbidden}`);
 }
 
-const budgetedPath = 'crates/modules/rustok-distribution/src/product_index/storefront_budgeted_execution.rs';
+const budgetedPath = 'crates/utils/rustok-distribution/src/product_index/storefront_budgeted_execution.rs';
 requireMarkers(budgetedPath, [
   'ProductStorefrontIndexProjectionPhases',
   'impl ProductStorefrontIndexProjectionPhases for ProductStorefrontIndexShadowExecutor',
@@ -109,11 +109,11 @@ requireMarkers('crates/modules/rustok-product/src/storefront_tag_read_port.rs', 
   'MAX_STOREFRONT_TAG_HYDRATION_PRODUCTS: usize = 48',
   '.load_product_tag_map(',
 ]);
-requireMarkers('crates/modules/rustok-distribution/src/product_index/storefront_projection.rs', [
+requireMarkers('crates/utils/rustok-distribution/src/product_index/storefront_projection.rs', [
   'pub(crate) fn project_product_storefront_index_page(',
   'value(&projected.items[0], "tag_ids")',
 ]);
-requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/utils/rustok-distribution/src/product_index/mod.rs', [
   'ProductStorefrontIndexTagHydrationError',
   'ProductStorefrontIndexBudgetedProjectionExecutor',
   'ProductStorefrontIndexProjectionPhases',

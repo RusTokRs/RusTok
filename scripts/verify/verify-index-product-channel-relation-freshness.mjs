@@ -119,7 +119,7 @@ forbidMarkers(freshnessStorePath, freshnessStore, [
 const productCargo = read('crates/modules/rustok-product/Cargo.toml');
 forbidMarkers('crates/modules/rustok-product/Cargo.toml', productCargo, ['rustok-channel', 'rustok-index']);
 
-const visibilityPath = 'crates/modules/rustok-distribution/src/product_index/channel_visibility.rs';
+const visibilityPath = 'crates/utils/rustok-distribution/src/product_index/channel_visibility.rs';
 const visibility = requireMarkers(visibilityPath, [
   'MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUGS: usize = 1024',
   'MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUG_BYTES: usize = 100',
@@ -132,7 +132,7 @@ const visibility = requireMarkers(visibilityPath, [
 ]);
 forbidMarkers(visibilityPath, visibility, ['IndexMutation', 'FROM channels', 'JOIN channels']);
 
-const resolverPath = 'crates/modules/rustok-distribution/src/product_index/channel_relation_resolver.rs';
+const resolverPath = 'crates/utils/rustok-distribution/src/product_index/channel_relation_resolver.rs';
 const resolver = requireMarkers(resolverPath, [
   'ProductSalesChannelIndexRelationFreshnessStore::new',
   'load_channel_identity_generation(&transaction, tenant_id).await?',
@@ -153,7 +153,7 @@ forbidMarkers(resolverPath, resolver, [
   'OutboxRelay',
 ]);
 
-const productSourcePath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
+const productSourcePath = 'crates/utils/rustok-distribution/src/product_index/product.rs';
 requireMarkers(productSourcePath, [
   'product_sales_channel_index_relation_freshness_snapshots',
   'channel_index_identity_generations',
@@ -166,7 +166,7 @@ requireMarkers(productSourcePath, [
   'does not require a live freshness witness',
 ]);
 
-const absencePath = 'crates/modules/rustok-distribution/src/product_index/absence.rs';
+const absencePath = 'crates/utils/rustok-distribution/src/product_index/absence.rs';
 const absence = requireMarkers(absencePath, [
   'product_sales_channel_index_relation_freshness_snapshots',
   'channel_index_identity_generations',

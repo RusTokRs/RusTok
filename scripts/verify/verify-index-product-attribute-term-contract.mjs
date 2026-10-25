@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const modulePath = 'crates/modules/rustok-distribution/src/product_index/attribute_terms.rs';
+const modulePath = 'crates/utils/rustok-distribution/src/product_index/attribute_terms.rs';
 const source = requireMarkers(modulePath, [
   'pub(crate) const PRODUCT_ATTRIBUTE_TERMS_FIELD: &str = "attribute_terms";',
   'pub(crate) const PRODUCT_ATTRIBUTE_TERMS_CTE: &str',
@@ -59,11 +59,11 @@ requireMarkers('crates/modules/rustok-product/src/services/catalog_attribute_ter
   'value.timestamp_micros().to_string()',
 ]);
 
-requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/utils/rustok-distribution/src/product_index/mod.rs', [
   'mod attribute_terms;',
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
 ]);
-requireMarkers('crates/modules/rustok-distribution/Cargo.toml', [
+requireMarkers('crates/utils/rustok-distribution/Cargo.toml', [
   'mod-product = ["dep:rustok-product", "mod-taxonomy", "dep:chrono", "dep:hex", "dep:rust_decimal"]',
   'chrono = { workspace = true, optional = true }',
   'hex = { workspace = true, optional = true }',
@@ -97,7 +97,7 @@ requireMarkers('crates/modules/rustok-product/src/services/write_transaction.rs'
   'UPDATE products SET index_revision = index_revision',
 ]);
 
-requireMarkers('crates/modules/rustok-distribution/src/product_index/product.rs', [
+requireMarkers('crates/utils/rustok-distribution/src/product_index/product.rs', [
   'many_field("attribute_terms", IndexValueType::String, false, true)?',
   'PRODUCT_ATTRIBUTE_TERMS_CTE',
   "COALESCE(attributes.attribute_terms, '[]'::jsonb) AS attribute_terms",

@@ -107,7 +107,7 @@ requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/query_ru
   'PostgresIndexQueryPort::with_admissions(',
 ]);
 
-const productAdmissionPath = 'crates/modules/rustok-distribution/src/product_index/query_admission.rs';
+const productAdmissionPath = 'crates/utils/rustok-distribution/src/product_index/query_admission.rs';
 const productAdmission = requireMarkers(productAdmissionPath, [
   'PRODUCT_QUERY_MATERIALIZED_FRESHNESS',
   'PRODUCT_VARIANT_QUERY_MATERIALIZED_FRESHNESS',
@@ -143,7 +143,7 @@ forbidMarkers(productAdmissionPath, productAdmission, [
   'loop {',
 ]);
 
-requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/utils/rustok-distribution/src/product_index/mod.rs', [
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
   'query_admission::register(extensions)?;',
   'assert_eq!(admissions.len(), 2)',

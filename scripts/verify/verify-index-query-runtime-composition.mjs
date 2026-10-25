@@ -112,7 +112,7 @@ for (const forbidden of ['PostgresIndexQueryPort::new', 'PostgresIndexQueryPort:
 }
 
 for (const relative of [
-  'crates/modules/rustok-distribution/src/lib.rs',
+  'crates/utils/rustok-distribution/src/lib.rs',
   'crates/modules/rustok-social-graph/src/lib.rs',
   'crates/modules/rustok-social-graph/src/index_consumer.rs',
   'crates/modules/rustok-social-graph/src/index_privacy.rs',

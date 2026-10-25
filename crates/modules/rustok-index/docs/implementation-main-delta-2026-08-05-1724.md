@@ -14,7 +14,7 @@ The branch merge base remains `9cfc43cf72284e16261f788070a47367613bf2e2`. Twelve
 No intervening commit changes:
 
 - `crates/modules/rustok-index`;
-- `crates/modules/rustok-distribution` Product Index composition;
+- `crates/utils/rustok-distribution` Product Index composition;
 - `apps/server/src/graphql/schema.rs`;
 - `apps/server/src/graphql/index_drift_diagnosis.rs`;
 - `apps/server/src/services/index_drift_diagnosis_operator.rs`;

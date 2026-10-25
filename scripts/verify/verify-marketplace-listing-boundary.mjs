@@ -21,8 +21,8 @@ const files = {
   rootManifest: "crates/modules/rustok-marketplace/rustok-module.toml",
   rootRegistry: "crates/modules/rustok-marketplace/contracts/marketplace-fba-registry.json",
   rootConsumer: "crates/modules/rustok-marketplace/src/listing_directory.rs",
-  distributionManifest: "crates/modules/rustok-distribution/Cargo.toml",
-  distributionSource: "crates/modules/rustok-distribution/src/lib.rs",
+  distributionManifest: "crates/utils/rustok-distribution/Cargo.toml",
+  distributionSource: "crates/utils/rustok-distribution/src/lib.rs",
   serverManifest: "apps/server/Cargo.toml",
 };
 

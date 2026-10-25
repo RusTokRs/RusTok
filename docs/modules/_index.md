@@ -74,7 +74,7 @@ Module local documentation lives inside the crates themselves at
 | `rustok-installer` | [docs](../../crates/utils/rustok-installer/docs/README.md) | [plan](../../crates/utils/rustok-installer/docs/implementation-plan.md) |
 | `rustok-build` | [docs](../../crates/utils/rustok-build/docs/README.md) | [plan](../../crates/utils/rustok-build/docs/implementation-plan.md) |
 | `rustok-cli-registry` | [docs](../../crates/utils/rustok-cli-registry/docs/README.md) | [plan](../../crates/utils/rustok-cli-registry/docs/implementation-plan.md) |
-| `rustok-distribution` | [docs](../../crates/modules/rustok-distribution/docs/README.md) | Registry composition and deterministic static-promotion build output are documented locally. |
+| `rustok-distribution` | [docs](../../crates/utils/rustok-distribution/docs/README.md) | Registry composition and deterministic static-promotion build output are documented locally. |
 | `rustok-cli` | [docs](../../crates/utils/rustok-cli/docs/README.md) | [plan](../../crates/utils/rustok-cli/docs/implementation-plan.md) |
 | `rustok-graphql` | [docs](../../crates/ui/rustok-graphql/docs/README.md) | [plan](../../crates/ui/rustok-graphql/docs/implementation-plan.md) |
 | `rustok-ui-i18n` | [docs](../../crates/ui/rustok-ui-i18n/docs/README.md) | [plan](../../crates/ui/rustok-ui-i18n/docs/implementation-plan.md) |

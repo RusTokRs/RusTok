@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const packetPath = 'crates/modules/rustok-distribution/src/product_index/storefront_shadow_postgres_tests.rs';
+const packetPath = 'crates/utils/rustok-distribution/src/product_index/storefront_shadow_postgres_tests.rs';
 const packet = requireMarkers(packetPath, [
   'RUSTOK_PRODUCT_STOREFRONT_EQUIVALENCE_DATABASE_URL',
   'ProductStorefrontIndexShadowExecutor',
@@ -57,7 +57,7 @@ if (packet.includes('register_current') || packet.includes('Storefront traffic')
   fail(`${packetPath} is evidence only and must not perform Product schema promotion or consumer cutover`);
 }
 
-requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/utils/rustok-distribution/src/product_index/mod.rs', [
   '#[cfg(test)]',
   'mod storefront_shadow_postgres_tests;',
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',

@@ -23,7 +23,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const modulePath = 'crates/modules/rustok-distribution/src/product_index/mod.rs';
+const modulePath = 'crates/utils/rustok-distribution/src/product_index/mod.rs';
 const moduleSource = requireMarkers(modulePath, [
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
   'Lower keys are historical storage identities only.',
@@ -35,7 +35,7 @@ forbidMarkers(modulePath, moduleSource, [
   'mod product_v4',
 ]);
 
-const productPath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
+const productPath = 'crates/utils/rustok-distribution/src/product_index/product.rs';
 const product = requireMarkers(productPath, [
   'PRODUCT_INDEX_SOURCE: &str = "product-postgres-primary"',
   'derive_index_schema_source_event_id',
@@ -51,8 +51,8 @@ forbidMarkers(productPath, product, [
 ]);
 
 for (const currentConsumer of [
-  'crates/modules/rustok-distribution/src/product_index/absence.rs',
-  'crates/modules/rustok-distribution/src/product_index/query_admission.rs',
+  'crates/utils/rustok-distribution/src/product_index/absence.rs',
+  'crates/utils/rustok-distribution/src/product_index/query_admission.rs',
 ]) {
   const consumer = requireMarkers(currentConsumer, [
     'PRODUCT_SCHEMA_ROUTING_KEY',

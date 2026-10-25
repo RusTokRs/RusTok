@@ -23,7 +23,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const harnessPath = 'crates/modules/rustok-distribution/tests/product_channel_convergence_postgres.rs';
+const harnessPath = 'crates/utils/rustok-distribution/tests/product_channel_convergence_postgres.rs';
 const harness = requireMarkers(harnessPath, [
   '#![cfg(feature = "mod-product")]',
   'RUSTOK_INDEX_TEST_DATABASE_URL',

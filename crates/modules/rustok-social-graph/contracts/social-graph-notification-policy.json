@@ -94,7 +94,7 @@
     ]
   },
   "distribution": {
-    "registry": "crates/modules/rustok-distribution/src/lib.rs",
+    "registry": "crates/utils/rustok-distribution/src/lib.rs",
     "manifest": "modules.toml",
     "compiled_in_baseline": true,
     "tenant_default_enabled": false,

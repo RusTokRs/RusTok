@@ -42,7 +42,7 @@ remains maintainer-owned.
   host-provider extension composition. `ModuleRuntimeExtensions::apply_to_host_runtime`
   then publishes the same selected port into GraphQL and server-function/Axum
   host snapshots without separate transport-specific wiring.
-- `crates/modules/rustok-distribution/Cargo.toml` enables the existing
+- `crates/utils/rustok-distribution/Cargo.toml` enables the existing
   `rustok-comments/tcp-transport` feature whenever the Comments distribution
   feature is selected.
 - Source evidence is retained at

@@ -140,7 +140,7 @@ requireMarkers('crates/modules/rustok-channel/src/migrations/m20260325_000001_cr
   '.unique()',
 ]);
 
-const distributionRootPath = 'crates/modules/rustok-distribution/src/lib.rs';
+const distributionRootPath = 'crates/utils/rustok-distribution/src/lib.rs';
 const distributionRoot = requireMarkers(distributionRootPath, [
   'mod channel_index;',
   'register_selected_index_bridges(&mut extensions)?;',
@@ -158,7 +158,7 @@ if (distributionRoot.includes('#[cfg(feature = "mod-product")]\nmod channel_inde
   fail('SalesChannel bridge must not be gated by the Product feature');
 }
 
-const sourcePath = 'crates/modules/rustok-distribution/src/channel_index.rs';
+const sourcePath = 'crates/utils/rustok-distribution/src/channel_index.rs';
 const source = requireMarkers(sourcePath, [
   'SALES_CHANNEL_INDEX_SOURCE: &str = "sales-channel-postgres-primary"',
   'SALES_CHANNEL_EVENT_DOMAIN: &str = "rustok-channel.sales-channel-replay-v1"',
@@ -221,7 +221,7 @@ forbidMarkers(sourcePath, source, [
   'rustok_search',
 ]);
 
-requireMarkers('crates/modules/rustok-distribution/tests/channel_index.rs', [
+requireMarkers('crates/utils/rustok-distribution/tests/channel_index.rs', [
   'selected_channel_bridge_publishes_schema_and_source_factory',
   'EntityName::new("sales_channel")',
   'factory.owner_module() == "channel"',

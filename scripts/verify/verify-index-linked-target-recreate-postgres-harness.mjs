@@ -23,7 +23,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const harnessPath = 'crates/modules/rustok-distribution/tests/product_linked_target_recreate_postgres.rs';
+const harnessPath = 'crates/utils/rustok-distribution/tests/product_linked_target_recreate_postgres.rs';
 const harness = requireMarkers(harnessPath, [
   '#![cfg(feature = "mod-product")]',
   'rustok_channel::migrations::migrations()',
@@ -103,7 +103,7 @@ requireMarkers(
     'rustok_channel_clear_inserted_index_tombstone',
   ],
 );
-requireMarkers('crates/modules/rustok-distribution/src/product_index/query_admission.rs', [
+requireMarkers('crates/utils/rustok-distribution/src/product_index/query_admission.rs', [
   'owner_variant.index_revision = {{entity}}.source_version',
   'owner_channel.index_revision = {{entity}}.source_version',
 ]);

@@ -64,7 +64,7 @@ requireMatch(
   "rustok-commerce default feature set must stay marketplace-free",
 );
 
-const distributionCargo = read("crates/modules/rustok-distribution/Cargo.toml");
+const distributionCargo = read("crates/utils/rustok-distribution/Cargo.toml");
 const distributionBase = featureBody(distributionCargo, "mod-commerce");
 if (/marketplace/i.test(distributionBase)) {
   fail("rustok-distribution/mod-commerce must not enable marketplace owners");

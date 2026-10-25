@@ -53,7 +53,7 @@ requireMarkers('crates/modules/rustok-product/src/storefront_tag_read_port.rs', 
   '.load_product_tag_map(',
 ]);
 
-const shadowPath = 'crates/modules/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
+const shadowPath = 'crates/utils/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
 const shadow = requireMarkers(shadowPath, [
   'OwnerNativeChannelLess',
   'OwnerNativeDeepPage { offset: u64 }',
@@ -67,7 +67,7 @@ for (const forbidden of ['tokio::time::timeout', 'ProductStorefrontIndexServingB
   if (shadow.includes(forbidden)) fail(`${shadowPath} evidence executor must stay unbudgeted: ${forbidden}`);
 }
 
-const policyPath = 'crates/modules/rustok-distribution/src/product_index/storefront_serving_budget.rs';
+const policyPath = 'crates/utils/rustok-distribution/src/product_index/storefront_serving_budget.rs';
 const policy = requireMarkers(policyPath, [
   'ProductStorefrontIndexServingBudget',
   'ProductStorefrontIndexServingBudgetObservation',
@@ -84,7 +84,7 @@ if (policy.split('#[cfg(test)]')[0].includes('tokio::time::timeout')) {
   fail(`${policyPath} classification policy must remain separate from timeout enforcement`);
 }
 
-const budgetedPath = 'crates/modules/rustok-distribution/src/product_index/storefront_budgeted_execution.rs';
+const budgetedPath = 'crates/utils/rustok-distribution/src/product_index/storefront_budgeted_execution.rs';
 const budgeted = requireMarkers(budgetedPath, [
   'use tokio::time::timeout;',
   'pub(crate) trait ProductStorefrontIndexProjectionPhases',
@@ -111,7 +111,7 @@ if (budgeted.includes('list_filtered_published_products(')) {
   fail(`${budgetedPath} must be post-owner and must not repeat the authoritative Product read`);
 }
 
-const productIndexPath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
+const productIndexPath = 'crates/utils/rustok-distribution/src/product_index/product.rs';
 const productIndex = requireMarkers(productIndexPath, [
   'derive_index_schema_source_event_id',
   'assert_eq!(schema.fields.len(), 15);',
@@ -139,17 +139,17 @@ requireMarkers('crates/modules/rustok-index/docs/m7-product-current-schema-promo
   'Mounted Storefront remains owner-native',
 ]);
 
-requireMarkers('crates/modules/rustok-distribution/src/product_index/storefront_projection.rs', [
+requireMarkers('crates/utils/rustok-distribution/src/product_index/storefront_projection.rs', [
   'const UNTITLED_PRODUCT: &str = "Untitled product";',
   'pub(crate) fn project_product_storefront_index_page(',
   'value(&projected.items[0], "tag_ids")',
 ]);
-requireMarkers('crates/modules/rustok-distribution/src/product_index/storefront_shadow_postgres_tests.rs', [
+requireMarkers('crates/utils/rustok-distribution/src/product_index/storefront_shadow_postgres_tests.rs', [
   'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
   'assert_eq!(owner_c.title, "Untitled product");',
   'assert_eq!(projected_string(index_c, "title")?, None);',
 ]);
-requireMarkers('crates/modules/rustok-distribution/tests/product_storefront_search_collation_postgres.rs', [
+requireMarkers('crates/utils/rustok-distribution/tests/product_storefront_search_collation_postgres.rs', [
   'translation.title LIKE $2',
   '(translation.title COLLATE "C") LIKE $2',
 ]);

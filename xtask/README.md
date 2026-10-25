@@ -72,7 +72,7 @@ The command:
   - `Cargo.toml` (`[workspace.dependencies]` and `members`);
   - `modules.toml` (`[modules.<slug>]`);
   - `apps/server/Cargo.toml` (`mod-<slug>` feature and dependency wiring);
-  - `crates/modules/rustok-distribution/Cargo.toml` & `src/lib.rs` (`build_registry()` wiring);
+  - `crates/utils/rustok-distribution/Cargo.toml` & `src/lib.rs` (`build_registry()` wiring);
   - Central docs: `docs/modules/registry.md`, `docs/modules/_index.md`, and `docs/modules/UI_PACKAGES_INDEX.md`.
 - Automatically executes `cargo xtask module validate <slug>` at the end to ensure the generated module is valid out-of-the-box.
 
