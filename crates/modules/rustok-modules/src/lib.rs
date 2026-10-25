@@ -58,6 +58,12 @@ mod migration_preflight;
 pub mod migrations;
 #[cfg(feature = "oci-distribution")]
 mod oci;
+#[cfg(not(feature = "oci-distribution"))]
+pub(crate) mod oci {
+    pub(crate) async fn remove_staged_file_best_effort(path: &std::path::Path) {
+        let _ = tokio::fs::remove_file(path).await;
+    }
+}
 pub mod oci_admission;
 #[cfg(feature = "oci-distribution")]
 mod oci_transport;
