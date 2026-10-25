@@ -1083,13 +1083,7 @@ fn authorize(
 }
 
 fn idempotency_key(context: &PortContext) -> TranslationResult<String> {
-    let key = context.idempotency_key.as_deref().unwrap_or_default();
-    if key.is_empty() || key.len() > 191 || key.trim() != key {
-        return Err(TranslationError::InvalidRequest(
-            "translation interchange artifact idempotency key is invalid".to_string(),
-        ));
-    }
-    Ok(key.to_string())
+    Ok(crate::idempotency::IdempotencyKey::require(context)?.into_string())
 }
 
 fn child_context(

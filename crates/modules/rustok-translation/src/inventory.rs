@@ -163,6 +163,10 @@ impl TranslationInventoryService {
         .await?;
 
         let transaction = self.database.begin().await?;
+        if matches!(self.database.get_database_backend(), DbBackend::Sqlite) {
+            use sea_orm::ConnectionTrait;
+            let _ = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await;
+        }
         let current_checkpoint_query = provider_checkpoint::Entity::find()
             .filter(provider_checkpoint::Column::TenantId.eq(tenant_id))
             .filter(provider_checkpoint::Column::OwnerSlug.eq(owner_slug.as_str()))
@@ -419,6 +423,10 @@ impl TranslationInventoryService {
 
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        if matches!(self.database.get_database_backend(), DbBackend::Sqlite) {
+            use sea_orm::ConnectionTrait;
+            let _ = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await;
+        }
         let current_checkpoint_query = provider_checkpoint::Entity::find()
             .filter(provider_checkpoint::Column::TenantId.eq(tenant_id))
             .filter(provider_checkpoint::Column::OwnerSlug.eq(owner_slug.as_str()))

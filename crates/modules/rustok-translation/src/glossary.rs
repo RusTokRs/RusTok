@@ -1083,13 +1083,7 @@ fn scope_value<T: ToString>(value: Option<&T>) -> String {
 }
 
 fn idempotency_key(context: &PortContext) -> TranslationResult<String> {
-    let key = context.idempotency_key.as_deref().unwrap_or_default();
-    if key.is_empty() || key.len() > 191 || key.trim() != key {
-        return Err(TranslationError::InvalidRequest(
-            "translation glossary idempotency key must contain 1..=191 trimmed non-empty bytes".to_string(),
-        ));
-    }
-    Ok(key.to_string())
+    Ok(crate::idempotency::IdempotencyKey::require(context)?.into_string())
 }
 
 fn actor_kind(context: &PortContext) -> &'static str {

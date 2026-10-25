@@ -5,6 +5,7 @@
 //! Provides translation memory, glossaries, reviewer queues, interchange artifacts,
 //! and provider-safe translation application.
 
+mod idempotency;
 mod collaboration;
 pub mod entities;
 mod error;
