@@ -57,6 +57,8 @@ pub enum RbacSystemRoleRepairError {
     BuiltInRoleSlugCollision { tenant_id: Uuid, slug: String },
 }
 
+/// Legacy-named entry point: seeds missing default roles; never rewrites
+/// existing role grants (see module docs).
 pub async fn repair_system_roles(
     db: &DatabaseConnection,
     options: RbacSystemRoleRepairOptions,
@@ -152,6 +154,14 @@ where
     report.roles_scanned = report.roles_scanned.saturating_add(1);
     let slug = role.to_string();
     let existing = find_role(db, tenant_id, &slug).await?;
+    // The persisted relation graph is the source of truth after seeding.
+    // Repair only creates a missing system role (seeding its default grants
+    // below); it never adds or removes grants on an existing role, because
+    // tenant-level grant changes are legitimate persisted state, not drift.
+    if let Some((existing_role_id, true)) = existing {
+        let _ = existing_role_id;
+        return Ok(());
+    }
     let role_id = match existing {
         Some((role_id, true)) => Some(role_id),
         Some((_role_id, false)) => {

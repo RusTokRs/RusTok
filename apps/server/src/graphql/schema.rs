@@ -58,7 +58,9 @@ use rustok_commerce::graphql_runtime::CommerceShippingOptionReadScope;
 #[cfg(feature = "mod-forum")]
 use rustok_forum::graphql::ForumGraphqlErrorExtension;
 use rustok_mcp::graphql::{McpMutation, McpQuery};
-use rustok_rbac::graphql::{RbacGraphqlRoleWriterHandle, RbacMutation, RbacQuery};
+use rustok_rbac::graphql::{
+    RbacGraphqlRoleWriterHandle, RbacModuleAvailabilityHandle, RbacMutation, RbacQuery,
+};
 #[cfg(feature = "mod-forum")]
 use rustok_search::graphql::{
     ForumSearchProjectionReconciliationQuery, ForumStorefrontSearchQuery,
@@ -139,6 +141,7 @@ pub struct GraphqlSchemaDependencies {
     pub runtime_extensions: Arc<ModuleRuntimeExtensions>,
     pub stop_handle: StopHandle,
     pub rbac_role_writer: RbacGraphqlRoleWriterHandle,
+    pub rbac_module_availability: Option<RbacModuleAvailabilityHandle>,
     pub search_rate_limiter: Option<SearchGraphqlRateLimiterHandle>,
     #[cfg(feature = "mod-blog")]
     pub blog_rate_limiter: Option<BlogGraphqlRateLimiterHandle>,
@@ -174,6 +177,7 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         runtime_extensions,
         stop_handle,
         rbac_role_writer,
+        rbac_module_availability,
         search_rate_limiter,
         #[cfg(feature = "mod-blog")]
         blog_rate_limiter,
@@ -270,6 +274,12 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         .data(runtime_extensions)
         .data(stop_handle)
         .data(rbac_role_writer);
+
+    let builder = if let Some(rbac_module_availability) = rbac_module_availability {
+        builder.data(rbac_module_availability)
+    } else {
+        builder
+    };
 
     let builder = if let Some(search_rate_limiter) = search_rate_limiter {
         builder.data(search_rate_limiter)

@@ -218,7 +218,7 @@ Platform capabilities are structured into modular crates defined in [`modules.to
 #### Core Foundation Modules
 - `rustok-auth` — Authentication lifecycle, credentials, OAuth2, session contracts.
 - `rustok-tenant` — Multi-tenant resolution and per-tenant module enablement.
-- `rustok-rbac` — Casbin-based permission engine, roles, and authorization policies.
+- `rustok-rbac` — relation-based permission engine (persisted roles/permissions graph), roles, and authorization policies.
 - `rustok-index` — Cross-module relational Index Engine with PostgreSQL JSONB storage.
 - `rustok-search` — Full-text relevance, autocomplete, facets, and search UI contracts.
 - `rustok-outbox` — Transactional event outbox, relay, retry, and DLQ controls.

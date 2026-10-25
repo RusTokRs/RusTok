@@ -4,7 +4,18 @@ use rustok_api::{TenantRbacCatalog, TenantRbacPermission, TenantRbacRole};
 use rustok_core::{Rbac, UserRole};
 use uuid::Uuid;
 
-/// Platform RBAC provider for the generic tenant catalog contract.
+/// Platform-default RBAC provider for the generic tenant catalog contract.
+///
+/// This publishes the built-in role vocabulary (bootstrap defaults). It is
+/// intentionally not a view of tenant-persisted roles: the synchronous
+/// catalog contract cannot read the database, so tenant state (including
+/// custom roles) is exposed through the GraphQL `roles` query instead.
+///
+/// Consumers must treat this strictly as selection vocabulary. A role slug
+/// listed here may have been edited or deleted in a tenant's database, and
+/// `permission_slugs` are the seed defaults, not live grants. Authorization
+/// decisions must always be resolved from the persisted relation graph (see
+/// `RelationPermissionStore`); never authorize from catalog output.
 #[derive(Clone, Default)]
 pub struct BuiltinTenantRbacCatalog;
 

@@ -26,7 +26,16 @@ fn insert_actions(
     );
 }
 
-// Pre-computed permission sets (lazy initialized, zero allocation on lookups)
+// Bootstrap seed definitions for the four default roles.
+//
+// These sets are used exactly once per tenant: when a default role record is
+// created in the database, its grants are seeded from here. After that the
+// persisted `role_permissions` rows are the only authority — tenants may edit
+// their default roles (except the break-glass super administrator grant set),
+// and runtime authorization always resolves grants from the database, never
+// from these statics. `SecurityContext::new` below is the one deliberate
+// exception: it builds an in-memory context for a built-in role label where
+// no database is in scope (tests, trusted runtime composition).
 static SUPER_ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
     managed_permissions([
         Resource::Users,
@@ -349,6 +358,9 @@ static CUSTOMER_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
 pub struct Rbac;
 
 impl Rbac {
+    /// Bootstrap default grants for a built-in role. This is a seed
+    /// definition for creating the role's database record, not a runtime
+    /// authorization source: persisted grants may legitimately differ.
     pub fn permissions_for_role(role: &UserRole) -> &'static HashSet<Permission> {
         match role {
             UserRole::SuperAdmin => &SUPER_ADMIN_PERMISSIONS,
@@ -359,9 +371,9 @@ impl Rbac {
     }
 
     pub fn has_permission(role: &UserRole, permission: &Permission) -> bool {
-        let permissions = Self::permissions_for_role(role);
-        permissions.contains(permission)
-            || permissions.contains(&Permission::new(permission.resource, Action::Manage))
+        let permissions: Vec<Permission> =
+            Self::permissions_for_role(role).iter().copied().collect();
+        rustok_api::has_effective_permission(&permissions, permission)
     }
 
     pub fn has_any_permission(role: &UserRole, permissions: &[Permission]) -> bool {
@@ -406,6 +418,11 @@ fn role_matches_permissions(role: UserRole, permissions: &[Permission]) -> bool 
     }
 }
 
+/// Best-effort label for a permission snapshot that carries no role claim
+/// (legacy port snapshots). This is a heuristic classification only: it MUST
+/// NOT be used as an authoritative role source where the persisted relation
+/// graph can be read, and it must never widen a permission check — callers
+/// authorize against the permission set itself, not this label.
 pub fn infer_user_role_from_permissions(permissions: &[Permission]) -> UserRole {
     for role in [UserRole::SuperAdmin, UserRole::Admin, UserRole::Manager] {
         if role_matches_permissions(role.clone(), permissions) {
@@ -615,47 +632,50 @@ fn permission_scope_for_set(
     permission: &Permission,
     role: UserRole,
 ) -> PermissionScope {
+    // Deny by default: scope is never granted without the effective permission
+    // itself (exact grant or `manage` on the same resource). This holds for
+    // every resource, including comments (previously an unconditional `Own`).
+    if !has_effective_permission_in_set(permissions, permission) {
+        return PermissionScope::None;
+    }
+
     if matches!(
         role,
         UserRole::SuperAdmin | UserRole::Admin | UserRole::Manager
-    ) && has_effective_permission_in_set(permissions, permission)
-    {
+    ) {
         return PermissionScope::All;
     }
 
-    if matches!(role, UserRole::Customer) {
-        // Forum authors edit and delete their own topics and replies. The scope is `Own`
-        // only when the role holds the permission, so a role without it gets no author access.
-        if matches!(
-            permission.resource,
-            Resource::ForumTopics | Resource::ForumReplies
-        ) && matches!(permission.action, Action::Update | Action::Delete)
-            && has_effective_permission_in_set(permissions, permission)
-        {
-            return PermissionScope::Own;
-        }
-
-        if permission.resource == Resource::Orders
-            && has_effective_permission_in_set(permissions, permission)
-        {
-            return PermissionScope::Own;
-        }
-
-        if permission.resource == Resource::Comments {
-            if matches!(permission.action, Action::Update | Action::Delete) {
-                return PermissionScope::Own;
-            }
-            if has_effective_permission_in_set(permissions, permission) {
-                return PermissionScope::All;
-            }
-        }
-
-        if has_effective_permission_in_set(permissions, permission) {
-            return PermissionScope::All;
-        }
+    // Non-staff principals: an explicit staff capability on the resource
+    // (manage/moderate) widens the scope to `All`; otherwise author-owned
+    // resources are limited to the caller's own objects.
+    let has_staff_capability = has_effective_permission_in_set(
+        permissions,
+        &Permission::new(permission.resource, Action::Manage),
+    ) || has_effective_permission_in_set(
+        permissions,
+        &Permission::new(permission.resource, Action::Moderate),
+    );
+    if has_staff_capability {
+        return PermissionScope::All;
     }
 
-    PermissionScope::None
+    let author_owned = matches!(
+        permission.resource,
+        Resource::ForumTopics
+            | Resource::ForumReplies
+            | Resource::Comments
+            | Resource::BlogPosts
+            | Resource::Posts
+            | Resource::Pages
+            | Resource::Nodes
+    ) && matches!(permission.action, Action::Update | Action::Delete);
+
+    if author_owned || permission.resource == Resource::Orders {
+        return PermissionScope::Own;
+    }
+
+    PermissionScope::All
 }
 
 #[cfg(test)]
@@ -910,6 +930,81 @@ mod tests {
         assert_eq!(
             security.get_scope(Resource::ForumTopics, Action::Delete),
             PermissionScope::None
+        );
+    }
+
+    #[test]
+    fn super_admin_bootstrap_set_covers_every_resource() {
+        // Guard: adding a `Resource` variant without extending the static
+        // super-admin bootstrap set must fail here instead of silently
+        // stripping system/super-admin authority on the new resource.
+        use rustok_api::Resource as R;
+        for resource in [
+            R::Users, R::Tenants, R::Modules, R::Settings, R::FlexSchemas,
+            R::FlexEntries, R::Products, R::Categories, R::Orders, R::Customers,
+            R::Profiles, R::Groups, R::Regions, R::Payments, R::Fulfillments,
+            R::Inventory, R::Discounts, R::MarketplaceSellers,
+            R::MarketplaceListings, R::Posts, R::Pages, R::Forms, R::Navigation,
+            R::Nodes, R::Media, R::Seo, R::Comments, R::Tags, R::Taxonomy,
+            R::Analytics, R::Logs, R::Webhooks, R::BlogPosts, R::BlogCategories,
+            R::ForumCategories, R::ForumTopics, R::ForumReplies,
+            R::ModerationCases, R::Scripts, R::Mcp, R::AiProviders,
+            R::AiTaskProfiles, R::AiSessions, R::AiRuns, R::AiApprovals,
+            R::AiRouter, R::AiTextTasks, R::AiImageTasks, R::AiCodeTasks,
+            R::AiAlloyTasks, R::AiMultimodalTasks, R::Workflows,
+            R::WorkflowExecutions, R::Translations, R::TranslationMemory,
+            R::TranslationGlossaries, R::Conversations, R::Messages,
+        ] {
+            assert!(
+                Rbac::has_permission(
+                    &UserRole::SuperAdmin,
+                    &Permission::new(resource, Action::Manage)
+                ),
+                "super_admin bootstrap set is missing {resource}"
+            );
+        }
+    }
+
+    #[test]
+    fn customer_without_comment_grant_has_no_comment_scope() {
+        let security = SecurityContext::from_permissions(
+            UserRole::Customer,
+            Some(Uuid::new_v4()),
+            [Permission::new(Resource::Comments, Action::Read)],
+        );
+        assert_eq!(
+            security.get_scope(Resource::Comments, Action::Update),
+            PermissionScope::None
+        );
+        assert_eq!(
+            security.get_scope(Resource::Comments, Action::Delete),
+            PermissionScope::None
+        );
+    }
+
+    #[test]
+    fn customer_with_comment_grant_is_author_scoped() {
+        let security = SecurityContext::from_permissions(
+            UserRole::Customer,
+            Some(Uuid::new_v4()),
+            [Permission::new(Resource::Comments, Action::Update)],
+        );
+        assert_eq!(
+            security.get_scope(Resource::Comments, Action::Update),
+            PermissionScope::Own
+        );
+    }
+
+    #[test]
+    fn custom_blog_update_grant_is_author_scoped_not_global() {
+        let security = SecurityContext::from_permissions(
+            UserRole::Customer,
+            Some(Uuid::new_v4()),
+            [Permission::BLOG_POSTS_UPDATE],
+        );
+        assert_eq!(
+            security.get_scope(Resource::BlogPosts, Action::Update),
+            PermissionScope::Own
         );
     }
 

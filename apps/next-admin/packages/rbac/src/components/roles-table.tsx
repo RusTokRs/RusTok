@@ -215,6 +215,7 @@ export function RolesTable({
                 ['super_admin', 'admin', 'manager', 'customer'].includes(
                   role.slug
                 );
+              const isSuperAdmin = role.slug === 'super_admin';
               const description =
                 role.description ||
                 (role.slug === 'super_admin'
@@ -253,9 +254,21 @@ export function RolesTable({
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant='secondary' className='font-mono text-xs'>
-                        {t('perms-total', { count: role.permissions.length })}
-                      </Badge>
+                      <div className='flex items-center gap-1.5'>
+                        <Badge variant='secondary' className='font-mono text-xs'>
+                          {t('perms-total', { count: role.permissions.length })}
+                        </Badge>
+                        {(role.inactivePermissions?.length ?? 0) > 0 && (
+                          <Badge
+                            variant='outline'
+                            className='border-zinc-400/40 font-mono text-xs text-zinc-500'
+                          >
+                            {t('perms-inactive', {
+                              count: role.inactivePermissions?.length ?? 0
+                            })}
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className='space-y-1.5'>
@@ -311,15 +324,15 @@ export function RolesTable({
                             variant='ghost'
                             size='sm'
                             onClick={() => onDeleteRole(role)}
-                            disabled={isSystem}
+                            disabled={isSuperAdmin}
                             title={
-                              isSystem
+                              isSuperAdmin
                                 ? t('system-protected-tooltip')
                                 : t('action-delete')
                             }
                             className='text-destructive hover:bg-destructive/10 h-8 w-8 p-0 disabled:opacity-30 disabled:hover:bg-transparent'
                           >
-                            {isSystem ? (
+                            {isSuperAdmin ? (
                               <IconLock className='text-muted-foreground h-3.5 w-3.5' />
                             ) : (
                               <IconTrash className='h-3.5 w-3.5' />
@@ -348,15 +361,21 @@ export function RolesTable({
                             </span>
                           </div>
                           <div className='bg-background flex max-h-48 flex-wrap gap-1.5 overflow-y-auto rounded-lg border p-2'>
-                            {role.permissions.map((perm) => (
-                              <Badge
-                                key={perm}
-                                variant='outline'
-                                className='bg-muted/30 font-mono text-[11px]'
-                              >
-                                {perm}
-                              </Badge>
-                            ))}
+                            {role.permissions.map((perm) => {
+                              const inactive =
+                                role.inactivePermissions?.includes(perm);
+                              return (
+                                <Badge
+                                  key={perm}
+                                  variant='outline'
+                                  className={`bg-muted/30 font-mono text-[11px] ${
+                                    inactive ? 'opacity-50 saturate-0' : ''
+                                  }`}
+                                >
+                                  {perm}
+                                </Badge>
+                              );
+                            })}
                           </div>
                         </div>
                       </TableCell>

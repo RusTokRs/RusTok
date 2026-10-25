@@ -37,12 +37,12 @@ export function DeleteRoleDialog({
 
   if (!role) return null;
 
-  const isSystem =
-    Boolean(role.isSystem) ||
-    ['super_admin', 'admin', 'manager', 'customer'].includes(role.slug);
+  // Only the super administrator role is protected from deletion; every
+  // other role (including seeded defaults) is an ordinary tenant record.
+  const isSuperAdmin = role.slug === 'super_admin';
 
   const handleDelete = async () => {
-    if (isSystem) {
+    if (isSuperAdmin) {
       toast.error(t('system-protected-tooltip'));
       return;
     }
@@ -71,9 +71,9 @@ export function DeleteRoleDialog({
         <DialogHeader>
           <div className='flex items-center gap-3'>
             <div
-              className={`rounded-full p-2 ${isSystem ? 'bg-amber-500/10 text-amber-600' : 'bg-destructive/10 text-destructive'}`}
+              className={`rounded-full p-2 ${isSuperAdmin ? 'bg-amber-500/10 text-amber-600' : 'bg-destructive/10 text-destructive'}`}
             >
-              {isSystem ? (
+              {isSuperAdmin ? (
                 <IconLock className='h-5 w-5' />
               ) : (
                 <IconAlertTriangle className='h-5 w-5' />
@@ -90,7 +90,7 @@ export function DeleteRoleDialog({
           </div>
         </DialogHeader>
 
-        {isSystem ? (
+        {isSuperAdmin ? (
           <div className='mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200'>
             {t('system-protected-tooltip')}
           </div>
@@ -114,7 +114,7 @@ export function DeleteRoleDialog({
             type='button'
             variant='destructive'
             onClick={handleDelete}
-            disabled={submitting || isSystem}
+            disabled={submitting || isSuperAdmin}
             className='text-xs'
           >
             {submitting ? t('btn-deleting') : t('btn-delete')}
