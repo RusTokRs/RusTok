@@ -193,6 +193,7 @@ impl TranslationInventoryService {
         if current_checkpoint.revision != expected_revision
             || current_checkpoint.cursor.as_deref() != expected_cursor
         {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::CheckpointConflict);
         }
 
@@ -282,6 +283,7 @@ impl TranslationInventoryService {
             .exec(&transaction)
             .await?;
         if update.rows_affected != 1 {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::CheckpointConflict);
         }
         transaction.commit().await?;
@@ -453,6 +455,7 @@ impl TranslationInventoryService {
         if current_checkpoint.revision != expected_checkpoint.revision
             || current_checkpoint.cursor != expected_checkpoint.cursor
         {
+            let _ = transaction.rollback().await;
             return Err(TranslationError::CheckpointConflict);
         }
 
