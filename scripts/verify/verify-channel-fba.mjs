@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { requirePortSurface } from './lib/rust-public-surface.mjs';
 
 const root = new URL('../../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
@@ -29,7 +30,12 @@ for (const op of ['read_channel', 'list_channels_for_tenant']) {
 if (port.context !== 'crates/modules/rustok-channel/src/ports.rs::PortContext' || port.error !== 'crates/modules/rustok-channel/src/ports.rs::PortError') fail('context/error drift');
 if (port.deadline_required !== true || port.idempotency_required !== false || port.semantics !== 'read_only') fail('channel read projection must be read-only with deadline semantics');
 if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/channel-fba-registry.json"') || !manifest.includes('contract_version = "channel.read_projection.v1"')) fail('manifest metadata drift');
-if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib.rs must export ports');
+{
+  // The registry names the ports consumers import; the crate root has to publish exactly those,
+  // whichever re-export shape it uses (the wildcard is accepted, explicit lists are preferred).
+  const surface = requirePortSurface(lib, registry);
+  if (!surface.ok) fail(surface.message);
+}
 for (const marker of ['trait ChannelReadPort', 'impl ChannelReadPort for crate::ChannelService', 'context.require_policy(PortCallPolicy::read())?', 'ChannelReadRequest', 'ChannelListRequest', 'ChannelReadProjection', 'channel.slug_empty', 'channel.host_target_empty', 'channel.tenant_id_invalid', 'ensure_tenant_scope', 'PortErrorKind::Validation', 'PortContext', 'PortError']) {
   if (!ports.includes(marker)) fail(`ports source missing ${marker}`);
 }

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { requirePortSurface } from './lib/rust-public-surface.mjs';
 
 function read(path) { return fs.readFileSync(path, 'utf8'); }
 function json(path) { return JSON.parse(read(path)); }
@@ -106,7 +107,12 @@ hasAll(cargo, [
   'rustok-outbox = { workspace = true, optional = true }',
 ], 'Cargo.toml');
 const lib = read('crates/modules/rustok-comments/src/lib.rs');
-hasAll(lib, ['pub mod ports;', 'pub use ports::*;', 'mod public_read;'], 'lib.rs');
+{
+  // See lib/rust-public-surface.mjs: the registry names the ports, the crate root must publish them.
+  const surface = requirePortSurface(lib, registry);
+  if (!surface.ok) fail(surface.message);
+}
+hasAll(lib, ['mod public_read;'], 'lib.rs');
 const dto = read('crates/modules/rustok-comments/src/dto.rs');
 hasAll(dto, [
   'use rustok_api::{RichTextDocument, RichTextView};',

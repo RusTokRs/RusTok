@@ -105,3 +105,72 @@ export function camelCase(name) {
 export function snakeCase(name) {
   return name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
 }
+
+/**
+ * Names a crate root re-exports from one module (`pub use <module>::…`).
+ *
+ * The FBA owner crates moved from `pub use ports::*;` to explicit lists: a wildcard re-export makes
+ * every future item part of the public API by accident, and several guards in this corpus forbid it
+ * (`verify-pricing-read-local-context`, `verify-tax-calculation-local-context`,
+ * `verify-inventory-reservation-owner-context`). A gate that keeps *requiring* the wildcard therefore
+ * contradicts the policy it is meant to protect, and reports a correct crate as red.
+ *
+ * `glob` is still reported, because this helper describes what a source does rather than what a style
+ * guide prefers; each guard decides which shape it accepts.
+ */
+export function reExportedNames(source, moduleName) {
+  const names = new Set();
+  let glob = false;
+  const body = source.replace(/\/\/[^\n]*/g, "");
+  const pattern = new RegExp(
+    `pub use ${moduleName}::(\\*|\\{[^}]*\\}|[A-Za-z0-9_]+)`,
+    "g",
+  );
+  for (const match of body.matchAll(pattern)) {
+    const target = match[1];
+    if (target === "*") {
+      glob = true;
+      continue;
+    }
+    if (!target.startsWith("{")) {
+      names.add(target);
+      continue;
+    }
+    for (const raw of target.slice(1, -1).split(",")) {
+      const entry = raw.trim();
+      if (!entry || entry.startsWith("#")) continue;
+      const name = entry.split(/\s+as\s+/).pop().trim();
+      if (/^[A-Za-z0-9_]+$/.test(name)) names.add(name);
+    }
+  }
+  return { glob, names: [...names].sort() };
+}
+
+/**
+ * Check that a crate root publishes the owner ports its registry declares.
+ *
+ * The invariant is "every port in the registry is reachable from the crate root", not "the crate root
+ * contains one particular spelling of the re-export". Returns `{ ok, message }` so a caller can report
+ * it with its own failure idiom.
+ */
+export function requirePortSurface(library, registry, { moduleName = "ports", label = "lib.rs" } = {}) {
+  if (!new RegExp(`pub mod ${moduleName}\\s*;`).test(library)) {
+    return { ok: false, message: `${label} must declare \`pub mod ${moduleName};\`` };
+  }
+  const { glob, names } = reExportedNames(library, moduleName);
+  const required = (registry?.ports ?? [])
+    .map((port) => port?.name)
+    .filter((name) => typeof name === "string" && name.length > 0);
+  if (required.length === 0 && !glob && names.length === 0) {
+    return { ok: false, message: `${label} must re-export the owner ports from \`${moduleName}\`` };
+  }
+  const exported = new Set(names);
+  const missing = glob ? [] : required.filter((name) => !exported.has(name));
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      message: `${label} must re-export every registry port: missing ${missing.join(", ")}`,
+    };
+  }
+  return { ok: true };
+}

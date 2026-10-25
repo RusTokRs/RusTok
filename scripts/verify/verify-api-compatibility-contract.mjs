@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { pinnedActionProblem } from "./lib/workflow-pins.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
@@ -192,8 +193,16 @@ requireMarkers(".github/workflows/api-compatibility.yml", [
   "base/scripts/verify/verify-api-compatibility.mjs",
   "--base-dir",
   "--head-dir",
-  "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
 ]);
+// The commit itself is governed by verify:workflow-action-pins; this gate owns "the artifact is
+// published by a pinned action", which survives a version bump.
+{
+  const problem = pinnedActionProblem(
+    read(".github/workflows/api-compatibility.yml"),
+    "actions/upload-artifact",
+  );
+  if (problem) failures.push(`.github/workflows/api-compatibility.yml: ${problem}`);
+}
 forbidMarkers(".github/workflows/api-compatibility.yml", [
   'head/scripts/verify/verify-api-compatibility.mjs',
   "continue-on-error: true",

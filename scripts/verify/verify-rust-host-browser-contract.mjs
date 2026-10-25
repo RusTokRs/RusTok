@@ -5,11 +5,15 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+// The allowlist names the actions this workflow may use; the pin (a 40-character commit SHA) is a
+// separate rule, enforced below and globally by `verify:workflow-action-pins`. Storing one exact
+// commit per action duplicated that policy and went stale on every bump of the workflow.
 const ACTIONS = Object.freeze({
-  checkout: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
-  setupNode: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
-  uploadArtifact: "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+  checkout: "actions/checkout",
+  setupNode: "actions/setup-node",
+  uploadArtifact: "actions/upload-artifact",
 });
+const PINNED_ACTION = /^(actions\/[A-Za-z0-9_.-]+)@[0-9a-f]{40}$/;
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
@@ -52,15 +56,21 @@ function actionReferences(relativePath) {
 
 function requireActionCounts(relativePath, expectedCounts) {
   const references = actionReferences(relativePath);
+  const approved = new Set(Object.values(ACTIONS));
   for (const reference of references) {
-    if (!Object.values(ACTIONS).includes(reference)) {
-      failures.push(`${relativePath}: unapproved or unpinned action ${reference}`);
+    const pinned = PINNED_ACTION.exec(reference);
+    if (!pinned) {
+      failures.push(`${relativePath}: action must be pinned to a full commit SHA: ${reference}`);
+      continue;
+    }
+    if (!approved.has(pinned[1])) {
+      failures.push(`${relativePath}: unapproved action ${pinned[1]}`);
     }
   }
-  for (const [reference, expected] of expectedCounts) {
-    const actual = references.filter((candidate) => candidate === reference).length;
+  for (const [action, expected] of expectedCounts) {
+    const actual = references.filter((candidate) => candidate.startsWith(`${action}@`)).length;
     if (actual !== expected) {
-      failures.push(`${relativePath}: expected ${expected} use(s) of ${reference}, found ${actual}`);
+      failures.push(`${relativePath}: expected ${expected} use(s) of ${action}, found ${actual}`);
     }
   }
 }

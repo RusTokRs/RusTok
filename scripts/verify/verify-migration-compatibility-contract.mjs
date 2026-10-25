@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { pinnedActionProblem } from "./lib/workflow-pins.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
@@ -217,7 +218,6 @@ requireMarkers(workflow, [
   "head/docs/migrations/backfill-contracts.json",
   "migration-plans/backfill-fixtures.json",
   "Verify selected backfill fixture artifact",
-  "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
   "migration-plans-${{ github.run_id }}",
   "needs: migration-plan",
   "image: postgres:16",
@@ -237,7 +237,6 @@ requireMarkers(workflow, [
   "postgres://rustok_migration:rustok_migration@localhost:5432/postgres",
   "CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 8",
   "Download selected backfill fixtures",
-  "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
   "Verify selected backfill fixtures",
   "migration-backfill/backfill-fixtures.json",
   "Apply base migrations and preserve database",
@@ -253,6 +252,12 @@ requireMarkers(workflow, [
   "target/migration-base",
   "target/migration-head",
 ]);
+// The artifact handoff must use pinned actions. The exact commits are governed by
+// verify:workflow-action-pins; repeating one commit here went stale on every bump.
+for (const action of ["actions/upload-artifact", "actions/download-artifact"]) {
+  const problem = pinnedActionProblem(read(workflow), action);
+  if (problem) failures.push(`${workflow}: ${problem}`);
+}
 requireOccurrenceCount(workflow, "Create bounded migration test role", 2);
 requireOccurrenceCount(
   workflow,

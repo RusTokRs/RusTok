@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { requirePortSurface } from './lib/rust-public-surface.mjs';
 const root = new URL('../../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
 const json = (path) => JSON.parse(read(path));
@@ -24,7 +25,12 @@ if (!port || port.name !== 'EmailDeliveryPort' || !port.operations.includes('sen
 if (port.context !== 'rustok_api::PortContext' || port.error !== 'rustok_api::PortError') fail('context/error drift');
 if (port.deadline_required !== true || port.idempotency_required !== true) fail('email delivery must keep deadline + write idempotency semantics');
 if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/email-fba-registry.json"') || !manifest.includes('contract_version = "email.delivery.v1"')) fail('manifest FBA provider drift');
-if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib must export ports');
+{
+  // The registry names the ports consumers import; the crate root has to publish exactly those,
+  // whichever re-export shape it uses (the wildcard is accepted, explicit lists are preferred).
+  const surface = requirePortSurface(lib, registry);
+  if (!surface.ok) fail(surface.message);
+}
 for (const marker of ['trait EmailDeliveryPort', 'impl EmailDeliveryPort for crate::EmailService', 'require_email_delivery_policy(&context)?', 'PortCallPolicy::write()', 'validate_delivery_request', 'EmailDeliveryReceipt', 'EmailProviderMode::DisabledNoop', 'PortError::invariant_violation', 'email.idempotency_required']) {
   if (!ports.includes(marker)) fail(`ports marker missing ${marker}`);
 }
