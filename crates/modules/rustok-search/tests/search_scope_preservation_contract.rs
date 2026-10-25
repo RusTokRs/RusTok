@@ -2,7 +2,6 @@ const SEARCH_LIB: &str = include_str!("../src/lib.rs");
 const ACTIVE_PROJECTOR: &str = include_str!("../src/projector.rs");
 const CORE_PROJECTOR: &str = include_str!("../src/projector_core.rs");
 const INGESTION: &str = include_str!("../src/ingestion.rs");
-const BLOG_PROJECTOR: &str = include_str!("../src/blog_projector.rs");
 const PROJECTION_DRIVER: &str = include_str!("../src/projection_driver.rs");
 
 #[test]
@@ -28,24 +27,16 @@ fn full_ingestion_rebuild_keeps_source_order_and_atomic_external_replacements() 
     let core = rebuild
         .find("self.projector.rebuild_tenant")
         .expect("core Search scopes should rebuild first");
-    let blog = rebuild
-        .find("self.blog_projector.rebuild_tenant")
-        .expect("Blog scope should rebuild after core scopes");
-    let forum = rebuild
-        .rfind("projector.rebuild_tenant")
-        .expect("Forum scope should rebuild after Blog");
-    assert!(core < blog && blog < forum);
+    let owners = rebuild
+        .find("self.owner_drivers()")
+        .expect("owner sources should rebuild after the core scopes");
+    assert!(core < owners);
+    // The Blog scope is an owner source now, so the rebuild loop above is the only
+    // place that reaches it; a module-named writer in the ingestion path would put
+    // the old private projector back.
+    assert!(!INGESTION.contains("blog_projector"));
+    assert!(!INGESTION.contains("BlogSearchProjector"));
 
-    for marker in [
-        "let tx = self.begin_transaction().await?",
-        "self.delete_tenant_documents_in(&tx, tenant_id).await?",
-        "self.commit_transaction(tx).await",
-    ] {
-        assert!(
-            BLOG_PROJECTOR.contains(marker),
-            "missing Blog atomic marker {marker}"
-        );
-    }
     for marker in [
         "let tx = self.db.begin().await.map_err(Error::Database)?",
         "self.create_stage(&tx).await?",

@@ -15,7 +15,7 @@ const files = {
   taxonomyService: 'crates/modules/rustok-taxonomy/src/services.rs',
   taxonomyTranslationTests: 'crates/modules/rustok-taxonomy/src/translation_target_tests.rs',
   blogReadHarness: 'crates/modules/rustok-blog/tests/taxonomy_tags.rs',
-  projector: 'crates/modules/rustok-search/src/blog_projector.rs',
+  searchProjectionSource: 'crates/modules/rustok-blog/src/services/search_projection.rs',
   searchHarness: 'crates/modules/rustok-search/tests/blog_projection_postgres_test.rs',
   searchEvidence: 'crates/modules/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json',
   slice: 'crates/modules/rustok-blog/docs/implementation-plan-slice-103.md',
@@ -39,7 +39,7 @@ const taxonomyOwnerRead = read(files.taxonomyOwnerRead);
 const taxonomyService = read(files.taxonomyService);
 const taxonomyTranslationTests = read(files.taxonomyTranslationTests);
 const blogReadHarness = read(files.blogReadHarness);
-const projector = read(files.projector);
+const searchProjectionSource = read(files.searchProjectionSource);
 const searchHarness = read(files.searchHarness);
 const searchEvidence = json(files.searchEvidence);
 const slice = read(files.slice);
@@ -126,14 +126,20 @@ for (const marker of [
   'assert!(post.tags.is_empty());',
 ]) need(blogReadHarness, marker, files.blogReadHarness);
 
+// The Search side no longer reads the Blog tables: the owner source resolves tags and
+// categories through the Blog tag service and the Taxonomy owner reader, so the marker
+// is the call, not the SQL that used to exist beside Search storage.
 for (const marker of [
-  "to_regclass('blog_post_tags')", "to_regclass('taxonomy_terms')", "to_regclass('taxonomy_term_translations')",
-  'FROM blog_post_tags relation', 'JOIN taxonomy_terms term',
-  'LEFT JOIN taxonomy_term_translations localized', 'LEFT JOIN taxonomy_term_translations fallback',
-  'term.tenant_id = p.tenant_id', 'localized.tenant_id = p.tenant_id', 'fallback.tenant_id = p.tenant_id',
-  'COALESCE(localized.name, fallback.name, term.canonical_key)',
-]) need(projector, marker, files.projector);
-for (const marker of ["jsonb_array_elements_text", "p.metadata -> 'tags'"]) forbid(projector, marker, files.projector);
+  'load_post_tags_map(',
+  'load_category_projections_map(',
+  'crate::richtext::project_stored_article(',
+]) need(searchProjectionSource, marker, files.searchProjectionSource);
+for (const marker of [
+  'jsonb_array_elements_text',
+  "p.metadata -> 'tags'",
+  'search_documents',
+  'LEFT JOIN users',
+]) forbid(searchProjectionSource, marker, files.searchProjectionSource);
 
 for (const marker of [
   'blog_reindex_projects_attached_taxonomy_tags_not_metadata_snapshot', 'stale-metadata-only',

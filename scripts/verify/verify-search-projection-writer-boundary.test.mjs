@@ -71,7 +71,6 @@ function fixture({
   const defaults = {
     "projection_driver.rs": driver,
     "ingestion.rs": ingestion,
-    "blog_projector.rs": PRIVATE_WRITER,
     "projector_core.rs": PRIVATE_WRITER,
   };
 
@@ -102,11 +101,21 @@ function withFixture(options, assertion) {
   }
 }
 
-test("accepts the migrated tree with the two documented private writers", () => {
+test("accepts the migrated tree with the one documented private writer", () => {
   withFixture({}, ({ status, stdout, stderr }) => {
     assert.equal(status, 0, stderr);
     assert.match(stdout, /one neutral projection writer/);
   });
+});
+
+test("rejects the Blog projector as a new private writer", () => {
+  withFixture(
+    { files: { "blog_projector.rs": PRIVATE_WRITER } },
+    ({ status, stderr }) => {
+      assert.equal(status, 1);
+      assert.match(stderr, /blog_projector\.rs was replaced by projection_driver\.rs/);
+    },
+  );
 });
 
 test("rejects a new private writer", () => {
@@ -120,21 +129,26 @@ test("rejects a new private writer", () => {
 });
 
 test("rejects a retired projector that comes back", () => {
-  withFixture(
-    { files: { "pages_projector.rs": "pub(crate) struct PagesSearchProjector;" } },
-    ({ status, stderr }) => {
-      assert.equal(status, 1);
-      assert.match(stderr, /pages_projector\.rs was replaced by projection_driver\.rs/);
-    },
-  );
+  for (const name of ["pages_projector.rs", "docs_projector.rs", "blog_projector.rs"]) {
+    withFixture(
+      { files: { [name]: PRIVATE_WRITER } },
+      ({ status, stderr }) => {
+        assert.equal(status, 1);
+        assert.match(
+          stderr,
+          new RegExp(`${name.replace(".", "\\.")} was replaced by projection_driver\\.rs`),
+        );
+      },
+    );
+  }
 });
 
 test("rejects an allowlist entry that no longer writes", () => {
   withFixture(
-    { files: { "blog_projector.rs": "// nothing writes here any more" } },
+    { files: { "projector_core.rs": "// nothing writes here any more" } },
     ({ status, stderr }) => {
       assert.equal(status, 1);
-      assert.match(stderr, /blog_projector\.rs no longer writes search_documents/);
+      assert.match(stderr, /projector_core\.rs no longer writes search_documents/);
     },
   );
 });

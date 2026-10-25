@@ -7,7 +7,7 @@
   "private_legacy_projector": "crates/modules/rustok-search/src/projector_core.rs",
   "search_module_wiring": "crates/modules/rustok-search/src/lib.rs",
   "search_ingestion": "crates/modules/rustok-search/src/ingestion.rs",
-  "blog_projector": "crates/modules/rustok-search/src/blog_projector.rs",
+  "blog_search_projection_source": "crates/modules/rustok-blog/src/services/search_projection.rs",
   "search_projection_driver": "crates/modules/rustok-search/src/projection_driver.rs",
   "source_contract_test": "crates/modules/rustok-search/tests/search_scope_preservation_contract.rs",
   "owner_note": "crates/modules/rustok-forum/docs/forum-20bm-search-rebuild-scope-preservation.md",

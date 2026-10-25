@@ -60,6 +60,55 @@ only storefront Search path. No compatibility bridge remains.
       rebuild scope-preservation guard (now pinning one projector instead of the retired
       `projector_legacy` name) and the projection-reconciliation status guard.
 
+## 2026-10-25 Blog projection cutover
+
+`blog_projector.rs` is deleted. Blog is the fourth owner source that Search stores through
+`SearchProjectionDriver`, and the last one in `rustok-search` that owned a copy of the
+transactional scope replacement for a module.
+
+- [x] The documents come from `rustok-blog`'s `BlogSearchProjectionSource`, which was
+      already complete: article-body indexing through
+      `crate::richtext::project_stored_article`, canonical tag and category names through
+      the Blog tag service and the Taxonomy owner reader, author names through the
+      `ProfileSummaryReader` port, cursor pagination over `published` + stamped posts.
+- [x] The indexed corpus is the owner's public corpus. A draft is no longer stored as a
+      non-public row, and unpublishing, archiving or deleting removes the document
+      through `delete_entity` without asking the source to re-resolve a row it can no
+      longer see. This is the same rule Pages, Docs and Forum already follow; the draft
+      rows were a `blog_projector` behaviour, not a Search contract.
+- [x] The author name no longer comes from `LEFT JOIN users u`: the legacy join published
+      the account name of profiles whose visibility forbids it. The port answers in the
+      document tenant with `ProfileSummaryAudience::Anonymous`, and a missing port
+      degrades to no author name with a warning instead of a hard failure.
+- [x] `UserUpdated`, `UserDeleted` and `ProfileUpdated` rebuild the tenant Blog scope
+      through the driver. The author name is a related-owner value: the source cannot
+      enumerate "the documents of one author" and Search cannot filter stored rows by a
+      payload key it does not own, so a tenant-scoped rebuild is the only correct answer
+      the neutral contract can give. It runs before the Forum inbox is given the event,
+      because `UserDeleted` and `ProfileUpdated` are Forum inbox scopes and the early
+      return used to keep the stale Blog author name forever.
+- [x] `ForumProjectionReconciler::with_blog_source` gives the Forum sweeper the same Blog
+      driver. The inbox owns tenant-wide scopes that also invalidate Blog, so a sweep that
+      skipped Blog would leave a deleted account's author name in place. A host without
+      the Blog module leaves the optional driver empty.
+- [x] Guards were re-pointed, not weakened: `verify-search-blog-projection`,
+      `verify-blog-tag-canonical-projection-source` and
+      `verify-blog-category-search-reindex` now pin the owner source (tag and category
+      sources, article body, public corpus) instead of the deleted SQL;
+      `verify-search-projection-writer-boundary` shrank its allowlist to
+      `projector_core.rs`; `verify-forum-search-rebuild-scope-preservation` pins the
+      driver's `source_module`-scoped transaction and the ingestion loop instead of
+      `self.blog_projector.rebuild_tenant`.
+- [x] The PostgreSQL lifecycle harness runs the real owner source and a Profiles port
+      stub. It also documents why the harness sets the test schema on the *startup*
+      `search_path` of every pooled connection: the driver replaces a scope inside a
+      transaction while the owner source answers on another connection, so one
+      `SET search_path` on one checkout is not enough (and a single-connection pool would
+      deadlock).
+
+Static review only: no Rust toolchain ran in the authoring environment. The guard family
+and the crate's source-text contracts are the executable part.
+
 ## 2026-10-25 Declared Search audience corpus
 
 The audience mechanism was audited end to end and rebuilt around declared audience
@@ -143,8 +192,8 @@ run through the same transactional storage path the Forum projection already use
   `handle_docs_module_toggle`, `handle_forum_module_toggle`) collapsed into one
   `toggle_owner_scope`, and the same for refresh/rebuild/delete, so a fourth owner
   source does not add a fourth copy of the same dispatch.
-- Still open: `projector_core.rs` (content/product) and `blog_projector.rs` keep their
-  own SQL. The Blog follow-up below is unchanged.
+- Still open: only `projector_core.rs` (content/product) keeps its own SQL. Blog was cut
+  over in the 2026-10-25 Blog projection cutover section.
 
 This slice was statically reviewed only: no Rust toolchain ran in the authoring
 environment. The Search/Forum/LINK-FORUM-03 guard family and the crate's source-text

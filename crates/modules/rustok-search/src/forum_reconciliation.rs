@@ -9,7 +9,6 @@ use rustok_core::{Error, Result};
 use rustok_events::{DomainEvent, EventEnvelope};
 
 use crate::SearchProjectionSource;
-use crate::blog_projector::BlogSearchProjector;
 use crate::forum_inbox::ForumProjectionInbox;
 use crate::forum_owner_checkpoint::{
     ForumOwnerCheckpointReconciler, ForumProjectionOwnerTenantHead,
@@ -183,7 +182,12 @@ pub struct ForumProjectionSweepReport {
 pub struct ForumProjectionReconciler {
     db: DatabaseConnection,
     projector: SearchProjector,
-    blog_projector: BlogSearchProjector,
+    /// Blog projection driver, when the host registered the Blog source.
+    ///
+    /// The Forum inbox owns the tenant-wide scopes that also invalidate the Blog
+    /// corpus (a profile change, a user deletion, a locale change), so a sweep has to
+    /// rebuild Blog as well. It is optional because a host may run Forum without Blog.
+    blog_driver: Option<SearchProjectionDriver>,
     projection_driver: SearchProjectionDriver,
     inbox: ForumProjectionInbox,
     owner_checkpoint: Option<ForumOwnerCheckpointReconciler>,
@@ -194,7 +198,7 @@ impl ForumProjectionReconciler {
         let projection_driver = SearchProjectionDriver::new(db.clone(), forum_source);
         Self {
             projector: SearchProjector::new(db.clone()),
-            blog_projector: BlogSearchProjector::new(db.clone()),
+            blog_driver: None,
             projection_driver,
             inbox: ForumProjectionInbox::new(db.clone()),
             owner_checkpoint: None,
@@ -215,12 +219,26 @@ impl ForumProjectionReconciler {
         );
         Self {
             projector: SearchProjector::new(db.clone()),
-            blog_projector: BlogSearchProjector::new(db.clone()),
+            blog_driver: None,
             projection_driver,
             inbox: ForumProjectionInbox::new(db.clone()),
             owner_checkpoint: Some(owner_checkpoint),
             db,
         }
+    }
+
+    /// Attaches the Blog projection driver a tenant-wide sweep also has to rebuild.
+    ///
+    /// A host without the Blog module keeps `None`, and the sweep then replaces only
+    /// the scopes whose sources exist. The driver is neutral, so this builder states
+    /// *which* owner is swept, not *how* its documents are written.
+    pub fn with_blog_source(
+        mut self,
+        blog_source: Option<Arc<dyn SearchProjectionSource>>,
+    ) -> Self {
+        self.blog_driver = blog_source
+            .map(|source| SearchProjectionDriver::new(self.db.clone(), source));
+        self
     }
 
     pub fn supports_background_reconciliation(&self) -> bool {
@@ -397,7 +415,9 @@ impl ForumProjectionReconciler {
 
     async fn rebuild_tenant(&self, tenant_id: Uuid) -> Result<()> {
         self.projector.rebuild_tenant(tenant_id).await?;
-        self.blog_projector.rebuild_tenant(tenant_id).await?;
+        if let Some(blog_driver) = &self.blog_driver {
+            blog_driver.rebuild_tenant(tenant_id).await?;
+        }
         self.projection_driver.rebuild_tenant(tenant_id).await
     }
 }

@@ -51,7 +51,8 @@ fn sweeper_reuses_search_owned_claim_projection_and_retry_owners() {
         ".refresh_entity",
         "self.projection_driver.delete_tenant",
         "self.projector.rebuild_tenant",
-        "self.blog_projector.rebuild_tenant",
+        "if let Some(blog_driver) = &self.blog_driver",
+        "blog_driver.rebuild_tenant(tenant_id).await?",
         "ForumProjectionReconciler",
     ] {
         require(RECONCILER, marker);

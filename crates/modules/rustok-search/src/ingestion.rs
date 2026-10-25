@@ -13,7 +13,6 @@ use rustok_telemetry::metrics;
 use tracing::Instrument;
 
 use crate::SearchProjectionSource;
-use crate::blog_projector::BlogSearchProjector;
 use crate::forum_inbox::{ForumProjectionInbox, ForumProjectionScope};
 use crate::projection_driver::SearchProjectionDriver;
 use crate::projector::SearchProjector;
@@ -24,10 +23,7 @@ const FORUM_INBOX_OPPORTUNISTIC_BATCH: usize = 8;
 #[derive(Clone)]
 pub struct SearchIngestionHandler {
     projector: SearchProjector,
-    blog_projector: BlogSearchProjector,
-    /// Registered Blog source. The Blog write path still runs through the
-    /// legacy `BlogSearchProjector`; the field is the seam for that migration.
-    blog_source: Option<Arc<dyn SearchProjectionSource>>,
+    blog_driver: Option<SearchProjectionDriver>,
     forum_driver: Option<SearchProjectionDriver>,
     forum_inbox: Option<ForumProjectionInbox>,
     pages_driver: Option<SearchProjectionDriver>,
@@ -67,8 +63,7 @@ impl SearchIngestionHandler {
             .map(|_| ForumProjectionInbox::new(db.clone()));
         Self {
             projector: SearchProjector::new(db.clone()),
-            blog_projector: BlogSearchProjector::new(db.clone()),
-            blog_source,
+            blog_driver: build_projection_driver(&db, blog_source),
             forum_driver,
             forum_inbox,
             pages_driver: build_projection_driver(&db, pages_source),
@@ -76,13 +71,8 @@ impl SearchIngestionHandler {
         }
     }
 
-    pub fn blog_source(&self) -> Option<&Arc<dyn SearchProjectionSource>> {
-        self.blog_source.as_ref()
-    }
-
     async fn rebuild_tenant(&self, tenant_id: Uuid) -> HandlerResult {
         self.projector.rebuild_tenant(tenant_id).await?;
-        self.blog_projector.rebuild_tenant(tenant_id).await?;
         for driver in self.owner_drivers().into_iter().flatten() {
             driver.rebuild_tenant(tenant_id).await?;
         }
@@ -92,9 +82,12 @@ impl SearchIngestionHandler {
     /// The neutral storage drivers of every owner source that Search is hosting.
     ///
     /// Search does not ask which module a driver belongs to: each entry is the same
-    /// `SearchProjectionDriver`, scoped by its own source module.
-    fn owner_drivers(&self) -> [Option<&SearchProjectionDriver>; 3] {
+    /// `SearchProjectionDriver`, scoped by its own source module. The order is
+    /// therefore not part of the contract — every driver replaces only its own
+    /// `(tenant, source_module)` scope.
+    fn owner_drivers(&self) -> [Option<&SearchProjectionDriver>; 4] {
         [
+            self.blog_driver.as_ref(),
             self.forum_driver.as_ref(),
             self.pages_driver.as_ref(),
             self.docs_driver.as_ref(),
@@ -115,8 +108,11 @@ impl SearchIngestionHandler {
                 self.projector.upsert_product(tenant_id, product_id).await
             }
             ("product", None) => self.projector.rebuild_product_scope(tenant_id).await,
-            ("blog", Some(post_id)) => self.blog_projector.upsert_post(tenant_id, post_id).await,
-            ("blog", None) => self.blog_projector.rebuild_tenant(tenant_id).await,
+            ("blog", Some(post_id)) => {
+                refresh_owner_entity(self.blog_driver.as_ref(), tenant_id, "blog_post", post_id)
+                    .await
+            }
+            ("blog", None) => rebuild_owner_scope(self.blog_driver.as_ref(), tenant_id).await,
             ("pages" | "page", Some(page_id)) => {
                 refresh_owner_entity(self.pages_driver.as_ref(), tenant_id, "page", page_id).await
             }
@@ -133,12 +129,17 @@ impl SearchIngestionHandler {
         }
     }
 
-    async fn handle_blog_module_toggle(&self, tenant_id: Uuid, enabled: bool) -> HandlerResult {
-        if enabled {
-            self.blog_projector.rebuild_tenant(tenant_id).await
-        } else {
-            self.blog_projector.delete_tenant(tenant_id).await
-        }
+    /// Replaces every Blog document that embeds a public author summary.
+    ///
+    /// The author name is a related-owner value: it is not part of the post row, so
+    /// the source cannot enumerate "the documents of one author" from the storage
+    /// side, and Search cannot filter stored rows by an owner payload key it does not
+    /// own. A tenant-scoped rebuild is the only correct answer the neutral contract
+    /// can give, and it is the same trade-off the Forum author projection already
+    /// makes. It keeps the previous scope on failure, because the driver replaces it
+    /// in one transaction.
+    async fn refresh_blog_author_scope(&self, tenant_id: Uuid) -> HandlerResult {
+        rebuild_owner_scope(self.blog_driver.as_ref(), tenant_id).await
     }
 
     async fn apply_forum_inbox_event(&self, envelope: &EventEnvelope) -> HandlerResult {
@@ -315,8 +316,12 @@ impl EventHandler for SearchIngestionHandler {
             | DomainEvent::ForumTopicReplied { .. }
             | DomainEvent::ForumTopicStatusChanged { .. }
             | DomainEvent::ForumTopicPinned { .. }
-            | DomainEvent::ForumReplyStatusChanged { .. }
-            | DomainEvent::ProfileUpdated { .. } => self.forum_driver.is_some(),
+            | DomainEvent::ForumReplyStatusChanged { .. } => self.forum_driver.is_some(),
+            // A public author summary is embedded in both Forum and Blog documents,
+            // so either hosted source makes the profile event relevant.
+            DomainEvent::ProfileUpdated { .. } => {
+                self.forum_driver.is_some() || self.blog_driver.is_some()
+            }
             DomainEvent::TagAttached { target_type, .. }
             | DomainEvent::TagDetached { target_type, .. } => target_type == "node",
             DomainEvent::TenantModuleToggled { module_slug, .. } => {
@@ -359,19 +364,17 @@ impl EventHandler for SearchIngestionHandler {
         );
 
         async {
+            // The Blog documents embed a public author summary, so an author identity
+            // change has to refresh them before the Forum inbox is given the event:
+            // `UserDeleted` and `ProfileUpdated` are Forum inbox scopes, and the early
+            // return below would otherwise keep the stale Blog author name forever.
             if matches!(
                 &envelope.event,
-                DomainEvent::UserUpdated { .. } | DomainEvent::UserDeleted { .. }
+                DomainEvent::UserUpdated { .. }
+                    | DomainEvent::UserDeleted { .. }
+                    | DomainEvent::ProfileUpdated { .. }
             ) {
-                let user_id = match &envelope.event {
-                    DomainEvent::UserUpdated { user_id } | DomainEvent::UserDeleted { user_id } => {
-                        *user_id
-                    }
-                    _ => unreachable!(),
-                };
-                self.blog_projector
-                    .refresh_author_projection(envelope.tenant_id, user_id)
-                    .await?;
+                self.refresh_blog_author_scope(envelope.tenant_id).await?;
             }
 
             if let Some(scope) = ForumProjectionScope::for_event(&envelope.event)
@@ -486,25 +489,35 @@ impl EventHandler for SearchIngestionHandler {
                 }
                 DomainEvent::BlogPostCreated { post_id, .. }
                 | DomainEvent::BlogPostPublished { post_id, .. }
-                | DomainEvent::BlogPostUnpublished { post_id }
-                | DomainEvent::BlogPostUpdated { post_id, .. }
-                | DomainEvent::BlogPostArchived { post_id, .. } => {
-                    self.blog_projector
-                        .upsert_post(envelope.tenant_id, *post_id)
-                        .await
+                | DomainEvent::BlogPostUpdated { post_id, .. } => {
+                    refresh_owner_entity(
+                        self.blog_driver.as_ref(),
+                        envelope.tenant_id,
+                        "blog_post",
+                        *post_id,
+                    )
+                    .await
                 }
-                DomainEvent::BlogPostDeleted { post_id } => {
-                    self.blog_projector
-                        .delete_post(envelope.tenant_id, *post_id)
-                        .await
+                // Unpublishing or archiving removes the post from the public corpus,
+                // so the stored document is deleted without asking the source to
+                // re-resolve a row it can no longer see there.
+                DomainEvent::BlogPostUnpublished { post_id }
+                | DomainEvent::BlogPostArchived { post_id, .. }
+                | DomainEvent::BlogPostDeleted { post_id } => {
+                    delete_owner_entity(
+                        self.blog_driver.as_ref(),
+                        envelope.tenant_id,
+                        "blog_post",
+                        *post_id,
+                    )
+                    .await
                 }
                 DomainEvent::TenantModuleToggled {
                     module_slug,
                     enabled,
                     ..
                 } if module_slug == "blog" => {
-                    self.handle_blog_module_toggle(envelope.tenant_id, *enabled)
-                        .await
+                    toggle_owner_scope(self.blog_driver.as_ref(), envelope.tenant_id, *enabled).await
                 }
                 DomainEvent::TenantModuleToggled {
                     module_slug,

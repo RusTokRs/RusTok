@@ -32,8 +32,12 @@ const activePath = "crates/modules/rustok-search/src/projector.rs";
 const corePath = "crates/modules/rustok-search/src/projector_core.rs";
 const libPath = "crates/modules/rustok-search/src/lib.rs";
 const ingestionPath = "crates/modules/rustok-search/src/ingestion.rs";
-const blogPath = "crates/modules/rustok-search/src/blog_projector.rs";
+// Blog, Pages and Docs are owner-produced documents stored by the neutral driver; the
+// private `blog_projector.rs` is retired, so the Blog scope is pinned through the driver
+// and through the ingestion path that reaches it.
 const forumPath = "crates/modules/rustok-search/src/projection_driver.rs";
+const blogOwnerPath =
+  "crates/modules/rustok-blog/src/services/search_projection.rs";
 const rustTestPath = "crates/modules/rustok-search/tests/search_scope_preservation_contract.rs";
 const replyTestPath = "crates/modules/rustok-search/tests/forum_approved_reply_projection_contract.rs";
 const contractPath = "crates/modules/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json";
@@ -47,7 +51,7 @@ const active = read(activePath);
 const core = read(corePath);
 const lib = read(libPath);
 const ingestion = read(ingestionPath);
-const blog = read(blogPath);
+const blogOwner = read(blogOwnerPath);
 const forum = read(forumPath);
 const rustTest = read(rustTestPath);
 const replyTest = read(replyTestPath);
@@ -127,19 +131,22 @@ rejectMarker(lib, "projector_legacy", libPath);
 const rebuildSection = ingestion.split("async fn rebuild_tenant")[1] ?? "";
 const rebuild = rebuildSection.split("async fn handle_reindex_request")[0] ?? "";
 const coreIndex = rebuild.indexOf("self.projector.rebuild_tenant");
-const blogIndex = rebuild.indexOf("self.blog_projector.rebuild_tenant");
-const forumIndex = rebuild.lastIndexOf("projector.rebuild_tenant");
-if (!(coreIndex >= 0 && blogIndex > coreIndex && forumIndex > blogIndex)) {
-  failures.push(`${ingestionPath}: full rebuild order must remain core -> Blog -> Forum`);
+const ownersIndex = rebuild.indexOf("self.owner_drivers()");
+if (!(coreIndex >= 0 && ownersIndex > coreIndex)) {
+  failures.push(
+    `${ingestionPath}: the core scopes must rebuild before every owner source, because the ` +
+      `core projector only replaces its own node/product scopes`,
+  );
 }
-
-for (const marker of [
-  "let tx = self.begin_transaction().await?",
-  "self.delete_tenant_documents_in(&tx, tenant_id).await?",
-  "self.commit_transaction(tx).await",
-]) {
-  requireMarker(blog, marker, blogPath);
+// Every owner source (Blog included) is reached through the neutral driver loop, never
+// through a module-named writer in the ingestion path.
+rejectMarker(ingestion, "blog_projector", ingestionPath);
+for (const marker of ["self.owner_drivers()", "driver.rebuild_tenant(tenant_id).await?"]) {
+  requireMarker(ingestion, marker, ingestionPath);
 }
+// The Blog scope replacement is the neutral driver's transaction (pinned below with the
+// Forum markers); the Blog owner only decides which documents exist.
+requireMarker(blogOwner, "load_post_tags_map(", blogOwnerPath);
 for (const marker of [
   "let tx = self.db.begin().await.map_err(Error::Database)?",
   "self.create_stage(&tx).await?",
@@ -155,7 +162,7 @@ for (const marker of [
   "active_tenant_rebuild_preserves_external_scopes_and_eliminates_destructive_deletes",
   "full_ingestion_rebuild_keeps_source_order_and_atomic_external_replacements",
   "bootstrap_presence_check_ignores_external_only_documents",
-  '.rfind("projector.rebuild_tenant")',
+  'self.owner_drivers()',
 ]) {
   requireMarker(rustTest, marker, rustTestPath);
 }

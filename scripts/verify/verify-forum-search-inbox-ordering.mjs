@@ -134,7 +134,8 @@ for (const marker of [
   "claim.complete().await?",
   "claim.retry(&error).await?",
   "forum_driver.rebuild_tenant(envelope.tenant_id).await",
-  "projector.delete_tenant(tenant_id).await",
+  "toggle_owner_scope",
+  "driver.delete_tenant(tenant_id).await",
   'refresh_entity(envelope.tenant_id, "forum_category"',
   "Forum projection inbox opportunistic reconciliation failed",
 ]) {

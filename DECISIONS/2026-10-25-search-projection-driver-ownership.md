@@ -57,7 +57,9 @@ would force every module to reimplement the same transactional replacement.
   checkpoint for the Forum projection: still `rustok-search`
   (`forum_reconciliation`, `forum_inbox`, `forum_owner_checkpoint`,
   `forum_contract_ingress`). This is acknowledged Forum-specific orchestration
-  that has not been inverted yet; see "Non-goals";
+  that has not been inverted yet; see "Non-goals". The Blog author refresh is part of
+  that orchestration surface: the Blog driver is driven from `ingestion` and from
+  `ForumProjectionReconciler`, not from a Blog-owned worker;
 - derived state: the Search documents themselves; the source tables stay
   authoritative.
 
@@ -176,9 +178,22 @@ transaction.
   now use `SearchProjectionDriver` like Forum, which removed 677 lines of duplicated
   SQL. The driver gained the one capability those copies had and it did not:
   `delete_entity`, for a lifecycle event that reports an entity as unpublished or
-  deleted. `projector_core.rs` (content/product) and `blog_projector.rs` are the two
-  remaining private writers; Blog also keeps its own author-projection statement
-  because the module-side source does not expose a dependency-scoped refresh yet.
+  deleted.
+- `blog_projector.rs` is deleted as well: Blog is stored through the same driver from
+  `rustok_blog::BlogSearchProjectionSource`. The two behaviours that used to differ are
+  now the owner's decision, not Search's: the indexed corpus is `published` and stamped
+  exactly like every public Blog read, and the author name comes from the Profiles
+  `ProfileSummaryReader` port instead of a `LEFT JOIN users`, so a profile whose
+  visibility forbids public presentation can no longer leak its account name into
+  Search. `projector_core.rs` (content/product) is the single remaining private writer.
+- The author projection is a `Tenant` rebuild, not a new refresh scope: a source cannot
+  enumerate "the documents of one author" when the author is a related owner entity, and
+  Search must not filter stored rows by a payload key it does not own. Widening it is
+  the ingestion owner's statement (`refresh_blog_author_scope`), and the optional
+  `ForumProjectionReconciler::with_blog_source` makes the Forum sweeper do the same for
+  the tenant-wide inbox scopes. A dependency-scoped refresh would need a reference index
+  on `search_documents`; that is recorded as a future option, not as a gap in this
+  decision.
 - `SearchProjectionSource::refresh_scope` has a default, so all fourteen existing
   sources compile unchanged and keep `Entity` semantics; only Forum overrides it.
 - Contract keys that named the deleted file were re-pointed

@@ -1,8 +1,16 @@
 # H-3: Full-text Search — Status: Already Integrated via `rustok-search`
 
 - **Date**: 2026-10-09
-- **Status**: ✅ Already implemented
-- **Owner**: `rustok-search` (projector), `rustok-blog` (events)
+- **Status**: superseded by the 2026-10-25 projection-driver cutover
+- **Owner**: `rustok-search` (storage driver), `rustok-blog` (documents and events)
+- **Superseded by**: `DECISIONS/2026-10-25-search-projection-driver-ownership.md` and the
+  "Blog projection cutover" section of `rustok-search/docs/implementation-plan.md`
+
+> The architecture described below is the state of 2026-10-09 and is kept as history.
+> `BlogSearchProjector` no longer exists: `rustok-blog` owns the documents through
+> `BlogSearchProjectionSource`, Search stores them through `SearchProjectionDriver`, the
+> author name comes from the Profiles port instead of a `users` join, and the indexed
+> corpus is the public Blog corpus (`published` and stamped).
 
 ## Overview
 

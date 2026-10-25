@@ -5,12 +5,11 @@
  *
  * `search_documents` is Search storage, but which rows exist is the owner's decision.
  * That is why the only Search-side writer must be `SearchProjectionDriver`, scoped by
- * `source.source_module()` and never by a hard-coded module name. Pages and Docs were
- * migrated onto the driver and their private copies were deleted; Content/Product and
- * Blog still compose their own statements, and they are listed below so the remaining
- * debt is explicit. A *new* private writer fails this guard instead of spreading
- * silently, and an allowlist entry that stops writing fails too: the list may only
- * shrink.
+ * `source.source_module()` and never by a hard-coded module name. Pages, Docs and Blog
+ * were migrated onto the driver and their private copies were deleted; Content/Product
+ * still composes its own statements, and it is listed below so the remaining debt is
+ * explicit. A *new* private writer fails this guard instead of spreading silently, and
+ * an allowlist entry that stops writing fails too: the list may only shrink.
  *
  * Run: `node scripts/verify/verify-search-projection-writer-boundary.mjs`
  */
@@ -41,12 +40,11 @@ const OWNER_WRITE =
  * writer for one table.
  */
 const remainingPrivateWriters = new Map([
-  ["blog_projector.rs", "Blog documents and the Blog author projection are composed here"],
   ["projector_core.rs", "Content/Product documents are composed here"],
 ]);
 
 /** Files that must not come back: they were copies of the driver. */
-const retiredProjectors = ["pages_projector.rs", "docs_projector.rs"];
+const retiredProjectors = ["pages_projector.rs", "docs_projector.rs", "blog_projector.rs"];
 
 /** Module names the neutral driver must never name. */
 const moduleLiterals = ['"forum', '"blog', '"pages', '"docs', "forum_", "blog_", "pages_", "docs_"];
@@ -130,7 +128,11 @@ for (const marker of [
     fail(`${srcDir}/ingestion.rs is missing the neutral dispatch helper: ${marker}`);
   }
 }
-for (const retired of ["PagesSearchProjector", "DocsSearchProjector"]) {
+for (const retired of [
+  "PagesSearchProjector",
+  "DocsSearchProjector",
+  "BlogSearchProjector",
+]) {
   if (ingestion.includes(retired)) {
     fail(
       `${srcDir}/ingestion.rs still references ${retired}; the owner source must be ` +
@@ -146,6 +148,6 @@ if (failures.length > 0) {
 } else {
   console.log(
     "Search owns one neutral projection writer; only the documented Content/Product " +
-      "and Blog private statements remain.",
+      "private statements remain.",
   );
 }
