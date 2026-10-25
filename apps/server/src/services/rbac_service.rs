@@ -4,7 +4,7 @@ use tracing::{debug, warn};
 
 use rustok_core::UserRole;
 
-use rustok_api::Permission;
+use rustok_api::{Permission, has_effective_permission};
 use rustok_rbac::PermissionResolver;
 use rustok_telemetry::metrics;
 
@@ -66,6 +66,25 @@ impl RbacService {
     ) -> Result<bool> {
         Self::record_authz_entrypoint_call("has_permission", "library");
 
+        // Answer from the immutable request-scope snapshot when present,
+        // exactly like get_user_permissions/get_user_role: one authority
+        // resolution per request, and an OAuth token can never regain
+        // permissions its scopes removed (the resolver below reads the
+        // persisted set). An invalidated snapshot falls through to the
+        // resolver so post-mutation checks re-read persisted state.
+        if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
+            let allowed = has_effective_permission(&permissions, required_permission);
+            debug!(
+                tenant_id = %tenant_id,
+                user_id = %user_id,
+                required_permission = %required_permission,
+                permissions_count = permissions.len(),
+                allowed,
+                "rbac request-scoped permission check"
+            );
+            return Ok(allowed);
+        }
+
         let outcome = authorize_rbac_request(
             db,
             tenant_id,
@@ -116,6 +135,23 @@ impl RbacService {
     ) -> Result<bool> {
         Self::record_authz_entrypoint_call("has_any_permission", "library");
 
+        if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
+            // Matches policy-engine semantics: empty "any" set fails closed.
+            let allowed = !required_permissions.is_empty()
+                && required_permissions
+                    .iter()
+                    .any(|permission| has_effective_permission(&permissions, permission));
+            debug!(
+                tenant_id = %tenant_id,
+                user_id = %user_id,
+                required_permissions = ?required_permissions,
+                permissions_count = permissions.len(),
+                allowed,
+                "rbac request-scoped any-permission check"
+            );
+            return Ok(allowed);
+        }
+
         let outcome = authorize_rbac_request(
             db,
             tenant_id,
@@ -165,6 +201,21 @@ impl RbacService {
         required_permissions: &[Permission],
     ) -> Result<bool> {
         Self::record_authz_entrypoint_call("has_all_permissions", "library");
+
+        if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
+            let allowed = required_permissions
+                .iter()
+                .all(|permission| has_effective_permission(&permissions, permission));
+            debug!(
+                tenant_id = %tenant_id,
+                user_id = %user_id,
+                required_permissions = ?required_permissions,
+                permissions_count = permissions.len(),
+                allowed,
+                "rbac request-scoped all-permission check"
+            );
+            return Ok(allowed);
+        }
 
         let outcome = authorize_rbac_request(
             db,
