@@ -118,6 +118,38 @@ Open follow-up:
       but not consulted by `SearchIngestionHandler`, and the two implementations must
       stay semantically identical.
 
+## 2026-10-25 Pages and Docs projections use the neutral storage driver
+
+`pages_projector.rs` and `docs_projector.rs` were two near-verbatim copies of
+`projection_driver.rs` with the module name hard-coded and a private staging table
+each. Both files are deleted. `SearchIngestionHandler` now holds one
+`SearchProjectionDriver` per registered owner source (`forum`, `pages`, `docs`), so a
+page or doc entity refresh, a scope rebuild, a module toggle and an entity deletion all
+run through the same transactional storage path the Forum projection already used.
+
+- The driver gained `delete_entity` (delete one entity's documents without asking the
+  source, for a lifecycle event that reports the entity as gone) and one shared
+  `validate_entity_type`; `refresh_entity` and `delete_entity` reject a blank or
+  oversized entity type before touching the database.
+- The driver now rejects a document whose `document_id` is nil. That was the invariant
+  the two deleted projectors enforced locally, and the driver is the only writer, so it
+  belongs to the storage contract.
+- Nothing changes for a caller: `with_all_projection_sources` keeps its signature, the
+  reindex target names (`pages`/`page`, `docs`/`doc`/`doc_page`) and the
+  `TenantModuleToggled` handling are unchanged, and an unregistered source stays a
+  no-op instead of an error. Metric operations become the driver's neutral names with a
+  `source_module` label instead of `pages_projection`/`docs_projection`.
+- The duplicated toggle helpers (`handle_pages_module_toggle`,
+  `handle_docs_module_toggle`, `handle_forum_module_toggle`) collapsed into one
+  `toggle_owner_scope`, and the same for refresh/rebuild/delete, so a fourth owner
+  source does not add a fourth copy of the same dispatch.
+- Still open: `projector_core.rs` (content/product) and `blog_projector.rs` keep their
+  own SQL. The Blog follow-up below is unchanged.
+
+This slice was statically reviewed only: no Rust toolchain ran in the authoring
+environment. The Search/Forum/LINK-FORUM-03 guard family and the crate's source-text
+contracts are the executable part and were updated in the same change.
+
 ## 2026-10-16 Audience Security SPI and Projection Source Decoupling
 
 The Search module generalizes cross-module authorization and ingestion boundaries:

@@ -175,7 +175,7 @@ for (const marker of [
   "ForumReplyStatusChanged",
   '"forum_category"',
   '"forum_topic"',
-  "handle_forum_module_toggle",
+  "toggle_owner_scope(Some(forum_driver), envelope.tenant_id, *enabled)",
   "rebuild_forum_scope",
   "delete_forum_scope",
 ]) {

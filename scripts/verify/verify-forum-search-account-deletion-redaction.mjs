@@ -188,8 +188,8 @@ requireAll(
   ingestion,
   [
     "DomainEvent::UserDeleted { .. }",
-    "self.projection_driver.is_some()",
-    "projector.rebuild_tenant(envelope.tenant_id).await",
+    "self.forum_driver.is_some()",
+    "forum_driver.rebuild_tenant(envelope.tenant_id).await",
     '"rebuild_forum_author_projection"',
     // The shipped design has Search's ingestion handler claim the event (that is what rebuilds the
     // author projection), and the same block requires the handler's `DomainEvent::UserDeleted { .. }`

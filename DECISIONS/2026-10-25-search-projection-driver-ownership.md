@@ -171,6 +171,14 @@ transaction.
 - The stage table rename (`forum_search_projection_stage` to
   `search_projection_stage`) needs no data migration: the table is created and
   dropped inside one transaction and never persists.
+- `pages_projector.rs` and `docs_projector.rs` are deleted: they were copies of the
+  driver with `'pages'`/`'docs'` hard-coded and one staging table each. Pages and Docs
+  now use `SearchProjectionDriver` like Forum, which removed 677 lines of duplicated
+  SQL. The driver gained the one capability those copies had and it did not:
+  `delete_entity`, for a lifecycle event that reports an entity as unpublished or
+  deleted. `projector_core.rs` (content/product) and `blog_projector.rs` are the two
+  remaining private writers; Blog also keeps its own author-projection statement
+  because the module-side source does not expose a dependency-scoped refresh yet.
 - `SearchProjectionSource::refresh_scope` has a default, so all fourteen existing
   sources compile unchanged and keep `Entity` semantics; only Forum overrides it.
 - Contract keys that named the deleted file were re-pointed
@@ -216,7 +224,9 @@ transaction.
 ## Verification
 
 Not compiled and not tested in the sandbox that produced this decision: no Rust
-toolchain is available there, and the change is statically reviewed only.
+toolchain is available there, and the change is statically reviewed only. The same
+holds for the Pages/Docs cutover: it was reviewed against the deleted files line by
+line and pinned by guards, not executed.
 
 Pinned by `node scripts/verify/verify-forum-search-projection.mjs`,
 `verify-forum-search-rebuild-scope-preservation.mjs`,

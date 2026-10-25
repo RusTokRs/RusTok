@@ -289,7 +289,7 @@ requireAll(
     "INSERT INTO search_documents",
     "if self.source.refresh_scope(entity_type) == SearchProjectionRefreshScope::Tenant",
     "return self.rebuild_tenant(tenant_id).await",
-    "self.delete_entity(&tx, tenant_id, entity_type, entity_id).await?",
+    "self.delete_entity_in(&tx, tenant_id, entity_type, entity_id).await?",
   ],
   "production Forum current-state projector",
 );

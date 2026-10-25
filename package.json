@@ -189,6 +189,8 @@
     "verify:search:canonical-url": "node scripts/verify/verify-search-canonical-url-contract.mjs",
     "test:verify:search:canonical-url": "node scripts/verify/verify-search-canonical-url-contract.test.mjs",
     "verify:search:blog-projection": "node scripts/verify/verify-search-blog-projection.mjs",
+    "verify:search:projection-writer": "node scripts/verify/verify-search-projection-writer-boundary.mjs",
+    "test:verify:search:projection-writer": "node scripts/verify/verify-search-projection-writer-boundary.test.mjs",
     "test:verify:search:blog-projection": "node scripts/verify/verify-search-blog-projection.test.mjs",
     "verify:search:fba": "node scripts/verify/verify-search-fba.mjs && npm run verify:search:canonical-url && npm run verify:search:blog-projection && npm run verify:search:fba:runtime-smoke && npm run verify:search:fba:runtime-contract && npm run verify:search:fba:runtime-invocation",
     "test:verify:tenant:admin-boundary": "node scripts/verify/verify-tenant-admin-boundary.test.mjs",

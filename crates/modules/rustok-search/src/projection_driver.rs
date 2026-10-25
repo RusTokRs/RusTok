@@ -121,11 +121,7 @@ impl SearchProjectionDriver {
         entity_id: Uuid,
     ) -> Result<()> {
         self.ensure_postgres()?;
-        if entity_type.trim().is_empty() {
-            return Err(Error::Validation(
-                "Search projection entity type must not be empty".to_string(),
-            ));
-        }
+        validate_entity_type(entity_type)?;
         // The owner declares how wide one entity refresh has to be; Search does not
         // infer it from an entity-type name.
         if self.source.refresh_scope(entity_type) == SearchProjectionRefreshScope::Tenant {
@@ -145,7 +141,7 @@ impl SearchProjectionDriver {
 
         let tx = self.db.begin().await.map_err(Error::Database)?;
         let result = async {
-            self.delete_entity(&tx, tenant_id, entity_type, entity_id)
+            self.delete_entity_in(&tx, tenant_id, entity_type, entity_id)
                 .await?;
             for document in documents {
                 self.validate_document(tenant_id, &document)?;
@@ -162,6 +158,34 @@ impl SearchProjectionDriver {
         .await;
         record_operation(
             "refresh_projection_entity",
+            self.source.source_module(),
+            tenant_id,
+            &result,
+            started_at.elapsed(),
+        );
+        result
+    }
+
+    /// Removes the stored documents of one entity without asking the source.
+    ///
+    /// A lifecycle event that reports the entity as gone (unpublished, deleted) must
+    /// not depend on the source still being able to resolve it: the owner already
+    /// told Search the entity left the public corpus, so the stored rows are deleted
+    /// in the same scoped way a refresh would replace them.
+    pub(crate) async fn delete_entity(
+        &self,
+        tenant_id: Uuid,
+        entity_type: &str,
+        entity_id: Uuid,
+    ) -> Result<()> {
+        self.ensure_postgres()?;
+        validate_entity_type(entity_type)?;
+        let started_at = Instant::now();
+        let result = self
+            .delete_entity_in(&self.db, tenant_id, entity_type, entity_id)
+            .await;
+        record_operation(
+            "delete_projection_entity",
             self.source.source_module(),
             tenant_id,
             &result,
@@ -224,6 +248,11 @@ impl SearchProjectionDriver {
                 "Search projection document must declare a bounded entity type".to_string(),
             ));
         }
+        if document.document_id.is_nil() {
+            return Err(Error::Validation(
+                "Search projection document must reference an owner entity".to_string(),
+            ));
+        }
         if document.document_key.is_empty()
             || document.document_key.len() > 200
             || document.locale.trim().is_empty()
@@ -256,7 +285,7 @@ impl SearchProjectionDriver {
         Ok(())
     }
 
-    async fn delete_entity<C>(
+    async fn delete_entity_in<C>(
         &self,
         conn: &C,
         tenant_id: Uuid,
@@ -279,6 +308,25 @@ impl SearchProjectionDriver {
         conn.execute_raw(statement).await.map_err(Error::Database)?;
         Ok(())
     }
+}
+
+/// Entity types are owner-declared names, not a Search allowlist.
+///
+/// Search only enforces that the name is present and bounded, because an empty or
+/// oversized name cannot be a valid owner contract and would silently widen the
+/// delete scope of a refresh.
+fn validate_entity_type(entity_type: &str) -> Result<()> {
+    if entity_type.trim().is_empty() {
+        return Err(Error::Validation(
+            "Search projection entity type must not be empty".to_string(),
+        ));
+    }
+    if entity_type.len() > 64 {
+        return Err(Error::Validation(
+            "Search projection entity type exceeded storage bounds".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 async fn insert_document<C>(conn: &C, table: &str, document: SearchProjectionDocument) -> Result<()>

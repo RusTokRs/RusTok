@@ -21,8 +21,6 @@ pub mod ingestion;
 pub mod migrations;
 pub mod models;
 pub mod module;
-pub(crate) mod docs_projector;
-pub(crate) mod pages_projector;
 pub mod pg_engine;
 pub mod ports;
 pub mod presets;

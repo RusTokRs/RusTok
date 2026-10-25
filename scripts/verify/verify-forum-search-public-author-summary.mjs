@@ -338,7 +338,7 @@ requireAll(
     "DomainEvent::ProfileUpdated { .. }",
     "DomainEvent::UserDeleted { .. }",
     '"rebuild_forum_author_projection"',
-    "projector.rebuild_tenant(envelope.tenant_id).await",
+    "forum_driver.rebuild_tenant(envelope.tenant_id).await",
   ],
   paths.ingestion,
 );
