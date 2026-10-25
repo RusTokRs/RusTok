@@ -380,6 +380,20 @@ impl AuthLifecycleService {
         let tokens =
             Self::create_session_and_tokens_in_tx(&tx, config, tenant_id, &user, None, None)
                 .await?;
+
+        let event_bus = TransactionalEventBus::new(
+            Arc::new(OutboxTransport::new(ctx.db_clone())) as Arc<dyn EventTransport>,
+        );
+        event_bus
+            .publish_in_tx(
+                &tx,
+                tenant_id,
+                Some(user.id),
+                DomainEvent::UserAccountRegistered { user_id: user.id },
+            )
+            .await
+            .map_err(|error| AuthLifecycleError::Internal(error.into()))?;
+
         tx.commit().await.map_err(AuthLifecycleError::from)?;
 
         Ok((user, tokens))

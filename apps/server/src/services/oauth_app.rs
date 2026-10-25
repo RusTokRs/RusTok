@@ -1013,9 +1013,54 @@ fn validate_app_configuration(
     }
 
     for redirect_uri in redirect_uris {
-        Url::parse(redirect_uri).map_err(|error| {
-            Error::BadRequest(format!("Invalid redirect URI '{redirect_uri}': {error}"))
-        })?;
+        validate_redirect_uri(app_type, redirect_uri)?;
+    }
+
+    Ok(())
+}
+
+/// Redirect URIs are compared byte-for-byte at authorize time, so the
+/// registered value itself must be a safe absolute URI: no fragment
+/// (RFC 6749 section 3.1.2), no user info, TLS everywhere except
+/// loopback (RFC 8252 section 7.3), and private-use schemes only for
+/// native/mobile apps (RFC 8252 section 7.1).
+fn validate_redirect_uri(app_type: &str, redirect_uri: &str) -> Result<()> {
+    let invalid = |reason: &str| {
+        Error::BadRequest(format!("Invalid redirect URI '{redirect_uri}': {reason}"))
+    };
+    let url = Url::parse(redirect_uri).map_err(|error| invalid(&error.to_string()))?;
+
+    if url.fragment().is_some() {
+        return Err(invalid("fragment component is not allowed"));
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(invalid("user info is not allowed"));
+    }
+
+    match url.scheme() {
+        "https" => {
+            if url.host_str().is_none_or(str::is_empty) {
+                return Err(invalid("host is required"));
+            }
+        }
+        "http" => {
+            let host = url.host_str().unwrap_or_default();
+            let loopback = host == "localhost"
+                || host
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|ip| ip.is_loopback());
+            if !loopback {
+                return Err(invalid("http is only allowed for loopback hosts; use https"));
+            }
+        }
+        scheme => {
+            if matches!(scheme, "data" | "javascript" | "file" | "about" | "blob") {
+                return Err(invalid("scheme is not allowed"));
+            }
+            if app_type != "mobile" {
+                return Err(invalid("custom schemes are only allowed for mobile apps"));
+            }
+        }
     }
 
     Ok(())

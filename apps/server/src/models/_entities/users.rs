@@ -11,6 +11,7 @@ pub struct Model {
     pub tenant_id: Uuid,
     pub email: String,
     #[serde(skip_serializing)]
+    #[serde(skip)]
     pub password_hash: String,
     pub name: Option<String>,
     pub status: UserStatus,

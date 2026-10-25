@@ -15,6 +15,7 @@ pub struct Model {
     pub app_type: String,
     pub icon_url: Option<String>,
     pub client_id: Uuid,
+    #[serde(skip)]
     pub client_secret_hash: Option<String>,
     pub redirect_uris: Json,
     pub scopes: Json,

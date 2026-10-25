@@ -8,12 +8,14 @@ pub struct Model {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub user_id: Uuid,
+    #[serde(skip)]
     pub token_hash: String,
     pub ip_address: Option<String>,
     pub user_agent: Option<String>,
     pub last_used_at: Option<DateTimeWithTimeZone>,
     pub expires_at: DateTimeWithTimeZone,
     pub revoked_at: Option<DateTimeWithTimeZone>,
+    #[serde(skip)]
     pub previous_token_hash: Option<String>,
     pub previous_token_revoked_at: Option<DateTimeWithTimeZone>,
     pub absolute_expires_at: Option<DateTimeWithTimeZone>,

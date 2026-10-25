@@ -1,4 +1,9 @@
+use std::sync::Arc;
+
 use chrono::{DateTime, Utc};
+use rustok_core::events::EventTransport;
+use rustok_events::DomainEvent;
+use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
 use sha2::{Digest, Sha256};
 
@@ -168,6 +173,19 @@ impl AuthLifecycleService {
         active.user_id = Set(Some(user.id));
         active
             .update(&tx)
+            .await
+            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+
+        let event_bus = TransactionalEventBus::new(
+            Arc::new(OutboxTransport::new(ctx.db_clone())) as Arc<dyn EventTransport>,
+        );
+        event_bus
+            .publish_in_tx(
+                &tx,
+                tenant_id,
+                Some(user.id),
+                DomainEvent::UserAccountRegistered { user_id: user.id },
+            )
             .await
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
 
