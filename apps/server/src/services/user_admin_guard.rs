@@ -108,7 +108,21 @@ impl UserAdminMutationPort for GuardedUserAdminMutationProvider {
             &[Permission::USERS_CREATE, Permission::USERS_MANAGE],
             "users:create or users:manage required",
         )?;
-        let role = Self::parse_role(command.role.as_deref().unwrap_or("customer"))?;
+        // A role string that is not a built-in role is a tenant-defined
+        // custom role slug: the provider validates its shape, existence
+        // and the actor's authority ceiling; the guard only requires
+        // the manage permission up front.
+        let role = match Self::parse_role(command.role.as_deref().unwrap_or("customer")) {
+            Ok(role) => role,
+            Err(_) => {
+                if !has_effective_permission(&authority, &Permission::USERS_MANAGE) {
+                    return Err(AuthAdminMutationError::Forbidden(
+                        "users:manage required to create users with custom roles".to_string(),
+                    ));
+                }
+                UserRole::Customer
+            }
+        };
         let creates_non_active_user = command
             .status
             .as_deref()
@@ -152,9 +166,13 @@ impl UserAdminMutationPort for GuardedUserAdminMutationProvider {
             ));
         }
         if let Some(role) = command.role.as_deref() {
-            let role = Self::parse_role(role)?;
-            if role != UserRole::Customer {
-                Self::validate_role_grant(context, &authority, &role)?;
+            // Custom role slugs fall through to the provider (the
+            // USERS_MANAGE requirement above already covers them);
+            // built-in role grants keep the hierarchy check here.
+            if let Ok(role) = Self::parse_role(role) {
+                if role != UserRole::Customer {
+                    Self::validate_role_grant(context, &authority, &role)?;
+                }
             }
         }
 
@@ -190,14 +208,26 @@ impl UserAdminMutationPort for GuardedUserAdminMutationProvider {
             &[Permission::USERS_CREATE, Permission::USERS_MANAGE],
             "users:create or users:manage required",
         )?;
-        let role = Self::parse_role(command.role.as_deref().unwrap_or("customer"))?;
-        if role != UserRole::Customer {
-            if !has_effective_permission(&authority, &Permission::USERS_MANAGE) {
-                return Err(AuthAdminMutationError::Forbidden(
-                    "users:manage required to invite privileged users".to_string(),
-                ));
+        match Self::parse_role(command.role.as_deref().unwrap_or("customer")) {
+            Ok(role) => {
+                if role != UserRole::Customer {
+                    if !has_effective_permission(&authority, &Permission::USERS_MANAGE) {
+                        return Err(AuthAdminMutationError::Forbidden(
+                            "users:manage required to invite privileged users".to_string(),
+                        ));
+                    }
+                    Self::validate_role_grant(context, &authority, &role)?;
+                }
             }
-            Self::validate_role_grant(context, &authority, &role)?;
+            Err(_) => {
+                // Tenant-defined custom role slug: the provider
+                // validates shape, existence and the issuer ceiling.
+                if !has_effective_permission(&authority, &Permission::USERS_MANAGE) {
+                    return Err(AuthAdminMutationError::Forbidden(
+                        "users:manage required to invite users with custom roles".to_string(),
+                    ));
+                }
+            }
         }
 
         self.inner.issue_user_invite(context, command).await

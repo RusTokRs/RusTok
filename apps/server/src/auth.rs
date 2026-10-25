@@ -196,9 +196,18 @@ pub fn encode_invite_token(
     tenant_id: uuid::Uuid,
     email: &str,
     role: rustok_core::UserRole,
+    custom_role_slug: Option<String>,
     ttl_seconds: u64,
 ) -> Result<String> {
-    rustok_auth::encode_invite_token(config, tenant_id, email, role, ttl_seconds).map_err(auth_err)
+    rustok_auth::encode_invite_token(
+        config,
+        tenant_id,
+        email,
+        role,
+        custom_role_slug,
+        ttl_seconds,
+    )
+    .map_err(auth_err)
 }
 
 pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteClaims> {

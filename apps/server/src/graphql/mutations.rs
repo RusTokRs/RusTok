@@ -843,9 +843,7 @@ impl RootMutation {
                 &user_mutation_context(auth, tenant, locale),
                 IssueUserInviteCommand {
                     email: input.email,
-                    role: input
-                        .role
-                        .map(|role| rustok_core::UserRole::from(role).to_string()),
+                    role: input.role,
                 },
             )
             .await

@@ -104,7 +104,9 @@ pub struct CreateUserInput {
 #[derive(InputObject, Debug, Clone)]
 pub struct IssueUserInviteInput {
     pub email: String,
-    pub role: Option<GqlUserRole>,
+    /// Built-in role name (e.g. `admin`) or a tenant-defined custom
+    /// role slug; validated by the user-administration provider.
+    pub role: Option<String>,
 }
 
 #[derive(SimpleObject, Debug, Clone)]

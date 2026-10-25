@@ -673,6 +673,46 @@ async fn load_role_permissions_on<C: sea_orm::ConnectionTrait>(
     Ok(permissions)
 }
 
+/// Validate that an actor may grant a custom role in the future (invite
+/// issuance, where no target user exists yet): the role must exist in
+/// the tenant and every permission it carries must be inside the
+/// actor's effective set — the same authority ceiling
+/// `plan_persisted_custom_role_assignment_on` enforces at assignment
+/// time. Returns the normalized slug.
+pub async fn validate_custom_role_grant_on(
+    db: &sea_orm::DatabaseTransaction,
+    tenant_id: Uuid,
+    actor_role: &UserRole,
+    actor_permissions: &[rustok_api::Permission],
+    requested_role_slug: &str,
+) -> Result<String, RbacRolePersistenceError> {
+    let slug = normalize_role_slug(requested_role_slug);
+    if slug.parse::<UserRole>().is_ok() {
+        return Err(
+            RbacRoleMutationPolicyError::BuiltInRoleRequiresCanonicalPath(slug).into(),
+        );
+    }
+    if *actor_role == UserRole::Customer {
+        return Err(RbacRoleMutationPolicyError::CannotAssignPeerOrHigherRole.into());
+    }
+
+    let role_id = load_role_row_on(db, tenant_id, &slug)
+        .await?
+        .ok_or_else(|| RbacRolePersistenceError::RoleNotFound(slug.clone()))?;
+
+    for permission in load_role_permissions_on(db, tenant_id, role_id).await? {
+        if !crate::has_effective_permission_in_set(actor_permissions, &permission) {
+            return Err(RbacRoleMutationPolicyError::CustomRequestAuthorityCeiling {
+                role_slug: slug.clone(),
+                permission,
+            }
+            .into());
+        }
+    }
+
+    Ok(slug)
+}
+
 /// Build the custom-role assignment plan from owner-read facts under the
 /// host's transaction. Returns `Ok(None)` when the target already holds
 /// exactly the requested role (no-op: no event, no generation advance).

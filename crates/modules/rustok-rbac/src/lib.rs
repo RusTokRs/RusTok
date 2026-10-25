@@ -69,6 +69,7 @@ pub use role_mutation::{
     RbacUserRoleMutationRequest, count_remaining_active_super_admins_on,
     ensure_user_authority_continuity_on, has_exact_tenant_role_assignment_on,
     plan_persisted_custom_role_assignment_on, plan_persisted_user_role_mutation_on,
+    validate_custom_role_grant_on,
     plan_user_role_mutation, replace_persisted_user_role_by_slug_on,
     replace_persisted_user_role_on, require_request_role_grant, require_role_assignment,
     require_user_management,

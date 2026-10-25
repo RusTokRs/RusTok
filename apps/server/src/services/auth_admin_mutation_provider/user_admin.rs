@@ -14,7 +14,7 @@ use rustok_rbac::{
     RbacCustomRoleAssignmentPlan, RbacCustomRoleAssignmentRequest, RbacRoleMutationOutcome,
     RbacRoleMutationPlan, RbacRoleMutationPolicyError, RbacUserRoleMutationRequest,
     plan_persisted_custom_role_assignment_on, plan_persisted_user_role_mutation_on,
-    replace_persisted_user_role_by_slug_on,
+    replace_persisted_user_role_by_slug_on, validate_custom_role_grant_on,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter,
@@ -154,6 +154,31 @@ fn map_custom_field_error(error: rustok_core::field_schema::FlexError) -> AuthAd
             )
         }
         other => super::internal_admin_error(other),
+    }
+}
+
+/// Resolve an admin-supplied role string to a built-in role or a
+/// tenant-defined custom role slug layered over the baseline customer
+/// membership. A malformed slug is a validation error rather than a
+/// silent downgrade to customer.
+fn parse_requested_role(
+    raw_role: &str,
+) -> Result<(UserRole, Option<String>), AuthAdminMutationError> {
+    match parse_user_role(raw_role) {
+        Ok(role) => Ok((role, None)),
+        Err(_) => {
+            let slug = raw_role.trim().to_lowercase();
+            let valid = (2..=64).contains(&slug.len())
+                && slug
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+            if !valid {
+                return Err(AuthAdminMutationError::Validation(format!(
+                    "unsupported user role: {raw_role}"
+                )));
+            }
+            Ok((UserRole::Customer, Some(slug)))
+        }
     }
 }
 
@@ -362,27 +387,10 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         )
         .await?;
 
-        let raw_role = command.role.as_deref().unwrap_or("customer");
-        let parsed_role = parse_user_role(raw_role).ok();
-        let custom_slug = match parsed_role.as_ref() {
-            Some(_) => None,
-            None => {
-                let slug = raw_role.trim().to_lowercase();
-                let valid = (2..=64).contains(&slug.len())
-                    && slug
-                        .chars()
-                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
-                if !valid {
-                    return Err(AuthAdminMutationError::Validation(format!(
-                        "unsupported user role: {raw_role}"
-                    )));
-                }
-                Some(slug)
-            }
-        };
         // Custom roles are layered onto the baseline customer membership
         // inside the creation transaction below.
-        let role = parsed_role.unwrap_or(UserRole::Customer);
+        let (role, custom_slug) =
+            parse_requested_role(command.role.as_deref().unwrap_or("customer"))?;
         let status = command
             .status
             .as_deref()
@@ -960,16 +968,20 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         )
         .await?;
 
-        // Invites carry a built-in role in the signed token; a custom
-        // role slug is rejected rather than silently downgraded.
-        let role = parse_user_role(command.role.as_deref().unwrap_or("customer"))?;
-        if role != UserRole::Customer {
+        // Built-in roles ride in the token directly; a tenant-defined
+        // custom role is carried as a slug layered over the baseline
+        // customer membership at acceptance (same model as create).
+        let (role, custom_slug) =
+            parse_requested_role(command.role.as_deref().unwrap_or("customer"))?;
+        if custom_slug.is_some() || role != UserRole::Customer {
             self.authorize_user(
                 context,
                 &[Permission::USERS_MANAGE],
                 "users:manage required to invite privileged users",
             )
             .await?;
+        }
+        if role != UserRole::Customer {
             self.ensure_role_assignment_allowed(context, &role).await?;
         }
 
@@ -981,18 +993,46 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             context.tenant_id,
             &email,
             role.clone(),
+            custom_slug.clone(),
             INVITE_TOKEN_TTL_SECS,
         )
         .map_err(super::internal_admin_error)?;
 
         let now = Utc::now();
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
+
+        // The custom-role ceiling is validated at issuance under the
+        // issuer's current authority: the role must exist in this
+        // tenant and the issuer must effectively hold every permission
+        // it would hand out when the invite is accepted.
+        let ledger_role = if let Some(slug) = custom_slug.as_deref() {
+            let actor_role = self.actor_role(context).await?;
+            let actor_permissions =
+                permissions_for(&context.tenant_id, &context.actor_id).ok_or_else(|| {
+                    AuthAdminMutationError::Forbidden(
+                        "user administration requires a request-bound permission snapshot"
+                            .to_string(),
+                    )
+                })?;
+            validate_custom_role_grant_on(
+                &tx,
+                context.tenant_id,
+                &actor_role,
+                &actor_permissions,
+                slug,
+            )
+            .await
+            .map_err(super::super_admin_guard::persistence_error)?
+        } else {
+            role.to_string()
+        };
+
         let invite = auth_invites::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(context.tenant_id),
             token_hash: Set(hex::encode(Sha256::digest(token.as_bytes()))),
             email: Set(email),
-            role: Set(role.to_string()),
+            role: Set(ledger_role),
             issued_by: Set(Some(context.actor_id)),
             expires_at: Set(
                 (now + chrono::Duration::seconds(INVITE_TOKEN_TTL_SECS as i64)).into(),

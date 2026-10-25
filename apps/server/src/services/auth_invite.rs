@@ -11,6 +11,7 @@ use crate::auth::{AuthConfig, decode_invite_token, normalize_email};
 use crate::error::Error;
 use crate::models::{auth_invite_consumptions, auth_invites, users};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
+use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 #[derive(Debug)]
@@ -85,6 +86,10 @@ impl AuthLifecycleService {
         .await
         .map_err(map_lifecycle_error)?;
         let role = claims.role;
+        let custom_role_slug = claims.custom_role_slug.clone();
+        let ledger_role = custom_role_slug
+            .clone()
+            .unwrap_or_else(|| role.to_string());
         let token_hash = hex::encode(Sha256::digest(token.as_bytes()));
         let consumption_id = uuid::Uuid::new_v4();
         let consumed_at = Utc::now();
@@ -117,7 +122,7 @@ impl AuthLifecycleService {
             tenant_id: Set(tenant_id),
             token_hash: Set(token_hash.clone()),
             email: Set(email.clone()),
-            role: Set(role.to_string()),
+            role: Set(ledger_role),
             user_id: Set(None),
             expires_at: Set(expires_at.into()),
             consumed_at: Set(consumed_at.into()),
@@ -156,6 +161,32 @@ impl AuthLifecycleService {
                     .map_err(|rollback| InviteAcceptanceError::Internal(rollback.into()))?;
                 return Err(map_lifecycle_error(error));
             }
+        };
+
+        // Layer the tenant-defined role over the baseline customer
+        // membership created above. The issuer's authority ceiling was
+        // validated at issuance; acceptance only needs the role to
+        // still exist. If it was deleted meanwhile this fails closed
+        // and the transaction rollback leaves the invite unconsumed,
+        // so it can be retried after repair or revoked by an admin.
+        let role = if let Some(slug) = custom_role_slug.as_deref() {
+            rustok_rbac::replace_persisted_user_role_by_slug_on(&tx, tenant_id, user.id, slug)
+                .await
+                .map_err(|error| {
+                    tracing::error!(
+                        %error,
+                        role_slug = slug,
+                        "invite custom role assignment failed"
+                    );
+                    InviteAcceptanceError::Internal(Error::InternalServerError)
+                })?;
+            let permissions =
+                RbacService::get_user_permissions_authoritative(&tx, &tenant_id, &user.id)
+                    .await
+                    .map_err(InviteAcceptanceError::Internal)?;
+            rustok_core::infer_user_role_from_permissions(&permissions)
+        } else {
+            role
         };
 
         let reservation = auth_invite_consumptions::Entity::find_by_id(consumption_id)
