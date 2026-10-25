@@ -71,27 +71,23 @@ impl AuthUserBootstrapDbWriter {
         let backend = db.get_database_backend();
         ensure_supported_backend(backend)?;
         if request.tenant_id.is_nil() {
-            return Err(AuthLifecycleMutationError::Internal(
+            return Err(AuthLifecycleMutationError::Validation(
                 "tenant_id must not be nil for user bootstrap".to_string(),
             ));
         }
-        let email = normalize_bootstrap_email(&request.email);
-        if email.is_empty() {
-            return Err(AuthLifecycleMutationError::Internal(
-                "email must not be empty for user bootstrap".to_string(),
-            ));
-        }
-        if request.password.is_empty() {
-            return Err(AuthLifecycleMutationError::Internal(
-                "password must not be empty for user bootstrap".to_string(),
-            ));
-        }
-        let name = request.name.trim();
-        if name.is_empty() {
-            return Err(AuthLifecycleMutationError::Internal(
-                "name must not be empty for user bootstrap".to_string(),
-            ));
-        }
+        let email = normalize_email(&request.email).map_err(bootstrap_validation_error)?;
+        let name = normalize_display_name(Some(&request.name))
+            .map_err(bootstrap_validation_error)?
+            .ok_or_else(|| {
+                AuthLifecycleMutationError::Validation(
+                    "name must not be empty for user bootstrap".to_string(),
+                )
+            })?;
+        // Bootstrap identities (installer/superadmin seeds) are the most
+        // privileged accounts in the system; they must satisfy the same
+        // password policy as any other new credential.
+        validate_password_policy(&request.password, DEFAULT_MIN_PASSWORD_LENGTH_CHARS)
+            .map_err(bootstrap_validation_error)?;
         tracing::debug!(tenant_id = %request.tenant_id, "Ensuring auth user bootstrap identity");
         if let Some(existing) = Self::find_user_on(db, request.tenant_id, &email).await? {
             return Ok(existing);

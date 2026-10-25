@@ -447,6 +447,7 @@ mod tests {
             algorithm: JwtAlgorithm::HS256,
             rsa_private_key_pem: None,
             rsa_public_key_pem: None,
+            min_password_length: crate::credentials::DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
         }
     }
 

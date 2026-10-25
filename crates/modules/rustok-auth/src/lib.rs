@@ -48,7 +48,14 @@ pub use config::{
     AuthConfig, AuthSettingsOverrides, JwtAlgorithm, build_auth_config, build_auth_config_with_env,
     validate_auth_config,
 };
-pub use credentials::{generate_refresh_token, hash_password, hash_refresh_token, verify_password};
+pub use credentials::{
+    DEFAULT_MIN_PASSWORD_LENGTH_CHARS, MAX_MIN_PASSWORD_LENGTH_CHARS, MAX_PASSWORD_LENGTH_BYTES,
+    MIN_PASSWORD_LENGTH_FLOOR_CHARS, generate_refresh_token, hash_password, hash_refresh_token,
+    validate_password_policy, verify_password,
+};
+pub use validation::{
+    MAX_DISPLAY_NAME_CHARS, MAX_EMAIL_LENGTH_CHARS, normalize_display_name, normalize_email,
+};
 pub use error::AuthError;
 pub use jwt::{
     Claims, EmailVerificationClaims, InviteClaims, OauthAccessTokenInput, PasswordResetClaims,

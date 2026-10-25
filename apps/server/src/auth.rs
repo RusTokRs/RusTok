@@ -244,6 +244,7 @@ pub fn auth_err(err: AuthError) -> Error {
         AuthError::InvalidResetToken
         | AuthError::InvalidVerificationToken
         | AuthError::InvalidInviteToken => Error::Unauthorized(err.to_string()),
+        AuthError::Validation(message) => Error::Validation(message),
         AuthError::TokenEncodingFailed
         | AuthError::PasswordHashFailed
         | AuthError::RefreshTokenGenerationFailed => Error::Message(format!("auth error: {err}")),

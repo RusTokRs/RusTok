@@ -1,6 +1,10 @@
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 
+use crate::credentials::{
+    DEFAULT_MIN_PASSWORD_LENGTH_CHARS, MAX_MIN_PASSWORD_LENGTH_CHARS,
+    MIN_PASSWORD_LENGTH_FLOOR_CHARS,
+};
 use crate::error::{AuthError, Result};
 
 const DEFAULT_ACCESS_EXPIRATION_SECS: u64 = 900; // 15 minutes
@@ -110,6 +114,11 @@ impl AuthConfig {
         self.rsa_public_key_pem = Some(public_key_pem.into());
         self
     }
+
+    pub fn with_min_password_length(mut self, min_password_length: usize) -> Self {
+        self.min_password_length = min_password_length;
+        self
+    }
 }
 
 /// Helper for loading auth settings from nested YAML `settings.rustok.auth`.
@@ -143,6 +152,7 @@ impl std::fmt::Debug for AuthSettingsOverrides {
             )
             .field("rsa_private_key_env", &self.rsa_private_key_env)
             .field("rsa_public_key_env", &self.rsa_public_key_env)
+            .field("min_password_length", &self.min_password_length)
             .finish()
     }
 }
@@ -395,6 +405,48 @@ mod tests {
         assert_eq!(config.algorithm, JwtAlgorithm::HS256);
         assert_eq!(config.access_expiration, 900);
         assert_eq!(config.refresh_expiration, DEFAULT_REFRESH_EXPIRATION_SECS);
+        assert_eq!(
+            config.min_password_length,
+            DEFAULT_MIN_PASSWORD_LENGTH_CHARS
+        );
+    }
+
+    #[test]
+    fn build_auth_config_applies_min_password_length_override() {
+        let config = build_auth_config_with_env(
+            secret(),
+            900,
+            AuthSettingsOverrides {
+                min_password_length: Some(16),
+                ..AuthSettingsOverrides::default()
+            },
+            |_| panic!("env resolver should not be called"),
+        )
+        .expect("auth config");
+
+        assert_eq!(config.min_password_length, 16);
+    }
+
+    #[test]
+    fn build_auth_config_rejects_min_password_length_outside_bounds() {
+        for invalid in [
+            MIN_PASSWORD_LENGTH_FLOOR_CHARS - 1,
+            MAX_MIN_PASSWORD_LENGTH_CHARS + 1,
+        ] {
+            assert!(
+                build_auth_config_with_env(
+                    secret(),
+                    900,
+                    AuthSettingsOverrides {
+                        min_password_length: Some(invalid),
+                        ..AuthSettingsOverrides::default()
+                    },
+                    |_| panic!("env resolver should not be called"),
+                )
+                .is_err(),
+                "min_password_length {invalid} must be rejected"
+            );
+        }
     }
 
     #[test]
