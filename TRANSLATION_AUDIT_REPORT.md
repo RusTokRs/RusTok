@@ -314,3 +314,11 @@ node scripts/verify/verify-db-multilingual-contract.mjs
 Все P0 закрыты, P1 закрыты, P2.1 частично (централизация ключа). Остаток P2 (job lifecycle metric, full_rescan limit, clippy deny) — follow-up, неблокирующие.
 
 Верификация: `git log` 3 коммита, файлы `idempotency.rs` + миграция добавлены, дифф 17 файлов.
+### Итерация 4 — наблюдаемость и явные ограничения (e36d941 / d2733ab)
+* `observability.rs`: добавлен `rustok_translation_workflow_job_lifecycle_total{transition}` (created/cancelled/completed/...) — контент-free системная метрика поверх tenant-авторизованных progress-read моделей (§4.4). `checkpoint_age` теперь clamped к `[0, 30d]` с `unwrap_or(0)` и отображением в фиксированные bucket'ы, исключая unbounded `+Inf`.
+* `workflow.rs`: `create_job` → `created`, `cancel_job` → `cancelled`, `complete_job_if_terminal` → `completed` — точки эмиссии lifecycle-метрики.
+* `README.md`: добавлен раздел `## Known Limitations / Pending Implementation` (5 пунктов: cross-tenant gauge omission, tenant-serialized retention scan, provider-free recovery invariant, PRAGMA busy_timeout scope, opaque cursor alphabet) — требование AGENTS.md §14 Explicit Incompleteness выполнено.
+* `lib.rs`: включён `#![deny(clippy::unwrap_used, clippy::expect_used)]` и `#![doc = include_str!("../CRATE_API.md")]` — соблюдён §5 Crate Contract Documentation и §14 no-unwrap-production; существующие `expect` в `TranslationObservabilityMetrics::new()` помечены `#[allow(clippy::expect_used)]` с обоснованием (метрики инициализируются единожды, инвариант — валидные Opts/HistogramOpts).
+
+Верификация: `grep -rn \".unwrap()\"` в `src/` вне `#[cfg(test)]` — 0 вхождений; `grep -rn OpaqueRevision` charset подтверждён `[A-Za-z0-9._:-]`; `busy_timeout` подтверждён; `IdempotencyKey::require` делегирование подтверждено в 11 helpers; `git push` e36d941→d2733ab — ветка чистая.
+
