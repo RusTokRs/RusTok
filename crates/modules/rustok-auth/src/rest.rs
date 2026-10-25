@@ -240,6 +240,10 @@ pub struct ConsentRequest {
     pub state: Option<String>,
     pub code_challenge: String,
     pub code_challenge_method: Option<String>,
+    /// Server-issued CSRF token binding the rendered consent form to
+    /// the signed-in user and the exact authorization parameters.
+    /// Submissions without a valid token are rejected.
+    pub consent_csrf: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
