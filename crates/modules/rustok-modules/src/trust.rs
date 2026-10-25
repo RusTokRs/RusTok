@@ -132,6 +132,16 @@ pub struct TrustPolicyRevision {
     pub capability_grant_revision: u64,
 }
 
+/// Policy revisions against which already-admitted evidence is judged for
+/// staleness and refreshed. The concrete capability grant revision is
+/// deliberately absent: reverification re-evaluates trust evidence under
+/// current policy and never re-selects an installation's grants.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AdmissionReverificationPolicyRevision {
+    pub trust_policy_revision: u64,
+    pub capability_policy_revision: u64,
+}
+
 /// Redacted worker decision. Evidence references address immutable attestations
 /// or bundles; admission records never persist verifier command output.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

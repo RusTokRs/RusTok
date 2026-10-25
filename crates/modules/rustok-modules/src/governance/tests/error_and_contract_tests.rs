@@ -88,6 +88,15 @@ fn governance_error_categories_and_codes_are_stable() {
 }
 
 #[test]
+fn next_attempt_number_rejects_stored_overflow() {
+    assert_eq!(next_attempt_number(0).expect("first attempt"), 1);
+    assert_eq!(next_attempt_number(41).expect("next attempt"), 42);
+    assert!(next_attempt_number(-1).is_err());
+    assert!(next_attempt_number(i64::from(i32::MAX)).is_err());
+    assert!(next_attempt_number(i64::MAX).is_err());
+}
+
+#[test]
 fn publish_request_contract_accepts_transport_ui_object_and_derives_warnings() {
     let command = publish_request_create_command();
 

@@ -1,4 +1,9 @@
 //! Idempotent operation receipts for releases, owners, artifacts, and validations.
+//!
+//! Governance replay identity is the aggregate, idempotency key, semantic
+//! command fields, and the authenticated actor/authority boundary. Trace,
+//! correlation, and free-text reason values are stored as audit evidence but
+//! are not replay identity, so a retry may carry fresh observability context.
 
 use sea_orm::{ConnectionTrait, DatabaseTransaction, Statement, Value};
 
@@ -53,23 +58,11 @@ pub(crate) async fn release_yank_replay(
         .try_get::<String>("", "actor_id")
         .map_err(store_error)?
         != receipt.context.actor_id.to_string()
-        || existing
-            .try_get::<String>("", "trace_id")
-            .map_err(store_error)?
-            != receipt.context.trace_id
-        || existing
-            .try_get::<String>("", "correlation_id")
-            .map_err(store_error)?
-            != receipt.context.correlation_id.to_string()
         || stored_actor != *receipt.actor_principal
         || existing
             .try_get::<bool>("", "actor_can_manage_modules")
             .map_err(store_error)?
             != receipt.actor_can_manage_modules
-        || existing
-            .try_get::<String>("", "reason")
-            .map_err(store_error)?
-            != receipt.reason
         || existing
             .try_get::<String>("", "reason_code")
             .map_err(store_error)?
@@ -125,6 +118,112 @@ pub(crate) async fn record_release_yank_receipt(
     Ok(())
 }
 
+pub(crate) struct ReleaseUnyankReceipt<'a> {
+    pub(crate) release_id: &'a str,
+    pub(crate) context: &'a ModuleCommandContext,
+    pub(crate) actor_principal: &'a serde_json::Value,
+    pub(crate) actor_can_manage_modules: bool,
+    pub(crate) reason: &'a str,
+    pub(crate) reason_code: &'a str,
+}
+
+pub(crate) async fn release_unyank_replay(
+    tx: &DatabaseTransaction,
+    backend: SupportedBackend,
+    receipt: &ReleaseUnyankReceipt<'_>,
+) -> Result<bool, ModuleGovernanceError> {
+    let mark = |n| backend.placeholder(n);
+    let existing = tx
+        .query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            format!(
+                "SELECT CAST(actor_id AS TEXT) AS actor_id, \
+                 CAST(actor_principal AS TEXT) AS actor_principal, actor_can_manage_modules, \
+                 reason, reason_code FROM registry_release_unyank_operations \
+                 WHERE release_id = {} AND idempotency_key = {}",
+                mark(1),
+                mark(2),
+            ),
+            vec![
+                receipt.release_id.to_string().into(),
+                backend.uuid_value(receipt.context.idempotency_key),
+            ],
+        ))
+        .await
+        .map_err(store_error)?;
+    let Some(existing) = existing else {
+        return Ok(false);
+    };
+    let stored_actor: serde_json::Value = serde_json::from_str(
+        &existing
+            .try_get::<String>("", "actor_principal")
+            .map_err(store_error)?,
+    )
+    .map_err(store_error)?;
+    if existing
+        .try_get::<String>("", "actor_id")
+        .map_err(store_error)?
+        != receipt.context.actor_id.to_string()
+        || stored_actor != *receipt.actor_principal
+        || backend
+            .bool_from_row(&existing, "actor_can_manage_modules")
+            .map_err(store_error)?
+            != receipt.actor_can_manage_modules
+        || existing
+            .try_get::<String>("", "reason_code")
+            .map_err(store_error)?
+            != receipt.reason_code
+    {
+        return Err(ModuleGovernanceError::ReleaseUnyankIdempotencyConflict);
+    }
+    Ok(true)
+}
+
+pub(crate) async fn record_release_unyank_receipt(
+    infrastructure: &ControlPlaneInfrastructure,
+    tx: &DatabaseTransaction,
+    backend: SupportedBackend,
+    now: &str,
+    receipt: &ReleaseUnyankReceipt<'_>,
+) -> Result<(), ModuleGovernanceError> {
+    let mark = |n| backend.placeholder(n);
+    tx.execute_raw(Statement::from_sql_and_values(
+        backend.db_backend(),
+        format!(
+            "INSERT INTO registry_release_unyank_operations \
+             (operation_id, release_id, idempotency_key, actor_id, trace_id, correlation_id, \
+              actor_principal, actor_can_manage_modules, reason, reason_code, resulting_status, \
+              committed_at) \
+             VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'active', {now})",
+            mark(1),
+            mark(2),
+            mark(3),
+            mark(4),
+            mark(5),
+            mark(6),
+            mark(7),
+            mark(8),
+            mark(9),
+            mark(10),
+        ),
+        vec![
+            backend.uuid_value(infrastructure.new_id()),
+            receipt.release_id.to_string().into(),
+            backend.uuid_value(receipt.context.idempotency_key),
+            backend.uuid_value(receipt.context.actor_id),
+            receipt.context.trace_id.clone().into(),
+            backend.uuid_value(receipt.context.correlation_id),
+            Value::Json(Some(Box::new(receipt.actor_principal.clone()))),
+            backend.bool_value(receipt.actor_can_manage_modules),
+            receipt.reason.to_string().into(),
+            receipt.reason_code.to_string().into(),
+        ],
+    ))
+    .await
+    .map_err(store_error)?;
+    Ok(())
+}
+
 pub(crate) struct OwnerTransferReceipt<'a> {
     pub(crate) slug: &'a str,
     pub(crate) context: &'a ModuleCommandContext,
@@ -158,24 +257,12 @@ pub(crate) async fn owner_transfer_replay(
         .try_get::<String>("", "actor_id")
         .map_err(store_error)?
         != receipt.context.actor_id.to_string()
-        || existing
-            .try_get::<String>("", "trace_id")
-            .map_err(store_error)?
-            != receipt.context.trace_id
-        || existing
-            .try_get::<String>("", "correlation_id")
-            .map_err(store_error)?
-            != receipt.context.correlation_id.to_string()
         || json("new_owner_principal")? != *receipt.new_owner_principal
         || json("actor_principal")? != *receipt.actor_principal
         || existing
             .try_get::<bool>("", "actor_can_manage_modules")
             .map_err(store_error)?
             != receipt.actor_can_manage_modules
-        || existing
-            .try_get::<String>("", "reason")
-            .map_err(store_error)?
-            != receipt.reason
         || existing
             .try_get::<String>("", "reason_code")
             .map_err(store_error)?
@@ -246,14 +333,6 @@ pub(crate) async fn author_signature_evidence_replay(
             .try_get::<String>("", "actor_id")
             .map_err(store_error)?
             != receipt.command.context.actor_id.to_string()
-        || existing
-            .try_get::<String>("", "trace_id")
-            .map_err(store_error)?
-            != receipt.command.context.trace_id
-        || existing
-            .try_get::<String>("", "correlation_id")
-            .map_err(store_error)?
-            != receipt.command.context.correlation_id.to_string()
         || actor_principal != receipt.command.actor_principal
         || existing
             .try_get::<String>("", "subject_digest_sha256")
@@ -396,14 +475,6 @@ pub(crate) async fn publish_artifact_replay(
             .try_get::<String>("", "actor_id")
             .map_err(store_error)?
             != receipt.command.context.actor_id.to_string()
-        || existing
-            .try_get::<String>("", "trace_id")
-            .map_err(store_error)?
-            != receipt.command.context.trace_id
-        || existing
-            .try_get::<String>("", "correlation_id")
-            .map_err(store_error)?
-            != receipt.command.context.correlation_id.to_string()
         || stored_actor != receipt.command.actor_principal
         || existing
             .try_get::<bool>("", "actor_can_manage_modules")
@@ -518,11 +589,6 @@ pub(crate) async fn validation_job_enqueue_replay(
         != command.expected_revision
         || row.try_get::<String>("", "actor_id").map_err(store_error)?
             != command.context.actor_id.to_string()
-        || row.try_get::<String>("", "trace_id").map_err(store_error)? != command.context.trace_id
-        || row
-            .try_get::<String>("", "correlation_id")
-            .map_err(store_error)?
-            != command.context.correlation_id.to_string()
         || actor != command.actor_principal
         || row
             .try_get::<bool>("", "allow_rejected_retry")
@@ -611,14 +677,6 @@ pub(crate) async fn validation_stage_report_replay(
             .try_get::<String>("", "actor_id")
             .map_err(store_error)?
             != receipt.context.actor_id.to_string()
-        || existing
-            .try_get::<String>("", "trace_id")
-            .map_err(store_error)?
-            != receipt.context.trace_id
-        || existing
-            .try_get::<String>("", "correlation_id")
-            .map_err(store_error)?
-            != receipt.context.correlation_id.to_string()
         || stored_actor != *receipt.actor_principal
         || existing
             .try_get::<String>("", "stage_key")

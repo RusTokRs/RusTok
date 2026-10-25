@@ -362,6 +362,28 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
         );
     }
 
+    if settings.runtime.runs_background_workers()
+        && !runtime_ctx.shared_contains::<crate::services::module_artifact_maintenance::ModuleArtifactMaintenanceHandle>()
+    {
+        match runtime_ctx.shared_get::<rustok_storage::StorageRuntime>() {
+            Some(storage) => {
+                runtime_ctx.shared_insert(
+                    crate::services::module_artifact_maintenance::spawn_module_artifact_maintenance_handle(
+                        runtime_ctx.db_clone(),
+                        storage,
+                        60_000,
+                        stop_rx.clone(),
+                    ),
+                );
+            }
+            None => {
+                tracing::error!(
+                    "Module artifact maintenance requires initialized durable storage; blob and data-object garbage collection are disabled"
+                );
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -450,6 +472,16 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         }
     };
 
+    let module_artifact_maintenance_drain = async {
+        if let Some(worker) = runtime_ctx.shared_take::<crate::services::module_artifact_maintenance::ModuleArtifactMaintenanceHandle>() {
+            match tokio::time::timeout(timeout_duration, worker.join()).await {
+                Ok(Ok(())) => tracing::info!("Module artifact maintenance worker stopped gracefully"),
+                Ok(Err(err)) => tracing::warn!(?err, "Module artifact maintenance worker joined with error"),
+                Err(_) => tracing::warn!("Module artifact maintenance worker shutdown timed out after 5s"),
+            }
+        }
+    };
+
     tokio::join!(
         relay_drain,
         retention_drain,
@@ -457,7 +489,8 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         seo_drain,
         module_work_drain,
         workflow_drain,
-        watchdog_drain
+        watchdog_drain,
+        module_artifact_maintenance_drain
     );
 }
 

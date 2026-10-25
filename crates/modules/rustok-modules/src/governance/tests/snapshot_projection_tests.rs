@@ -424,9 +424,13 @@ async fn request_follow_up_projection_is_request_scoped_and_actor_filtered() {
     );
     let mut changed_attach_replay = upload.clone();
     changed_attach_replay.context.trace_id = "test:changed-artifact-trace".to_string();
+    changed_attach_replay.context.correlation_id = Uuid::new_v4();
     assert_eq!(
-        service.attach_publish_artifact(changed_attach_replay).await,
-        Err(ModuleGovernanceError::PublishRequestArtifactIdempotencyConflict)
+        service
+            .attach_publish_artifact(changed_attach_replay)
+            .await
+            .expect("changed observability context replays attach"),
+        attached
     );
 
     database

@@ -223,7 +223,27 @@ where
         action: SecurityAction,
         command: ModuleArtifactSecurityCommand,
     ) -> Result<ModuleArtifactSecurityReceipt, ModuleArtifactSecurityError> {
-        let request_digest = digest_json(&(action.as_str(), &command)).map_err(digest_error)?;
+        #[derive(Serialize)]
+        struct SemanticFingerprint<'a> {
+            action: &'a str,
+            release: &'a ArtifactReleaseRef,
+            expected_revision: u64,
+            policy_revision: &'a str,
+            reason_code: &'a str,
+        }
+
+        // `reason_detail` is free-text audit evidence and the command context
+        // carries observability metadata; neither changes the security-state
+        // decision. The actor boundary is checked against the stored
+        // operation principal separately.
+        let request_digest = digest_json(&SemanticFingerprint {
+            action: action.as_str(),
+            release: &command.release,
+            expected_revision: command.expected_revision,
+            policy_revision: &command.policy_revision,
+            reason_code: &command.reason_code,
+        })
+        .map_err(digest_error)?;
         if let Some(receipt) =
             load_operation(&self.db, &command.context, action, &request_digest).await?
         {
@@ -652,7 +672,7 @@ async fn load_operation<C: ConnectionTrait>(
     if stored_action != action.as_str()
         || stored_digest != request_digest
         || !valid_platform_command_context(&stored_context)
-        || stored_context != *context
+        || stored_context.actor_id != context.actor_id
     {
         return Err(ModuleArtifactSecurityError::IdempotencyConflict);
     }
@@ -889,12 +909,14 @@ mod tests {
             Some(command.context.trace_id.as_str())
         );
 
-        let mut conflicting_replay = command;
-        conflicting_replay.context.trace_id = "test:changed-trace".to_string();
-        assert!(matches!(
-            service.quarantine(conflicting_replay).await,
-            Err(ModuleArtifactSecurityError::IdempotencyConflict)
-        ));
+        let mut changed_observability_replay = command;
+        changed_observability_replay.context.trace_id = "test:changed-trace".to_string();
+        changed_observability_replay.context.correlation_id = Uuid::new_v4();
+        changed_observability_replay.reason_detail = "retry wording".to_string();
+        service
+            .quarantine(changed_observability_replay)
+            .await
+            .expect("changed observability context replays quarantine");
     }
 
     #[test]

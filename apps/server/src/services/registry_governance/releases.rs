@@ -4,7 +4,8 @@ use crate::services::registry_principal::RegistryPrincipalRef;
 use rustok_modules::{
     ModuleCommandContext, ModuleGovernanceActorContext,
     ModuleGovernancePublishArtifactDownloadSnapshot, ModuleGovernancePublishRequestStatusSnapshot,
-    ModuleOwnerTransferCommand, ModuleReleaseYankCommand, ModuleReleaseYankResult,
+    ModuleOwnerTransferCommand, ModuleReleaseUnyankCommand, ModuleReleaseUnyankResult,
+    ModuleReleaseYankCommand, ModuleReleaseYankResult,
 };
 use std::collections::HashMap;
 
@@ -76,6 +77,33 @@ impl RegistryGovernanceService {
 
         self.release_service()
             .yank_release(ModuleReleaseYankCommand {
+                slug: slug.to_string(),
+                version: version.to_string(),
+                reason: normalized_reason,
+                reason_code: normalized_reason_code,
+                context,
+                actor_principal: authority.principal.to_json_value(),
+                actor_can_manage_modules: authority.can_manage_modules,
+            })
+            .await
+            .map_err(anyhow::Error::new)
+    }
+
+    pub async fn unyank_release(
+        &self,
+        slug: &str,
+        version: &str,
+        reason: &str,
+        reason_code: &str,
+        authority: &RegistryAuthority,
+        context: ModuleCommandContext,
+    ) -> anyhow::Result<ModuleReleaseUnyankResult> {
+        let normalized_reason = normalize_required_reason(reason, "Registry un-yank")?;
+        let normalized_reason_code =
+            normalize_reason_code(reason_code, REGISTRY_UNYANK_REASON_CODES, "Registry un-yank")?;
+
+        self.release_service()
+            .unyank_release(ModuleReleaseUnyankCommand {
                 slug: slug.to_string(),
                 version: version.to_string(),
                 reason: normalized_reason,

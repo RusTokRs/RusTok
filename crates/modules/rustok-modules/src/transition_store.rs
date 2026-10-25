@@ -14,8 +14,9 @@ use uuid::Uuid;
 
 use crate::backend::SupportedBackend;
 use crate::{
-    ConflictFenceSet, GlobalSecurityEpoch, ModuleTransitionCheckpoint, ModuleTransitionState,
-    RetentionHoldKind, RetentionHoldLedger, RetentionHoldRecord, RetentionTarget,
+    ConflictFenceSet, GlobalSecurityEpoch, MAX_EXPIRED_RETENTION_HOLDS_PER_REAP,
+    ModuleTransitionCheckpoint, ModuleTransitionState, RetentionHoldKind, RetentionHoldLedger,
+    RetentionHoldReapReport, RetentionHoldRecord, RetentionTarget,
 };
 
 #[derive(Debug, Error)]
@@ -36,6 +37,8 @@ pub enum TransitionStoreError {
     },
     #[error("Corrupt stored state data: {0}")]
     CorruptData(String),
+    #[error("Retention hold reap limit `{0}` is outside the supported range")]
+    InvalidRetentionHoldReapLimit(usize),
 }
 
 // ============================================================================
@@ -238,7 +241,13 @@ impl TransitionCheckpointStore {
         Ok(Some(checkpoint_from_model(model)?))
     }
 
-    /// Lists all active (non-terminal) module transition checkpoints.
+    /// Lists all unresolved module transition checkpoints.
+    ///
+    /// This includes `InterventionRequired`: automatic progression is
+    /// terminal in that state, but the checkpoint is not resolved until an
+    /// operator completes predecessor recovery (or the transition otherwise
+    /// converges), so operator surfaces must still discover it without
+    /// already knowing its operation ID.
     pub async fn list_active_checkpoints<C: ConnectionTrait>(
         db: &C,
     ) -> Result<Vec<ModuleTransitionCheckpoint>, TransitionStoreError> {
@@ -246,7 +255,8 @@ impl TransitionCheckpointStore {
         active_checkpoints_from_models(models)
     }
 
-    /// Lists active checkpoints from one exact tenant or platform scope.
+    /// Lists unresolved checkpoints from one exact tenant or platform scope,
+    /// including checkpoints waiting for operator intervention.
     pub async fn list_active_checkpoints_for_tenant<C: ConnectionTrait>(
         db: &C,
         tenant_id: Option<Uuid>,
@@ -260,6 +270,31 @@ impl TransitionCheckpointStore {
         };
         active_checkpoints_from_models(query.all(db).await?)
     }
+
+    /// Lists unresolved checkpoints for one module slug in one tenant scope
+    /// **or** the platform scope. This is the tenant-lifecycle fence query:
+    /// a platform transition for the slug changes what every tenant
+    /// resolves, so it must block tenant lifecycle writes exactly like a
+    /// tenant-scoped transition. Scoped to one slug so the fence never
+    /// scans (or materializes) other tenants' checkpoints.
+    pub async fn list_active_checkpoints_for_slug_and_tenant_or_platform<
+        C: ConnectionTrait,
+    >(
+        db: &C,
+        module_slug: &str,
+        tenant_id: Uuid,
+    ) -> Result<Vec<ModuleTransitionCheckpoint>, TransitionStoreError> {
+        use transition_checkpoint_entity::Column;
+
+        let query = transition_checkpoint_entity::Entity::find()
+            .filter(Column::ModuleSlug.eq(module_slug))
+            .filter(
+                sea_orm::Condition::any()
+                    .add(Column::TenantId.eq(tenant_id))
+                    .add(Column::TenantId.is_null()),
+            );
+        active_checkpoints_from_models(query.all(db).await?)
+    }
 }
 
 fn active_checkpoints_from_models(
@@ -268,7 +303,7 @@ fn active_checkpoints_from_models(
     let mut checkpoints = Vec::new();
     for model in models {
         let checkpoint = checkpoint_from_model(model)?;
-        if !checkpoint.state.is_terminal() {
+        if checkpoint.state.is_unresolved() {
             checkpoints.push(checkpoint);
         }
     }
@@ -360,8 +395,7 @@ impl RetentionHoldStore {
         Ok(result.rows_affected > 0)
     }
 
-    /// Loads all active retention hold records from the database.
-    pub async fn list_active_holds<C: ConnectionTrait>(
+    async fn list_holds<C: ConnectionTrait>(
         db: &C,
     ) -> Result<Vec<RetentionHoldRecord>, TransitionStoreError> {
         let models = retention_hold_entity::Entity::find().all(db).await?;
@@ -386,24 +420,73 @@ impl RetentionHoldStore {
         Ok(records)
     }
 
-    /// Loads all active retention holds from the database and constructs a `RetentionHoldLedger`.
+    /// Loads retention holds that still protect their targets now. Expired
+    /// rollout-window rows are durable until the reaper deletes them, but
+    /// they are not active and must not block collection or projections.
+    pub async fn list_active_holds<C: ConnectionTrait>(
+        db: &C,
+    ) -> Result<Vec<RetentionHoldRecord>, TransitionStoreError> {
+        let now = Utc::now();
+        Ok(Self::list_holds(db)
+            .await?
+            .into_iter()
+            .filter(|record| record.is_active_at(now))
+            .collect())
+    }
+
+    /// Loads all active retention holds from the database and constructs a
+    /// `RetentionHoldLedger` with the durable hold identities preserved.
     pub async fn load_active_ledger<C: ConnectionTrait>(
         db: &C,
     ) -> Result<RetentionHoldLedger, TransitionStoreError> {
         let records = Self::list_active_holds(db).await?;
         let mut ledger = RetentionHoldLedger::new();
-        for r in records {
-            ledger.place_hold(r.target, r.kind);
+        for record in records {
+            ledger.insert_record(record).map_err(|error| {
+                TransitionStoreError::CorruptData(format!(
+                    "Invalid retention hold ledger record: {error}"
+                ))
+            })?;
         }
         Ok(ledger)
     }
 
-    /// Releases all active rollout window holds for a given transition operation.
+    /// Deletes a bounded number of expired rollout-window holds. Indefinite
+    /// investigation, audit, legal, and standby holds are never reaped by
+    /// time; their owners must release them explicitly.
+    pub async fn reap_expired_holds<C: ConnectionTrait>(
+        db: &C,
+        now: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<RetentionHoldReapReport, TransitionStoreError> {
+        if limit == 0 || limit > MAX_EXPIRED_RETENTION_HOLDS_PER_REAP {
+            return Err(TransitionStoreError::InvalidRetentionHoldReapLimit(limit));
+        }
+        let records = Self::list_holds(db).await?;
+        let expired = records
+            .iter()
+            .filter(|record| record.is_expired_at(now))
+            .collect::<Vec<_>>();
+        let mut deleted = 0;
+        for record in expired.iter().take(limit) {
+            if Self::delete_hold(db, record.hold_id).await? {
+                deleted += 1;
+            }
+        }
+        Ok(RetentionHoldReapReport {
+            scanned: records.len(),
+            expired: expired.len(),
+            deleted,
+        })
+    }
+
+    /// Releases all rollout window holds for a given transition operation,
+    /// including an elapsed row that the bounded reaper has not deleted yet.
     pub async fn release_holds_for_operation<C: ConnectionTrait>(
         db: &C,
         operation_id: Uuid,
     ) -> Result<u64, TransitionStoreError> {
-        let active = Self::list_active_holds(db).await?;
+        let active = Self::list_holds(db).await?;
         let mut released_count = 0;
         for record in active {
             let matches_op = match &record.kind {

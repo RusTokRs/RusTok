@@ -27,6 +27,24 @@ impl ModuleReleaseYankCommand {
     }
 }
 
+impl ModuleReleaseUnyankCommand {
+    pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
+        if self.slug.trim().is_empty()
+            || self.version.trim().is_empty()
+            || self.reason.trim().is_empty()
+            || !valid_platform_registry_command_context(&self.context, &self.actor_principal)
+        {
+            return Err(ModuleGovernanceError::InvalidUnyankCommand);
+        }
+        if !REGISTRY_UNYANK_REASON_CODES.contains(&self.reason_code.as_str()) {
+            return Err(ModuleGovernanceError::InvalidUnyankReasonCode(
+                self.reason_code.clone(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 impl ModuleOwnerTransferCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.slug.trim().is_empty()
@@ -165,7 +183,10 @@ impl ModulePublishRequestPublicationCommand {
         }
         if let Some(override_evidence) = &self.approval_override {
             if override_evidence.reason.trim().is_empty()
-                || !override_evidence.validation_stages.is_array()
+                || override_evidence
+                    .validation_stages
+                    .as_array()
+                    .is_none_or(|stages| stages.is_empty())
             {
                 return Err(ModuleGovernanceError::InvalidPublishApprovalOverride);
             }
@@ -580,6 +601,41 @@ impl ModuleAuthorSignatureEvidenceCommand {
     }
 }
 
+impl ModuleMarketplaceApprovalEvidenceCommand {
+    pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
+        if self.request_id.trim().is_empty()
+            || self.request_id.len() > MAX_PUBLICATION_REQUEST_ID_BYTES
+            || self.request_id.chars().any(char::is_control)
+            || self.expected_revision < 1
+            || !valid_platform_registry_command_context(&self.context, &self.actor_principal)
+        {
+            return Err(ModuleGovernanceError::InvalidMarketplaceApprovalEvidenceCommand);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn publication_evidence(
+        &self,
+        subject_digest_sha256: String,
+        issuer_identity: String,
+    ) -> ModulePublicationEvidenceCommand {
+        ModulePublicationEvidenceCommand {
+            request_id: self.request_id.clone(),
+            expected_revision: self.expected_revision,
+            authority: ModulePublicationEvidenceAuthority::MarketplaceApproval,
+            evidence_reference: format!(
+                "registry://publish-requests/{}/marketplace-approval/{subject_digest_sha256}",
+                self.request_id
+            ),
+            subject_digest_sha256,
+            issuer_identity,
+            policy_revision: MARKETPLACE_APPROVAL_POLICY_REVISION.to_string(),
+            signature_digest_sha256: None,
+            actor_principal: self.actor_principal.clone(),
+        }
+    }
+}
+
 impl ModuleBuildServiceAttestationCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.expected_revision < 1
@@ -648,7 +704,7 @@ impl ModulePlatformAdmissionCommand {
             || self.evidence.media_type.len() > MAX_PLATFORM_ADMISSION_MEDIA_TYPE_BYTES
             || self.evidence.signer_identity.trim().is_empty()
             || self.evidence.signer_identity.len() > MAX_PUBLICATION_EVIDENCE_IDENTITY_BYTES
-            || !self.evidence.admitted()
+            || !self.evidence.decision().admitted()
         {
             return Err(ModuleGovernanceError::InvalidPlatformAdmissionCommand);
         }

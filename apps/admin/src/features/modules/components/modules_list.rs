@@ -19,7 +19,9 @@ use leptos_router::hooks::{use_navigate, use_query_map};
 #[cfg(target_arch = "wasm32")]
 use leptos_use::use_interval_fn;
 use rustok_api::{MarketplaceRegistryFreshness, MarketplaceRegistryStatus};
-use rustok_api::{ModuleRetentionHoldView, ModuleTransitionCheckpointView};
+use rustok_api::{
+    ModuleRetentionHoldView, ModuleTransitionCheckpointView, ModuleTransitionStateView,
+};
 use rustok_forms::FormState;
 use std::collections::{HashMap, HashSet};
 #[cfg(target_arch = "wasm32")]
@@ -490,7 +492,18 @@ pub fn ModulesList(
             } else if let Ok(active) =
                 transport::fetch_active_transitions(token_val.clone(), tenant_val.clone()).await
             {
-                set_active_transition.set(active.into_iter().next());
+                // The page renders one transition control card. Surface an
+                // operator-attention checkpoint ahead of ordinary in-flight
+                // transitions so it cannot be hidden by list order.
+                let intervention_required = active
+                    .iter()
+                    .find(|checkpoint| {
+                        checkpoint.state == ModuleTransitionStateView::InterventionRequired
+                    })
+                    .cloned();
+                set_active_transition.set(
+                    intervention_required.or_else(|| active.into_iter().next()),
+                );
             }
 
             if let Ok(holds) = transport::fetch_retention_holds(token_val, tenant_val).await {

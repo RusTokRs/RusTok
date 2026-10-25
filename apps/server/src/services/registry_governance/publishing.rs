@@ -2,8 +2,9 @@ use super::*;
 use rustok_modules::{
     ModuleAuthorSignatureEvidenceCommand, ModuleCommandContext, ModuleExternalPrebuiltStageCommand,
     ModuleExternalPrebuiltStageResult, ModuleGovernancePublishRequestStatusSnapshot,
-    ModuleGovernanceRequestSnapshot, ModulePublicationArtifactOrigin,
-    ModulePublishApprovalOverride, ModulePublishArtifactAttachCommand,
+    ModuleGovernanceRequestSnapshot, ModuleMarketplaceApprovalEvidenceCommand,
+    ModulePublicationArtifactOrigin, ModulePublishApprovalOverride,
+    ModulePublishArtifactAttachCommand,
     ModulePublishPlatformBuildStageCommand, ModulePublishPlatformBuildStageResult,
     ModulePublishRequestChangesCommand, ModulePublishRequestCreateCommand,
     ModulePublishRequestHoldCommand, ModulePublishRequestPublicationCommand,
@@ -309,10 +310,25 @@ impl RegistryGovernanceService {
         } else {
             None
         };
+        let expected_revision = if request.request.status == "approved" {
+            self.publication_service()
+                .record_marketplace_approval_evidence(ModuleMarketplaceApprovalEvidenceCommand {
+                    request_id: request.request.id.clone(),
+                    expected_revision: request.request.revision,
+                    context: context.clone(),
+                    actor_can_manage_modules: authority.can_manage_modules,
+                    actor_principal: authority.principal.to_json_value(),
+                })
+                .await
+                .map_err(anyhow::Error::new)?
+                .request_revision
+        } else {
+            request.request.revision
+        };
         self.publication_service()
             .publish_request(ModulePublishRequestPublicationCommand {
                 request_id: request.request.id.clone(),
-                expected_revision: request.request.revision,
+                expected_revision,
                 context,
                 actor_principal: authority.principal.to_json_value(),
                 publisher_principal: effective_publisher,

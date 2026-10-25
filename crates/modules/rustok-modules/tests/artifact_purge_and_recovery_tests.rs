@@ -1069,20 +1069,23 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
             .expect("terminal cutover replay"),
         activated
     );
-    let mut conflict = cutover;
-    conflict.context.correlation_id = Uuid::new_v4();
+    let mut changed_observability_cutover = cutover;
+    changed_observability_cutover.context.correlation_id = Uuid::new_v4();
     assert_eq!(
         data_recovery
-            .execute_cas_cutover(conflict)
+            .execute_cas_cutover(changed_observability_cutover)
             .await
-            .unwrap_err(),
-        PostPurgeRecoveryError::IdempotencyConflict
+            .expect("changed observability context replays cutover"),
+        activated
     );
-    let mut conflict = prepare;
-    conflict.reason = "Changed prepared command".into();
+    let mut changed_reason_prepare = prepare;
+    changed_reason_prepare.reason = "Changed prepared command".into();
     assert_eq!(
-        data_recovery.prepare_recovery(conflict).await.unwrap_err(),
-        PostPurgeRecoveryError::IdempotencyConflict
+        data_recovery
+            .prepare_recovery(changed_reason_prepare)
+            .await
+            .expect("changed free-text reason replays prepare"),
+        staged
     );
     let row=database.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
         "SELECT reference.namespace_instance_id,namespace.state,namespace.namespace_revision,

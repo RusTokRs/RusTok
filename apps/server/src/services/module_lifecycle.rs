@@ -46,8 +46,8 @@ pub enum ModuleOperationRecoveryError {
     OperationNotFound,
     #[error("Module recovery command identity is invalid")]
     InvalidCommandIdentity,
-    #[error("Module operation idempotency key is invalid")]
-    InvalidIdempotencyKey,
+    #[error("Module operation command context is invalid")]
+    InvalidCommandContext,
     #[error("Module operation is not retryable: {0}")]
     NotRetryable(String),
     #[error(
@@ -65,6 +65,8 @@ pub enum ModuleOperationRecoveryError {
     RevisionConflict { expected: u64, current: u64 },
     #[error("Module lifecycle operation is already active")]
     OperationInProgress,
+    #[error("Module lifecycle claim was lost")]
+    ClaimLost,
     #[error("Database error: {0}")]
     Database(#[from] DbErr),
     #[error("Platform module policy error: {0}")]
@@ -77,14 +79,20 @@ pub enum ModuleOperationRecoveryError {
 pub enum ToggleModuleError {
     #[error("Module lifecycle command identity is invalid")]
     InvalidCommandIdentity,
-    #[error("Module lifecycle idempotency key is invalid")]
-    InvalidIdempotencyKey,
+    #[error("Module lifecycle command context is invalid")]
+    InvalidCommandContext,
     #[error("Module lifecycle idempotency key was reused for a different command")]
     IdempotencyConflict,
     #[error("Module lifecycle revision conflict: expected {expected}, current {current}")]
     RevisionConflict { expected: u64, current: u64 },
     #[error("Module lifecycle operation is already active")]
     OperationInProgress,
+    #[error("Module lifecycle operation `{operation_id}` was orphaned")]
+    OperationOrphaned { operation_id: uuid::Uuid },
+    #[error("Module lifecycle claim was lost")]
+    ClaimLost,
+    #[error("Invalid module slug '{0}'")]
+    InvalidModuleSlug(String),
     #[error("Unknown module")]
     UnknownModule,
     /// Core modules are part of the platform kernel and can never be disabled.
@@ -218,11 +226,7 @@ impl ModuleLifecycleService {
             enabled,
             settings: result.settings,
             operation_id: result.operation_id,
-            revision: result.revision.ok_or_else(|| {
-                ToggleModuleError::Policy(
-                    "static module lifecycle command returned no aggregate revision".to_string(),
-                )
-            })?,
+            revision: result.revision,
         })
     }
 
@@ -337,11 +341,7 @@ impl ModuleLifecycleService {
             enabled,
             settings,
             operation_id: result.operation_id,
-            revision: result.revision.ok_or_else(|| {
-                ModuleOperationRecoveryError::Policy(
-                    "static module lifecycle command returned no aggregate revision".to_string(),
-                )
-            })?,
+            revision: result.revision,
         })
     }
 
@@ -485,6 +485,9 @@ async fn resolve_predecessor_settings_schema(
 
 fn map_toggle_validation_error(error: ModuleToggleValidationError) -> ToggleModuleError {
     match error {
+        ModuleToggleValidationError::InvalidModuleSlug(module_slug) => {
+            ToggleModuleError::InvalidModuleSlug(module_slug)
+        }
         ModuleToggleValidationError::UnknownModule => ToggleModuleError::UnknownModule,
         ModuleToggleValidationError::CoreModuleCannotBeDisabled(module_slug) => {
             ToggleModuleError::CoreModuleCannotBeDisabled(module_slug)
@@ -512,21 +515,22 @@ fn map_toggle_execution_error(error: ModuleLifecycleExecutionError) -> ToggleMod
         ModuleLifecycleExecutionError::InvalidCommandIdentity => {
             ToggleModuleError::InvalidCommandIdentity
         }
-        ModuleLifecycleExecutionError::InvalidIdempotencyKey => {
-            ToggleModuleError::InvalidIdempotencyKey
+        ModuleLifecycleExecutionError::InvalidCommandContext(_) => {
+            ToggleModuleError::InvalidCommandContext
         }
         ModuleLifecycleExecutionError::IdempotencyConflict => {
             ToggleModuleError::IdempotencyConflict
         }
-        ModuleLifecycleExecutionError::MissingExpectedRevision => ToggleModuleError::Policy(
-            "static module lifecycle requires an expected revision".to_string(),
-        ),
         ModuleLifecycleExecutionError::RevisionConflict {
             expected, current, ..
         } => ToggleModuleError::RevisionConflict { expected, current },
         ModuleLifecycleExecutionError::OperationInProgress { .. } => {
             ToggleModuleError::OperationInProgress
         }
+        ModuleLifecycleExecutionError::OperationOrphaned { operation_id, .. } => {
+            ToggleModuleError::OperationOrphaned { operation_id }
+        }
+        ModuleLifecycleExecutionError::ClaimLost { .. } => ToggleModuleError::ClaimLost,
         ModuleLifecycleExecutionError::PolicyTransition(error) => ToggleModuleError::Policy(error),
     }
 }
@@ -556,6 +560,9 @@ fn map_lifecycle_writer_error(error: ModuleLifecycleDbWriterError) -> ToggleModu
         ModuleLifecycleDbWriterError::SettingsSnapshotConflict => ToggleModuleError::Policy(
             "module settings changed since the reviewed snapshot".to_string(),
         ),
+        ModuleLifecycleDbWriterError::InvalidSettingsCommand(error) => {
+            ToggleModuleError::Policy(error)
+        }
         ModuleLifecycleDbWriterError::PolicyTransition(error) => ToggleModuleError::Policy(error),
         ModuleLifecycleDbWriterError::OperationReceipt(error) => {
             ToggleModuleError::Policy(error.to_string())
@@ -578,8 +585,8 @@ fn map_lifecycle_writer_recovery_error(
             ModuleLifecycleExecutionError::InvalidCommandIdentity,
         ) => ModuleOperationRecoveryError::InvalidCommandIdentity,
         ModuleLifecycleDbWriterError::Lifecycle(
-            ModuleLifecycleExecutionError::InvalidIdempotencyKey,
-        ) => ModuleOperationRecoveryError::InvalidIdempotencyKey,
+            ModuleLifecycleExecutionError::InvalidCommandContext(_),
+        ) => ModuleOperationRecoveryError::InvalidCommandContext,
         ModuleLifecycleDbWriterError::Lifecycle(
             ModuleLifecycleExecutionError::IdempotencyConflict,
         ) => ModuleOperationRecoveryError::IdempotencyConflict,
@@ -623,6 +630,9 @@ fn map_lifecycle_writer_recovery_error(
                 "module settings changed since the reviewed snapshot".to_string(),
             )
         }
+        ModuleLifecycleDbWriterError::InvalidSettingsCommand(error) => {
+            ModuleOperationRecoveryError::Policy(error)
+        }
         ModuleLifecycleDbWriterError::PolicyTransition(error) => {
             ModuleOperationRecoveryError::Policy(error)
         }
@@ -652,6 +662,9 @@ pub(crate) fn map_lifecycle_writer_settings_error(
         ModuleLifecycleDbWriterError::Settings(error) => map_module_settings_store_error(error),
         ModuleLifecycleDbWriterError::SettingsSnapshotConflict => {
             UpdateModuleSettingsError::SettingsSnapshotConflict
+        }
+        ModuleLifecycleDbWriterError::InvalidSettingsCommand(error) => {
+            UpdateModuleSettingsError::Validation(error)
         }
         ModuleLifecycleDbWriterError::Database(error) => {
             UpdateModuleSettingsError::Database(DbErr::Custom(error))
@@ -720,8 +733,8 @@ fn map_module_recovery_error(error: ModulesRecoveryError) -> ModuleOperationReco
         ModulesRecoveryError::InvalidCommandIdentity => {
             ModuleOperationRecoveryError::InvalidCommandIdentity
         }
-        ModulesRecoveryError::InvalidIdempotencyKey => {
-            ModuleOperationRecoveryError::InvalidIdempotencyKey
+        ModulesRecoveryError::InvalidCommandContext(_) => {
+            ModuleOperationRecoveryError::InvalidCommandContext
         }
         ModulesRecoveryError::NotRetryable(reason) => {
             ModuleOperationRecoveryError::NotRetryable(reason)
@@ -745,6 +758,7 @@ fn map_module_recovery_error(error: ModulesRecoveryError) -> ModuleOperationReco
         ModulesRecoveryError::OperationInProgress => {
             ModuleOperationRecoveryError::OperationInProgress
         }
+        ModulesRecoveryError::ClaimLost => ModuleOperationRecoveryError::ClaimLost,
         ModulesRecoveryError::Persistence(error) => {
             ModuleOperationRecoveryError::Database(DbErr::Custom(error))
         }
@@ -764,8 +778,16 @@ fn map_module_settings_store_error(error: ModuleOperationStoreError) -> UpdateMo
         ModuleOperationStoreError::ModuleNotEnabled(module_slug) => {
             UpdateModuleSettingsError::ModuleNotEnabled(module_slug)
         }
-        ModuleOperationStoreError::Database(error) => {
+        ModuleOperationStoreError::Database(error)
+        | ModuleOperationStoreError::UniqueViolation(error) => {
             UpdateModuleSettingsError::Database(DbErr::Custom(error))
+        }
+        ModuleOperationStoreError::OperationNotFound(_)
+        | ModuleOperationStoreError::InvalidStatusTransition { .. } => {
+            UpdateModuleSettingsError::Policy(
+                "unexpected lifecycle operation transition error during settings persistence"
+                    .to_string(),
+            )
         }
         ModuleOperationStoreError::IdempotencyConflict
         | ModuleOperationStoreError::MissingIdempotencyKey => UpdateModuleSettingsError::Policy(
@@ -814,6 +836,7 @@ mod tests {
         for status in [
             ModuleOperationStatus::Validated,
             ModuleOperationStatus::Running,
+            ModuleOperationStatus::CommittedHookPending,
             ModuleOperationStatus::Committed,
             ModuleOperationStatus::Failed,
         ] {
@@ -842,6 +865,8 @@ mod tests {
         assert_eq!(String::from(ModuleOperationStatus::Running), "running");
         assert!(!ModuleOperationStatus::Validated.is_terminal());
         assert!(!ModuleOperationStatus::Running.is_terminal());
+        assert!(!ModuleOperationStatus::CommittedHookPending.is_terminal());
+        assert!(ModuleOperationStatus::CommittedHookPending.state_committed());
         assert!(ModuleOperationStatus::Committed.is_terminal());
         assert!(ModuleOperationStatus::Failed.is_terminal());
     }

@@ -52,7 +52,8 @@ export function TransitionControlCard({
   const [showHolds, setShowHolds] = useState(false);
 
   const isObserving = checkpoint.state === 'OBSERVING';
-  const isFailed = checkpoint.state === 'FAILED_CLOSED';
+  const isInterventionRequired =
+    checkpoint.state === 'INTERVENTION_REQUIRED';
   const isConverged = checkpoint.state === 'CONVERGED';
   const recoveryLimitReached = checkpoint.recoveryAttemptCount >= 1;
 
@@ -64,7 +65,7 @@ export function TransitionControlCard({
         return 'default';
       case 'RECOVERED_TO_PREDECESSOR':
         return 'secondary';
-      case 'FAILED_CLOSED':
+      case 'INTERVENTION_REQUIRED':
         return 'destructive';
       default:
         return 'outline';
@@ -168,16 +169,17 @@ export function TransitionControlCard({
           </div>
         )}
 
-        {/* Failed Closed Containment Notice */}
-        {isFailed && (
+        {/* Intervention Required Notice */}
+        {isInterventionRequired && (
           <div className='border-destructive/30 bg-destructive/10 text-destructive flex items-start gap-2 rounded-md border p-3 text-xs'>
             <IconShieldLock className='mt-0.5 h-4 w-4 shrink-0' />
             <div>
               <span className='font-semibold'>
-                Permanent Containment (Failed Closed):{' '}
+                Intervention Required:{' '}
               </span>
-              Transition failed closed to protect persistent data and fleet
-              state. Manual operator intervention is required.
+              Automatic transition action stopped, but serving selection was
+              not changed. Explicitly roll back or deactivate the candidate if
+              traffic must move.
             </div>
           </div>
         )}

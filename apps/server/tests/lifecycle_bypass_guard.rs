@@ -405,7 +405,7 @@ fn toggle_graphql_error_mapper_preserves_expected_variant_contract() {
 
     let expected_branches = [
         "ToggleModuleError::InvalidCommandIdentity",
-        "ToggleModuleError::InvalidIdempotencyKey",
+        "ToggleModuleError::InvalidCommandContext",
         "ToggleModuleError::IdempotencyConflict",
         "ToggleModuleError::UnknownModule",
         "ToggleModuleError::CoreModuleCannotBeDisabled(",

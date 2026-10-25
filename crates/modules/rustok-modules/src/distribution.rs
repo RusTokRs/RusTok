@@ -515,7 +515,7 @@ where
     ) -> Result<ModuleStaticDistributionBuildReceipt, ModuleStaticDistributionError> {
         validate_command(&command)?;
         self.authorizer.authorize_build(&command).await?;
-        let request_digest = digest_json(&command).map_err(promotion_error)?;
+        let request_digest = crate::idempotency::semantic_request_digest(&command).map_err(promotion_error)?;
         let transaction = self.db.begin().await.map_err(store_error)?;
         crate::backend::set_platform_scope(&transaction)
             .await
@@ -809,7 +809,7 @@ where
     ) -> Result<ModuleStaticDistributionCompletionReceipt, ModuleStaticDistributionError> {
         validate_completion_command(&command)?;
         self.authorizer.authorize_completion(&command).await?;
-        let completion_digest = digest_json(&command).map_err(promotion_error)?;
+        let completion_digest = crate::idempotency::semantic_request_digest(&command).map_err(promotion_error)?;
         let transaction = self.db.begin().await.map_err(store_error)?;
         crate::backend::set_platform_scope(&transaction)
             .await
@@ -1786,12 +1786,8 @@ async fn reserve_operation(
         .ok_or(ModuleStaticDistributionError::IdempotencyConflict)?;
     let stored_digest: String = row.try_get("", "request_digest").map_err(store_error)?;
     let stored_actor = uuid_from_row(&row, "actor_id", backend).map_err(store_error)?;
-    let stored_trace: String = row.try_get("", "trace_id").map_err(store_error)?;
-    let stored_correlation = uuid_from_row(&row, "correlation_id", backend).map_err(store_error)?;
     if stored_digest != request_digest
         || stored_actor != context.actor_id
-        || stored_trace != context.trace_id
-        || stored_correlation != context.correlation_id
     {
         return Err(ModuleStaticDistributionError::IdempotencyConflict);
     }
@@ -2150,14 +2146,9 @@ fn optional_uuid_from_row(
     column: &str,
     backend: SupportedBackend,
 ) -> Result<Option<Uuid>, ModuleStaticDistributionError> {
-    match backend {
-        SupportedBackend::Postgres => row.try_get("", column).map_err(store_error),
-        SupportedBackend::Sqlite => row
-            .try_get::<Option<String>>("", column)
-            .map_err(store_error)?
-            .map(|value| Uuid::parse_str(&value).map_err(store_error))
-            .transpose(),
-    }
+    backend
+        .optional_uuid_from_row(row, column)
+        .map_err(store_error)
 }
 
 fn revision_value(value: u64) -> Result<sea_orm::Value, ModuleStaticDistributionError> {

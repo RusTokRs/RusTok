@@ -273,6 +273,21 @@ pub struct ModuleAuthorSignatureEvidenceCommand {
     pub actor_principal: serde_json::Value,
 }
 
+/// Authenticated marketplace review decision for the exact artifact currently
+/// attached to an approved publish request. The owner derives the subject,
+/// issuer, evidence reference, and policy revision; publication only verifies
+/// that this independent fact was recorded before it runs.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ModuleMarketplaceApprovalEvidenceCommand {
+    pub request_id: String,
+    pub expected_revision: i64,
+    pub context: ModuleCommandContext,
+    /// Authenticated platform-wide module-management authority. Request or
+    /// slug ownership alone cannot issue marketplace approval.
+    pub actor_can_manage_modules: bool,
+    pub actor_principal: serde_json::Value,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModulePublicationEvidenceResult {
     pub evidence_id: String,

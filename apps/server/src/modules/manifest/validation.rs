@@ -477,7 +477,17 @@ fn to_static_module_package_contract(
         dependencies: package_manifest
             .dependencies
             .iter()
-            .map(|(slug, dependency)| (slug.clone(), dependency.version_req.clone()))
+            .map(|(slug, dependency)| {
+                let version_requirement = dependency.version_req.trim();
+                (
+                    slug.clone(),
+                    if version_requirement.is_empty() {
+                        "*".to_string()
+                    } else {
+                        version_requirement.to_string()
+                    },
+                )
+            })
             .collect(),
         conflicts: package_manifest.conflicts.modules.clone(),
         settings_schema: to_module_settings_schema(&package_manifest.settings),

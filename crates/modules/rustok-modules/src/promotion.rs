@@ -152,7 +152,8 @@ where
     ) -> Result<ModuleStaticPromotionReceipt, ModuleStaticPromotionError> {
         validate_request_command(&command)?;
         self.authorizer.authorize_request(&command).await?;
-        let request_digest = digest_json(&command)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&command).map_err(store_error)?;
         let transaction = self.db.begin().await.map_err(store_error)?;
         crate::backend::set_platform_scope(&transaction)
             .await
@@ -255,7 +256,8 @@ where
     ) -> Result<ModuleStaticPromotionReceipt, ModuleStaticPromotionError> {
         validate_approval_command(&command)?;
         self.authorizer.authorize_approval(&command).await?;
-        let request_digest = digest_json(&command)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&command).map_err(store_error)?;
         let review_digest = digest_json(&command.evidence)?;
         let transaction = self.db.begin().await.map_err(store_error)?;
         crate::backend::set_platform_scope(&transaction)
@@ -541,7 +543,7 @@ pub(crate) async fn load_platform_build_evidence<C: ConnectionTrait>(
                         artifact_manifest_digest
                  FROM registry_publish_build_staging
                  WHERE request_id = {} AND component_digest = {}
-                 ORDER BY staged_at DESC LIMIT 1{lock}",
+                 ORDER BY staged_at DESC, id DESC LIMIT 1{lock}",
                 backend.placeholder(1),
                 backend.placeholder(2),
             ),
@@ -684,7 +686,7 @@ async fn reserve_operation(
     if stored_kind != operation_kind
         || stored_digest != request_digest
         || !valid_platform_command_context(&stored_context)
-        || stored_context != *context
+        || stored_context.actor_id != context.actor_id
     {
         return Err(ModuleStaticPromotionError::IdempotencyConflict);
     }
@@ -731,16 +733,9 @@ fn replay_receipt(
     row: &QueryResult,
     backend: SupportedBackend,
 ) -> Result<ModuleStaticPromotionReceipt, ModuleStaticPromotionError> {
-    let promotion_id = match backend {
-        SupportedBackend::Postgres => row
-            .try_get::<Option<Uuid>>("", "promotion_id")
-            .map_err(store_error)?,
-        SupportedBackend::Sqlite => row
-            .try_get::<Option<String>>("", "promotion_id")
-            .map_err(store_error)?
-            .as_deref()
-            .and_then(|value| Uuid::parse_str(value).ok()),
-    };
+    let promotion_id = backend
+        .optional_uuid_from_row(row, "promotion_id")
+        .map_err(store_error)?;
     let revision: Option<i64> = row.try_get("", "result_revision").map_err(store_error)?;
     let status: Option<String> = row.try_get("", "result_status").map_err(store_error)?;
     let completed: i64 = row.try_get("", "completed").map_err(store_error)?;

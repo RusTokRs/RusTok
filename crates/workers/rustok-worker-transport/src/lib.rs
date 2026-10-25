@@ -311,6 +311,21 @@ impl MutualTlsClientConfig {
             .ca_certificate(Certificate::from_pem(self.server_ca_pem.clone()))
             .domain_name(self.server_domain.clone())
     }
+
+    /// Canonical digest of the pinned server trust anchor and expected
+    /// server name. Governed pool composition binds this into the
+    /// placement attestation so changing the CA or the authenticated
+    /// worker identity invalidates earlier smoke evidence.
+    pub fn trust_anchor_digest(&self) -> String {
+        use sha2::{Digest, Sha256};
+
+        let mut hasher = Sha256::new();
+        hasher.update(b"rustok.worker_transport.trust_anchor\0");
+        hasher.update(&self.server_ca_pem);
+        hasher.update(b"\0");
+        hasher.update(self.server_domain.as_bytes());
+        format!("sha256:{}", hex::encode(hasher.finalize()))
+    }
 }
 
 fn env_name(prefix: &str, suffix: &str) -> String {

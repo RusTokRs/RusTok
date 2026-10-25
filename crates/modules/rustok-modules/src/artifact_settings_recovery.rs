@@ -2581,7 +2581,7 @@ async fn find_settings_purge_preview_recovery<C: ConnectionTrait>(
                  WHERE tenant_id = {} AND installation_id = {} AND data_owner_id = {} \
                    AND settings_instance_id = {} AND settings_revision = {} \
                    AND schema_digest = {} AND descriptor_digest = {} \
-                 ORDER BY retention_revision DESC, created_at DESC LIMIT 1",
+                 ORDER BY retention_revision DESC, created_at DESC, recovery_point_id DESC LIMIT 1",
                 backend.placeholder(1),
                 backend.placeholder(2),
                 backend.placeholder(3),
@@ -2732,12 +2732,11 @@ async fn find_recovery_operation_in<C: ConnectionTrait>(
     let expected_settings_revision: i64 = row
         .try_get("", "expected_settings_revision")
         .map_err(storage_error)?;
-    let reason: String = row.try_get("", "reason").map_err(storage_error)?;
     if installation_id != request.installation_id
         || positive_u64(expected_installation_revision)? != request.expected_installation_revision
         || positive_u64(expected_settings_revision)? != request.expected_settings_revision
-        || command_context_from_receipt_row(&row, request.tenant_id, backend)? != request.context
-        || reason != request.reason
+        || command_context_from_receipt_row(&row, request.tenant_id, backend)?.actor_id
+            != request.context.actor_id
     {
         return Err(ArtifactSettingsRecoveryError::IdempotencyConflict);
     }
@@ -2791,13 +2790,12 @@ async fn find_purge_operation_in<C: ConnectionTrait>(
     let expected_settings_revision: i64 = row
         .try_get("", "expected_settings_revision")
         .map_err(storage_error)?;
-    let reason: String = row.try_get("", "reason").map_err(storage_error)?;
     if installation_id != request.installation_id
         || recovery_point_id != request.recovery_point_id
         || positive_u64(expected_installation_revision)? != request.expected_installation_revision
         || positive_u64(expected_settings_revision)? != request.expected_settings_revision
-        || command_context_from_receipt_row(&row, request.tenant_id, backend)? != request.context
-        || reason != request.reason
+        || command_context_from_receipt_row(&row, request.tenant_id, backend)?.actor_id
+            != request.context.actor_id
     {
         return Err(ArtifactSettingsRecoveryError::IdempotencyConflict);
     }
@@ -2837,12 +2835,11 @@ async fn find_restore_operation_in<C: ConnectionTrait>(
     let target_installation_id = optional_uuid_from_row(&row, "target_installation_id", backend)?;
     let expected_target_installation_revision =
         optional_positive_u64_from_row(&row, "expected_target_installation_revision")?;
-    let reason: String = row.try_get("", "reason").map_err(storage_error)?;
     if recovery_point_id != request.recovery_point_id
         || target_installation_id != request.target_installation_id
         || expected_target_installation_revision != request.expected_target_installation_revision
-        || command_context_from_receipt_row(&row, request.tenant_id, backend)? != request.context
-        || reason != request.reason
+        || command_context_from_receipt_row(&row, request.tenant_id, backend)?.actor_id
+            != request.context.actor_id
     {
         return Err(ArtifactSettingsRecoveryError::IdempotencyConflict);
     }
@@ -2882,7 +2879,8 @@ async fn find_retention_operation_in<C: ConnectionTrait>(
     let recovery_point_id = uuid_from_row(&row, "recovery_point_id", backend)?;
     if recovery_point_id != request.recovery_point_id
         || stored_digest != request_digest
-        || command_context_from_receipt_row(&row, request.tenant_id, backend)? != request.context
+        || command_context_from_receipt_row(&row, request.tenant_id, backend)?.actor_id
+            != request.context.actor_id
     {
         return Err(ArtifactSettingsRecoveryError::IdempotencyConflict);
     }
@@ -2927,10 +2925,9 @@ async fn find_rewrap_operation_in<C: ConnectionTrait>(
         return Ok(None);
     };
     let recovery_point_id = uuid_from_row(&row, "recovery_point_id", backend)?;
-    let reason: String = row.try_get("", "reason").map_err(storage_error)?;
     if recovery_point_id != request.recovery_point_id
-        || command_context_from_receipt_row(&row, request.tenant_id, backend)? != request.context
-        || reason != request.reason
+        || command_context_from_receipt_row(&row, request.tenant_id, backend)?.actor_id
+            != request.context.actor_id
     {
         return Err(ArtifactSettingsRecoveryError::IdempotencyConflict);
     }
@@ -2973,13 +2970,12 @@ async fn find_bind_operation_in<C: ConnectionTrait>(
     let expected_target_installation_revision: i64 = row
         .try_get("", "expected_target_installation_revision")
         .map_err(storage_error)?;
-    let reason: String = row.try_get("", "reason").map_err(storage_error)?;
     if recovery_point_id != request.recovery_point_id
         || target_installation_id != request.target_installation_id
         || positive_u64(expected_target_installation_revision)?
             != request.expected_target_installation_revision
-        || command_context_from_receipt_row(&row, request.tenant_id, backend)? != request.context
-        || reason != request.reason
+        || command_context_from_receipt_row(&row, request.tenant_id, backend)?.actor_id
+            != request.context.actor_id
     {
         return Err(ArtifactSettingsRecoveryError::IdempotencyConflict);
     }
@@ -3363,8 +3359,7 @@ fn settings_digest(settings: &Value) -> Result<String, ArtifactSettingsRecoveryE
 }
 
 fn request_digest<T: Serialize>(request: &T) -> Result<String, ArtifactSettingsRecoveryError> {
-    let value = serde_json::to_value(request).map_err(storage_error)?;
-    settings_digest(&value)
+    crate::idempotency::semantic_request_digest(request).map_err(storage_error)
 }
 
 fn map_validation_error(error: ArtifactSchemaValidationError) -> ArtifactSettingsRecoveryError {
@@ -3435,16 +3430,7 @@ fn uuid_from_row(
     column: &str,
     backend: SupportedBackend,
 ) -> Result<Uuid, ArtifactSettingsRecoveryError> {
-    match backend {
-        SupportedBackend::Postgres => row.try_get("", column).map_err(storage_error),
-        SupportedBackend::Sqlite => row
-            .try_get::<String>("", column)
-            .map_err(storage_error)?
-            .parse()
-            .map_err(|_| {
-                ArtifactSettingsRecoveryError::Storage("stored UUID is invalid".to_string())
-            }),
-    }
+    backend.uuid_from_row(row, column).map_err(storage_error)
 }
 
 fn optional_uuid_from_row(
@@ -3452,18 +3438,9 @@ fn optional_uuid_from_row(
     column: &str,
     backend: SupportedBackend,
 ) -> Result<Option<Uuid>, ArtifactSettingsRecoveryError> {
-    match backend {
-        SupportedBackend::Postgres => row.try_get("", column).map_err(storage_error),
-        SupportedBackend::Sqlite => row
-            .try_get::<Option<String>>("", column)
-            .map_err(storage_error)?
-            .map(|value| {
-                value.parse().map_err(|_| {
-                    ArtifactSettingsRecoveryError::Storage("stored UUID is invalid".to_string())
-                })
-            })
-            .transpose(),
-    }
+    backend
+        .optional_uuid_from_row(row, column)
+        .map_err(storage_error)
 }
 
 fn bool_from_row(

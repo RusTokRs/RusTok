@@ -31,7 +31,7 @@ impl alloy::AlloyPublishedRhaiSourceProvider for ServerAlloyPublishedRhaiSourceP
         let control_plane = ModuleControlPlane::new(self.db.clone());
         let blobs = control_plane.artifact_blob_store(self.storage.clone());
         let source = control_plane
-            .release()
+            .publication()
             .published_rhai_workspace(release, &blobs)
             .await
             .map_err(|error| match error.category() {

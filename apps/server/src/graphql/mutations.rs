@@ -13,7 +13,8 @@ use crate::graphql::types::{
     ArtifactActivation, ArtifactDataPurgeReceipt, ArtifactDeactivation,
     ArtifactSettingsPurgeReceipt, ArtifactSettingsRecoveryPointReceipt,
     ArtifactSettingsRestoreReceipt, ArtifactTenantLifecycle, ArtifactUninstall, BuildJob,
-    CreateUserInput, DeleteUserPayload, ModuleOperationRecoveryPlan, TenantModule, UpdateUserInput,
+    CreateUserInput, DeleteUserPayload, GovernedArtifactTransition, ModuleOperationRecoveryPlan,
+    TenantModule, UpdateUserInput,
     User,
 };
 use crate::modules::ManifestError;
@@ -51,8 +52,8 @@ use rustok_build::{BuildEventPublicationContext, BuildEventScope, EventBusBuildE
 use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions, UserRole};
 use rustok_modules::{
     ArtifactActivationRequest, ArtifactDeactivationRequest, ArtifactTenantDisableRequest,
-    ArtifactTenantEnableRequest, ArtifactUninstallRequest, ModuleCommandContext,
-    ModuleCompositionError, ModuleControlPlane, ModuleInstallationScope,
+    ArtifactTenantEnableRequest, ArtifactUninstallRequest, GovernedArtifactTransitionCommand,
+    ModuleCommandContext, ModuleCompositionError, ModuleControlPlane, ModuleInstallationScope,
 };
 use rustok_modules::{
     ArtifactDataError, ArtifactDataPurgeRequest, ArtifactSettingsPurgeRequest,
@@ -486,8 +487,11 @@ fn map_toggle_module_error(error: ToggleModuleError) -> FieldError {
         ToggleModuleError::InvalidCommandIdentity => <FieldError as GraphQLError>::bad_user_input(
             "Module lifecycle command identity is invalid",
         ),
-        ToggleModuleError::InvalidIdempotencyKey => <FieldError as GraphQLError>::bad_user_input(
-            "Module lifecycle idempotency key is invalid",
+        ToggleModuleError::InvalidCommandContext => <FieldError as GraphQLError>::bad_user_input(
+            "Module lifecycle command context is invalid",
+        ),
+        ToggleModuleError::InvalidModuleSlug(_) => <FieldError as GraphQLError>::bad_user_input(
+            "Module slug is invalid",
         ),
         ToggleModuleError::IdempotencyConflict => {
             FieldError::new("Module lifecycle idempotency key was reused for a different command")
@@ -497,7 +501,7 @@ fn map_toggle_module_error(error: ToggleModuleError) -> FieldError {
                 })
         }
         ToggleModuleError::RevisionConflict { expected, current } => FieldError::new(format!(
-            "Static module lifecycle changed since revision {expected}; current revision is {current}",
+            "Module lifecycle changed since revision {expected}; current revision is {current}",
         ))
         .extend_with(|_, ext| {
             ext.set("code", "REVISION_CONFLICT");
@@ -506,9 +510,25 @@ fn map_toggle_module_error(error: ToggleModuleError) -> FieldError {
             ext.set("current_revision", current);
         }),
         ToggleModuleError::OperationInProgress => {
-            FieldError::new("A static module lifecycle operation is already active")
+            FieldError::new("A module lifecycle operation is already active")
                 .extend_with(|_, ext| {
                     ext.set("code", "MODULE_LIFECYCLE_OPERATION_IN_PROGRESS");
+                    ext.set("retryable_issue", false);
+                })
+        }
+        ToggleModuleError::OperationOrphaned { operation_id } => FieldError::new(
+            "Module lifecycle operation was orphaned; reload the current module state before repeating the command",
+        )
+        .extend_with(move |_, ext| {
+            ext.set("code", "MODULE_LIFECYCLE_OPERATION_ORPHANED");
+            ext.set("retryable_issue", false);
+            ext.set("operation_issue", "orphaned");
+            ext.set("operation_id", operation_id.to_string());
+        }),
+        ToggleModuleError::ClaimLost => {
+            FieldError::new("Module lifecycle claim was lost; reload the current module state")
+                .extend_with(|_, ext| {
+                    ext.set("code", "MODULE_LIFECYCLE_CLAIM_LOST");
                     ext.set("retryable_issue", false);
                 })
         }
@@ -577,9 +597,9 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
                 "Module recovery command identity is invalid",
             )
         }
-        ModuleOperationRecoveryError::InvalidIdempotencyKey => {
+        ModuleOperationRecoveryError::InvalidCommandContext => {
             <FieldError as GraphQLError>::bad_user_input(
-                "Module operation idempotency key is invalid",
+                "Module operation command context is invalid",
             )
         }
         ModuleOperationRecoveryError::NotRetryable(reason) => {
@@ -616,7 +636,7 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
         }),
         ModuleOperationRecoveryError::RevisionConflict { expected, current } => FieldError::new(
             format!(
-                "Static module lifecycle changed since revision {expected}; current revision is {current}",
+                "Module lifecycle changed since revision {expected}; current revision is {current}",
             ),
         )
         .extend_with(|_, ext| {
@@ -626,9 +646,16 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
             ext.set("current_revision", current);
         }),
         ModuleOperationRecoveryError::OperationInProgress => {
-            FieldError::new("A static module lifecycle operation is already active")
+            FieldError::new("A module lifecycle operation is already active")
                 .extend_with(|_, ext| {
                     ext.set("code", "MODULE_LIFECYCLE_OPERATION_IN_PROGRESS");
+                    ext.set("retryable_issue", false);
+                })
+        }
+        ModuleOperationRecoveryError::ClaimLost => {
+            FieldError::new("Module lifecycle claim was lost; reload the current module state")
+                .extend_with(|_, ext| {
+                    ext.set("code", "MODULE_LIFECYCLE_CLAIM_LOST");
                     ext.set("retryable_issue", false);
                 })
         }
@@ -1856,6 +1883,104 @@ impl RootMutation {
 
         Ok(rustok_api::ModuleTransitionCheckpointView::from(receipt.checkpoint).into())
     }
+
+    /// Starts (or resumes) a governed automatic transition to one admitted
+    /// artifact in the authenticated tenant scope.
+    ///
+    /// Everything security-relevant is composed by the host: required
+    /// executor pools, their runtime fingerprints, pool generations, and
+    /// the owner placement policy come from this node's governed readiness
+    /// composition, never from the caller. The caller supplies only the
+    /// candidate installation, the revision it observed, the observation
+    /// window, and the audit reason. The transition fails closed when the
+    /// deployment has not configured governed readiness, when preflight
+    /// classifies the pair as a maintenance transition, or when any
+    /// required pool lacks current smoke evidence.
+    async fn start_governed_tenant_artifact_transition(
+        &self,
+        ctx: &Context<'_>,
+        installation_id: Uuid,
+        expected_revision: i64,
+        observation_seconds: i64,
+        reason: String,
+        idempotency_key: Uuid,
+    ) -> Result<GovernedArtifactTransition> {
+        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        let expected_revision = artifact_lifecycle_expected_revision(
+            installation_id,
+            expected_revision,
+            &reason,
+            idempotency_key,
+        )?;
+        let observation_seconds = u64::try_from(observation_seconds).map_err(|_| {
+            <FieldError as GraphQLError>::bad_user_input(
+                "Governed transition observation window must be a positive number of seconds",
+            )
+        })?;
+        if observation_seconds == 0 || observation_seconds > 7 * 24 * 60 * 60 {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Governed transition observation window must be positive and no longer than seven days",
+            ));
+        }
+        let runtime_ctx = ctx.data::<ServerRuntimeContext>().map_err(|_| {
+            <FieldError as GraphQLError>::internal_error(
+                "Governed readiness composition is unavailable on this node",
+            )
+        })?;
+        let governed =
+            crate::services::artifact_runtime::governed_readiness(runtime_ctx)
+                .await
+                .map_err(|error| {
+                    graphql_mutation_internal_error(
+                        "Governed readiness composition is unavailable on this node",
+                        error,
+                    )
+                })?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let receipt = ModuleControlPlane::new(db.clone())
+            .transitions()
+            .start_governed_automatic_artifact_transition(
+                GovernedArtifactTransitionCommand {
+                    candidate_installation_id: installation_id,
+                    scope: tenant_artifact_scope(tenant.id),
+                    expected_candidate_revision: expected_revision,
+                    context: module_command_context(
+                        auth.user_id,
+                        Some(tenant.id),
+                        idempotency_key,
+                    ),
+                    reason,
+                    actor_can_manage_modules: true,
+                    placement_policy: governed.placement_policy.clone(),
+                    required_pools: governed.required_pools.clone(),
+                    observation_duration: std::time::Duration::from_secs(observation_seconds),
+                },
+                &governed.readiness_services,
+            )
+            .await
+            .map_err(crate::graphql::transition_lifecycle::map_governed_transition_error)?;
+
+        runtime_ctx
+            .effective_policy_cache()
+            .invalidate_tenant(tenant.id);
+
+        Ok(GovernedArtifactTransition {
+            operation_id: receipt.checkpoint.operation_id,
+            checkpoint_revision: artifact_lifecycle_revision(receipt.checkpoint.revision)?,
+            installation_id,
+            installation_revision: artifact_lifecycle_revision(
+                receipt.activation.installation_revision,
+            )?,
+            predecessor_installation_id: receipt.activation.predecessor_installation_id,
+            predecessor_revision: receipt
+                .activation
+                .predecessor_revision
+                .map(artifact_lifecycle_revision)
+                .transpose()?,
+            readiness_receipt_ids: receipt.readiness_receipt_ids,
+            resumed: receipt.resumed,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -2092,10 +2217,10 @@ mod tests {
                 case_name: "invalid-command-identity",
             },
             ToggleCase {
-                error: ToggleModuleError::InvalidIdempotencyKey,
-                expected_message: "Module lifecycle idempotency key is invalid".to_string(),
+                error: ToggleModuleError::InvalidCommandContext,
+                expected_message: "Module lifecycle command context is invalid".to_string(),
                 expected_code: Some("BAD_USER_INPUT"),
-                case_name: "invalid-idempotency-key",
+                case_name: "invalid-command-context",
             },
             ToggleCase {
                 error: ToggleModuleError::IdempotencyConflict,

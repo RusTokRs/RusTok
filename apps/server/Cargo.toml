@@ -138,6 +138,7 @@ rustok-modules.workspace = true
 rustok-modules-translation = { path = "../../crates/modules/rustok-modules-translation", optional = true }
 rustok-sandbox = { workspace = true, features = ["rhai", "wasm-component"] }
 rustok-sandbox-transport.workspace = true
+rustok-verification-transport = { path = "../../crates/workers/rustok-verification-transport" }
 rustok-worker-transport.workspace = true
 rustok-distribution = { workspace = true, default-features = false }
 rustok-api = { workspace = true, features = ["server"] }

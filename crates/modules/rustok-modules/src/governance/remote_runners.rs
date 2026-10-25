@@ -120,7 +120,7 @@ impl SeaOrmModuleGovernanceService {
                      AND runner_kind = 'remote' \
                      AND ((status = 'queued' AND (claim_expires_at IS NULL OR claim_expires_at <= {})) \
                      OR (status = 'running' AND runner_kind = 'remote' AND claim_expires_at < {})) \
-                     ORDER BY created_at ASC LIMIT {}",
+                     ORDER BY created_at ASC, id ASC LIMIT {}",
                     mark(supported_stages.len() + 1),
                     mark(supported_stages.len() + 2),
                     MAX_REMOTE_VALIDATION_CLAIM_CANDIDATES,
@@ -433,7 +433,7 @@ impl SeaOrmModuleGovernanceService {
         let now = self.infrastructure.now();
         let candidates = self.db.query_all_raw(Statement::from_sql_and_values(
             backend.db_backend(),
-            format!("SELECT id FROM registry_validation_stages WHERE status = 'running' AND runner_kind = 'remote' AND claim_expires_at < {} ORDER BY claim_expires_at ASC", mark(1)),
+            format!("SELECT id FROM registry_validation_stages WHERE status = 'running' AND runner_kind = 'remote' AND claim_expires_at < {} ORDER BY claim_expires_at ASC, id ASC", mark(1)),
             vec![now.into()],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let mut requeued = 0;
@@ -510,7 +510,7 @@ impl SeaOrmModuleGovernanceService {
                 backend.db_backend(),
                 format!("SELECT COALESCE(MAX(attempt_number), 0) AS attempt_number FROM registry_validation_stages WHERE request_id = {} AND stage_key = {}", mark(1), mark(2)),
                 vec![request_id.clone().into(), stage_key.clone().into()],
-            )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?.ok_or_else(|| ModuleGovernanceError::Store("missing validation attempt aggregate".to_string()))?.try_get::<i64>("", "attempt_number").map_err(|e| ModuleGovernanceError::Store(e.to_string()))? as i32 + 1;
+            )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?.ok_or_else(|| ModuleGovernanceError::Store("missing validation attempt aggregate".to_string()))?.try_get::<i64>("", "attempt_number").map_err(|e| ModuleGovernanceError::Store(e.to_string()))?; let next_attempt = next_attempt_number(next_attempt)?;
             let queued_id = self.infrastructure.prefixed_id("rvs");
             let queued_detail = format!(
                 "Remote validation lease expired; retry attempt {} is queued for stage '{}'.",

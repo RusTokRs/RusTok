@@ -279,10 +279,13 @@ async fn platform_build_stage_receipt_rejects_changed_context_or_privilege() {
 
     let mut changed_trace = command.clone();
     changed_trace.context.trace_id = "test:changed-trace".to_string();
-    assert_eq!(
-        service.stage_platform_build(changed_trace).await,
-        Err(ModuleGovernanceError::PlatformBuildStageIdempotencyConflict)
-    );
+    changed_trace.context.correlation_id = Uuid::new_v4();
+    let changed_observability_replay = service
+        .stage_platform_build(changed_trace)
+        .await
+        .expect("changed observability context replays platform staging");
+    assert!(!changed_observability_replay.created);
+    assert_eq!(changed_observability_replay.staging_id, first.staging_id);
 
     let mut changed_privilege = command;
     changed_privilege.actor_can_manage_modules = true;

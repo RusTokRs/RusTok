@@ -167,7 +167,8 @@ struct ApplyReceiptRequest<'a> {
     value: &'a str,
     expected_owner_revision: u64,
     expected_target_revision: u64,
-    context: &'a ModuleCommandContext,
+    // Actor is the replay-principal boundary; trace/correlation are not.
+    actor_id: Uuid,
 }
 
 #[derive(Debug, Error)]
@@ -300,7 +301,7 @@ impl StaticSettingsLocalizationService {
             value: &command.value,
             expected_owner_revision: command.expected_owner_revision,
             expected_target_revision: command.expected_target_revision,
-            context: &command.context,
+            actor_id: command.context.actor_id,
         };
         let lease = match idempotency::admit(
             &self.db,

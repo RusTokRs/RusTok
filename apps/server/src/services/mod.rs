@@ -539,6 +539,7 @@ pub mod module_event_dispatcher {
         }
     }
 }
+pub mod module_artifact_maintenance;
 pub mod module_lifecycle;
 pub mod module_rollout_promotion_settings;
 pub mod module_transition_watchdog;

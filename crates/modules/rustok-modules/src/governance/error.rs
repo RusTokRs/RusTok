@@ -36,6 +36,10 @@ pub enum ModuleGovernanceError {
     InvalidYankCommand,
     #[error("unsupported release yank reason code `{0}`")]
     InvalidYankReasonCode(String),
+    #[error("release un-yank requires slug, version, reason, and actor principal")]
+    InvalidUnyankCommand,
+    #[error("unsupported release un-yank reason code `{0}`")]
+    InvalidUnyankReasonCode(String),
     #[error("owner transfer requires slug, owner, actor, and reason")]
     InvalidOwnerTransferCommand,
     #[error("publish-request rejection requires request ID, actor, and reason")]
@@ -93,6 +97,8 @@ pub enum ModuleGovernanceError {
         "author-signature evidence requires a platform command context and bounded signature facts"
     )]
     InvalidAuthorSignatureEvidenceCommand,
+    #[error("marketplace-approval evidence requires a platform command context and actor principal")]
+    InvalidMarketplaceApprovalEvidenceCommand,
     #[error("build-service attestation requires one valid build-worker publication receipt")]
     InvalidBuildServiceAttestationCommand,
     #[error("platform admission requires one admitted immutable verification decision")]
@@ -155,6 +161,14 @@ pub enum ModuleGovernanceError {
     ReleaseYankIdempotencyConflict,
     #[error("published release in status `{0}` cannot be yanked")]
     ReleaseCannotBeYanked(String),
+    #[error("actor is not authorized to un-yank this published release")]
+    ReleaseUnyankUnauthorized,
+    #[error(
+        "registry release un-yank idempotency key was reused for a different immutable command"
+    )]
+    ReleaseUnyankIdempotencyConflict,
+    #[error("published release in status `{0}` cannot be un-yanked")]
+    ReleaseCannotBeUnyanked(String),
     #[error("registry owner binding was not found")]
     OwnerBindingNotFound,
     #[error("actor is not authorized to transfer this registry owner binding")]
@@ -176,11 +190,19 @@ pub enum ModuleGovernanceError {
     )]
     PublishRequestAuthorSignatureUnauthorized,
     #[error(
+        "actor is not authorized to record marketplace-approval evidence for this registry publish request"
+    )]
+    PublishRequestMarketplaceApprovalUnauthorized,
+    #[error(
         "actor is not authorized to stage an external prebuilt artifact for this registry publish request"
     )]
     PublishRequestExternalPrebuiltStagingUnauthorized,
     #[error("published release `{slug}@{version}` already exists")]
     PublishRequestReleaseAlreadyActive { slug: String, version: String },
+    #[error(
+        "published release `{slug}@{version}` already exists and release identities are insert-only"
+    )]
+    PublishRequestReleaseAlreadyExists { slug: String, version: String },
     #[error("registry publish request revision conflict: expected {expected}, current {current}")]
     PublishRequestRevisionConflict { expected: i64, current: i64 },
     #[error("registry publish request in status `{0}` cannot be rejected")]
@@ -256,6 +278,18 @@ pub enum ModuleGovernanceError {
     )]
     PublishRequestMissingAuthorSignature,
     #[error(
+        "registry publish request is missing pre-recorded marketplace approval evidence for its staged artifact"
+    )]
+    PublishRequestMissingMarketplaceApproval,
+    #[error(
+        "registry publish request has non-passed required validation stages and requires an approval override"
+    )]
+    PublishRequestApprovalOverrideRequired,
+    #[error(
+        "registry publication approval override does not match the current non-passed validation stages"
+    )]
+    PublishApprovalOverrideStageMismatch,
+    #[error(
         "registry publish request is missing matching build-service and platform-admission evidence"
     )]
     PublishRequestMissingBuildOrPlatformAdmission,
@@ -311,6 +345,8 @@ impl ModuleGovernanceError {
             | Self::InvalidPublishRequestStatusQuery
             | Self::InvalidYankCommand
             | Self::InvalidYankReasonCode(_)
+            | Self::InvalidUnyankCommand
+            | Self::InvalidUnyankReasonCode(_)
             | Self::InvalidOwnerTransferCommand
             | Self::InvalidPublishRequestRejectCommand
             | Self::InvalidPublishRequestChangesCommand
@@ -331,6 +367,7 @@ impl ModuleGovernanceError {
             | Self::InvalidPublishArtifactAttachCommand
             | Self::InvalidPublicationEvidenceCommand
             | Self::InvalidAuthorSignatureEvidenceCommand
+            | Self::InvalidMarketplaceApprovalEvidenceCommand
             | Self::InvalidPlatformPublicationEvidenceRequest
             | Self::InvalidAlloyPublicationEvidenceRequest
             | Self::InvalidBuildServiceAttestationCommand
@@ -351,9 +388,11 @@ impl ModuleGovernanceError {
             Self::PublishRequestCreationUnauthorized
             | Self::PublishRequestPlatformBuildStagingUnauthorized
             | Self::PublishRequestAuthorSignatureUnauthorized
+            | Self::PublishRequestMarketplaceApprovalUnauthorized
             | Self::PublishRequestAlloyAuthoredStagingUnauthorized
             | Self::PublishRequestExternalPrebuiltStagingUnauthorized
             | Self::ReleaseYankUnauthorized
+            | Self::ReleaseUnyankUnauthorized
             | Self::OwnerTransferUnauthorized
             | Self::PublishRequestArtifactUploadUnauthorized
             | Self::RemoteValidationLeaseRunnerMismatch => {
@@ -370,10 +409,13 @@ impl ModuleGovernanceError {
             | Self::OwnerTransferIdempotencyConflict
             | Self::ReleaseYankIdempotencyConflict
             | Self::ReleaseCannotBeYanked(_)
+            | Self::ReleaseUnyankIdempotencyConflict
+            | Self::ReleaseCannotBeUnyanked(_)
             | Self::PublishRequestCreationConflict
             | Self::PlatformPublicationEvidenceSourceUnavailable
             | Self::AlloyPublicationEvidenceSourceUnavailable
             | Self::PublishRequestReleaseAlreadyActive { .. }
+            | Self::PublishRequestReleaseAlreadyExists { .. }
             | Self::PublishRequestRevisionConflict { .. }
             | Self::PublishRequestCannotBeRejected(_)
             | Self::PublishRequestCannotRequestChanges(_)
@@ -399,6 +441,9 @@ impl ModuleGovernanceError {
             | Self::PublishRequestMissingAlloyAuthoredStage
             | Self::PublishRequestArtifactOriginUnclassified
             | Self::PublishRequestMissingAuthorSignature
+            | Self::PublishRequestMissingMarketplaceApproval
+            | Self::PublishRequestApprovalOverrideRequired
+            | Self::PublishApprovalOverrideStageMismatch
             | Self::PublishRequestMissingCanonicalArtifactContract
             | Self::PublishRequestMissingBuildOrPlatformAdmission
             | Self::PublishRequestMissingExternalPlatformAdmission

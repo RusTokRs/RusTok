@@ -3,7 +3,10 @@ use rustok_api::graphql::GraphQLError;
 use rustok_api::{
     ModuleRetentionHoldView, ModuleTransitionCheckpointView, ModuleTransitionStateView,
 };
-use rustok_modules::{ModuleTransitionServiceError, TransitionCoordinatorError};
+use rustok_modules::{
+    ExecutorReadinessError, GovernedArtifactTransitionError, ModuleTransitionServiceError,
+    TransitionCoordinatorError,
+};
 use uuid::Uuid;
 
 #[derive(Enum, Copy, Clone, Eq, PartialEq, Debug)]
@@ -16,7 +19,7 @@ pub enum ModuleTransitionStateGql {
     PointOfNoReturn,
     RecoveredToPredecessor,
     Converged,
-    FailedClosed,
+    InterventionRequired,
 }
 
 #[derive(SimpleObject, Clone, Debug)]
@@ -49,7 +52,9 @@ impl From<ModuleTransitionCheckpointView> for ModuleTransitionCheckpointGql {
                 ModuleTransitionStateGql::RecoveredToPredecessor
             }
             ModuleTransitionStateView::Converged => ModuleTransitionStateGql::Converged,
-            ModuleTransitionStateView::FailedClosed => ModuleTransitionStateGql::FailedClosed,
+            ModuleTransitionStateView::InterventionRequired => {
+                ModuleTransitionStateGql::InterventionRequired
+            }
         };
         Self {
             operation_id: checkpoint
@@ -83,8 +88,11 @@ fn sanitize_state_details(
         ModuleTransitionStateView::RecoveredToPredecessor if state_details.is_some() => {
             Some("Transition recovered to the retained predecessor".to_string())
         }
-        ModuleTransitionStateView::FailedClosed if state_details.is_some() => {
-            Some("Transition failed closed; manual intervention is required".to_string())
+        ModuleTransitionStateView::InterventionRequired if state_details.is_some() => {
+            Some(
+                "Transition requires manual intervention; serving selection was not changed"
+                    .to_string(),
+            )
         }
         _ => state_details,
     }
@@ -131,6 +139,93 @@ pub(crate) fn map_transition_service_error(error: ModuleTransitionServiceError) 
         ModuleTransitionServiceError::Coordinator(error) => map_transition_coordinator_error(error),
         ModuleTransitionServiceError::Store(_) | ModuleTransitionServiceError::Outbox(_) => {
             <FieldError as GraphQLError>::internal_error("Transition owner service is unavailable")
+        }
+    }
+}
+
+pub(crate) fn map_governed_transition_error(error: GovernedArtifactTransitionError) -> FieldError {
+    match error {
+        GovernedArtifactTransitionError::AuthorizationDenied => {
+            <FieldError as GraphQLError>::permission_denied(
+                "Permission denied for the governed transition scope",
+            )
+        }
+        GovernedArtifactTransitionError::InvalidCommand(message) => {
+            <FieldError as GraphQLError>::bad_user_input(&message)
+        }
+        GovernedArtifactTransitionError::Conflict(message) => {
+            FieldError::new(message).extend_with(|_, extensions| {
+                extensions.set("code", "GOVERNED_TRANSITION_CONFLICT");
+                extensions.set("retryable_issue", true);
+            })
+        }
+        GovernedArtifactTransitionError::PreflightFailed { reasons } => {
+            FieldError::new(
+                "Governed transition is not eligible for automatic mode; a maintenance transition is required",
+            )
+            .extend_with(|_, extensions| {
+                extensions.set("code", "PREFLIGHT_REQUIRES_MAINTENANCE");
+                extensions.set("retryable_issue", false);
+                extensions.set("reasons", reasons);
+            })
+        }
+        GovernedArtifactTransitionError::Readiness(error) => match error {
+            ExecutorReadinessError::AuthorizationDenied => {
+                <FieldError as GraphQLError>::permission_denied(
+                    "Permission denied for executor readiness evaluation",
+                )
+            }
+            ExecutorReadinessError::InvalidCommand(message)
+            | ExecutorReadinessError::InvalidConfiguration(message)
+            | ExecutorReadinessError::InvalidPoolIdentity(message)
+            | ExecutorReadinessError::InvalidFingerprint(message) => {
+                <FieldError as GraphQLError>::bad_user_input(&message)
+            }
+            ExecutorReadinessError::AutomaticModeDenied(message)
+            | ExecutorReadinessError::SmokeExecutionFailed(message)
+            | ExecutorReadinessError::MissingCapabilityRoute(message) => {
+                FieldError::new(message).extend_with(|_, extensions| {
+                    extensions.set("code", "EXECUTOR_READINESS_DENIED");
+                    extensions.set("retryable_issue", false);
+                })
+            }
+            ExecutorReadinessError::EngineFingerprintMismatch(..)
+            | ExecutorReadinessError::StalePoolGeneration(..) => {
+                FieldError::new(
+                    "Executor pool fingerprint or generation changed; smoke readiness must repeat",
+                )
+                .extend_with(|_, extensions| {
+                    extensions.set("code", "EXECUTOR_READINESS_STALE");
+                    extensions.set("retryable_issue", true);
+                })
+            }
+            ExecutorReadinessError::IsolatedWorkerRequired
+            | ExecutorReadinessError::MissingWorkerAttestation
+            | ExecutorReadinessError::UnsupportedPayloadKind(_) => FieldError::new(
+                "No composed executor pool can serve this artifact under the owner placement policy",
+            )
+            .extend_with(|_, extensions| {
+                extensions.set("code", "EXECUTOR_POOL_UNAVAILABLE");
+                extensions.set("retryable_issue", false);
+            }),
+            ExecutorReadinessError::ProbeUnavailable(_)
+            | ExecutorReadinessError::BlobStore(_)
+            | ExecutorReadinessError::Store(_) => <FieldError as GraphQLError>::internal_error(
+                "Executor readiness service is unavailable",
+            ),
+        },
+        GovernedArtifactTransitionError::Coordinator(error) => {
+            map_transition_coordinator_error(error)
+        }
+        GovernedArtifactTransitionError::Installation(message) => {
+            tracing::error!(%message, "governed transition installation owner failed");
+            <FieldError as GraphQLError>::internal_error(
+                "Governed transition installation owner is unavailable",
+            )
+        }
+        GovernedArtifactTransitionError::Store(message) => {
+            tracing::error!(%message, "governed transition store failed");
+            <FieldError as GraphQLError>::internal_error("Governed transition store is unavailable")
         }
     }
 }
@@ -211,13 +306,13 @@ mod tests {
     #[test]
     fn failed_transition_state_details_redact_owner_reason() {
         let details = super::sanitize_state_details(
-            ModuleTransitionStateView::FailedClosed,
+            ModuleTransitionStateView::InterventionRequired,
             Some("database password=secret".to_string()),
         );
 
         assert_eq!(
             details.as_deref(),
-            Some("Transition failed closed; manual intervention is required")
+            Some("Transition requires manual intervention; serving selection was not changed")
         );
         assert!(!details.unwrap().contains("database password=secret"));
     }

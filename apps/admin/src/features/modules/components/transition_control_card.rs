@@ -33,15 +33,15 @@ pub fn TransitionControlCard(
     let op_id = checkpoint.operation_id.clone();
     let is_observing = checkpoint.state == ModuleTransitionStateView::Observing;
     let is_past_point_of_no_return = checkpoint.state == ModuleTransitionStateView::PointOfNoReturn;
-    let is_failed = checkpoint.state == ModuleTransitionStateView::FailedClosed;
+    let is_intervention_required =
+        checkpoint.state == ModuleTransitionStateView::InterventionRequired;
     let is_converged = checkpoint.state == ModuleTransitionStateView::Converged;
     let recovery_limit_reached = checkpoint.recovery_attempt_count >= 1;
-    let can_rollback = is_observing
+    let can_rollback = (is_observing || is_intervention_required)
         && checkpoint.predecessor_digest.is_some()
         && !recovery_limit_reached
         && !is_past_point_of_no_return
-        && !is_converged
-        && !is_failed;
+        && !is_converged;
 
     let state_badge_class = match checkpoint.state {
         ModuleTransitionStateView::Observing => {
@@ -56,7 +56,7 @@ pub fn TransitionControlCard(
         ModuleTransitionStateView::PointOfNoReturn => {
             "bg-purple-500/15 text-purple-500 border-purple-500/30"
         }
-        ModuleTransitionStateView::FailedClosed => {
+        ModuleTransitionStateView::InterventionRequired => {
             "bg-rose-500/15 text-rose-500 border-rose-500/30"
         }
         _ => "bg-blue-500/15 text-blue-500 border-blue-500/30",
@@ -71,7 +71,7 @@ pub fn TransitionControlCard(
         ModuleTransitionStateView::PointOfNoReturn => "Point of No Return (Irreversible)",
         ModuleTransitionStateView::RecoveredToPredecessor => "Recovered to Predecessor",
         ModuleTransitionStateView::Converged => "Converged",
-        ModuleTransitionStateView::FailedClosed => "Failed Closed (Quarantined)",
+        ModuleTransitionStateView::InterventionRequired => "Intervention Required",
     };
 
     let finalize_transition_action = Callback::new({
@@ -227,12 +227,12 @@ pub fn TransitionControlCard(
                 None
             }}
 
-            // Failed Closed Notice
-            {if is_failed {
+            // Intervention Required Notice
+            {if is_intervention_required {
                 Some(view! {
                     <div class="mb-4 rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-500">
-                        <span class="font-semibold">"Permanent Containment (Failed Closed): "</span>
-                        "Transition failed closed to protect persistent data and fleet state. Automatic recovery is denied; manual intervention is required."
+                        <span class="font-semibold">"Intervention Required: "</span>
+                        "Automatic transition action stopped, but serving selection was not changed. Explicitly roll back or deactivate the candidate if traffic must move."
                     </div>
                 })
             } else {

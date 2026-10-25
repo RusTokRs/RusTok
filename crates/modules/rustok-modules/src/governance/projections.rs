@@ -190,7 +190,7 @@ impl SeaOrmModuleGovernanceService {
                             CAST(validation_errors AS TEXT) AS validation_errors, \
                             validated_at, approved_at, created_at, updated_at, published_at \
                      FROM registry_publish_requests WHERE slug = {} \
-                     ORDER BY created_at DESC LIMIT 1",
+                     ORDER BY created_at DESC, id DESC LIMIT 1",
                     mark(1)
                 ),
                 vec![slug.into()],
@@ -207,7 +207,7 @@ impl SeaOrmModuleGovernanceService {
                             checksum_sha256, published_at, yanked_reason, \
                             CAST(yanked_by_principal AS TEXT) AS yanked_by_principal, yanked_at \
                      FROM registry_module_releases WHERE slug = {} \
-                     ORDER BY published_at DESC LIMIT 1",
+                     ORDER BY published_at DESC, id DESC LIMIT 1",
                     mark(1)
                 ),
                 vec![slug.into()],
@@ -257,7 +257,7 @@ impl SeaOrmModuleGovernanceService {
                         "SELECT stage_key, status, detail, attempt_number, updated_at, \
                                 started_at, finished_at \
                          FROM registry_validation_stages WHERE request_id = {} \
-                         ORDER BY attempt_number DESC, created_at DESC",
+                         ORDER BY attempt_number DESC, created_at DESC, id DESC",
                         mark(1)
                     ),
                     vec![request.snapshot.id.clone().into()],
@@ -463,7 +463,7 @@ impl SeaOrmModuleGovernanceService {
                     "SELECT stage_key, status, detail, attempt_number, updated_at, \
                             started_at, finished_at \
                      FROM registry_validation_stages WHERE request_id = {} \
-                     ORDER BY attempt_number DESC, created_at DESC",
+                     ORDER BY attempt_number DESC, created_at DESC, id DESC",
                     mark(1)
                 ),
                 vec![request.snapshot.id.clone().into()],
@@ -508,7 +508,7 @@ impl SeaOrmModuleGovernanceService {
                     backend.db_backend(),
                     format!(
                         "SELECT event_type FROM registry_governance_events \
-                         WHERE request_id = {} ORDER BY created_at DESC LIMIT 1",
+                         WHERE request_id = {} ORDER BY created_at DESC, id DESC LIMIT 1",
                         mark(1)
                     ),
                     vec![request.snapshot.id.clone().into()],

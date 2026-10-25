@@ -80,6 +80,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
         crate::controllers::marketplace_registry::fail_remote_validation_stage,
         crate::controllers::marketplace_registry::transfer_owner,
         crate::controllers::marketplace_registry::yank,
+        crate::controllers::marketplace_registry::unyank,
         // RBAC artifact permissions
         crate::controllers::artifact_permissions::grant_artifact_permission,
         crate::controllers::artifact_permissions::revoke_artifact_permission,
@@ -167,6 +168,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
             crate::services::marketplace_catalog::RegistryPublishUiPackagesRequest,
             crate::services::marketplace_catalog::RegistryPublishUiPackageRequest,
             crate::services::marketplace_catalog::RegistryYankRequest,
+            crate::services::marketplace_catalog::RegistryUnyankRequest,
             crate::services::marketplace_catalog::RegistryValidationStageReportRequest,
             crate::services::marketplace_catalog::RegistryRunnerClaimRequest,
             crate::services::marketplace_catalog::RegistryRunnerClaimResponse,
@@ -547,6 +549,7 @@ mod tests {
             "/v2/catalog/runner/{claim_id}/complete",
             "/v2/catalog/runner/{claim_id}/fail",
             "/v2/catalog/yank",
+            "/v2/catalog/unyank",
             "/v2/catalog/owner-transfer",
             "/api/rbac/artifact-permissions/roles/{role_id}",
             "/api/admin/events/dlq",
@@ -638,6 +641,7 @@ mod tests {
             ("/v2/catalog/publish/{request_id}/hold", HttpMethod::Post),
             ("/v2/catalog/publish/{request_id}/resume", HttpMethod::Post),
             ("/v2/catalog/yank", HttpMethod::Post),
+            ("/v2/catalog/unyank", HttpMethod::Post),
             ("/v2/catalog/owner-transfer", HttpMethod::Post),
         ] {
             let operation = openapi

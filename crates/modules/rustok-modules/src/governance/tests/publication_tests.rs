@@ -86,6 +86,10 @@ async fn publication_persists_release_binding_request_and_audit_facts_together()
                 evidence_digest_sha256 TEXT NOT NULL, recorded_by_principal TEXT NOT NULL,\
                 created_at TEXT NOT NULL, UNIQUE (request_id, evidence_digest_sha256)\
              )",
+        "CREATE TABLE registry_validation_stages (\
+                request_id TEXT NOT NULL, stage_key TEXT NOT NULL, status TEXT NOT NULL,\
+                attempt_number INTEGER NOT NULL, created_at TEXT NOT NULL\
+             )",
         "CREATE TABLE registry_publish_build_staging (\
                 id TEXT PRIMARY KEY, request_id TEXT NOT NULL, source_reference TEXT NULL,\
                 source_digest TEXT NOT NULL, parent_release_slug TEXT NULL,\
@@ -184,6 +188,11 @@ async fn publication_persists_release_binding_request_and_audit_facts_together()
     let staged_subject = "a".repeat(64);
     let oci_subject = "b".repeat(64);
     let evidence_fixture = |id: &str, authority: &str, subject: &str, created_at: &str| {
+        let policy_revision = if authority == "marketplace_approval" {
+            MARKETPLACE_APPROVAL_POLICY_REVISION
+        } else {
+            "fixture-v1"
+        };
         Statement::from_sql_and_values(
             DbBackend::Sqlite,
             format!(
@@ -192,7 +201,7 @@ async fn publication_persists_release_binding_request_and_audit_facts_together()
                   issuer_identity, policy_revision, signature_digest_sha256, evidence_digest_sha256, \
                   recorded_by_principal, created_at) \
                  VALUES (?, 'request-1', ?, ?, 'evidence://fixture', 'fixture', \
-                         'fixture-v1', ?, ?, '{{}}', {created_at})"
+                         '{policy_revision}', ?, ?, '{{}}', {created_at})"
             ),
             vec![
                 id.to_string().into(),
@@ -214,6 +223,53 @@ async fn publication_persists_release_binding_request_and_audit_facts_together()
         ))
         .await
         .expect("author evidence fixture");
+    let blocked = service
+        .publish_request(command.clone())
+        .await
+        .expect_err("publication without pre-recorded marketplace approval must fail");
+    assert!(matches!(
+        blocked,
+        ModuleGovernanceError::PublishRequestMissingMarketplaceApproval
+    ));
+    database
+        .execute_raw(evidence_fixture(
+            "rpe_marketplace",
+            "marketplace_approval",
+            staged_subject.as_str(),
+            "datetime('now')",
+        ))
+        .await
+        .expect("marketplace approval evidence fixture");
+    // An approval recorded by the very principal that the publication
+    // command will bind as publisher is not independent, even though an
+    // approval row exists for the current artifact checksum.
+    database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE registry_publication_evidence SET recorded_by_principal = ? \
+             WHERE id = 'rpe_marketplace'"
+                .to_string(),
+            vec![command.publisher_principal.to_string().into()],
+        ))
+        .await
+        .expect("self-approval evidence fixture");
+    let blocked = service
+        .publish_request(command.clone())
+        .await
+        .expect_err("publication with only a publisher-recorded approval must fail");
+    assert!(matches!(
+        blocked,
+        ModuleGovernanceError::PublishRequestMissingMarketplaceApproval
+    ));
+    database
+        .execute_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "UPDATE registry_publication_evidence SET recorded_by_principal = '{}' \
+             WHERE id = 'rpe_marketplace'"
+                .to_string(),
+        ))
+        .await
+        .expect("independent approval evidence fixture");
     let blocked = service
         .publish_request(command.clone())
         .await
@@ -293,6 +349,15 @@ async fn publication_persists_release_binding_request_and_audit_facts_together()
             .await
             .expect("current publication evidence fixture");
     }
+    database
+        .execute_raw(evidence_fixture(
+            "rpe_marketplace_current",
+            "marketplace_approval",
+            staged_subject.as_str(),
+            "datetime('now', '+2 seconds')",
+        ))
+        .await
+        .expect("current marketplace approval evidence fixture");
     database
         .execute_raw(Statement::from_string(
             DbBackend::Sqlite,
@@ -375,6 +440,26 @@ async fn publication_persists_release_binding_request_and_audit_facts_together()
             .await
             .expect("platform admission contract fixture");
 
+    let blocked = service
+        .publish_request(command.clone())
+        .await
+        .expect_err("publication with non-passed required stages requires an override");
+    assert!(matches!(
+        blocked,
+        ModuleGovernanceError::PublishRequestApprovalOverrideRequired
+    ));
+    database
+        .execute_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "INSERT INTO registry_validation_stages \
+                 (request_id, stage_key, status, attempt_number, created_at) VALUES \
+                 ('request-1', 'compile_smoke', 'passed', 1, datetime('now')), \
+                 ('request-1', 'targeted_tests', 'passed', 1, datetime('now'))"
+                .to_string(),
+        ))
+        .await
+        .expect("passed validation stage fixtures");
+
     service
         .publish_request(command.clone())
         .await
@@ -383,16 +468,14 @@ async fn publication_persists_release_binding_request_and_audit_facts_together()
         .publish_request(command.clone())
         .await
         .expect("published request replay");
-    let mut conflicting_replay = command;
-    conflicting_replay.context.trace_id = "test:publication:changed-trace".to_string();
-    let conflict = service
-        .publish_request(conflicting_replay)
+    let mut changed_observability_replay = command;
+    changed_observability_replay.context.trace_id =
+        "test:publication:changed-trace".to_string();
+    changed_observability_replay.context.correlation_id = Uuid::new_v4();
+    service
+        .publish_request(changed_observability_replay)
         .await
-        .expect_err("idempotency key must bind immutable publication context");
-    assert!(matches!(
-        conflict,
-        ModuleGovernanceError::PublicationIdempotencyConflict
-    ));
+        .expect("changed observability context replays publication");
 
     let release_count = database
         .query_one_raw(Statement::from_string(
@@ -510,7 +593,7 @@ async fn publication_persists_release_binding_request_and_audit_facts_together()
         ))
         .await
         .expect("events query");
-    assert_eq!(events.len(), 3);
+    assert_eq!(events.len(), 2);
     let event_types = events
         .iter()
         .map(|event| {
@@ -540,9 +623,10 @@ async fn publication_persists_release_binding_request_and_audit_facts_together()
         release_id
     );
     assert!(
-        event_types
+        !event_types
             .iter()
-            .any(|event_type| event_type == "marketplace_approval_recorded")
+            .any(|event_type| event_type == "marketplace_approval_recorded"),
+        "publication must not mint marketplace approval evidence or its audit event"
     );
     let evidence = database
         .query_one_raw(Statement::from_string(

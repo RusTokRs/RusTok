@@ -654,7 +654,7 @@ where
     {
         validate_request(&command)?;
         self.authorizer.authorize_request(&command).await?;
-        let request_digest = digest_json(&command).map_err(digest_error)?;
+        let request_digest = crate::idempotency::semantic_request_digest(&command).map_err(digest_error)?;
         let principal_id = command.context.actor_id.to_string();
         if let Some(operation) = load_operation(
             &self.db,
@@ -920,7 +920,7 @@ where
     {
         validate_report(&command)?;
         self.authorizer.authorize_report(&command).await?;
-        let request_digest = digest_json(&command).map_err(digest_error)?;
+        let request_digest = crate::idempotency::semantic_request_digest(&command).map_err(digest_error)?;
         if let Some(operation) = load_operation(
             &self.db,
             command.idempotency_key,
@@ -2570,7 +2570,7 @@ async fn load_operation<C: ConnectionTrait>(
     operation_kind: &str,
     request_digest: &str,
     principal_id: &str,
-    context: Option<&ModuleCommandContext>,
+    _context: Option<&ModuleCommandContext>,
 ) -> Result<Option<OperationRecord>, ModuleArtifactNodeReconciliationError> {
     let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let Some(row) = connection
@@ -2624,8 +2624,6 @@ async fn load_operation<C: ConnectionTrait>(
     if record.operation_kind != operation_kind
         || record.request_digest != request_digest
         || record.principal_id != principal_id
-        || record.trace_id.as_deref() != context.map(|value| value.trace_id.as_str())
-        || record.correlation_id != context.map(|value| value.correlation_id)
     {
         return Err(ModuleArtifactNodeReconciliationError::IdempotencyConflict);
     }
@@ -2802,14 +2800,9 @@ fn optional_uuid_from_row(
     column: &str,
     backend: SupportedBackend,
 ) -> Result<Option<Uuid>, ModuleArtifactNodeReconciliationError> {
-    match backend {
-        SupportedBackend::Postgres => row.try_get("", column).map_err(store_error),
-        SupportedBackend::Sqlite => row
-            .try_get::<Option<String>>("", column)
-            .map_err(store_error)?
-            .map(|value| Uuid::parse_str(&value).map_err(store_error))
-            .transpose(),
-    }
+    backend
+        .optional_uuid_from_row(row, column)
+        .map_err(store_error)
 }
 
 fn revision_value(value: u64) -> Result<sea_orm::Value, ModuleArtifactNodeReconciliationError> {
@@ -3039,10 +3032,13 @@ mod tests {
             service.request(substituted_replay).await,
             Err(ModuleArtifactNodeReconciliationError::IdempotencyConflict)
         ));
-        assert!(matches!(
-            service.request(tracing_replay).await,
-            Err(ModuleArtifactNodeReconciliationError::IdempotencyConflict)
-        ));
+        assert!(
+            !service
+                .request(tracing_replay)
+                .await
+                .expect("changed observability context replays reconciliation request")
+                .created
+        );
 
         let prepared = service
             .claim_assignment(ModuleArtifactNodeAssignmentClaimCommand {

@@ -33,6 +33,17 @@ Axum, or Async-GraphQL. Its runtime foundation uses only the neutral
 module control plane. The repository verifier checks both this dependency
 boundary and the module-owned admin transport for backend write/build logic.
 
+As of the 2026-10-25 R3-11 remediation, durable replay identity is semantic:
+the durable scope and idempotency key are combined with an explicit semantic
+fingerprint. Stored trace, correlation, and free-text reason values remain
+audit evidence, but they no longer decide whether a retry replays or
+conflicts. Actor remains part of identity only where an owner explicitly
+defines a replay-principal or authorization partition. Dated slices below
+that describe a changed trace, correlation, or free-text reason as an
+idempotency conflict record the contract at that time and are superseded by
+this rule. This paragraph records implementation state, not a new compile or
+test claim.
+
 ## Current verification evidence
 
 On 2026-09-14, the canonical structured-copy API and consolidated pending schema
@@ -1817,14 +1828,18 @@ correlation, and idempotency evidence, while its canonical request digest covers
 that context plus the immutable OCI reference, scope, dependency lock, and
 sandbox policy. The store reserves that identity before inserting installation
 state and binds it before committing the outbox fact. Successful retries return
-the same installation identity; a permission-registration retry refetches and
-verifies the immutable descriptor so it can replay the owner request. A reused
+the same installation identity; a permission-registration retry reads the
+stored immutable descriptor and durable registration state so it can replay
+the owner request without consulting the registry. A reused
 key with changed context or request evidence fails closed.
 
 Admitted artifact permissions are represented by immutable localized
 label/description entries. The current installation path sends them through the
 shared `ArtifactPermissionRegistrationPort` after its durable installation
-commit and uses installation ID as idempotency identity. The release-safety
+commit and uses installation ID as idempotency identity. Its admission row
+and result expose `not_required`, `pending`, or `registered` for that
+projection; failure remains `pending` for a registry-free retry instead of
+turning the committed admission into an error. The release-safety
 cutover replaces that ambiguous admission/install coupling: release admission
 atomically stores inert definitions keyed by exact
 release/module/definition digest and creates no scope or grant; scoped install
@@ -1852,12 +1867,14 @@ request context. Artifact HTTP route composition remains pending; installation
 never creates an automatic role or actor grant.
 
 Dependency resolution now uses `pubgrub` behind the transport-neutral
-`ModuleResolutionProvider`. The adapter first collects an immutable candidate
-snapshot, requires the exact deployment platform version and descriptor
-compatibility range, then filters by trust, active/yanked/revoked status,
-scope, module/provider kind, and runtime ABI before PubGrub runs. It rejects
-malformed platform facts fail-closed and writes only the selected exact
-versions and payload/manifest digests into the lock graph. Every
+`ModuleResolutionProvider`. The adapter first collects a bounded immutable
+candidate snapshot, requires the exact deployment platform version and
+descriptor compatibility range, then filters by trust, active/yanked/revoked
+status, scope, module/provider kind, and runtime ABI before PubGrub runs.
+Malformed request or provider facts fail closed, while a malformed release
+candidate is skipped with a stable diagnostic so one corrupt historical
+release cannot make every otherwise-valid solve fail. Only selected exact
+versions and payload/manifest digests enter the lock graph. Every
 `InstalledModuleArtifact` now persists that graph with its revision and digest
 in the same installation transaction, and runtime execution rejects a missing
 or tampered declared dependency. Persisted solver input snapshots and stable

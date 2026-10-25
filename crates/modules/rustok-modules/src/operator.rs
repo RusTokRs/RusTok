@@ -270,17 +270,7 @@ fn uuid_column(
     backend: SupportedBackend,
     column: &str,
 ) -> Result<Uuid, ModuleOperatorError> {
-    match backend {
-        SupportedBackend::Postgres => row.try_get::<Uuid>("", column).map_err(database_error),
-        SupportedBackend::Sqlite => {
-            let raw: String = row.try_get("", column).map_err(database_error)?;
-            Uuid::parse_str(&raw).map_err(|e| {
-                ModuleOperatorError::Database(format!(
-                    "stored value in column `{column}` is not a valid UUID: {e}"
-                ))
-            })
-        }
-    }
+    backend.uuid_from_row(row, column).map_err(database_error)
 }
 
 fn parse_descriptor(
@@ -776,7 +766,7 @@ impl ModuleOperatorService {
                      FROM module_artifact_installations i \
                      JOIN module_artifact_admissions a ON a.installation_id = i.installation_id \
                      WHERE i.slug = {} AND i.scope_kind = {} AND {} \
-                     ORDER BY i.installed_at DESC",
+                     ORDER BY i.installed_at DESC, i.installation_id DESC",
                     backend.placeholder(1),
                     backend.placeholder(2),
                     tenant_clause(backend, "i.tenant_id", 3),
@@ -1069,7 +1059,7 @@ impl ModuleOperatorService {
                 format!(
                     "SELECT operation_id FROM module_transition_checkpoints \
                      WHERE module_slug = {} AND {} \
-                     ORDER BY created_at DESC LIMIT 1",
+                     ORDER BY created_at DESC, operation_id DESC LIMIT 1",
                     backend.placeholder(1),
                     tenant_clause(backend, "tenant_id", 2),
                 ),

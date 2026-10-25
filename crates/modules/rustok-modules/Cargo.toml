@@ -13,6 +13,11 @@ rustdoc-args = ["--cfg", "docsrs"]
 [features]
 default = ["oci-distribution"]
 oci-distribution = ["dep:oci-distribution"]
+# Test doubles and non-production design sketches (in-memory blob store,
+# simulated GC coordinator, wave-rollout model). Never enable in a
+# production composition: these items simulate durability/coordination
+# semantics that only the durable owner services actually provide.
+test-support = []
 
 [dependencies]
 async-trait.workspace = true
@@ -52,3 +57,4 @@ reqwest.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
+rustok-modules = { path = ".", features = ["test-support"] }

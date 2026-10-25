@@ -2,17 +2,26 @@
 //! executor pools and generations, owner-selected placement enforcement (zero in-process fallback),
 //! and dual candidate/predecessor smoke readiness for automatic mode.
 
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::HashSet,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
 
+use async_trait::async_trait;
 use rustok_api::ArtifactPermissionLocalization;
 use rustok_core::MigrationSource;
 use rustok_modules::{
     ArtifactBlobStore, ArtifactModuleKind, ArtifactPayloadKind, ArtifactPermissionDescriptor,
     ArtifactSchemaDocument, EvaluateReadinessCommand, ExecutorPoolIdentity, ExecutorReadinessError,
-    ExecutorReadinessService, InMemoryArtifactBlobStore, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
-    ModuleArtifactDescriptor, ModuleBindingIdempotency, ModuleRuntimeBinding,
-    ModuleRuntimeBindingKind, ModulesModule, OwnerPlacementPolicy, ReleaseReadinessTarget,
-    RuntimeFingerprint, VerifiedPayloadCache,
+    ExecutorReadinessProbe, ExecutorReadinessService, ExecutorSmokeProbeOutcome,
+    ExecutorSmokeProbeRequest, InMemoryArtifactBlobStore, InstalledModuleArtifact,
+    MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor, ModuleBindingIdempotency,
+    ModuleCommandContext, ModuleDependencyLockGraph, ModuleInstallationScope,
+    ModuleRuntimeBinding, ModuleRuntimeBindingKind, ModulesModule, OciArtifactReference,
+    OwnerPlacementPolicy, ReleaseReadinessTarget, RuntimeFingerprint, VerifiedPayloadCache,
 };
 use rustok_sandbox::{CapabilityName, RHAI_SANDBOX_RUNTIME_ABI, SandboxExecutorPlacement};
 use sea_orm::Database;
@@ -83,20 +92,36 @@ fn build_sample_target(
         required_features: Vec::new(),
         entrypoint: "src/main.rhai".to_string(),
         capabilities: capabilities.clone(),
-        bindings: vec![ModuleRuntimeBinding {
-            id: format!("{slug}.hook"),
-            kind: ModuleRuntimeBindingKind::PreEnable,
-            entrypoint: "src/main.rhai".to_string(),
-            input_schema_digest: sha256_digest(b"{}"),
-            output_schema_digest: sha256_digest(b"{}"),
-            permission: format!("{slug}.read"),
-            idempotency: ModuleBindingIdempotency::Required,
-            limit_profile: "standard".to_string(),
-            capabilities,
-            event_topics: Vec::new(),
-            schedule: None,
-            http: None,
-        }],
+        bindings: vec![
+            ModuleRuntimeBinding {
+                id: format!("{slug}.hook"),
+                kind: ModuleRuntimeBindingKind::PreEnable,
+                entrypoint: "src/main.rhai".to_string(),
+                input_schema_digest: sha256_digest(b"{}"),
+                output_schema_digest: sha256_digest(b"{}"),
+                permission: format!("{slug}.read"),
+                idempotency: ModuleBindingIdempotency::Required,
+                limit_profile: "standard".to_string(),
+                capabilities,
+                event_topics: Vec::new(),
+                schedule: None,
+                http: None,
+            },
+            ModuleRuntimeBinding {
+                id: format!("{slug}.smoke"),
+                kind: ModuleRuntimeBindingKind::ActivationSmoke,
+                entrypoint: "src/main.rhai".to_string(),
+                input_schema_digest: sha256_digest(b"{}"),
+                output_schema_digest: sha256_digest(b"{}"),
+                permission: format!("{slug}.read"),
+                idempotency: ModuleBindingIdempotency::None,
+                limit_profile: "standard".to_string(),
+                capabilities: Vec::new(),
+                event_topics: Vec::new(),
+                schedule: None,
+                http: None,
+            },
+        ],
         dependencies: Vec::new(),
         permissions: vec![ArtifactPermissionDescriptor {
             key: format!("{slug}.read"),
@@ -120,11 +145,139 @@ fn build_sample_target(
     let manifest_bytes = serde_json::to_vec(&descriptor).unwrap();
     let release_digest = sha256_digest(&manifest_bytes);
 
+    let installed_artifact = InstalledModuleArtifact {
+        installation_id: Uuid::new_v4(),
+        data_owner_id: Uuid::new_v4(),
+        namespace_instance_id: None,
+        secret_instance_id: None,
+        settings_instance_id: Uuid::new_v4(),
+        scope: ModuleInstallationScope::Platform,
+        reference: OciArtifactReference {
+            registry: "registry.example".to_string(),
+            repository: format!("modules/{slug}"),
+            digest: release_digest.clone(),
+        },
+        release: descriptor.release_ref(),
+        descriptor: descriptor.clone(),
+        payload_media_type: "application/vnd.rustok.rhai.source.v1".to_string(),
+        dependency_lock: ModuleDependencyLockGraph::create(1, Vec::new())
+            .expect("empty dependency lock"),
+        capability_grant_revision: 1,
+        installed_at: chrono::Utc::now(),
+    };
     ReleaseReadinessTarget {
         release_digest,
         descriptor,
         payload_digest,
-        installed_artifact: None,
+        installed_artifact,
+    }
+}
+
+struct FakeReadinessProbe {
+    pool: ExecutorPoolIdentity,
+    routes: HashSet<String>,
+    fail_smoke: bool,
+    calls: AtomicUsize,
+}
+
+#[async_trait]
+impl ExecutorReadinessProbe for FakeReadinessProbe {
+    fn pool_identity(&self) -> Result<ExecutorPoolIdentity, ExecutorReadinessError> {
+        Ok(self.pool.clone())
+    }
+
+    fn supports_payload_kind(&self, payload_kind: ArtifactPayloadKind) -> bool {
+        payload_kind == ArtifactPayloadKind::Rhai
+    }
+
+    fn has_capability_route(&self, capability: &str) -> bool {
+        self.routes.contains(capability)
+    }
+
+    async fn execute_smoke(
+        &self,
+        request: ExecutorSmokeProbeRequest<'_>,
+    ) -> Result<ExecutorSmokeProbeOutcome, ExecutorReadinessError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        if self.fail_smoke {
+            return Err(ExecutorReadinessError::SmokeExecutionFailed(
+                "fixture smoke execution failed".to_string(),
+            ));
+        }
+        Ok(ExecutorSmokeProbeOutcome {
+            binding_id: request.binding.id.clone(),
+            output_digest: sha256_digest(
+                format!(
+                    "{}:{}",
+                    request.binding.id, request.artifact.descriptor.artifact_digest
+                )
+                .as_bytes(),
+            ),
+        })
+    }
+}
+
+fn readiness_service(
+    db: sea_orm::DatabaseConnection,
+    blobs: Arc<InMemoryArtifactBlobStore>,
+    pool: ExecutorPoolIdentity,
+    routes: HashSet<String>,
+) -> (ExecutorReadinessService, Arc<FakeReadinessProbe>) {
+    let probe = Arc::new(FakeReadinessProbe {
+        pool,
+        routes,
+        fail_smoke: false,
+        calls: AtomicUsize::new(0),
+    });
+    (
+        ExecutorReadinessService::new(db, blobs, probe.clone()),
+        probe,
+    )
+}
+
+fn failing_readiness_service(
+    db: sea_orm::DatabaseConnection,
+    blobs: Arc<InMemoryArtifactBlobStore>,
+    pool: ExecutorPoolIdentity,
+) -> ExecutorReadinessService {
+    ExecutorReadinessService::new(
+        db,
+        blobs,
+        Arc::new(FakeReadinessProbe {
+            pool,
+            routes: HashSet::new(),
+            fail_smoke: true,
+            calls: AtomicUsize::new(0),
+        }),
+    )
+}
+
+fn default_pool() -> ExecutorPoolIdentity {
+    ExecutorPoolIdentity {
+        pool_id: "pool-test".to_string(),
+        pool_generation: 1,
+        fingerprint: sample_runtime_fingerprint(),
+        placement: SandboxExecutorPlacement::InProcess,
+        placement_attestation: None,
+    }
+}
+
+fn readiness_command(
+    target: ReleaseReadinessTarget,
+    policy: OwnerPlacementPolicy,
+) -> EvaluateReadinessCommand {
+    EvaluateReadinessCommand {
+        operation_id: Uuid::new_v4(),
+        target,
+        policy,
+        context: ModuleCommandContext {
+            actor_id: Uuid::new_v4(),
+            tenant_id: None,
+            trace_id: "test:executor-readiness".to_string(),
+            correlation_id: Uuid::new_v4(),
+            idempotency_key: Uuid::new_v4(),
+        },
+        actor_can_manage_modules: true,
     }
 }
 
@@ -141,9 +294,9 @@ async fn test_verified_payload_caching_and_cas_rehash() {
     let mut routes = HashSet::new();
     routes.insert("platform.http".to_string());
 
-    let service = ExecutorReadinessService::new(db.clone(), blobs.clone())
-        .with_cache(cache.clone())
-        .with_routes(routes);
+    let (service, _probe) =
+        readiness_service(db.clone(), blobs.clone(), default_pool(), routes);
+    let service = service.with_cache(cache.clone());
 
     let fp = sample_runtime_fingerprint();
     let fp_digest = fp.compute_digest();
@@ -178,8 +331,6 @@ async fn test_engine_change_invalidates_readiness_receipts() {
         .await
         .unwrap();
 
-    let service = ExecutorReadinessService::new(db.clone(), blobs.clone());
-
     let pool_initial = ExecutorPoolIdentity {
         pool_id: "pool-workers-01".to_string(),
         pool_generation: 1,
@@ -194,21 +345,21 @@ async fn test_engine_change_invalidates_readiness_receipts() {
         allow_in_process_fallback: false,
     };
 
-    let command = EvaluateReadinessCommand {
-        operation_id: Uuid::new_v4(),
-        installation_id: Uuid::new_v4(),
-        target: target.clone(),
-        pool: pool_initial.clone(),
-        policy: policy.clone(),
-        smoke_test_passed: true,
-    };
+    let (service, probe) = readiness_service(
+        db.clone(),
+        blobs.clone(),
+        pool_initial.clone(),
+        HashSet::new(),
+    );
+    let command = readiness_command(target.clone(), policy.clone());
 
     // 1. Initial readiness evaluation succeeds on fingerprint 1
     let receipt1 = service
         .evaluate_readiness(command)
         .await
         .expect("initial readiness succeeds");
-    assert!(receipt1.is_valid_for(&pool_initial));
+    assert_eq!(probe.calls.load(Ordering::SeqCst), 1);
+    assert!(receipt1.is_valid_for(&pool_initial, &policy));
 
     // 2. Engine changes (e.g. new engine configuration or engine build)
     let mut modified_fingerprint = sample_runtime_fingerprint();
@@ -224,7 +375,7 @@ async fn test_engine_change_invalidates_readiness_receipts() {
 
     // The old receipt is INVALID for the updated engine fingerprint!
     assert!(
-        !receipt1.is_valid_for(&pool_updated_engine),
+        !receipt1.is_valid_for(&pool_updated_engine, &policy),
         "Engine change MUST invalidate previous readiness receipt"
     );
 
@@ -234,6 +385,7 @@ async fn test_engine_change_invalidates_readiness_receipts() {
             &target.release_digest,
             None,
             std::slice::from_ref(&pool_updated_engine),
+            &policy,
         )
         .await
         .expect_err("automatic mode must be denied on changed engine");
@@ -243,24 +395,28 @@ async fn test_engine_change_invalidates_readiness_receipts() {
     ));
 
     // 3. Repeating readiness on updated engine re-authorizes execution
-    let command2 = EvaluateReadinessCommand {
-        operation_id: Uuid::new_v4(),
-        installation_id: Uuid::new_v4(),
-        target: target.clone(),
-        pool: pool_updated_engine.clone(),
-        policy: policy.clone(),
-        smoke_test_passed: true,
-    };
+    let (service, _updated_probe) = readiness_service(
+        db.clone(),
+        blobs.clone(),
+        pool_updated_engine.clone(),
+        HashSet::new(),
+    );
+    let command2 = readiness_command(target.clone(), policy.clone());
     let receipt2 = service
         .evaluate_readiness(command2)
         .await
         .expect("readiness on new engine succeeds");
-    assert!(receipt2.is_valid_for(&pool_updated_engine));
+    assert!(receipt2.is_valid_for(&pool_updated_engine, &policy));
     assert_ne!(receipt1.runtime_fingerprint, receipt2.runtime_fingerprint);
 
     // Automatic mode is now allowed
     service
-        .check_automatic_mode_eligibility(&target.release_digest, None, &[pool_updated_engine])
+        .check_automatic_mode_eligibility(
+            &target.release_digest,
+            None,
+            &[pool_updated_engine],
+            &policy,
+        )
         .await
         .expect("automatic mode succeeds after new engine readiness evaluation");
 }
@@ -277,8 +433,6 @@ async fn test_monotonic_pool_generation_gating() {
         .await
         .unwrap();
 
-    let service = ExecutorReadinessService::new(db.clone(), blobs.clone());
-
     let pool_gen1 = ExecutorPoolIdentity {
         pool_id: "pool-nodes-alpha".to_string(),
         pool_generation: 1,
@@ -293,16 +447,16 @@ async fn test_monotonic_pool_generation_gating() {
         allow_in_process_fallback: false,
     };
 
+    let (service, _probe) = readiness_service(
+        db.clone(),
+        blobs.clone(),
+        pool_gen1.clone(),
+        HashSet::new(),
+    );
+
     // Evaluate readiness on generation 1
     let receipt_gen1 = service
-        .evaluate_readiness(EvaluateReadinessCommand {
-            operation_id: Uuid::new_v4(),
-            installation_id: Uuid::new_v4(),
-            target: target.clone(),
-            pool: pool_gen1.clone(),
-            policy: policy.clone(),
-            smoke_test_passed: true,
-        })
+        .evaluate_readiness(readiness_command(target.clone(), policy.clone()))
         .await
         .expect("readiness on gen 1 succeeds");
     assert_eq!(receipt_gen1.pool_generation, 1);
@@ -313,13 +467,18 @@ async fn test_monotonic_pool_generation_gating() {
 
     // Earlier generation 1 receipt CANNOT authorize generation 2!
     assert!(
-        !receipt_gen1.is_valid_for(&pool_gen2),
+        !receipt_gen1.is_valid_for(&pool_gen2, &policy),
         "Stale pool generation receipt cannot be valid for new pool generation"
     );
 
     // Automatic mode is denied on new pool generation until smoke readiness is repeated
     let auto_denied = service
-        .check_automatic_mode_eligibility(&target.release_digest, None, &[pool_gen2.clone()])
+        .check_automatic_mode_eligibility(
+            &target.release_digest,
+            None,
+            &[pool_gen2.clone()],
+            &policy,
+        )
         .await
         .expect_err("automatic mode denied on un-smoked generation");
     assert!(matches!(
@@ -328,21 +487,20 @@ async fn test_monotonic_pool_generation_gating() {
     ));
 
     // Re-evaluate readiness on generation 2
+    let (service, _probe_gen2) = readiness_service(
+        db.clone(),
+        blobs.clone(),
+        pool_gen2.clone(),
+        HashSet::new(),
+    );
     let receipt_gen2 = service
-        .evaluate_readiness(EvaluateReadinessCommand {
-            operation_id: Uuid::new_v4(),
-            installation_id: Uuid::new_v4(),
-            target: target.clone(),
-            pool: pool_gen2.clone(),
-            policy: policy.clone(),
-            smoke_test_passed: true,
-        })
+        .evaluate_readiness(readiness_command(target.clone(), policy.clone()))
         .await
         .expect("readiness on gen 2 succeeds");
     assert_eq!(receipt_gen2.pool_generation, 2);
 
     service
-        .check_automatic_mode_eligibility(&target.release_digest, None, &[pool_gen2])
+        .check_automatic_mode_eligibility(&target.release_digest, None, &[pool_gen2], &policy)
         .await
         .expect("automatic mode approved after generation 2 readiness");
 }
@@ -380,16 +538,10 @@ async fn test_capability_route_checks_fail_closed_on_missing_route() {
     };
 
     // 1. Service with EMPTY routes fails closed
-    let service_no_routes = ExecutorReadinessService::new(db.clone(), blobs.clone());
+    let (service_no_routes, _probe_no_routes) =
+        readiness_service(db.clone(), blobs.clone(), pool.clone(), HashSet::new());
     let err = service_no_routes
-        .evaluate_readiness(EvaluateReadinessCommand {
-            operation_id: Uuid::new_v4(),
-            installation_id: Uuid::new_v4(),
-            target: target.clone(),
-            pool: pool.clone(),
-            policy: policy.clone(),
-            smoke_test_passed: true,
-        })
+        .evaluate_readiness(readiness_command(target.clone(), policy.clone()))
         .await
         .expect_err("readiness must fail closed when declared capability route is missing");
 
@@ -401,18 +553,11 @@ async fn test_capability_route_checks_fail_closed_on_missing_route() {
     // 2. Service with "platform.http" route succeeds
     let mut routes = HashSet::new();
     routes.insert("platform.http".to_string());
-    let service_with_routes =
-        ExecutorReadinessService::new(db.clone(), blobs.clone()).with_routes(routes);
+    let (service_with_routes, _probe_with_routes) =
+        readiness_service(db.clone(), blobs.clone(), pool, routes);
 
     let receipt = service_with_routes
-        .evaluate_readiness(EvaluateReadinessCommand {
-            operation_id: Uuid::new_v4(),
-            installation_id: Uuid::new_v4(),
-            target: target.clone(),
-            pool: pool.clone(),
-            policy: policy.clone(),
-            smoke_test_passed: true,
-        })
+        .evaluate_readiness(readiness_command(target.clone(), policy.clone()))
         .await
         .expect("readiness succeeds when capability route is available");
     assert!(receipt.capability_routes_verified);
@@ -430,8 +575,6 @@ async fn test_owner_selected_placement_enforcement_zero_in_process_fallback() {
         .await
         .unwrap();
 
-    let service = ExecutorReadinessService::new(db.clone(), blobs.clone());
-
     // Owner policy requires IsolatedWorker!
     let policy_isolated = OwnerPlacementPolicy {
         policy_revision: 5,
@@ -448,15 +591,10 @@ async fn test_owner_selected_placement_enforcement_zero_in_process_fallback() {
         placement_attestation: None,
     };
 
+    let (service, _in_process_probe) =
+        readiness_service(db.clone(), blobs.clone(), in_process_pool, HashSet::new());
     let fallback_err = service
-        .evaluate_readiness(EvaluateReadinessCommand {
-            operation_id: Uuid::new_v4(),
-            installation_id: Uuid::new_v4(),
-            target: target.clone(),
-            pool: in_process_pool,
-            policy: policy_isolated.clone(),
-            smoke_test_passed: true,
-        })
+        .evaluate_readiness(readiness_command(target.clone(), policy_isolated.clone()))
         .await
         .expect_err(
             "in-process execution MUST be strictly prohibited when isolated worker required",
@@ -476,15 +614,14 @@ async fn test_owner_selected_placement_enforcement_zero_in_process_fallback() {
         placement_attestation: None,
     };
 
+    let (service, _unattested_probe) = readiness_service(
+        db.clone(),
+        blobs.clone(),
+        unauthenticated_isolated_pool,
+        HashSet::new(),
+    );
     let attestation_err = service
-        .evaluate_readiness(EvaluateReadinessCommand {
-            operation_id: Uuid::new_v4(),
-            installation_id: Uuid::new_v4(),
-            target: target.clone(),
-            pool: unauthenticated_isolated_pool,
-            policy: policy_isolated.clone(),
-            smoke_test_passed: true,
-        })
+        .evaluate_readiness(readiness_command(target.clone(), policy_isolated.clone()))
         .await
         .expect_err("isolated pool without attestation must fail");
 
@@ -505,15 +642,14 @@ async fn test_owner_selected_placement_enforcement_zero_in_process_fallback() {
         placement_attestation: Some("jwt-worker-node-attestation-valid-token".to_string()),
     };
 
+    let (service, _attested_probe) = readiness_service(
+        db.clone(),
+        blobs.clone(),
+        attested_isolated_pool.clone(),
+        HashSet::new(),
+    );
     let receipt = service
-        .evaluate_readiness(EvaluateReadinessCommand {
-            operation_id: Uuid::new_v4(),
-            installation_id: Uuid::new_v4(),
-            target: target.clone(),
-            pool: attested_isolated_pool.clone(),
-            policy: policy_isolated.clone(),
-            smoke_test_passed: true,
-        })
+        .evaluate_readiness(readiness_command(target.clone(), policy_isolated.clone()))
         .await
         .expect("readiness succeeds for authenticated isolated worker pool");
 
@@ -540,8 +676,6 @@ async fn test_dual_candidate_and_predecessor_smoke_readiness_for_automatic_mode(
         .await
         .unwrap();
 
-    let service = ExecutorReadinessService::new(db.clone(), blobs.clone());
-
     let pool = ExecutorPoolIdentity {
         pool_id: "pool-prod-serving".to_string(),
         pool_generation: 1,
@@ -556,16 +690,12 @@ async fn test_dual_candidate_and_predecessor_smoke_readiness_for_automatic_mode(
         allow_in_process_fallback: false,
     };
 
+    let (service, _probe) =
+        readiness_service(db.clone(), blobs.clone(), pool.clone(), HashSet::new());
+
     // 1. Predecessor only has readiness, candidate does not -> AUTOMATIC MODE DENIED
     service
-        .evaluate_readiness(EvaluateReadinessCommand {
-            operation_id: Uuid::new_v4(),
-            installation_id: Uuid::new_v4(),
-            target: predecessor.clone(),
-            pool: pool.clone(),
-            policy: policy.clone(),
-            smoke_test_passed: true,
-        })
+        .evaluate_readiness(readiness_command(predecessor.clone(), policy.clone()))
         .await
         .expect("predecessor readiness succeeds");
 
@@ -574,6 +704,7 @@ async fn test_dual_candidate_and_predecessor_smoke_readiness_for_automatic_mode(
             &candidate.release_digest,
             Some(&predecessor.release_digest),
             std::slice::from_ref(&pool),
+            &policy,
         )
         .await
         .expect_err("must deny automatic mode when candidate lacks receipt");
@@ -583,15 +714,10 @@ async fn test_dual_candidate_and_predecessor_smoke_readiness_for_automatic_mode(
     ));
 
     // 2. Candidate evaluated with FAILED smoke test -> AUTOMATIC MODE DENIED
-    let err_smoke = service
-        .evaluate_readiness(EvaluateReadinessCommand {
-            operation_id: Uuid::new_v4(),
-            installation_id: Uuid::new_v4(),
-            target: candidate.clone(),
-            pool: pool.clone(),
-            policy: policy.clone(),
-            smoke_test_passed: false,
-        })
+    let failing_service =
+        failing_readiness_service(db.clone(), blobs.clone(), pool.clone());
+    let err_smoke = failing_service
+        .evaluate_readiness(readiness_command(candidate.clone(), policy.clone()))
         .await
         .expect_err("smoke failure must fail closed");
     assert!(matches!(
@@ -601,14 +727,7 @@ async fn test_dual_candidate_and_predecessor_smoke_readiness_for_automatic_mode(
 
     // 3. Candidate evaluated with PASSED smoke test -> BOTH CANDIDATE AND PREDECESSOR READY
     service
-        .evaluate_readiness(EvaluateReadinessCommand {
-            operation_id: Uuid::new_v4(),
-            installation_id: Uuid::new_v4(),
-            target: candidate.clone(),
-            pool: pool.clone(),
-            policy: policy.clone(),
-            smoke_test_passed: true,
-        })
+        .evaluate_readiness(readiness_command(candidate.clone(), policy.clone()))
         .await
         .expect("candidate readiness succeeds");
 
@@ -618,6 +737,7 @@ async fn test_dual_candidate_and_predecessor_smoke_readiness_for_automatic_mode(
             &candidate.release_digest,
             Some(&predecessor.release_digest),
             std::slice::from_ref(&pool),
+            &policy,
         )
         .await
         .expect("automatic mode must be permitted when both candidate and predecessor pass smoke readiness");

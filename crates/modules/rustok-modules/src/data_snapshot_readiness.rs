@@ -106,7 +106,7 @@ impl ArtifactDataRecoveryReadinessService {
                      FROM module_artifact_data_snapshots \
                      WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} \
                        AND status = 'ready' \
-                     ORDER BY created_at DESC LIMIT 1",
+                     ORDER BY created_at DESC, snapshot_id DESC LIMIT 1",
                     backend.placeholder(1),
                     backend.placeholder(2),
                     backend.placeholder(3),
@@ -138,41 +138,34 @@ impl ArtifactDataRecoveryReadinessService {
             }
         };
 
-        let snapshot_id_str: String = row
-            .try_get("", "snapshot_id")
-            .map_err(|e| SnapshotReadinessError::Storage(e.to_string()))?;
-        let snapshot_id = Uuid::parse_str(&snapshot_id_str)
+        let snapshot_id = backend
+            .uuid_from_row(&row, "snapshot_id")
             .map_err(|e| SnapshotReadinessError::Storage(e.to_string()))?;
 
         let manifest_digest: Option<String> = row
             .try_get("", "manifest_digest")
             .map_err(|e| SnapshotReadinessError::Storage(e.to_string()))?;
-        let structured_record_count: i64 = row
-            .try_get("", "structured_record_count")
+        let structured_record_count = crate::backend::nonnegative_count_from_row(&row, "structured_record_count")
             .map_err(|e| SnapshotReadinessError::Storage(e.to_string()))?;
-        let object_count: i64 = row
-            .try_get("", "object_count")
+        let object_count = crate::backend::nonnegative_count_from_row(&row, "object_count")
             .map_err(|e| SnapshotReadinessError::Storage(e.to_string()))?;
-        let total_object_bytes: i64 = row
-            .try_get("", "total_object_bytes")
+        let total_object_bytes = crate::backend::nonnegative_count_from_row(&row, "total_object_bytes")
             .map_err(|e| SnapshotReadinessError::Storage(e.to_string()))?;
 
-        let created_at: DateTime<Utc> = row
-            .try_get("", "created_at")
+        let created_at = backend
+            .datetime_from_row(&row, "created_at")
             .map_err(|e| SnapshotReadinessError::Storage(e.to_string()))?;
-        let retain_until: DateTime<Utc> = row
-            .try_get("", "retain_until")
+        let retain_until = backend
+            .datetime_from_row(&row, "retain_until")
             .map_err(|e| SnapshotReadinessError::Storage(e.to_string()))?;
 
         let now = Utc::now();
         let age = now.signed_duration_since(created_at);
         let age_seconds = age.num_seconds().max(0) as u64;
 
-        let max_chrono_duration = match chrono::Duration::from_std(max_age) {
-            Ok(d) => d,
-            Err(_) => chrono::Duration::zero(),
-        };
-        let is_within_sla = age >= chrono::Duration::zero() && age <= max_chrono_duration;
+        let is_within_sla = age
+            .to_std()
+            .is_ok_and(|age| age <= max_age);
         let not_expired = retain_until > now;
         let has_valid_manifest = manifest_digest
             .as_deref()
@@ -185,9 +178,9 @@ impl ArtifactDataRecoveryReadinessService {
             snapshot_id: Some(snapshot_id),
             manifest_digest,
             is_within_sla,
-            structured_record_count: Some(structured_record_count as u64),
-            object_count: Some(object_count as u64),
-            total_object_bytes: Some(total_object_bytes as u64),
+            structured_record_count: Some(structured_record_count),
+            object_count: Some(object_count),
+            total_object_bytes: Some(total_object_bytes),
             created_at: Some(created_at),
             retain_until: Some(retain_until),
             age_seconds: Some(age_seconds),
@@ -218,15 +211,20 @@ impl ArtifactDataRecoveryReadinessService {
                     .await
                     .map_err(|e| PostgresRecoveryEvidenceError::Storage(e.to_string()))?;
 
-                let (lsn, wal_level) = if let Some(row) = row_opt {
-                    let lsn: String = row.try_get("", "lsn").unwrap_or_else(|_| "0/0".to_string());
-                    let wal_level: String = row
-                        .try_get("", "wal_level")
-                        .unwrap_or_else(|_| "replica".to_string());
-                    (lsn, wal_level)
-                } else {
-                    ("0/0".to_string(), "replica".to_string())
-                };
+                // Recovery evidence must describe facts read from the
+                // database. A missing row or an undecodable value is a
+                // storage failure, never a fabricated LSN or WAL level.
+                let row = row_opt.ok_or_else(|| {
+                    PostgresRecoveryEvidenceError::Storage(
+                        "PostgreSQL recovery evidence query returned no row".to_string(),
+                    )
+                })?;
+                let lsn: String = row
+                    .try_get("", "lsn")
+                    .map_err(|e| PostgresRecoveryEvidenceError::Storage(e.to_string()))?;
+                let wal_level: String = row
+                    .try_get("", "wal_level")
+                    .map_err(|e| PostgresRecoveryEvidenceError::Storage(e.to_string()))?;
 
                 let mut hasher = Sha256::new();
                 hasher.update(b"postgres");
@@ -266,6 +264,11 @@ impl ArtifactDataRecoveryReadinessService {
                 let page_size: i64 = row
                     .try_get("", "page_size")
                     .map_err(|e| PostgresRecoveryEvidenceError::Storage(e.to_string()))?;
+                if page_count < 0 || page_size <= 0 {
+                    return Err(PostgresRecoveryEvidenceError::Storage(
+                        "SQLite recovery evidence page state is invalid".to_string(),
+                    ));
+                }
 
                 let tag = format!("sqlite:page_count={}:page_size={}", page_count, page_size);
                 let mut hasher = Sha256::new();

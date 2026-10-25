@@ -22,6 +22,21 @@ capability grants and static-promotion admission. Persistence adapters and
 owner transports are still being moved from the server. It does not own sandbox
 implementation or Alloy source authoring.
 
+### Durable replay identity
+
+An idempotent retry is identified by its explicit durable scope and
+idempotency key plus the command's semantic fields. Trace, correlation, and
+free-text reason values are first-attempt audit and observability evidence;
+they are stored where an owner receipt requires them, but changing them does
+not make the same semantic command conflict. Actor is included only where the
+owner explicitly defines it as a replay-principal or authorization boundary,
+either in the lookup partition or in the semantic fingerprint. Structured
+facts such as `reason_code`, policy revisions, expected revisions, evidence,
+and target identities remain semantic. `src/idempotency.rs` provides the
+shared digest for commands whose top-level context/reason fields follow this
+contract; owners with a narrower identity define an explicit fingerprint
+instead of hashing arbitrary nested payload conventions.
+
 ### Static settings boundary
 
 `rustok-modules` owns static tenant settings persistence, revision/CAS,
@@ -95,7 +110,25 @@ maintenance blocks serving without changing tenant enablement. Lifecycle writes 
 obtain the enabled projection from this same decision object; unknown modules
 and unavailable artifact runtime state are explicitly denied instead of
 appearing as absent implementation details.
-Browser transports receive only `rustok_api::ModuleEffectivePolicyView`: its
+Deserializing a full `ModuleEffectivePolicy` revalidates its digest revision,
+decision keys and revision bindings, enabled/denied consistency, denial
+explanations, and exact agreement between enabled modules and enabled
+decisions; catalog membership and revision provenance still require the policy
+owner or an exact current cache identity.
+
+The policy revision identifies durable intent and durable runtime evidence.
+It deliberately excludes the volatile executor-liveness flag: decisions still
+factor executor availability in, so two policies sharing one revision can
+differ in the enabled set while workers flap. That is an accepted trade, not
+an oversight — churning the durable revision on every worker flap would
+invalidate every revision-keyed cache and transition consumer cluster-wide.
+The consequences are bounded and one-directional: a revision-matched cache
+entry can lag executor recovery (a module stays denied until TTL or
+invalidation, at most the cache `max_age`), and it can lag executor loss
+only until dispatch, where executor availability is re-checked before any
+guest execution. Consumers must therefore treat the revision as an intent
+identity, never as proof that an executor is currently available. Browser transports receive only
+`rustok_api::ModuleEffectivePolicyView`: its
 policy revision, per-module effective result, and stable redacted denial
 taxonomy. The host composes one `SharedModuleEffectivePolicyReader` with the
 active manifest's normalized co-requisites, and native Admin and GraphQL
@@ -391,7 +424,12 @@ observation is revisioned and transitions through `prepared`, `healthy`, and
 `active`; a healthy wave permits activation, and only an active complete fleet
 becomes `converged`. A failed candidate starts the one permitted recovery or
 ends in `recovery_required`; post-convergence drift becomes `degraded` and
-fails readiness. Duplicate reports replay their immutable receipt, while stale
+fails readiness. A degraded rollout stays claimable: its failed assignments
+may be re-claimed under fresh leases and re-prepared until the fleet is
+healthy and active again, reconverging on the release already committed as
+the active head without a second release activation; an operator recovery
+to the direct predecessor remains available throughout. Duplicate reports
+replay their immutable receipt, while stale
 or out-of-order revisions fail closed. Desired and observed rollout state,
 node-role observations, and operation journals are transactional and emit
 outbox events. The outside-candidate deployment controller, node transport,
@@ -456,8 +494,13 @@ self-update the tools.
 Artifact permission descriptors carry immutable localized labels and
 descriptions. The current installation command sends them through the shared
 `ArtifactPermissionRegistrationPort` after its installation commits; the
-installation ID is its idempotency identity. That shape is an atomic-cutover
-gap after release admission is separated from scoped installation. In
+installation ID is its idempotency identity. The admission row and result
+record that projection separately as `not_required`, `pending`, or
+`registered`: a failed projection leaves the durable admission acknowledged
+as `pending`, and an idempotent retry loads the stored descriptor and
+completes the projection without consulting the registry again. That durable
+state does not by itself complete the accepted separation of release
+admission from scoped installation. In
 the accepted target, admission commits only inert definitions keyed by exact
 release/module/definition digest and never invents a scope or grant. Scoped
 install projects those definitions idempotently under
@@ -485,9 +528,10 @@ claim, completion, abandonment, replay, and lease recovery set the transaction's
 `rustok.tenant_id` before touching request identity or stored responses. The
 tenant remains part of every unique key and mutation predicate; RLS is the
 independent fail-closed boundary rather than a substitute for those predicates.
-Each binding receipt is also bound to one tenant-matched `ModuleCommandContext`:
-actor, trace, correlation, and UUID idempotency evidence must match before a
-stored response can replay.
+Each binding receipt is partitioned by tenant and actor and carries a canonical
+semantic request digest. Trace and correlation values are retained only as
+first-attempt audit evidence; changing them on retry does not turn replay of
+the same semantic binding into a conflict.
 
 Structured-data and object-data list calls validate bounded keyset continuation
 inside the requested logical prefix before invoking any capability broker. A
@@ -842,32 +886,174 @@ Admission remains inert: it does not select a serving installation or invent a
 rollback predecessor. `activate_artifact` is the scoped owner transition. It
 serializes one `(scope, slug)`, records only the active non-uninstalled
 predecessor, makes that predecessor inactive, writes the candidate's durable
-predecessor pointer and replayable operation receipt, then makes the candidate
-active, creates the transition checkpoint and rollout-window retention hold,
-and emits `module.artifact.activated` in the same transaction. Failure to
-persist either transition record aborts activation.
+predecessor pointer and replayable operation receipt, makes the candidate
+active, and emits `module.artifact.activated` in the same transaction. A plain
+activation deliberately does not synthesize a governed-transition checkpoint,
+preflight result, conflict-fence decision, observation window, or rollout
+hold: those records exist only when a governed transition is created
+separately for the exact activation operation through the transition owner.
+Plain activation, deactivation, and uninstall are fenced while an unresolved
+governed checkpoint owns the slug in the same scope (a platform-scope
+checkpoint also fences tenant-scope mutations): the governed saga owns the
+serving selection until its checkpoint resolves, and `rollback_artifact`
+remains the operator recovery path out of it.
+
+`SeaOrmModuleTransitionService::start_governed_automatic_artifact_transition`
+is the governed start saga. It loads the exact admitted candidate and the
+serving predecessor, derives migration/data preflight from their admitted
+descriptors (an unchanged persistence contract and data schema, an unchanged
+settings schema, and idempotency-`Required` lifecycle bindings are the
+automatic-mode conditions — anything else is maintenance-classified and
+refused before any checkpoint exists), records the checkpoint in
+`PreStaging`, executes candidate and predecessor smoke readiness through the
+host-composed `ExecutorReadinessService` pools outside any database
+transaction, requires automatic-mode eligibility on every required pool, and
+only then calls the governed activation. The governed activation shares the
+checkpoint operation identity and, under the activation lock, revalidates
+the checkpoint's candidate/predecessor pair and the current security epoch,
+records predecessor payload/manifest rollout-window retention holds, advances
+the checkpoint to `Observing`, and changes serving selection in the same
+transaction. A retry discovers and resumes the staged checkpoint; a staged
+pair or epoch that has gone stale is moved to `InterventionRequired` instead
+of activating.
+
+Executor-pool generations are durable deployment facts owned by
+`SeaOrmExecutorPoolRegistry` (`module_executor_pools`): a host registers
+each pool it actually composed, re-registering identical fingerprint,
+placement, and attestation resumes the current generation, and any change
+advances the generation by one so earlier smoke evidence goes stale by
+construction. The server composes one readiness service per pool it runs:
+the in-process WASM pool fingerprint is derived from the running server
+binary, and the isolated Rhai pool fingerprint is built only from the
+worker's own identity evidence (its binary digest, admitted image digest,
+and isolation-envelope digest, reported over the authenticated readiness
+RPC) plus the mTLS trust anchor the host pinned for it. The operator
+placement policy (`RUSTOK_GOVERNED_PLACEMENT_POLICY_REVISION`,
+`RUSTOK_GOVERNED_REQUIRED_PLACEMENT`,
+`RUSTOK_GOVERNED_ALLOW_IN_PROCESS_FALLBACK`) must be configured before the
+tenant `startGovernedTenantArtifactTransition` transport can start a
+governed transition; without it, or when a configured worker cannot prove
+its identity, the composition fails closed and no governed transition can
+start. Required pools are the pools of the executing node.
 
 `rollback_artifact` is the only dynamic serving recovery command. It verifies
 that the retained target is the direct predecessor recorded by the activation
-operation, rejects closed or stale transition revisions, and atomically changes
-both admission selections, advances the checkpoint to
-`RecoveredToPredecessor`, releases the rollout hold, records its idempotency
-receipt, and emits `module.artifact.rolled_back`. No transport may mark a
-checkpoint recovered without completing this serving transition.
+operation and atomically changes both admission selections, records its
+idempotency receipt, releases any retention holds for that activation
+operation, and emits `module.artifact.rolled_back`. When a governed checkpoint
+exists for the exact activation operation, the same transaction also verifies
+the checkpoint slug and tenant, records its single predecessor recovery, and
+CAS-saves the advanced checkpoint; a converged, already-recovered,
+point-of-no-return, or recovery-exhausted checkpoint aborts the rollback. No
+transport may mark a checkpoint recovered without completing this serving
+transition.
 
 `SeaOrmModuleTransitionService::finalize` owns explicit convergence. The
 authenticated command carries tenant scope, `modules:manage` evidence,
 `expected_revision`, and an idempotency key. Its checkpoint CAS, retention-hold
 release, operation receipt, and `module.transition.finalized` event commit in
-one transaction. The watchdog uses the same owner boundary for elapsed
-observation windows. A stale security epoch fails closed and retains recovery
-evidence because automatic rollback cannot reuse an obsolete capability grant.
+one transaction. The watchdog never treats an elapsed observation window as
+convergence evidence: stale-epoch and expired-window checkpoints move to
+`InterventionRequired` without changing serving selection, retaining recovery
+evidence for an explicit operator rollback or deactivation instead of reusing
+an obsolete capability grant automatically.
 
 File-backed admission uses `ArtifactPayloadSource::TemporaryFile` and
 `DurableArtifactBlobStore::stage_file`; the storage adapter hashes the staging
 file while it publishes to the durable CAS. Local storage uses an atomic
 temporary copy/rename and S3 opens the file as `ByteStream`, so the owner never
 materializes a downloaded OCI payload as an unbounded in-memory buffer.
+
+## Operations
+
+### Background maintenance
+
+The server runs a `module_artifact_maintenance` background worker (60 s
+poll, `runtime.background_workers`) for the control-plane work no request
+path can trigger. Each leg is fail-isolated per pass and fail-closed
+inside its crate owner:
+
+- **Published-blob GC.** Every pass reloads
+  `SeaOrmArtifactBlobRetentionPolicy` from the durable retention-hold
+  ledger (the single owner of "these bytes must survive" facts) and runs
+  `ArtifactAdmissionReconciler::reconcile_published_blobs`. A digest
+  under any active CAS hold (rollout window, predecessor standby,
+  investigation, audit, legal) is retained; a snapshot load failure
+  aborts the pass with no deletions. Policy eligibility is only one
+  gate — deletion still requires the reconciler's two-phase
+  mark/grace/claim over the admission reference set.
+- **Tenant data-object GC.** `tenants_with_candidates` discovers tenants
+  holding queued candidates. When at least one tenant has work, the worker
+  loads one `ArtifactDataObjectLedgerRetentionSnapshot` and
+  `sweep_tenant_with_ledger_retention_snapshot` reuses it for every tenant in
+  that pass (a snapshot load failure deletes nothing). The sweep derives
+  per-object rules from the queue timestamp plus a fixed 7-day grace window
+  and retains any namespace under an active data-object hold wholesale
+  (over-retention is the safe direction while a namespace is under
+  investigation).
+- **Admission reverification.** Enabled only when
+  `RUSTOK_MODULE_MAINTENANCE_VERIFICATION_ENDPOINT` (https, mTLS via the
+  `RUSTOK_MODULE_MAINTENANCE_VERIFICATION_*` client-identity variables)
+  is configured. This snapshot deliberately has **no server-settings
+  counterpart** for the endpoint, mTLS material, policy revisions, or
+  maintenance actor: those deployment-owned inputs are currently the
+  `RUSTOK_MODULE_MAINTENANCE_*` environment contract read by the worker,
+  because the snapshot does not yet expose a typed server setting for
+  this maintenance leg.
+  `RUSTOK_MODULE_MAINTENANCE_TRUST_POLICY_REVISION` and
+  `RUSTOK_MODULE_MAINTENANCE_CAPABILITY_POLICY_REVISION` name the
+  current policy; admissions whose durable evidence carries different
+  revisions (or undecodable evidence) are listed by
+  `list_stale_candidates` and re-verified as owner commands under
+  `RUSTOK_MODULE_MAINTENANCE_ACTOR_ID`, with a deterministic per-candidate
+  idempotency key so retries replay instead of re-verifying. Invalid
+  configuration disables the leg loudly at startup; it never lets stale
+  evidence pass for fresh.
+
+Without initialized durable storage the worker is not spawned and
+startup logs an error: blob and data-object garbage collection are off.
+
+### Delivery parking on policy denial
+
+A policy denial (`DeniedByPolicy`) is raised before any guest
+execution, and policy toggles are routine state. Event and schedule
+deliveries therefore treat `denied_by_policy` as *held*: the completion
+returns the delivery to `pending`, reverts the claim's attempt
+increment, and reschedules with the queue's retry backoff. Only genuine
+execution failures spend the `max_attempts` dead-letter budget, so a
+temporarily disabled module receives its queued work after re-enable
+instead of losing it permanently. A permanently disabled module's held
+deliveries remain until the module is re-enabled or its work is purged
+through uninstall.
+
+### UI resource projection
+
+Activation-time navigation-route/storefront-slot collision checks read
+`module_artifact_ui_resources`, an admission-time projection written in
+the same transaction that creates each immutable installation (and
+backfilled by migration `000085`). The check is an indexed lookup by
+resource identity; descriptor validity is an admission-time invariant
+and is no longer re-proven for every active installation inside the
+activation transaction.
+
+### Schedule digest upgrade note (R3-41)
+
+Schedule binding digests are computed over the canonical six-field cron
+expression. Stored five-field digests from earlier builds no longer
+match, so on the first poll after upgrade each binding's schedule cursor
+is re-initialized at `now` (no backlog replay) and any pending
+pre-upgrade slots under the old digest stop being claimable. This is a
+one-time, self-healing re-initialization, visible as
+`initialized_cursors` in the materialization report.
+
+### Transition checkpoint scope on PostgreSQL
+
+`module_transition_checkpoints` intentionally has no RLS policy: the
+tenant-lifecycle fence must see platform-scope transitions for the same
+slug from inside a tenant transaction. Scope discrimination for this
+table is application-level (`tenant_id` predicate plus the
+Platform-before-Tenant activation lock order), consistent with the
+transition watchdog reading all checkpoints.
 
 ## Verification
 
@@ -878,6 +1064,8 @@ materializes a downloaded OCI payload as an unbounded in-memory buffer.
 ## Related Documents
 
 - [Logic audit 2026-10-21](./logic-audit-2026-10-21.md)
+- [Logic audit R2 2026-10-23](./logic-audit-r2-2026-10-23.md)
+- [Logic audit R3 2026-10-25](./logic-audit-r3-2026-10-25.md)
 - [Implementation plan](./implementation-plan.md)
 - [Neutral sandbox ADR](../../../../DECISIONS/2026-07-11-neutral-sandbox-foundation.md)
 - [Module control-plane plan](../../../../docs/modules/module-control-plane-consolidation-plan.md)

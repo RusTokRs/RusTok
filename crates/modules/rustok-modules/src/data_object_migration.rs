@@ -324,7 +324,7 @@ impl<A: ArtifactDataObjectMigrationAuthorizer> ArtifactDataObjectMigrationServic
         };
         let operation = MigrationOperation {
             id: Uuid::new_v4(),
-            request_digest: digest_json(request).map_err(storage_error)?,
+            request_digest: crate::idempotency::semantic_request_digest(request).map_err(storage_error)?,
             inventory_digest: digest_json(&inventory).map_err(storage_error)?,
             inventory,
             committed: false,
@@ -610,7 +610,7 @@ async fn load_operation<C: ConnectionTrait>(
         return Ok(None);
     };
     let request_digest: String = row.try_get("", "request_digest").map_err(storage_error)?;
-    if request_digest != digest_json(request).map_err(storage_error)? {
+    if request_digest != crate::idempotency::semantic_request_digest(request).map_err(storage_error)? {
         return Err(ArtifactDataObjectMigrationError::IdempotencyConflict);
     }
     let inventory_digest: String = row

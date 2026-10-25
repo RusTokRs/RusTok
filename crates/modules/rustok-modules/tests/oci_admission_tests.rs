@@ -27,7 +27,7 @@ use rustok_sandbox::{
     SandboxError, SandboxExecutor, SandboxExecutorKind, SandboxHost, SandboxOutcome, SandboxPolicy,
     SandboxRequest, SandboxResult, SandboxRuntime,
 };
-use sea_orm::Database;
+use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -301,6 +301,27 @@ async fn test_digest_pinned_oci_validation_and_streamed_cas_publication() {
             )
             .await
     );
+
+    // A stored descriptor is revalidated and bound back to the admission
+    // row identity before it can be returned as an admitted release again.
+    let mut mismatched_descriptor = descriptor.clone();
+    mismatched_descriptor.slug = "different_module".to_string();
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "UPDATE module_admitted_oci_releases SET descriptor_json = ?1 WHERE release_digest = ?2",
+        vec![
+            serde_json::to_string(&mismatched_descriptor)
+                .expect("mismatched descriptor JSON")
+                .into(),
+            reference.digest.clone().into(),
+        ],
+    ))
+    .await
+    .expect("corrupt stored descriptor fixture");
+    assert!(matches!(
+        admission.get_admitted_release(&reference.digest).await,
+        Err(OciReleaseAdmissionError::InvalidDescriptor(_))
+    ));
 }
 
 #[tokio::test]
@@ -519,14 +540,20 @@ async fn test_idempotent_readmission_and_conflict_handling() {
     assert_eq!(receipt1.reference, receipt2.reference);
     assert_eq!(receipt1.payload_digest, receipt2.payload_digest);
 
-    // A changed trace is a changed owner command even when the global release
-    // is already admitted; it must not be silently treated as a replay.
-    let mut changed_trace = command1.clone();
-    changed_trace.context.trace_id = "trace-1-changed".to_string();
-    assert!(matches!(
-        admission.admit_release(changed_trace).await,
-        Err(OciReleaseAdmissionError::IdempotencyConflict(key, _)) if key == idempotency_key
-    ));
+    // Trace and correlation are observability evidence, not semantic
+    // identity: a retry carrying fresh values replays the admitted release.
+    let mut changed_observability = command1.clone();
+    changed_observability.context.trace_id = "trace-1-changed".to_string();
+    changed_observability.context.correlation_id = Uuid::new_v4();
+    let changed_observability_receipt = admission
+        .admit_release(changed_observability)
+        .await
+        .expect("changed observability context should replay");
+    assert!(!changed_observability_receipt.cas_published);
+    assert_eq!(
+        changed_observability_receipt.payload_digest,
+        receipt1.payload_digest
+    );
 
     // Policy revisions are immutable command facts as well.
     let mut changed_policy = command1.clone();

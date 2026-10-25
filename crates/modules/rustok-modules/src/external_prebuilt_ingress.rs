@@ -21,8 +21,9 @@ use crate::backend::SupportedBackend;
 use crate::{
     ArtifactAdmissionLimits, ArtifactPayloadKind, ArtifactPayloadSource, ArtifactRegistry,
     ControlPlaneInfrastructure, DurableArtifactBlobStore,
-    MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor, ModuleCommandContext,
-    ModuleInstallationScope, OciArtifactReference, ReleaseAdmissionIntentJournal,
+    MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor, ModuleArtifactPackage,
+    ModuleCommandContext, ModuleInstallationScope, OciArtifactReference,
+    ReleaseAdmissionIntentJournal,
     ReleaseAdmissionJournalError, TrustVerificationRequest, TrustVerifier, promotion::digest_json,
 };
 
@@ -395,6 +396,32 @@ pub struct ExternalPrebuiltIngressCommand {
     pub capability_policy_revision: u64,
 }
 
+impl ExternalPrebuiltIngressCommand {
+    /// Digest over only the semantic external-prebuilt admission request,
+    /// including independently verified evidence and policy revisions.
+    /// Replay is already partitioned by scope, actor, and idempotency key;
+    /// trace and correlation evidence may change between attempts.
+    fn semantic_request_digest(&self) -> Result<String, ExternalPrebuiltIngressError> {
+        #[derive(Serialize)]
+        struct Fingerprint<'a> {
+            reference: &'a OciArtifactReference,
+            scope: &'a ModuleInstallationScope,
+            evidence: &'a ExternalPrebuiltIngressEvidence,
+            trust_policy_revision: u64,
+            capability_policy_revision: u64,
+        }
+
+        digest_json(&Fingerprint {
+            reference: &self.reference,
+            scope: &self.scope,
+            evidence: &self.evidence,
+            trust_policy_revision: self.trust_policy_revision,
+            capability_policy_revision: self.capability_policy_revision,
+        })
+        .map_err(|error| ExternalPrebuiltIngressError::Serialization(error.to_string()))
+    }
+}
+
 /// Immutable admission receipt certifying that an external prebuilt artifact has been
 /// independently verified across all dimensions, staged, and published into platform CAS.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -526,10 +553,10 @@ impl ExternalPrebuiltIngressService {
             ModuleInstallationScope::Tenant { tenant_id } => ("tenant", tenant_id.to_string()),
         };
 
-        // 4. Bind every mutable command fact, including complete context and
-        // independently verified evidence, into one durable replay fingerprint.
-        let request_digest = digest_json(&command)
-            .map_err(|error| ExternalPrebuiltIngressError::Serialization(error.to_string()))?;
+        // 4. Bind every semantic command fact, including independently
+        // verified evidence, into one durable replay fingerprint.
+        // Observability context is stored as evidence, not replay identity.
+        let request_digest = command.semantic_request_digest()?;
 
         // 5. Reject a reused owner idempotency key before the global immutable
         // release lookup can make a changed command appear successful.
@@ -599,8 +626,29 @@ impl ExternalPrebuiltIngressService {
                 .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
             let descriptor: ModuleArtifactDescriptor = serde_json::from_str(&descriptor_json)
                 .map_err(|e| ExternalPrebuiltIngressError::Serialization(e.to_string()))?;
-            let payload_size_bytes: i64 = row
-                .try_get("", "payload_size_bytes")
+            descriptor
+                .validate()
+                .map_err(|e| ExternalPrebuiltIngressError::InvalidDescriptor(e.to_string()))?;
+            let stored_slug: String = row
+                .try_get("", "slug")
+                .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
+            let stored_version: String = row
+                .try_get("", "version")
+                .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
+            let stored_payload_digest: String = row
+                .try_get("", "payload_digest")
+                .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
+            if descriptor.slug != stored_slug
+                || descriptor.version != stored_version
+                || descriptor.artifact_digest != stored_payload_digest
+            {
+                return Err(ExternalPrebuiltIngressError::InvalidDescriptor(
+                    "stored descriptor does not match the admitted release identity"
+                        .to_string(),
+                ));
+            }
+            let payload_size_bytes =
+                crate::backend::nonnegative_count_from_row(&row, "payload_size_bytes")
                 .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
             let artifact_origin: String = row
                 .try_get("", "artifact_origin")
@@ -634,7 +682,7 @@ impl ExternalPrebuiltIngressService {
                 reference: command.reference.clone(),
                 descriptor: descriptor.clone(),
                 payload_digest: descriptor.artifact_digest,
-                payload_size_bytes: payload_size_bytes as u64,
+                payload_size_bytes,
                 artifact_origin,
                 native_promotion_denied: true,
                 cas_published: false,
@@ -663,7 +711,35 @@ impl ExternalPrebuiltIngressService {
             .fetch(&command.reference, self.limits)
             .await
             .map_err(|e| ExternalPrebuiltIngressError::Registry(e.to_string()))?;
+        let temporary_payload_path = match &package.payload {
+            ArtifactPayloadSource::TemporaryFile(path) => Some(path.clone()),
+            ArtifactPayloadSource::Bytes(_) => None,
+        };
+        let result = self
+            .admit_fetched_external_prebuilt(
+                command,
+                backend,
+                scope_kind,
+                scope_tenant_key,
+                request_digest,
+                package,
+            )
+            .await;
+        if let Some(path) = temporary_payload_path {
+            crate::oci::remove_staged_file_best_effort(&path).await;
+        }
+        result
+    }
 
+    async fn admit_fetched_external_prebuilt(
+        &self,
+        command: ExternalPrebuiltIngressCommand,
+        backend: SupportedBackend,
+        scope_kind: &'static str,
+        scope_tenant_key: String,
+        request_digest: String,
+        package: ModuleArtifactPackage,
+    ) -> Result<ExternalPrebuiltIngressReceipt, ExternalPrebuiltIngressError> {
         if package.reference != command.reference {
             return Err(ExternalPrebuiltIngressError::ManifestDigestMismatch {
                 requested: command.reference.canonical(),
@@ -741,7 +817,6 @@ impl ExternalPrebuiltIngressService {
 
                 let size = staged.size_bytes;
                 let publish_result = self.blobs.publish(&staged).await;
-                crate::oci::remove_staged_file_best_effort(&path).await;
 
                 if let Err(error) = publish_result {
                     self.blobs.discard_best_effort(&staged).await;
@@ -918,7 +993,7 @@ impl ExternalPrebuiltIngressService {
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
-                    "SELECT r.release_digest, r.registry, r.repository, r.payload_digest, \
+                    "SELECT r.release_digest, r.registry, r.repository, r.slug, r.version, r.payload_digest, \
                             r.payload_size_bytes, r.descriptor_json, r.artifact_origin, \
                             e.native_promotion_denied, e.ingress_at \
                      FROM module_admitted_oci_releases AS r \
@@ -945,14 +1020,31 @@ impl ExternalPrebuiltIngressService {
         let payload_digest: String = row
             .try_get("", "payload_digest")
             .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
-        let payload_size_bytes: i64 = row
-            .try_get("", "payload_size_bytes")
+        let payload_size_bytes =
+            crate::backend::nonnegative_count_from_row(&row, "payload_size_bytes")
             .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
         let descriptor_json: String = row
             .try_get("", "descriptor_json")
             .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
         let descriptor: ModuleArtifactDescriptor = serde_json::from_str(&descriptor_json)
             .map_err(|e| ExternalPrebuiltIngressError::Serialization(e.to_string()))?;
+        descriptor
+            .validate()
+            .map_err(|e| ExternalPrebuiltIngressError::InvalidDescriptor(e.to_string()))?;
+        let stored_slug: String = row
+            .try_get("", "slug")
+            .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
+        let stored_version: String = row
+            .try_get("", "version")
+            .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
+        if descriptor.slug != stored_slug
+            || descriptor.version != stored_version
+            || descriptor.artifact_digest != payload_digest
+        {
+            return Err(ExternalPrebuiltIngressError::InvalidDescriptor(
+                "stored descriptor does not match the admitted release identity".to_string(),
+            ));
+        }
         let artifact_origin: String = row
             .try_get("", "artifact_origin")
             .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
@@ -978,7 +1070,7 @@ impl ExternalPrebuiltIngressService {
             },
             descriptor,
             payload_digest,
-            payload_size_bytes: payload_size_bytes as u64,
+            payload_size_bytes,
             artifact_origin,
             native_promotion_denied: true,
             cas_published: false,

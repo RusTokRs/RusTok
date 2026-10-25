@@ -379,7 +379,7 @@ where
         request: ArtifactSecretBindingRequest,
     ) -> Result<ArtifactSecretHandle, ArtifactSecretError> {
         validate_request(&request)?;
-        let request_digest = crate::promotion::digest_json(&request).map_err(storage_error)?;
+        let request_digest = crate::idempotency::semantic_request_digest(&request).map_err(storage_error)?;
         self.authorizer.authorize_secret_binding(&request).await?;
 
         let transaction = self.db.begin().await.map_err(storage_error)?;
@@ -417,7 +417,6 @@ where
             let expected_revision: Option<i64> =
                 row.try_get("", "expected_revision").map_err(storage_error)?;
             let context = command_context_from_receipt_row(&row, request.scope.capability.tenant_id, backend)?;
-            let reason: String = row.try_get("", "reason").map_err(storage_error)?;
             let revision: i64 = row.try_get("", "revision").map_err(storage_error)?;
             let stored_digest: String = row.try_get("", "request_digest").map_err(storage_error)?;
             if stored_digest != request_digest
@@ -429,8 +428,7 @@ where
                     .transpose()
                     .map_err(|_| ArtifactSecretError::IdempotencyConflict)?
                     != request.expected_revision
-                || context != request.context
-                || reason != request.reason
+                || context.actor_id != request.context.actor_id
             {
                 return Err(ArtifactSecretError::IdempotencyConflict);
             }
@@ -1548,7 +1546,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn secret_binding_persists_and_replays_the_complete_command_context() {
+    async fn secret_binding_persists_audit_context_and_replays_semantic_command() {
         let database = Database::connect("sqlite::memory:")
             .await
             .expect("sqlite database");
@@ -1574,6 +1572,16 @@ mod tests {
             .expect("exact secret binding replay");
         assert_eq!(replay, first);
         assert_eq!(first.secret_instance_id, binding.scope.secret_instance_id);
+        let mut changed_observability = binding.clone();
+        changed_observability.context.trace_id =
+            "test:artifact-secret-binding:retry".to_string();
+        changed_observability.context.correlation_id = Uuid::new_v4();
+        changed_observability.reason = "retry after an uncertain response".to_string();
+        let changed_observability_replay = service
+            .bind(changed_observability)
+            .await
+            .expect("changed observability secret binding replay");
+        assert_eq!(changed_observability_replay, first);
         assert!(database.execute_unprepared("UPDATE module_artifact_secret_binding_operations SET request_digest = 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'").await.is_err());
         assert!(
             database
@@ -1612,7 +1620,20 @@ mod tests {
             binding.context.trace_id
         );
         assert_eq!(
-            st]
+            receipt
+                .try_get::<String>("", "correlation_id")
+                .expect("receipt correlation"),
+            binding.context.correlation_id.to_string()
+        );
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "idempotency_key")
+                .expect("receipt idempotency key"),
+            binding.context.idempotency_key.to_string()
+        );
+    }
+
+    #[tokio::test]
     async fn registry_authorizer_checks_secret_ref_without_resolving_it() {
         let registry = SecretResolverRegistry::builder()
             .resolver(
@@ -1905,69 +1926,6 @@ mod tests {
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))",
                 vec![
                     binding.scope.capability.tenant_id.to_string().into(),
-                    binding.scope.capability.data_owner_id.to_string().into(),
-                    binding.scope.secret_instance_id.to_string().into(),
-                    binding.reference.clone().into(),
-                    "fixed".into(),
-                    "allowed-key".into(),
-                    binding.context.actor_id.to_string().into(),
-                    binding.reason.clone().into(),
-                ],
-            ))
-            .await
-            .expect("secret binding fixture");
-        let resolvers = SecretResolverRegistry::builder()
-            .resolver(
-                "fixed",
-                FixedSecretResolver,
-                SecretAccessPolicy::Exact(vec!["allowed-key".to_string()]),
-            )
-            .build();
-        let authorizer =
-            RegistryArtifactSecretAuthorizer::new(resolvers.clone(), AllowSecretPolicy);
-        let calls = Arc::new(AtomicUsize::new(0));
-        let service = SeaOrmArtifactSecretUseService::new(
-            database,
-            resolvers,
-            authorizer,
-            RecordingSecretConsumer {
-                calls: Arc::clone(&calls),
-            },
-        );
-        let receipt = service
-            .use_secret(ArtifactSecretUseRequest {
-                scope: binding.scope.clone(),
-                handle: ArtifactSecretHandle {
-                    reference: binding.reference.clone(),
-                    secret_instance_id: binding.scope.secret_instance_id,
-                    revision: 1,
-                },
-                execution_id: Uuid::new_v4(),
-                subject: SandboxSubject::ModuleArtifact {
-                    installation_id: binding.scope.capability.installation_id,
-                    slug: binding.scope.capability.release.slug,
-                    version: binding.scope.capability.release.version,
-                    digest: binding.scope.capability.release.digest,
-                },
-                phase: ExecutionPhase::Manual,
-                actor_id: Some("artifact-actor".to_string()),
-                trace_id: Some("trace-1".to_string()),
-            })
-            .await
-            .expect("secret use receipt");
-
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-        assert_eq!(receipt.reference, binding.reference);
-        assert_eq!(receipt.revision, 1);
-        assert_eq!(receipt.purpose, "http.authorization");
-        assert!(
-            !serde_json::to_string(&receipt)
-                .expect("receipt JSON")
-                .contains("top-secret-value")
-        );
-    }
-}
-string().into(),
                     binding.scope.capability.data_owner_id.to_string().into(),
                     binding.scope.secret_instance_id.to_string().into(),
                     binding.reference.clone().into(),

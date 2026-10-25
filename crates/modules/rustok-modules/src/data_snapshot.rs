@@ -238,7 +238,8 @@ where
     ) -> Result<ArtifactDataSnapshot, ArtifactDataError> {
         validate_create_request(&request)?;
         self.authorizer.authorize_snapshot(&request).await?;
-        let request_digest = digest_json(&request)?;
+        let request_digest = crate::idempotency::semantic_request_digest(&request)
+            .map_err(snapshot_storage_error)?;
         let snapshot_id = self.stage_snapshot(&request, &request_digest).await?;
         self.copy_snapshot_objects(request.scope.tenant_id, snapshot_id)
             .await?;
@@ -252,7 +253,8 @@ where
     ) -> Result<ArtifactDataRestoreResult, ArtifactDataError> {
         validate_restore_request(&request)?;
         let quota = self.authorizer.authorize_restore(&request).await?;
-        let request_digest = digest_json(&request)?;
+        let request_digest = crate::idempotency::semantic_request_digest(&request)
+            .map_err(snapshot_storage_error)?;
         if let Some(result) = self
             .find_restore_operation(&request, &request_digest)
             .await?
@@ -1050,7 +1052,8 @@ where
     ) -> Result<ArtifactDataSnapshotRetention, ArtifactDataError> {
         validate_retention_update_request(&request)?;
         self.authorizer.authorize_retention_update(&request).await?;
-        let request_digest = digest_json(&request)?;
+        let request_digest = crate::idempotency::semantic_request_digest(&request)
+            .map_err(snapshot_storage_error)?;
         let transaction = self.db.begin().await.map_err(snapshot_storage_error)?;
         configure_tenant_scope(&transaction, request.tenant_id).await?;
         let backend = SupportedBackend::new(transaction.get_database_backend())

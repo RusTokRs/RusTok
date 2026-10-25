@@ -23,8 +23,8 @@ pub enum ModuleTransitionStateView {
     RecoveredToPredecessor,
     #[serde(rename = "CONVERGED")]
     Converged,
-    #[serde(rename = "FAILED_CLOSED")]
-    FailedClosed,
+    #[serde(rename = "INTERVENTION_REQUIRED")]
+    InterventionRequired,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

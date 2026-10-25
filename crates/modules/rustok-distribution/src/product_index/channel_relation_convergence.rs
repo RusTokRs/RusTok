@@ -210,6 +210,10 @@ impl ProductSalesChannelRelationConvergenceAdapter {
             ModuleWorkOutcome::Retryable { .. } => (RETRY_DELAY, RETRY_MARKER),
             ModuleWorkOutcome::Rejected { .. } => (REJECTED_RETRY_DELAY, REJECTED_MARKER),
             ModuleWorkOutcome::Cancelled => (RETRY_DELAY, CANCELLED_MARKER),
+            // A held outcome made zero progress and is not a failure. The
+            // store retry path releases the lease without consuming the
+            // attempt budget, which is exactly the held semantics here.
+            ModuleWorkOutcome::Held { .. } => (RETRY_DELAY, HELD_MARKER),
         };
         match self.store.retry(&claim, delay, marker).await {
             Ok(()) | Err(ProductSalesChannelIndexRelationConvergenceError::LeaseLost) => Ok(()),

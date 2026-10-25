@@ -126,7 +126,17 @@ fn load_package_corequisites(
     Ok(package
         .co_requisites
         .into_iter()
-        .map(|(slug, spec)| (slug, spec.version_req))
+        .map(|(slug, spec)| {
+            let version_requirement = spec.version_req.trim();
+            (
+                slug,
+                if version_requirement.is_empty() {
+                    "*".to_string()
+                } else {
+                    version_requirement.to_string()
+                },
+            )
+        })
         .collect())
 }
 
@@ -153,13 +163,16 @@ fn validate_corequisite_selection(
                 ));
             }
             let version_req = raw_requirement.trim();
-            if !version_req.is_empty() {
-                VersionReq::parse(version_req).map_err(|_| {
-                    format!(
-                        "module '{slug}' deployment co-requisite '{co_requisite}' has invalid version requirement '{version_req}'"
-                    )
-                })?;
+            if version_req.is_empty() {
+                return Err(format!(
+                    "module '{slug}' deployment co-requisite '{co_requisite}' has invalid version requirement '{version_req}'"
+                ));
             }
+            VersionReq::parse(version_req).map_err(|_| {
+                format!(
+                    "module '{slug}' deployment co-requisite '{co_requisite}' has invalid version requirement '{version_req}'"
+                )
+            })?;
             if !selected.contains(co_requisite) {
                 missing.push(co_requisite.to_string());
             }
@@ -177,9 +190,6 @@ fn validate_corequisite_selection(
         for (raw_co_requisite, raw_requirement) in &module.co_requisites {
             let co_requisite = raw_co_requisite.trim();
             let requirement = raw_requirement.trim();
-            if requirement.is_empty() {
-                continue;
-            }
             let provider = modules.get(co_requisite).ok_or_else(|| {
                 format!(
                     "module '{slug}' selected deployment co-requisite '{co_requisite}' is not installed"

@@ -9,11 +9,11 @@
 //! - Dual candidate & predecessor smoke readiness for automatic mode.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     sync::{Arc, RwLock},
 };
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -24,8 +24,9 @@ use rustok_sandbox::SandboxExecutorPlacement;
 use crate::backend::SupportedBackend;
 use crate::installation::{sha256_digest, valid_digest};
 use crate::{
-    ArtifactBlobStore, ControlPlaneInfrastructure, InstalledModuleArtifact,
-    ModuleArtifactDescriptor, ModuleInstallationError,
+    ArtifactBlobStore, ArtifactPayloadKind, ControlPlaneInfrastructure, InstalledModuleArtifact,
+    ModuleArtifactDescriptor, ModuleCommandContext, ModuleInstallationError,
+    ModuleRuntimeBinding, ModuleRuntimeBindingKind,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -52,6 +53,16 @@ pub enum ExecutorReadinessError {
     StalePoolGeneration(u64, u64),
     #[error("Smoke binding execution failed: {0}")]
     SmokeExecutionFailed(String),
+    #[error("Executor readiness command is invalid: {0}")]
+    InvalidCommand(String),
+    #[error("Executor readiness authorization denied")]
+    AuthorizationDenied,
+    #[error("Executor readiness probe is unavailable: {0}")]
+    ProbeUnavailable(String),
+    #[error("Executor pool does not support payload kind `{0:?}`")]
+    UnsupportedPayloadKind(ArtifactPayloadKind),
+    #[error("Executor readiness configuration is invalid: {0}")]
+    InvalidConfiguration(String),
     #[error("Automatic mode denied: {0}")]
     AutomaticModeDenied(String),
     #[error("Blob store error: {0}")]
@@ -187,6 +198,11 @@ pub struct OwnerPlacementPolicy {
 
 impl OwnerPlacementPolicy {
     pub fn enforce(&self, pool: &ExecutorPoolIdentity) -> Result<(), ExecutorReadinessError> {
+        if self.policy_revision == 0 {
+            return Err(ExecutorReadinessError::InvalidConfiguration(
+                "placement policy revision must be positive".to_string(),
+            ));
+        }
         if self.required_placement == SandboxExecutorPlacement::IsolatedWorker {
             if pool.placement != SandboxExecutorPlacement::IsolatedWorker {
                 return Err(ExecutorReadinessError::IsolatedWorkerRequired);
@@ -322,7 +338,15 @@ impl VerifiedPayloadCache {
     }
 }
 
-/// Durable receipt recording successful smoke readiness on a specific executor fingerprint and pool generation.
+/// Default validity window for a smoke receipt. Readiness is evidence about
+/// a live executor pool, not a permanent property of immutable bytes.
+pub const DEFAULT_EXECUTOR_READINESS_RECEIPT_TTL_SECONDS: u32 = 15 * 60;
+/// Maximum validity window accepted by [`ExecutorReadinessService`].
+pub const MAX_EXECUTOR_READINESS_RECEIPT_TTL_SECONDS: u32 = 24 * 60 * 60;
+
+/// Durable receipt recording one real, successful smoke execution on a
+/// specific executor fingerprint, pool generation, placement, and placement
+/// policy revision.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecutorSmokeReceipt {
     pub id: Uuid,
@@ -337,38 +361,170 @@ pub struct ExecutorSmokeReceipt {
     pub placement_policy_revision: u64,
     pub capability_routes_verified: bool,
     pub smoke_passed: bool,
+    pub smoke_binding_id: String,
+    pub smoke_output_digest: String,
     pub evaluated_at: DateTime<Utc>,
+    pub valid_until: DateTime<Utc>,
 }
 
 impl ExecutorSmokeReceipt {
-    pub fn is_valid_for(&self, pool: &ExecutorPoolIdentity) -> bool {
+    pub fn is_valid_for_at(
+        &self,
+        pool: &ExecutorPoolIdentity,
+        policy: &OwnerPlacementPolicy,
+        now: DateTime<Utc>,
+    ) -> bool {
         let active_fp = pool.fingerprint.compute_digest();
         self.smoke_passed
             && self.capability_routes_verified
+            && !self.smoke_binding_id.trim().is_empty()
+            && valid_digest(&self.smoke_output_digest)
             && self.runtime_fingerprint == active_fp
             && self.pool_generation == pool.pool_generation
             && self.pool_id == pool.pool_id
+            && self.placement == pool.placement
+            && self.placement_policy_revision == policy.policy_revision
+            && policy.enforce(pool).is_ok()
+            && self.valid_until > self.evaluated_at
+            && self.evaluated_at <= now
+            && now < self.valid_until
+    }
+
+    pub fn is_valid_for(
+        &self,
+        pool: &ExecutorPoolIdentity,
+        policy: &OwnerPlacementPolicy,
+    ) -> bool {
+        self.is_valid_for_at(pool, policy, Utc::now())
     }
 }
 
-/// Target release for readiness evaluation.
+/// Exact installed release for readiness evaluation. The descriptor and
+/// payload digest are redundant projections of the installed artifact and
+/// are cross-checked before any execution; callers cannot substitute a
+/// different descriptor for the artifact that will run.
 #[derive(Debug, Clone)]
 pub struct ReleaseReadinessTarget {
     pub release_digest: String,
     pub descriptor: ModuleArtifactDescriptor,
     pub payload_digest: String,
-    pub installed_artifact: Option<InstalledModuleArtifact>,
+    pub installed_artifact: InstalledModuleArtifact,
 }
 
-/// Command to evaluate readiness for an installation candidate or predecessor.
+impl ReleaseReadinessTarget {
+    fn validate(&self) -> Result<(), ExecutorReadinessError> {
+        self.descriptor.validate().map_err(|error| {
+            ExecutorReadinessError::InvalidCommand(format!(
+                "readiness descriptor is invalid: {error}"
+            ))
+        })?;
+        self.installed_artifact
+            .descriptor
+            .validate()
+            .map_err(|error| {
+                ExecutorReadinessError::InvalidCommand(format!(
+                    "installed artifact descriptor is invalid: {error}"
+                ))
+            })?;
+        if self.installed_artifact.installation_id.is_nil()
+            || !valid_digest(&self.release_digest)
+            || !valid_digest(&self.payload_digest)
+            || self.release_digest != self.installed_artifact.reference.digest
+            || self.payload_digest != self.descriptor.artifact_digest
+            || self.descriptor != self.installed_artifact.descriptor
+            || self.installed_artifact.release != self.descriptor.release_ref()
+        {
+            return Err(ExecutorReadinessError::InvalidCommand(
+                "readiness target does not identify the exact installed artifact".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Authenticated command to evaluate readiness for an installation candidate
+/// or predecessor. It deliberately contains no pool identity, route list, or
+/// smoke outcome: those facts belong to the host-composed probe and to the
+/// execution it actually performs.
 #[derive(Debug, Clone)]
 pub struct EvaluateReadinessCommand {
     pub operation_id: Uuid,
-    pub installation_id: Uuid,
     pub target: ReleaseReadinessTarget,
-    pub pool: ExecutorPoolIdentity,
     pub policy: OwnerPlacementPolicy,
-    pub smoke_test_passed: bool,
+    pub context: ModuleCommandContext,
+    /// Authenticated host fact that the actor passed the platform
+    /// `modules:manage` authorization boundary.
+    pub actor_can_manage_modules: bool,
+}
+
+/// One owner-selected smoke execution requested from the composed executor
+/// pool. The binding is selected by [`ExecutorReadinessService`], never by
+/// the command caller or by artifact-controlled input.
+#[derive(Debug, Clone, Copy)]
+pub struct ExecutorSmokeProbeRequest<'a> {
+    pub operation_id: Uuid,
+    pub artifact: &'a InstalledModuleArtifact,
+    pub binding: &'a ModuleRuntimeBinding,
+    pub context: &'a ModuleCommandContext,
+}
+
+/// Evidence returned only after the probe actually crossed its execution
+/// boundary. Output bytes are not persisted; the receipt binds their digest.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecutorSmokeProbeOutcome {
+    pub binding_id: String,
+    pub output_digest: String,
+}
+
+/// Host-composed executor-pool port for readiness. Implementations own the
+/// pool identity and capability broker composition, so callers cannot mint
+/// a receipt by asserting a pool, route names, or `smoke_passed = true`.
+#[async_trait]
+pub trait ExecutorReadinessProbe: Send + Sync {
+    fn pool_identity(&self) -> Result<ExecutorPoolIdentity, ExecutorReadinessError>;
+
+    fn supports_payload_kind(&self, payload_kind: ArtifactPayloadKind) -> bool;
+
+    fn has_capability_route(&self, capability: &str) -> bool;
+
+    async fn execute_smoke(
+        &self,
+        request: ExecutorSmokeProbeRequest<'_>,
+    ) -> Result<ExecutorSmokeProbeOutcome, ExecutorReadinessError>;
+}
+
+fn select_smoke_binding(
+    descriptor: &ModuleArtifactDescriptor,
+) -> Result<&ModuleRuntimeBinding, ExecutorReadinessError> {
+    for kind in [
+        ModuleRuntimeBindingKind::ActivationSmoke,
+        ModuleRuntimeBindingKind::Readiness,
+    ] {
+        let mut matches = descriptor
+            .bindings
+            .iter()
+            .filter(|binding| binding.kind == kind);
+        let Some(binding) = matches.next() else {
+            continue;
+        };
+        if matches.next().is_some() {
+            return Err(ExecutorReadinessError::SmokeExecutionFailed(format!(
+                "release `{}` declares multiple {kind:?} bindings; exactly one is admissible as a smoke probe",
+                descriptor.artifact_digest
+            )));
+        }
+        if !binding.capabilities.is_empty() {
+            return Err(ExecutorReadinessError::SmokeExecutionFailed(format!(
+                "smoke binding `{}` declares capabilities; the canonical zero-grant probe must be capability-free",
+                binding.id
+            )));
+        }
+        return Ok(binding);
+    }
+    Err(ExecutorReadinessError::SmokeExecutionFailed(format!(
+        "release `{}` declares no ActivationSmoke or Readiness binding for executor readiness",
+        descriptor.artifact_digest
+    )))
 }
 
 /// Core service for authenticated prefetch, verified caching, placement enforcement,
@@ -377,24 +533,30 @@ pub struct EvaluateReadinessCommand {
 pub struct ExecutorReadinessService {
     db: DatabaseConnection,
     blobs: Arc<dyn ArtifactBlobStore>,
+    probe: Arc<dyn ExecutorReadinessProbe>,
     cache: Arc<VerifiedPayloadCache>,
-    available_routes: Arc<HashSet<String>>,
     infrastructure: ControlPlaneInfrastructure,
+    receipt_ttl_seconds: u32,
 }
 
 impl ExecutorReadinessService {
-    pub fn new(db: DatabaseConnection, blobs: Arc<dyn ArtifactBlobStore>) -> Self {
+    pub fn new(
+        db: DatabaseConnection,
+        blobs: Arc<dyn ArtifactBlobStore>,
+        probe: Arc<dyn ExecutorReadinessProbe>,
+    ) -> Self {
         Self {
             db,
             blobs,
+            probe,
             cache: Arc::new(VerifiedPayloadCache::new()),
-            available_routes: Arc::new(HashSet::new()),
             infrastructure: ControlPlaneInfrastructure::default(),
+            receipt_ttl_seconds: DEFAULT_EXECUTOR_READINESS_RECEIPT_TTL_SECONDS,
         }
     }
 
-    pub fn with_routes(mut self, routes: HashSet<String>) -> Self {
-        self.available_routes = Arc::new(routes);
+    pub fn with_receipt_ttl_seconds(mut self, receipt_ttl_seconds: u32) -> Self {
+        self.receipt_ttl_seconds = receipt_ttl_seconds;
         self
     }
 
@@ -441,7 +603,7 @@ impl ExecutorReadinessService {
             payload_digest: payload_digest.to_string(),
             runtime_fingerprint: fp_digest,
             payload_bytes: blob.clone(),
-            verified_at: Utc::now(),
+            verified_at: self.infrastructure.now(),
         };
         self.cache.put(entry);
 
@@ -456,7 +618,7 @@ impl ExecutorReadinessService {
     ) -> Result<(), ExecutorReadinessError> {
         for binding in &descriptor.bindings {
             for cap in &binding.capabilities {
-                if !self.available_routes.contains(cap.as_str()) {
+                if !self.probe.has_capability_route(cap.as_str()) {
                     return Err(ExecutorReadinessError::MissingCapabilityRoute(format!(
                         "binding `{}` declares capability `{}` which is not available in host broker routes",
                         binding.id, cap
@@ -469,42 +631,106 @@ impl ExecutorReadinessService {
 
     /// Evaluates readiness for an installation candidate or predecessor release.
     ///
-    /// Validates pool identity, owner placement policy (zero in-process fallback),
-    /// capability routes, fetches/verifies payload into cache, validates smoke test
-    /// results, and persists the durable readiness receipt.
+    /// The receipt is a by-product of execution: this method validates the
+    /// authenticated command and exact installed artifact, obtains the pool
+    /// identity from the host-composed probe, checks placement and routes,
+    /// selects the sole host-approved smoke/readiness binding, executes it,
+    /// and only then persists short-lived evidence bound to the release,
+    /// payload, pool fingerprint/generation, placement, and policy revision.
     pub async fn evaluate_readiness(
         &self,
         command: EvaluateReadinessCommand,
     ) -> Result<ExecutorSmokeReceipt, ExecutorReadinessError> {
-        command.pool.validate()?;
-        command.policy.enforce(&command.pool)?;
-        self.verify_capability_routes(&command.target.descriptor)?;
-
-        let fp_digest = command.pool.fingerprint.compute_digest();
-        self.fetch_and_verify_payload(&command.target.payload_digest, &command.pool.fingerprint)
-            .await?;
-
-        if !command.smoke_test_passed {
-            return Err(ExecutorReadinessError::SmokeExecutionFailed(format!(
-                "smoke binding probe failed for release `{}` on pool `{}`",
-                command.target.release_digest, command.pool.pool_id
+        if !(1..=MAX_EXECUTOR_READINESS_RECEIPT_TTL_SECONDS)
+            .contains(&self.receipt_ttl_seconds)
+        {
+            return Err(ExecutorReadinessError::InvalidConfiguration(format!(
+                "receipt TTL must be between 1 and {MAX_EXECUTOR_READINESS_RECEIPT_TTL_SECONDS} seconds"
             )));
         }
+        if command.operation_id.is_nil() {
+            return Err(ExecutorReadinessError::InvalidCommand(
+                "operation identity must not be nil".to_string(),
+            ));
+        }
+        command.context.validate().map_err(|error| {
+            ExecutorReadinessError::InvalidCommand(error.to_string())
+        })?;
+        if !command.actor_can_manage_modules {
+            return Err(ExecutorReadinessError::AuthorizationDenied);
+        }
+        command.target.validate()?;
+        if !command
+            .target
+            .installed_artifact
+            .scope
+            .matches_command_context(&command.context)
+        {
+            return Err(ExecutorReadinessError::InvalidCommand(
+                "command context does not match the installed artifact scope".to_string(),
+            ));
+        }
 
+        let pool = self.probe.pool_identity()?;
+        pool.validate()?;
+        command.policy.enforce(&pool)?;
+        if !self
+            .probe
+            .supports_payload_kind(command.target.descriptor.payload_kind)
+        {
+            return Err(ExecutorReadinessError::UnsupportedPayloadKind(
+                command.target.descriptor.payload_kind,
+            ));
+        }
+        self.verify_capability_routes(&command.target.descriptor)?;
+        let binding = select_smoke_binding(&command.target.descriptor)?;
+
+        let fp_digest = pool.fingerprint.compute_digest();
+        self.fetch_and_verify_payload(&command.target.payload_digest, &pool.fingerprint)
+            .await?;
+
+        let outcome = self
+            .probe
+            .execute_smoke(ExecutorSmokeProbeRequest {
+                operation_id: command.operation_id,
+                artifact: &command.target.installed_artifact,
+                binding,
+                context: &command.context,
+            })
+            .await?;
+        if outcome.binding_id != binding.id || !valid_digest(&outcome.output_digest) {
+            return Err(ExecutorReadinessError::SmokeExecutionFailed(
+                "executor probe returned evidence for a different smoke binding".to_string(),
+            ));
+        }
+
+        let evaluated_at = self.infrastructure.now();
+        let valid_until = evaluated_at
+            .checked_add_signed(Duration::seconds(i64::from(
+                self.receipt_ttl_seconds,
+            )))
+            .ok_or_else(|| {
+                ExecutorReadinessError::InvalidConfiguration(
+                    "receipt validity window exceeds the supported timestamp range".to_string(),
+                )
+            })?;
         let receipt = ExecutorSmokeReceipt {
-            id: Uuid::new_v4(),
+            id: self.infrastructure.new_id(),
             operation_id: command.operation_id,
-            installation_id: command.installation_id,
+            installation_id: command.target.installed_artifact.installation_id,
             release_digest: command.target.release_digest,
             payload_digest: command.target.payload_digest,
             runtime_fingerprint: fp_digest,
-            pool_id: command.pool.pool_id,
-            pool_generation: command.pool.pool_generation,
-            placement: command.pool.placement,
+            pool_id: pool.pool_id,
+            pool_generation: pool.pool_generation,
+            placement: pool.placement,
             placement_policy_revision: command.policy.policy_revision,
             capability_routes_verified: true,
             smoke_passed: true,
-            evaluated_at: Utc::now(),
+            smoke_binding_id: outcome.binding_id,
+            smoke_output_digest: outcome.output_digest,
+            evaluated_at,
+            valid_until,
         };
 
         self.persist_receipt(&receipt).await?;
@@ -522,62 +748,51 @@ impl ExecutorReadinessService {
             SandboxExecutorPlacement::InProcess => "in_process",
             SandboxExecutorPlacement::IsolatedWorker => "isolated_worker",
         };
-
-        let statement = match backend {
-            SupportedBackend::Postgres => Statement::from_sql_and_values(
-                SupportedBackend::Postgres.db_backend(),
+        let placeholders = (1..=16)
+            .map(|position| backend.placeholder(position))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let statement = Statement::from_sql_and_values(
+            backend.db_backend(),
+            format!(
                 "INSERT INTO module_executor_readiness_receipts (\
-                    id, operation_id, installation_id, release_digest, payload_digest,\
-                    runtime_fingerprint, pool_id, pool_generation, placement,\
-                    placement_policy_revision, capability_routes_verified, smoke_passed,\
-                    evaluated_at\
-                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
-                vec![
-                    receipt.id.into(),
-                    receipt.operation_id.into(),
-                    receipt.installation_id.into(),
-                    receipt.release_digest.clone().into(),
-                    receipt.payload_digest.clone().into(),
-                    receipt.runtime_fingerprint.clone().into(),
-                    receipt.pool_id.clone().into(),
-                    (receipt.pool_generation as i64).into(),
-                    placement_str.into(),
-                    (receipt.placement_policy_revision as i64).into(),
-                    receipt.capability_routes_verified.into(),
-                    receipt.smoke_passed.into(),
-                    receipt.evaluated_at.into(),
-                ],
+                    id, operation_id, installation_id, release_digest, payload_digest, \
+                    runtime_fingerprint, pool_id, pool_generation, placement, \
+                    placement_policy_revision, capability_routes_verified, smoke_passed, \
+                    smoke_binding_id, smoke_output_digest, evaluated_at, valid_until\
+                 ) VALUES ({placeholders})"
             ),
-            SupportedBackend::Sqlite => Statement::from_sql_and_values(
-                SupportedBackend::Sqlite.db_backend(),
-                "INSERT INTO module_executor_readiness_receipts (\
-                    id, operation_id, installation_id, release_digest, payload_digest,\
-                    runtime_fingerprint, pool_id, pool_generation, placement,\
-                    placement_policy_revision, capability_routes_verified, smoke_passed,\
-                    evaluated_at\
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-                vec![
-                    receipt.id.to_string().into(),
-                    receipt.operation_id.to_string().into(),
-                    receipt.installation_id.to_string().into(),
-                    receipt.release_digest.clone().into(),
-                    receipt.payload_digest.clone().into(),
-                    receipt.runtime_fingerprint.clone().into(),
-                    receipt.pool_id.clone().into(),
-                    (receipt.pool_generation as i64).into(),
-                    placement_str.into(),
-                    (receipt.placement_policy_revision as i64).into(),
-                    (if receipt.capability_routes_verified {
-                        1i32
-                    } else {
-                        0i32
-                    })
+            vec![
+                backend.uuid_value(receipt.id),
+                backend.uuid_value(receipt.operation_id),
+                backend.uuid_value(receipt.installation_id),
+                receipt.release_digest.clone().into(),
+                receipt.payload_digest.clone().into(),
+                receipt.runtime_fingerprint.clone().into(),
+                receipt.pool_id.clone().into(),
+                i64::try_from(receipt.pool_generation)
+                    .map_err(|_| {
+                        ExecutorReadinessError::Store(
+                            "pool generation exceeds the database range".to_string(),
+                        )
+                    })?
                     .into(),
-                    (if receipt.smoke_passed { 1i32 } else { 0i32 }).into(),
-                    receipt.evaluated_at.to_rfc3339().into(),
-                ],
-            ),
-        };
+                placement_str.into(),
+                i64::try_from(receipt.placement_policy_revision)
+                    .map_err(|_| {
+                        ExecutorReadinessError::Store(
+                            "placement policy revision exceeds the database range".to_string(),
+                        )
+                    })?
+                    .into(),
+                backend.bool_value(receipt.capability_routes_verified),
+                backend.bool_value(receipt.smoke_passed),
+                receipt.smoke_binding_id.clone().into(),
+                receipt.smoke_output_digest.clone().into(),
+                backend.datetime_value(receipt.evaluated_at),
+                backend.datetime_value(receipt.valid_until),
+            ],
+        );
 
         self.db
             .execute_raw(statement)
@@ -597,42 +812,35 @@ impl ExecutorReadinessService {
     ) -> Result<Option<ExecutorSmokeReceipt>, ExecutorReadinessError> {
         let backend = SupportedBackend::new(self.db.get_database_backend())
             .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
-        let statement = match backend {
-            SupportedBackend::Postgres => Statement::from_sql_and_values(
-                SupportedBackend::Postgres.db_backend(),
-                "SELECT id, operation_id, installation_id, release_digest, payload_digest,\
-                        runtime_fingerprint, pool_id, pool_generation, placement,\
-                        placement_policy_revision, capability_routes_verified, smoke_passed,\
-                        evaluated_at \
+        let statement = Statement::from_sql_and_values(
+            backend.db_backend(),
+            format!(
+                "SELECT id, operation_id, installation_id, release_digest, payload_digest, \
+                        runtime_fingerprint, pool_id, pool_generation, placement, \
+                        placement_policy_revision, capability_routes_verified, smoke_passed, \
+                        smoke_binding_id, smoke_output_digest, evaluated_at, valid_until \
                  FROM module_executor_readiness_receipts \
-                 WHERE release_digest = $1 AND pool_id = $2 AND pool_generation = $3 \
-                   AND runtime_fingerprint = $4 \
-                 ORDER BY evaluated_at DESC LIMIT 1",
-                vec![
-                    release_digest.to_owned().into(),
-                    pool_id.to_owned().into(),
-                    (pool_generation as i64).into(),
-                    runtime_fingerprint.to_owned().into(),
-                ],
+                 WHERE release_digest = {} AND pool_id = {} AND pool_generation = {} \
+                   AND runtime_fingerprint = {} \
+                 ORDER BY evaluated_at DESC, id DESC LIMIT 1",
+                backend.placeholder(1),
+                backend.placeholder(2),
+                backend.placeholder(3),
+                backend.placeholder(4),
             ),
-            SupportedBackend::Sqlite => Statement::from_sql_and_values(
-                SupportedBackend::Sqlite.db_backend(),
-                "SELECT id, operation_id, installation_id, release_digest, payload_digest,\
-                        runtime_fingerprint, pool_id, pool_generation, placement,\
-                        placement_policy_revision, capability_routes_verified, smoke_passed,\
-                        evaluated_at \
-                 FROM module_executor_readiness_receipts \
-                 WHERE release_digest = ?1 AND pool_id = ?2 AND pool_generation = ?3 \
-                   AND runtime_fingerprint = ?4 \
-                 ORDER BY evaluated_at DESC LIMIT 1",
-                vec![
-                    release_digest.to_owned().into(),
-                    pool_id.to_owned().into(),
-                    (pool_generation as i64).into(),
-                    runtime_fingerprint.to_owned().into(),
-                ],
-            ),
-        };
+            vec![
+                release_digest.to_owned().into(),
+                pool_id.to_owned().into(),
+                i64::try_from(pool_generation)
+                    .map_err(|_| {
+                        ExecutorReadinessError::Store(
+                            "pool generation exceeds the database range".to_string(),
+                        )
+                    })?
+                    .into(),
+                runtime_fingerprint.to_owned().into(),
+            ],
+        );
 
         let row = self
             .db
@@ -645,15 +853,6 @@ impl ExecutorReadinessService {
             None => return Ok(None),
         };
 
-        let id_str: String = row
-            .try_get("", "id")
-            .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
-        let op_str: String = row
-            .try_get("", "operation_id")
-            .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
-        let inst_str: String = row
-            .try_get("", "installation_id")
-            .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
         let placement_str: String = row
             .try_get("", "placement")
             .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
@@ -663,50 +862,25 @@ impl ExecutorReadinessService {
         let pol_rev: i64 = row
             .try_get("", "placement_policy_revision")
             .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
-        let routes_verified = match backend {
-            SupportedBackend::Postgres => row
-                .try_get::<bool>("", "capability_routes_verified")
-                .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
-            SupportedBackend::Sqlite => {
-                row.try_get::<i32>("", "capability_routes_verified")
-                    .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?
-                    != 0
-            }
-        };
-        let smoke_passed = match backend {
-            SupportedBackend::Postgres => row
-                .try_get::<bool>("", "smoke_passed")
-                .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
-            SupportedBackend::Sqlite => {
-                row.try_get::<i32>("", "smoke_passed")
-                    .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?
-                    != 0
-            }
-        };
-        let evaluated_at = match backend {
-            SupportedBackend::Postgres => row
-                .try_get::<DateTime<Utc>>("", "evaluated_at")
-                .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
-            SupportedBackend::Sqlite => {
-                let s: String = row
-                    .try_get("", "evaluated_at")
-                    .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
-                crate::backend::parse_sqlite_datetime(&s)
-                    .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?
-            }
-        };
-
         let placement = match placement_str.as_str() {
+            "in_process" => SandboxExecutorPlacement::InProcess,
             "isolated_worker" => SandboxExecutorPlacement::IsolatedWorker,
-            _ => SandboxExecutorPlacement::InProcess,
+            other => {
+                return Err(ExecutorReadinessError::Store(format!(
+                    "unknown executor placement `{other}` in readiness receipt"
+                )));
+            }
         };
 
         Ok(Some(ExecutorSmokeReceipt {
-            id: Uuid::parse_str(&id_str)
+            id: backend
+                .uuid_from_row(&row, "id")
                 .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
-            operation_id: Uuid::parse_str(&op_str)
+            operation_id: backend
+                .uuid_from_row(&row, "operation_id")
                 .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
-            installation_id: Uuid::parse_str(&inst_str)
+            installation_id: backend
+                .uuid_from_row(&row, "installation_id")
                 .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
             release_digest: row
                 .try_get("", "release_digest")
@@ -720,12 +894,37 @@ impl ExecutorReadinessService {
             pool_id: row
                 .try_get("", "pool_id")
                 .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
-            pool_generation: pool_gen as u64,
+            pool_generation: u64::try_from(pool_gen).map_err(|_| {
+                ExecutorReadinessError::Store(
+                    "readiness receipt pool generation is outside the supported range"
+                        .to_string(),
+                )
+            })?,
             placement,
-            placement_policy_revision: pol_rev as u64,
-            capability_routes_verified: routes_verified,
-            smoke_passed,
-            evaluated_at,
+            placement_policy_revision: u64::try_from(pol_rev).map_err(|_| {
+                ExecutorReadinessError::Store(
+                    "readiness receipt placement policy revision is outside the supported range"
+                        .to_string(),
+                )
+            })?,
+            capability_routes_verified: backend
+                .bool_from_row(&row, "capability_routes_verified")
+                .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
+            smoke_passed: backend
+                .bool_from_row(&row, "smoke_passed")
+                .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
+            smoke_binding_id: row
+                .try_get("", "smoke_binding_id")
+                .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
+            smoke_output_digest: row
+                .try_get("", "smoke_output_digest")
+                .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
+            evaluated_at: backend
+                .datetime_from_row(&row, "evaluated_at")
+                .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
+            valid_until: backend
+                .datetime_from_row(&row, "valid_until")
+                .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
         }))
     }
 
@@ -740,6 +939,7 @@ impl ExecutorReadinessService {
         candidate_release_digest: &str,
         predecessor_release_digest: Option<&str>,
         pools: &[ExecutorPoolIdentity],
+        policy: &OwnerPlacementPolicy,
     ) -> Result<(), ExecutorReadinessError> {
         if pools.is_empty() {
             return Err(ExecutorReadinessError::AutomaticModeDenied(
@@ -747,8 +947,10 @@ impl ExecutorReadinessService {
             ));
         }
 
+        let now = self.infrastructure.now();
         for pool in pools {
             pool.validate()?;
+            policy.enforce(pool)?;
             let fp = pool.fingerprint.compute_digest();
 
             // Candidate check
@@ -761,7 +963,7 @@ impl ExecutorReadinessService {
                 )
                 .await?;
             match candidate_receipt {
-                Some(r) if r.is_valid_for(pool) => {}
+                Some(r) if r.is_valid_for_at(pool, policy, now) => {}
                 Some(_) => {
                     return Err(ExecutorReadinessError::AutomaticModeDenied(format!(
                         "candidate `{candidate_release_digest}` has invalid or failed smoke receipt on pool `{}` generation {}",
@@ -782,7 +984,7 @@ impl ExecutorReadinessService {
                     .get_receipt(pred_digest, &pool.pool_id, pool.pool_generation, &fp)
                     .await?;
                 match pred_receipt {
-                    Some(r) if r.is_valid_for(pool) => {}
+                    Some(r) if r.is_valid_for_at(pool, policy, now) => {}
                     Some(_) => {
                         return Err(ExecutorReadinessError::AutomaticModeDenied(format!(
                             "predecessor `{pred_digest}` has invalid or failed smoke receipt on pool `{}` generation {} (rollback readiness unproven)",

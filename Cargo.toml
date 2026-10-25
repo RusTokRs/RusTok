@@ -148,6 +148,7 @@ rustok-deal = { path = "crates/modules/rustok-deal" }
 rustok-party = { path = "crates/modules/rustok-party" }
 # Async Runtime
 tokio = { version = "1.52", features = ["full"] }
+libc = "0.2"
 
 # Web
 axum = { version = "0.8.9", features = ["multipart", "ws"] }

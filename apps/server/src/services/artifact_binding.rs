@@ -8,12 +8,12 @@
 use axum::http::StatusCode;
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
-    ArtifactBindingExecutionContext, ArtifactBindingIdempotencyClaim,
-    ArtifactBindingIdempotencyError, ArtifactBindingIdempotencyRequest, ArtifactInstallationTarget,
-    InstalledModuleArtifact, ModuleBindingIdempotency, ModuleCommandContext, ModuleControlPlane,
-    ModuleDispatchError, ModuleHttpMethod, ModuleRuntimeBinding, SharedArtifactBindingExecutor,
-    artifact_binding_request_digest, dispatch_artifact_command_binding,
-    dispatch_artifact_http_binding,
+    ArtifactBindingDispatchError, ArtifactBindingExecutionContext, ArtifactBindingIdempotencyClaim,
+    ArtifactBindingIdempotencyError, ArtifactBindingIdempotencyRequest, ArtifactExecutionAdmission,
+    ArtifactInstallationTarget, InstalledModuleArtifact, ModuleBindingIdempotency,
+    ModuleCommandContext, ModuleControlPlane, ModuleDispatchError, ModuleHttpMethod,
+    ModuleRuntimeBinding, SharedArtifactBindingExecutor, artifact_binding_request_digest,
+    dispatch_artifact_command_binding, dispatch_artifact_http_binding,
 };
 use uuid::Uuid;
 
@@ -82,12 +82,20 @@ pub(crate) async fn dispatch_artifact_binding_operation(
         tracing::error!(%error, "artifact dispatch effective-policy resolution failed");
         Error::InternalServerError
     })?;
-    if !policy.contains(&installation.release.slug) {
-        return Err(http_error(rustok_web::HttpError::forbidden(
-            "module_policy_denied",
-            "The module is not enabled by the effective module policy",
-        )));
-    }
+    let admission = policy
+        .admit_artifact_execution(
+            tenant_id,
+            &installation.release,
+            ArtifactInstallationTarget::ExactInstallation {
+                installation_id: installation.installation_id,
+            },
+        )
+        .ok_or_else(|| {
+            http_error(rustok_web::HttpError::forbidden(
+                "module_policy_denied",
+                "The module is not enabled by the effective module policy",
+            ))
+        })?;
     authorize_binding(ctx, tenant_id, actor_id, installation, binding).await?;
     let executor = ctx
         .shared_get::<SharedArtifactBindingExecutor>()
@@ -124,6 +132,7 @@ pub(crate) async fn dispatch_artifact_binding_operation(
                         executor.as_ref(),
                         installation,
                         tenant_id,
+                        admission,
                         operation,
                         binding_execution_context,
                     )
@@ -149,6 +158,7 @@ pub(crate) async fn dispatch_artifact_binding_operation(
                 executor.as_ref(),
                 installation,
                 tenant_id,
+                admission,
                 operation,
                 binding_execution_context,
             )
@@ -171,6 +181,7 @@ async fn execute_operation(
     executor: &dyn rustok_modules::ArtifactBindingExecutor,
     installation: &InstalledModuleArtifact,
     tenant_id: Uuid,
+    admission: ArtifactExecutionAdmission,
     operation: ArtifactBindingOperation,
     context: ArtifactBindingExecutionContext,
 ) -> Result<serde_json::Value> {
@@ -184,6 +195,7 @@ async fn execute_operation(
                     installation_id: installation.installation_id,
                 },
                 tenant_id,
+                admission,
                 method,
                 path: &path,
                 body,
@@ -202,6 +214,7 @@ async fn execute_operation(
                         installation_id: installation.installation_id,
                     },
                     tenant_id,
+                    admission,
                     binding_id: &binding_id,
                     input,
                     context,
@@ -268,6 +281,12 @@ fn map_dispatch_error(error: ModuleDispatchError) -> Error {
                 "Artifact HTTP request exceeds the declared body limit",
             ))
         }
+        ModuleDispatchError::ArtifactHook(ArtifactBindingDispatchError::DeniedByPolicy {
+            ..
+        }) => http_error(rustok_web::HttpError::forbidden(
+            "module_policy_denied",
+            "The module is not enabled by the effective module policy",
+        )),
         _ => {
             tracing::error!(%error, "artifact binding dispatch failed");
             Error::InternalServerError

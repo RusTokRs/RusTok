@@ -75,6 +75,55 @@ impl GrpcRhaiExecutor {
         Ok(())
     }
 
+    /// Fetches the worker's deployment identity evidence for governed pool
+    /// composition. Unlike [`Self::check_readiness`], every identity field
+    /// must be present: a host must never register an isolated pool from a
+    /// partially proven fingerprint.
+    pub async fn worker_identity(&self) -> Result<crate::SandboxWorkerIdentity, String> {
+        let response = self
+            .client
+            .clone()
+            .get_readiness(Request::new(ReadinessRequest {}))
+            .await
+            .map_err(|error| error.to_string())?
+            .into_inner();
+        if !response.ready {
+            return Err("sandbox worker reported not ready".to_string());
+        }
+        if response.executor != SandboxExecutorKind::Rhai.to_string()
+            || response.protocol_revision != SANDBOX_WORKER_PROTOCOL_REVISION
+        {
+            return Err("sandbox worker identity contract mismatch".to_string());
+        }
+        let identity = crate::SandboxWorkerIdentity {
+            executor_binary_digest: response.executor_binary_digest,
+            engine_build_digest: response.engine_build_digest,
+            worker_image_digest: response.worker_image_digest,
+            engine_config_digest: response.engine_config_digest,
+            target_cpu_contract: response.target_cpu_contract,
+            runtime_abi: response.runtime_abi,
+            isolation_runtime: response.isolation_runtime,
+        };
+        if [
+            &identity.executor_binary_digest,
+            &identity.engine_build_digest,
+            &identity.worker_image_digest,
+            &identity.engine_config_digest,
+            &identity.target_cpu_contract,
+            &identity.runtime_abi,
+            &identity.isolation_runtime,
+        ]
+        .iter()
+        .any(|field| field.trim().is_empty())
+        {
+            return Err(
+                "sandbox worker did not supply complete deployment identity evidence"
+                    .to_string(),
+            );
+        }
+        Ok(identity)
+    }
+
     async fn execute_session(
         &self,
         request: &SandboxRequest,

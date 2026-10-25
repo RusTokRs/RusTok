@@ -30,7 +30,8 @@ pub(crate) use crate::backend::SupportedBackend;
 pub(crate) use crate::{
     ArtifactBindingDispatch, ArtifactBindingExecutor, ArtifactCapabilityBrokerResolver,
     ArtifactCapabilityExecution, ArtifactDataIndexField, ArtifactDataIndexValueType,
-    ArtifactInstallationTarget, ArtifactMigrationCheckpointRequest, ArtifactReleaseRef,
+    ArtifactExecutionAdmission, ArtifactInstallationTarget, ArtifactMigrationCheckpointRequest,
+    ArtifactReleaseRef,
     ControlPlaneInfrastructure, InstalledModuleArtifact, ModuleCommandContext,
     ModuleInstallationScope, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
     artifact_schema::{ArtifactSchemaValidationError, ArtifactSchemaValidatorCache},

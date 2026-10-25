@@ -233,6 +233,22 @@ pub struct ArtifactActivation {
     pub predecessor_revision: Option<i64>,
 }
 
+/// Receipt of a governed automatic transition that reached `Observing` in
+/// the authenticated tenant scope. The checkpoint stays an owner record
+/// until explicit finalization; `resumed` marks that this call continued a
+/// previously staged transition instead of starting a new one.
+#[derive(SimpleObject, Clone)]
+pub struct GovernedArtifactTransition {
+    pub operation_id: Uuid,
+    pub checkpoint_revision: i64,
+    pub installation_id: Uuid,
+    pub installation_revision: i64,
+    pub predecessor_installation_id: Option<Uuid>,
+    pub predecessor_revision: Option<i64>,
+    pub readiness_receipt_ids: Vec<Uuid>,
+    pub resumed: bool,
+}
+
 /// Owner-issued deactivation receipt for an installation in the authenticated
 /// tenant scope. It removes runtime bindings without deleting evidence or data.
 #[derive(SimpleObject, Clone)]

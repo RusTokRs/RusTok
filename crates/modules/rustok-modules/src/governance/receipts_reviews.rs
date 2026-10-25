@@ -1,4 +1,8 @@
 //! Idempotent operation receipts for publish request reviews and holds.
+//!
+//! Trace, correlation, and free-text reason values are audit evidence, not
+//! replay identity. The authenticated actor boundary and structured
+//! `reason_code` remain part of the semantic governance command.
 
 use sea_orm::{ConnectionTrait, DatabaseTransaction, Statement, Value};
 
@@ -88,19 +92,7 @@ pub(crate) async fn publish_request_review_replay(
             .try_get::<String>("", "actor_id")
             .map_err(store_error)?
             != receipt.context.actor_id.to_string()
-        || existing
-            .try_get::<String>("", "trace_id")
-            .map_err(store_error)?
-            != receipt.context.trace_id
-        || existing
-            .try_get::<String>("", "correlation_id")
-            .map_err(store_error)?
-            != receipt.context.correlation_id.to_string()
         || stored_actor != *receipt.actor_principal
-        || existing
-            .try_get::<String>("", "reason")
-            .map_err(store_error)?
-            != receipt.reason
         || existing
             .try_get::<String>("", "reason_code")
             .map_err(store_error)?

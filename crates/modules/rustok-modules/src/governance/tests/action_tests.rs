@@ -99,10 +99,11 @@ async fn release_yank_persists_release_and_audit_fact_together() {
         .expect("exact yank replay");
     let mut changed_replay = command;
     changed_replay.context.trace_id = "test:yank:changed-trace".to_string();
-    assert!(matches!(
-        service.yank_release(changed_replay).await,
-        Err(ModuleGovernanceError::ReleaseYankIdempotencyConflict)
-    ));
+    changed_replay.context.correlation_id = Uuid::new_v4();
+    service
+        .yank_release(changed_replay)
+        .await
+        .expect("changed observability context replays yank");
     let release = database
         .query_one_raw(Statement::from_string(
             DbBackend::Sqlite,
@@ -162,6 +163,130 @@ async fn release_yank_persists_release_and_audit_fact_together() {
             .try_get::<String>("", "event_type")
             .expect("event type"),
         "release_yanked"
+    );
+}
+
+#[tokio::test]
+async fn release_unyank_is_a_separate_idempotent_transition() {
+    let database = Database::connect("sqlite::memory:")
+        .await
+        .expect("database");
+    for statement in [
+        "CREATE TABLE registry_module_releases (\
+                id TEXT PRIMARY KEY, request_id TEXT NULL, slug TEXT NOT NULL, version TEXT NOT NULL,\
+                publisher_principal TEXT NOT NULL, status TEXT NOT NULL, yanked_reason TEXT NULL,\
+                yanked_by_principal TEXT NULL, yanked_at TEXT NULL, artifact_storage_key TEXT NULL,\
+                checksum_sha256 TEXT NULL, artifact_size INTEGER NULL, updated_at TEXT NOT NULL\
+             )",
+        "CREATE TABLE registry_governance_events (\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, request_id TEXT NULL, release_id TEXT NULL,\
+                event_type TEXT NOT NULL, actor_principal TEXT NOT NULL, publisher_principal TEXT NULL,\
+                details TEXT NOT NULL, created_at TEXT NOT NULL\
+             )",
+        "CREATE TABLE registry_release_unyank_operations (\
+                operation_id TEXT PRIMARY KEY NOT NULL, release_id TEXT NOT NULL,\
+                idempotency_key TEXT NOT NULL, actor_id TEXT NOT NULL, trace_id TEXT NOT NULL,\
+                correlation_id TEXT NOT NULL, actor_principal TEXT NOT NULL,\
+                actor_can_manage_modules INTEGER NOT NULL, reason TEXT NOT NULL,\
+                reason_code TEXT NOT NULL, resulting_status TEXT NOT NULL,\
+                committed_at TEXT NOT NULL, UNIQUE (release_id, idempotency_key)\
+             )",
+        "INSERT INTO registry_module_releases (\
+                id, request_id, slug, version, publisher_principal, status, yanked_reason,\
+                yanked_by_principal, yanked_at, artifact_storage_key, checksum_sha256,\
+                artifact_size, updated_at\
+             ) VALUES (\
+                'release-1', 'request-1', 'sample_module', '1.0.0', '{\"subject\":\"publisher\"}',\
+                'yanked', 'critical regression', '{\"subject\":\"operator\"}', datetime('now'),\
+                'registry/sample-1.0.0',\
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 42, datetime('now')\
+             )",
+    ] {
+        database
+            .execute_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                statement.to_string(),
+            ))
+            .await
+            .expect("schema or fixture");
+    }
+    let actor_id = Uuid::new_v4();
+    let idempotency_key = Uuid::new_v4();
+    let command = ModuleReleaseUnyankCommand {
+        slug: "sample_module".to_string(),
+        version: "1.0.0".to_string(),
+        reason: "regression report was withdrawn".to_string(),
+        reason_code: "erroneous_yank".to_string(),
+        context: ModuleCommandContext {
+            actor_id,
+            tenant_id: None,
+            trace_id: format!("test:unyank:{idempotency_key}"),
+            correlation_id: Uuid::new_v4(),
+            idempotency_key,
+        },
+        actor_principal: serde_json::json!({
+            "kind": "user",
+            "user_id": actor_id,
+            "subject": format!("user:{actor_id}"),
+        }),
+        actor_can_manage_modules: true,
+    };
+    let service = SeaOrmModuleGovernanceService::new(database.clone());
+    let result = service
+        .unyank_release(command.clone())
+        .await
+        .expect("un-yank release");
+    assert_eq!(result.status, "active");
+    service
+        .unyank_release(command)
+        .await
+        .expect("exact un-yank replay");
+
+    let release = database
+        .query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT status, yanked_reason, checksum_sha256 FROM registry_module_releases"
+                .to_string(),
+        ))
+        .await
+        .expect("release query")
+        .expect("release row");
+    assert_eq!(
+        release.try_get::<String>("", "status").expect("status"),
+        "active"
+    );
+    assert!(
+        release
+            .try_get::<Option<String>>("", "yanked_reason")
+            .expect("yanked reason")
+            .is_none()
+    );
+    assert_eq!(
+        release
+            .try_get::<String>("", "checksum_sha256")
+            .expect("artifact checksum"),
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    );
+    let event = database
+        .query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT event_type, details FROM registry_governance_events".to_string(),
+        ))
+        .await
+        .expect("event query")
+        .expect("event row");
+    assert_eq!(
+        event
+            .try_get::<String>("", "event_type")
+            .expect("event type"),
+        "release_unyanked"
+    );
+    assert!(
+        event
+            .try_get::<String>("", "details")
+            .expect("event details")
+            .contains("critical regression"),
+        "un-yank audit event must preserve the previous yank facts"
     );
 }
 
@@ -251,10 +376,11 @@ async fn owner_transfer_persists_binding_and_audit_fact_together() {
         .expect("exact owner-transfer replay");
     let mut changed_replay = command;
     changed_replay.context.trace_id = "test:owner-transfer:changed-trace".to_string();
-    assert!(matches!(
-        service.transfer_owner(changed_replay).await,
-        Err(ModuleGovernanceError::OwnerTransferIdempotencyConflict)
-    ));
+    changed_replay.context.correlation_id = Uuid::new_v4();
+    service
+        .transfer_owner(changed_replay)
+        .await
+        .expect("changed observability context replays owner transfer");
     let binding = database
         .query_one_raw(Statement::from_string(
             DbBackend::Sqlite,
@@ -415,10 +541,11 @@ async fn hold_then_resume_preserves_predecessor_state_and_audit_facts() {
         .expect("hold request replay");
     let mut changed_replay = hold;
     changed_replay.context.trace_id = "test:review:changed-trace".to_string();
-    assert!(matches!(
-        service.hold_publish_request(changed_replay).await,
-        Err(ModuleGovernanceError::PublishRequestReviewIdempotencyConflict)
-    ));
+    changed_replay.context.correlation_id = Uuid::new_v4();
+    service
+        .hold_publish_request(changed_replay)
+        .await
+        .expect("changed observability context replays hold");
     let resume_idempotency_key = Uuid::new_v4();
     service
         .resume_publish_request(ModulePublishRequestResumeCommand {
