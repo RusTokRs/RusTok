@@ -5,10 +5,12 @@
 //! Provider Configuration document because this server does not implement the
 //! complete OIDC ID-token/JWKS surface.
 
-use axum::{Json, extract::State, routing::get};
+use axum::{Json, extract::State, http::HeaderMap, routing::get};
 use reqwest::Url;
 use serde::Serialize;
 
+use crate::common::request_trust::extract_effective_proto;
+use crate::common::RustokSettings;
 use crate::error::Error;
 use crate::services::server_runtime_context::ServerAuthRuntime;
 
@@ -39,13 +41,48 @@ pub struct OAuthAuthorizationServerMetadata {
 
 async fn get_metadata(
     State(ctx): State<ServerAuthRuntime>,
+    headers: HeaderMap,
 ) -> Result<Json<OAuthAuthorizationServerMetadata>, Error> {
     tracing::debug!("oauth_metadata::get_metadata entry");
     let auth_config = ctx
         .auth_config()
         .ok_or_else(|| Error::Message("Auth config error".into()))?;
 
-    Ok(Json(metadata_for_issuer(&auth_config.issuer)?))
+    let issuer = resolve_metadata_issuer(
+        &auth_config.issuer,
+        &headers,
+        ctx.runtime_ctx().settings(),
+    );
+    Ok(Json(metadata_for_issuer(&issuer)?))
+}
+
+/// The metadata document must be served under an absolute issuer URL.
+/// When the configured JWT issuer already is one, it is used verbatim
+/// (and production deployments should configure exactly that, so the
+/// advertised issuer matches the `iss` claim of issued tokens).
+/// Otherwise the issuer is derived from the request's effective proto
+/// and Host so discovery works out of the box in development instead
+/// of failing with a server error.
+fn resolve_metadata_issuer(
+    configured: &str,
+    headers: &HeaderMap,
+    settings: &RustokSettings,
+) -> String {
+    if parse_metadata_issuer(configured).is_ok() {
+        return configured.to_string();
+    }
+
+    let host = headers
+        .get(axum::http::header::HOST)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("localhost");
+    let proto = extract_effective_proto(headers, None, &settings.runtime.request_trust)
+        .unwrap_or_else(|| "http".to_string());
+    tracing::warn!(
+        configured_issuer = configured,
+        "Auth issuer is not an absolute URL; deriving the OAuth discovery issuer from the request (set an absolute issuer URL in production so it matches token `iss` claims)"
+    );
+    format!("{proto}://{host}")
 }
 
 fn metadata_for_issuer(issuer: &str) -> Result<OAuthAuthorizationServerMetadata, Error> {
