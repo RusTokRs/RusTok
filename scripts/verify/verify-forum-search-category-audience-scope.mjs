@@ -189,9 +189,8 @@ requireAll(
   plan,
   [
     "## `FORUM-23` — search/index integration",
-    "FORUM-23B2B",
-    "richer category audience",
-    "Host composition remains open",
+    "`FORUM-23B2B` (category audience scope)",
+    "execute_audience_eligible_search",
   ],
   planPath,
 );

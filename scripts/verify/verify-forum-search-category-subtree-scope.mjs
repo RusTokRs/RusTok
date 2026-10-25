@@ -127,10 +127,8 @@ requireAll(
   [
     "| `FORUM-23` | `in_progress` |",
     "**Status:** `in_progress`",
-    "### Delivered in `FORUM-23B2A`",
-    "ForumSearchCategoryScopeService",
-    "verify-forum-search-category-subtree-scope.mjs",
-    "cargo test -p rustok-forum category_search_scope -- --nocapture",
+    "### Delivered slices",
+    "`FORUM-23B2A` (owner category scope)",
   ],
   planPath,
 );

@@ -998,152 +998,28 @@ split is enforced by the host policy registered in the generic
 > `apps/server/src/services/forum_search_result_eligibility.rs`) + the module-neutral
 > `StorefrontSearchCategoryScopePort`, guarded by `npm run verify:search:audience`.
 
-### Delivered in `FORUM-23B1`
+### Delivered history
 
-The bounded `category_ids` filter of the neutral `SearchQuery` contract selects exact
-Forum category, topic and approved-reply documents without changing product category
-semantics. Forum writes those identities during projection in
-`src/search_projection.rs`. Search filters on them in the neutral exact-category
-predicate of `pg_engine.rs` (the Forum-specific `forum_document_filters.rs` of this
-milestone no longer exists).
+The delivered `FORUM-23B*` slice notes and the `FORUM-23B2G2B3*` aggregate
+boundary moved verbatim to
+`crates/modules/rustok-forum/docs/archive/forum-23-search-index-integration.snapshot`.
+They are history, not active work, and they still name the retired Forum-only
+storefront executor and projector, so the canonical plan does not restate them.
+Read that snapshot for slice detail; read this section only for the live
+mechanism and the remaining scope.
 
-Complete Forum category-subtree filtering is not part of this slice: an exact category
-id is matched as written, so descendants are only reachable through the owner-expanded
-scope below.
+### Delivered slices
 
-### Delivered in `FORUM-23B2A`
+`FORUM-23B1` (exact category filter), `FORUM-23B2A` (owner category scope),
+`FORUM-23B2B` (category audience scope), `FORUM-23B2C` (projection invalidation),
+`FORUM-23B2D` (eligibility boundary), `FORUM-23B2E1` / `FORUM-23B2E2` (profile
+events), `FORUM-23B2F1`-`FORUM-23B2F4` (current channel filter),
+`FORUM-23B2G1` / `FORUM-23B2G1A` (durable PostgreSQL ingest sequence),
+`FORUM-23B2G2A` / `FORUM-23B2G2A1` / `FORUM-23B2G2B1` / `FORUM-23B2G2B2` (owner
+revisions) and `FORUM-23B2G2B3A`-`FORUM-23B2G2B3D19` (versioned invalidation and
+retained evidence). Each slice's own contract and note carry its status; the
+per-slice prose lives only in the archive snapshot.
 
-`ForumSearchCategoryScopeService` (`src/services/category_search_scope.rs`) expands a
-caller-composed category root into a bounded, visibility-authorized subtree before
-Search execution, so Search never needs a Forum dependency or a Forum table read.
-`cargo test -p rustok-forum category_search_scope -- --nocapture` is the owner-side
-evidence command; `scripts/verify/verify-forum-search-category-subtree-scope.mjs` pins
-the boundary.
-
-### Delivered in `FORUM-23B2B`
-
-`ForumSearchCategoryAudienceScopeService`
-(`src/services/category_search_audience_scope.rs`) applies the inherited
-richer category audience decision - role, trust, channel, group and explicit-user
-selectors - before a subtree is exposed to a Search caller. Host composition remains open: the
-expanded ids reach a caller only through the explicit Forum-only storefront entrypoint,
-and topic-local audience narrowing is applied later, at result eligibility.
-
-### Delivered in `FORUM-23B2C`
-
-`forumStorefrontSearch` is the explicit Forum-only entrypoint of this milestone: it
-required `source_modules: [forum]`, at least one category root and the shared
-`StorefrontSearchCategoryScopePort`, and it rejected a tenant that did not match the
-authenticated request. The Search-side eligibility port applied exact topic-local
-audience narrowing and reply authorization, so a projected `topic_id` was never treated
-as authorization.
-
-Both halves were retired on 2026-10-25: the same guarantees are now provided by
-`storefrontSearch` with the generic audience executor (tenant check, declared-module
-scope, `SearchAudiencePolicyPort` per-candidate authorization over topics and replies)
-and by `StorefrontSearchCategoryScopePort::expand_category_scope`, which the resolver
-calls only when the request scope is exactly the declaring module.
-
-### Delivered in `FORUM-23B2D`
-
-`ForumSearchResultEligibilityService` (`src/services/search_result_eligibility.rs`)
-resolves candidate topic/reply rows through the current owner before Search paginates,
-counts, facets or maps a transport payload. Both raw candidates and the owner request
-are capped at 100 rows and the bound is checked before document narrowing, so a
-request cannot widen its own bound by filtering.
-
-### Delivered in `FORUM-23B2E1` / `FORUM-23B2E2`
-
-Storefront channel identity is derived from the trusted `RequestContext`; a
-caller-provided `channel_id` is now only a compatibility assertion that fails closed on
-mismatch. Canonical Product channel allowlists are denormalized into Search-owned
-documents, and one trusted channel authority predicate is applied to every
-Product-bearing response path - rows, totals, facets, query-rule pins and document
-suggestions - with a bounded Search-side reconciler plus host worker for rows that
-predate the projection. Product channel visibility remains blocked on
-maintainer-executed PostgreSQL and transport evidence only; the source boundary is
-delivered. `npm run verify:search:audience` pins both halves — the trusted channel
-authority and the neutral audience scope — and fails if either regresses.
-
-### Delivered in `FORUM-23B2F1` / `FORUM-23B2F2` / `FORUM-23B2F3` / `FORUM-23B2F4`
-
-Forum owned the exact bounded author filter, the exact bounded tag and solved filters,
-the locale and inclusive published-date window, and the trusted current-channel filter.
-
-> **Retired 2026-10-25.** Those filters lived on the Forum-only Search transport
-> (`forumStorefrontSearch` plus two storefront adapters) which has been deleted. Their
-> durable home is the Forum read surface — `forumStorefrontAudienceTopics` /
-> `forumTopics` in `crates/modules/rustok-forum/src/graphql`, which already carries
-> `solvedOnly`, ordering and category narrowing — and the host
-> `SearchAudiencePolicyPort` for eligibility. Search itself never learns a Forum field.
-> No storefront Search UI control renders these filters, and none is planned on the
-> generic `storefrontSearch` field. Guard: `npm run verify:search:audience`.
-
-### Delivered in `FORUM-23B2G1` / `FORUM-23B2G1A`
-
-The durable Forum inbox ingest sequence replaces wall-clock and identifier ordering in
-the Search-side inbox with a durable PostgreSQL ingest sequence issued by the
-database (`m20260731_000010_add_forum_projection_ingest_sequence.rs`, plus the
-`_000011` lookup index), while Forum issues the monotonic projection revision ledger
-(`m20260731_000007_add_forum_projection_revision_ledger.rs`, `_000008`) and Search
-records owner-revision checkpoints (`m20260731_000012_create_forum_owner_revision_checkpoints.rs`).
-A Search-issued ingest sequence is not an owner-issued projection revision; the
-revision ledger and the Search-side checkpoint that keep the two ordered are the next
-subsection, and deletion or ACL-change document cleanup still waits on runtime
-evidence. `verify-forum-search-durable-ingest-sequence.mjs` pins the sequence and
-`verify-forum-search-ingest-sequence-index.mjs` the lookup index.
-
-### Delivered in `FORUM-23B2G2A` / `FORUM-23B2G2A1` / `FORUM-23B2G2B1` / `FORUM-23B2G2B2`
-
-`FORUM-23B2G2A` (`crates/modules/rustok-forum/contracts/forum-search-owner-revision-ledger.json`)
-issues the monotonic revision from the Forum ledger and `FORUM-23B2G2A1`
-(`crates/modules/rustok-forum/contracts/forum-search-owner-revision-counter-hardening.json`)
-hardens that counter against a restart; both state
-`source_complete_execution_pending`. `FORUM-23B2G2B1`
-(`crates/modules/rustok-forum/contracts/forum-search-owner-revision-source.json`,
-`source_complete_consumer_checkpoint_pending`) publishes the revision through the
-projection source and `FORUM-23B2G2B2`
-(`crates/modules/rustok-forum/contracts/forum-search-owner-revision-checkpoint.json`,
-`source_complete_runtime_evidence_pending`) records the Search-side checkpoint, so
-projected documents and owner/index revisions reconcile on one database-issued
-sequence instead of a clock. `verify-forum-search-owner-revision-source.mjs`,
-`verify-forum-search-owner-revision-ledger.mjs`,
-`verify-forum-search-owner-revision-checkpoint.mjs` and
-`verify-forum-search-owner-revision-counter-hardening.mjs` pin that boundary.
-
-### Aggregate boundary of `FORUM-23`
-
-`FORUM-23B2G2B3A` carries the versioned-invalidation wire contract
-(`crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-wire.json`,
-`contract_frozen_implementation_pending`), `FORUM-23B2G2B3B1` the caused-publication API and
-`FORUM-23B2G2B3B2` the Forum-owner publisher
-(`crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-causation-api.json`,
-`source_complete_family_publisher_pending`), and `FORUM-23B2G2B3C` the persistent
-consumer (`crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-consumer.json`,
-`source_complete_runtime_evidence_pending`). None of them closes `FORUM-23`. The
-family that pins this boundary is
-`verify-forum-search-versioned-invalidation-wire.mjs`,
-`verify-forum-search-versioned-invalidation-causation-api.mjs`,
-`verify-forum-search-versioned-invalidation-publisher.mjs`,
-`verify-forum-search-versioned-invalidation-consumer.mjs` and
-`verify-forum-search-versioned-invalidation-runtime-evidence.mjs`.
-
-`FORUM-23B2G2B3D0`
-(`crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json`)
-is the retained runtime-evidence protocol and stays
-`source_ready_maintainer_execution_pending`: the maintainer harness must execute and retain every D0 PostgreSQL/Iggy scenario
-- normal delivery, the legacy and typed
-duplicate deliveries, acknowledgement failure with restart, multi-process delivery,
-raw and semantic poison quarantine, missing-delivery repair, snapshot-only backfill,
-search-disabled recovery and the deletion/ACL ordering case - and only the assembled
-`LINK-FORUM-03` cross-module runtime proof can advance the aggregate. The two per-slice
-handoffs `crates/modules/rustok-forum/docs/forum-23b2g2b3d7-normal-delivery-proof.md`
-and `crates/modules/rustok-forum/docs/forum-23b2g2b3d8-deletion-acl-ordering-proof.md`
-carry the exact `cargo test --ignored` invocations and the PostgreSQL prerequisites; no
-agent may substitute a static guard for that run. `FORUM-23B2G2B3D1` is the canonical
-plan-sync slice and is satisfied by the two subsections above; the read-only
-`node scripts/audit/forum_plan_requirements.mjs` reports which markers the verifier
-family demands of this section.
 
 ### Remaining scope of `FORUM-23`
 
