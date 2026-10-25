@@ -28,8 +28,8 @@ const testPath =
 const searchCargoPath = "crates/modules/rustok-search/Cargo.toml";
 const serverCargoPath = "apps/server/Cargo.toml";
 const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
-const decodeFailurePath = "crates/modules/rustok-iggy/src/contract_decode_failure.rs";
-const dlqPublisherPath = "crates/modules/rustok-iggy/src/dlq_publisher.rs";
+const decodeFailurePath = "crates/libs/rustok-iggy/src/contract_decode_failure.rs";
+const dlqPublisherPath = "crates/libs/rustok-iggy/src/dlq_publisher.rs";
 const evidencePath =
   "target/forum-search-versioned-invalidation-raw-poison-evidence.json";
 

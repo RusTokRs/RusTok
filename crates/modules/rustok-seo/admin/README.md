@@ -3,7 +3,8 @@
 > **For contributors and AI agents — choose the relevant guide before modifying this package:**
 > [Architecture](../../../../docs/UI/module-package-architecture.md) |
 > [Implementation](../../../../docs/UI/module-package-implementation.md) |
-> [Verification](../../../../docs/UI/module-package-verification.md)
+> [Verification](../../../../docs/UI/module-package-verification.md) |
+> [Public API Contract](CRATE_API.md)
 
 Leptos admin UI for `rustok-seo`.
 
@@ -44,3 +45,8 @@ Entity-specific SEO authoring now lives in owner-module admin packages.
 - keeps the UI package split into `core/transport/ui/leptos/sections/i18n`, so the module-owned admin surface has an FFA boundary while staying route-driven and avoiding a monolithic file
 - builds native SSR services from `HostRuntimeContext` DB, typed `TransactionalEventBus`, and `ModuleRuntimeExtensions` host handles instead of package-local context or framework-specific outbox adapter wiring
 - now owns the full infrastructure control-plane surface for bulk jobs, bulk remediation modes, redirects, sitemaps, robots preview, tenant defaults, SEO templates, and diagnostics
+
+## Documentation
+
+- [CRATE_API.md](CRATE_API.md) — Public API contract, FFA view-models, and capability bindings.
+- See [platform docs](../../../../docs/index.md).

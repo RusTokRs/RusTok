@@ -198,7 +198,7 @@ producer.
 Detailed evidence contract:
 
 ```text
-crates/modules/rustok-iggy/contracts/evidence/
+crates/libs/rustok-iggy/contracts/evidence/
   dlq-duplicate-fair-window-external-scan-runtime-source.json
 ```
 

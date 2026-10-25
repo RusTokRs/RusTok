@@ -193,7 +193,7 @@ cycles in the same production-selected partition, not across partitions.
 Source-complete paths:
 
 ```text
-crates/modules/rustok-iggy/contracts/evidence/
+crates/libs/rustok-iggy/contracts/evidence/
   dlq-duplicate-fair-window-external-scan-runtime-source.json
   dlq-duplicate-fair-window-external-scan-execution-contract.json
 scripts/evidence/
@@ -213,10 +213,10 @@ no-clobber. Runtime execution and the canonical packet remain pending.
 Source-complete paths:
 
 ```text
-crates/modules/rustok-iggy/contracts/evidence/
+crates/libs/rustok-iggy/contracts/evidence/
   dedup-recovery-window-policy-source.json
   dedup-recovery-window-calibration-execution-contract.json
-crates/modules/rustok-iggy/tests/
+crates/libs/rustok-iggy/tests/
   dedup_recovery_window_calibration.rs
 scripts/evidence/
   capture-iggy-dedup-recovery-window-calibration.mjs
@@ -235,13 +235,13 @@ pending.
 Source-complete paths:
 
 ```text
-crates/modules/rustok-iggy/src/
+crates/libs/rustok-iggy/src/
   dlq_duplicate_rolling_window.rs
   dlq_duplicate_moving_window_scan.rs
   dlq_duplicate_alert_observer.rs
 apps/server/src/services/
   event_dlq_duplicate_alert_observer.rs
-crates/modules/rustok-iggy/contracts/evidence/
+crates/libs/rustok-iggy/contracts/evidence/
   dlq-duplicate-rolling-window-source.json
   dlq-duplicate-moving-window-scan-source.json
   dlq-duplicate-alert-server-observer-source.json
@@ -261,9 +261,9 @@ policy evaluation.
 Source-complete paths:
 
 ```text
-crates/modules/rustok-iggy/tests/
+crates/libs/rustok-iggy/tests/
   dlq_duplicate_moving_window_external_observer.rs
-crates/modules/rustok-iggy/contracts/evidence/
+crates/libs/rustok-iggy/contracts/evidence/
   dlq-duplicate-moving-window-external-observer-runtime-source.json
   dlq-duplicate-moving-window-external-observer-execution-contract.json
 scripts/evidence/
@@ -321,11 +321,11 @@ apps/server/src/services/
   event_dlq_duplicate_alert_observer.rs
   event_dlq_duplicate_alert_observability.rs
   server_bootstrap.rs
-crates/modules/rustok-iggy/contracts/evidence/
+crates/libs/rustok-iggy/contracts/evidence/
   dlq-duplicate-alert-observability-source.json
 scripts/verify/
   verify-event-dlq-duplicate-alert-observability.mjs
-crates/modules/rustok-iggy/docs/
+crates/libs/rustok-iggy/docs/
   dlq-duplicate-alert-observability.md
 crates/modules/rustok-profiles/docs/
   poison-duplicate-alert-observability-checkpoint.md
@@ -341,14 +341,14 @@ Detailed checkpoints:
 - `crates/modules/rustok-profiles/docs/poison-duplicate-moving-window-scan-checkpoint.md`
 - `crates/modules/rustok-profiles/docs/poison-duplicate-moving-window-external-observer-runtime-checkpoint.md`
 - `crates/modules/rustok-profiles/docs/poison-duplicate-alert-observability-checkpoint.md`
-- `crates/modules/rustok-iggy/docs/dlq-duplicate-external-scan.md`
-- `crates/modules/rustok-iggy/docs/dlq-duplicate-fair-window-external-scan-runtime-evidence.md`
-- `crates/modules/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md`
-- `crates/modules/rustok-iggy/docs/dlq-duplicate-moving-window-external-observer-runtime-evidence.md`
-- `crates/modules/rustok-iggy/docs/dlq-duplicate-alert-observability.md`
-- `crates/modules/rustok-iggy/docs/dedup-recovery-window-policy.md`
-- `crates/modules/rustok-iggy/docs/dlq-duplicate-rolling-window.md`
-- `crates/modules/rustok-iggy/docs/dlq-duplicate-moving-window-scan.md`
+- `crates/libs/rustok-iggy/docs/dlq-duplicate-external-scan.md`
+- `crates/libs/rustok-iggy/docs/dlq-duplicate-fair-window-external-scan-runtime-evidence.md`
+- `crates/libs/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md`
+- `crates/libs/rustok-iggy/docs/dlq-duplicate-moving-window-external-observer-runtime-evidence.md`
+- `crates/libs/rustok-iggy/docs/dlq-duplicate-alert-observability.md`
+- `crates/libs/rustok-iggy/docs/dedup-recovery-window-policy.md`
+- `crates/libs/rustok-iggy/docs/dlq-duplicate-rolling-window.md`
+- `crates/libs/rustok-iggy/docs/dlq-duplicate-moving-window-scan.md`
 
 ## Results and next work
 

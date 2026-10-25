@@ -9,21 +9,21 @@ Status: **identifier-free latest-value runtime and mode-aware server observer so
 Reusable runtime source:
 
 ```text
-crates/modules/rustok-iggy/src/dlq_duplicate_alert_runtime.rs
+crates/libs/rustok-iggy/src/dlq_duplicate_alert_runtime.rs
 ```
 
 Server observer sources:
 
 ```text
-crates/modules/rustok-iggy/src/dlq_duplicate_alert_observer.rs
+crates/libs/rustok-iggy/src/dlq_duplicate_alert_observer.rs
 apps/server/src/services/event_dlq_duplicate_alert_observer.rs
 ```
 
 Machine contracts:
 
 ```text
-crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json
-crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json
+crates/libs/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json
+crates/libs/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json
 ```
 
 Verifiers:

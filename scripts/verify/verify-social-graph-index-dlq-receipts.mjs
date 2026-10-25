@@ -28,12 +28,12 @@ const files = {
     "apps/server/src/services/social_graph_index_worker.rs",
     "utf8",
   ),
-  dlq: readFileSync("crates/modules/rustok-iggy/src/dlq.rs", "utf8"),
+  dlq: readFileSync("crates/libs/rustok-iggy/src/dlq.rs", "utf8"),
   dlqPublisher: readFileSync(
-    "crates/modules/rustok-iggy/src/dlq_publisher.rs",
+    "crates/libs/rustok-iggy/src/dlq_publisher.rs",
     "utf8",
   ),
-  transport: readFileSync("crates/modules/rustok-iggy/src/transport.rs", "utf8"),
+  transport: readFileSync("crates/libs/rustok-iggy/src/transport.rs", "utf8"),
 };
 
 const failures = [];

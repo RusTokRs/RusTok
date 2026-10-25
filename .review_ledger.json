@@ -566,9 +566,9 @@
       "completed_at": "2026-10-22 07:25",
       "notes": "Audited and verified FFA invariants across all 17 source files; enforced non-nil UUID validation in targeted invitation acceptance, application queries, submission policy verification, and native server functions; added comprehensive unit tests for core and application_core; 8/8 unit tests passed across default and SSR features, 0 clippy warnings, gatekeeper passed."
     },
-    "crates/modules/rustok-iggy": {
+    "crates/libs/rustok-iggy": {
       "name": "rustok-iggy",
-      "path": "crates/modules/rustok-iggy",
+      "path": "crates/libs/rustok-iggy",
       "category": "modules",
       "files": 32,
       "loc": 8270,

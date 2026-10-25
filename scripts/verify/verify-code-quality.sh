@@ -32,7 +32,7 @@ PROD_RS_PATHS=(
     "crates/modules/rustok-rbac/src"
     "crates/modules/rustok-tenant/src"
     "crates/libs/rustok-telemetry/src"
-    "crates/modules/rustok-iggy/src"
+    "crates/libs/rustok-iggy/src"
     "crates/modules/rustok-outbox/src"
     "crates/modules/rustok-index/src"
     "crates/modules/alloy/src"

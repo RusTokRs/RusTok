@@ -6,13 +6,13 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/modules/rustok-iggy/contracts/evidence/dedup-recovery-window-policy-source.json";
+  "crates/libs/rustok-iggy/contracts/evidence/dedup-recovery-window-policy-source.json";
 const executionContractPath =
-  "crates/modules/rustok-iggy/contracts/evidence/dedup-recovery-window-calibration-execution-contract.json";
-const sourcePath = "crates/modules/rustok-iggy/src/dedup_recovery_window_policy.rs";
-const testPath = "crates/modules/rustok-iggy/tests/dedup_recovery_window_calibration.rs";
-const libPath = "crates/modules/rustok-iggy/src/lib.rs";
-const documentationPath = "crates/modules/rustok-iggy/docs/dedup-recovery-window-policy.md";
+  "crates/libs/rustok-iggy/contracts/evidence/dedup-recovery-window-calibration-execution-contract.json";
+const sourcePath = "crates/libs/rustok-iggy/src/dedup_recovery_window_policy.rs";
+const testPath = "crates/libs/rustok-iggy/tests/dedup_recovery_window_calibration.rs";
+const libPath = "crates/libs/rustok-iggy/src/lib.rs";
+const documentationPath = "crates/libs/rustok-iggy/docs/dedup-recovery-window-policy.md";
 const profilesCheckpointPath =
   "crates/modules/rustok-profiles/docs/poison-dedup-recovery-window-checkpoint.md";
 const verifierPath = "scripts/verify/verify-iggy-dedup-recovery-window-policy.mjs";
@@ -21,7 +21,7 @@ const runnerPath =
 const retainedVerifierPath =
   "scripts/verify/verify-iggy-dedup-recovery-window-retained.mjs";
 const evidencePath =
-  "crates/modules/rustok-iggy/contracts/evidence/dedup-recovery-window-calibration-execution.json";
+  "crates/libs/rustok-iggy/contracts/evidence/dedup-recovery-window-calibration-execution.json";
 
 const expectedExports = [
   "IggyDeduplicationConfiguration",

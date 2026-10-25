@@ -106,10 +106,10 @@ The observer cannot publish or acknowledge messages, store broker offsets, delet
 ## Source ownership
 
 ```text
-crates/modules/rustok-iggy/src/dlq_duplicate_alert_observer.rs
-crates/modules/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs
+crates/libs/rustok-iggy/src/dlq_duplicate_alert_observer.rs
+crates/libs/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs
 apps/server/src/services/event_dlq_duplicate_alert_observer.rs
-crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json
+crates/libs/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json
 scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs
 ```
 

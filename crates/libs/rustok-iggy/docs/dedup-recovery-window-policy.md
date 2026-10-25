@@ -53,7 +53,7 @@ sufficient
 ## Source contract
 
 ```text
-crates/modules/rustok-iggy/contracts/evidence/dedup-recovery-window-policy-source.json
+crates/libs/rustok-iggy/contracts/evidence/dedup-recovery-window-policy-source.json
 ```
 
 Static verifier:
@@ -96,14 +96,14 @@ The capture reads only the versioned bounds allowlist and the Iggy deduplication
 Execution contract:
 
 ```text
-crates/modules/rustok-iggy/contracts/evidence/
+crates/libs/rustok-iggy/contracts/evidence/
   dedup-recovery-window-calibration-execution-contract.json
 ```
 
 Exact environment-driven Rust case:
 
 ```text
-crates/modules/rustok-iggy/tests/dedup_recovery_window_calibration.rs
+crates/libs/rustok-iggy/tests/dedup_recovery_window_calibration.rs
 reviewed_configuration_covers_recovery_window
 ```
 

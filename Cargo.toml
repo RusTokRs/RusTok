@@ -419,7 +419,7 @@ rustok-email = { path = "crates/modules/rustok-email" }
 rustok-outbox = { path = "crates/modules/rustok-outbox" }
 rustok-notifications = { path = "crates/modules/rustok-notifications", default-features = false }
 rustok-newsletter = { path = "crates/modules/rustok-newsletter", default-features = false }
-rustok-iggy = { path = "crates/modules/rustok-iggy" }
+rustok-iggy = { path = "crates/libs/rustok-iggy" }
 rustok-iggy-connector = { path = "crates/modules/rustok-iggy-connector" }
 rustok-forum = { path = "crates/modules/rustok-forum" }
 rustok-tenant = { path = "crates/modules/rustok-tenant" }

@@ -17,7 +17,7 @@ const files = {
     "apps/server/src/services/social_graph_index_position_observer.rs",
     "utf8",
   ),
-  position: readFileSync("crates/modules/rustok-iggy/src/position.rs", "utf8"),
+  position: readFileSync("crates/libs/rustok-iggy/src/position.rs", "utf8"),
   consumer: readFileSync(
     "crates/modules/rustok-social-graph/src/index_consumer.rs",
     "utf8",

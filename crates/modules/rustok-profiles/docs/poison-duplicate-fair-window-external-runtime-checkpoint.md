@@ -7,9 +7,9 @@ Status: **two-partition harness and retained-capture tooling source complete; ex
 `rustok-iggy` now contains:
 
 ```text
-crates/modules/rustok-iggy/tests/
+crates/libs/rustok-iggy/tests/
   dlq_duplicate_fair_window_external_scan.rs
-crates/modules/rustok-iggy/contracts/evidence/
+crates/libs/rustok-iggy/contracts/evidence/
   dlq-duplicate-fair-window-external-scan-runtime-source.json
   dlq-duplicate-fair-window-external-scan-execution-contract.json
 scripts/evidence/

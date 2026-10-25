@@ -81,7 +81,7 @@ Module local documentation lives inside the crates themselves at
 | `rustok-ui-transport` | [docs](../../crates/ui/rustok-ui-transport/docs/README.md) | [plan](../../crates/ui/rustok-ui-transport/docs/implementation-plan.md) |
 | `rustok-ui-core` | [docs](../../crates/ui/rustok-ui-core/docs/README.md) | [plan](../../crates/ui/rustok-ui-core/docs/implementation-plan.md) |
 | `rustok-test-utils` | [docs](../../crates/utils/rustok-test-utils/docs/README.md) | [plan](../../crates/utils/rustok-test-utils/docs/implementation-plan.md) |
-| `rustok-iggy` | [docs](../../crates/modules/rustok-iggy/docs/README.md) | [plan](../../crates/modules/rustok-iggy/docs/implementation-plan.md) |
+| `rustok-iggy` | [docs](../../crates/libs/rustok-iggy/docs/README.md) | [plan](../../crates/libs/rustok-iggy/docs/implementation-plan.md) |
 | `rustok-iggy-connector` | [docs](../../crates/modules/rustok-iggy-connector/docs/README.md) | [plan](../../crates/modules/rustok-iggy-connector/docs/implementation-plan.md) |
 | `rustok-mcp` | [docs](../../crates/modules/rustok-mcp/docs/README.md) | [plan](../../crates/modules/rustok-mcp/docs/implementation-plan.md) |
 | `rustok-ai` | [docs](../../crates/modules/rustok-ai/docs/README.md) | [plan](../../crates/modules/rustok-ai/docs/implementation-plan.md) |

@@ -6,21 +6,21 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json";
+  "crates/libs/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json";
 const movingContractPath =
-  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-scan-source.json";
-const iggySourcePath = "crates/modules/rustok-iggy/src/dlq_duplicate_alert_observer.rs";
+  "crates/libs/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-scan-source.json";
+const iggySourcePath = "crates/libs/rustok-iggy/src/dlq_duplicate_alert_observer.rs";
 const movingSourcePath =
-  "crates/modules/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs";
+  "crates/libs/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs";
 const serverSourcePath =
   "apps/server/src/services/event_dlq_duplicate_alert_observer.rs";
 const bootstrapPath = "apps/server/src/services/server_bootstrap.rs";
 const servicesPath = "apps/server/src/services/mod.rs";
-const libPath = "crates/modules/rustok-iggy/src/lib.rs";
-const runtimeSourcePath = "crates/modules/rustok-iggy/src/dlq_duplicate_alert_runtime.rs";
-const scannerSourcePath = "crates/modules/rustok-iggy/src/dlq_duplicate_external_scan.rs";
+const libPath = "crates/libs/rustok-iggy/src/lib.rs";
+const runtimeSourcePath = "crates/libs/rustok-iggy/src/dlq_duplicate_alert_runtime.rs";
+const scannerSourcePath = "crates/libs/rustok-iggy/src/dlq_duplicate_external_scan.rs";
 const documentationPath =
-  "crates/modules/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md";
+  "crates/libs/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md";
 const profilesCheckpointPath =
   "crates/modules/rustok-profiles/docs/poison-duplicate-alert-server-observer-checkpoint.md";
 const planPath = "crates/modules/rustok-profiles/docs/implementation-plan.md";

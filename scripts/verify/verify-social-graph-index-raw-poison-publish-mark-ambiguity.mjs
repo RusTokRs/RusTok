@@ -11,7 +11,7 @@ const testPath =
   "crates/modules/rustok-social-graph/tests/index_raw_poison_publish_mark_ambiguity.rs";
 const cargoPath = "crates/modules/rustok-social-graph/Cargo.toml";
 const receiptPath = "crates/modules/rustok-iggy-connector/src/consumer_poison_receipt.rs";
-const transportPath = "crates/modules/rustok-iggy/src/transport.rs";
+const transportPath = "crates/libs/rustok-iggy/src/transport.rs";
 const workerPath = "apps/server/src/services/social_graph_index_worker.rs";
 const expectedVerifier =
   "scripts/verify/verify-social-graph-index-raw-poison-publish-mark-ambiguity.mjs";

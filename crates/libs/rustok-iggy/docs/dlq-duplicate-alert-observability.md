@@ -69,7 +69,7 @@ crates/libs/rustok-telemetry/src/lib.rs
 apps/server/src/services/event_dlq_duplicate_alert_observer.rs
 apps/server/src/services/event_dlq_duplicate_alert_observability.rs
 apps/server/src/services/server_bootstrap.rs
-crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-observability-source.json
+crates/libs/rustok-iggy/contracts/evidence/dlq-duplicate-alert-observability-source.json
 scripts/verify/verify-event-dlq-duplicate-alert-observability.mjs
 ```
 

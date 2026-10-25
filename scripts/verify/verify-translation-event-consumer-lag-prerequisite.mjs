@@ -18,7 +18,7 @@ const paths = {
   observability: 'crates/modules/rustok-translation/src/observability.rs',
   workflow: 'crates/modules/rustok-translation/src/workflow.rs',
   eventContract: 'crates/libs/rustok-events/src/translation_workflow.rs',
-  position: 'crates/modules/rustok-iggy/src/position.rs',
+  position: 'crates/libs/rustok-iggy/src/position.rs',
   runtimeMetrics: 'crates/libs/rustok-telemetry/src/runtime_consumer_metrics.rs',
   eventRuntime: 'apps/server/src/services/event_transport_factory.rs',
   evidence:

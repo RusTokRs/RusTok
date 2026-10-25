@@ -66,10 +66,10 @@
     "crates/modules/rustok-social-graph/tests/index_raw_poison_postgres_iggy.rs",
     "apps/server/src/services/social_graph_index_worker.rs",
     "crates/modules/rustok-social-graph/src/index_consumer.rs",
-    "crates/modules/rustok-iggy/src/contract_consumer.rs",
-    "crates/modules/rustok-iggy/src/contract_decode_failure.rs",
-    "crates/modules/rustok-iggy/src/dlq_publisher.rs",
-    "crates/modules/rustok-iggy/src/transport.rs",
+    "crates/libs/rustok-iggy/src/contract_consumer.rs",
+    "crates/libs/rustok-iggy/src/contract_decode_failure.rs",
+    "crates/libs/rustok-iggy/src/dlq_publisher.rs",
+    "crates/libs/rustok-iggy/src/transport.rs",
     "crates/modules/rustok-iggy-connector/src/migrations.rs"
   ],
   "retained_metadata": [

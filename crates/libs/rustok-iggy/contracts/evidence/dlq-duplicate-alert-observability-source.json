@@ -14,9 +14,9 @@
   "projection_source": "apps/server/src/services/event_dlq_duplicate_alert_observability.rs",
   "bootstrap_source": "apps/server/src/services/server_bootstrap.rs",
   "service_registry_source": "apps/server/src/services/mod.rs",
-  "runtime_source": "crates/modules/rustok-iggy/src/dlq_duplicate_alert_runtime.rs",
+  "runtime_source": "crates/libs/rustok-iggy/src/dlq_duplicate_alert_runtime.rs",
   "verifier": "scripts/verify/verify-event-dlq-duplicate-alert-observability.mjs",
-  "documentation": "crates/modules/rustok-iggy/docs/dlq-duplicate-alert-observability.md",
+  "documentation": "crates/libs/rustok-iggy/docs/dlq-duplicate-alert-observability.md",
   "profiles_checkpoint": "crates/modules/rustok-profiles/docs/poison-duplicate-alert-observability-checkpoint.md",
   "health_projection": {
     "type": "EventDlqDuplicateAlertHealthSnapshot",

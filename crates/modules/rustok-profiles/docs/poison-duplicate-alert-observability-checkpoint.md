@@ -28,11 +28,11 @@ server observer:
 server projection:
   apps/server/src/services/event_dlq_duplicate_alert_observability.rs
 machine contract:
-  crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-observability-source.json
+  crates/libs/rustok-iggy/contracts/evidence/dlq-duplicate-alert-observability-source.json
 verifier:
   scripts/verify/verify-event-dlq-duplicate-alert-observability.mjs
 owner guide:
-  crates/modules/rustok-iggy/docs/dlq-duplicate-alert-observability.md
+  crates/libs/rustok-iggy/docs/dlq-duplicate-alert-observability.md
 ```
 
 ## Remaining work

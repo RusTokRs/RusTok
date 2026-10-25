@@ -9,18 +9,18 @@ Status: **count-only policy, latest-value runtime, and mode-aware server observe
 Sources:
 
 ```text
-policy:          crates/modules/rustok-iggy/src/dlq_duplicate_alert_policy.rs
-runtime:         crates/modules/rustok-iggy/src/dlq_duplicate_alert_runtime.rs
-Iggy observer:   crates/modules/rustok-iggy/src/dlq_duplicate_alert_observer.rs
+policy:          crates/libs/rustok-iggy/src/dlq_duplicate_alert_policy.rs
+runtime:         crates/libs/rustok-iggy/src/dlq_duplicate_alert_runtime.rs
+Iggy observer:   crates/libs/rustok-iggy/src/dlq_duplicate_alert_observer.rs
 server observer: apps/server/src/services/event_dlq_duplicate_alert_observer.rs
 ```
 
 Machine contracts:
 
 ```text
-crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-policy-source.json
-crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json
-crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json
+crates/libs/rustok-iggy/contracts/evidence/dlq-duplicate-alert-policy-source.json
+crates/libs/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json
+crates/libs/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json
 ```
 
 No Profiles API, database table, GraphQL field, storefront behavior, privacy port, or authorization input changed.
