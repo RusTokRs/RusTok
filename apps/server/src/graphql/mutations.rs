@@ -180,9 +180,6 @@ fn map_create_user_error(err: AuthLifecycleError) -> FieldError {
         AuthLifecycleError::EmailAlreadyExists => {
             FieldError::new("User with this email already exists")
         }
-        AuthLifecycleError::Internal(inner) => {
-            <FieldError as GraphQLError>::internal_error(&inner.to_string())
-        }
         _ => <FieldError as GraphQLError>::internal_error("Failed to create user"),
     }
 }
@@ -298,7 +295,9 @@ fn map_manifest_error(err: ManifestError) -> FieldError {
         | ManifestError::Write { .. }
         | ManifestError::ModulePackageRead { .. }
         | ManifestError::ModulePackageParse { .. } => {
-            <FieldError as GraphQLError>::internal_error(&err.to_string())
+            // Filesystem paths and parser details stay in server logs; the
+            // client only learns that the manifest operation failed.
+            graphql_mutation_internal_error("Module manifest operation failed", &err)
         }
     }
 }
@@ -346,7 +345,7 @@ async fn ensure_platform_composition_operator(ctx: &Context<'_>) -> Result<AuthC
     let can_manage_modules =
         RbacService::has_permission(db, &tenant.id, &auth.user_id, &Permission::MODULES_MANAGE)
             .await
-            .map_err(|error| <FieldError as GraphQLError>::internal_error(&error.to_string()))?;
+            .map_err(|error| graphql_mutation_internal_error("GraphQL mutation failed", error))?;
     require_platform_composition_operator(
         &auth,
         principal_context,
