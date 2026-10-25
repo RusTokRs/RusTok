@@ -96,8 +96,8 @@ rustok-product-relations = { workspace = true, optional = true }
 rustok-brand = { workspace = true, optional = true }
 rustok-product-bundles = { workspace = true, optional = true }
 rustok-profiles = { workspace = true, optional = true, features = ["server"] }
-rustok-social-graph = { path = "../rustok-social-graph" }
-rustok-groups = { path = "../rustok-groups", optional = true }
+rustok-social-graph.workspace = true
+rustok-groups = { workspace = true, optional = true }
 rustok-region = { workspace = true, optional = true }
 rustok-pricing = { workspace = true, optional = true }
 rustok-inventory = { workspace = true, optional = true }
@@ -117,7 +117,7 @@ rustok-moderation = { workspace = true, optional = true, features = ["server"] }
 rustok-content = { workspace = true, optional = true }
 rustok-content-orchestration.workspace = true
 rustok-blog = { workspace = true, optional = true }
-rustok-reactions = { path = "../rustok-reactions", optional = true }
+rustok-reactions = { workspace = true, optional = true }
 rustok-forum = { workspace = true, optional = true }
 rustok-notifications = { workspace = true, optional = true }
 rustok-newsletter = { workspace = true, optional = true }
@@ -126,7 +126,7 @@ rustok-pages = { workspace = true, optional = true }
 rustok-docs = { workspace = true, optional = true }
 rustok-messenger = { workspace = true, optional = true }
 rustok-navigation = { workspace = true, optional = true }
-rustok-forms = { path = "../rustok-forms", package = "rustok-forms-module", optional = true }
+rustok-forms = { path = "../../modules/rustok-forms", package = "rustok-forms-module", optional = true }
 rustok-page-builder = { workspace = true, optional = true }
 rustok-taxonomy = { workspace = true, optional = true }
 rustok-media = { workspace = true, optional = true }

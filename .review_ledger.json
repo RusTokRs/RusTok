@@ -426,9 +426,9 @@
       "completed_at": "2026-10-20 21:00",
       "notes": "Audited; enforced non-nil UUID validation on parse_uuid in native server adapter, verified framework-agnostic FFA architecture in core.rs with complete error mapping, form snapshots, and view models, confirmed safe transport error envelope and diagnostic logging, verified FTL i18n parity between en.ftl and ru.ftl; 12/12 unit tests passed (default and ssr features), 0 clippy warnings, gate passed."
     },
-    "crates/modules/rustok-distribution": {
+    "crates/utils/rustok-distribution": {
       "name": "rustok-distribution",
-      "path": "crates/modules/rustok-distribution",
+      "path": "crates/utils/rustok-distribution",
       "category": "modules",
       "files": 34,
       "loc": 15719,
@@ -1332,9 +1332,9 @@
       "category": "modules",
       "files": 15,
       "loc": 4563,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-25 17:55",
+      "notes": "Audited Leptos admin FFA package across 15 source files; verified strict FFA separation (pure Rust models, intent dispatcher, session state, and property editor with zero UI imports); verified dual-path transport (GraphQL / ServerFn) and tenant scope enforcement; added canonical CRATE_API.md, contract_tests.rs, top-level crate docs, docs.rs, readme, and repository metadata; 18/18 unit and contract tests passed, clean rustdoc, docs.rs compliant, zero defects."
     },
     "crates/modules/rustok-seo/render": {
       "name": "render",

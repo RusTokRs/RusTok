@@ -314,6 +314,7 @@ rustok-modules = { path = "crates/modules/rustok-modules", default-features = fa
 rustok-events = { path = "crates/libs/rustok-events" }
 rustok-forms-module = { path = "crates/modules/rustok-forms" }
 rustok-forms-admin = { path = "crates/modules/rustok-forms/admin" }
+rustok-groups = { path = "crates/modules/rustok-groups" }
 rustok-events-module = { path = "crates/modules/rustok-events-module" }
 rustok-commerce-foundation = { path = "crates/libs/rustok-commerce-foundation" }
 rustok-commerce = { path = "crates/modules/rustok-commerce", default-features = false }
@@ -383,7 +384,7 @@ rustok-fba = { path = "crates/libs/rustok-fba" }
 rustok-cli-core = { path = "crates/utils/rustok-cli-core" }
 rustok-cli-registry = { path = "crates/utils/rustok-cli-registry" }
 rustok-cli-platform = { path = "crates/utils/rustok-cli-platform" }
-rustok-distribution = { path = "crates/modules/rustok-distribution", default-features = false }
+rustok-distribution = { path = "crates/utils/rustok-distribution", default-features = false }
 rustok-migrations = { path = "crates/utils/rustok-migrations" }
 rustok-installer = { path = "crates/utils/rustok-installer" }
 rustok-installer-persistence = { path = "crates/utils/rustok-installer-persistence" }
