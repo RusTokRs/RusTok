@@ -5,7 +5,7 @@
     "owner_source": "crates/modules/rustok-pricing/src/ports.rs",
     "read_wrapper_source": "crates/modules/rustok-pricing/src/read_context.rs",
     "write_wrapper_source": "crates/modules/rustok-pricing/src/write_context.rs",
-    "owner_error": "crates/modules/rustok-commerce-foundation/src/error.rs",
+    "owner_error": "crates/libs/rustok-commerce-foundation/src/error.rs",
     "owner_mapper": "pricing_error_to_port_error",
     "tenant_parser": "parse_port_tenant_id",
     "actor_parser": "parse_port_actor_id",

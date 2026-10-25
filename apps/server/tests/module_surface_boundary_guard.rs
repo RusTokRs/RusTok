@@ -1357,7 +1357,7 @@ fn product_translation_search_helper_is_not_server_owned() {
     );
 
     let foundation_search = std::fs::read_to_string(
-        repo.join("crates/modules/rustok-commerce-foundation/src/search.rs"),
+        repo.join("crates/libs/rustok-commerce-foundation/src/search.rs"),
     )
     .expect("commerce foundation search helper should read");
     assert!(

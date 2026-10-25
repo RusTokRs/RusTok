@@ -14,7 +14,7 @@ const facadeSource = read('crates/modules/rustok-commerce/src/graphql/mutations/
 const layeredSource = read(
   'crates/modules/rustok-commerce/src/graphql/mutations/layered_order_helpers.rs',
 );
-const commerceErrors = read('crates/modules/rustok-commerce-foundation/src/error.rs');
+const commerceErrors = read('crates/libs/rustok-commerce-foundation/src/error.rs');
 const failures = [];
 
 const requireText = (source, value, label) => {

@@ -315,7 +315,7 @@ rustok-events = { path = "crates/libs/rustok-events" }
 rustok-forms-module = { path = "crates/modules/rustok-forms" }
 rustok-forms-admin = { path = "crates/modules/rustok-forms/admin" }
 rustok-events-module = { path = "crates/modules/rustok-events-module" }
-rustok-commerce-foundation = { path = "crates/modules/rustok-commerce-foundation" }
+rustok-commerce-foundation = { path = "crates/libs/rustok-commerce-foundation" }
 rustok-commerce = { path = "crates/modules/rustok-commerce", default-features = false }
 rustok-marketplace = { path = "crates/modules/rustok-marketplace" }
 rustok-marketplace-seller = { path = "crates/modules/rustok-marketplace-seller" }

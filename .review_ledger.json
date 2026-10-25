@@ -376,10 +376,10 @@
       "completed_at": "2026-10-19 13:48",
       "notes": "Audited and cleaned. Enforced FFA separation with framework-agnostic models, aligned PaymentCollection, CheckoutCompletion, and StorefrontCartDeliveryGroup test fixtures, added surface field to UiTransportError initializers across all 4 transport error contexts, ensured completion state resets on retry in Leptos view, verified dual-path transport (GraphQL / ServerFn) and SSR adapter error safety. 32/32 tests passed (client + SSR), 0 clippy warnings, gate passed."
     },
-    "crates/modules/rustok-commerce-foundation": {
+    "crates/libs/rustok-commerce-foundation": {
       "name": "rustok-commerce-foundation",
-      "path": "crates/modules/rustok-commerce-foundation",
-      "category": "modules",
+      "path": "crates/libs/rustok-commerce-foundation",
+      "category": "libs",
       "files": 19,
       "loc": 1810,
       "completed": true,
@@ -612,9 +612,9 @@
       "category": "modules",
       "files": 137,
       "loc": 58160,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-25 15:40",
+      "notes": "Audited and verified all 6 Universal Logic Dimensions across 137 source files; verified IndexModule with RusToKModule/MigrationSource; standardized CRATE_API.md with ## Public surface and contract_tests.rs; added rust-version, repository, and readme to Cargo.toml; 297/297 tests passed, clean rustdoc, docs.rs compliant, zero defects."
     },
     "crates/modules/rustok-index/admin": {
       "name": "admin",
@@ -622,9 +622,9 @@
       "category": "modules",
       "files": 9,
       "loc": 2912,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-25 15:45",
+      "notes": "Audited Leptos admin FFA package across 9 source files; verified strict FFA separation (pure Rust models and view-model computations in core.rs with zero UI imports); verified dual-path transport and strict tenant scope enforcement in native_server_adapter; added canonical CRATE_API.md, contract_tests.rs, top-level crate docs, docs.rs, readme, and repository metadata; 15/15 unit/contract tests and SSR tests passed, clean rustdoc, zero defects."
     },
     "crates/modules/rustok-inventory": {
       "name": "rustok-inventory",

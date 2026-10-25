@@ -5,7 +5,7 @@
     "crates/modules/rustok-pricing/src/ports.rs",
     "crates/modules/rustok-pricing/src/read_context.rs",
     "crates/modules/rustok-pricing/src/write_context.rs",
-    "crates/modules/rustok-commerce-foundation/src/error.rs",
+    "crates/libs/rustok-commerce-foundation/src/error.rs",
     "scripts/verify/verify-pricing-owner-port-error-safety.mjs",
     "scripts/verify/verify-pricing-read-local-context.mjs",
     "scripts/verify/verify-pricing-write-local-context.mjs",
