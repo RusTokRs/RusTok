@@ -330,6 +330,7 @@ impl TranslationWorkflowService {
             )
             .await?;
         transaction.commit().await?;
+        crate::observability::record_job_lifecycle("created");
         replay_job(persisted, &request_hash)
     }
 
@@ -1133,6 +1134,7 @@ impl TranslationWorkflowService {
             )
             .await?;
         transaction.commit().await?;
+        crate::observability::record_job_lifecycle("cancelled");
         Ok(CancellationRecord {
             cancellation_id,
             job_id: job_model.id,
@@ -1832,6 +1834,7 @@ impl TranslationWorkflowService {
                 },
             )
             .await?;
+        crate::observability::record_job_lifecycle("completed");
         Ok(true)
     }
 
