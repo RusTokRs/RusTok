@@ -8,6 +8,8 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # rustok-pages
+//!
 //! Pages module for RusToK platform.
 //!
 //! The module owns pages, localized bodies, deterministic Page Builder artifacts,

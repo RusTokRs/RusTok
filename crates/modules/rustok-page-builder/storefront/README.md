@@ -27,3 +27,5 @@ Published pages use `StaticLandingStorefront` to eliminate `<iframe>` overhead o
 - `src/inline_edit.rs` — feature-gated editor integration.
 
 See the [Page Builder documentation](../docs/README.md) and the [module UI guide](../../../../docs/UI/module-package-implementation.md).
+
+For the formal Rust API contract and guarantees, see [`CRATE_API.md`](CRATE_API.md).

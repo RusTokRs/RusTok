@@ -18,13 +18,19 @@ mod ui;
 #[cfg(test)]
 mod contract_tests;
 
-pub use localized_route::*;
+pub use localized_route::{
+    LocalizedPageBuilderStorefront, StorefrontLocalizedRouteOutput,
+    render_storefront_localized_request, render_storefront_localized_slug,
+};
 pub use ui::PageBuilderView;
 
 #[cfg(feature = "inline-edit")]
 mod inline_edit;
 #[cfg(feature = "inline-edit")]
-pub use inline_edit::*;
+pub use inline_edit::{
+    AuthenticatedInlineEditSession, InlineEditApplyResult, InlineEditAuthorizationPort,
+    InlineEditError, InlineEditGrant, InlineEditRequest,
+};
 
 use fly::{
     GrapesJsCodec, PageHead, RenderPolicy, RenderedPage, RichTextHtmlRenderer, RuntimeRenderResult,
