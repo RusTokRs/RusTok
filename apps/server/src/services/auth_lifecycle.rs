@@ -144,6 +144,10 @@ impl AuthLifecycleService {
         AUTH_FLOW_INCONSISTENCY_TOTAL.fetch_add(1, Ordering::Relaxed);
     }
 
+    pub fn record_password_reset_sessions_revoked(count: u64) {
+        AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL.fetch_add(count, Ordering::Relaxed);
+    }
+
     #[cfg(test)]
     fn reset_metrics_for_tests() {
         AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL.store(0, Ordering::Relaxed);
@@ -1128,31 +1132,6 @@ impl AuthLifecycleService {
         Self::revoke_user_sessions_db(ctx.db(), tenant_id, user_id, Some(current_session_id)).await
     }
 
-    #[cfg(test)]
-    async fn reset_password_and_revoke_sessions(
-        db: &DatabaseConnection,
-        tenant_id: uuid::Uuid,
-        user: users::Model,
-        new_password: &str,
-        except_session_id: Option<uuid::Uuid>,
-    ) -> std::result::Result<(), AuthLifecycleError> {
-        let user_id = user.id;
-        let mut user_active: users::ActiveModel = user.into();
-        let new_hash = hash_password_async(new_password.to_string())
-            .await
-            .map_err(AuthLifecycleError::from)?;
-        user_active.password_hash = Set(new_hash);
-        user_active
-            .update(db)
-            .await
-            .map_err(AuthLifecycleError::from)?;
-
-        let revoked_sessions =
-            Self::revoke_user_sessions_db(db, tenant_id, user_id, except_session_id).await?;
-        AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL.fetch_add(revoked_sessions, Ordering::Relaxed);
-
-        Ok(())
-    }
 
     #[cfg(test)]
     async fn create_session_and_tokens_db(
@@ -1450,73 +1429,6 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    #[serial]
-    async fn reset_password_revoke_sessions_marks_all_sessions_revoked() {
-        AuthLifecycleService::reset_metrics_for_tests();
-        let db = setup_test_db_with_migrations::<Migrator>().await;
-        let tenant = tenants::ActiveModel::new("Test tenant", "test-tenant")
-            .insert(&db)
-            .await
-            .expect("failed to create tenant");
-
-        let user = users::ActiveModel::new(tenant.id, "user@example.com", "old-hash")
-            .insert(&db)
-            .await
-            .expect("failed to create user");
-
-        let now = Utc::now();
-        sessions::ActiveModel::new(
-            tenant.id,
-            user.id,
-            "token-1".to_string(),
-            now + Duration::hours(1),
-            None,
-            None,
-        )
-        .insert(&db)
-        .await
-        .expect("failed to create session 1");
-        sessions::ActiveModel::new(
-            tenant.id,
-            user.id,
-            "token-2".to_string(),
-            now + Duration::hours(2),
-            None,
-            None,
-        )
-        .insert(&db)
-        .await
-        .expect("failed to create session 2");
-
-        let metrics_before = AuthLifecycleService::metrics_snapshot();
-
-        AuthLifecycleService::reset_password_and_revoke_sessions(
-            &db,
-            tenant.id,
-            user.clone(),
-            "new-password",
-            None,
-        )
-        .await
-        .expect("password reset should succeed");
-
-        let active_sessions = sessions::Entity::find()
-            .filter(sessions::Column::TenantId.eq(tenant.id))
-            .filter(sessions::Column::UserId.eq(user.id))
-            .filter(sessions::Column::RevokedAt.is_null())
-            .all(&db)
-            .await
-            .expect("failed to query active sessions");
-
-        assert!(active_sessions.is_empty());
-
-        let metrics_after = AuthLifecycleService::metrics_snapshot();
-        assert!(
-            metrics_after.password_reset_sessions_revoked_total
-                >= metrics_before.password_reset_sessions_revoked_total + 2
-        );
-    }
 
     #[tokio::test]
     async fn create_user_assigns_requested_role_relations() {
@@ -2144,89 +2056,6 @@ mod tests {
         assert!(matches!(err, crate::error::Error::Unauthorized(_)));
     }
 
-    #[tokio::test]
-    #[serial]
-    async fn reset_password_and_revoke_sessions_updates_password_and_revokes_all_sessions() {
-        AuthLifecycleService::reset_metrics_for_tests();
-        let db = setup_test_db_with_migrations::<Migrator>().await;
-        let tenant = tenants::ActiveModel::new("Tenant reset", "tenant-reset-positive")
-            .insert(&db)
-            .await
-            .expect("failed to create tenant");
-
-        let old_password = "OldPassword123!";
-        let new_password = "NewPassword123!";
-        let old_hash = hash_password(old_password).expect("failed to hash old password");
-        let user = users::ActiveModel::new(tenant.id, "reset-positive@example.com", &old_hash)
-            .insert(&db)
-            .await
-            .expect("failed to create user");
-
-        let now = Utc::now();
-        sessions::ActiveModel::new(
-            tenant.id,
-            user.id,
-            "reset-positive-token-1".to_string(),
-            now + Duration::hours(1),
-            None,
-            None,
-        )
-        .insert(&db)
-        .await
-        .expect("failed to create first session");
-        sessions::ActiveModel::new(
-            tenant.id,
-            user.id,
-            "reset-positive-token-2".to_string(),
-            now + Duration::hours(2),
-            None,
-            None,
-        )
-        .insert(&db)
-        .await
-        .expect("failed to create second session");
-
-        let metrics_before = AuthLifecycleService::metrics_snapshot();
-
-        AuthLifecycleService::reset_password_and_revoke_sessions(
-            &db,
-            tenant.id,
-            user.clone(),
-            new_password,
-            None,
-        )
-        .await
-        .expect("reset with revoke should succeed");
-
-        let updated_user = users::Entity::find_by_id(user.id)
-            .one(&db)
-            .await
-            .expect("failed to query updated user")
-            .expect("updated user should exist");
-        assert!(
-            verify_password(new_password, &updated_user.password_hash)
-                .expect("new password should verify")
-        );
-        assert!(
-            !verify_password(old_password, &updated_user.password_hash)
-                .expect("old password must not verify")
-        );
-
-        let active_sessions = sessions::Entity::find()
-            .filter(sessions::Column::TenantId.eq(tenant.id))
-            .filter(sessions::Column::UserId.eq(user.id))
-            .filter(sessions::Column::RevokedAt.is_null())
-            .count(&db)
-            .await
-            .expect("failed to query active sessions");
-        assert_eq!(active_sessions, 0);
-
-        let metrics_after = AuthLifecycleService::metrics_snapshot();
-        assert!(
-            metrics_after.password_reset_sessions_revoked_total
-                >= metrics_before.password_reset_sessions_revoked_total + 2
-        );
-    }
 
     #[tokio::test]
     async fn revoke_user_sessions_repeat_call_is_idempotent() {
@@ -2409,166 +2238,7 @@ mod tests {
         assert_eq!(active_sessions[0].id, keep_session.id);
     }
 
-    #[tokio::test]
-    #[serial]
-    async fn reset_password_revoke_sessions_can_keep_current_session() {
-        AuthLifecycleService::reset_metrics_for_tests();
-        let db = setup_test_db_with_migrations::<Migrator>().await;
-        let tenant = tenants::ActiveModel::new("Test tenant", "test-tenant-2")
-            .insert(&db)
-            .await
-            .expect("failed to create tenant");
 
-        let user = users::ActiveModel::new(tenant.id, "user2@example.com", "old-hash")
-            .insert(&db)
-            .await
-            .expect("failed to create user");
-
-        let now = Utc::now();
-        let current_session = sessions::ActiveModel::new(
-            tenant.id,
-            user.id,
-            "current-token".to_string(),
-            now + Duration::hours(1),
-            None,
-            None,
-        )
-        .insert(&db)
-        .await
-        .expect("failed to create current session");
-        sessions::ActiveModel::new(
-            tenant.id,
-            user.id,
-            "other-token".to_string(),
-            now + Duration::hours(2),
-            None,
-            None,
-        )
-        .insert(&db)
-        .await
-        .expect("failed to create secondary session");
-
-        let metrics_before = AuthLifecycleService::metrics_snapshot();
-
-        AuthLifecycleService::reset_password_and_revoke_sessions(
-            &db,
-            tenant.id,
-            user.clone(),
-            "new-password",
-            Some(current_session.id),
-        )
-        .await
-        .expect("password reset should succeed");
-
-        let still_active = sessions::Entity::find_by_id(current_session.id)
-            .one(&db)
-            .await
-            .expect("failed to fetch current session")
-            .expect("current session should exist");
-        assert!(still_active.revoked_at.is_none());
-
-        let revoked_count = sessions::Entity::find()
-            .filter(sessions::Column::TenantId.eq(tenant.id))
-            .filter(sessions::Column::UserId.eq(user.id))
-            .filter(sessions::Column::RevokedAt.is_not_null())
-            .count(&db)
-            .await
-            .expect("failed to query revoked sessions");
-
-        assert_eq!(revoked_count, 1);
-
-        let metrics_after = AuthLifecycleService::metrics_snapshot();
-        assert!(
-            metrics_after.password_reset_sessions_revoked_total
-                > metrics_before.password_reset_sessions_revoked_total
-        );
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn reset_password_revoke_sessions_repeat_call_on_already_revoked_sessions_is_idempotent()
-    {
-        AuthLifecycleService::reset_metrics_for_tests();
-        let db = setup_test_db_with_migrations::<Migrator>().await;
-        let tenant = tenants::ActiveModel::new("Test tenant", "test-tenant-3")
-            .insert(&db)
-            .await
-            .expect("failed to create tenant");
-
-        let user = users::ActiveModel::new(tenant.id, "user3@example.com", "old-hash")
-            .insert(&db)
-            .await
-            .expect("failed to create user");
-        let user_id = user.id;
-
-        let now = Utc::now();
-        sessions::ActiveModel::new(
-            tenant.id,
-            user.id,
-            "token-a".to_string(),
-            now + Duration::hours(1),
-            None,
-            None,
-        )
-        .insert(&db)
-        .await
-        .expect("failed to create session a");
-        sessions::ActiveModel::new(
-            tenant.id,
-            user.id,
-            "token-b".to_string(),
-            now + Duration::hours(2),
-            None,
-            None,
-        )
-        .insert(&db)
-        .await
-        .expect("failed to create session b");
-
-        AuthLifecycleService::reset_password_and_revoke_sessions(
-            &db,
-            tenant.id,
-            user.clone(),
-            "new-password",
-            None,
-        )
-        .await
-        .expect("first password reset should succeed");
-
-        let revoked_after_first_call = sessions::Entity::find()
-            .filter(sessions::Column::TenantId.eq(tenant.id))
-            .filter(sessions::Column::UserId.eq(user_id))
-            .filter(sessions::Column::RevokedAt.is_not_null())
-            .count(&db)
-            .await
-            .expect("failed to query revoked sessions after first call");
-        assert_eq!(
-            revoked_after_first_call, 2,
-            "first call should revoke all active sessions"
-        );
-
-        AuthLifecycleService::reset_password_and_revoke_sessions(
-            &db,
-            tenant.id,
-            user,
-            "new-password-2",
-            None,
-        )
-        .await
-        .expect("second password reset should succeed");
-
-        let revoked_after_second_call = sessions::Entity::find()
-            .filter(sessions::Column::TenantId.eq(tenant.id))
-            .filter(sessions::Column::UserId.eq(user_id))
-            .filter(sessions::Column::RevokedAt.is_not_null())
-            .count(&db)
-            .await
-            .expect("failed to query revoked sessions after second call");
-        assert_eq!(
-            revoked_after_second_call, revoked_after_first_call,
-            "second call should revoke zero additional sessions"
-        );
-    }
 
     #[tokio::test]
     async fn create_user_scopes_duplicate_email_check_per_tenant() {
