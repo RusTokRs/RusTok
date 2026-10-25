@@ -90,6 +90,51 @@ does not create a package-local locale fallback.
    without compiling `apps/admin`, storefront hosts, cloud SDKs, or unrelated
    domain modules, while the server provider consumes the same tested boundary.
 
+9. **Completed in code, verification pending — 2026-10 auth audit remediation
+   (P1→P2→P3).** Canonical email/display-name validation and a length-based
+   password policy now run on every credential path (register, invite accept,
+   reset, change-password, admin create/update, superadmin bootstrap), with
+   unique-violation races mapped to `EmailAlreadyExists`. Delegated and
+   service principals can no longer authorize or consent as the user
+   (`AuthAdminMutationContext.principal_kind`, fail-closed; REST authorize /
+   consent / browser-session endpoints require a direct user). Login gained
+   dummy-Argon2 timing equalization, a persistent per-account lockout
+   (`users.failed_login_count` / `locked_until`, migration
+   `m20261025_000001`), and fail-closed rate-limit defaults. OAuth consent
+   can be re-granted after revoke (partial unique index, migration
+   `m20261025_000002`) and now replaces scopes instead of merging them.
+   Refresh rotation records the previous token hash and revokes the lineage
+   on replay after a 30-second grace window, with a 90-day absolute session
+   cap (migration `m20261025_000003`). OAuth app writes are column-scoped so
+   they cannot revert secret rotation; GraphQL internal errors no longer leak
+   database text; reset/verification responses never carry tokens. Email
+   verification is enforced at login and refresh when
+   `features.email_verification` is enabled, and registration sends the
+   verification email. Invitations are a complete lifecycle
+   (`issueUserInvite` / `revokeUserInvite` / `userInvites`, issuance ledger
+   `auth_invites`, migration `m20261025_000004`) gated by
+   `features.invites_enabled` and `features.invite_only_registration`.
+   Redirect URIs are validated strictly (https or loopback http, no fragment
+   or user info, custom schemes only for mobile apps); credential fields are
+   excluded from entity serialization; `UserAccountRegistered` is published
+   transactionally; the superadmin bootstrap no longer re-promotes an
+   existing account on restart.
+   **Verification status:** written without a local Rust toolchain; not yet
+   compiled or tested. Run the Verification list below plus targeted server
+   suites (`auth_lifecycle`, `oauth_app`, `oauth_token_service`,
+   `auth_admin_mutation_provider`) and `cargo fmt` before merge.
+   **Remaining risks deferred from the same audit:** native-transport invite
+   operations are not wired (GraphQL only); the browser consent form relies
+   on `SameSite=Lax` rather than a signed consent state; admin UI still
+   stores tokens in LocalStorage; expired/revoked session retention has no
+   server-side cleanup (CLI `sessions-cleanup` exists); per-request
+   role/permission resolution performs duplicate reads; the default JWT
+   issuer is not an absolute URL, so the discovery endpoint requires an
+   explicitly configured issuer; `reset_password_and_revoke_sessions` tests
+   exercise a `#[cfg(test)]` helper instead of the production
+   `auth_password_reset` service; entity `Debug` output still includes
+   credential fields (serialization is sanitized, logs are server-side only).
+
 ## Verification
 
 - `npm run verify:auth:admin-boundary`
