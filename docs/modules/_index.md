@@ -154,6 +154,7 @@ Module local documentation lives inside the crates themselves at
 | `rustok-calls` | [docs](../../crates/modules/rustok-calls/docs/README.md) | [plan](../../crates/modules/rustok-calls/docs/implementation-plan.md) |
 | `rustok-calendar` | [docs](../../crates/modules/rustok-calendar/docs/README.md) | [plan](../../crates/modules/rustok-calendar/docs/implementation-plan.md) |
 | `rustok-tasks` | [docs](../../crates/modules/rustok-tasks/docs/README.md) | [plan](../../crates/modules/rustok-tasks/docs/implementation-plan.md) |
+| `rustok-security` | [docs](../../crates/modules/rustok-security/docs/README.md) | [plan](../../crates/modules/rustok-security/docs/implementation-plan.md) |
 ## Module UI Packages
 
 ### Optional/Admin Surfaces
@@ -184,6 +185,7 @@ Module local documentation lives inside the crates themselves at
 - `rustok-calls`: [README](../../crates/modules/rustok-calls/admin/README.md)
 - `rustok-calendar`: [README](../../crates/modules/rustok-calendar/admin/README.md)
 - `rustok-tasks`: [README](../../crates/modules/rustok-tasks/admin/README.md)
+- `rustok-security`: [README](../../crates/modules/rustok-security/admin/README.md)
 ### Optional/Storefront Surfaces
 
 - `rustok-groups`: [README](../../crates/modules/rustok-groups/storefront/README.md)
@@ -196,6 +198,7 @@ Module local documentation lives inside the crates themselves at
 
 - `rustok-calls`: [README](../../crates/modules/rustok-calls/storefront/README.md)
 - `rustok-calendar`: [README](../../crates/modules/rustok-calendar/storefront/README.md)
+- `rustok-security`: [README](../../crates/modules/rustok-security/storefront/README.md)
 ## Related Documents
 
 - [Module Platform Overview](./overview.md)

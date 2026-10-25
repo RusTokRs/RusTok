@@ -59,6 +59,7 @@ mod-media = ["dep:rustok-media"]
 mod-translation = ["dep:rustok-translation"]
 mod-seo = ["dep:rustok-seo", "mod-content"]
 mod-workflow = ["dep:rustok-workflow"]
+mod-security = ["dep:rustok-security"]
 mod-ai = ["dep:rustok-ai", "rustok-ai/server"]
 ai-translation = ["mod-ai", "mod-translation", "dep:rustok-ai-translation"]
 

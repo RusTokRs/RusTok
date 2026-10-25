@@ -1,0 +1,15 @@
+security-title = Security
+security-description = Управление настройками и рабочими процессами Security
+security-empty = Записи не найдены
+security-save = Сохранить
+security-cancel = Отмена
+security-success = Операция успешно выполнена
+security-error = Произошла ошибка
+security-search-placeholder = Поиск записей Security...
+security-col-title = Название
+security-col-status = Статус
+security-col-created = Дата создания
+security-col-actions = Действия
+security-action-create = Создать
+security-action-edit = Изменить
+security-action-delete = Удалить
