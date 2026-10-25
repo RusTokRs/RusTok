@@ -321,4 +321,11 @@ node scripts/verify/verify-db-multilingual-contract.mjs
 * `lib.rs`: включён `#![deny(clippy::unwrap_used, clippy::expect_used)]` и `#![doc = include_str!("../CRATE_API.md")]` — соблюдён §5 Crate Contract Documentation и §14 no-unwrap-production; существующие `expect` в `TranslationObservabilityMetrics::new()` помечены `#[allow(clippy::expect_used)]` с обоснованием (метрики инициализируются единожды, инвариант — валидные Opts/HistogramOpts).
 
 Верификация: `grep -rn \".unwrap()\"` в `src/` вне `#[cfg(test)]` — 0 вхождений; `grep -rn OpaqueRevision` charset подтверждён `[A-Za-z0-9._:-]`; `busy_timeout` подтверждён; `IdempotencyKey::require` делегирование подтверждено в 11 helpers; `git push` e36d941→d2733ab — ветка чистая.
+### Итерация 5 — пининг памяти и контрактная документация (5b451fd)
+* `machine_service/operations.rs:register_operation` — внутри транзакции после CAS добавлена проверка `memory_entry EXISTS && tombstoned_at IS NULL` по всем `entry_ids` из `memory_suggestions`; при несовпадении — `MachineMemoryProjectionUnavailable` (закрывает TOCTOU между `lookup_for_machine` и `register`, P1-7).
+* `memory.rs:purge_entry` — ранее проверка `machine_memory_binding` была только вне транзакции; сейчас продублирована **внутри** транзакции перед `DELETE` — параллельный `register_operation` теперь корректно блокирует `purge` (P1-7 второе окно).
+* `CRATE_API.md` — секции `Platform Capability Bindings` и `Domain Collaborations` приведены к AGENTS.md §5 / §13: явно перечислены Layer 1 (`rustok-tenant::TenantLocalePolicyPort`, `rustok-outbox::TransactionalEventBus`, `rustok-events`, `rustok-storage` optional), Layer 2 (`rustok-ai-translation` optional), и что `flex/media/taxonomy` **не** consumed, а owner'ы подключаются только через `rustok-translation-targets`. Domain Collaborations теперь peer-модульные с портами/событиями.
+* Верификация: `git diff --stat` — 2 files 35 ins (5b451fd) + CRATE_API.md; `grep -rn machine_memory_binding` подтверждает двойную проверку; ветка pushed 8125e92..5b451fd.
+
+Оставшиеся P1/P2 для следующих фаз: P1-12 inventory full_rescan limit документирован (MAX_FULL_RESCAN_RESOURCES 100k, checkpoint CAS), P1-3 fallback-locale UX, P1-6/P0-6 прогресс уже учтены через receipt proposal_id.
 

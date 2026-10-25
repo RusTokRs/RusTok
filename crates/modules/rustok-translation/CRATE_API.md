@@ -14,7 +14,15 @@
 - **Module Slug**: `translation`
 - **Module Name**: `Translation`
 - **Module Kind**: `ModuleKind::Optional`
-- **Dependencies**: `[]`
+- **Dependencies**: `[]` (Layer 1/2 capabilities below are consumed via ports, not `modules.toml` deps)
+- **Layer 1 — Core Platform Capabilities**:
+  - `rustok-tenant::TenantLocalePolicyPort` — required; Translation never reads `tenant_locales` directly, validates source/target `TenantLocale` and `required_target_locales` against current Tenant locale-policy revision (AGENTS §5).
+  - `rustok-outbox::TransactionalEventBus` — required for atomic workflow transitions + `TranslationWorkflowEvent` persistence.
+  - `rustok-events` — canonical `DomainEvent` envelope for `TranslationJobCreated/ProposalApproved/Applied` etc.
+  - `rustok-storage` (ObjectStorage, `StorageRuntime`) — optional/bounded; used only for `TranslationInterchangeArtifact` private object lifecycle (tenant-scoped keys, SHA256 integrity, expiry cleanup); absence fails that lifecycle closed without in-memory fallback.
+- **Layer 2 — Attached Capabilities**:
+  - `rustok-ai-translation` (optional adapter) — bounded `MachineTranslationPort` SPI; AI routing/inference stays outside Translation.
+  - `flex`, `rustok-media`, `rustok-taxonomy` etc. — **not** consumed; Translation dispatches to owner providers via neutral `rustok-translation-targets`.
 - **Permissions**:
   - `Permission::new(Resource::Translations, action)` (`Create`, `Read`, `Update`, `List`, `Resolve`, `Publish`, `Import`, `Export`, `Run`, `Manage`)
   - `Permission::new(Resource::TranslationMemory, action)` (`Create`, `Read`, `Update`, `Delete`, `List`, `Import`, `Export`, `Manage`)
@@ -24,10 +32,11 @@
 - **Database Migrations**: Sea-ORM migrations defined in `src/migrations/mod.rs` (workflow jobs, items, proposals, memory segments, glossaries, and interchange artifacts).
 
 ## Domain Collaborations
-- **Tenant**: Integrates with `rustok-tenant` for tenant-scoped localization policies and required target locales.
-- **Outbox**: Emits translation lifecycle events and invalidation signals through `rustok-outbox::TransactionalEventBus`.
-- **Translation Targets**: Dispatches exact translation application to module-owned providers via `rustok-translation-targets`.
-- **Runtime Scheduler**: Background periodic maintenance for memory retention policy execution and temporary interchange artifact cleanup.
+- **rustok-tenant (peer business module)** — tenant-scoped localization policies and `required_target_locales`; interacts via `TenantLocalePolicyPort` port, not direct table reads.
+- **rustok-translation-targets (neutral SPI, peer boundary)** — owner modules (`media`, `taxonomy`, `navigation`, `pages`, `modules/static_settings`) register `TranslationTargetProvider`; Translation dispatches exact patch application/receipt and reads aggregate progress via this seam only.
+- **rustok-ai-translation (optional peer)** — AI adapter implementing `MachineTranslationPort`; Translation validates `tenant_private` classification & digests before/after dispatch.
+- **rustok-outbox / rustok-events-module (platform events)** — emits `DomainEvent::TranslationJobCreated/ProposalApproved/Applied` atomically with state transitions.
+- **Runtime Scheduler (`rustok_runtime::ModuleWorkRegistrations`)** — background periodic maintenance for memory retention tombstone/purge and interchange artifact expiry cleanup.
 
 ## Minimum Contract Set
 - `TranslationWorkflowService`: Core lifecycle management for translation jobs, items, proposals, assignments, and approvals.
