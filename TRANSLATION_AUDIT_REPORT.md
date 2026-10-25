@@ -331,4 +331,10 @@ node scripts/verify/verify-db-multilingual-contract.mjs
 ### Итерация 6 — расширение lifecycle и верификация (a353506)
 * `workflow.rs:approve_proposal` — после `commit` теперь `record_job_lifecycle("proposal_approved")`; `workflow::finalize_apply` после `commit` — `record_job_lifecycle("proposal_applied")`. Вместе с предыдущими `created/cancelled/completed` метрика `rustok_translation_workflow_job_lifecycle_total{transition}` теперь покрывает весь P4.4 lifecycle (5 состояний; content-free, bounded).
 * Верификация: `grep -rn record_job_lifecycle` — 5 точек; `git diff --stat` 1 file 2 ins; pushed a353506.
+### Итерация 7 — консистентность идемпотентности и устойчивость рантайма (a2896bf)
+* `machine_service/operations.rs:register_operation` — убран последний дублирующий ручной `unwrap_or_default` + `if key.is_empty()..`, заменён на `crate::idempotency::IdempotencyKey::require(...)?` — теперь все 11 write-путей + machine-регистрация используют единый канонический тип (закрыта рассинхронизация лимитов 191/trim/непустота, P0-1).
+* `inventory.rs` — оба `PRAGMA busy_timeout = 5000` переведены из `let _ = ...` (silent swallow) в `if let Err(error) = ... { tracing::debug!(...) }` — анти-swallow (AGENTS §4 Branch Completeness), сохраняется best-effort семантика без маскирования ошибок (P0-2 усиление).
+* `scheduler.rs:work_item` — `expect` для сериализации `RetentionWorkPayload` помечен `#[allow(clippy::expect_used)]` с инвариантом (`i64+enum` простая структура, never panics) — соблюдён `lib.rs #![deny(clippy::expect_used)]` без подавления реальной ошибки (AGENTS §14).
+* `exchange.rs:process_import_document` — `total_items: u16::try_from(..).unwrap_or(u16::MAX)` заменён на `unwrap_or_else(|_| { tracing::warn!(document_len, ...) ; u16::MAX })` — defense-in-depth при нарушении валидации `MAX_INTERCHANGE_ARTIFACT_LIST_LIMIT (200)` (фактически недостижимо, но теперь наблюдаемо, P1-12 robustness).
+* Верификация: `grep -rn unwrap_or_default` в `src` теперь только для `subresource_id→subresource_key` (валидный `None→""`) и `context.deadline_ms`; `IdempotencyKey::require` единственная точка проверки; `git diff --stat` 4 files 13+-; pushed a2896bf.
 
