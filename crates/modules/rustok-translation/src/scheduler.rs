@@ -114,6 +114,7 @@ impl TranslationMemoryRetentionWorkAdapter {
             .map_err(|error| ModuleWorkError::Source(error.to_string()))
     }
 
+    #[allow(clippy::expect_used)]
     fn work_item(entry: memory_entry::Model, action: RetentionAction) -> ModuleWorkItem {
         ModuleWorkItem {
             id: entry.id,
@@ -124,7 +125,7 @@ impl TranslationMemoryRetentionWorkAdapter {
                 action,
                 expected_revision: entry.revision,
             })
-            .expect("translation retention payload must serialize"),
+            .expect("translation retention payload must serialize: RetentionWorkPayload is a simple internal struct with i64+enum"),
         }
     }
 

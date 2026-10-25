@@ -204,3 +204,22 @@ machine-translation orchestration.
 - [CRATE_API.md](CRATE_API.md) — Public API contract, module registration, capability bindings, and domain invariants.
 - [Local Module Contract](docs/README.md)
 - [Implementation Plan](docs/implementation-plan.md)
+
+
+## Known Limitations / Pending Implementation
+
+- Cross-tenant job lifecycle gauge deliberately omitted — tenant-scoped progress
+  remains in `TranslationProgressService::read_job_progress` and content-free trace
+  fields; global job-count metrics would leak tenant cardinality (see docs/README.md
+  Observability).
+- Translation memory retention background scan is tenant-serialized; multi-tenant
+  parallel purge is deferred to runtime scheduler sharding — current
+  `MAX_FULL_RESCAN`-bounded path guarantees convergence without fan-out.
+- Machine-translation `saving` recovery is provider-free only when the execution
+  binding matches the observed batch; non-matching bindings require a fresh billable
+  generation (design invariant, not a gap — documented in docs/README.md).
+- `PRAGMA busy_timeout` is applied only on `Sqlite` connections via `ConnectionTrait`
+  introspection; Postgres hot-paths rely on statement-level timeouts set at the pool.
+- Opaque cursor alphabet is `[A-Za-z0-9._:-]` (1..191). Legacy cursors outside this
+  alphabet are rejected with `Validation` until re-synced — see `string_identity!`
+  charset note.

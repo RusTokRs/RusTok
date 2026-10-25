@@ -19,8 +19,8 @@ pub(crate) fn child_write_context(
     context: &PortContext,
     operation: &str,
 ) -> TranslationResult<PortContext> {
-    let parent_key = context.idempotency_key.as_deref().unwrap_or_default();
-    let idempotency_key = child_idempotency_key(parent_key, operation)?;
+    let parent_key = require_idempotency_key(context)?;
+    let idempotency_key = child_idempotency_key(&parent_key, operation)?;
     let mut child = context.clone();
     child.causation_id = Some(context.correlation_id.clone());
     child.idempotency_key = Some(idempotency_key);
@@ -152,4 +152,8 @@ pub(crate) async fn find_job(
         .one(database)
         .await?
         .ok_or(TranslationError::JobNotFound)
+}
+
+fn require_idempotency_key(context: &PortContext) -> crate::TranslationResult<String> {
+    Ok(crate::idempotency::IdempotencyKey::require(context)?.into_string())
 }
