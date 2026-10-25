@@ -30,8 +30,8 @@ const runtimeInputPaths = [
   'crates/modules/rustok-taxonomy/src',
   'crates/modules/rustok-taxonomy/tests/route_registry_contention_postgres.rs',
   'crates/modules/rustok-taxonomy/tests/translation_target_postgres.rs',
-  'crates/modules/rustok-translation-targets/Cargo.toml',
-  'crates/modules/rustok-translation-targets/src',
+  'crates/libs/rustok-translation-targets/Cargo.toml',
+  'crates/libs/rustok-translation-targets/src',
   '.github/workflows/taxonomy-postgres-evidence.yml',
 ];
 const exactHead = {

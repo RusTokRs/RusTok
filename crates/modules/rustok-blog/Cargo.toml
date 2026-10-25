@@ -27,7 +27,7 @@ rustok-outbox.workspace = true
 rustok-profiles.workspace = true
 rustok-reactions = { workspace = true, default-features = false }
 rustok-runtime = { workspace = true, optional = true }
-rustok-seo-targets.workspace = true
+rustok-seo-targets = { workspace = true, features = ["server"] }
 rustok-taxonomy.workspace = true
 rustok-telemetry.workspace = true
 rustok-web.workspace = true

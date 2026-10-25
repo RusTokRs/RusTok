@@ -511,7 +511,7 @@ impl rustok_api::StaticModuleSettingsReader for TestStaticSettingsReader {
                 ));
             }
         };
-        let enabled: bool = row.try_get("", "enabled").unwrap_or(false);
+        let enabled: Option<bool> = row.try_get("", "enabled").unwrap_or(None);
         let encoded: String = row.try_get("", "settings").unwrap_or_default();
         let settings = if encoded.trim().is_empty() {
             serde_json::json!({})

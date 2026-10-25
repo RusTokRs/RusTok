@@ -18,7 +18,7 @@ use rustok_modules::{
         StaticSettingsTranslationReadError, StaticSettingsTranslationReadService,
     },
 };
-use rustok_modules_translation::{
+use rustok_modules::translation::{
     STATIC_SETTINGS_TRANSLATION_OWNER_SLUG, STATIC_SETTINGS_TRANSLATION_RESOURCE_KIND,
     StaticSettingsTranslationIdentity, StaticSettingsTranslationIdentityError,
     StaticSettingsTranslationPrepareResult,

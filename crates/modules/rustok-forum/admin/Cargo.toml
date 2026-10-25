@@ -39,7 +39,7 @@ rustok-outbox = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }
 
 rustok-ui-i18n.workspace = true
-rustok-seo-targets = { path = "../../rustok-seo-targets", default-features = false }
+rustok-seo-targets.workspace = true
 leptos-ui-routing.workspace = true
 rustok-seo-panel.workspace = true
 serde = { workspace = true, features = ["derive"] }

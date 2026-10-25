@@ -38,6 +38,7 @@ rustok-runtime.workspace = true
 rustok-sandbox.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
+rustok-translation-targets.workspace = true
 rustok-storage.workspace = true
 object_store.workspace = true
 rustok-secrets.workspace = true

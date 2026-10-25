@@ -2,6 +2,7 @@
 name = "rustok-docs"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Collaborative documents, wiki and knowledge base module powered by Loro CRDT for RusToK"
 repository.workspace = true

@@ -2,8 +2,11 @@
 name = "rustok-index"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Cross-module relational index and query engine for RusToK"
 license.workspace = true
+repository.workspace = true
+readme = "README.md"
 
 [package.metadata.docs.rs]
 all-features = true

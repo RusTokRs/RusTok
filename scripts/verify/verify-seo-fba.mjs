@@ -44,7 +44,7 @@ const serverComposition = read('apps/server/src/services/module_event_dispatcher
 hasAll(seoTargets, ['MediaAssetReadPort', '.get_image_descriptor(', '.with_deadline(Duration::from_secs(2))', 'unwrap_or(image.url)'], 'SEO media consumer');
 hasAll(seoService, ['SeoMediaAssetReadProvider', 'with_media_asset_read_port', 'get::<SeoMediaAssetReadProvider>()'], 'SEO media provider injection');
 hasAll(serverComposition, ['rustok_media::MediaService::new', 'rustok_seo::SeoMediaAssetReadProvider::new'], 'server media provider composition');
-const targets = read('crates/modules/rustok-seo-targets/src/lib.rs');
+const targets = read('crates/libs/rustok-seo-targets/src/lib.rs');
 hasAll(targets, ['pub media_asset_id: Option<Uuid>', 'pub fn with_media_asset_id'], 'SEO target media reference contract');
 const productSeoTargets = read('crates/modules/rustok-product/src/seo_targets.rs');
 hasAll(productSeoTargets, ['ProductImageResponse', '.with_media_asset_id(image.media_id)'], 'product SEO media reference handoff');

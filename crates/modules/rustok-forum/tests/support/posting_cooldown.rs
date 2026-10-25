@@ -42,7 +42,7 @@ fn snapshot(module_slug: &str, extra: &serde_json::Value) -> Option<StaticModule
         );
     }
     Some(StaticModuleSettingsSnapshot {
-        enabled: module_slug == FORUM_MODULE_SLUG,
+        enabled: Some(module_slug == FORUM_MODULE_SLUG),
         settings,
     })
 }

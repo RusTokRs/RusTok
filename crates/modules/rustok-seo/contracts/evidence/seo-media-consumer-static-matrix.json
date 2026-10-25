@@ -23,7 +23,7 @@
       "source_markers": {
         "provider_port": "crates/modules/rustok-media/src/ports.rs",
         "provider_descriptor": "crates/modules/rustok-media/src/dto.rs",
-        "consumer_alias": "crates/modules/rustok-seo-targets/src/lib.rs"
+        "consumer_alias": "crates/libs/rustok-seo-targets/src/lib.rs"
       }
     },
     {
@@ -41,7 +41,7 @@
       "source_markers": {
         "provider_port": "crates/modules/rustok-media/src/ports.rs",
         "provider_descriptor": "crates/modules/rustok-media/src/dto.rs",
-        "consumer_alias": "crates/modules/rustok-seo-targets/src/lib.rs"
+        "consumer_alias": "crates/libs/rustok-seo-targets/src/lib.rs"
       }
     }
   ],
@@ -86,7 +86,7 @@
     },
     {
       "name": "seo targets own an independent image descriptor",
-      "path": "crates/modules/rustok-seo-targets/src/lib.rs",
+      "path": "crates/libs/rustok-seo-targets/src/lib.rs",
       "must_contain": [
         "pub struct SeoTargetImageRecord",
         "impl SeoTargetImageRecord",

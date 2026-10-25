@@ -1015,7 +1015,7 @@
       "ai_export": "forbidden",
       "evidence_paths": [
         "crates/modules/rustok-modules/README.md",
-        "crates/modules/rustok-modules-translation/src/lib.rs",
+        "crates/modules/rustok-modules/src/translation.rs",
         "apps/server/src/static_settings_translation_target.rs",
         "apps/server/src/services/module_event_dispatcher.rs",
         "apps/server/tests/static_settings_translation_target_postgres.rs",

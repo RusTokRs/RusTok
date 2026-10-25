@@ -1,6 +1,8 @@
 # rustok-index / CRATE_API
 
-## Public Modules
+## Public surface
+
+### Public modules
 
 - `domain`
 - `application`

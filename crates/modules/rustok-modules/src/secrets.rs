@@ -1611,8 +1611,9 @@ mod tests {
                 .expect("receipt trace"),
             binding.context.trace_id
         );
-        assert_eq!(
-            st]
+    }
+
+    #[tokio::test]
     async fn registry_authorizer_checks_secret_ref_without_resolving_it() {
         let registry = SecretResolverRegistry::builder()
             .resolver(
@@ -1905,69 +1906,6 @@ mod tests {
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))",
                 vec![
                     binding.scope.capability.tenant_id.to_string().into(),
-                    binding.scope.capability.data_owner_id.to_string().into(),
-                    binding.scope.secret_instance_id.to_string().into(),
-                    binding.reference.clone().into(),
-                    "fixed".into(),
-                    "allowed-key".into(),
-                    binding.context.actor_id.to_string().into(),
-                    binding.reason.clone().into(),
-                ],
-            ))
-            .await
-            .expect("secret binding fixture");
-        let resolvers = SecretResolverRegistry::builder()
-            .resolver(
-                "fixed",
-                FixedSecretResolver,
-                SecretAccessPolicy::Exact(vec!["allowed-key".to_string()]),
-            )
-            .build();
-        let authorizer =
-            RegistryArtifactSecretAuthorizer::new(resolvers.clone(), AllowSecretPolicy);
-        let calls = Arc::new(AtomicUsize::new(0));
-        let service = SeaOrmArtifactSecretUseService::new(
-            database,
-            resolvers,
-            authorizer,
-            RecordingSecretConsumer {
-                calls: Arc::clone(&calls),
-            },
-        );
-        let receipt = service
-            .use_secret(ArtifactSecretUseRequest {
-                scope: binding.scope.clone(),
-                handle: ArtifactSecretHandle {
-                    reference: binding.reference.clone(),
-                    secret_instance_id: binding.scope.secret_instance_id,
-                    revision: 1,
-                },
-                execution_id: Uuid::new_v4(),
-                subject: SandboxSubject::ModuleArtifact {
-                    installation_id: binding.scope.capability.installation_id,
-                    slug: binding.scope.capability.release.slug,
-                    version: binding.scope.capability.release.version,
-                    digest: binding.scope.capability.release.digest,
-                },
-                phase: ExecutionPhase::Manual,
-                actor_id: Some("artifact-actor".to_string()),
-                trace_id: Some("trace-1".to_string()),
-            })
-            .await
-            .expect("secret use receipt");
-
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-        assert_eq!(receipt.reference, binding.reference);
-        assert_eq!(receipt.revision, 1);
-        assert_eq!(receipt.purpose, "http.authorization");
-        assert!(
-            !serde_json::to_string(&receipt)
-                .expect("receipt JSON")
-                .contains("top-secret-value")
-        );
-    }
-}
-string().into(),
                     binding.scope.capability.data_owner_id.to_string().into(),
                     binding.scope.secret_instance_id.to_string().into(),
                     binding.reference.clone().into(),

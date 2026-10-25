@@ -16,7 +16,7 @@ use rustok_modules::{
         StaticSettingsTranslationReadService,
     },
 };
-use rustok_modules_translation::{
+use rustok_modules::translation::{
     StaticSettingsTranslationIdentity, StaticSettingsTranslationPrepareResult,
 };
 use rustok_test_utils::{

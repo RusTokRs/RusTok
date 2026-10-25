@@ -127,10 +127,10 @@ from complete operation safety and retention through serving cutover.
 - [Product image Media retention workflow](../crates/modules/rustok-product/docs/media-reference-retention.md) — accepted owner ordering, durable release queue, bounded backfill and explicit unexecuted runtime gates.
 - [Media Module Documentation](../crates/modules/rustok-media/docs/README.md)
 - [Order Module Documentation](../crates/modules/rustok-order/docs/README.md)
-- [Pricing Persistence Documentation](../crates/modules/rustok-pricing-persistence/README.md)
+- [Pricing Persistence Documentation](../crates/libs/rustok-pricing-persistence/README.md)
 - [Flex Module Documentation](../crates/modules/flex/docs/README.md)
 - [`rustok-page-builder` Runtime Contract](../crates/modules/rustok-page-builder/docs/README.md)
-- [`rustok-translation-targets` Provider Contract](../crates/modules/rustok-translation-targets/docs/README.md)
+- [`rustok-translation-targets` Provider Contract](../crates/libs/rustok-translation-targets/docs/README.md)
 - [`rustok-ai-translation` Machine-Translation Bridge Contract](../crates/modules/rustok-ai-translation/docs/README.md)
 - [Messenger Module Documentation](../crates/modules/rustok-messenger/docs/README.md)
 

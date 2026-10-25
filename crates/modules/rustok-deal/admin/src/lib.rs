@@ -15,4 +15,4 @@ pub mod ui;
 
 pub use core::*;
 pub use transport::*;
-pub use ui::DealAdminPage;
+pub use ui::{DealAdmin, DealAdminPage};
