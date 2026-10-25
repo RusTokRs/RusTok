@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Product relations, cross-sells, up-sells, accessories, and merchandising associations for RusToK"
+repository.workspace = true
+readme = "README.md"
 
 [package.metadata.docs.rs]
 all-features = true

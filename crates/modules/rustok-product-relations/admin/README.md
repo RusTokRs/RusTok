@@ -23,4 +23,6 @@ The package calls Product Relations owner contracts and shared UI transport libr
 - `src/transport.rs` — owner transport adapters.
 - `src/ui/leptos.rs` — Leptos UI components.
 
+For the formal Rust API contract and guarantees, see [`CRATE_API.md`](CRATE_API.md).
 See the [Product Relations documentation](../README.md) and the [module UI guide](../../../../docs/UI/module-package-implementation.md).
+
