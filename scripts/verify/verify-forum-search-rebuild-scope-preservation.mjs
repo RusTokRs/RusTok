@@ -33,7 +33,7 @@ const corePath = "crates/modules/rustok-search/src/projector_core.rs";
 const libPath = "crates/modules/rustok-search/src/lib.rs";
 const ingestionPath = "crates/modules/rustok-search/src/ingestion.rs";
 const blogPath = "crates/modules/rustok-search/src/blog_projector.rs";
-const forumPath = "crates/modules/rustok-search/src/forum_projector.rs";
+const forumPath = "crates/modules/rustok-search/src/projection_driver.rs";
 const rustTestPath = "crates/modules/rustok-search/tests/search_scope_preservation_contract.rs";
 const replyTestPath = "crates/modules/rustok-search/tests/forum_approved_reply_projection_contract.rs";
 const contractPath = "crates/modules/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json";
@@ -143,10 +143,10 @@ for (const marker of [
 for (const marker of [
   "let tx = self.db.begin().await.map_err(Error::Database)?",
   "self.create_stage(&tx).await?",
-  "delete_forum_scope(&tx, tenant_id).await?",
+  "self.delete_scope(&tx, tenant_id).await?",
   "tx.commit().await.map_err(Error::Database)",
-  "'forum_category', 'forum_topic', 'forum_reply'",
-  "if entity_type == FORUM_TOPIC_ENTITY_TYPE",
+  "DELETE FROM search_documents WHERE tenant_id = $1 AND source_module = $2",
+  "if self.source.refresh_scope(entity_type) == SearchProjectionRefreshScope::Tenant",
   "return self.rebuild_tenant(tenant_id).await",
 ]) {
   requireMarker(forum, marker, forumPath);
@@ -161,7 +161,9 @@ for (const marker of [
 }
 for (const marker of [
   "topic_refresh_rebuilds_child_scope",
-  "'forum_category', 'forum_topic', 'forum_reply'",
+  // The topic-owns-replies rule moved from the Search driver to the Forum owner.
+  "fn refresh_scope(&self, entity_type: &str) -> SearchProjectionRefreshScope",
+  "SearchProjectionRefreshScope::Tenant",
 ]) {
   requireMarker(replyTest, marker, replyTestPath);
 }

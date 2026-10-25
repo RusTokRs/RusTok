@@ -43,7 +43,8 @@ and a non-advancing cursor is rejected.
 
 ## Search-owned persistence
 
-`ForumSearchProjector` owns all writes to `search_documents`.
+`SearchProjectionDriver` (in `rustok-search`) owns all writes to `search_documents`;
+Forum only supplies the projection source and the refresh width policy.
 
 An explicit tenant Forum rebuild creates a PostgreSQL temporary staging table,
 streams bounded authorized source pages into it, and replaces the existing

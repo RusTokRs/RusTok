@@ -27,7 +27,7 @@ function rejectMarker(source, marker, label) {
 
 const capabilityPath = "crates/libs/rustok-core/src/search_projection.rs";
 const searchFacadePath = "crates/modules/rustok-search/src/projection_source.rs";
-const projectorPath = "crates/modules/rustok-search/src/forum_projector.rs";
+const projectorPath = "crates/modules/rustok-search/src/projection_driver.rs";
 const ingestionPath = "crates/modules/rustok-search/src/ingestion.rs";
 const searchLibPath = "crates/modules/rustok-search/src/lib.rs";
 const replyAudiencePath = "crates/modules/rustok-forum/src/services/reply_audience_read.rs";
@@ -35,6 +35,7 @@ const publicDiscoveryPath = "crates/modules/rustok-forum/src/services/public_dis
 const providerPath = "crates/modules/rustok-forum/src/search_projection.rs";
 const replyUpdatePath = "crates/modules/rustok-forum/src/services/reply_inline.rs";
 const forumLibPath = "crates/modules/rustok-forum/src/lib.rs";
+const forumModulePath = "crates/modules/rustok-forum/src/module.rs";
 const contractPath = "crates/modules/rustok-forum/contracts/forum-search-projection.json";
 const invalidationPath = "crates/modules/rustok-forum/contracts/forum-projection-invalidation.json";
 const visibilityBulkPath = "crates/modules/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json";
@@ -53,6 +54,7 @@ const publicDiscovery = read(publicDiscoveryPath);
 const provider = read(providerPath);
 const replyUpdate = read(replyUpdatePath);
 const forumLib = read(forumLibPath);
+const forumModule = read(forumModulePath);
 const note = read(notePath);
 let contract = null;
 let invalidation = null;
@@ -87,7 +89,7 @@ for (const marker of [
 ]) {
   requireMarker(capability, marker, capabilityPath);
 }
-for (const forbidden of ["search_documents", "ForumPublicDiscoveryService", "ForumSearchProjector"]) {
+for (const forbidden of ["search_documents", "ForumPublicDiscoveryService", "SearchProjectionDriver"]) {
   rejectMarker(capability, forbidden, capabilityPath);
 }
 requireMarker(searchFacade, "pub use rustok_core::search_projection::*;", searchFacadePath);
@@ -141,20 +143,28 @@ for (const forbidden of [
 }
 
 for (const marker of [
-  "CREATE TEMP TABLE forum_search_projection_stage",
+  'const STAGE_TABLE: &str = "search_projection_stage";',
+  "CREATE TEMP TABLE {STAGE_TABLE}",
   "ON COMMIT DROP",
-  "delete_forum_scope(&tx, tenant_id)",
-  "FROM forum_search_projection_stage",
+  "self.delete_scope(&tx, tenant_id).await?",
+  "FROM {STAGE_TABLE}",
   "refresh_entity",
-  "delete_forum_entity",
-  "Forum Search projection cursor did not advance",
+  "delete_entity",
+  "Search projection cursor did not advance",
   "foreign or non-public document",
-  "FORUM_TOPIC_ENTITY_TYPE | FORUM_REPLY_ENTITY_TYPE",
-  "if entity_type == FORUM_TOPIC_ENTITY_TYPE",
+  "self.source.refresh_scope(entity_type)",
+  "if self.source.refresh_scope(entity_type) == SearchProjectionRefreshScope::Tenant",
   "return self.rebuild_tenant(tenant_id).await",
-  "'forum_category', 'forum_topic', 'forum_reply'",
+  "DELETE FROM search_documents WHERE tenant_id = $1 AND source_module = $2",
 ]) {
   requireMarker(projector, marker, projectorPath);
+}
+// The topic-owns-replies rule is an owner decision, so it must live in the Forum source.
+for (const marker of [
+  "fn refresh_scope(&self, entity_type: &str) -> SearchProjectionRefreshScope",
+  "SearchProjectionRefreshScope::Tenant",
+]) {
+  requireMarker(provider, marker, providerPath);
 }
 
 for (const marker of [
@@ -180,20 +190,32 @@ for (const marker of [
 }
 
 for (const marker of [
-  "mod forum_projector;",
+  "mod projection_driver;",
   "pub mod projection_source;",
   "search_projection_source_registry_from_extensions",
-  "SearchIngestionHandler::with_forum_source",
 ]) {
   requireMarker(searchLib, marker, searchLibPath);
 }
+// The Forum-aware constructor belongs to the ingestion handler, not to the crate root.
+for (const marker of [
+  "pub fn with_forum_source(",
+  "Self::with_forum_source(db, None)",
+]) {
+  requireMarker(ingestion, marker, ingestionPath);
+}
 for (const marker of [
   "mod search_projection;",
-  "rustok_core::search_projection::register_search_projection_source",
   "ForumSearchProjectionSourceFactory",
-  '&["content", "taxonomy"]',
 ]) {
   requireMarker(forumLib, marker, forumLibPath);
+}
+// Registration happens in the module implementation, which is the only place that
+// knows how to build the Forum source.
+for (const marker of [
+  "register_search_projection_source(extensions, ForumSearchProjectionSourceFactory)",
+  '&["content", "media", "taxonomy"]',
+]) {
+  requireMarker(forumModule, marker, forumModulePath);
 }
 for (const forbidden of [
   "rustok_search::register_search_projection_source",

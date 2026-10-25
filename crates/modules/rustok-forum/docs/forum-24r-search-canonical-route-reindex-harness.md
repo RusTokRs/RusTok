@@ -30,7 +30,7 @@ The harness creates a unique PostgreSQL schema and applies the actual prerequisi
 
 It creates a public category, topic, and approved reply through `CategoryService`, `TopicService`, and `ReplyService`. The production `ForumSearchProjectionSourceFactory` is then composed into `SearchIngestionHandler::with_forum_source`.
 
-No fake projection source, copied route builder, direct `ForumSearchProjector` construction, or transport-local compatibility URL is used.
+No fake projection source, copied route builder, direct `SearchProjectionDriver` construction, or transport-local compatibility URL is used.
 
 ## Reindex path
 
@@ -40,7 +40,7 @@ The harness sends the existing event:
 ReindexRequested { target_type: "forum", target_id: None }
 ```
 
-The event enters the durable Forum inbox and is applied through the existing Search ingestion owner. `ForumSearchProjector` creates its temporary stage, reads bounded pages from the Forum projection, deletes only the selected tenant Forum scope, inserts the staged rows, and commits the replacement transaction.
+The event enters the durable Forum inbox and is applied through the existing Search ingestion owner. `SearchProjectionDriver` creates its temporary stage, reads bounded pages from the Forum projection, deletes only the selected tenant Forum scope, inserts the staged rows, and commits the replacement transaction.
 
 The harness does not call the stage or scope-delete implementation directly.
 

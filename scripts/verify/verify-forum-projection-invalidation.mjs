@@ -265,7 +265,7 @@ if (contract) {
     if (contract.outbox_boundary?.[key] !== true) failures.push(`${contractPath}: outbox ${key} drift`);
   }
   for (const key of [
-    "non_postgresql_forum_search_projector_supported",
+    "non_postgresql_search_projection_driver_supported",
     "new_root_domain_event_added",
     "new_event_schema_added",
     "new_reindex_target_string_added",

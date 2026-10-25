@@ -201,6 +201,10 @@ forbid(paths.lib, [
   "forum_storefront_execution",
   "forum_document_filters",
   "storefront_result_eligibility",
+  // The Forum-only storage driver is gone: one module-agnostic driver owns the
+  // `search_documents` writes and the owner only declares its projection source.
+  "ForumSearchProjector",
+  "forum_projector",
 ]);
 
 // 8. The corpus inventory must cover everything the Content projector can emit.
@@ -236,8 +240,9 @@ forbidMissing(
     "crates/modules/rustok-search/src/graphql/forum_storefront.rs",
     "crates/modules/rustok-search/storefront/src/transport/forum_graphql_adapter.rs",
     "crates/modules/rustok-search/storefront/src/transport/forum_native_server_adapter.rs",
+    "crates/modules/rustok-search/src/forum_projector.rs",
   ],
-  "replaced by execute_audience_eligible_search and SearchAudiencePolicyPort",
+  "replaced by execute_audience_eligible_search, SearchAudiencePolicyPort and SearchProjectionDriver",
 );
 forbid(paths.audience, [
   "StorefrontSearchResultEligibilityPort",

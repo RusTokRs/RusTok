@@ -3,7 +3,7 @@ const ACTIVE_PROJECTOR: &str = include_str!("../src/projector.rs");
 const CORE_PROJECTOR: &str = include_str!("../src/projector_core.rs");
 const INGESTION: &str = include_str!("../src/ingestion.rs");
 const BLOG_PROJECTOR: &str = include_str!("../src/blog_projector.rs");
-const FORUM_PROJECTOR: &str = include_str!("../src/forum_projector.rs");
+const PROJECTION_DRIVER: &str = include_str!("../src/projection_driver.rs");
 
 #[test]
 fn active_tenant_rebuild_preserves_external_scopes_and_eliminates_destructive_deletes() {
@@ -49,14 +49,19 @@ fn full_ingestion_rebuild_keeps_source_order_and_atomic_external_replacements() 
     for marker in [
         "let tx = self.db.begin().await.map_err(Error::Database)?",
         "self.create_stage(&tx).await?",
-        "delete_forum_scope(&tx, tenant_id).await?",
+        "self.delete_scope(&tx, tenant_id).await?",
         "tx.commit().await.map_err(Error::Database)",
     ] {
         assert!(
-            FORUM_PROJECTOR.contains(marker),
-            "missing Forum atomic marker {marker}"
+            PROJECTION_DRIVER.contains(marker),
+            "missing projection-driver atomic marker {marker}"
         );
     }
+    // A scope delete must be bounded by the source module, never by a module name.
+    assert!(
+        PROJECTION_DRIVER
+            .contains("DELETE FROM search_documents WHERE tenant_id = $1 AND source_module = $2")
+    );
 }
 
 #[test]

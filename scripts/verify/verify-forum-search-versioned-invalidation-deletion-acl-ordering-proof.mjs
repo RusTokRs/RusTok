@@ -48,7 +48,7 @@ const contractIngressPath =
 const inboxPath = "crates/modules/rustok-search/src/forum_inbox.rs";
 const reconciliationPath =
   "crates/modules/rustok-search/src/forum_reconciliation.rs";
-const projectorPath = "crates/modules/rustok-search/src/forum_projector.rs";
+const projectorPath = "crates/modules/rustok-search/src/projection_driver.rs";
 const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
 const evidencePath =
   "target/forum-search-versioned-invalidation-deletion-acl-ordering-evidence.json";
@@ -270,7 +270,7 @@ requireAll(
   [
     "DomainEvent::ForumReplyStatusChanged",
     "DomainEvent::ForumTopicStatusChanged",
-    "self.forum_projector",
+    "self.projection_driver",
     "rebuild_tenant(envelope.tenant_id)",
     '("forum_topic", Some(_))',
     '("forum_category", Some(category_id))',
@@ -285,11 +285,11 @@ requireAll(
   [
     "self.source",
     ".list_public_documents(",
-    "delete_forum_scope(&tx, tenant_id)",
+    "self.delete_scope(&tx, tenant_id).await?",
     "INSERT INTO search_documents",
-    "if entity_type == FORUM_TOPIC_ENTITY_TYPE",
+    "if self.source.refresh_scope(entity_type) == SearchProjectionRefreshScope::Tenant",
     "return self.rebuild_tenant(tenant_id).await",
-    "delete_forum_entity",
+    "self.delete_entity(&tx, tenant_id, entity_type, entity_id).await?",
   ],
   "production Forum current-state projector",
 );

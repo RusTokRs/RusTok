@@ -14,10 +14,10 @@ use tracing::Instrument;
 
 use crate::SearchProjectionSource;
 use crate::blog_projector::BlogSearchProjector;
-use crate::forum_inbox::{ForumProjectionInbox, ForumProjectionScope};
-use crate::forum_projector::ForumSearchProjector;
 use crate::docs_projector::DocsSearchProjector;
+use crate::forum_inbox::{ForumProjectionInbox, ForumProjectionScope};
 use crate::pages_projector::PagesSearchProjector;
+use crate::projection_driver::SearchProjectionDriver;
 use crate::projector::SearchProjector;
 
 const FORUM_INBOX_EVENT_BATCH: usize = 64;
@@ -28,7 +28,7 @@ pub struct SearchIngestionHandler {
     projector: SearchProjector,
     blog_projector: BlogSearchProjector,
     blog_source: Option<Arc<dyn SearchProjectionSource>>,
-    forum_projector: Option<ForumSearchProjector>,
+    projection_driver: Option<SearchProjectionDriver>,
     forum_inbox: Option<ForumProjectionInbox>,
     pages_projector: Option<PagesSearchProjector>,
     pages_source: Option<Arc<dyn SearchProjectionSource>>,
@@ -63,9 +63,9 @@ impl SearchIngestionHandler {
         pages_source: Option<Arc<dyn SearchProjectionSource>>,
         docs_source: Option<Arc<dyn SearchProjectionSource>>,
     ) -> Self {
-        let forum_projector =
-            forum_source.map(|source| ForumSearchProjector::new(db.clone(), source));
-        let forum_inbox = forum_projector
+        let projection_driver =
+            forum_source.map(|source| SearchProjectionDriver::new(db.clone(), source));
+        let forum_inbox = projection_driver
             .as_ref()
             .map(|_| ForumProjectionInbox::new(db.clone()));
         let pages_projector =
@@ -76,7 +76,7 @@ impl SearchIngestionHandler {
             projector: SearchProjector::new(db.clone()),
             blog_projector: BlogSearchProjector::new(db),
             blog_source,
-            forum_projector,
+            projection_driver,
             forum_inbox,
             pages_projector,
             pages_source,
@@ -100,7 +100,7 @@ impl SearchIngestionHandler {
     async fn rebuild_tenant(&self, tenant_id: Uuid) -> HandlerResult {
         self.projector.rebuild_tenant(tenant_id).await?;
         self.blog_projector.rebuild_tenant(tenant_id).await?;
-        if let Some(projector) = &self.forum_projector {
+        if let Some(projector) = &self.projection_driver {
             projector.rebuild_tenant(tenant_id).await?;
         }
         if let Some(projector) = &self.pages_projector {
@@ -187,7 +187,7 @@ impl SearchIngestionHandler {
     }
 
     async fn handle_forum_module_toggle(&self, tenant_id: Uuid, enabled: bool) -> HandlerResult {
-        let Some(projector) = &self.forum_projector else {
+        let Some(projector) = &self.projection_driver else {
             return Ok(());
         };
         if enabled {
@@ -198,7 +198,7 @@ impl SearchIngestionHandler {
     }
 
     async fn apply_forum_inbox_event(&self, envelope: &EventEnvelope) -> HandlerResult {
-        let Some(projector) = &self.forum_projector else {
+        let Some(projector) = &self.projection_driver else {
             return Ok(());
         };
         match &envelope.event {
@@ -307,12 +307,12 @@ impl EventHandler for SearchIngestionHandler {
             | DomainEvent::ForumTopicStatusChanged { .. }
             | DomainEvent::ForumTopicPinned { .. }
             | DomainEvent::ForumReplyStatusChanged { .. }
-            | DomainEvent::ProfileUpdated { .. } => self.forum_projector.is_some(),
+            | DomainEvent::ProfileUpdated { .. } => self.projection_driver.is_some(),
             DomainEvent::TagAttached { target_type, .. }
             | DomainEvent::TagDetached { target_type, .. } => target_type == "node",
             DomainEvent::TenantModuleToggled { module_slug, .. } => {
                 module_slug == "blog"
-                    || (module_slug == "forum" && self.forum_projector.is_some())
+                    || (module_slug == "forum" && self.projection_driver.is_some())
                     || (module_slug == "pages" && self.pages_projector.is_some())
                     || (module_slug == "docs" && self.docs_projector.is_some())
             }
@@ -321,7 +321,7 @@ impl EventHandler for SearchIngestionHandler {
                     || target_type == "content"
                     || target_type == "product"
                     || target_type == "blog"
-                    || (self.forum_projector.is_some()
+                    || (self.projection_driver.is_some()
                         && matches!(
                             target_type.as_str(),
                             "forum" | "forum_category" | "forum_topic"

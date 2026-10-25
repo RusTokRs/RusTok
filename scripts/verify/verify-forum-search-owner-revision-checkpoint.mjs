@@ -199,7 +199,7 @@ requireAll(checkpointOwner, [
   "WHERE event_id = $1",
   '"completed" | "skipped"',
   '"dead_letter" => Ok(DeliveryCoverage::Missing)',
-  "self.forum_projector.rebuild_tenant(head.tenant_id).await?",
+  "self.projection_driver.rebuild_tenant(head.tenant_id).await?",
   "advance_checkpoint(",
   "VALUES ($1, 'forum', $2, $3, $4, CURRENT_TIMESTAMP)",
   "search_projection_owner_checkpoints.owner_revision = $5",
@@ -214,7 +214,7 @@ rejectAll(checkpointOwner, [
 ], paths.checkpointOwner);
 
 const rebuildPosition = checkpointOwner.indexOf(
-  "self.forum_projector.rebuild_tenant(head.tenant_id).await?"
+  "self.projection_driver.rebuild_tenant(head.tenant_id).await?"
 );
 const checkpointPosition = checkpointOwner.indexOf("advance_checkpoint(", rebuildPosition);
 if (rebuildPosition < 0 || checkpointPosition < 0 || checkpointPosition < rebuildPosition) {

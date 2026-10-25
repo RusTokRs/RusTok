@@ -144,7 +144,7 @@ requireAll(
     "resolve_forum_projection_owner_revisions",
     "load_delivery_coverage",
     "DeliveryCoverage::Missing => rebuild_required = true",
-    "self.forum_projector.rebuild_tenant(head.tenant_id).await?",
+    "self.projection_driver.rebuild_tenant(head.tenant_id).await?",
     "let mut previous_revision = checkpoint",
     "for revision in &revisions",
     "advance_checkpoint(",

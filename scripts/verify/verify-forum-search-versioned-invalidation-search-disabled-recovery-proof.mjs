@@ -213,7 +213,7 @@ requireAll(
     "resolve_forum_projection_owner_revisions",
     "load_delivery_coverage",
     "DeliveryCoverage::Missing => rebuild_required = true",
-    "self.forum_projector.rebuild_tenant(head.tenant_id).await?",
+    "self.projection_driver.rebuild_tenant(head.tenant_id).await?",
     "REBUILD_REPAIRED_OUTCOME",
     "advance_checkpoint",
     "previous_revision = revision.owner_revision",
@@ -232,7 +232,7 @@ requireAll(
   "Search bounded reconciliation composition",
 );
 requireAll(
-  read("crates/modules/rustok-search/src/forum_projector.rs"),
+  read("crates/modules/rustok-search/src/projection_driver.rs"),
   [
     "self.source.list_public_documents",
     "delete_forum_scope(&tx, tenant_id)",

@@ -54,7 +54,7 @@
     "skipped_is_covered": true,
     "missing_requires_rebuild": true,
     "dead_letter_requires_rebuild": true,
-    "repair_owner": "ForumSearchProjector::rebuild_tenant",
+    "repair_owner": "SearchProjectionDriver::rebuild_tenant",
     "one_rebuild_per_bounded_revision_page": true,
     "checkpoint_advances_after_projection_commit": true,
     "checkpoint_advances_contiguously": true,

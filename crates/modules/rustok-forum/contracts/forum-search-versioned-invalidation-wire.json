@@ -92,7 +92,7 @@
     ],
     "typed_ingress_adapts_to_existing_root_inbox_shape": true,
     "existing_inbox_unique_boundary_collapses_dual_delivery": true,
-    "existing_forum_projector_reused": true,
+    "existing_projection_driver_reused": true,
     "second_inbox_forbidden": true,
     "second_projector_forbidden": true
   },

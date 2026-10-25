@@ -146,7 +146,7 @@ requireAll(
     "let lock_key = format!(\"search:{FORUM_SOURCE_MODULE}:{tenant_id}:{FULL_SCOPE_KEY}\")",
     "pg_try_advisory_xact_lock(hashtextextended($1, 0))",
     "return Ok(TenantCheckpointOutcome::Blocked)",
-    "self.forum_projector.rebuild_tenant(head.tenant_id).await?",
+    "self.projection_driver.rebuild_tenant(head.tenant_id).await?",
     "let mut previous_revision = checkpoint",
     "advance_checkpoint(",
     "previous_revision = revision.owner_revision",

@@ -38,7 +38,7 @@ const ingressPath = "crates/modules/rustok-search/src/forum_contract_ingress.rs"
 const reconciliationPath = "crates/modules/rustok-search/src/forum_reconciliation.rs";
 const ownerCheckpointPath =
   "crates/modules/rustok-search/src/forum_owner_checkpoint.rs";
-const projectorPath = "crates/modules/rustok-search/src/forum_projector.rs";
+const projectorPath = "crates/modules/rustok-search/src/projection_driver.rs";
 const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
 
 const contract = JSON.parse(read(contractPath));
@@ -216,7 +216,7 @@ requireAll(
   projector,
   [
     ".list_public_documents(",
-    "delete_forum_scope(&tx, tenant_id)",
+    "self.delete_scope(&tx, tenant_id).await?",
     "INSERT INTO search_documents",
     "tx.commit().await",
   ],

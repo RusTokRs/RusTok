@@ -15,7 +15,7 @@ use crate::forum_owner_checkpoint::{
     ForumOwnerCheckpointReconciler, ForumProjectionOwnerTenantHead,
     ForumProjectionOwnerTenantPageRequest,
 };
-use crate::forum_projector::ForumSearchProjector;
+use crate::projection_driver::SearchProjectionDriver;
 use crate::projector::SearchProjector;
 
 pub const DEFAULT_FORUM_SWEEP_TENANT_LIMIT: usize = 32;
@@ -184,18 +184,18 @@ pub struct ForumProjectionReconciler {
     db: DatabaseConnection,
     projector: SearchProjector,
     blog_projector: BlogSearchProjector,
-    forum_projector: ForumSearchProjector,
+    projection_driver: SearchProjectionDriver,
     inbox: ForumProjectionInbox,
     owner_checkpoint: Option<ForumOwnerCheckpointReconciler>,
 }
 
 impl ForumProjectionReconciler {
     pub fn new(db: DatabaseConnection, forum_source: Arc<dyn SearchProjectionSource>) -> Self {
-        let forum_projector = ForumSearchProjector::new(db.clone(), forum_source);
+        let projection_driver = SearchProjectionDriver::new(db.clone(), forum_source);
         Self {
             projector: SearchProjector::new(db.clone()),
             blog_projector: BlogSearchProjector::new(db.clone()),
-            forum_projector,
+            projection_driver,
             inbox: ForumProjectionInbox::new(db.clone()),
             owner_checkpoint: None,
             db,
@@ -207,13 +207,16 @@ impl ForumProjectionReconciler {
         forum_source: Arc<dyn SearchProjectionSource>,
         owner_source: SharedForumProjectionOwnerRevisionSourcePort,
     ) -> Self {
-        let forum_projector = ForumSearchProjector::new(db.clone(), forum_source);
-        let owner_checkpoint =
-            ForumOwnerCheckpointReconciler::new(db.clone(), forum_projector.clone(), owner_source);
+        let projection_driver = SearchProjectionDriver::new(db.clone(), forum_source);
+        let owner_checkpoint = ForumOwnerCheckpointReconciler::new(
+            db.clone(),
+            projection_driver.clone(),
+            owner_source,
+        );
         Self {
             projector: SearchProjector::new(db.clone()),
             blog_projector: BlogSearchProjector::new(db.clone()),
-            forum_projector,
+            projection_driver,
             inbox: ForumProjectionInbox::new(db.clone()),
             owner_checkpoint: Some(owner_checkpoint),
             db,
@@ -344,7 +347,7 @@ impl ForumProjectionReconciler {
             | DomainEvent::ForumTopicStatusChanged { .. }
             | DomainEvent::ForumTopicPinned { .. }
             | DomainEvent::ForumReplyStatusChanged { .. } => {
-                self.forum_projector
+                self.projection_driver
                     .rebuild_tenant(envelope.tenant_id)
                     .await
             }
@@ -354,11 +357,11 @@ impl ForumProjectionReconciler {
                 ..
             } if module_slug == "forum" => {
                 if *enabled {
-                    self.forum_projector
+                    self.projection_driver
                         .rebuild_tenant(envelope.tenant_id)
                         .await
                 } else {
-                    self.forum_projector.delete_tenant(envelope.tenant_id).await
+                    self.projection_driver.delete_tenant(envelope.tenant_id).await
                 }
             }
             DomainEvent::LocaleEnabled { .. }
@@ -371,12 +374,12 @@ impl ForumProjectionReconciler {
             } => match (target_type.as_str(), target_id) {
                 ("search", _) => self.rebuild_tenant(envelope.tenant_id).await,
                 ("forum", _) | ("forum_topic", Some(_)) => {
-                    self.forum_projector
+                    self.projection_driver
                         .rebuild_tenant(envelope.tenant_id)
                         .await
                 }
                 ("forum_category", Some(category_id)) => {
-                    self.forum_projector
+                    self.projection_driver
                         .refresh_entity(envelope.tenant_id, "forum_category", *category_id)
                         .await
                 }
@@ -395,7 +398,7 @@ impl ForumProjectionReconciler {
     async fn rebuild_tenant(&self, tenant_id: Uuid) -> Result<()> {
         self.projector.rebuild_tenant(tenant_id).await?;
         self.blog_projector.rebuild_tenant(tenant_id).await?;
-        self.forum_projector.rebuild_tenant(tenant_id).await
+        self.projection_driver.rebuild_tenant(tenant_id).await
     }
 }
 

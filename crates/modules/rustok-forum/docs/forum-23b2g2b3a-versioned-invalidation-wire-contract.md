@@ -107,7 +107,7 @@ shared identity               = legacy root envelope ID
 Whichever representation arrives first creates the one durable work item; the
 other must match the complete retained identity and becomes a durable duplicate.
 Both converge on the existing `ForumProjectionInbox`,
-`ForumProjectionReconciler` and `ForumSearchProjector` path.
+`ForumProjectionReconciler` and `SearchProjectionDriver` path.
 
 The typed envelope's own ID is retained only for the persistent transport and
 poison/DLQ receipts. It is never used as a second projection identity or a

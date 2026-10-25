@@ -60,8 +60,9 @@ than the older compatibility update. That command writes
 outbox before the topic transaction commits.
 
 The Search inbox maps an exact `forum_topic` reindex request to the tenant-wide
-Forum scope. `ForumSearchProjector::refresh_entity` also converts a topic refresh
-to `rebuild_tenant`, so the resulting projection replaces the topic and all of
+Forum scope. The Forum projection source declares `refresh_scope(forum_topic) =
+Tenant`, and `SearchProjectionDriver::refresh_entity` honours that declaration by
+rebuilding the tenant, so the resulting projection replaces the topic and all of
 its approved replies from current Forum owner state. The same owner path preserves
 omitted quote relations instead of clearing them during an ordinary topic edit.
 

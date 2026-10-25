@@ -14,7 +14,6 @@ pub mod engine;
 mod forum_contract_ingress;
 mod forum_inbox;
 mod forum_owner_checkpoint;
-mod forum_projector;
 mod forum_reconciliation;
 #[cfg(feature = "graphql")]
 pub mod graphql;
@@ -28,6 +27,7 @@ pub mod pg_engine;
 pub mod ports;
 pub mod presets;
 mod product_channel_reconciliation;
+mod projection_driver;
 pub mod projection_source;
 pub mod projector;
 mod projector_core;
