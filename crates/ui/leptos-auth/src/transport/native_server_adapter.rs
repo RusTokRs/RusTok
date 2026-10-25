@@ -179,18 +179,18 @@ pub(super) async fn sign_out_native(tenant: String) -> Result<(), ServerFnError>
         let headers = request_headers().await?;
         // Best-effort server-side revocation; the cookie is cleared
         // either way so the browser always ends up logged out.
-        if let Some((cookie_tenant, refresh_token)) = refresh_cookie_from(&headers) {
-            if cookie_tenant == tenant {
-                let _result: Result<RestStatusResponse, ServerFnError> = auth_rest_post(
-                    "/api/auth/logout",
-                    &json!({
-                        "refresh_token": refresh_token,
-                    }),
-                    None,
-                    Some(tenant),
-                )
-                .await;
-            }
+        if let Some((cookie_tenant, refresh_token)) = refresh_cookie_from(&headers)
+            && cookie_tenant == tenant
+        {
+            let _result: Result<RestStatusResponse, ServerFnError> = auth_rest_post(
+                "/api/auth/logout",
+                &json!({
+                    "refresh_token": refresh_token,
+                }),
+                None,
+                Some(tenant),
+            )
+            .await;
         }
         clear_refresh_cookie(&headers)?;
         Ok(())

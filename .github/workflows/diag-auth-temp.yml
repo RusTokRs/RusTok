@@ -39,11 +39,16 @@ jobs:
           BASE=$(git merge-base origin/main HEAD)
           echo "::notice::autofmt merge-base=$BASE"
           git diff --name-only "$BASE"...HEAD -- '*.rs' > /tmp/changed_rs.txt
-          echo "::notice::autofmt changed .rs files: $(wc -l < /tmp/changed_rs.txt)"
+          # Drop deleted paths; git add --pathspec-from-file is fatal on them.
+          : > /tmp/existing_rs.txt
           while IFS= read -r f; do
-            if [ -f "$f" ]; then rustfmt --edition 2024 "$f"; fi
+            if [ -f "$f" ]; then echo "$f" >> /tmp/existing_rs.txt; fi
           done < /tmp/changed_rs.txt
-          git add --pathspec-from-file=/tmp/changed_rs.txt
+          echo "::notice::autofmt changed .rs files: $(wc -l < /tmp/existing_rs.txt)"
+          while IFS= read -r f; do
+            rustfmt --edition 2024 "$f"
+          done < /tmp/existing_rs.txt
+          git add --pathspec-from-file=/tmp/existing_rs.txt
           git diff --cached --stat | tail -3
           if git diff --cached --quiet; then
             echo "::notice::autofmt: no formatting changes needed"
@@ -76,8 +81,15 @@ jobs:
           echo "fmt-dirty files: $(wc -l < /tmp/fmt_files.txt)"
       - name: Extract errors helper
         run: |
+          git fetch origin main --depth=200 >/dev/null 2>&1 || true
+          BASE=$(git merge-base origin/main HEAD 2>/dev/null || echo HEAD)
+          git diff --name-only "$BASE"...HEAD > /tmp/touched_files.txt 2>/dev/null || : > /tmp/touched_files.txt
           cat > /tmp/extract.py <<'PY'
           import json, sys
+          try:
+              touched = set(open('/tmp/touched_files.txt').read().split())
+          except Exception:
+              touched = set()
           seen = set()
           out = []
           ann = []
@@ -115,7 +127,8 @@ jobs:
               if key in seen:
                   continue
               seen.add(key)
-              out.append(f"{level} {code} {loc} {first}")
+              tag = 'TOUCHED' if (span and span['file_name'] in touched) else 'FOREIGN'
+              out.append(f"{tag} {level} {code} {loc} {first}")
               if span and len(ann) < 40:
                   ann.append(f"::{level} file={span['file_name']},line={span['line_start']},col={span['column_start']}::{esc(first)}")
           with open(sys.argv[1], 'w') as fh:
@@ -130,6 +143,15 @@ jobs:
           cargo check --workspace --all-targets --all-features --keep-going --message-format=json 2>/dev/null \
             | python3 /tmp/extract.py /tmp/check_errors.txt
           tail -1 /tmp/check_errors.txt || true
+      - name: cargo check apps (dead_code demoted)
+        shell: bash {0}
+        env:
+          RUSTFLAGS: "-Dwarnings -Adead_code"
+          CARGO_ENCODED_RUSTFLAGS: "-Dwarnings-Adead_code"
+        run: |
+          cargo check -p rustok-server -p rustok-admin -p rustok-storefront --all-targets --all-features --keep-going --message-format=json 2>/dev/null \
+            | python3 /tmp/extract.py /tmp/apps_errors.txt
+          tail -1 /tmp/apps_errors.txt || true
       - name: cargo clippy (json)
         shell: bash {0}
         run: |
@@ -152,9 +174,14 @@ jobs:
             echo '```'
             head -c 24000 /tmp/check_errors.txt 2>/dev/null
             echo '```'
-            echo "#### cargo clippy --workspace --all-targets --no-deps"
+            echo "#### cargo check apps (rustok-server/admin/storefront, dead_code demoted)"
             echo '```'
-            head -c 24000 /tmp/clippy_errors.txt 2>/dev/null
+            grep -v '^FOREIGN warning dead_code' /tmp/apps_errors.txt 2>/dev/null | head -c 24000
+            echo '```'
+            echo "#### cargo clippy — TOUCHED files only (foreign count at end)"
+            echo '```'
+            grep '^TOUCHED' /tmp/clippy_errors.txt 2>/dev/null | head -c 12000
+            echo "-- foreign clippy total: $(grep -c '^FOREIGN' /tmp/clippy_errors.txt 2>/dev/null || echo 0)"
             echo '```'
           } > /tmp/comment.md
           gh pr comment 4646 --body-file /tmp/comment.md

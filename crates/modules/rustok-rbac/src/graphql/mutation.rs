@@ -623,22 +623,22 @@ impl RbacMutation {
             .await
             .map_err(|e| internal_db_error("rbac role mutation", e))?;
 
-        if permissions_updated && let Some(writer) = role_writer.as_ref() {
-            // The grant change is already committed at this point, so an
-            // invalidation failure must not rewrite the mutation outcome into
-            // an error the client would retry as if nothing happened. Retry
-            // once, then log loudly: any remaining staleness is bounded by
-            // the permission-cache TTL.
-            if writer.invalidate_role_users(&tenant.id, &role_id).await.is_err() {
-                if let Err(error) = writer.invalidate_role_users(&tenant.id, &role_id).await {
-                    tracing::error!(
-                        %error,
-                        tenant_id = %tenant.id,
-                        role_id = %role_id,
-                        "RBAC role permission change committed but cache invalidation failed; stale snapshots expire with the permission-cache TTL"
-                    );
-                }
-            }
+        // The grant change is already committed at this point, so an
+        // invalidation failure must not rewrite the mutation outcome into
+        // an error the client would retry as if nothing happened. Retry
+        // once, then log loudly: any remaining staleness is bounded by
+        // the permission-cache TTL.
+        if permissions_updated
+            && let Some(writer) = role_writer.as_ref()
+            && writer.invalidate_role_users(&tenant.id, &role_id).await.is_err()
+            && let Err(error) = writer.invalidate_role_users(&tenant.id, &role_id).await
+        {
+            tracing::error!(
+                %error,
+                tenant_id = %tenant.id,
+                role_id = %role_id,
+                "RBAC role permission change committed but cache invalidation failed; stale snapshots expire with the permission-cache TTL"
+            );
         }
 
         tracing::info!(actor_id = %auth.user_id, tenant_id = %tenant.id, role_slug = %slug, permissions_updated, "rbac role updated");

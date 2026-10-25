@@ -179,6 +179,7 @@ async fn insert_memory_entry(
     let id = Uuid::new_v4();
     let now = Utc::now().fixed_offset();
     memory_entry::ActiveModel {
+        data_classification: Set("tenant_private".to_string()),
         id: Set(id),
         tenant_id: Set(tenant_id),
         source_locale: Set("en".to_string()),

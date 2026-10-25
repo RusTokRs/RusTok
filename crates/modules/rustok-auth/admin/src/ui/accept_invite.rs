@@ -54,6 +54,7 @@ where
         "Your account is ready. Sign in with the password you just chose.",
     ));
 
+    let submit_navigate = navigate.clone();
     let on_submit = Callback::new(move |_| {
         let tenant_val = tenant.get().trim().to_string();
         let password_val = password.get();
@@ -68,7 +69,7 @@ where
         let name_val = name.get().trim().to_string();
         let token_val = invite_token.get_value();
         let auth = auth.clone();
-        let navigate = navigate.clone();
+        let navigate = submit_navigate.clone();
 
         set_form_state.set(FormState::submitting());
 
