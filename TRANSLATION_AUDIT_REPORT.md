@@ -352,4 +352,7 @@ node scripts/verify/verify-db-multilingual-contract.mjs
 * `collaboration.rs` (2 транзакции: create/resolve) — добавлен `PRAGMA busy_timeout = 5000` best-effort для `DbBackend::Sqlite` после `begin()` — паритет с `inventory/memory/glossary/policy` (P0-2).
 * `collaboration.rs:resolve_workflow_note` — `update.rows_affected != 1` теперь `let _ = transaction.rollback().await;` перед `WorkflowRevisionConflict` — консистентность с `inventory/workflow` (AGENTS §7 Atomicity).
 * Верификация: `grep -rn busy_timeout -- collaboration.rs` — 2 точки; `grep -n Manage -- collaboration.rs` — job-level guard; `git diff --stat` 1 file 23 ins; pushed b394fb4.
+### Итерация 12 — паритет busy_timeout для workflow (d7a352a)
+* `workflow.rs` — все 13 транзакций `create_job/add_item/save_proposal/submit/approve/assign/unassign/cancel/retry/apply/recover/claim/record_pending` получили `PRAGMA busy_timeout = 5000` best-effort для `DbBackend::Sqlite` после `begin()` — завершает паритет P0-2 по всему модулю (ранее `inventory/memory/glossary/policy/collaboration` уже покрыты, workflow был последним без `busy_timeout`).
+* Верификация: `grep -rn busy_timeout -- workflow.rs` — 13 точек; `grep -rn busy_timeout -- crates/modules/rustok-translation/src` — 27+ точек (все CAS-пути); `git diff --stat` 1 file 104 ins; pushed d7a352a.
 
