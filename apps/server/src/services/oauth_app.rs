@@ -22,6 +22,27 @@ use std::str::FromStr;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
+/// Outcome classification for one consent-grant attempt: a unique-index
+/// race against a concurrent first grant is retryable, everything else
+/// is a plain internal failure.
+enum GrantConsentAttempt {
+    UniqueRace,
+    Fatal(Error),
+}
+
+impl GrantConsentAttempt {
+    fn classify(error: sea_orm::DbErr) -> Self {
+        if matches!(
+            error.sql_err(),
+            Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+        ) {
+            Self::UniqueRace
+        } else {
+            Self::Fatal(Error::InternalServerError)
+        }
+    }
+}
+
 /// Input for creating a new OAuth app
 #[derive(Debug, Clone)]
 pub struct CreateOAuthAppInput {
@@ -501,25 +522,54 @@ impl OAuthAppService {
         let scopes_json =
             serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?;
 
-        let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
+        // Two concurrent first-time grants can both observe "no consent
+        // row" and race to insert; the partial unique index lets exactly
+        // one win. The loser retries and lands on the update path
+        // instead of surfacing a 500 for a legitimate double-submit.
+        const MAX_ATTEMPTS: usize = 3;
+        for attempt in 0..MAX_ATTEMPTS {
+            match Self::grant_consent_once(db, app_id, user_id, tenant_id, &scopes_json).await {
+                Ok(()) => return Ok(()),
+                Err(GrantConsentAttempt::UniqueRace) if attempt + 1 < MAX_ATTEMPTS => continue,
+                Err(GrantConsentAttempt::UniqueRace) => {
+                    return Err(Error::InternalServerError);
+                }
+                Err(GrantConsentAttempt::Fatal(error)) => return Err(error),
+            }
+        }
+
+        Err(Error::InternalServerError)
+    }
+
+    async fn grant_consent_once(
+        db: &DatabaseConnection,
+        app_id: Uuid,
+        user_id: Uuid,
+        tenant_id: Uuid,
+        scopes_json: &serde_json::Value,
+    ) -> std::result::Result<(), GrantConsentAttempt> {
+        let tx = db
+            .begin()
+            .await
+            .map_err(|_| GrantConsentAttempt::Fatal(Error::InternalServerError))?;
         let existing = OAuthConsents::find()
             .filter(crate::models::oauth_consents::Column::AppId.eq(app_id))
             .filter(crate::models::oauth_consents::Column::UserId.eq(user_id))
             .filter(crate::models::oauth_consents::Column::TenantId.eq(tenant_id))
             .one(&tx)
             .await
-            .map_err(|_| Error::InternalServerError)?;
+            .map_err(|_| GrantConsentAttempt::Fatal(Error::InternalServerError))?;
 
         match existing {
             Some(consent) => {
                 let mut active: OAuthConsentActiveModel = consent.into();
-                active.scopes = Set(scopes_json);
+                active.scopes = Set(scopes_json.clone());
                 active.granted_at = Set(Utc::now().into());
                 active.revoked_at = Set(None);
                 active
                     .update(&tx)
                     .await
-                    .map_err(|_| Error::InternalServerError)?;
+                    .map_err(|error| GrantConsentAttempt::classify(error))?;
             }
             None => {
                 OAuthConsentActiveModel {
@@ -527,17 +577,19 @@ impl OAuthAppService {
                     app_id: Set(app_id),
                     user_id: Set(user_id),
                     tenant_id: Set(tenant_id),
-                    scopes: Set(scopes_json),
+                    scopes: Set(scopes_json.clone()),
                     granted_at: Set(Utc::now().into()),
                     revoked_at: Set(None),
                 }
                 .insert(&tx)
                 .await
-                .map_err(|_| Error::InternalServerError)?;
+                .map_err(|error| GrantConsentAttempt::classify(error))?;
             }
         }
 
-        tx.commit().await.map_err(|_| Error::InternalServerError)?;
+        tx.commit()
+            .await
+            .map_err(|error| GrantConsentAttempt::classify(error))?;
         Ok(())
     }
 
