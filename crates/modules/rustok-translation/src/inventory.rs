@@ -165,7 +165,9 @@ impl TranslationInventoryService {
         let transaction = self.database.begin().await?;
         if matches!(self.database.get_database_backend(), DbBackend::Sqlite) {
             use sea_orm::ConnectionTrait;
-            let _ = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await;
+            if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                tracing::debug!(error = %error, "translation inventory busy_timeout PRAGMA best-effort failed");
+            }
         }
         let current_checkpoint_query = provider_checkpoint::Entity::find()
             .filter(provider_checkpoint::Column::TenantId.eq(tenant_id))
@@ -425,7 +427,9 @@ impl TranslationInventoryService {
         let transaction = self.database.begin().await?;
         if matches!(self.database.get_database_backend(), DbBackend::Sqlite) {
             use sea_orm::ConnectionTrait;
-            let _ = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await;
+            if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                tracing::debug!(error = %error, "translation inventory busy_timeout PRAGMA best-effort failed");
+            }
         }
         let current_checkpoint_query = provider_checkpoint::Entity::find()
             .filter(provider_checkpoint::Column::TenantId.eq(tenant_id))

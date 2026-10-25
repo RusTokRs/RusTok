@@ -705,7 +705,10 @@ impl TranslationExchangeService {
         document: TranslationInterchangeDocument,
     ) -> TranslationInterchangeConflictReport {
         let mut report = TranslationInterchangeConflictReport {
-            total_items: u16::try_from(document.items.len()).unwrap_or(u16::MAX),
+            total_items: u16::try_from(document.items.len()).unwrap_or_else(|_| {
+                tracing::warn!(document_len = document.items.len(), "translation interchange document exceeded u16 capacity; capping report");
+                u16::MAX
+            }),
             accepted_items: 0,
             conflict_items: 0,
             rejected_items: 0,
