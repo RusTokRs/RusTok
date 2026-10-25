@@ -1,7 +1,22 @@
+//! # rustok-page-builder-storefront
+//!
+//! Leptos storefront renderer and scoped CSS container for RusToK Page Builder documents.
+//!
+//! ## Responsibilities & Guarantees
+//!
+//! - **Strict FFA Isolation**: View-models and pure Rust presentation logic in `core` remain decoupled from Leptos signals.
+//! - **Scoped CSS Containment**: Wraps all user-generated project CSS in native `@scope` rules with `contain: style layout;`
+//!   and remaps root selectors (`body`, `html`) to `:scope`.
+//! - **Direct SSR & Fast Re-hydration**: Renders pre-compiled landing artifacts directly without iframe overhead.
+//! - **Event & Navigation Bridge**: Bridges `fly:action` custom events to platform commerce actions.
+
 pub mod core;
 mod i18n;
 mod localized_route;
 mod ui;
+
+#[cfg(test)]
+mod contract_tests;
 
 pub use localized_route::*;
 pub use ui::PageBuilderView;
