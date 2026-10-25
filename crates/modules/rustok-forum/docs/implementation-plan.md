@@ -1021,6 +1021,40 @@ retained evidence). Each slice's own contract and note carry its status; the
 per-slice prose lives only in the archive snapshot.
 
 
+### Aggregate boundary of `FORUM-23`
+
+`FORUM-23B2G2B3A` carries the versioned-invalidation wire contract
+(`crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-wire.json`,
+`contract_frozen_implementation_pending`), `FORUM-23B2G2B3B1` the caused-publication API and
+`FORUM-23B2G2B3B2` the Forum-owner publisher
+(`crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-causation-api.json`,
+`source_complete_family_publisher_pending`), and `FORUM-23B2G2B3C` the persistent
+consumer (`crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-consumer.json`,
+`source_complete_runtime_evidence_pending`). None of them closes `FORUM-23`. The
+family that pins this boundary is
+`verify-forum-search-versioned-invalidation-wire.mjs`,
+`verify-forum-search-versioned-invalidation-causation-api.mjs`,
+`verify-forum-search-versioned-invalidation-publisher.mjs`,
+`verify-forum-search-versioned-invalidation-consumer.mjs` and
+`verify-forum-search-versioned-invalidation-runtime-evidence.mjs`.
+
+`FORUM-23B2G2B3D0`
+(`crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json`)
+is the retained runtime-evidence protocol and stays
+`source_ready_maintainer_execution_pending`: the maintainer harness must execute and retain every D0 PostgreSQL/Iggy scenario
+- normal delivery, the legacy and typed
+duplicate deliveries, acknowledgement failure with restart, multi-process delivery,
+raw and semantic poison quarantine, missing-delivery repair, snapshot-only backfill,
+search-disabled recovery and the deletion/ACL ordering case - and only the assembled
+`LINK-FORUM-03` cross-module runtime proof can advance the aggregate. The two per-slice
+handoffs `crates/modules/rustok-forum/docs/forum-23b2g2b3d7-normal-delivery-proof.md`
+and `crates/modules/rustok-forum/docs/forum-23b2g2b3d8-deletion-acl-ordering-proof.md`
+carry the exact `cargo test --ignored` invocations and the PostgreSQL prerequisites; no
+agent may substitute a static guard for that run. `FORUM-23B2G2B3D1` is the canonical
+plan-sync slice and is satisfied by the two subsections above; the read-only
+`node scripts/audit/forum_plan_requirements.mjs` reports which markers the verifier
+family demands of this section.
+
 ### Remaining scope of `FORUM-23`
 
 Search filters include
