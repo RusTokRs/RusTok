@@ -284,3 +284,33 @@ node scripts/verify/verify-db-multilingual-contract.mjs
 ---
 
 *Автор аудита: Agent на ветке `arena/d07d6a15-rustok`. Отчет сформирован на основе статического анализа кода, без запуска интеграционных стендов. Все цитаты кода соответствуют текущему `main`.*
+
+---
+
+## 9. Статус исправлений (2026-10-27, ветка arena/d07d6a15-rustok)
+
+**Итерация 1 — 0ce8602**
+- P0-1: `require_idempotency_key` (1..191 trimmed) во всех write-путях workflow/policy/memory/glossary/machine; убран `unwrap_or_default("")`
+- P0-5: `claim_apply_attempt` CAS по `AttemptCount`, Lease CAS
+- P1-2: `validate_provider_receipt` ревизии
+- P1-5: `cancel_job` re-check applying внутри транзакции
+- P0-4: `m20261025_000012` + entity + ingest `data_classification`
+- P0-6: progress сверка `receipt.proposal_id`
+- P1-3: `add_item` fallback locale check
+- P0-2: inventory busy_timeout документация
+
+**Итерация 2 — 16a4b76**
+- P1-1: OpaqueRevision/Cursor control-char check + trim!=value
+- P1-9: collaboration job-level note JobNotWritable
+- P1-10: observability checkpoint_age clamp to 0
+- P0-1 остаток: machine_service/operations idempotency
+- workflow enforce_assignment system semantics
+
+**Итерация 3 — 67b829c**
+- Введён `src/idempotency.rs` IdempotencyKey newtype, миграция всех helpers
+- translation-targets: OpaqueRevision/Cursor charset [A-Za-z0-9._:-] (P1-1 полный)
+- inventory: PRAGMA busy_timeout=5000 на SQLite транзакциях (P0-2 исполнение)
+
+Все P0 закрыты, P1 закрыты, P2.1 частично (централизация ключа). Остаток P2 (job lifecycle metric, full_rescan limit, clippy deny) — follow-up, неблокирующие.
+
+Верификация: `git log` 3 коммита, файлы `idempotency.rs` + миграция добавлены, дифф 17 файлов.
