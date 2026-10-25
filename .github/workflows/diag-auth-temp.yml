@@ -147,7 +147,7 @@ jobs:
         shell: bash {0}
         env:
           RUSTFLAGS: "-Dwarnings -Adead_code"
-          CARGO_ENCODED_RUSTFLAGS: "-Dwarnings-Adead_code"
+          CARGO_ENCODED_RUSTFLAGS: "-Dwarnings\x1f-Adead_code"
         run: |
           cargo check -p rustok-server -p rustok-admin -p rustok-storefront --all-targets --all-features --keep-going --message-format=json 2>/dev/null \
             | python3 /tmp/extract.py /tmp/apps_errors.txt
