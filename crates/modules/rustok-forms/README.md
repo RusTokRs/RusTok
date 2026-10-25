@@ -5,6 +5,8 @@ surfaces. Pages built with the page builder point their form `actionUrl` at this
 module; the module stores submissions, publishes contract events and optionally
 sends a transactional email notification.
 
+For the formal public contract and architectural boundaries, see [CRATE_API.md](CRATE_API.md).
+
 ## What it does
 
 - **Intake** — `POST /api/forms/{form_id}/submit` (JSON, one flat object of

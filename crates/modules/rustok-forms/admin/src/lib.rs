@@ -1,12 +1,22 @@
-//! Leptos admin surface for the forms module: submission triage inbox.
+//! # rustok-forms-admin
+//!
+//! SSR-first Leptos admin UI package for the `rustok-forms` module.
+//!
+//! Provides the canonical `FormsAdmin` triage inbox component, localized status badges,
+//! and triage state transition dispatch.
 
 pub mod core;
 mod i18n;
 mod model;
 mod transport;
 
-pub use core::*;
-pub use i18n::*;
+#[cfg(test)]
+mod contract_tests;
+
+pub use core::{
+    FormsAdminLabels, SubmissionAction, allowed_transitions, state_label, summarize_submission,
+};
+pub use i18n::normalize_admin_locale;
 pub use model::FormSubmission;
 
 use leptos::prelude::*;

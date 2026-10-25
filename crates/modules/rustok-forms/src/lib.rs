@@ -1,4 +1,9 @@
-//! Forms module: form submission intake, abuse controls and lead triage.
+//! # rustok-forms-module
+//!
+//! Form submission intake, abuse controls, spam mitigation, and lead triage inbox for the RusToK platform.
+//!
+//! Exposes REST and GraphQL APIs for dynamic form submissions, rate limiting, honeypot detection,
+//! submission state management (`new`, `read`, `handled`, `spam`), and transactional notification dispatch.
 
 pub mod controllers;
 pub mod dto;
@@ -14,7 +19,10 @@ pub mod services;
 #[cfg(test)]
 mod contract_tests;
 
-pub use dto::*;
+pub use dto::{
+    FormSubmissionResponse, FormSubmissionState, ListFormSubmissionsFilter, SubmitFormResponse,
+    UpdateFormSubmissionStateInput,
+};
 pub use entities::FormSubmission;
 pub use error::{FormsError, FormsResult};
 pub use graphql::{FormsMutation, FormsQuery};

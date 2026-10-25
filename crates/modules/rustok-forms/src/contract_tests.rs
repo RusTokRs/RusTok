@@ -8,6 +8,7 @@ fn crate_api_defines_minimal_contract_sections() {
     for marker in [
         "## Platform Capability Bindings",
         "## Domain Collaborations",
+        "## Public surface",
         "## Minimum Contract Set",
         "### Input DTOs/Commands",
         "### Domain Invariants",

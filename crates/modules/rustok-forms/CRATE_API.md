@@ -13,7 +13,31 @@
 - Receives submissions from pages created with page-builder via public endpoints `POST /api/forms/{form_id}/submit` and `POST /api/forms/{form_id}/submit/form`.
 - Emits unified contract event `forms.submission.received` v1 to transactional outbox.
 - Optional transactional email notification via `rustok-email` (`TransactionalEmailSender`).
-- Triage inbox managed via REST and GraphQL (`formSubmissions`, `updateFormSubmissionState`).
+## Public surface
+
+### Module Entry Points
+- `FormsModule`: Platform module implementation for form intake, migrations, GraphQL schema, REST router, and permissions.
+
+### Services & Constants
+- `FormsService`: Domain service for submission intake, honeypot detection, rate limiting, and triage state transitions.
+- `FormsNotification`: Email notification configuration for incoming submissions.
+- `FORM_HONEYPOT_FIELD`: Identifier for bot trapping (`"website"`).
+- `FORM_SUBMIT_RATE_LIMIT`: Rate limit threshold (`5` submissions).
+- `FORM_SUBMIT_RATE_WINDOW_MINUTES`: Rate limit window (`10` minutes).
+- `MAX_FORM_PAYLOAD_BYTES`: Maximum submission size (`16384` bytes / 16 KB).
+- `MAX_FORM_PAYLOAD_FIELDS`: Maximum submission fields (`50` fields).
+
+### DTOs & Domain Types
+- `FormSubmissionResponse`: Public projection of stored submission metadata and payload.
+- `FormSubmissionState`: Triage state enum (`New`, `Read`, `Handled`, `Spam`).
+- `ListFormSubmissionsFilter`: Filter and pagination parameters for triage inbox queries.
+- `SubmitFormResponse`: Intake response DTO (`id`, `accepted`).
+- `UpdateFormSubmissionStateInput`: Triage state change input command.
+- `FormSubmission`: Sea-ORM entity representing a stored form submission.
+
+### GraphQL
+- `FormsQuery`: GraphQL queries (`formSubmissions`, `formSubmission`).
+- `FormsMutation`: GraphQL mutations (`updateFormSubmissionState`).
 
 ## Minimum Contract Set
 
