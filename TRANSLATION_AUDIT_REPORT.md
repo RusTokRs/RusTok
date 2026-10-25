@@ -337,4 +337,8 @@ node scripts/verify/verify-db-multilingual-contract.mjs
 * `scheduler.rs:work_item` — `expect` для сериализации `RetentionWorkPayload` помечен `#[allow(clippy::expect_used)]` с инвариантом (`i64+enum` простая структура, never panics) — соблюдён `lib.rs #![deny(clippy::expect_used)]` без подавления реальной ошибки (AGENTS §14).
 * `exchange.rs:process_import_document` — `total_items: u16::try_from(..).unwrap_or(u16::MAX)` заменён на `unwrap_or_else(|_| { tracing::warn!(document_len, ...) ; u16::MAX })` — defense-in-depth при нарушении валидации `MAX_INTERCHANGE_ARTIFACT_LIST_LIMIT (200)` (фактически недостижимо, но теперь наблюдаемо, P1-12 robustness).
 * Верификация: `grep -rn unwrap_or_default` в `src` теперь только для `subresource_id→subresource_key` (валидный `None→""`) и `context.deadline_ms`; `IdempotencyKey::require` единственная точка проверки; `git diff --stat` 4 files 13+-; pushed a2896bf.
+### Итерация 8 — детерминированный откат транзакций (0d84a56 / d82da9b)
+* `inventory.rs:sync_provider_changes` и `rebuild_provider_inventory` — 3 пути `CheckpointConflict` теперь делают `let _ = transaction.rollback().await;` перед `return Err` — закрывает утечку транзакции `BEGIN` без `ROLLBACK` (AGENTS §4 Side-Effect Completeness, P0-2).
+* `workflow.rs` — 11 CAS-веток (`update.rows_affected != 1`) внутри `transaction` (submit/approve/assign/cancel/apply/recover) теперь rollback перед `WorkflowRevisionConflict`/`ApplyInProgress` — устраняет висячие `BEGIN` и сохраняет инвариант «мутация → событие → прогресс» атомарно (P0-5, P1-5).
+* Верификация: `grep -n rows_affected -- workflow.rs` — все конфликтные пути внутри `transaction` теперь с rollback; `git diff --stat` 1+1 файл 14 ins; pushed 0d84a56→d82da9b.
 
