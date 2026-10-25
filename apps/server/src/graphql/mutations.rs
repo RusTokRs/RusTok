@@ -934,6 +934,7 @@ impl RootMutation {
             .map_err(map_user_mutation_error)
     }
 
+    #[graphql(deprecation = "Accounts are deactivated, not erased; use disableUser")]
     async fn delete_user(&self, ctx: &Context<'_>, id: uuid::Uuid) -> Result<DeleteUserPayload> {
         let auth = ctx
             .data::<AuthContext>()
