@@ -315,7 +315,6 @@ impl From<ArtifactRollback> for rustok_api::ArtifactRollbackView {
     }
 }
 
-
 /// Preview evidence for an artifact settings purge.
 #[derive(SimpleObject, Clone)]
 pub struct ArtifactSettingsPurgePreview {

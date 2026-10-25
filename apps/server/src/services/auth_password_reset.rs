@@ -1,13 +1,12 @@
 use chrono::Utc;
 use rustok_events::DomainEvent;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait,
-    sea_query::Expr,
+    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait, sea_query::Expr,
 };
 
 use crate::auth::{
-    AuthConfig, decode_password_reset_token, hash_password_async, password_reset_credential_matches,
-    validate_password_policy,
+    AuthConfig, decode_password_reset_token, hash_password_async,
+    password_reset_credential_matches, validate_password_policy,
 };
 use crate::models::{sessions, users};
 
@@ -178,14 +177,9 @@ mod tests {
         )
         .await;
 
-        let token = encode_password_reset_token(
-            &config,
-            tenant.id,
-            &user.email,
-            &user.password_hash,
-            900,
-        )
-        .expect("failed to encode reset token");
+        let token =
+            encode_password_reset_token(&config, tenant.id, &user.email, &user.password_hash, 900)
+                .expect("failed to encode reset token");
         let metrics_before = AuthLifecycleService::metrics_snapshot();
 
         AuthLifecycleService::confirm_bound_password_reset_runtime(
@@ -238,14 +232,9 @@ mod tests {
         )
         .await;
 
-        let token = encode_password_reset_token(
-            &config,
-            tenant.id,
-            &user.email,
-            &user.password_hash,
-            900,
-        )
-        .expect("failed to encode reset token");
+        let token =
+            encode_password_reset_token(&config, tenant.id, &user.email, &user.password_hash, 900)
+                .expect("failed to encode reset token");
 
         AuthLifecycleService::confirm_bound_password_reset_runtime(
             &ctx,
@@ -265,10 +254,7 @@ mod tests {
             "AnotherPassword123!",
         )
         .await;
-        assert!(matches!(
-            second,
-            Err(AuthLifecycleError::InvalidResetToken)
-        ));
+        assert!(matches!(second, Err(AuthLifecycleError::InvalidResetToken)));
     }
 
     #[tokio::test]
@@ -284,14 +270,9 @@ mod tests {
             .await
             .expect("failed to create other tenant");
 
-        let token = encode_password_reset_token(
-            &config,
-            tenant.id,
-            &user.email,
-            &user.password_hash,
-            900,
-        )
-        .expect("failed to encode reset token");
+        let token =
+            encode_password_reset_token(&config, tenant.id, &user.email, &user.password_hash, 900)
+                .expect("failed to encode reset token");
 
         let result = AuthLifecycleService::confirm_bound_password_reset_runtime(
             &ctx,
@@ -301,36 +282,21 @@ mod tests {
             NEW_PASSWORD,
         )
         .await;
-        assert!(matches!(
-            result,
-            Err(AuthLifecycleError::InvalidResetToken)
-        ));
+        assert!(matches!(result, Err(AuthLifecycleError::InvalidResetToken)));
     }
 
     #[tokio::test]
     async fn confirm_reset_rejects_weak_password_without_burning_the_token() {
-        let (_db, ctx, config, tenant, user) = setup_user_with_sessions(
-            "reset-tenant-weak",
-            "weak@example.com",
-            &["weak-session"],
-        )
-        .await;
+        let (_db, ctx, config, tenant, user) =
+            setup_user_with_sessions("reset-tenant-weak", "weak@example.com", &["weak-session"])
+                .await;
 
-        let token = encode_password_reset_token(
-            &config,
-            tenant.id,
-            &user.email,
-            &user.password_hash,
-            900,
-        )
-        .expect("failed to encode reset token");
+        let token =
+            encode_password_reset_token(&config, tenant.id, &user.email, &user.password_hash, 900)
+                .expect("failed to encode reset token");
 
         let weak = AuthLifecycleService::confirm_bound_password_reset_runtime(
-            &ctx,
-            &config,
-            tenant.id,
-            &token,
-            "short",
+            &ctx, &config, tenant.id, &token, "short",
         )
         .await;
         assert!(matches!(weak, Err(AuthLifecycleError::Validation(_))));

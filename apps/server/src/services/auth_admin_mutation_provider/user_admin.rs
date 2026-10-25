@@ -217,7 +217,7 @@ impl ServerAuthAdminMutationProvider {
         event: DomainEvent,
     ) -> Result<(), AuthAdminMutationError> {
         let event_bus = TransactionalEventBus::new(
-            Arc::new(OutboxTransport::new(self.db.clone())) as Arc<dyn EventTransport>,
+            Arc::new(OutboxTransport::new(self.db.clone())) as Arc<dyn EventTransport>
         );
         event_bus
             .publish_in_tx(tx, context.tenant_id, Some(context.actor_id), event)
@@ -473,8 +473,8 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         }
         let final_role = if let Some(slug) = custom_slug.as_ref() {
             let actor_role = self.actor_role(context).await?;
-            let actor_permissions =
-                permissions_for(&context.tenant_id, &context.actor_id).ok_or_else(|| {
+            let actor_permissions = permissions_for(&context.tenant_id, &context.actor_id)
+                .ok_or_else(|| {
                     AuthAdminMutationError::Forbidden(
                         "user administration requires a request-bound permission snapshot"
                             .to_string(),
@@ -496,14 +496,9 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(super::super_admin_guard::persistence_error)?;
             if plan.is_some() {
-                replace_persisted_user_role_by_slug_on(
-                    &tx,
-                    context.tenant_id,
-                    user.id,
-                    slug,
-                )
-                .await
-                .map_err(super::super_admin_guard::persistence_error)?;
+                replace_persisted_user_role_by_slug_on(&tx, context.tenant_id, user.id, slug)
+                    .await
+                    .map_err(super::super_admin_guard::persistence_error)?;
             }
             self.user_role(&tx, context.tenant_id, user.id).await?
         } else {
@@ -546,9 +541,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         }
 
         let normalized_email = match command.email.as_deref() {
-            Some(email) => {
-                Some(rustok_auth::normalize_email(email).map_err(map_auth_input_error)?)
-            }
+            Some(email) => Some(rustok_auth::normalize_email(email).map_err(map_auth_input_error)?),
             None => None,
         };
         let normalized_name = match command.name.as_deref() {
@@ -674,8 +667,8 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
                 }
             } else if let Some(slug) = requested_custom_slug.as_ref() {
                 let actor_role = self.actor_role(context).await?;
-                let actor_permissions =
-                    permissions_for(&context.tenant_id, &context.actor_id).ok_or_else(|| {
+                let actor_permissions = permissions_for(&context.tenant_id, &context.actor_id)
+                    .ok_or_else(|| {
                         AuthAdminMutationError::Forbidden(
                             "user administration requires a request-bound permission snapshot"
                                 .to_string(),
@@ -876,9 +869,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         let tenant_name = self.tenant_name(&tx, context.tenant_id).await?;
         let final_role = match role_mutation_plan.as_ref() {
             Some(RolePlan::Builtin(plan)) => plan.new_role().clone(),
-            Some(RolePlan::Custom(_)) => {
-                self.user_role(&tx, context.tenant_id, user.id).await?
-            }
+            Some(RolePlan::Custom(_)) => self.user_role(&tx, context.tenant_id, user.id).await?,
             None => current_role.clone(),
         };
         tx.commit().await.map_err(super::internal_admin_error)?;
@@ -1007,8 +998,8 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         // it would hand out when the invite is accepted.
         let ledger_role = if let Some(slug) = custom_slug.as_deref() {
             let actor_role = self.actor_role(context).await?;
-            let actor_permissions =
-                permissions_for(&context.tenant_id, &context.actor_id).ok_or_else(|| {
+            let actor_permissions = permissions_for(&context.tenant_id, &context.actor_id)
+                .ok_or_else(|| {
                     AuthAdminMutationError::Forbidden(
                         "user administration requires a request-bound permission snapshot"
                             .to_string(),
@@ -1034,9 +1025,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             email: Set(email),
             role: Set(ledger_role),
             issued_by: Set(Some(context.actor_id)),
-            expires_at: Set(
-                (now + chrono::Duration::seconds(INVITE_TOKEN_TTL_SECS as i64)).into(),
-            ),
+            expires_at: Set((now + chrono::Duration::seconds(INVITE_TOKEN_TTL_SECS as i64)).into()),
             revoked_at: Set(None),
             created_at: Set(now.into()),
         }

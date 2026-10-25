@@ -1555,13 +1555,7 @@ mod tests {
         };
         let response = oauth_error_response(err);
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        assert_eq!(
-            response.headers().get(CACHE_CONTROL).unwrap(),
-            "no-store"
-        );
-        assert_eq!(
-            response.headers().get(PRAGMA).unwrap(),
-            "no-cache"
-        );
+        assert_eq!(response.headers().get(CACHE_CONTROL).unwrap(), "no-store");
+        assert_eq!(response.headers().get(PRAGMA).unwrap(), "no-cache");
     }
 }

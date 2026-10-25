@@ -23,9 +23,8 @@ async fn main() {
     use leptos_auth::{ServerAuthSnapshot, provide_server_auth_snapshot};
     use leptos_axum::{LeptosRoutes, generate_route_list};
     use rustok_admin::app::{
-        App, admin_security_headers,
-        auth_ssr::verify_auth_snapshot,
-        request_auth_snapshot, request_csp_nonce, shell, validate_admin_security_profile,
+        App, admin_security_headers, auth_ssr::verify_auth_snapshot, request_auth_snapshot,
+        request_csp_nonce, shell, validate_admin_security_profile,
     };
     use rustok_pages_admin::{
         BrowserIntentEnvelope, FLY_CSRF_HEADER_NAME, PagesBrowserIntentAccessError,
@@ -74,8 +73,7 @@ async fn main() {
                 // unguessable, and only ever embedded into pages this
                 // host renders for the authenticated browser.
                 let csrf_secret =
-                    leptos_auth::session_id_from_access_token(&session.token)
-                        .unwrap_or_default();
+                    leptos_auth::session_id_from_access_token(&session.token).unwrap_or_default();
                 match csrf_header {
                     Some(client_csrf) if verify_csrf_token(&csrf_secret, &client_csrf) => {
                         (session.token.clone(), session.tenant.clone())

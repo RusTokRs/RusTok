@@ -1,5 +1,6 @@
 pub use super::accept_invite::AcceptInvite;
 pub use super::auth_admin::AuthAdmin;
+pub use super::invites::UserInvites;
 pub use super::login::Login;
 pub use super::oauth_apps::OAuthAppsPage;
 pub use super::profile::Profile;
@@ -7,5 +8,4 @@ pub use super::register::Register;
 pub use super::reset::ResetPassword;
 pub use super::security::Security;
 pub use super::user_details::UserDetails;
-pub use super::invites::UserInvites;
 pub use super::users::Users;

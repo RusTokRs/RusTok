@@ -184,7 +184,7 @@ impl AuthLifecycleService {
         event: DomainEvent,
     ) -> std::result::Result<(), AuthLifecycleError> {
         let event_bus = TransactionalEventBus::new(
-            Arc::new(OutboxTransport::new(db)) as Arc<dyn EventTransport>,
+            Arc::new(OutboxTransport::new(db)) as Arc<dyn EventTransport>
         );
         event_bus
             .publish_in_tx(tx, tenant_id, Some(user_id), event)
@@ -233,8 +233,7 @@ impl AuthLifecycleService {
         status: Option<rustok_core::UserStatus>,
         min_password_length: usize,
     ) -> std::result::Result<users::Model, AuthLifecycleError> {
-        let prepared =
-            Self::prepare_new_user(email, password, name, min_password_length).await?;
+        let prepared = Self::prepare_new_user(email, password, name, min_password_length).await?;
         let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
 
         let user = Self::create_user_in_tx(&tx, tenant_id, prepared, role, status).await?;
@@ -495,11 +494,9 @@ impl AuthLifecycleService {
                 // Run a full Argon2 verification against a dummy hash so
                 // an unknown email takes as long as a wrong password:
                 // without this, login latency enumerates accounts.
-                let _ = verify_password_async(
-                    password.to_string(),
-                    crate::auth::dummy_password_hash(),
-                )
-                .await;
+                let _ =
+                    verify_password_async(password.to_string(), crate::auth::dummy_password_hash())
+                        .await;
                 return Err(AuthLifecycleError::InvalidCredentials);
             }
         };
@@ -854,9 +851,11 @@ impl AuthLifecycleService {
             .map_err(AuthLifecycleError::from)?;
 
         if let Some(previous) = previous {
-            let within_grace = previous.previous_token_revoked_at.is_some_and(|rotated_at| {
-                Utc::now().timestamp() - rotated_at.timestamp() < REFRESH_REUSE_GRACE_SECONDS
-            });
+            let within_grace = previous
+                .previous_token_revoked_at
+                .is_some_and(|rotated_at| {
+                    Utc::now().timestamp() - rotated_at.timestamp() < REFRESH_REUSE_GRACE_SECONDS
+                });
             if !within_grace {
                 tracing::warn!(
                     session_id = %previous.id,
@@ -866,10 +865,7 @@ impl AuthLifecycleService {
                 let mut active: sessions::ActiveModel = previous.into();
                 active.revoked_at = Set(Some(Utc::now().into()));
                 active.previous_token_hash = Set(None);
-                active
-                    .update(txn)
-                    .await
-                    .map_err(AuthLifecycleError::from)?;
+                active.update(txn).await.map_err(AuthLifecycleError::from)?;
             }
         }
 
@@ -1223,7 +1219,6 @@ impl AuthLifecycleService {
         Self::revoke_user_sessions_db(ctx.db(), tenant_id, user_id, Some(current_session_id)).await
     }
 
-
     #[cfg(test)]
     async fn create_session_and_tokens_db(
         db: &DatabaseConnection,
@@ -1519,7 +1514,6 @@ mod tests {
             other => panic!("unexpected error variant: {other:?}"),
         }
     }
-
 
     #[tokio::test]
     async fn create_user_assigns_requested_role_relations() {
@@ -2065,9 +2059,14 @@ mod tests {
 
         let config = test_auth_config("refresh-secret", 600, 3600);
 
-        let result =
-            AuthLifecycleService::refresh_with_config_db(&db, &config, tenant.id, expired_token, false)
-                .await;
+        let result = AuthLifecycleService::refresh_with_config_db(
+            &db,
+            &config,
+            tenant.id,
+            expired_token,
+            false,
+        )
+        .await;
 
         assert!(matches!(result, Err(AuthLifecycleError::SessionExpired)));
     }
@@ -2130,9 +2129,14 @@ mod tests {
 
         let config = test_auth_config("refresh-secret", 600, 3600);
 
-        let result =
-            AuthLifecycleService::refresh_with_config_db(&db, &config, tenant.id, refresh_token, false)
-                .await;
+        let result = AuthLifecycleService::refresh_with_config_db(
+            &db,
+            &config,
+            tenant.id,
+            refresh_token,
+            false,
+        )
+        .await;
 
         assert!(matches!(result, Err(AuthLifecycleError::UserInactive)));
     }
@@ -2146,7 +2150,6 @@ mod tests {
 
         assert!(matches!(err, crate::error::Error::Unauthorized(_)));
     }
-
 
     #[tokio::test]
     async fn revoke_user_sessions_repeat_call_is_idempotent() {
@@ -2328,8 +2331,6 @@ mod tests {
         assert_eq!(active_sessions.len(), 1);
         assert_eq!(active_sessions[0].id, keep_session.id);
     }
-
-
 
     #[tokio::test]
     async fn create_user_scopes_duplicate_email_check_per_tenant() {

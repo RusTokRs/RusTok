@@ -56,8 +56,7 @@ pub fn refresh_cookie_header(tenant: &str, refresh_token: &str, secure: bool) ->
 
 /// `Set-Cookie` header value clearing the BFF refresh cookie.
 pub fn clear_refresh_cookie_header(secure: bool) -> String {
-    let mut cookie =
-        format!("{ADMIN_REFRESH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
+    let mut cookie = format!("{ADMIN_REFRESH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
     if secure {
         cookie.push_str("; Secure");
     }
@@ -120,4 +119,3 @@ fn base64url_decode(input: &str) -> Option<Vec<u8>> {
     }
     Some(output)
 }
-

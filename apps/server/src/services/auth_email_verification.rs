@@ -1,8 +1,6 @@
 use chrono::Utc;
 use rustok_events::DomainEvent;
-use sea_orm::{
-    ColumnTrait, EntityTrait, QueryFilter, TransactionTrait, sea_query::Expr,
-};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, TransactionTrait, sea_query::Expr};
 
 use crate::auth::{AuthConfig, decode_email_verification_token};
 use crate::models::users::{self, Entity as Users};

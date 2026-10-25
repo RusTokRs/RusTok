@@ -401,7 +401,6 @@ define_permission_extractor!(
     rustok_api::Permission::TRANSLATIONS_MANAGE
 );
 
-
 /// Helper to check permission inline without extractor
 ///
 /// # Example

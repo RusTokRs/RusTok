@@ -37,9 +37,7 @@ pub const MAX_DISPLAY_NAME_CHARS: usize = 255;
 pub fn normalize_email(raw: &str) -> Result<String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
-        return Err(AuthError::Validation(
-            "Email must not be empty".to_string(),
-        ));
+        return Err(AuthError::Validation("Email must not be empty".to_string()));
     }
     if trimmed.chars().any(|c| c.is_whitespace() || c.is_control()) {
         return Err(AuthError::Validation(

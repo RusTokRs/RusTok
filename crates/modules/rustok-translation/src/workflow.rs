@@ -288,7 +288,10 @@ impl TranslationWorkflowService {
         {
             use sea_orm::{ConnectionTrait as _, DbBackend};
             if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                if let Err(error) = transaction
+                    .execute_unprepared("PRAGMA busy_timeout = 5000")
+                    .await
+                {
                     tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
                 }
             }
@@ -430,7 +433,10 @@ impl TranslationWorkflowService {
         {
             use sea_orm::{ConnectionTrait as _, DbBackend};
             if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                if let Err(error) = transaction
+                    .execute_unprepared("PRAGMA busy_timeout = 5000")
+                    .await
+                {
                     tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
                 }
             }
@@ -572,7 +578,10 @@ impl TranslationWorkflowService {
         {
             use sea_orm::{ConnectionTrait as _, DbBackend};
             if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                if let Err(error) = transaction
+                    .execute_unprepared("PRAGMA busy_timeout = 5000")
+                    .await
+                {
                     tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
                 }
             }
@@ -702,7 +711,10 @@ impl TranslationWorkflowService {
         {
             use sea_orm::{ConnectionTrait as _, DbBackend};
             if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                if let Err(error) = transaction
+                    .execute_unprepared("PRAGMA busy_timeout = 5000")
+                    .await
+                {
                     tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
                 }
             }
@@ -823,7 +835,10 @@ impl TranslationWorkflowService {
         {
             use sea_orm::{ConnectionTrait as _, DbBackend};
             if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                if let Err(error) = transaction
+                    .execute_unprepared("PRAGMA busy_timeout = 5000")
+                    .await
+                {
                     tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
                 }
             }
@@ -974,7 +989,10 @@ impl TranslationWorkflowService {
         {
             use sea_orm::{ConnectionTrait as _, DbBackend};
             if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                if let Err(error) = transaction
+                    .execute_unprepared("PRAGMA busy_timeout = 5000")
+                    .await
+                {
                     tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
                 }
             }
@@ -1107,7 +1125,10 @@ impl TranslationWorkflowService {
         {
             use sea_orm::{ConnectionTrait as _, DbBackend};
             if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                if let Err(error) = transaction
+                    .execute_unprepared("PRAGMA busy_timeout = 5000")
+                    .await
+                {
                     tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
                 }
             }
@@ -1163,7 +1184,7 @@ impl TranslationWorkflowService {
                 .exec(&transaction)
                 .await?;
             if update.rows_affected != 1 {
-            let _ = transaction.rollback().await;
+                let _ = transaction.rollback().await;
                 return Err(TranslationError::WorkflowRevisionConflict);
             }
         }
@@ -1248,7 +1269,10 @@ impl TranslationWorkflowService {
         {
             use sea_orm::{ConnectionTrait as _, DbBackend};
             if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                if let Err(error) = transaction
+                    .execute_unprepared("PRAGMA busy_timeout = 5000")
+                    .await
+                {
                     tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
                 }
             }
@@ -1367,7 +1391,10 @@ impl TranslationWorkflowService {
         {
             use sea_orm::{ConnectionTrait as _, DbBackend};
             if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                if let Err(error) = transaction
+                    .execute_unprepared("PRAGMA busy_timeout = 5000")
+                    .await
+                {
                     tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
                 }
             }
@@ -1524,7 +1551,10 @@ impl TranslationWorkflowService {
         {
             use sea_orm::{ConnectionTrait as _, DbBackend};
             if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                if let Err(error) = transaction
+                    .execute_unprepared("PRAGMA busy_timeout = 5000")
+                    .await
+                {
                     tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
                 }
             }
@@ -1780,7 +1810,10 @@ impl TranslationWorkflowService {
         {
             use sea_orm::{ConnectionTrait as _, DbBackend};
             if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                if let Err(error) = transaction
+                    .execute_unprepared("PRAGMA busy_timeout = 5000")
+                    .await
+                {
                     tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
                 }
             }
@@ -1948,7 +1981,10 @@ impl TranslationWorkflowService {
         {
             use sea_orm::{ConnectionTrait as _, DbBackend};
             if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                if let Err(error) = transaction
+                    .execute_unprepared("PRAGMA busy_timeout = 5000")
+                    .await
+                {
                     tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
                 }
             }
@@ -2569,14 +2605,17 @@ async fn record_pending_apply_error(
     error: PendingApplyError<'_>,
 ) -> TranslationResult<()> {
     let transaction = database.begin().await?;
-        {
-            use sea_orm::{ConnectionTrait as _, DbBackend};
-            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
-                    tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
-                }
+    {
+        use sea_orm::{ConnectionTrait as _, DbBackend};
+        if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+            if let Err(error) = transaction
+                .execute_unprepared("PRAGMA busy_timeout = 5000")
+                .await
+            {
+                tracing::debug!(error = %error, "translation workflow busy_timeout PRAGMA best-effort failed");
             }
         }
+    }
     let update = apply_operation::Entity::update_many()
         .col_expr(
             apply_operation::Column::LastErrorKind,
@@ -2617,7 +2656,7 @@ async fn record_pending_apply_error(
         .exec(&transaction)
         .await?;
     if update.rows_affected != 1 {
-            let _ = transaction.rollback().await;
+        let _ = transaction.rollback().await;
         return Err(TranslationError::WorkflowRevisionConflict);
     }
     event_bus

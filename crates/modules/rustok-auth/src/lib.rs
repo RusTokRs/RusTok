@@ -55,9 +55,6 @@ pub use credentials::{
     MIN_PASSWORD_LENGTH_FLOOR_CHARS, generate_refresh_token, hash_password, hash_refresh_token,
     validate_password_policy, verify_password,
 };
-pub use validation::{
-    MAX_DISPLAY_NAME_CHARS, MAX_EMAIL_LENGTH_CHARS, normalize_display_name, normalize_email,
-};
 pub use error::AuthError;
 pub use jwt::{
     Claims, EmailVerificationClaims, InviteClaims, OauthAccessTokenInput, PasswordResetClaims,
@@ -83,6 +80,9 @@ pub use rest::{
     TokenErrorResponse, TokenRequest, TokenResponse, UpdateProfileParams, UserInfo, UserItem,
     UserResponse, UsersListParams, UsersResponse, VerificationRequestResponse,
 };
+pub use validation::{
+    MAX_DISPLAY_NAME_CHARS, MAX_EMAIL_LENGTH_CHARS, normalize_display_name, normalize_email,
+};
 
 use rustok_api::Permission;
 
@@ -98,7 +98,6 @@ pub const AUTH_USER_PERMISSIONS: [Permission; 6] = [
     Permission::USERS_LIST,
     Permission::USERS_MANAGE,
 ];
-
 
 #[cfg(test)]
 mod tests {

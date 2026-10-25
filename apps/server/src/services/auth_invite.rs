@@ -75,8 +75,8 @@ impl AuthLifecycleService {
         // and hash the credentials *before* opening the transaction and
         // reserving the token digest, so a policy failure never burns a
         // single-use invite and Argon2 never runs inside the transaction.
-        let email = normalize_email(&claims.sub)
-            .map_err(|_| InviteAcceptanceError::InvalidToken)?;
+        let email =
+            normalize_email(&claims.sub).map_err(|_| InviteAcceptanceError::InvalidToken)?;
         let prepared = AuthLifecycleService::prepare_new_user(
             &email,
             password,
@@ -87,9 +87,7 @@ impl AuthLifecycleService {
         .map_err(map_lifecycle_error)?;
         let role = claims.role;
         let custom_role_slug = claims.custom_role_slug.clone();
-        let ledger_role = custom_role_slug
-            .clone()
-            .unwrap_or_else(|| role.to_string());
+        let ledger_role = custom_role_slug.clone().unwrap_or_else(|| role.to_string());
         let token_hash = hex::encode(Sha256::digest(token.as_bytes()));
         let consumption_id = uuid::Uuid::new_v4();
         let consumed_at = Utc::now();
@@ -206,7 +204,7 @@ impl AuthLifecycleService {
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
 
         let event_bus = TransactionalEventBus::new(
-            Arc::new(OutboxTransport::new(ctx.db_clone())) as Arc<dyn EventTransport>,
+            Arc::new(OutboxTransport::new(ctx.db_clone())) as Arc<dyn EventTransport>
         );
         event_bus
             .publish_in_tx(

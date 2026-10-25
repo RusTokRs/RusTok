@@ -75,10 +75,7 @@ async fn post_session(
 
     let response = request.send().await.map_err(|_| AuthError::Network)?;
     if !response.status().is_success() {
-        return Err(AuthError::from_status(
-            response.status().as_u16(),
-            is_login,
-        ));
+        return Err(AuthError::from_status(response.status().as_u16(), is_login));
     }
 
     response

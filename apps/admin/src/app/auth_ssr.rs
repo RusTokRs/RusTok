@@ -40,8 +40,7 @@ pub async fn verified_snapshot_from_headers(
     };
 
     let secure = cookie_request_is_secure(headers);
-    match leptos_auth::transport::exchange_refresh_token_ssr(refresh_token, tenant.clone()).await
-    {
+    match leptos_auth::transport::exchange_refresh_token_ssr(refresh_token, tenant.clone()).await {
         Ok((user, session, rotated)) => (
             ServerAuthSnapshot {
                 session: Some(session),

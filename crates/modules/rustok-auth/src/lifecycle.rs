@@ -268,4 +268,3 @@ mod tests {
         assert!(formatted.contains("test@example.com"));
     }
 }
-

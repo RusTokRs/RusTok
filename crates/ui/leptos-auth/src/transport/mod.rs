@@ -286,9 +286,7 @@ pub async fn sign_out(tenant: String) -> Result<(), AuthError> {
 /// Rotate the cookie-held refresh token and return fresh in-memory
 /// session state. Used both for proactive refresh and for restoring
 /// a session after a page reload (silent refresh).
-pub async fn refresh_session(
-    tenant: String,
-) -> Result<(AuthSession, AuthUser), AuthError> {
+pub async fn refresh_session(tenant: String) -> Result<(AuthSession, AuthUser), AuthError> {
     match selected_transport_path() {
         UiTransportPath::NativeServer => {
             let payload = native_server_adapter::refresh_token_native(tenant)

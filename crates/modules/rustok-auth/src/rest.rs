@@ -196,12 +196,21 @@ impl std::fmt::Debug for TokenRequest {
             .debug_struct("TokenRequest")
             .field("grant_type", &self.grant_type)
             .field("client_id", &self.client_id)
-            .field("client_secret", &self.client_secret.as_ref().map(|_| "<redacted>"))
+            .field(
+                "client_secret",
+                &self.client_secret.as_ref().map(|_| "<redacted>"),
+            )
             .field("scope", &self.scope)
             .field("code", &self.code.as_ref().map(|_| "<redacted>"))
             .field("redirect_uri", &self.redirect_uri)
-            .field("code_verifier", &self.code_verifier.as_ref().map(|_| "<redacted>"))
-            .field("refresh_token", &self.refresh_token.as_ref().map(|_| "<redacted>"))
+            .field(
+                "code_verifier",
+                &self.code_verifier.as_ref().map(|_| "<redacted>"),
+            )
+            .field(
+                "refresh_token",
+                &self.refresh_token.as_ref().map(|_| "<redacted>"),
+            )
             .finish()
     }
 }
@@ -269,7 +278,10 @@ impl std::fmt::Debug for TokenResponse {
             .field("access_token", &"<redacted>")
             .field("token_type", &self.token_type)
             .field("expires_in", &self.expires_in)
-            .field("refresh_token", &self.refresh_token.as_ref().map(|_| "<redacted>"))
+            .field(
+                "refresh_token",
+                &self.refresh_token.as_ref().map(|_| "<redacted>"),
+            )
             .field("scope", &self.scope)
             .finish()
     }
@@ -298,7 +310,10 @@ impl std::fmt::Debug for RevokeRequest {
             .field("token", &"<redacted>")
             .field("token_type_hint", &self.token_type_hint)
             .field("client_id", &self.client_id)
-            .field("client_secret", &self.client_secret.as_ref().map(|_| "<redacted>"))
+            .field(
+                "client_secret",
+                &self.client_secret.as_ref().map(|_| "<redacted>"),
+            )
             .finish()
     }
 }
@@ -313,9 +328,8 @@ mod tests {
             .expect("serialize reset response");
         assert_eq!(reset, serde_json::json!({ "status": "ok" }));
 
-        let verification =
-            serde_json::to_value(VerificationRequestResponse { status: "ok" })
-                .expect("serialize verification response");
+        let verification = serde_json::to_value(VerificationRequestResponse { status: "ok" })
+            .expect("serialize verification response");
         assert_eq!(verification, serde_json::json!({ "status": "ok" }));
     }
 

@@ -685,9 +685,7 @@ pub async fn validate_custom_role_grant_on(
 ) -> Result<String, RbacRolePersistenceError> {
     let slug = normalize_role_slug(requested_role_slug);
     if slug.parse::<UserRole>().is_ok() {
-        return Err(
-            RbacRoleMutationPolicyError::BuiltInRoleRequiresCanonicalPath(slug).into(),
-        );
+        return Err(RbacRoleMutationPolicyError::BuiltInRoleRequiresCanonicalPath(slug).into());
     }
     if *actor_role == UserRole::Customer {
         return Err(RbacRoleMutationPolicyError::CannotAssignPeerOrHigherRole.into());
@@ -727,9 +725,7 @@ pub async fn plan_persisted_custom_role_assignment_on(
 
     let slug = normalize_role_slug(&request.requested_role_slug);
     if slug.parse::<UserRole>().is_ok() {
-        return Err(
-            RbacRoleMutationPolicyError::BuiltInRoleRequiresCanonicalPath(slug).into(),
-        );
+        return Err(RbacRoleMutationPolicyError::BuiltInRoleRequiresCanonicalPath(slug).into());
     }
     if request.actor_role == UserRole::Customer {
         return Err(RbacRoleMutationPolicyError::CannotAssignPeerOrHigherRole.into());
@@ -1267,8 +1263,8 @@ mod tests {
             .unwrap();
         }
 
-        let request = |actor_permissions: Vec<rustok_api::Permission>| {
-            RbacCustomRoleAssignmentRequest {
+        let request =
+            |actor_permissions: Vec<rustok_api::Permission>| RbacCustomRoleAssignmentRequest {
                 tenant_id: tenant,
                 actor_id: actor,
                 actor_tenant_id: tenant,
@@ -1277,8 +1273,7 @@ mod tests {
                 target_user_id: target,
                 requested_role_slug: "content_editor".to_string(),
                 resulting_status: None,
-            }
-        };
+            };
 
         // Ceiling: the role grants posts:delete, which this actor lacks.
         let tx = db.begin().await.unwrap();
@@ -1321,22 +1316,16 @@ mod tests {
         .unwrap()
         .expect("custom role assignment should plan");
         assert_eq!(plan.role_slug(), "content_editor");
-        assert!(replace_persisted_user_role_by_slug_on(
-            &tx,
-            tenant,
-            target,
-            "content_editor"
-        )
-        .await
-        .unwrap());
-        assert!(!replace_persisted_user_role_by_slug_on(
-            &tx,
-            tenant,
-            target,
-            "content_editor"
-        )
-        .await
-        .unwrap());
+        assert!(
+            replace_persisted_user_role_by_slug_on(&tx, tenant, target, "content_editor")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !replace_persisted_user_role_by_slug_on(&tx, tenant, target, "content_editor")
+                .await
+                .unwrap()
+        );
         assert!(
             plan_persisted_custom_role_assignment_on(
                 &tx,
@@ -1349,4 +1338,3 @@ mod tests {
         tx.commit().await.unwrap();
     }
 }
-

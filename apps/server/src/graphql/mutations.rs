@@ -854,11 +854,7 @@ impl RootMutation {
         })
     }
 
-    async fn revoke_user_invite(
-        &self,
-        ctx: &Context<'_>,
-        id: uuid::Uuid,
-    ) -> Result<UserInvite> {
+    async fn revoke_user_invite(&self, ctx: &Context<'_>, id: uuid::Uuid) -> Result<UserInvite> {
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;

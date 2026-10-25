@@ -25,9 +25,7 @@ impl MigrationTrait for Migration {
                 .alter_table(
                     Table::alter()
                         .table(Alias::new("sessions"))
-                        .add_column(
-                            ColumnDef::new(Alias::new("previous_token_hash")).string(),
-                        )
+                        .add_column(ColumnDef::new(Alias::new("previous_token_hash")).string())
                         .to_owned(),
                 )
                 .await?;
@@ -71,7 +69,10 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        if manager.has_column("sessions", "absolute_expires_at").await? {
+        if manager
+            .has_column("sessions", "absolute_expires_at")
+            .await?
+        {
             manager
                 .alter_table(
                     Table::alter()
@@ -96,7 +97,10 @@ impl MigrationTrait for Migration {
                 .await?;
         }
 
-        if manager.has_column("sessions", "previous_token_hash").await? {
+        if manager
+            .has_column("sessions", "previous_token_hash")
+            .await?
+        {
             manager
                 .alter_table(
                     Table::alter()

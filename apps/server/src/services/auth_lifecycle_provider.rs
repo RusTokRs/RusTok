@@ -49,9 +49,7 @@ fn map_lifecycle_error(error: AuthLifecycleError) -> AuthLifecycleMutationError 
         AuthLifecycleError::InvalidVerificationToken => {
             AuthLifecycleMutationError::Validation("Invalid verification token".to_string())
         }
-        AuthLifecycleError::Validation(message) => {
-            AuthLifecycleMutationError::Validation(message)
-        }
+        AuthLifecycleError::Validation(message) => AuthLifecycleMutationError::Validation(message),
         AuthLifecycleError::Internal(err) => AuthLifecycleMutationError::Internal(err.to_string()),
     }
 }
@@ -68,7 +66,6 @@ fn map_invite_error(error: InviteAcceptanceError) -> AuthLifecycleMutationError 
         }
     }
 }
-
 
 pub struct ServerAuthLifecycleProvider {
     runtime_ctx: ServerRuntimeContext,

@@ -175,9 +175,16 @@ impl OAuthTokenService {
                     ));
                 }
                 let scopes = current.scopes_list();
-                let prepared =
-                    prepare_user_tokens(db, &app, auth_config, user_id, &scopes, true, Some(&family))
-                        .await?;
+                let prepared = prepare_user_tokens(
+                    db,
+                    &app,
+                    auth_config,
+                    user_id,
+                    &scopes,
+                    true,
+                    Some(&family),
+                )
+                .await?;
 
                 commit_refresh_rotation(db, &current, &prepared).await?;
                 prepared.into_response(&scopes)

@@ -137,7 +137,10 @@ fn dormant_grant_strings(
 }
 
 fn permission_parts(permission: &Permission) -> (String, String) {
-    (permission.resource.to_string(), permission.action.to_string())
+    (
+        permission.resource.to_string(),
+        permission.action.to_string(),
+    )
 }
 
 #[Object]
@@ -436,7 +439,10 @@ impl RbacMutation {
         }
 
         let validated_update_permissions = match &input.permissions {
-            Some(raw) => Some(parse_and_authorize_role_permissions(&auth.permissions, raw)?),
+            Some(raw) => Some(parse_and_authorize_role_permissions(
+                &auth.permissions,
+                raw,
+            )?),
             None => None,
         };
 
@@ -630,7 +636,10 @@ impl RbacMutation {
         // the permission-cache TTL.
         if permissions_updated
             && let Some(writer) = role_writer.as_ref()
-            && writer.invalidate_role_users(&tenant.id, &role_id).await.is_err()
+            && writer
+                .invalidate_role_users(&tenant.id, &role_id)
+                .await
+                .is_err()
             && let Err(error) = writer.invalidate_role_users(&tenant.id, &role_id).await
         {
             tracing::error!(
@@ -908,7 +917,9 @@ mod tests {
     #[test]
     fn rejects_grants_above_actor_authority() {
         let actor = vec![Permission::USERS_READ];
-        assert!(parse_and_authorize_role_permissions(&actor, &["tenants:manage".to_string()]).is_err());
+        assert!(
+            parse_and_authorize_role_permissions(&actor, &["tenants:manage".to_string()]).is_err()
+        );
         assert!(parse_and_authorize_role_permissions(&actor, &["users:read".to_string()]).is_ok());
     }
 

@@ -75,10 +75,8 @@ pub fn UserInvites() -> impl IntoView {
         set_issued_link.set(None);
     });
 
-    let required_msg = StoredValue::new(t_local(
-        "users.invites.errorRequired",
-        "Email is required.",
-    ));
+    let required_msg =
+        StoredValue::new(t_local("users.invites.errorRequired", "Email is required."));
 
     let issue_action = Callback::new(move |_| {
         let email_val = invite_email.get().trim().to_string();

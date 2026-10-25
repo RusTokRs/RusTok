@@ -9,8 +9,8 @@ use axum::{Json, extract::State, http::HeaderMap, routing::get};
 use reqwest::Url;
 use serde::Serialize;
 
-use crate::common::request_trust::extract_effective_proto;
 use crate::common::RustokSettings;
+use crate::common::request_trust::extract_effective_proto;
 use crate::error::Error;
 use crate::services::server_runtime_context::ServerAuthRuntime;
 
@@ -48,11 +48,8 @@ async fn get_metadata(
         .auth_config()
         .ok_or_else(|| Error::Message("Auth config error".into()))?;
 
-    let issuer = resolve_metadata_issuer(
-        &auth_config.issuer,
-        &headers,
-        ctx.runtime_ctx().settings(),
-    );
+    let issuer =
+        resolve_metadata_issuer(&auth_config.issuer, &headers, ctx.runtime_ctx().settings());
     Ok(Json(metadata_for_issuer(&issuer)?))
 }
 

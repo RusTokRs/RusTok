@@ -128,7 +128,10 @@ mod tests {
     #[test]
     fn refresh_token_hash_trims_whitespace() {
         let token = "  abcdef0123456789  ";
-        assert_eq!(hash_refresh_token(token), hash_refresh_token("abcdef0123456789"));
+        assert_eq!(
+            hash_refresh_token(token),
+            hash_refresh_token("abcdef0123456789")
+        );
     }
 
     #[test]
@@ -168,7 +171,10 @@ mod tests {
         let oversized = "a".repeat(MAX_PASSWORD_LENGTH_BYTES + 1);
         assert!(hash_password(&oversized).is_err());
         assert!(!verify_password("", "$argon2id$v=19$m=19456,t=2,p=1$fake$fake").unwrap_or(true));
-        assert!(!verify_password(&oversized, "$argon2id$v=19$m=19456,t=2,p=1$fake$fake").unwrap_or(true));
+        assert!(
+            !verify_password(&oversized, "$argon2id$v=19$m=19456,t=2,p=1$fake$fake")
+                .unwrap_or(true)
+        );
     }
 
     #[test]

@@ -196,8 +196,7 @@ impl OAuthAppService {
             .col_expr(
                 oauth_apps::Column::Scopes,
                 Expr::value(
-                    serde_json::to_value(&input.scopes)
-                        .map_err(|_| Error::InternalServerError)?,
+                    serde_json::to_value(&input.scopes).map_err(|_| Error::InternalServerError)?,
                 ),
             )
             .col_expr(
@@ -519,8 +518,7 @@ impl OAuthAppService {
             ));
         }
 
-        let scopes_json =
-            serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?;
+        let scopes_json = serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?;
 
         // Two concurrent first-time grants can both observe "no consent
         // row" and race to insert; the partial unique index lets exactly
@@ -1102,7 +1100,9 @@ fn validate_redirect_uri(app_type: &str, redirect_uri: &str) -> Result<()> {
                     .parse::<std::net::IpAddr>()
                     .is_ok_and(|ip| ip.is_loopback());
             if !loopback {
-                return Err(invalid("http is only allowed for loopback hosts; use https"));
+                return Err(invalid(
+                    "http is only allowed for loopback hosts; use https",
+                ));
             }
         }
         scheme => {

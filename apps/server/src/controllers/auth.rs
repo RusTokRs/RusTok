@@ -14,9 +14,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use std::net::SocketAddr;
 
 use crate::auth::{encode_email_verification_token, encode_password_reset_token};
-use crate::common::{
-    RequestContext, RustokSettings,
-};
+use crate::common::{RequestContext, RustokSettings};
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
 use crate::models::{
     sessions,
@@ -35,7 +33,6 @@ pub use rustok_auth::{
     ResetRequestResponse, SessionItem, SessionListParams, SessionsResponse, UpdateProfileParams,
     UserInfo, UserResponse, VerificationRequestResponse,
 };
-
 
 fn user_info_from_model(user: users::Model, role: rustok_core::UserRole) -> UserInfo {
     UserInfo {
@@ -287,17 +284,11 @@ fn require_session_request_header(headers: &axum::http::HeaderMap) -> Result<()>
         .and_then(|value| value.to_str().ok())
     {
         Some("1") => Ok(()),
-        _ => Err(Error::BadRequest(
-            "Missing session request header".into(),
-        )),
+        _ => Err(Error::BadRequest("Missing session request header".into())),
     }
 }
 
-fn cookie_session_response(
-    user: users::Model,
-    tokens: AuthTokens,
-    cookie: String,
-) -> Response {
+fn cookie_session_response(user: users::Model, tokens: AuthTokens, cookie: String) -> Response {
     let user_info = user_info_from_model(user, tokens.effective_role.clone());
     let mut response = json_response(CookieSessionResponse {
         access_token: tokens.access_token,
@@ -555,7 +546,6 @@ async fn request_reset(
 
     let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, email).await?;
 
-
     let reset_token = user
         .as_ref()
         .map(|record| {
@@ -580,9 +570,7 @@ async fn request_reset(
                 tracing::warn!(
                     "Password reset email could not be prepared; keeping the public response generic"
                 );
-                return Ok(json_response(ResetRequestResponse {
-                    status: "ok",
-                }));
+                return Ok(json_response(ResetRequestResponse { status: "ok" }));
             }
         };
         let reset_url = match password_reset_url(runtime_ctx, reset_token_value) {
@@ -591,9 +579,7 @@ async fn request_reset(
                 tracing::warn!(
                     "Password reset URL could not be prepared; keeping the public response generic"
                 );
-                return Ok(json_response(ResetRequestResponse {
-                    status: "ok",
-                }));
+                return Ok(json_response(ResetRequestResponse { status: "ok" }));
             }
         };
         let recipient = user
@@ -614,9 +600,7 @@ async fn request_reset(
         });
     }
 
-    Ok(json_response(ResetRequestResponse {
-        status: "ok",
-    }))
+    Ok(json_response(ResetRequestResponse { status: "ok" }))
 }
 
 #[utoipa::path(post, path = "/api/auth/reset/confirm", tag = "auth", request_body = ConfirmResetParams,
@@ -663,7 +647,6 @@ async fn request_verification(
 
     let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, email).await?;
 
-
     let verification_token = if settings.features.email_verification {
         user.filter(|record| record.email_verified_at.is_none())
             .map(|record| {
@@ -691,9 +674,7 @@ async fn request_verification(
                 tracing::warn!(
                     "Email verification could not be prepared; keeping the public response generic"
                 );
-                return Ok(json_response(VerificationRequestResponse {
-                    status: "ok",
-                }));
+                return Ok(json_response(VerificationRequestResponse { status: "ok" }));
             }
         };
         let recipient = params.email.clone();
@@ -712,9 +693,7 @@ async fn request_verification(
         });
     }
 
-    Ok(json_response(VerificationRequestResponse {
-        status: "ok",
-    }))
+    Ok(json_response(VerificationRequestResponse { status: "ok" }))
 }
 
 #[utoipa::path(post, path = "/api/auth/verify/confirm", tag = "auth", request_body = ConfirmVerificationParams,

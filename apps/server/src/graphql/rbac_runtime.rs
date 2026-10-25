@@ -98,9 +98,9 @@ impl RbacGraphqlRoleWriter for ServerRbacGraphqlRoleWriter {
         tenant_id: &Uuid,
         role_id: &Uuid,
     ) -> Result<(), RbacGraphqlRoleWriteError> {
-        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
         use crate::models::_entities::user_roles;
         use crate::services::rbac_service::RbacService;
+        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
         let memberships = user_roles::Entity::find()
             .filter(user_roles::Column::RoleId.eq(*role_id))

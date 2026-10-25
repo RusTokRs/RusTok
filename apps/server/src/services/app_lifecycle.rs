@@ -441,8 +441,12 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         if let Some(worker) = runtime_ctx.shared_take::<RemoteExecutorReaperHandle>() {
             match tokio::time::timeout(timeout_duration, worker.join()).await {
                 Ok(Ok(())) => tracing::info!("Remote executor reaper worker stopped gracefully"),
-                Ok(Err(err)) => tracing::warn!(?err, "Remote executor reaper worker joined with error"),
-                Err(_) => tracing::warn!("Remote executor reaper worker shutdown timed out after 5s"),
+                Ok(Err(err)) => {
+                    tracing::warn!(?err, "Remote executor reaper worker joined with error")
+                }
+                Err(_) => {
+                    tracing::warn!("Remote executor reaper worker shutdown timed out after 5s")
+                }
             }
         }
     };
