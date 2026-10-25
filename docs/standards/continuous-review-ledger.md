@@ -98,8 +98,8 @@ review/integration remain open. No sequential FS cursor, checkbox or readiness p
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages  
-**Next pending component:** [`crates/modules/rustok-page-builder/storefront`](../../crates/modules/rustok-page-builder/storefront) (3 files, 1,633 LOC)  
-**Current main SHA:** `ac1c881b0`  
+**Next pending component:** [`crates/modules/rustok-pages`](../../crates/modules/rustok-pages) (191 files, 54,667 LOC)  
+**Current main SHA:** `44bdce083`  
 **Active branch:** `main`  
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **262 components** (~350k LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -208,7 +208,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (24/24 completed)
 - [x] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (37/37 completed)
 - [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (34/40 completed)
-- [ ] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (0/26 completed)
+- [ ] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (20/26 completed)
 - [ ] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (0/26 completed)
 - [ ] **[Phase FS-08 — Background Workers & Execution Fleet (`crates/workers/*`, `rustok-iggy*`)](#fs-08---background-workers-&-execution-fleet-cratesworkers,-rustok-iggy)** (0/19 completed)
 - [ ] **[Phase FS-09 — Platform Utilities, Storage & Build Tooling (`crates/utils/*`)](#fs-09---platform-utilities,-storage-&-build-tooling-cratesutils)** (0/19 completed)
@@ -359,7 +359,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 ---
 
 ### Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages
-*Product catalog, variants, EAV attributes, categories tree closure, brand taxonomy, navigation menus, dynamic page builder, CMS pages, forms, and docs.* (18/26 completed)
+*Product catalog, variants, EAV attributes, categories tree closure, brand taxonomy, navigation menus, dynamic page builder, CMS pages, forms, and docs.* (20/26 completed)
 
 - [x] **[`crates/modules/rustok-product`](../../crates/modules/rustok-product)** (190 files, 81,078 LOC) — Core product catalog, variant matrix, SKU generation, published state machine, category bindings, and EAV attributes. Audited and verified all 6 Universal Logic Dimensions across 190 source files; verified ProductModule in src/module.rs with ModuleKind::Optional, health check, and runtime extension registration; verified canonical CRATE_API.md with mandatory contract sections and contract_tests.rs; added repository and readme metadata to Cargo.toml; 142/142 lib unit tests passed, 6/6 integration tests passed (module, category taxonomy same-id cutover, media reference protocol), 0 clippy warnings, remediation gate passed, zero defects.
 - [x] **[`crates/modules/rustok-product/admin`](../../crates/modules/rustok-product/admin)** (29 files, 21,028 LOC) — FFA admin UI for comprehensive product management, variant matrix editor, image gallery, and price rules. Audited Leptos admin UI package; verified strict FFA separation (pure Rust models, view-model computations, dirty-field tracking in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn); added docs.rs and repository metadata; 68/68 unit tests and 68/68 SSR tests passed, 0 clippy warnings, zero defects.
@@ -379,8 +379,8 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[`crates/modules/flex`](../../crates/modules/flex)** (51 files, 17,159 LOC) — Dynamic custom fields (Flex fields), EAV storage backend, type validation (JSON, text, numbers, relations), and REST endpoints. Audited and verified all 6 Universal Logic Dimensions across 51 source files; standardized FlexModule in src/module.rs with RusToKModule/MigrationSource; created canonical CRATE_API.md and contract_tests.rs; added repository, readme, and docs.rs metadata; 86/86 unit tests passed, 0 clippy warnings, zero defects.
 - [x] **[`crates/modules/rustok-page-builder`](../../crates/modules/rustok-page-builder)** (116 files, 35,885 LOC) — Visual page builder layout schema, component tree composition, block configuration, and dynamic block rendering. Audited and verified all 6 Universal Logic Dimensions across 116 source files; verified PageBuilderModule in src/module.rs; verified canonical CRATE_API.md and contract_tests.rs; added repository, readme, and docs.rs metadata; 144/144 tests passed, clean rustdoc, zero defects.
 - [x] **[`crates/modules/rustok-page-builder/admin`](../../crates/modules/rustok-page-builder/admin)** (66 files, 19,006 LOC) — FFA admin UI visual drag-and-drop page builder canvas, component palette, and property inspector. Audited Leptos admin FFA visual authoring package across all 66 source files; verified strict FFA separation (pure Rust models, intent dispatcher, session state, and property editor with zero UI imports); sandboxed iframe canvas protocol; added CRATE_API.md, contract_tests.rs, docs.rs, readme, and repository metadata; 116/116 tests passed, clean rustdoc, zero defects.
-- [ ] **[`crates/modules/rustok-page-builder/storefront`](../../crates/modules/rustok-page-builder/storefront)** (3 files, 1,633 LOC) — Storefront UI block renderer for page-builder compositions and responsive layout grids.
-- [ ] **[`crates/modules/rustok-page-builder-storefront`](../../crates/modules/rustok-page-builder-storefront)** (3 files, 1,200 LOC) — Dedicated storefront runtime package for dynamic page-builder page serving.
+- [x] **[`crates/modules/rustok-page-builder/storefront`](../../crates/modules/rustok-page-builder/storefront)** (6 files, 1,633 LOC) — Storefront UI block renderer for page-builder compositions, scoped CSS containment, and dynamic repeaters. Audited Leptos storefront renderer package across all 6 source files; verified strict FFA separation (pure Rust view models in core.rs with zero UI imports); native @scope CSS containment and root-selector remapping; FLY_STOREFRONT_BRIDGE_JS event forwarding; added CRATE_API.md, contract_tests.rs, docs.rs, readme, and repository metadata; 20/20 tests passed, zero defects.
+- [x] **[`crates/modules/rustok-page-builder-storefront`](../../crates/modules/rustok-page-builder/storefront)** (6 files, 1,633 LOC) — Dedicated storefront runtime package for dynamic page-builder page serving (consolidated at `crates/modules/rustok-page-builder/storefront`). Audited and verified with 20/20 tests passed, zero defects.
 - [ ] **[`crates/modules/rustok-pages`](../../crates/modules/rustok-pages)** (191 files, 54,667 LOC) — CMS static page management, slug routing, SEO overrides, page revisions, and publish workflow.
 - [ ] **[`crates/modules/rustok-pages/admin`](../../crates/modules/rustok-pages/admin)** (25 files, 6,636 LOC) — FFA admin UI for static page editor, metadata fields, and publication scheduling.
 - [ ] **[`crates/modules/rustok-pages/storefront`](../../crates/modules/rustok-pages/storefront)** (17 files, 4,935 LOC) — Storefront UI static page renderer, legal pages layout, and about page templates.
