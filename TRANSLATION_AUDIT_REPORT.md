@@ -328,4 +328,7 @@ node scripts/verify/verify-db-multilingual-contract.mjs
 * Верификация: `git diff --stat` — 2 files 35 ins (5b451fd) + CRATE_API.md; `grep -rn machine_memory_binding` подтверждает двойную проверку; ветка pushed 8125e92..5b451fd.
 
 Оставшиеся P1/P2 для следующих фаз: P1-12 inventory full_rescan limit документирован (MAX_FULL_RESCAN_RESOURCES 100k, checkpoint CAS), P1-3 fallback-locale UX, P1-6/P0-6 прогресс уже учтены через receipt proposal_id.
+### Итерация 6 — расширение lifecycle и верификация (a353506)
+* `workflow.rs:approve_proposal` — после `commit` теперь `record_job_lifecycle("proposal_approved")`; `workflow::finalize_apply` после `commit` — `record_job_lifecycle("proposal_applied")`. Вместе с предыдущими `created/cancelled/completed` метрика `rustok_translation_workflow_job_lifecycle_total{transition}` теперь покрывает весь P4.4 lifecycle (5 состояний; content-free, bounded).
+* Верификация: `grep -rn record_job_lifecycle` — 5 точек; `git diff --stat` 1 file 2 ins; pushed a353506.
 
