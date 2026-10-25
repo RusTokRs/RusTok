@@ -719,7 +719,7 @@ rbac-action-view-perms =
 rbac-perms-granted-for = Granted Permissions for { $name }:
 # plural-exempt: adjectival 'N total' is invariant in English
 rbac-perms-total = { $count } total
-rbac-system-protected-tooltip = System roles cannot be deleted
+rbac-system-protected-tooltip = The super administrator role cannot be deleted
 rbac-superadmin-locked-notice = Super Administrator possesses full immutable platform authority. All permissions are granted and cannot be restricted.
 rbac-role-desc-super-admin = Full unrestricted platform and tenant governance privileges
 rbac-role-desc-admin = Operational administrative control across modules and settings
@@ -737,6 +737,12 @@ rbac-matrix-selected-count =
     { $total ->
         [one] { $selected } of 1 permission selected
        *[other] { $selected } of { $total } permissions selected
+    }
+rbac-module-disabled-badge = Module disabled
+rbac-perms-inactive =
+    { $count ->
+        [one] 1 inactive
+       *[other] { $count } inactive
     }
 rbac-matrix-module-all = Select All in Module
 rbac-matrix-module-none = Deselect All in Module

@@ -81,22 +81,20 @@ where
             .map_err(|error| {
                 PortError::unavailable("rbac.permission_resolution", error.to_string())
             })?;
-        let resolved_permissions = resolution
-            .permissions
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>();
         let matched_permissions = request
             .permissions
             .iter()
             .filter(|permission| {
-                if let Ok(parsed) = permission.parse::<rustok_api::Permission>() {
-                    crate::has_effective_permission_in_set(&resolution.permissions, &parsed)
-                } else {
-                    resolved_permissions
-                        .iter()
-                        .any(|resolved| resolved == *permission)
-                }
+                // Unparsable permission strings are never matched: resolved
+                // permissions are canonical typed values, so a literal string
+                // fallback could only ever compare against canonical display
+                // forms and would falsely suggest non-canonical permissions
+                // are grantable. Fail closed instead.
+                permission
+                    .parse::<rustok_api::Permission>()
+                    .is_ok_and(|parsed| {
+                        crate::has_effective_permission_in_set(&resolution.permissions, &parsed)
+                    })
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -283,6 +281,41 @@ mod tests {
         assert_eq!(
             response.missing_permissions,
             vec!["users:delete".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn decision_port_never_matches_unparsable_permissions() {
+        let tenant_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let provider = RbacPermissionDecisionProvider::new(MockResolver {
+            permissions: vec![Permission::USERS_READ],
+        });
+
+        let context = PortContext::new(
+            tenant_id.to_string(),
+            PortActor::user(user_id.to_string()),
+            "en",
+            "corr-decision-unparsable",
+        )
+        .with_deadline(std::time::Duration::from_secs(5));
+
+        let response = provider
+            .check_permissions(
+                context,
+                RbacPermissionCheckRequest {
+                    permissions: vec!["Users:Read".to_string(), "users:read".to_string()],
+                    mode: RbacPermissionCheckMode::All,
+                },
+            )
+            .await
+            .expect("check_permissions should succeed");
+
+        assert!(!response.allowed);
+        assert_eq!(response.matched_permissions, vec!["users:read".to_string()]);
+        assert_eq!(
+            response.missing_permissions,
+            vec!["Users:Read".to_string()]
         );
     }
 

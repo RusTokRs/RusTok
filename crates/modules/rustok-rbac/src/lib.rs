@@ -63,12 +63,15 @@ pub use repair::{
     RbacSystemRoleRepairReport,
 };
 pub use role_mutation::{
-    RbacRoleMutationChange, RbacRoleMutationFacts, RbacRoleMutationOutcome, RbacRoleMutationPlan,
+    RbacCustomRoleAssignmentPlan, RbacCustomRoleAssignmentRequest, RbacRoleMutationChange,
+    RbacRoleMutationFacts, RbacRoleMutationOutcome, RbacRoleMutationPlan,
     RbacRoleMutationPolicyError, RbacRolePersistenceError, RbacUserAuthorityChange,
     RbacUserRoleMutationRequest, count_remaining_active_super_admins_on,
     ensure_user_authority_continuity_on, has_exact_tenant_role_assignment_on,
-    plan_persisted_user_role_mutation_on, plan_user_role_mutation, replace_persisted_user_role_on,
-    require_request_role_grant, require_role_assignment, require_user_management,
+    plan_persisted_custom_role_assignment_on, plan_persisted_user_role_mutation_on,
+    plan_user_role_mutation, replace_persisted_user_role_by_slug_on,
+    replace_persisted_user_role_on, require_request_role_grant, require_role_assignment,
+    require_user_management,
 };
 pub use services::authz_mode::AuthzEngine;
 pub use services::permission_authorizer::{
@@ -79,6 +82,10 @@ pub use services::permission_evaluator::{
     PermissionEvaluation, evaluate_all_permissions, evaluate_any_permission,
     evaluate_single_permission,
 };
+pub use services::module_availability::{
+    ModulePermissionStatus, PermissionAvailability,
+};
+
 pub use services::permission_policy::{
     DeniedReasonKind, PermissionCheckOutcome, check_all_permissions, check_any_permission,
     check_permission, denied_reason_for_denial, has_effective_permission_in_set,
@@ -86,10 +93,6 @@ pub use services::permission_policy::{
 };
 
 pub use services::permission_resolver::{PermissionResolution, PermissionResolver};
-pub use services::policy_model::{
-    TenantPolicyEnforcer, build_tenant_policy_csv, build_tenant_policy_enforcer,
-    default_tenant_policy_model, resolved_permissions_subject,
-};
 pub use services::relation_permission_resolver::{
     PermissionCache, PermissionCacheLookup, RelationPermissionStore, SeaOrmRelationPermissionStore,
     authorize_current_permission, invalidate_cached_permissions, load_role_user_ids_on,

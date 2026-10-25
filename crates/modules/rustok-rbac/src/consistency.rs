@@ -1,6 +1,6 @@
 //! Owner-owned RBAC persistence consistency diagnostics.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::str::FromStr;
 
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use rustok_api::Permission;
-use rustok_core::{Rbac, UserRole};
+use rustok_core::UserRole;
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct RbacConsistencyStats {
@@ -67,8 +67,6 @@ struct SystemRolePermissionDrift {
 }
 
 struct SystemRoleSnapshot {
-    role: UserRole,
-    permissions: HashSet<Permission>,
     invalid_permission_rows: i64,
 }
 
@@ -91,49 +89,36 @@ async fn load_system_role_permission_drift(
     for row in rows {
         let role_id: Uuid = row.try_get("", "role_id")?;
         let role_slug: String = row.try_get("", "role_slug")?;
-        let role = UserRole::from_str(&role_slug).map_err(|error| {
+        // Validate the slug against the built-in vocabulary; the label itself
+        // no longer drives any drift comparison.
+        UserRole::from_str(&role_slug).map_err(|error| {
             sea_orm::DbErr::Custom(format!(
                 "invalid system role slug `{role_slug}` in RBAC consistency query: {error}"
             ))
         })?;
-        let snapshot = snapshots
-            .entry(role_id)
-            .or_insert_with(|| SystemRoleSnapshot {
-                role,
-                permissions: HashSet::new(),
-                invalid_permission_rows: 0,
-            });
+        let snapshot = snapshots.entry(role_id).or_insert(SystemRoleSnapshot {
+            invalid_permission_rows: 0,
+        });
 
         let resource: Option<String> = row.try_get("", "permission_resource")?;
         let action: Option<String> = row.try_get("", "permission_action")?;
         let (Some(resource), Some(action)) = (resource, action) else {
             continue;
         };
-        match Permission::from_str(&format!("{resource}:{action}")) {
-            Ok(permission) => {
-                snapshot.permissions.insert(permission);
-            }
-            Err(_) => snapshot.invalid_permission_rows += 1,
+        if Permission::from_str(&format!("{resource}:{action}")).is_err() {
+            snapshot.invalid_permission_rows += 1;
         }
     }
 
+    // Persisted grants are the source of truth: a system role whose grants
+    // differ from the bootstrap defaults is a legitimate tenant state, not
+    // drift. The only integrity problem reported here is persisted rows that
+    // cannot be parsed into the canonical permission vocabulary at all.
     let mut drift = SystemRolePermissionDrift::default();
     for snapshot in snapshots.into_values() {
-        let expected = Rbac::permissions_for_role(&snapshot.role);
-        let missing = expected
-            .iter()
-            .filter(|permission| !snapshot.permissions.contains(permission))
-            .count() as i64;
-        let extra = snapshot
-            .permissions
-            .iter()
-            .filter(|permission| !expected.contains(permission))
-            .count() as i64
-            + snapshot.invalid_permission_rows;
-        if missing > 0 || extra > 0 {
+        if snapshot.invalid_permission_rows > 0 {
             drift.roles_with_drift += 1;
-            drift.missing_permissions += missing;
-            drift.extra_permissions += extra;
+            drift.extra_permissions += snapshot.invalid_permission_rows;
         }
     }
 

@@ -5,24 +5,26 @@ use rustok_api::{
     Action, AuthContext, AuthPrincipalContext, Permission, Resource, StoredLocale, TenantContext,
     graphql::GraphQLError, has_effective_permission,
 };
-use rustok_core::{Rbac, UserRole, i18n::Locale};
+use rustok_core::{UserRole, i18n::Locale};
 use sea_orm::{ConnectionTrait, DatabaseConnection};
 use uuid::Uuid;
 
 use crate::{RbacPresentationResourceKind, RbacPresentationStore, SeaOrmRbacPresentationStore};
 
-use super::control_plane::{prepare_statement, require_direct_control_plane_user};
+use super::control_plane::{availability_snapshot, prepare_statement, require_direct_control_plane_user};
 use super::types::{PlatformPermissionItem, RoleInfo};
+
+/// Map a storage failure to a generic internal error. Raw database errors
+/// are logged server-side and never returned to GraphQL clients, and a failed
+/// read must never masquerade as empty data (an operator saving a role from
+/// a falsely-empty permission list would wipe its grants).
+fn internal_db_error<E: std::fmt::Display>(operation: &str, error: E) -> FieldError {
+    tracing::error!(%error, operation, "RBAC role query storage operation failed");
+    <FieldError as GraphQLError>::internal_error("RBAC role storage is temporarily unavailable")
+}
 
 #[derive(Default)]
 pub struct RbacQuery;
-
-const ALL_ROLES: &[UserRole] = &[
-    UserRole::SuperAdmin,
-    UserRole::Admin,
-    UserRole::Manager,
-    UserRole::Customer,
-];
 
 fn legacy_seed_display_name(role: &UserRole) -> &'static str {
     match role {
@@ -625,8 +627,9 @@ impl RbacQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let backend = db.get_database_backend();
         let locale = ctx.data_opt::<Locale>().copied().unwrap_or_default();
-        let requested_locale = StoredLocale::new(locale.as_str())
-            .expect("canonical GraphQL locale must be a valid stored locale");
+        let requested_locale = StoredLocale::new(locale.as_str()).map_err(|error| {
+            internal_db_error("resolve stored locale", error)
+        })?;
         let store = SeaOrmRbacPresentationStore::new(db.clone());
 
         let sql_roles = "SELECT id, name, slug, description, is_system FROM roles WHERE tenant_id = ? ORDER BY is_system DESC, name ASC";
@@ -637,18 +640,23 @@ impl RbacQuery {
                 vec![tenant.id.into()],
             ))
             .await
-            .map_err(|error| FieldError::new(format!("Failed to query roles: {error}")))?;
+            .map_err(|error| internal_db_error("list roles", error))?;
 
-        // If tenant has no roles seeded in DB yet, bootstrap system roles
+        // If tenant has no roles seeded in DB yet, bootstrap system roles.
+        // This lazy repair only creates missing default records, and its
+        // failure is surfaced: silently returning an empty role list would
+        // invite an operator to recreate or resave roles from a false blank
+        // state.
         if role_rows.is_empty() {
-            let _ = crate::repair::repair_system_roles(
+            crate::repair::repair_system_roles(
                 db,
                 crate::repair::RbacSystemRoleRepairOptions {
                     tenant_id: Some(tenant.id),
                     apply: true,
                 },
             )
-            .await;
+            .await
+            .map_err(|error| internal_db_error("seed default roles", error))?;
             role_rows = db
                 .query_all_raw(prepare_statement(
                     backend,
@@ -656,10 +664,11 @@ impl RbacQuery {
                     vec![tenant.id.into()],
                 ))
                 .await
-                .unwrap_or_default();
+                .map_err(|error| internal_db_error("list roles after seeding", error))?;
         }
 
         if !role_rows.is_empty() {
+            let availability = availability_snapshot(ctx, tenant.id).await;
             let sql_perms = "SELECT rp.role_id, p.resource, p.action FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id WHERE p.tenant_id = ?";
             let perm_rows = db
                 .query_all_raw(prepare_statement(
@@ -668,7 +677,7 @@ impl RbacQuery {
                     vec![tenant.id.into()],
                 ))
                 .await
-                .unwrap_or_default();
+                .map_err(|error| internal_db_error("list role permissions", error))?;
 
             let mut perms_by_role: HashMap<Uuid, Vec<String>> = HashMap::new();
             for row in perm_rows {
@@ -688,19 +697,32 @@ impl RbacQuery {
             for row in role_rows {
                 let id: Uuid = row
                     .try_get("", "id")
-                    .map_err(|e| FieldError::new(e.to_string()))?;
+                    .map_err(|e| internal_db_error("read role row", e))?;
                 let name: String = row
                     .try_get("", "name")
-                    .map_err(|e| FieldError::new(e.to_string()))?;
+                    .map_err(|e| internal_db_error("read role row", e))?;
                 let slug: String = row
                     .try_get("", "slug")
-                    .map_err(|e| FieldError::new(e.to_string()))?;
+                    .map_err(|e| internal_db_error("read role row", e))?;
                 let description: Option<String> = row.try_get("", "description").ok();
                 let is_system: bool = row.try_get("", "is_system").unwrap_or(false);
 
                 let mut perms = perms_by_role.remove(&id).unwrap_or_default();
                 perms.sort();
                 perms.dedup();
+                let inactive_permissions = match availability.as_ref() {
+                    Some(snapshot) => perms
+                        .iter()
+                        .filter(|permission| {
+                            matches!(
+                                snapshot.status(permission),
+                                crate::ModulePermissionStatus::Disabled(_)
+                            )
+                        })
+                        .cloned()
+                        .collect(),
+                    None => Vec::new(),
+                };
 
                 let display_name = if is_system {
                     if let Ok(builtin_role) = slug.parse::<UserRole>() {
@@ -720,6 +742,7 @@ impl RbacQuery {
                     display_name,
                     description,
                     is_system,
+                    inactive_permissions,
                     permissions: perms,
                 });
             }
@@ -727,25 +750,9 @@ impl RbacQuery {
             return Ok(roles);
         }
 
-        // Fallback for static built-in roles
-        let mut roles = Vec::with_capacity(ALL_ROLES.len());
-        for role in ALL_ROLES {
-            let mut perms: Vec<String> = Rbac::permissions_for_role(role)
-                .iter()
-                .map(|permission| permission.to_string())
-                .collect();
-            perms.sort();
-            roles.push(RoleInfo {
-                id: None,
-                slug: role.to_string(),
-                display_name: role_display_name(&store, tenant.id, role, &requested_locale).await?,
-                description: None,
-                is_system: true,
-                permissions: perms,
-            });
-        }
-
-        Ok(roles)
+        // No persisted roles (and bootstrap did not produce any): report the
+        // real persisted state instead of fabricating static built-in roles.
+        Ok(Vec::new())
     }
 
     /// List all platform permissions grouped by module / resource.
@@ -769,6 +776,19 @@ impl RbacQuery {
             ));
         }
 
+        let availability = availability_snapshot(ctx, tenant.id).await;
+        let availability_fields = |perm_id: &str| -> (Option<String>, String) {
+            match availability.as_ref() {
+                Some(snapshot) => {
+                    let status = snapshot.status(perm_id);
+                    (
+                        status.module_slug().map(ToString::to_string),
+                        status.as_str().to_string(),
+                    )
+                }
+                None => (None, "core".to_string()),
+            }
+        };
         let mut permissions_map: BTreeMap<String, PlatformPermissionItem> = BTreeMap::new();
 
         // 1. Seed canonical platform catalog
@@ -777,6 +797,7 @@ impl RbacQuery {
             for act in actions {
                 let act_str = act.to_string();
                 let perm_id = format!("{res_str}:{act_str}");
+                let (module_slug, module_status) = availability_fields(&perm_id);
                 permissions_map.insert(
                     perm_id.clone(),
                     PlatformPermissionItem {
@@ -784,6 +805,8 @@ impl RbacQuery {
                         resource: res_str.clone(),
                         action: act_str,
                         description: None,
+                        module_slug,
+                        module_status,
                     },
                 );
             }
@@ -793,13 +816,14 @@ impl RbacQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let backend = db.get_database_backend();
         let perm_query_sql = "SELECT DISTINCT resource, action, description FROM permissions WHERE tenant_id = ? ORDER BY resource ASC, action ASC";
-        if let Ok(rows) = db
+        let rows = db
             .query_all_raw(prepare_statement(
                 backend,
                 perm_query_sql,
                 vec![tenant.id.into()],
             ))
             .await
+            .map_err(|error| internal_db_error("list tenant permissions", error))?;
         {
             for row in rows {
                 if let (Ok(res), Ok(act)) = (
@@ -811,6 +835,7 @@ impl RbacQuery {
                         .ok()
                         .flatten();
                     let perm_id = format!("{res}:{act}");
+                    let (module_slug, module_status) = availability_fields(&perm_id);
                     permissions_map.insert(
                         perm_id.clone(),
                         PlatformPermissionItem {
@@ -818,6 +843,8 @@ impl RbacQuery {
                             resource: res,
                             action: act,
                             description: desc,
+                            module_slug,
+                            module_status,
                         },
                     );
                 }

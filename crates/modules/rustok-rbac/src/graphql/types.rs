@@ -35,6 +35,10 @@ pub struct RoleInfo {
     pub is_system: bool,
     /// All permissions granted to this role (e.g. "users:create")
     pub permissions: Vec<String>,
+    /// Granted permissions whose owning module is currently disabled for
+    /// this tenant. They remain persisted on the role but are not effective
+    /// until the module is enabled again.
+    pub inactive_permissions: Vec<String>,
 }
 
 #[derive(Debug, Clone, SimpleObject)]
@@ -47,6 +51,11 @@ pub struct PlatformPermissionItem {
     pub action: String,
     /// Optional permission description
     pub description: Option<String>,
+    /// Slug of the module that owns this permission, when one is registered.
+    pub module_slug: Option<String>,
+    /// Availability for the current tenant: "core" (platform permission,
+    /// always active), "enabled" or "disabled" (owning module state).
+    pub module_status: String,
 }
 
 #[derive(InputObject)]

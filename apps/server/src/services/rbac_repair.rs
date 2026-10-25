@@ -8,7 +8,7 @@ use super::rbac_invalidation_generation::reserve_rbac_invalidation_generation;
 use super::rbac_service::RbacService;
 
 impl RbacService {
-    /// Build a read-only repair plan for canonical built-in role definitions.
+    /// Build a read-only seeding plan for missing canonical default roles.
     pub async fn plan_system_role_repair(
         db: &DatabaseConnection,
         tenant_id: Option<uuid::Uuid>,
@@ -19,8 +19,9 @@ impl RbacService {
             .map_err(|error| Error::Message(error.to_string()))
     }
 
-    /// Repair canonical built-in role definitions and invalidate every affected
+    /// Seed missing canonical default role records and invalidate every affected
     /// permission snapshot after commit, locally and across replicas.
+    /// Existing role grants are tenant-owned database state and are not rewritten.
     pub async fn repair_system_roles_committed(
         db: &DatabaseConnection,
         tenant_id: Option<uuid::Uuid>,

@@ -713,7 +713,7 @@ rbac-action-hide-perms = Скрыть разрешения
 rbac-action-view-perms = Показать { $count } разрешений
 rbac-perms-granted-for = Выданные разрешения для { $name }:
 rbac-perms-total = всего { $count }
-rbac-system-protected-tooltip = Системные роли нельзя удалить
+rbac-system-protected-tooltip = Роль суперадминистратора нельзя удалить
 rbac-superadmin-locked-notice = Суперадминистратор обладает полным неизменяемым авторитетом на платформе. Все разрешения выданы и не могут быть ограничены.
 rbac-role-desc-super-admin = Полные неограниченные привилегии управления платформой и тенантом
 rbac-role-desc-admin = Операционный административный контроль по всем модулям и настройкам
@@ -728,6 +728,13 @@ rbac-matrix-search-placeholder = Фильтр по модулям или раз�
 rbac-matrix-select-all = Выбрать все
 rbac-matrix-clear-all = Снять все
 rbac-matrix-selected-count = Выбрано { $selected } из { $total } разрешений
+rbac-module-disabled-badge = Модуль отключён
+rbac-perms-inactive =
+    { $count ->
+        [one] 1 неактивное
+        [few] { $count } неактивных
+       *[other] { $count } неактивных
+    }
 rbac-matrix-module-all = Выбрать все в модуле
 rbac-matrix-module-none = Снять все в модуле
 

@@ -146,7 +146,7 @@ async fn role_count(db: &DatabaseConnection, tenant_id: Uuid) -> i64 {
 }
 
 #[tokio::test]
-async fn dry_run_is_read_only_and_apply_repairs_permission_drift() {
+async fn dry_run_is_read_only_and_apply_preserves_existing_role_grants() {
     let db = setup_test_db_with_migrations::<RbacSystemRoleTestMigrator>().await;
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
@@ -165,12 +165,10 @@ async fn dry_run_is_read_only_and_apply_repairs_permission_drift() {
         .expect("build repair plan");
 
     assert!(!plan.applied);
-    assert!(plan.role_permission_links_removed >= 1);
-    assert!(
-        plan.affected_users
-            .iter()
-            .any(|affected| affected.tenant_id == tenant_id && affected.user_id == user_id)
-    );
+    // Persisted grants are the source of truth: an extra grant on an existing
+    // system role is tenant state, not drift, so nothing is planned for removal.
+    assert_eq!(plan.role_permission_links_removed, 0);
+    assert!(plan.affected_users.is_empty());
     assert!(role_permission_exists(&db, manager_role_id, stale_permission_id).await);
     assert_eq!(
         read_permission_invalidation_generation(&db).await.unwrap(),
@@ -195,7 +193,8 @@ async fn dry_run_is_read_only_and_apply_repairs_permission_drift() {
         read_permission_invalidation_generation(&db).await.unwrap(),
         1
     );
-    assert!(!role_permission_exists(&db, manager_role_id, stale_permission_id).await);
+    // The pre-existing grant survives repair untouched.
+    assert!(role_permission_exists(&db, manager_role_id, stale_permission_id).await);
 }
 
 #[tokio::test]

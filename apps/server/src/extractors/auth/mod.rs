@@ -286,20 +286,47 @@ pub async fn resolve_current_user_from_access_token(
                     .await
                     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
+            // Dormant grants — permissions owned by modules disabled for
+            // this tenant — never enter the request snapshot. Disabling a
+            // module therefore revokes its capabilities immediately and
+            // everywhere, while the persisted role grants remain intact and
+            // reactivate when the module is enabled again. Availability
+            // resolution failures fail closed, like role resolution above.
+            let granted_permissions = match crate::services::rbac_module_availability::permission_availability_for(
+                ctx.runtime_ctx(),
+                tenant_id,
+            )
+            .await
+            {
+                Ok(Some(availability)) => availability.active_permissions(&granted_permissions),
+                Ok(None) => granted_permissions,
+                Err(error) => {
+                    tracing::error!(
+                        %error,
+                        tenant_id = %tenant_id,
+                        user_id = %user.id,
+                        "RBAC module availability resolution failed"
+                    );
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Module policy unavailable",
+                    ));
+                }
+            };
+
             let effective_permissions = if principal_kind == AuthPrincipalKind::DelegatedUser {
                 restrict_permissions_to_scopes(&granted_permissions, &claims.scopes)
             } else {
                 granted_permissions
             };
+            // Authoritative role resolution must not silently degrade to a
+            // permission-derived heuristic on database failure.
             let effective_role =
-                match crate::services::auth_lifecycle::AuthLifecycleService::resolve_effective_role(
+                crate::services::auth_lifecycle::AuthLifecycleService::resolve_effective_role(
                     db, tenant_id, user.id,
                 )
                 .await
-                {
-                    Ok(role) => role,
-                    Err(_) => infer_user_role_from_permissions(&effective_permissions),
-                };
+                .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
             if claims.role != effective_role {
                 RbacService::record_claim_role_mismatch();
                 warn!(

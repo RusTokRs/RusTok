@@ -80,7 +80,7 @@ fn auth_admin_status_and_row_writes_follow_effective_change() {
         .find("status_change_requested(&target_status, requested_status.as_ref())")
         .expect("status must compare locked state");
     let plan = update
-        .find("let role_mutation_plan: Option<RbacRoleMutationPlan>")
+        .find("let role_mutation_plan: Option<RolePlan>")
         .expect("owner role plan must be used");
     let row_update = update
         .find("let user = if user_row_update_requested")

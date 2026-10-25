@@ -90,7 +90,7 @@ export function AssignRoleDialog({
     setIsSubmitting(true);
     try {
       const result = await assignUserRole(
-        { userId: trimmedId, role: roleSlug },
+        { userId: trimmedId, roleSlug },
         { token: effectiveToken, tenantSlug: effectiveTenantSlug }
       );
       if (result.success) {
