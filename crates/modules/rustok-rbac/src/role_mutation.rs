@@ -614,7 +614,6 @@ async fn load_role_row_on<C: sea_orm::ConnectionTrait>(
     tenant_id: Uuid,
     slug: &str,
 ) -> Result<Option<Uuid>, RbacRolePersistenceError> {
-    use sea_orm::ConnectionTrait;
     let row = db
         .query_one_raw(role_statement(
             db,
@@ -633,7 +632,6 @@ async fn load_tenant_role_memberships_on<C: sea_orm::ConnectionTrait>(
     tenant_id: Uuid,
     user_id: Uuid,
 ) -> Result<Vec<(Uuid, String)>, RbacRolePersistenceError> {
-    use sea_orm::ConnectionTrait;
     let rows = db
         .query_all_raw(role_statement(
             db,
@@ -653,7 +651,6 @@ async fn load_role_permissions_on<C: sea_orm::ConnectionTrait>(
     tenant_id: Uuid,
     role_id: Uuid,
 ) -> Result<Vec<rustok_api::Permission>, RbacRolePersistenceError> {
-    use sea_orm::ConnectionTrait;
     let rows = db
         .query_all_raw(role_statement(
             db,

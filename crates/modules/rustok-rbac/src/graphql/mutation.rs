@@ -629,7 +629,7 @@ impl RbacMutation {
             // an error the client would retry as if nothing happened. Retry
             // once, then log loudly: any remaining staleness is bounded by
             // the permission-cache TTL.
-            if let Err(error) = writer.invalidate_role_users(&tenant.id, &role_id).await {
+            if writer.invalidate_role_users(&tenant.id, &role_id).await.is_err() {
                 if let Err(error) = writer.invalidate_role_users(&tenant.id, &role_id).await {
                     tracing::error!(
                         %error,
