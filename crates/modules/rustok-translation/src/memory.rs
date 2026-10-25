@@ -294,6 +294,14 @@ impl TranslationMemoryService {
         let revision = next_revision(current.revision)?;
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation memory busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         let update = memory_entry::Entity::update_many()
             .col_expr(
                 memory_entry::Column::RetentionPolicy,
@@ -363,6 +371,14 @@ impl TranslationMemoryService {
         let revision = next_revision(current.revision)?;
         let now = Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation memory busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         let update = memory_entry::Entity::update_many()
             .col_expr(memory_entry::Column::TombstonedAt, Expr::value(Some(now)))
             .col_expr(memory_entry::Column::Revision, Expr::value(revision))
@@ -456,6 +472,14 @@ impl TranslationMemoryService {
             tombstoned_at: current.tombstoned_at,
         };
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation memory busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         if let Some(replay) = insert_receipt(
             &transaction,
             tenant_id,
