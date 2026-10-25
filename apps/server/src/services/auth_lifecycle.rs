@@ -37,6 +37,7 @@ pub enum AuthLifecycleError {
     InvalidCredentials,
     UserInactive,
     AccountLocked,
+    EmailNotVerified,
     InvalidRefreshToken,
     SessionExpired,
     UserNotFound,
@@ -78,6 +79,9 @@ impl From<AuthLifecycleError> for Error {
             AuthLifecycleError::UserInactive => Error::Unauthorized("User is inactive".into()),
             AuthLifecycleError::AccountLocked => {
                 Error::Unauthorized("Account is temporarily locked".into())
+            }
+            AuthLifecycleError::EmailNotVerified => {
+                Error::Unauthorized("Email address is not verified".into())
             }
             AuthLifecycleError::InvalidRefreshToken => {
                 Error::Unauthorized("Invalid refresh token".into())
@@ -389,6 +393,7 @@ impl AuthLifecycleService {
         password: &str,
         ip_address: Option<String>,
         user_agent: Option<String>,
+        require_email_verification: bool,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
         Self::login_with_config(
             ctx.db(),
@@ -398,6 +403,7 @@ impl AuthLifecycleService {
             password,
             ip_address,
             user_agent,
+            require_email_verification,
         )
         .await
     }
@@ -410,6 +416,7 @@ impl AuthLifecycleService {
         password: &str,
         ip_address: Option<String>,
         user_agent: Option<String>,
+        require_email_verification: bool,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
         // Lookup-only canonicalization: login must not reject malformed
         // input with a distinct validation error (that would be an account
@@ -451,6 +458,10 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::UserInactive);
         }
 
+        if require_email_verification && !user.is_email_verified() {
+            return Err(AuthLifecycleError::EmailNotVerified);
+        }
+
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
         let locked_user = Self::find_user_for_login_in_tx(&txn, tenant_id, email)
             .await?
@@ -465,6 +476,9 @@ impl AuthLifecycleService {
         if !locked_user.is_active() {
             AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL.fetch_add(1, Ordering::Relaxed);
             return Err(AuthLifecycleError::UserInactive);
+        }
+        if require_email_verification && !locked_user.is_email_verified() {
+            return Err(AuthLifecycleError::EmailNotVerified);
         }
 
         let now = Utc::now();
@@ -535,8 +549,16 @@ impl AuthLifecycleService {
         config: &AuthConfig,
         tenant_id: uuid::Uuid,
         refresh_token: &str,
+        require_email_verification: bool,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
-        Self::refresh_with_config_db(ctx.db(), config, tenant_id, refresh_token).await
+        Self::refresh_with_config_db(
+            ctx.db(),
+            config,
+            tenant_id,
+            refresh_token,
+            require_email_verification,
+        )
+        .await
     }
 
     async fn find_user_for_login_in_tx(
@@ -642,6 +664,7 @@ impl AuthLifecycleService {
         config: &AuthConfig,
         tenant_id: uuid::Uuid,
         refresh_token: &str,
+        require_email_verification: bool,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
         let token_hash = hash_refresh_token(refresh_token);
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
@@ -677,6 +700,12 @@ impl AuthLifecycleService {
 
         if !user.is_active() {
             return Err(AuthLifecycleError::UserInactive);
+        }
+
+        // Also enforced on refresh, so the one-time session issued at
+        // registration cannot be extended indefinitely while unverified.
+        if require_email_verification && !user.is_email_verified() {
+            return Err(AuthLifecycleError::EmailNotVerified);
         }
 
         let now = Utc::now();
@@ -1832,6 +1861,7 @@ mod tests {
             "Password123!",
             None,
             None,
+            false,
         )
         .await;
         assert!(matches!(result, Err(AuthLifecycleError::UserInactive)));
@@ -1909,6 +1939,7 @@ mod tests {
             "Password123!",
             None,
             None,
+            false,
         )
         .await;
 
@@ -2018,7 +2049,7 @@ mod tests {
         let config = test_auth_config("refresh-secret", 600, 3600);
 
         let result =
-            AuthLifecycleService::refresh_with_config_db(&db, &config, tenant.id, expired_token)
+            AuthLifecycleService::refresh_with_config_db(&db, &config, tenant.id, expired_token, false)
                 .await;
 
         assert!(matches!(result, Err(AuthLifecycleError::SessionExpired)));
@@ -2039,6 +2070,7 @@ mod tests {
             &config,
             tenant.id,
             "unknown-refresh-token",
+            false,
         )
         .await;
 
@@ -2082,7 +2114,7 @@ mod tests {
         let config = test_auth_config("refresh-secret", 600, 3600);
 
         let result =
-            AuthLifecycleService::refresh_with_config_db(&db, &config, tenant.id, refresh_token)
+            AuthLifecycleService::refresh_with_config_db(&db, &config, tenant.id, refresh_token, false)
                 .await;
 
         assert!(matches!(result, Err(AuthLifecycleError::UserInactive)));

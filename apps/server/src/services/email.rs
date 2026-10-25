@@ -284,6 +284,54 @@ impl BuiltInAuthEmailSender for TemplatedSmtpMailerAdapter {
 /// Dispatches on `email.provider`:
 /// - `smtp` (default) → localized SMTP adapter over cached `SmtpEmailSender`
 /// - `none` → `EmailService::Disabled`
+/// Verification-token lifetime shared by registration and resend flows.
+pub const EMAIL_VERIFICATION_TOKEN_TTL_SECS: u64 = 24 * 60 * 60;
+
+/// Best-effort verification email used by registration flows when the
+/// platform requires verified addresses. Failures are logged, never
+/// surfaced: the account exists and the resend endpoint stays available.
+pub fn spawn_email_verification(
+    ctx: &ServerRuntimeContext,
+    config: &crate::auth::AuthConfig,
+    tenant_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+    email: &str,
+    locale: &str,
+) {
+    let token = match crate::auth::encode_email_verification_token(
+        config,
+        tenant_id,
+        user_id,
+        email,
+        EMAIL_VERIFICATION_TOKEN_TTL_SECS,
+    ) {
+        Ok(token) => token,
+        Err(error) => {
+            tracing::warn!(%error, "failed to encode email verification token");
+            return;
+        }
+    };
+    let email_service = match email_service_from_ctx(ctx, locale) {
+        Ok(service) => service,
+        Err(error) => {
+            tracing::warn!(%error, "failed to prepare email verification sender");
+            return;
+        }
+    };
+    let recipient = email.to_string();
+    tokio::spawn(async move {
+        if let Err(error) = email_service
+            .send_email_verification(EmailVerificationEmail {
+                to: recipient,
+                verification_token: token,
+            })
+            .await
+        {
+            tracing::warn!(error = %error, "failed to send email verification email");
+        }
+    });
+}
+
 pub fn email_service_from_ctx(
     ctx: &ServerRuntimeContext,
     locale: &str,

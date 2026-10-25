@@ -141,6 +141,9 @@ fn map_auth_lifecycle_error(ctx: &Context<'_>, error: AuthLifecycleMutationError
         AuthLifecycleMutationError::AccountLocked => {
             unauthenticated_auth_error(&t("auth.account_locked"))
         }
+        AuthLifecycleMutationError::EmailNotVerified => {
+            unauthenticated_auth_error(&t("auth.email_not_verified"))
+        }
         AuthLifecycleMutationError::InvalidRefreshToken => {
             unauthenticated_auth_error(&t("auth.invalid_refresh_token"))
         }

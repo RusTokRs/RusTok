@@ -13,7 +13,9 @@ use crate::common::RustokSettings;
 use crate::models::users;
 use crate::services::auth_invite::InviteAcceptanceError;
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService, AuthTokens};
-use crate::services::email::{PasswordResetEmail, email_service_from_ctx, password_reset_url};
+use crate::services::email::{
+    PasswordResetEmail, email_service_from_ctx, password_reset_url, spawn_email_verification,
+};
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
@@ -38,6 +40,7 @@ fn map_lifecycle_error(error: AuthLifecycleError) -> AuthLifecycleMutationError 
         AuthLifecycleError::InvalidCredentials => AuthLifecycleMutationError::InvalidCredentials,
         AuthLifecycleError::UserInactive => AuthLifecycleMutationError::UserInactive,
         AuthLifecycleError::AccountLocked => AuthLifecycleMutationError::AccountLocked,
+        AuthLifecycleError::EmailNotVerified => AuthLifecycleMutationError::EmailNotVerified,
         AuthLifecycleError::InvalidRefreshToken => AuthLifecycleMutationError::InvalidRefreshToken,
         AuthLifecycleError::SessionExpired => AuthLifecycleMutationError::SessionExpired,
         AuthLifecycleError::UserNotFound => AuthLifecycleMutationError::UserNotFound,
@@ -282,6 +285,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
             &password,
             None,
             None,
+            self.runtime_ctx.settings().features.email_verification,
         )
         .await
         .map_err(map_lifecycle_error)?;
@@ -306,6 +310,16 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         )
         .await
         .map_err(map_lifecycle_error)?;
+        if self.runtime_ctx.settings().features.email_verification {
+            spawn_email_verification(
+                &self.runtime_ctx,
+                &self.auth_config,
+                context.tenant_id,
+                user.id,
+                &user.email,
+                context.locale.as_str(),
+            );
+        }
         self.token_record(context.tenant_id, user, tokens).await
     }
 
@@ -319,6 +333,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
             &self.auth_config,
             context.tenant_id,
             &refresh_token,
+            self.runtime_ctx.settings().features.email_verification,
         )
         .await
         .map_err(map_lifecycle_error)?;

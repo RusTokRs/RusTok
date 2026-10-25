@@ -29,7 +29,8 @@ use crate::models::{
 };
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::email::{
-    EmailVerificationEmail, PasswordResetEmail, email_service_from_ctx, password_reset_url,
+    EMAIL_VERIFICATION_TOKEN_TTL_SECS, EmailVerificationEmail, PasswordResetEmail,
+    email_service_from_ctx, password_reset_url, spawn_email_verification,
 };
 use crate::services::server_runtime_context::ServerAuthRuntime;
 pub use rustok_auth::{
@@ -41,7 +42,6 @@ pub use rustok_auth::{
 };
 
 const DEFAULT_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
-const DEFAULT_VERIFY_TOKEN_TTL_SECS: u64 = 24 * 60 * 60;
 
 fn user_info_from_model(user: users::Model, role: rustok_core::UserRole) -> UserInfo {
     UserInfo {
@@ -75,6 +75,7 @@ fn ensure_registration_enabled(settings: &RustokSettings) -> Result<()> {
 async fn register(
     State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,
+    request_context: RequestContext,
     Json(params): Json<RegisterParams>,
 ) -> Result<Response> {
     let email = params.email.trim();
@@ -96,6 +97,17 @@ async fn register(
     )
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
+
+    if runtime_ctx.settings().features.email_verification {
+        spawn_email_verification(
+            runtime_ctx,
+            &config,
+            tenant.id,
+            user.id,
+            &user.email,
+            request_context.locale.as_str(),
+        );
+    }
 
     let user_role = tokens.effective_role.clone();
     Ok(json_response(AuthResponse {
@@ -136,6 +148,7 @@ async fn login(
         &params.password,
         Some(addr.ip().to_string()),
         user_agent,
+        runtime_ctx.settings().features.email_verification,
     )
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
@@ -168,6 +181,7 @@ async fn refresh(
         &config,
         tenant.id,
         &params.refresh_token,
+        runtime_ctx.settings().features.email_verification,
     )
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
@@ -382,7 +396,7 @@ async fn request_verification(
                     tenant.id,
                     record.id,
                     &record.email,
-                    DEFAULT_VERIFY_TOKEN_TTL_SECS,
+                    EMAIL_VERIFICATION_TOKEN_TTL_SECS,
                 )
             })
             .transpose()?
