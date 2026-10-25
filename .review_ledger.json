@@ -1302,9 +1302,9 @@
       "category": "modules",
       "files": 20,
       "loc": 8298,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-25 11:30",
+      "notes": "Audited Leptos admin FFA package across 20 source files; verified strict FFA separation (pure Rust view models and grid column definitions in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn) and tenant scope enforcement; added canonical CRATE_API.md, contract_tests.rs, docs.rs, readme, and repository metadata; 26/26 tests passed, clean rustdoc, zero defects."
     },
     "crates/modules/rustok-search/storefront": {
       "name": "storefront",
@@ -1312,9 +1312,9 @@
       "category": "modules",
       "files": 11,
       "loc": 3970,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-25 11:45",
+      "notes": "Audited Leptos storefront FFA package across 11 source files; verified strict FFA separation (pure Rust route filters and search view models in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn) and channel authority boundary; added canonical CRATE_API.md, contract_tests.rs, docs.rs, readme, and repository metadata; 21/21 tests passed, clean rustdoc, zero defects."
     },
     "crates/modules/rustok-seo": {
       "name": "rustok-seo",

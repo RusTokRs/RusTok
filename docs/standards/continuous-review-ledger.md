@@ -98,8 +98,8 @@ review/integration remain open. No sequential FS cursor, checkbox or readiness p
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-07 — Search, Indexing, Translation & AI Ecosystem  
-**Next pending component:** [`crates/modules/rustok-search/admin`](../../crates/modules/rustok-search/admin) (20 files, 8,298 LOC)  
-**Current main SHA:** `9f5f9f36ce`  
+**Next pending component:** [`crates/modules/rustok-index`](../../crates/modules/rustok-index) (137 files, 58,160 LOC)  
+**Current main SHA:** `a6dc9843f5`  
 **Active branch:** `main`  
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **262 components** (~350k LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -391,11 +391,11 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 ---
 
 ### Phase FS-07 — Search, Indexing, Translation & AI Ecosystem
-*Full-text search, faceted search index, SEO metadata, multi-lingual translations, Model Context Protocol (MCP), and AI LLM integrations.* (1/26 completed)
+*Full-text search, faceted search index, SEO metadata, multi-lingual translations, Model Context Protocol (MCP), and AI LLM integrations.* (3/26 completed)
 
 - [x] **[`crates/modules/rustok-search`](../../crates/modules/rustok-search)** (101 files, 35,305 LOC) — Search execution engine, query parsing, fuzzy matching, faceted filtering, sort ordering, and spellcheck suggestions. Audited and verified all 6 Universal Logic Dimensions across 101 source files; standardized CRATE_API.md with ## Public surface and contract_tests.rs; added rust-version, repository, and readme to Cargo.toml; 104/104 tests passed, clean rustdoc, docs.rs compliant, zero defects.
-- [ ] **[`crates/modules/rustok-search/admin`](../../crates/modules/rustok-search/admin)** (20 files, 8,298 LOC) — FFA admin UI for search configuration, synonym management, boost rules, and search analytics.
-- [ ] **[`crates/modules/rustok-search/storefront`](../../crates/modules/rustok-search/storefront)** (11 files, 4,042 LOC) — Storefront UI search bar with instant autocomplete, search results page, and filter sidebar.
+- [x] **[`crates/modules/rustok-search/admin`](../../crates/modules/rustok-search/admin)** (20 files, 8,298 LOC) — FFA admin UI for search configuration, synonym management, boost rules, and search analytics. Audited Leptos admin FFA package across 20 source files; verified strict FFA separation (pure Rust view models and grid column definitions in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn) and tenant scope enforcement; added canonical CRATE_API.md, contract_tests.rs, docs.rs, readme, and repository metadata; 26/26 tests passed, clean rustdoc, zero defects.
+- [x] **[`crates/modules/rustok-search/storefront`](../../crates/modules/rustok-search/storefront)** (11 files, 3,970 LOC) — Storefront UI search bar with instant autocomplete, search results page, and filter sidebar. Audited Leptos storefront FFA package across 11 source files; verified strict FFA separation (pure Rust route filters and search view models in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn) and channel authority boundary; added canonical CRATE_API.md, contract_tests.rs, docs.rs, readme, and repository metadata; 21/21 tests passed, clean rustdoc, zero defects.
 - [ ] **[`crates/modules/rustok-index`](../../crates/modules/rustok-index)** (137 files, 58,160 LOC) — Generic search indexing pipeline, change event intake, document materialization, batch sync, and schema mapping.
 - [ ] **[`crates/modules/rustok-index/admin`](../../crates/modules/rustok-index/admin)** (9 files, 2,912 LOC) — FFA admin UI for index status monitoring, manual index rebuilding, and mapping configuration.
 - [ ] **[`crates/modules/rustok-seo`](../../crates/modules/rustok-seo)** (82 files, 35,554 LOC) — Automated sitemap.xml generation, robots.txt, canonical URLs, OpenGraph/Twitter card metadata, and structured JSON-LD data.
