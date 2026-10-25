@@ -2,8 +2,15 @@
 name = "rustok-page-builder-admin"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "SSR-first Leptos authoring surface for the RusTok Page Builder module"
+repository.workspace = true
+readme = "README.md"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [lib]
 crate-type = ["rlib"]

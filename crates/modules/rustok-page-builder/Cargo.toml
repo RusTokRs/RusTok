@@ -2,6 +2,7 @@
 name = "rustok-page-builder"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Standalone FBA-first visual page builder reference module"
 repository.workspace = true

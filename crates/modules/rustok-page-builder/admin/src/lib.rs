@@ -1,7 +1,22 @@
+//! # rustok-page-builder-admin
+//!
+//! SSR-first Leptos visual authoring surface and canvas controller for the RusToK Page Builder.
+//!
+//! ## Responsibilities & Guarantees
+//!
+//! - **Strict FFA Separation**: Canvas controllers, intent dispatchers, property editors, and draft session backends
+//!   maintain strict isolation between presentation view-models and UI framework runtimes.
+//! - **Isolated Preview Canvas**: Sandboxed iframe with instrumented postMessage communication, sequence validation,
+//!   and coordinate mapping for drag-and-drop, selection, and hover overlays.
+//! - **Multi-Profile Persistence**: Durable SSR draft sessions supporting file-based, distributed KV, and in-memory stores.
+//! - **Capability-Aware Authoring**: Dynamic palette, asset provider, and consumer property validation.
+
 #![recursion_limit = "256"]
 
 #[cfg(test)]
 mod context_contract;
+#[cfg(test)]
+mod contract_tests;
 #[cfg(test)]
 mod ssr_accessibility_evidence_tests;
 #[cfg(test)]

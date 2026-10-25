@@ -60,3 +60,5 @@ cargo check -p rustok-page-builder-admin --no-default-features --features ssr
 
 Rust unit and browser interaction tests must also be run in a checkout with the repository Rust
 and WASM toolchains installed.
+
+For the formal Rust API contract and guarantees, see [`CRATE_API.md`](CRATE_API.md).
