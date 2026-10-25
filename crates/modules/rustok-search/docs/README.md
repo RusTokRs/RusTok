@@ -55,8 +55,25 @@ or host-specific UI wiring.
 - Product-owned Leptos storefront transport separately publishes public-safe category/attribute options via native `#[server]` first and GraphQL `storefrontCatalogSearchOptions(locale: String!)`. `apps/storefront::SearchStorefrontComposition` passes the host locale, checks that `product` is enabled, and maps owner DTOs to `SearchCatalogFilterOption`; the search storefront package does not import product internals.
 - The Next storefront repeats the same boundary via `apps/next-frontend/src/features/search`: the host passes route locale/tenant slug, product-owned `apps/next-frontend/packages/rustok-product` reads `storefrontCatalogSearchOptions(locale: String!)`, and the search package receives only category/attribute option props.
 
+## Audience security
+
+- The public Search corpus is declared, not inferred: `apps/server` declares public
+  module classes and registers gated `SearchAudiencePolicyPort` implementations.
+  A module with no declared class is never publicly discoverable.
+- Storefront GraphQL and native reads require the composed `SearchAudienceRegistry`;
+  there is no empty-registry fallback.
+- Gated candidates are scanned in bounded pages and authorized in bounded batches; the
+  authorized id set is applied inside the SQL visibility filter, so SQL owns totals,
+  facets, ordering and pagination.
+- Storefront suggestions use the same declared scope and the same candidate
+  authorization as storefront search.
+- Policy `NotFound`/`Forbidden` excludes a module without failing the request;
+  `Unavailable`/`Timeout` fails the request; `InvariantViolation` is internal.
+- Decision record: [ADR 2026-10-25](../../../../DECISIONS/2026-10-25-search-audience-declared-corpus.md).
+
 ## Verification
 
+- `npm run verify:search:audience`
 - `cargo xtask module validate search`
 - `cargo xtask module test search`
 - `cargo test -p rustok-search -- --include-ignored --nocapture` with live PostgreSQL `DATABASE_URL`
@@ -68,3 +85,4 @@ or host-specific UI wiring.
 - [Implementation plan](./implementation-plan.md)
 - [Observability runbook](./observability-runbook.md)
 - [ADR: boundary `index != search`](../../../../DECISIONS/2026-03-29-index-search-boundary.md)
+- [ADR: declared Search audience corpus](../../../../DECISIONS/2026-10-25-search-audience-declared-corpus.md)

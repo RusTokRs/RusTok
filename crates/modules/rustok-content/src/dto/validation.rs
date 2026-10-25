@@ -6,21 +6,82 @@
 use rustok_api::TenantLocale;
 use validator::ValidationError;
 
+/// Every Content node kind: the write-side allowlist and the Search corpus declaration.
+///
+/// The Search projector writes `source_module = node.kind` (see
+/// `rustok-search::projector_core`), so this list is exactly the set of `source_module`
+/// values the Content module can place into `search_documents`. The host declares every
+/// entry as public discovery material (`apps/server::search_public_source_modules`).
+///
+/// Keep this list closed: a kind that is absent is rejected on write, so it can never
+/// reach the index and silently disappear from the public corpus. Adding a kind here is
+/// therefore the only way to introduce a new Content document class.
+pub const CONTENT_NODE_KINDS: &[&str] = &[
+    // Core CMS kinds
+    "post",
+    "page",
+    "article",
+    "custom",
+    "block",
+    "menu",
+    "menu_item",
+    // Forum domain kinds
+    "forum_category",
+    "forum_topic",
+    "forum_reply",
+    // Blog domain kinds
+    "blog_post",
+    "comment",
+    "category",
+    "tag",
+];
+
 /// Custom validator for kind
 ///
-/// Accepts built-in kinds (post, page, article, custom) plus domain-specific kinds
-/// used by forum (forum_category, forum_topic, forum_reply) and other modules.
-/// The `_` prefix convention allows callers to pass any kind starting with an
-/// underscore, but domain kinds must be registered here.
+/// Accepts exactly [`CONTENT_NODE_KINDS`]. The list is shared with the Search corpus
+/// declaration so validation and public discoverability cannot drift apart.
 pub fn validate_kind(kind: &str) -> Result<(), ValidationError> {
-    match kind {
-        // Core CMS kinds
-        "post" | "page" | "article" | "custom" | "block" | "menu" | "menu_item" => Ok(()),
-        // Forum domain kinds
-        "forum_category" | "forum_topic" | "forum_reply" => Ok(()),
-        // Blog domain kinds
-        "blog_post" | "comment" | "category" | "tag" => Ok(()),
-        _ => Err(ValidationError::new("invalid_kind")),
+    if CONTENT_NODE_KINDS.contains(&kind) {
+        Ok(())
+    } else {
+        Err(ValidationError::new("invalid_kind"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CONTENT_NODE_KINDS, validate_kind};
+
+    #[test]
+    fn every_declared_kind_is_accepted() {
+        for kind in CONTENT_NODE_KINDS {
+            validate_kind(kind).expect("declared node kinds must validate");
+        }
+    }
+
+    #[test]
+    fn every_accepted_kind_is_declared_in_the_search_corpus() {
+        // The Search projector writes `source_module = kind`, so an accepted kind that is
+        // missing from the declaration would be indexed and then denied in public Search.
+        for kind in ["post", "page", "article", "custom", "block", "menu", "menu_item"] {
+            assert!(CONTENT_NODE_KINDS.contains(&kind));
+        }
+        assert!(validate_kind("secret_lab_note").is_err());
+        assert!(validate_kind("").is_err());
+        assert!(validate_kind("POST").is_err());
+    }
+
+    #[test]
+    fn declared_kinds_are_unique_and_normalized() {
+        let mut seen = std::collections::BTreeSet::new();
+        for kind in CONTENT_NODE_KINDS {
+            assert!(seen.insert(*kind), "duplicate Content node kind: {kind}");
+            assert!(
+                kind.chars()
+                    .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_'),
+                "Content node kinds feed Search source-module names: {kind}"
+            );
+        }
     }
 }
 

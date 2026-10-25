@@ -55,9 +55,10 @@ pub use analytics::{
     SearchQueryLogRecord,
 };
 pub use audience_security::{
-    AUDIENCE_CANDIDATE_SCAN_PAGE_SIZE, MAX_SEARCH_AUDIENCE_CANDIDATES, SearchAudiencePolicyPort,
+    AUDIENCE_CANDIDATE_SCAN_PAGE_SIZE, MAX_SEARCH_AUDIENCE_CANDIDATES,
+    MAX_SEARCH_AUDIENCE_SCAN_DOCUMENTS, SearchAudienceClass, SearchAudiencePolicyPort,
     SearchAudienceRegistry, SearchAudienceRequest, SearchCandidateDescriptor,
-    SharedSearchAudiencePolicyPort, build_authorized_facets, execute_audience_eligible_search,
+    SharedSearchAudiencePolicyPort, empty_storefront_result, execute_audience_eligible_search,
     resolve_audience_eligible_candidates,
 };
 pub use diagnostics::{
@@ -99,7 +100,7 @@ pub use forum_storefront_execution::{
 };
 pub use ingestion::SearchIngestionHandler;
 pub use models::SearchSettingsRecord;
-pub use pg_engine::PgSearchEngine;
+pub use pg_engine::{PgSearchEngine, SearchAudienceDocumentScope};
 pub use ports::{SearchQueryPort, SearchSuggestionPort};
 pub use presets::{ResolvedSearchFilterPreset, SearchFilterPreset, SearchFilterPresetService};
 pub use product_channel_reconciliation::{
@@ -132,4 +133,5 @@ pub use storefront_result_eligibility::{
 };
 pub use suggestions::{
     SearchSuggestion, SearchSuggestionKind, SearchSuggestionQuery, SearchSuggestionService,
+    StorefrontSuggestionAudience,
 };

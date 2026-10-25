@@ -1,12 +1,12 @@
 # Generic Search Audience Security SPI and Multi-Module Post-Authorization
 
 - Date: 2026-10-16
-- Decision status: Accepted
-- Implementation status: Completed
+- Decision status: Superseded
+- Implementation status: Implemented
 - Owners: platform / search team
 - Extends: `2026-07-31-forum-search-versioned-invalidation-rollout.md`
 - Supersedes: None
-- Superseded by: None
+- Superseded by: `2026-10-25-search-audience-declared-corpus.md`
 
 ## Context
 

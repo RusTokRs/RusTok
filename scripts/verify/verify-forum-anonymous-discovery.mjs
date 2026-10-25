@@ -81,16 +81,26 @@ includes('crates/modules/rustok-search/src/forum_storefront_execution.rs',
   'build_forum_result_facets(&visible_items)',
   '.public_forum_discovery_allowed(',
   'SearchDictionaryService::apply_authorized_storefront_query_rules(');
+// Search never hardcodes a module as gated: the audience scope is the only place a
+// module is restricted, and it is applied inside the SQL filter so totals, facets,
+// ordering and pagination stay authorized.
 includes('crates/modules/rustok-search/src/pg_engine.rs',
-  'self.search_with_storefront_channel(query, Some(channel), true)',
-  'source_module <> \'forum\'',
+  'sd.document_id AS document_id',
+  '(source_module NOT IN ({gated_params}) OR document_id IN ({authorized_params}))',
   'pub(crate) async fn search_forum_storefront_candidates(');
+includes('crates/modules/rustok-search/src/audience_security.rs',
+  'SearchAudienceClass',
+  'pub fn declared_source_modules(&self) -> Vec<String>',
+  'None => {\n                tracing::warn!(',
+  'MAX_SEARCH_AUDIENCE_SCAN_DOCUMENTS');
+includes('crates/modules/rustok-search/src/graphql/query.rs',
+  'SEARCH_AUDIENCE_REGISTRY_UNAVAILABLE_MESSAGE');
 includes('crates/modules/rustok-search/src/suggestions.rs',
-  'let forum_scope = suggestion_document_source_scope(storefront_channel.is_some())',
-  'AND {forum_scope}');
+  'source_module IN ({})',
+  'authorize_suggestion_documents(');
 includes('crates/modules/rustok-search/src/dictionaries.rs',
   'if !allow_extra_pins || has_catalog_filters(query)',
-  'if exclude_forum && source_module == "forum"');
+  'storefront_payload_visible_for_channel(&payload, &entity_type, channel)');
 includes('apps/server/src/services/forum_search_result_eligibility.rs',
   'async fn public_forum_discovery_allowed(', '.public_discovery_allowed(tenant_id)');
 includes(`${forum}/search_projection.rs`,

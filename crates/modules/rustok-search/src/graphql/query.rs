@@ -43,6 +43,10 @@ const SEARCH_PREVIEW_SURFACE: &str = "search_preview";
 const ADMIN_GLOBAL_SEARCH_SURFACE: &str = "admin_global_search";
 const STOREFRONT_SEARCH_SURFACE: &str = "storefront_search";
 const STOREFRONT_SUGGESTIONS_SURFACE: &str = "storefront_search_suggestions";
+/// Returned when the host did not compose the Search audience registry. Storefront
+/// reads refuse to run instead of degrading to "nothing is gated".
+const SEARCH_AUDIENCE_REGISTRY_UNAVAILABLE_MESSAGE: &str =
+    "Search audience registry is unavailable for this surface";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SearchSurfacePolicy {
@@ -473,10 +477,12 @@ impl SearchQueryRoot {
             sort_desc: input.sort_desc,
         };
 
-        let default_registry = crate::SearchAudienceRegistry::new();
+        // Fail closed: a missing registry means the host never declared the Search
+        // audience corpus, so no document could be authorized. Falling back to an empty
+        // registry would silently turn every gated module into public discovery.
         let registry = ctx
-            .data_opt::<crate::SearchAudienceRegistry>()
-            .unwrap_or(&default_registry);
+            .data::<crate::SearchAudienceRegistry>()
+            .map_err(|_| FieldError::new(SEARCH_AUDIENCE_REGISTRY_UNAVAILABLE_MESSAGE))?;
         let auth = ctx.data_opt::<AuthContext>().cloned();
         let request_context = ctx.data_opt::<RequestContext>().cloned();
         let result = crate::execute_audience_eligible_search(
@@ -525,6 +531,10 @@ impl SearchQueryRoot {
             return Ok(Vec::new());
         }
 
+        let registry = ctx
+            .data::<crate::SearchAudienceRegistry>()
+            .map_err(|_| FieldError::new(SEARCH_AUDIENCE_REGISTRY_UNAVAILABLE_MESSAGE))?;
+        let auth = ctx.data_opt::<AuthContext>().cloned();
         let suggestions = SearchSuggestionService::storefront_suggestions(
             db,
             SearchSuggestionQuery {
@@ -535,6 +545,12 @@ impl SearchQueryRoot {
                 published_only: true,
             },
             &trusted_channel,
+            crate::StorefrontSuggestionAudience {
+                registry,
+                auth: auth.as_ref(),
+                request_context: Some(request_context),
+                transport: crate::StorefrontSearchTransport::Graphql,
+            },
         )
         .await
         .map_err(map_search_module_error)?;

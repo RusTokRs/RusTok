@@ -170,14 +170,14 @@ requireAll(
   engine,
   [
     "pub async fn search_storefront(",
-    "search_with_storefront_channel(query, Some(channel), true)",
+    "pub async fn search_storefront_scoped(",
     // pg_engine applies the storefront-wide predicate (products *and* blog posts), while the
     // product-only wrapper is what the suggestion path reuses.
     "storefront_channel_visibility_sql(",
     "run_fts_search(",
     "run_typo_tolerant_search(",
-    "build_filter_clause(request.query, 4, request.storefront_channel, request.exclude_forum)",
-    "self.search_with_storefront_channel(query, None, false).await",
+    "build_filter_clause(\n        request.query,\n        4,\n        request.storefront_channel,\n        request.audience_scope,",
+    "self.search_scoped(query, None, None).await",
   ],
   paths.engine,
 );
@@ -187,7 +187,7 @@ requireAll(
   [
     "pub async fn apply_storefront_query_rules(",
     "apply_query_rules_with_storefront_channel",
-    "product_payload_visible_for_storefront(&payload, channel)",
+    "storefront_payload_visible_for_channel(&payload, &entity_type, channel)",
     "SELECT document_id, entity_type, source_module, locale, status, is_public, title, payload",
   ],
   paths.dictionaries,
@@ -202,6 +202,7 @@ requireAll(
     "let document_rows = fetch_document_suggestions(",
     "product_channel_visibility_sql(",
     "AND {product_scope}",
+    "source_module IN ({})",
   ],
   paths.suggestions,
 );
@@ -209,11 +210,10 @@ requireAll(
 requireAll(
   graphql,
   [
-    "run_storefront_search_with_dictionaries(",
-    ".search_storefront(search_query.clone(), channel)",
-    "apply_storefront_query_rules",
+    "execute_audience_eligible_search(",
+    "SEARCH_AUDIENCE_REGISTRY_UNAVAILABLE_MESSAGE",
     "SearchSuggestionService::storefront_suggestions(",
-    "&trusted_channel",
+    "StorefrontSuggestionAudience {",
   ],
   paths.graphql,
 );
@@ -221,9 +221,9 @@ requireAll(
 requireAll(
   native,
   [
-    ".search_storefront(search_query.clone(), &trusted_channel)",
-    "apply_storefront_query_rules(",
-    "SearchSuggestionService::storefront_suggestions(",
+    "execute_audience_eligible_search(",
+    "storefront_suggestions(",
+    "StorefrontSuggestionAudience {",
     "resolve_trusted_storefront_channel(&request_context, tenant.id, None)",
   ],
   paths.native,

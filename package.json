@@ -185,6 +185,7 @@
     "test:verify:comments:thread-write-invariants": "node scripts/verify/verify-comments-thread-write-invariants.test.mjs",
     "verify:comments:fba": "node scripts/verify/verify-comments-fba.mjs && npm run verify:comments:port-boundary && npm run verify:comments:thread-write-invariants && npm run verify:owner:fba-runtime-order",
     "test:verify:comments:fba": "npm run test:verify:comments:port-boundary && npm run test:verify:comments:thread-write-invariants && npm run test:verify:owner:fba-runtime-order",
+    "verify:search:audience": "node scripts/verify/verify-search-audience-classes.mjs",
     "verify:search:canonical-url": "node scripts/verify/verify-search-canonical-url-contract.mjs",
     "test:verify:search:canonical-url": "node scripts/verify/verify-search-canonical-url-contract.test.mjs",
     "verify:search:blog-projection": "node scripts/verify/verify-search-blog-projection.mjs",

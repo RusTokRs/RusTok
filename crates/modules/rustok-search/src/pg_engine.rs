@@ -10,6 +10,65 @@ use crate::engine::{
 };
 use crate::ranking::SearchRankingProfile;
 use crate::storefront_product_channel_visibility::storefront_channel_visibility_sql;
+
+/// Per-request audience scope applied inside the SQL filter.
+///
+/// The scope is a pure restriction: modules listed in `gated_source_modules` are kept
+/// only for the explicitly authorized document ids, while every other module keeps
+/// its normal visibility predicates. An empty scope is a no-op, so public modules are
+/// never bounded by it.
+#[derive(Clone, Debug, Default)]
+pub struct SearchAudienceDocumentScope {
+    gated_source_modules: Vec<String>,
+    authorized_document_ids: Vec<uuid::Uuid>,
+}
+
+impl SearchAudienceDocumentScope {
+    /// Builds a validated scope. Invalid module names or nil document ids are
+    /// programming errors, because both values originate inside Search.
+    pub fn new(
+        gated_source_modules: Vec<String>,
+        authorized_document_ids: Vec<uuid::Uuid>,
+    ) -> Result<Self> {
+        let mut gated_source_modules = gated_source_modules
+            .into_iter()
+            .map(|module| module.trim().to_ascii_lowercase())
+            .collect::<Vec<_>>();
+        if gated_source_modules
+            .iter()
+            .any(|module| !is_valid_source_module(module))
+        {
+            return Err(Error::Internal(
+                "Search audience scope received an invalid source module name".to_string(),
+            ));
+        }
+        gated_source_modules.sort();
+        gated_source_modules.dedup();
+
+        let mut authorized_document_ids = authorized_document_ids;
+        if authorized_document_ids.iter().any(uuid::Uuid::is_nil) {
+            return Err(Error::Internal(
+                "Search audience scope received a nil document identifier".to_string(),
+            ));
+        }
+        authorized_document_ids.sort_unstable();
+        authorized_document_ids.dedup();
+
+        Ok(Self {
+            gated_source_modules,
+            authorized_document_ids,
+        })
+    }
+}
+
+fn is_valid_source_module(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || matches!(ch, '-' | '_'))
+}
+
 pub struct PgSearchEngine {
     db: DatabaseConnection,
 }
@@ -23,40 +82,29 @@ impl PgSearchEngine {
         &self.db
     }
 
-    /// Generic storefront Search does not have the Forum audience owner; only
-    /// the explicit Forum pipeline may request raw Forum candidates. Exclude
-    /// them in SQL so totals, facets, and pages cannot disclose indexed rows.
+    /// Storefront Search with the caller-supplied audience scope.
+    ///
+    /// Module visibility is decided by [`crate::SearchAudienceRegistry`] before this
+    /// call: the executor passes the declared module scope through `query.source_modules`
+    /// and the authorized document ids through the scope. The engine never guesses which
+    /// module is gated.
     pub async fn search_storefront(
         &self,
         query: SearchQuery,
         channel: &TrustedStorefrontChannel,
     ) -> Result<SearchResult> {
-        self.search_with_storefront_channel(query, Some(channel), true)
-            .await
+        self.search_scoped(query, Some(channel), None).await
     }
 
-    pub async fn search_storefront_candidates(
+    /// Storefront Search restricted to an authorized document scope.
+    pub async fn search_storefront_scoped(
         &self,
         query: SearchQuery,
         channel: &TrustedStorefrontChannel,
+        audience_scope: &SearchAudienceDocumentScope,
     ) -> Result<SearchResult> {
-        self.search_storefront_candidates_with_exclusions(query, channel, &[])
+        self.search_scoped(query, Some(channel), Some(audience_scope))
             .await
-    }
-
-    pub async fn search_storefront_candidates_with_exclusions(
-        &self,
-        query: SearchQuery,
-        channel: &TrustedStorefrontChannel,
-        excluded_modules: &[String],
-    ) -> Result<SearchResult> {
-        self.search_with_storefront_channel_and_exclusions(
-            query,
-            Some(channel),
-            false,
-            excluded_modules,
-        )
-        .await
     }
 
     pub(crate) async fn search_forum_storefront_candidates(
@@ -64,30 +112,14 @@ impl PgSearchEngine {
         query: SearchQuery,
         channel: &TrustedStorefrontChannel,
     ) -> Result<SearchResult> {
-        self.search_storefront_candidates(query, channel).await
+        self.search_scoped(query, Some(channel), None).await
     }
 
-    async fn search_with_storefront_channel(
+    async fn search_scoped(
         &self,
         query: SearchQuery,
         storefront_channel: Option<&TrustedStorefrontChannel>,
-        exclude_forum: bool,
-    ) -> Result<SearchResult> {
-        self.search_with_storefront_channel_and_exclusions(
-            query,
-            storefront_channel,
-            exclude_forum,
-            &[],
-        )
-        .await
-    }
-
-    async fn search_with_storefront_channel_and_exclusions(
-        &self,
-        query: SearchQuery,
-        storefront_channel: Option<&TrustedStorefrontChannel>,
-        exclude_forum: bool,
-        excluded_modules: &[String],
+        audience_scope: Option<&SearchAudienceDocumentScope>,
     ) -> Result<SearchResult> {
         if self.db.get_database_backend() != DbBackend::Postgres {
             return Err(Error::External(
@@ -120,8 +152,7 @@ impl PgSearchEngine {
             trimmed_query: &trimmed_query,
             query: &query,
             storefront_channel,
-            exclude_forum,
-            excluded_modules,
+            audience_scope,
             offset,
             limit,
         };
@@ -147,7 +178,7 @@ impl SearchEngine for PgSearchEngine {
     }
 
     async fn search(&self, query: SearchQuery) -> Result<SearchResult> {
-        self.search_with_storefront_channel(query, None, false).await
+        self.search_scoped(query, None, None).await
     }
 }
 
@@ -160,8 +191,7 @@ fn build_filter_clause(
     query: &SearchQuery,
     starting_param: usize,
     storefront_channel: Option<&TrustedStorefrontChannel>,
-    exclude_forum: bool,
-    excluded_modules: &[String],
+    audience_scope: Option<&SearchAudienceDocumentScope>,
 ) -> FilterClause {
     let mut clauses = Vec::new();
     let mut values = Vec::new();
@@ -170,18 +200,26 @@ fn build_filter_clause(
     if query.published_only {
         clauses.push("is_public = TRUE".to_string());
     }
-    if exclude_forum {
-        clauses.push("source_module <> 'forum'".to_string());
-    }
-    for excluded in excluded_modules {
-        if exclude_forum && excluded == "forum" {
-            continue;
-        }
-        if !excluded.is_empty()
-            && excluded.len() <= 64
-            && excluded.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-        {
-            clauses.push(format!("source_module <> '{excluded}'"));
+    if let Some(scope) = audience_scope.filter(|scope| !scope.is_unrestricted()) {
+        // Gated modules are visible only for the ids their owner authorized. Every
+        // other declared module keeps its normal visibility predicates, so public
+        // modules are never bounded by the audience scan.
+        let gated_params = bind_list(
+            scope.gated_source_modules(),
+            &mut values,
+            &mut next_param,
+        );
+        if scope.authorized_document_ids().is_empty() {
+            clauses.push(format!("source_module NOT IN ({gated_params})"));
+        } else {
+            let authorized_params = bind_uuid_list(
+                scope.authorized_document_ids(),
+                &mut values,
+                &mut next_param,
+            );
+            clauses.push(format!(
+                "(source_module NOT IN ({gated_params}) OR document_id IN ({authorized_params}))"
+            ));
         }
     }
 
@@ -317,8 +355,7 @@ struct RankedSearchRequest<'a> {
     trimmed_query: &'a str,
     query: &'a SearchQuery,
     storefront_channel: Option<&'a TrustedStorefrontChannel>,
-    exclude_forum: bool,
-    excluded_modules: &'a [String],
+    audience_scope: Option<&'a SearchAudienceDocumentScope>,
     offset: i64,
     limit: i64,
 }
@@ -331,8 +368,7 @@ async fn run_fts_search(
         request.query,
         4,
         request.storefront_channel,
-        request.exclude_forum,
-        request.excluded_modules,
+        request.audience_scope,
     );
     let cte = build_fts_cte(request.query.ranking_profile);
 
@@ -364,8 +400,7 @@ async fn run_typo_tolerant_search(
         request.query,
         4,
         request.storefront_channel,
-        request.exclude_forum,
-        request.excluded_modules,
+        request.audience_scope,
     );
     let cte = build_typo_cte(request.query.ranking_profile);
 
@@ -552,6 +587,7 @@ fn build_fts_cte(profile: SearchRankingProfile) -> String {
         ranked AS (
             SELECT
                 sd.document_id AS id,
+                sd.document_id AS document_id,
                 sd.entity_type AS entity_type,
                 sd.source_module AS source_module,
                 sd.status AS status,
@@ -604,6 +640,7 @@ fn build_typo_cte(profile: SearchRankingProfile) -> String {
         ranked AS (
             SELECT
                 sd.document_id AS id,
+                sd.document_id AS document_id,
                 sd.entity_type AS entity_type,
                 sd.source_module AS source_module,
                 sd.status AS status,
@@ -875,7 +912,7 @@ fn empty_facets() -> Vec<SearchFacetGroup> {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_filter_clause, should_run_typo_fallback};
+    use super::{SearchAudienceDocumentScope, build_filter_clause, should_run_typo_fallback};
     use crate::{SearchRankingProfile, engine::SearchQuery};
     use uuid::Uuid;
 
@@ -925,8 +962,7 @@ mod tests {
             },
             4,
             None,
-            false,
-            &[],
+            None,
         );
 
         assert_eq!(
@@ -942,8 +978,7 @@ mod tests {
             &query_with_categories(vec![Uuid::from_u128(7)]),
             4,
             None,
-            false,
-            &[],
+            None,
         );
 
         for marker in [
@@ -960,38 +995,50 @@ mod tests {
     }
 
     #[test]
-    fn generic_storefront_excludes_forum_from_raw_totals_items_and_facets() {
-        let clause = build_filter_clause(&query_with_categories(vec![]), 4, None, true, &[]);
-        assert!(clause.clause.contains("source_module <> 'forum'"));
+    fn restricted_audience_scope_bounds_gated_modules_and_keeps_public_modules() {
+        let scope = SearchAudienceDocumentScope::new(
+            vec!["forum".to_string(), "events".to_string()],
+            vec![Uuid::from_u128(11), Uuid::from_u128(12)],
+        )
+        .expect("valid scope");
+
+        let clause = build_filter_clause(&query_with_categories(vec![]), 4, None, Some(&scope));
+
+        assert_eq!(
+            clause.clause,
+            "(source_module NOT IN ($4, $5) OR document_id IN ($6, $7))"
+        );
+        assert_eq!(clause.values.len(), 4);
+    }
+
+    #[test]
+    fn restricted_audience_scope_without_authorized_ids_hides_gated_modules() {
+        let scope = SearchAudienceDocumentScope::new(vec!["forum".to_string()], Vec::new())
+            .expect("valid scope");
+
+        let clause = build_filter_clause(&query_with_categories(vec![]), 4, None, Some(&scope));
+
+        assert_eq!(clause.clause, "source_module NOT IN ($4)");
+        assert_eq!(clause.values.len(), 1);
+    }
+
+    #[test]
+    fn unrestricted_audience_scope_adds_no_predicate() {
+        let scope = SearchAudienceDocumentScope::unrestricted();
+
+        let clause = build_filter_clause(&query_with_categories(vec![]), 4, None, Some(&scope));
+
+        assert_eq!(clause.clause, "TRUE");
         assert!(clause.values.is_empty());
-        let owner_candidates = build_filter_clause(&query_with_categories(vec![]), 4, None, false, &[]);
-        assert!(!owner_candidates.clause.contains("source_module <> 'forum'"));
     }
 
     #[test]
-    fn filter_clause_supports_arbitrary_excluded_modules() {
-        let clause = build_filter_clause(
-            &query_with_categories(vec![]),
-            4,
-            None,
-            false,
-            &["events".to_string(), "private_docs".to_string()],
+    fn audience_scope_rejects_invalid_modules_and_nil_document_ids() {
+        assert!(
+            SearchAudienceDocumentScope::new(vec!["forum'); DROP TABLE".to_string()], Vec::new())
+                .is_err()
         );
-        assert!(clause.clause.contains("source_module <> 'events'"));
-        assert!(clause.clause.contains("source_module <> 'private_docs'"));
-    }
-
-    #[test]
-    fn filter_clause_excludes_forum_when_passed_in_excluded_modules_even_if_exclude_forum_flag_is_false() {
-        let clause = build_filter_clause(
-            &query_with_categories(vec![]),
-            4,
-            None,
-            false,
-            &["forum".to_string(), "courses".to_string()],
-        );
-        assert!(clause.clause.contains("source_module <> 'forum'"));
-        assert!(clause.clause.contains("source_module <> 'courses'"));
+        assert!(SearchAudienceDocumentScope::new(vec!["forum".to_string()], vec![Uuid::nil()]).is_err());
     }
 
     #[test]

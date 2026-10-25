@@ -1,5 +1,63 @@
 # rustok-search implementation plan
 
+## 2026-10-25 Declared Search audience corpus
+
+The audience mechanism was audited end to end and rebuilt around declared audience
+classes ([ADR 2026-10-25](../../../../DECISIONS/2026-10-25-search-audience-declared-corpus.md)):
+
+- [x] `SearchAudienceRegistry` declares each source module exactly once as
+      `SearchAudienceClass::Public` or `SearchAudienceClass::Gated`; duplicate
+      declarations are `conflict` errors and `with_policy` (panic + silent overwrite)
+      is removed.
+- [x] Undeclared modules are denied: they never pass through as public candidates and
+      `public_discovery_allowed` answers `false` for them.
+- [x] GraphQL `storefrontSearch` / `storefrontSearchSuggestions` and the native SSR
+      adapter fail closed when the host did not compose the registry; `apps/server`
+      propagates declaration and registration failures instead of `let _ =`.
+- [x] The GraphQL schema now receives the registry as request data
+      (`apps/server/src/graphql/schema.rs`). Search is a required module, so the manifest
+      `runtime_data_factory` hook is not wired for it; without the explicit attachment the
+      storefront fields resolved no registry at all and failed closed on every call.
+- [x] `apps/server` owns the corpus inventory in `search_public_source_modules()`
+      (`blog`, `commerce`, `docs`, `pages`, `content` plus
+      `rustok_content::CONTENT_NODE_KINDS`) and registers Forum as gated in the same
+      composition step. `content` is the projector's fallback bucket for an empty stored
+      kind.
+- [x] Content node kinds are a single closed list: `projector_core` writes
+      `source_module = node.kind`, so `CONTENT_NODE_KINDS` is both the write allowlist and
+      the public corpus declaration. Before this, the projector emitted `post`/`page`/
+      `article`/`custom`/`block`/`menu`/`menu_item` while the host declared `content`, and
+      every published CMS document would have become invisible in public Search.
+- [x] `SearchAudiencePolicyPort::public_discovery_allowed` is a required method; no
+      permissive default remains.
+- [x] Candidate authorization is batched (`MAX_SEARCH_AUDIENCE_CANDIDATES` per call) and
+      the scan is bounded by `MAX_SEARCH_AUDIENCE_SCAN_DOCUMENTS`; the former
+      100-candidate *request* rejection is gone and public modules are never bounded.
+- [x] One scoped SQL query (`source_module NOT IN (gated) OR document_id IN (authorized)`)
+      produces totals, facets, ordering and pagination; `build_authorized_facets`, the
+      `forum_visible_status` fallback and the duplicated facet vocabulary are removed.
+- [x] `PortError` keeps its taxonomy across the SPI boundary: `NotFound`/`Forbidden`
+      exclude a module, `Unavailable`/`Timeout` fail the request, `InvariantViolation`
+      is internal.
+- [x] Storefront suggestions take `StorefrontSuggestionAudience`, apply the declared
+      module scope, the anonymous discovery preflight, and per-candidate authorization.
+- [x] `exclude_forum`, `source_module <> 'forum'` and the exclusion special case are
+      removed from `pg_engine`; the engine receives only `SearchAudienceDocumentScope`.
+- [x] Query rules cannot inject a pinned document while a gated module is in scope, and
+      pinned documents pass payload channel visibility for every entity type.
+- [x] `npm run verify:search:audience` guards the declared corpus, the fail-closed
+      boundaries, the neutral engine scope and suggestion parity.
+
+Open follow-ups (not started):
+
+- [ ] Physically remove `forum_storefront_execution.rs`, `storefront_result_eligibility.rs`
+      and `graphql/forum_storefront.rs` once the remaining external verification scripts
+      and contract JSONs move to the generic SPI (Phase 4).
+- [ ] Decide whether Blog indexing keeps the SQL projector in this crate or switches to
+      the Blog-owned `SearchProjectionSource`; today the module-side source is composed
+      but not consulted by `SearchIngestionHandler`, and the two implementations must
+      stay semantically identical.
+
 ## 2026-10-16 Audience Security SPI and Projection Source Decoupling
 
 The Search module generalizes cross-module authorization and ingestion boundaries:

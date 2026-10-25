@@ -120,6 +120,28 @@ pub mod module_event_dispatcher {
         spawn_module_event_dispatcher,
     };
 
+    /// Search source modules whose indexed documents are public discovery material.
+    ///
+    /// This is the host-owned Search corpus declaration: `rustok-search` never guesses
+    /// which module is public. A module missing from this list (and from the gated
+    /// policies registered below) is denied in storefront Search and suggestions.
+    ///
+    /// Content is special: its projector writes `source_module = node.kind`, so the
+    /// Content contribution is the Content-owned `CONTENT_NODE_KINDS` list. A new node
+    /// kind therefore needs no host change, while an unknown kind stays denied.
+    ///
+    /// `content` covers the projector's fallback bucket for a node whose stored kind is
+    /// empty (`COALESCE(NULLIF(kind, ''), 'content')`). The write path rejects empty
+    /// kinds, so only damaged legacy rows land there; declaring it keeps the corpus a
+    /// superset of everything `projector_core` can emit, which is what fail-closed
+    /// Search requires.
+    pub fn search_public_source_modules() -> Vec<&'static str> {
+        let mut modules = vec!["blog", "commerce", "content", "docs", "pages"];
+        #[cfg(feature = "mod-content")]
+        modules.extend_from_slice(rustok_content::CONTENT_NODE_KINDS);
+        modules
+    }
+
     /// Adds host-owned adapters after module/distribution registration, materializes the
     /// canonical Index query and replay runtimes, and then activates selected
     /// non-authoritative shadows.
@@ -173,6 +195,21 @@ pub mod module_event_dispatcher {
             }
         }
 
+        // Search audience corpus declaration. Every source module that projects into
+        // Search must declare its audience class here; modules that are absent are never
+        // publicly discoverable. Declaring a module twice is a composition error.
+        let mut audience_registry = extensions
+            .get::<rustok_search::SearchAudienceRegistry>()
+            .cloned()
+            .unwrap_or_default();
+        audience_registry
+            .declare_public_modules(search_public_source_modules())
+            .map_err(|error| {
+                Error::BadRequest(format!(
+                    "Search audience registry rejected a public source module declaration: {error}"
+                ))
+            })?;
+
         #[cfg(feature = "mod-forum")]
         {
             let audience_facts = extensions
@@ -206,16 +243,19 @@ pub mod module_event_dispatcher {
                         .get::<rustok_api::SharedStaticModuleSettingsReader>()
                         .cloned(),
                 );
-            let mut audience_registry = extensions
-                .get::<rustok_search::SearchAudienceRegistry>()
-                .cloned()
-                .unwrap_or_default();
-            let _ = audience_registry.register(forum_eligibility);
-            extensions.insert(audience_registry);
+            audience_registry
+                .register(forum_eligibility)
+                .map_err(|error| {
+                    Error::BadRequest(format!(
+                        "Search audience registry rejected the Forum audience policy: {error}"
+                    ))
+                })?;
             extensions.insert(category_scope);
             extensions.insert(owner_revision);
             extensions.insert(result_eligibility);
         }
+
+        extensions.insert(audience_registry);
 
         #[cfg(all(feature = "mod-forum", feature = "mod-moderation"))]
         {
@@ -496,8 +536,24 @@ pub mod module_event_dispatcher {
             assert!(
                 extensions.contains::<rustok_search::SharedStorefrontSearchResultEligibilityPort>()
             );
+            let audience_registry = extensions
+                .get::<rustok_search::SearchAudienceRegistry>()
+                .expect("Search audience registry should be composed");
+            assert_eq!(
+                audience_registry.audience_class("blog"),
+                Some(rustok_search::SearchAudienceClass::Public)
+            );
+            // Content Search documents are keyed by CMS node kind, not by a single
+            // `content` module name.
+            assert_eq!(
+                audience_registry.audience_class("post"),
+                Some(rustok_search::SearchAudienceClass::Public)
+            );
             #[cfg(feature = "mod-forum")]
-            assert!(extensions.contains::<rustok_search::SearchAudienceRegistry>());
+            assert_eq!(
+                audience_registry.audience_class("forum"),
+                Some(rustok_search::SearchAudienceClass::Gated)
+            );
             #[cfg(all(feature = "mod-notifications", feature = "mod-profiles"))]
             assert!(
                 extensions.contains::<rustok_notifications::NotificationRecipientPolicyRuntime>()
@@ -524,10 +580,10 @@ pub mod module_event_dispatcher {
                 host.shared_get::<rustok_search::SharedStorefrontSearchResultEligibilityPort>()
                     .is_some()
             );
-            #[cfg(feature = "mod-forum")]
             assert!(
                 host.shared_get::<rustok_search::SearchAudienceRegistry>()
-                    .is_some()
+                    .is_some(),
+                "host runtime must expose the Search audience registry"
             );
         }
 

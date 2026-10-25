@@ -7,7 +7,7 @@ use rustok_core::{Error, Result};
 
 use crate::TrustedStorefrontChannel;
 use crate::engine::{SearchQuery, SearchResult, SearchResultItem};
-use crate::storefront_product_channel_visibility::product_payload_visible_for_storefront;
+use crate::storefront_product_channel_visibility::storefront_payload_visible_for_channel;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SearchSynonymRecord {
@@ -378,27 +378,32 @@ impl SearchDictionaryService {
         query: &SearchQuery,
         result: SearchResult,
     ) -> Result<SearchResult> {
-        Self::apply_query_rules_with_storefront_channel(db, query, result, None, true, false).await
+        Self::apply_query_rules_with_storefront_channel(db, query, result, None, true).await
     }
 
+    /// Applies storefront query rules to an already authorized result.
+    ///
+    /// `allow_extra_pins` controls whether a rule may inject a document that is not
+    /// part of the passed result. It must stay `false` whenever the result came from an
+    /// audience-gated query, because a pin has no owner authorization of its own.
     pub async fn apply_storefront_query_rules(
         db: &DatabaseConnection,
         query: &SearchQuery,
         result: SearchResult,
         channel: &TrustedStorefrontChannel,
+        allow_extra_pins: bool,
     ) -> Result<SearchResult> {
         Self::apply_query_rules_with_storefront_channel(
             db,
             query,
             result,
             Some(channel),
-            true,
-            true,
+            allow_extra_pins,
         )
         .await
     }
 
-    /// Forum-only results have already passed their owner visibility check.
+    /// Audience-gated results have already passed their owner visibility check.
     /// Query rules may reorder that authorized page, but must never load an
     /// additional persisted document outside the owner-approved candidate set.
     pub async fn apply_authorized_storefront_query_rules(
@@ -407,15 +412,7 @@ impl SearchDictionaryService {
         result: SearchResult,
         channel: &TrustedStorefrontChannel,
     ) -> Result<SearchResult> {
-        Self::apply_query_rules_with_storefront_channel(
-            db,
-            query,
-            result,
-            Some(channel),
-            false,
-            false,
-        )
-        .await
+        Self::apply_storefront_query_rules(db, query, result, channel, false).await
     }
 
     async fn apply_query_rules_with_storefront_channel(
@@ -424,7 +421,6 @@ impl SearchDictionaryService {
         mut result: SearchResult,
         storefront_channel: Option<&TrustedStorefrontChannel>,
         allow_extra_pins: bool,
-        exclude_forum: bool,
     ) -> Result<SearchResult> {
         ensure_postgres(db)?;
 
@@ -458,14 +454,8 @@ impl SearchDictionaryService {
                 continue;
             }
 
-            if let Some(item) = Self::load_pinned_item(
-                db,
-                query,
-                rule.document_id,
-                storefront_channel,
-                exclude_forum,
-            )
-            .await?
+            if let Some(item) =
+                Self::load_pinned_item(db, query, rule.document_id, storefront_channel).await?
             {
                 pinned.push((rule.pinned_position.max(1), item));
             }
@@ -486,7 +476,6 @@ impl SearchDictionaryService {
         query: &SearchQuery,
         document_id: Uuid,
         storefront_channel: Option<&TrustedStorefrontChannel>,
-        exclude_forum: bool,
     ) -> Result<Option<SearchResultItem>> {
         let tenant_id = query
             .tenant_id
@@ -505,7 +494,7 @@ impl SearchDictionaryService {
         );
 
         let row = db.query_one_raw(stmt).await.map_err(Error::Database)?;
-        row.filter(|row| pinned_item_matches_query(query, row, storefront_channel, exclude_forum))
+        row.filter(|row| pinned_item_matches_query(query, row, storefront_channel))
             .map(map_pinned_item_row)
             .transpose()
     }
@@ -716,7 +705,6 @@ fn pinned_item_matches_query(
     query: &SearchQuery,
     row: &QueryResult,
     storefront_channel: Option<&TrustedStorefrontChannel>,
-    exclude_forum: bool,
 ) -> bool {
     let entity_type = match row.try_get::<String>("", "entity_type") {
         Ok(value) => value,
@@ -726,9 +714,6 @@ fn pinned_item_matches_query(
         Ok(value) => value,
         Err(_) => return false,
     };
-    if exclude_forum && source_module == "forum" {
-        return false;
-    }
     let locale = match row.try_get::<String>("", "locale") {
         Ok(value) => value,
         Err(_) => return false,
@@ -760,14 +745,15 @@ fn pinned_item_matches_query(
     if !query.statuses.is_empty() && !query.statuses.contains(&status) {
         return false;
     }
-    if entity_type == "product"
-        && let Some(channel) = storefront_channel
-    {
+    if let Some(channel) = storefront_channel {
+        // The pinned document bypasses the SQL channel predicate, so it must pass the
+        // exact same payload visibility rule the SQL predicate applies to every entity
+        // type. A missing projected channel list fails closed for channel-scoped types.
         let payload = match row.try_get::<serde_json::Value>("", "payload") {
             Ok(value) => value,
             Err(_) => return false,
         };
-        if !product_payload_visible_for_storefront(&payload, channel) {
+        if !storefront_payload_visible_for_channel(&payload, &entity_type, channel) {
             return false;
         }
     }
