@@ -251,9 +251,11 @@ jobs:
             run_tests -p rustok-events --lib --tests
             run_tests -p leptos-auth --lib
             run_tests -p rustok-ui-auth --lib
-            run_tests -p rustok-migrations --lib --tests
-            echo "=== cargo test -p rustok-server --lib auth (raw tail) ==="
-            cargo test -p rustok-server --lib auth 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tail -80
+            run_tests -p rustok-migrations --lib
+            echo "=== cargo test -p rustok-migrations --test ecommerce_schema_smoke (raw tail) ==="
+            cargo test -p rustok-migrations --test ecommerce_schema_smoke -- --nocapture 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tail -120
+            echo "=== cargo test -p rustok-server --lib auth, no embed-storefront (raw tail) ==="
+            cargo test -p rustok-server --lib --no-default-features --features "redis-cache embed-admin mod-product mod-product_relations mod-brand mod-product_bundles mod-profiles mod-social_graph mod-reactions mod-groups mod-region mod-pricing mod-inventory mod-cart mod-customer mod-order mod-payment mod-fulfillment mod-commerce mod-accounting mod-moderation mod-content mod-blog mod-forum mod-notifications mod-newsletter mod-comments mod-pages mod-docs mod-forms mod-navigation mod-page_builder mod-taxonomy mod-alloy mod-flex mod-media mod-seo mod-workflow mod-ai ai-translation" auth 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tail -120
           } > /tmp/test_results.txt 2>&1
           wc -l /tmp/test_results.txt
       - name: Post PR comment (tests)
@@ -264,7 +266,7 @@ jobs:
           {
             echo "### 🧪 Diag TEST results for ${GITHUB_SHA:0:8} (temporary workflow)"
             echo '```'
-            head -c 30000 /tmp/test_results.txt 2>/dev/null
+            head -c 45000 /tmp/test_results.txt 2>/dev/null
             echo '```'
           } > /tmp/comment.md
           gh pr comment 4646 --body-file /tmp/comment.md
