@@ -469,6 +469,19 @@ impl TranslationMemoryService {
             transaction.rollback().await?;
             return Ok(replay);
         }
+        // Re-check pin inside transaction to close TOCTOU (P1-7): a concurrent
+        // register_operation could have pinned after our pre-transaction check.
+        if machine_memory_binding::Entity::find()
+            .filter(machine_memory_binding::Column::TenantId.eq(tenant_id))
+            .filter(machine_memory_binding::Column::MemoryEntryId.eq(input.entry_id))
+            .one(&transaction)
+            .await?
+            .is_some()
+        {
+            return Err(TranslationError::MemoryRetentionConflict(
+                "memory entry is pinned by a registered machine translation operation".to_string(),
+            ));
+        }
         let delete = memory_entry::Entity::delete_many()
             .filter(memory_entry::Column::TenantId.eq(tenant_id))
             .filter(memory_entry::Column::Id.eq(input.entry_id))

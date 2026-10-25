@@ -361,6 +361,28 @@ pub(crate) async fn register_operation(
             .ok_or(TranslationError::WorkflowRevisionConflict)?;
     let created = persisted.id == id;
     if created {
+        // Validate that pinned entries still exist and are not tombstoned within the transaction
+        // to close TOCTOU between lookup and registration. See P1-7.
+        if !registration.request.memory_suggestions.is_empty() {
+            let entry_ids = registration
+                .request
+                .memory_suggestions
+                .iter()
+                .map(|s| {
+                    Uuid::parse_str(&s.entry_id)
+                        .map_err(|_| TranslationError::MachineMemoryProjectionUnavailable)
+                })
+                .collect::<TranslationResult<Vec<_>>>()?;
+            let existing = memory_entry::Entity::find()
+                .filter(memory_entry::Column::TenantId.eq(registration.tenant_id))
+                .filter(memory_entry::Column::Id.is_in(entry_ids.clone()))
+                .filter(memory_entry::Column::TombstonedAt.is_null())
+                .all(&transaction)
+                .await?;
+            if existing.len() != entry_ids.len() {
+                return Err(TranslationError::MachineMemoryProjectionUnavailable);
+            }
+        }
         insert_memory_bindings(
             &transaction,
             registration.tenant_id,
