@@ -5,6 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "Standalone authenticated gRPC host for the RusTok Product catalog read port"
+repository.workspace = true
+readme = "README.md"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 anyhow.workspace = true
