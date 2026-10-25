@@ -1,4 +1,5 @@
 pub mod auth_invite_consumptions;
+pub mod auth_invites;
 pub mod event_delivery_settings;
 pub mod flex_attached_localized_values;
 pub mod flex_entries;
@@ -33,6 +34,7 @@ pub mod user_roles;
 pub mod users;
 
 pub use auth_invite_consumptions::Entity as AuthInviteConsumptions;
+pub use auth_invites::Entity as AuthInvites;
 pub use event_delivery_settings::Entity as EventDeliverySettings;
 pub use flex_attached_localized_values::Entity as FlexAttachedLocalizedValues;
 pub use flex_entries::Entity as FlexEntries;

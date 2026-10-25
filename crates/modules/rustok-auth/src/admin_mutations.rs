@@ -171,6 +171,42 @@ impl std::fmt::Debug for OAuthAppSecretResult {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IssueUserInviteCommand {
+    pub email: String,
+    pub role: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct UserInviteRecord {
+    pub id: Uuid,
+    pub email: String,
+    pub role: String,
+    pub issued_by: Option<Uuid>,
+    pub expires_at: DateTime<Utc>,
+    pub revoked_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Result of issuing an invitation — includes the plaintext token,
+/// returned exactly once to the issuing administrator, who delivers it
+/// to the invitee out of band. Only its SHA-256 digest is persisted.
+#[derive(Clone, PartialEq)]
+pub struct IssuedUserInviteResult {
+    pub invite: UserInviteRecord,
+    pub token: String,
+}
+
+impl std::fmt::Debug for IssuedUserInviteResult {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("IssuedUserInviteResult")
+            .field("invite", &self.invite)
+            .field("token", &"<redacted>")
+            .finish()
+    }
+}
+
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum AuthAdminMutationError {
     #[error("authentication required")]
@@ -208,6 +244,25 @@ pub trait UserAdminMutationPort: Send + Sync {
         context: &AuthAdminMutationContext,
         user_id: Uuid,
     ) -> Result<(), AuthAdminMutationError>;
+
+    async fn issue_user_invite(
+        &self,
+        context: &AuthAdminMutationContext,
+        command: IssueUserInviteCommand,
+    ) -> Result<IssuedUserInviteResult, AuthAdminMutationError>;
+
+    /// List issued invites for the tenant, newest first.
+    async fn list_user_invites(
+        &self,
+        context: &AuthAdminMutationContext,
+        limit: u64,
+    ) -> Result<Vec<UserInviteRecord>, AuthAdminMutationError>;
+
+    async fn revoke_user_invite(
+        &self,
+        context: &AuthAdminMutationContext,
+        invite_id: Uuid,
+    ) -> Result<UserInviteRecord, AuthAdminMutationError>;
 }
 
 #[async_trait]

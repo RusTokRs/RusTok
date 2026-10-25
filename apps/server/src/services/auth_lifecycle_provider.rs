@@ -83,13 +83,17 @@ impl ServerAuthLifecycleProvider {
     fn ensure_registration_enabled(
         settings: &RustokSettings,
     ) -> Result<(), AuthLifecycleMutationError> {
-        if settings.features.registration_enabled {
-            Ok(())
-        } else {
-            Err(AuthLifecycleMutationError::Validation(
+        if !settings.features.registration_enabled {
+            return Err(AuthLifecycleMutationError::Validation(
                 "Registration is disabled".to_string(),
-            ))
+            ));
         }
+        if settings.features.invite_only_registration {
+            return Err(AuthLifecycleMutationError::Validation(
+                "Registration is available by invitation only".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     async fn permission_strings(
@@ -522,6 +526,9 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         password: String,
         name: Option<String>,
     ) -> Result<AcceptInviteRecord, AuthLifecycleMutationError> {
+        if !self.runtime_ctx.settings().features.invites_enabled {
+            return Err(AuthLifecycleMutationError::InvalidInviteToken);
+        }
         let accepted = AuthLifecycleService::accept_invite_once_runtime(
             &self.runtime_ctx,
             &self.auth_config,

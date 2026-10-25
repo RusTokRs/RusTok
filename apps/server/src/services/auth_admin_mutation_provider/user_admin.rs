@@ -2,8 +2,9 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::Permission;
 use rustok_auth::{
-    AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UpdateUserCommand,
-    UserAdminMutationPort, UserMutationRecord,
+    AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, IssueUserInviteCommand,
+    IssuedUserInviteResult, UpdateUserCommand, UserAdminMutationPort, UserInviteRecord,
+    UserMutationRecord,
 };
 use rustok_core::events::EventTransport;
 use rustok_core::{UserRole, UserStatus, infer_user_role_from_permissions};
@@ -17,13 +18,15 @@ use rustok_rbac::{
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter,
-    QuerySelect, Set, TransactionTrait, sea_query::Expr,
+    QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use std::{str::FromStr, sync::Arc};
 use uuid::Uuid;
 
 use crate::auth::hash_password_async;
-use crate::models::{sessions, users};
+use sha2::{Digest, Sha256};
+
+use crate::models::{auth_invites, sessions, users};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
 use crate::services::rbac_cache_invalidation::publish_user_rbac_invalidation;
@@ -34,6 +37,22 @@ use crate::services::rbac_service::RbacService;
 use super::{
     ServerAuthAdminMutationProvider, super_admin_guard::ensure_active_super_admin_continuity,
 };
+
+/// Invite tokens stay valid for a week: long enough for out-of-band
+/// delivery by an administrator, short enough to bound exposure.
+const INVITE_TOKEN_TTL_SECS: u64 = 7 * 24 * 60 * 60;
+
+fn invite_record(invite: auth_invites::Model) -> UserInviteRecord {
+    UserInviteRecord {
+        id: invite.id,
+        email: invite.email,
+        role: invite.role,
+        issued_by: invite.issued_by,
+        expires_at: invite.expires_at.with_timezone(&Utc),
+        revoked_at: invite.revoked_at.map(|value| value.with_timezone(&Utc)),
+        created_at: invite.created_at.with_timezone(&Utc),
+    }
+}
 
 fn parse_user_status(value: &str) -> Result<UserStatus, AuthAdminMutationError> {
     let normalized = value.trim().to_ascii_lowercase();
@@ -901,6 +920,123 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         tx.commit().await.map_err(super::internal_admin_error)?;
         publish_committed_user_invalidation(context.tenant_id, user.id, durable_generation).await;
         Ok(())
+    }
+
+    async fn issue_user_invite(
+        &self,
+        context: &AuthAdminMutationContext,
+        command: IssueUserInviteCommand,
+    ) -> Result<IssuedUserInviteResult, AuthAdminMutationError> {
+        self.authorize_user(
+            context,
+            &[Permission::USERS_CREATE, Permission::USERS_MANAGE],
+            "users:create or users:manage required",
+        )
+        .await?;
+
+        // Invites carry a built-in role in the signed token; a custom
+        // role slug is rejected rather than silently downgraded.
+        let role = parse_user_role(command.role.as_deref().unwrap_or("customer"))?;
+        if role != UserRole::Customer {
+            self.authorize_user(
+                context,
+                &[Permission::USERS_MANAGE],
+                "users:manage required to invite privileged users",
+            )
+            .await?;
+            self.ensure_role_assignment_allowed(context, &role).await?;
+        }
+
+        let email = rustok_auth::normalize_email(&command.email)
+            .map_err(|error| AuthAdminMutationError::Validation(error.to_string()))?;
+
+        let token = crate::auth::encode_invite_token(
+            &self.auth_config,
+            context.tenant_id,
+            &email,
+            role.clone(),
+            INVITE_TOKEN_TTL_SECS,
+        )
+        .map_err(super::internal_admin_error)?;
+
+        let now = Utc::now();
+        let invite = auth_invites::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(context.tenant_id),
+            token_hash: Set(hex::encode(Sha256::digest(token.as_bytes()))),
+            email: Set(email),
+            role: Set(role.to_string()),
+            issued_by: Set(Some(context.actor_id)),
+            expires_at: Set(
+                (now + chrono::Duration::seconds(INVITE_TOKEN_TTL_SECS as i64)).into(),
+            ),
+            revoked_at: Set(None),
+            created_at: Set(now.into()),
+        }
+        .insert(&self.db)
+        .await
+        .map_err(super::internal_admin_error)?;
+
+        Ok(IssuedUserInviteResult {
+            invite: invite_record(invite),
+            token,
+        })
+    }
+
+    async fn list_user_invites(
+        &self,
+        context: &AuthAdminMutationContext,
+        limit: u64,
+    ) -> Result<Vec<UserInviteRecord>, AuthAdminMutationError> {
+        self.authorize_user(
+            context,
+            &[Permission::USERS_LIST, Permission::USERS_MANAGE],
+            "users:list or users:manage required",
+        )
+        .await?;
+
+        let invites = auth_invites::Entity::find()
+            .filter(auth_invites::Column::TenantId.eq(context.tenant_id))
+            .order_by_desc(auth_invites::Column::CreatedAt)
+            .limit(super::clamp_auth_admin_list_limit(limit))
+            .all(&self.db)
+            .await
+            .map_err(super::internal_admin_error)?;
+
+        Ok(invites.into_iter().map(invite_record).collect())
+    }
+
+    async fn revoke_user_invite(
+        &self,
+        context: &AuthAdminMutationContext,
+        invite_id: Uuid,
+    ) -> Result<UserInviteRecord, AuthAdminMutationError> {
+        self.authorize_user(
+            context,
+            &[Permission::USERS_MANAGE],
+            "users:manage required",
+        )
+        .await?;
+
+        let invite = auth_invites::Entity::find_by_id(invite_id)
+            .filter(auth_invites::Column::TenantId.eq(context.tenant_id))
+            .one(&self.db)
+            .await
+            .map_err(super::internal_admin_error)?
+            .ok_or_else(|| AuthAdminMutationError::NotFound("user invite".to_string()))?;
+
+        if invite.revoked_at.is_some() {
+            return Ok(invite_record(invite));
+        }
+
+        let mut active: auth_invites::ActiveModel = invite.into();
+        active.revoked_at = Set(Some(Utc::now().into()));
+        let updated = active
+            .update(&self.db)
+            .await
+            .map_err(super::internal_admin_error)?;
+
+        Ok(invite_record(updated))
     }
 }
 

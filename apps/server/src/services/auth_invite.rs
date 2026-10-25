@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 
 use crate::auth::{AuthConfig, decode_invite_token, normalize_email, validate_password_policy};
 use crate::error::Error;
-use crate::models::{auth_invite_consumptions, users};
+use crate::models::{auth_invite_consumptions, auth_invites, users};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
@@ -88,6 +88,20 @@ impl AuthLifecycleService {
             .begin()
             .await
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+
+        // Fail closed on the issuance ledger: only tokens an
+        // administrator actually issued (and has not revoked) are
+        // acceptable, even if the signature verifies.
+        let issued = auth_invites::Entity::find()
+            .filter(auth_invites::Column::TokenHash.eq(&token_hash))
+            .filter(auth_invites::Column::TenantId.eq(tenant_id))
+            .one(&tx)
+            .await
+            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+        match issued {
+            Some(invite) if invite.revoked_at.is_none() => {}
+            _ => return Err(InviteAcceptanceError::InvalidToken),
+        }
 
         // Reserve the digest first. The unique token_hash constraint is the
         // serialization point, so every concurrent replay is rejected before

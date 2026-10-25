@@ -13,8 +13,8 @@ use crate::graphql::types::{
     ArtifactActivation, ArtifactDataPurgeReceipt, ArtifactDeactivation,
     ArtifactSettingsPurgeReceipt, ArtifactSettingsRecoveryPointReceipt,
     ArtifactSettingsRestoreReceipt, ArtifactTenantLifecycle, ArtifactUninstall, BuildJob,
-    CreateUserInput, DeleteUserPayload, ModuleOperationRecoveryPlan, TenantModule, UpdateUserInput,
-    User,
+    CreateUserInput, DeleteUserPayload, IssueUserInviteInput, IssuedUserInvite,
+    ModuleOperationRecoveryPlan, TenantModule, UpdateUserInput, User, UserInvite,
 };
 use crate::modules::ManifestError;
 use crate::services::artifact_purge_recovery_host::{
@@ -44,8 +44,8 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::graphql::GraphQLError;
 use rustok_api::{AuthPrincipalContext, Permission, PortError, PortErrorKind};
 use rustok_auth::{
-    AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UpdateUserCommand,
-    UserAdminMutationRuntime, UserMutationRecord,
+    AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, IssueUserInviteCommand,
+    UpdateUserCommand, UserAdminMutationRuntime, UserMutationRecord,
 };
 use rustok_build::{BuildEventPublicationContext, BuildEventScope, EventBusBuildEventPublisher};
 use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions, UserRole};
@@ -119,7 +119,7 @@ fn map_custom_field_error(error: rustok_core::field_schema::FlexError) -> FieldE
     }
 }
 
-fn effective_request_locale(ctx: &Context<'_>, tenant: &TenantContext) -> String {
+pub(crate) fn effective_request_locale(ctx: &Context<'_>, tenant: &TenantContext) -> String {
     ctx.data_opt::<RequestContext>()
         .map(|request| request.locale.clone())
         .unwrap_or_else(|| tenant.default_locale.clone())
@@ -187,7 +187,7 @@ fn map_create_user_error(err: AuthLifecycleError) -> FieldError {
     }
 }
 
-fn user_mutation_runtime(ctx: &Context<'_>) -> Result<UserAdminMutationRuntime> {
+pub(crate) fn user_mutation_runtime(ctx: &Context<'_>) -> Result<UserAdminMutationRuntime> {
     ctx.data::<Arc<ModuleRuntimeExtensions>>()?
         .get::<UserAdminMutationRuntime>()
         .cloned()
@@ -198,7 +198,7 @@ fn user_mutation_runtime(ctx: &Context<'_>) -> Result<UserAdminMutationRuntime> 
         })
 }
 
-fn map_user_mutation_error(error: AuthAdminMutationError) -> FieldError {
+pub(crate) fn map_user_mutation_error(error: AuthAdminMutationError) -> FieldError {
     match error {
         AuthAdminMutationError::Unauthorized => <FieldError as GraphQLError>::unauthenticated(),
         AuthAdminMutationError::Forbidden(message) => {
@@ -224,7 +224,7 @@ fn map_user_mutation_error(error: AuthAdminMutationError) -> FieldError {
     }
 }
 
-fn user_mutation_context(
+pub(crate) fn user_mutation_context(
     auth: &AuthContext,
     tenant: &TenantContext,
     locale: String,
@@ -825,6 +825,53 @@ impl RootMutation {
             )
             .await
             .map(user_from_mutation_record)
+            .map_err(map_user_mutation_error)
+    }
+
+    async fn issue_user_invite(
+        &self,
+        ctx: &Context<'_>,
+        input: IssueUserInviteInput,
+    ) -> Result<IssuedUserInvite> {
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let locale = effective_request_locale(ctx, tenant);
+        let issued = user_mutation_runtime(ctx)?
+            .port()
+            .issue_user_invite(
+                &user_mutation_context(auth, tenant, locale),
+                IssueUserInviteCommand {
+                    email: input.email,
+                    role: input
+                        .role
+                        .map(|role| rustok_core::UserRole::from(role).to_string()),
+                },
+            )
+            .await
+            .map_err(map_user_mutation_error)?;
+        Ok(IssuedUserInvite {
+            invite: issued.invite.into(),
+            token: issued.token,
+        })
+    }
+
+    async fn revoke_user_invite(
+        &self,
+        ctx: &Context<'_>,
+        id: uuid::Uuid,
+    ) -> Result<UserInvite> {
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let locale = effective_request_locale(ctx, tenant);
+        user_mutation_runtime(ctx)?
+            .port()
+            .revoke_user_invite(&user_mutation_context(auth, tenant, locale), id)
+            .await
+            .map(UserInvite::from)
             .map_err(map_user_mutation_error)
     }
 

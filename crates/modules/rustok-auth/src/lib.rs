@@ -38,9 +38,10 @@ pub use module::AuthModule;
 
 pub use admin_mutations::{
     AuthAdminMutationContext, AuthAdminMutationError, AuthorizedOAuthAppRecord,
-    CreateOAuthAppCommand, CreateUserCommand, OAuthAdminPort, OAuthAdminRuntime,
-    OAuthAppMutationRecord, OAuthAppSecretResult, UpdateOAuthAppCommand, UpdateUserCommand,
-    UserAdminMutationPort, UserAdminMutationRuntime, UserMutationRecord,
+    CreateOAuthAppCommand, CreateUserCommand, IssueUserInviteCommand, IssuedUserInviteResult,
+    OAuthAdminPort, OAuthAdminRuntime, OAuthAppMutationRecord, OAuthAppSecretResult,
+    UpdateOAuthAppCommand, UpdateUserCommand, UserAdminMutationPort, UserAdminMutationRuntime,
+    UserInviteRecord, UserMutationRecord,
 };
 pub use backfill::AuthUserBackfillDbReader;
 pub use bootstrap::{AuthUserBootstrapDbWriter, AuthUserBootstrapRecord, AuthUserBootstrapRequest};

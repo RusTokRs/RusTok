@@ -63,11 +63,15 @@ fn user_response_from_model(user: users::Model, role: rustok_core::UserRole) -> 
 }
 
 fn ensure_registration_enabled(settings: &RustokSettings) -> Result<()> {
-    if settings.features.registration_enabled {
-        Ok(())
-    } else {
-        Err(Error::Forbidden("Registration is disabled".into()))
+    if !settings.features.registration_enabled {
+        return Err(Error::Forbidden("Registration is disabled".into()));
     }
+    if settings.features.invite_only_registration {
+        return Err(Error::Forbidden(
+            "Registration is available by invitation only".into(),
+        ));
+    }
+    Ok(())
 }
 
 #[utoipa::path(post, path = "/api/auth/register", tag = "auth", request_body = RegisterParams,
@@ -235,6 +239,12 @@ async fn accept_invite(
     Json(params): Json<AcceptInviteParams>,
 ) -> Result<Response> {
     tracing::debug!("auth::accept_invite entry");
+    if !ctx.runtime_ctx().settings().features.invites_enabled {
+        // Deliberately indistinguishable from an invalid token.
+        return Err(Error::Unauthorized(
+            "Invalid or already consumed invite token".into(),
+        ));
+    }
     let config = ctx
         .auth_config()
         .cloned()

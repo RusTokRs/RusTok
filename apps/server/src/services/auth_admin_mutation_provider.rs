@@ -124,11 +124,12 @@ where
 #[derive(Clone)]
 pub struct ServerAuthAdminMutationProvider {
     db: DatabaseConnection,
+    auth_config: crate::auth::AuthConfig,
 }
 
 impl ServerAuthAdminMutationProvider {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+    pub fn new(db: DatabaseConnection, auth_config: crate::auth::AuthConfig) -> Self {
+        Self { db, auth_config }
     }
 
     fn request_permissions(

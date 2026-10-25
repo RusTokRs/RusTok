@@ -4,8 +4,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use rustok_api::{Permission, has_effective_permission};
 use rustok_auth::{
-    AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UpdateUserCommand,
-    UserAdminMutationPort, UserMutationRecord,
+    AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, IssueUserInviteCommand,
+    IssuedUserInviteResult, UpdateUserCommand, UserAdminMutationPort, UserInviteRecord,
+    UserMutationRecord,
 };
 use rustok_core::UserRole;
 use uuid::Uuid;
@@ -177,6 +178,57 @@ impl UserAdminMutationPort for GuardedUserAdminMutationProvider {
         )?;
 
         self.inner.delete_user(context, user_id).await
+    }
+
+    async fn issue_user_invite(
+        &self,
+        context: &AuthAdminMutationContext,
+        command: IssueUserInviteCommand,
+    ) -> Result<IssuedUserInviteResult, AuthAdminMutationError> {
+        let authority = Self::require_any(
+            context,
+            &[Permission::USERS_CREATE, Permission::USERS_MANAGE],
+            "users:create or users:manage required",
+        )?;
+        let role = Self::parse_role(command.role.as_deref().unwrap_or("customer"))?;
+        if role != UserRole::Customer {
+            if !has_effective_permission(&authority, &Permission::USERS_MANAGE) {
+                return Err(AuthAdminMutationError::Forbidden(
+                    "users:manage required to invite privileged users".to_string(),
+                ));
+            }
+            Self::validate_role_grant(context, &authority, &role)?;
+        }
+
+        self.inner.issue_user_invite(context, command).await
+    }
+
+    async fn list_user_invites(
+        &self,
+        context: &AuthAdminMutationContext,
+        limit: u64,
+    ) -> Result<Vec<UserInviteRecord>, AuthAdminMutationError> {
+        Self::require_any(
+            context,
+            &[Permission::USERS_LIST, Permission::USERS_MANAGE],
+            "users:list or users:manage required",
+        )?;
+
+        self.inner.list_user_invites(context, limit).await
+    }
+
+    async fn revoke_user_invite(
+        &self,
+        context: &AuthAdminMutationContext,
+        invite_id: Uuid,
+    ) -> Result<UserInviteRecord, AuthAdminMutationError> {
+        Self::require_any(
+            context,
+            &[Permission::USERS_MANAGE],
+            "users:manage required",
+        )?;
+
+        self.inner.revoke_user_invite(context, invite_id).await
     }
 }
 

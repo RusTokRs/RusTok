@@ -102,6 +102,45 @@ pub struct CreateUserInput {
 }
 
 #[derive(InputObject, Debug, Clone)]
+pub struct IssueUserInviteInput {
+    pub email: String,
+    pub role: Option<GqlUserRole>,
+}
+
+#[derive(SimpleObject, Debug, Clone)]
+pub struct UserInvite {
+    pub id: Uuid,
+    pub email: String,
+    pub role: String,
+    pub issued_by: Option<Uuid>,
+    pub expires_at: String,
+    pub revoked_at: Option<String>,
+    pub created_at: String,
+}
+
+impl From<rustok_auth::UserInviteRecord> for UserInvite {
+    fn from(record: rustok_auth::UserInviteRecord) -> Self {
+        Self {
+            id: record.id,
+            email: record.email,
+            role: record.role,
+            issued_by: record.issued_by,
+            expires_at: record.expires_at.to_rfc3339(),
+            revoked_at: record.revoked_at.map(|value| value.to_rfc3339()),
+            created_at: record.created_at.to_rfc3339(),
+        }
+    }
+}
+
+/// The plaintext token is returned exactly once, to the issuing
+/// administrator; only its SHA-256 digest is persisted.
+#[derive(SimpleObject, Debug, Clone)]
+pub struct IssuedUserInvite {
+    pub invite: UserInvite,
+    pub token: String,
+}
+
+#[derive(InputObject, Debug, Clone)]
 pub struct UpdateUserInput {
     pub email: Option<String>,
     pub password: Option<String>,

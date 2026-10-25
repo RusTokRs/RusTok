@@ -393,6 +393,13 @@ pub struct FeatureSettings {
     pub search_indexing: bool,
     #[serde(default)]
     pub oauth_enabled: bool,
+    /// Master switch for invitation issuance and acceptance.
+    #[serde(default = "default_true")]
+    pub invites_enabled: bool,
+    /// When true, public registration is closed and accounts can only
+    /// be created by accepting an administrator-issued invitation.
+    #[serde(default)]
+    pub invite_only_registration: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -654,6 +661,8 @@ impl Default for FeatureSettings {
             multi_tenant: true,
             search_indexing: true,
             oauth_enabled: false,
+            invites_enabled: true,
+            invite_only_registration: false,
         }
     }
 }
