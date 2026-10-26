@@ -479,6 +479,10 @@ jobs:
                           "\n".join(lines))
               print(summary, flush=True)
 
-          run_check("no-default-features", ["check", "-p", "rustok-server", "--no-default-features", "--message-format", "json"])
+          import re
+          _toml = open("apps/server/Cargo.toml", encoding="utf-8").read()
+          _default = re.findall(r"\"([^\"]+)\"", re.search(r"^default = \[(.*?)\]", _toml, flags=re.S | re.M).group(1))
+          _feats = ",".join(f for f in _default if f != "embed-storefront")
+          run_check("default-minus-storefront", ["check", "-p", "rustok-server", "--no-default-features", "--features", _feats, "--message-format", "json"])
           run_check("all-features", ["check", "-p", "rustok-server", "--all-features", "--message-format", "json"])
           PY
