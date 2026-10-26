@@ -215,6 +215,22 @@ const PROFILE_UPDATED_FIELDS: &[FieldSchema] = &[
     field!("locale", "string", optional),
 ];
 const USER_DELETED_FIELDS: &[FieldSchema] = &[field!("user_id", "uuid")];
+const USER_LOGGED_OUT_FIELDS: &[FieldSchema] = &[field!("user_id", "uuid")];
+const USER_PASSWORD_CHANGED_FIELDS: &[FieldSchema] = &[field!("user_id", "uuid")];
+const USER_PASSWORD_RESET_COMPLETED_FIELDS: &[FieldSchema] = &[field!("user_id", "uuid")];
+const USER_EMAIL_VERIFIED_FIELDS: &[FieldSchema] = &[field!("user_id", "uuid")];
+const USER_INVITE_ISSUED_FIELDS: &[FieldSchema] = &[
+    field!("invite_id", "uuid"),
+    field!("issued_by", "uuid", optional),
+];
+const USER_INVITE_ACCEPTED_FIELDS: &[FieldSchema] = &[
+    field!("user_id", "uuid"),
+    field!("invite_id", "uuid"),
+];
+const USER_INVITE_REVOKED_FIELDS: &[FieldSchema] = &[
+    field!("invite_id", "uuid"),
+    field!("revoked_by", "uuid", optional),
+];
 
 const PRODUCT_ID_FIELDS: &[FieldSchema] = &[field!("product_id", "uuid")];
 const VARIANT_FIELDS: &[FieldSchema] =
@@ -876,6 +892,48 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         version: 1,
         description: "A user was deleted.",
         fields: USER_DELETED_FIELDS,
+    },
+    EventSchema {
+        event_type: "user.logged_out",
+        version: 1,
+        description: "A user logged out without session or contact data.",
+        fields: USER_LOGGED_OUT_FIELDS,
+    },
+    EventSchema {
+        event_type: "user.password_changed",
+        version: 1,
+        description: "A user changed their password without credential data.",
+        fields: USER_PASSWORD_CHANGED_FIELDS,
+    },
+    EventSchema {
+        event_type: "user.password_reset_completed",
+        version: 1,
+        description: "A password reset completed without credential or contact data.",
+        fields: USER_PASSWORD_RESET_COMPLETED_FIELDS,
+    },
+    EventSchema {
+        event_type: "user.email_verified",
+        version: 1,
+        description: "A user verified their email without contact data.",
+        fields: USER_EMAIL_VERIFIED_FIELDS,
+    },
+    EventSchema {
+        event_type: "user.invite_issued",
+        version: 1,
+        description: "A registration invite was issued without contact or token data.",
+        fields: USER_INVITE_ISSUED_FIELDS,
+    },
+    EventSchema {
+        event_type: "user.invite_accepted",
+        version: 1,
+        description: "A registration invite was accepted without contact or token data.",
+        fields: USER_INVITE_ACCEPTED_FIELDS,
+    },
+    EventSchema {
+        event_type: "user.invite_revoked",
+        version: 1,
+        description: "A registration invite was revoked without contact or token data.",
+        fields: USER_INVITE_REVOKED_FIELDS,
     },
     EventSchema {
         event_type: "product.created",
