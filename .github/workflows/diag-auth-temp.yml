@@ -264,11 +264,11 @@ jobs:
             run_tests -p rustok-migrations --lib
             echo "=== cargo test -p rustok-migrations --test ecommerce_schema_smoke (raw tail) ==="
             cargo test -p rustok-migrations --test ecommerce_schema_smoke -- --nocapture 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tail -120
-            echo "=== focused reruns of full-suite failures (raw) ==="
+            echo "=== focused reruns round 2 (raw) ==="
             FEATS="redis-cache embed-admin mod-product mod-product_relations mod-brand mod-product_bundles mod-profiles mod-social_graph mod-reactions mod-groups mod-region mod-pricing mod-inventory mod-cart mod-customer mod-order mod-payment mod-fulfillment mod-commerce mod-accounting mod-moderation mod-content mod-blog mod-forum mod-notifications mod-newsletter mod-comments mod-pages mod-docs mod-forms mod-navigation mod-page_builder mod-taxonomy mod-alloy mod-flex mod-media mod-seo mod-workflow mod-ai ai-translation"
-            for f in request_scope_prevents_database_permission_restoration has_permission_records_cache_miss_then_hit artifact_data_purge_checks_owner_context_and_current_grants database_rejects_cross_tenant_relations committed_repair_invalidates_all_valid_role_holders outbox_metrics_publish_only_canonical_names catalog_modules_overlay_metadata_from_rustok_module_manifest registry_dependencies_match_runtime_contract bootstrap_registry_only_runtime_forces_headless_surfaces update_module_settings_applies_schema_defaults toggle_error_taxonomy_matrix_stays_stable preserves_host_selected_external_product_catalog_runtime forum_group_facts_follow_groups_owner_clock_sqlite; do
+            for f in bootstrap_registry_only_runtime_forces_headless_surfaces services::rbac_service::tests; do
               echo "--- rerun: $f ---"
-              cargo test -p rustok-server --lib --no-default-features --features "$FEATS" "$f" -- --nocapture 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E "panicked at|assertion|left:|right:|expect|Error|error|FAILED|test result" | head -14
+              cargo test -p rustok-server --lib --no-default-features --features "$FEATS" "$f" -- --nocapture 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tail -40
             done
           } > /tmp/test_results.txt 2>&1
           wc -l /tmp/test_results.txt

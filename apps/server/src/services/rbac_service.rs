@@ -402,6 +402,7 @@ mod tests {
                             | "m20250101_000002_create_users"
                             | "m20250101_000005_create_roles_and_permissions"
                             | "m20250101_000006_add_metadata_to_tenants_and_users"
+                            | "m20261025_000001_add_user_login_lockout"
                     )
                 })
                 .collect();
