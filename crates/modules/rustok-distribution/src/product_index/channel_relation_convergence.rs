@@ -33,6 +33,7 @@ const EXECUTION_FAILED_CODE: &str = "product.sales_channel_relation_convergence.
 const RETRY_MARKER: &str = "product_sales_channel_relation_convergence_retryable";
 const REJECTED_MARKER: &str = "product_sales_channel_relation_convergence_rejected";
 const CANCELLED_MARKER: &str = "product_sales_channel_relation_convergence_cancelled";
+const HELD_MARKER: &str = "product_sales_channel_relation_convergence_held";
 const RETRY_DELAY: Duration = Duration::from_secs(5);
 const REJECTED_RETRY_DELAY: Duration = Duration::from_secs(60);
 const LEASE_DURATION: Duration = Duration::from_secs(300);
