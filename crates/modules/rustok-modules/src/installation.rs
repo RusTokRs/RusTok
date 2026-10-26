@@ -5137,13 +5137,13 @@ fn decode_installed_artifact_row(
 ) -> Result<InstalledModuleArtifact, ArtifactInstallationResolveError> {
         let installation_id = required_uuid_from_row(row, "installation_id", backend)
             .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
-        let data_owner_id = required_uuid_from_row(&row, "data_owner_id", backend)
+        let data_owner_id = required_uuid_from_row(row, "data_owner_id", backend)
             .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
-        let namespace_instance_id = optional_uuid_from_row(&row, "namespace_instance_id", backend)
+        let namespace_instance_id = optional_uuid_from_row(row, "namespace_instance_id", backend)
             .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
-        let secret_instance_id = optional_uuid_from_row(&row, "secret_instance_id", backend)
+        let secret_instance_id = optional_uuid_from_row(row, "secret_instance_id", backend)
             .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
-        let settings_instance_id = required_uuid_from_row(&row, "settings_instance_id", backend)
+        let settings_instance_id = required_uuid_from_row(row, "settings_instance_id", backend)
             .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
         let scope_kind: String = row
             .try_get("", "scope_kind")
@@ -5151,7 +5151,7 @@ fn decode_installed_artifact_row(
         let scope = match scope_kind.as_str() {
             "platform" => ModuleInstallationScope::Platform,
             "tenant" => ModuleInstallationScope::Tenant {
-                tenant_id: required_uuid_from_row(&row, "tenant_id", backend).map_err(|error| {
+                tenant_id: required_uuid_from_row(row, "tenant_id", backend).map_err(|error| {
                     ArtifactInstallationResolveError::Invariant(error.to_string())
                 })?,
             },
