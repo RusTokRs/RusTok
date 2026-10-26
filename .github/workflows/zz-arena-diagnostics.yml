@@ -278,7 +278,8 @@ jobs:
               with open(out_path, "wb") as outf:
                   try:
                       proc = subprocess.run(
-                          ["cargo", "test", "-p", crate, "--all-targets"],
+                          ["cargo", "test", "-p", crate, "--all-targets",
+                           "--no-fail-fast"],
                           stdout=outf, stderr=subprocess.STDOUT,
                           timeout=timeout_s)
                       rc = proc.returncode
@@ -306,15 +307,20 @@ jobs:
                       failed_names.append(m.group(1))
               panic_ctx = []
               current = ""
-              for l in lines:
+              idx = 0
+              while idx < len(lines) and len(panic_ctx) < 300:
+                  l = lines[idx]
                   if l.startswith("---- ") and l.rstrip().endswith("stdout ----"):
                       current = l.strip()
                   if "panicked at" in l:
                       if current:
                           panic_ctx.append(current)
                       panic_ctx.append(l.strip())
-                      if len(panic_ctx) >= 120:
-                          break
+                      for extra in lines[idx + 1: idx + 6]:
+                          s = extra.strip()
+                          if s:
+                              panic_ctx.append("    " + s)
+                  idx += 1
               errors = [l.strip() for l in lines if l.startswith("error")][:30]
               tail = lines[-25:]
               status = "TIMEOUT" if timed_out else f"rc={rc}"
@@ -325,8 +331,8 @@ jobs:
               uniq_failed = sorted(set(failed_names))
               body += ["", f"== failed tests ({len(uniq_failed)}) =="]
               body += uniq_failed[:200] or ["(none)"]
-              body += ["", "== panic context (first 60) =="]
-              body += panic_ctx[:120] or ["(none)"]
+              body += ["", "== panic context (first 40 panics) =="]
+              body += panic_ctx[:300] or ["(none)"]
               body += ["", "== error lines (first 30) =="]
               body += errors or ["(none)"]
               body += ["", "== output tail =="] + tail
