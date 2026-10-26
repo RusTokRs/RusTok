@@ -29,13 +29,15 @@ mod contract_tests;
 pub use error::{ManifestError, Result};
 pub use types::{
     AdminBuildConfig, BuildConfig, Manifest, ModuleGraphqlProvides, ModuleHttpProvides,
-    ModulePackageAdminUiChildPage, ModulePackageAdminUiProvides, ModulePackageCliProvides,
-    ModulePackageCrateContract, ModulePackageDependency, ModulePackageGraphqlProvides,
-    ModulePackageHttpProvides, ModulePackageI18nProvides, ModulePackageManifest,
-    ModulePackageMarketplaceMetadata, ModulePackageMetadata, ModulePackageProvides,
+    ModulePackageAdminSupportProvides, ModulePackageAdminUiChildPage,
+    ModulePackageAdminUiProvides, ModulePackageCliProvides, ModulePackageCrateContract,
+    ModulePackageDependency, ModulePackageGraphqlProvides, ModulePackageHttpProvides,
+    ModulePackageI18nProvides, ModulePackageManifest, ModulePackageMarketplaceMetadata,
+    ModulePackageMetadata, ModulePackageProvides, ModulePackageStorefrontSupportProvides,
     ModulePackageStorefrontUiComponent, ModulePackageStorefrontUiProvides, ModuleSpec,
-    ModuleUiComponentProvides, ModuleUiI18nProvides, ModuleUiProvides, ModulesManifest,
-    ServerBuildConfig, Settings, StorefrontBuildConfig,
+    ModuleUiComponentProvides, ModuleUiI18nProvides, ModuleUiProvides,
+    ModuleUiSupportProvides, ModulesManifest, ServerBuildConfig, Settings,
+    StorefrontBuildConfig,
 };
 pub use validation::{
     is_valid_module_slug, is_valid_ownership, is_valid_trust_level, is_valid_ui_classification,
@@ -101,5 +103,77 @@ mod tests {
         validate_module_package_manifest(&manifest).unwrap();
         assert_eq!(manifest.module.slug, "blog");
         assert_eq!(manifest.module.ui_classification, "dual_surface");
+    }
+
+    #[test]
+    fn loads_and_validates_comments_storefront_support_toml() {
+        let comments_manifest =
+            include_str!("../../../modules/rustok-comments/rustok-module.toml");
+        let manifest = parse_module_package_manifest(comments_manifest).unwrap();
+        validate_module_package_manifest(&manifest).unwrap();
+        assert_eq!(manifest.module.slug, "comments");
+        // A support crate is not a UI surface: classification stays admin_only.
+        assert_eq!(manifest.module.ui_classification, "admin_only");
+        let support = manifest
+            .provides
+            .storefront_support
+            .expect("comments declares a storefront support crate");
+        assert_eq!(
+            support.leptos_crate.as_deref(),
+            Some("rustok-comments-storefront-support")
+        );
+        assert!(manifest.provides.storefront_ui.is_none());
+    }
+
+    #[test]
+    fn loads_and_validates_reactions_storefront_support_toml() {
+        let reactions_manifest =
+            include_str!("../../../modules/rustok-reactions/rustok-module.toml");
+        let manifest = parse_module_package_manifest(reactions_manifest).unwrap();
+        validate_module_package_manifest(&manifest).unwrap();
+        assert_eq!(manifest.module.slug, "reactions");
+        assert_eq!(manifest.module.ui_classification, "future_ui");
+        let support = manifest
+            .provides
+            .storefront_support
+            .expect("reactions declares a storefront support crate");
+        assert_eq!(
+            support.leptos_crate.as_deref(),
+            Some("rustok-reactions-storefront")
+        );
+        assert!(manifest.provides.storefront_ui.is_none());
+    }
+
+    #[test]
+    fn rejects_surface_and_support_sections_for_the_same_host() {
+        let blog_manifest = include_str!("../../../modules/rustok-blog/rustok-module.toml");
+        let mut manifest = parse_module_package_manifest(blog_manifest).unwrap();
+        manifest.provides.storefront_support = Some(ModuleUiSupportProvides {
+            leptos_crate: Some("rustok-blog-storefront".to_string()),
+            i18n: None,
+        });
+        let error = validate_module_package_manifest(&manifest).unwrap_err();
+        assert!(
+            error.to_string().contains("not both"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn rejects_support_section_without_leptos_crate() {
+        let comments_manifest =
+            include_str!("../../../modules/rustok-comments/rustok-module.toml");
+        let mut manifest = parse_module_package_manifest(comments_manifest).unwrap();
+        manifest
+            .provides
+            .storefront_support
+            .as_mut()
+            .expect("comments declares a storefront support crate")
+            .leptos_crate = None;
+        let error = validate_module_package_manifest(&manifest).unwrap_err();
+        assert!(
+            error.to_string().contains("non-empty leptos_crate"),
+            "unexpected error: {error}"
+        );
     }
 }

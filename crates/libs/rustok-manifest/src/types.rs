@@ -196,6 +196,10 @@ pub struct ModulePackageProvides {
     pub admin_ui: Option<ModuleUiProvides>,
     #[serde(default)]
     pub storefront_ui: Option<ModuleUiProvides>,
+    #[serde(default)]
+    pub admin_support: Option<ModuleUiSupportProvides>,
+    #[serde(default)]
+    pub storefront_support: Option<ModuleUiSupportProvides>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
@@ -264,6 +268,24 @@ pub struct ModuleUiProvides {
 
 pub type ModulePackageAdminUiProvides = ModuleUiProvides;
 pub type ModulePackageStorefrontUiProvides = ModuleUiProvides;
+
+/// Declares that the module's `admin/` or `storefront/` sub-crate is a
+/// support crate: reusable Leptos components composed into other modules'
+/// surfaces or host compositions. A support crate owns no route, slot, or
+/// navigation entry, is not registered by host codegen, and does not count
+/// as a UI surface for `module.ui_classification`. Exactly one of the
+/// surface section (`admin_ui`/`storefront_ui`) or the support section may
+/// be declared per host, because both describe the same single sub-crate.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
+pub struct ModuleUiSupportProvides {
+    #[serde(default)]
+    pub leptos_crate: Option<String>,
+    #[serde(default)]
+    pub i18n: Option<ModuleUiI18nProvides>,
+}
+
+pub type ModulePackageAdminSupportProvides = ModuleUiSupportProvides;
+pub type ModulePackageStorefrontSupportProvides = ModuleUiSupportProvides;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
 pub struct ModulePackageAdminUiChildPage {
