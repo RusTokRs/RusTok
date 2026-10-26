@@ -13,7 +13,8 @@
 use chrono::{DateTime, Utc};
 use sea_orm::{
     ActiveModelBehavior, ActiveModelTrait, ConnectionTrait, DatabaseConnection, DeriveEntityModel,
-    DeriveRelation, EntityTrait, EnumIter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    DerivePrimaryKey, DeriveRelation, EntityTrait, EnumIter, PrimaryKeyTrait, QueryOrder,
+    QuerySelect, Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
