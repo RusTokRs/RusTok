@@ -173,6 +173,18 @@ integration. The canonical source of truth here is only manifest wiring.
 
 - `rustok-calls` storefront UI: [README](../../crates/modules/rustok-calls/storefront/README.md)
 - `rustok-calendar` storefront UI: [README](../../crates/modules/rustok-calendar/storefront/README.md)
+
+### UI Support Crates
+
+Support sub-crates publish reusable components for composition into other
+modules' surfaces or host compositions; they are declared as
+`[provides.admin_support]` / `[provides.storefront_support]` and own no
+route, slot, or navigation entry (see "UI Support Sub-crates" in the
+[manifest contract](./manifest.md)).
+
+- `rustok-comments` storefront support crate: [README](../../crates/modules/rustok-comments/storefront/README.md)
+- `rustok-reactions` storefront support crate: [README](../../crates/modules/rustok-reactions/storefront/README.md)
+
 ### Large Capability/Admin Surfaces
 
 These entries are visibility/scaffold references for large capability work. They are not

@@ -20,7 +20,7 @@ It is a **zero-runtime foundation library** containing no database or transport 
 - `BuildConfig`, `ServerBuildConfig`, `AdminBuildConfig`, `StorefrontBuildConfig` — compilation targets.
 - `ModulePackageManifest` — sovereign module package contract schema (`rustok-module.toml`).
 - `ModulePackageMetadata` — module identity, ownership, and trust levels.
-- `ModulePackageProvides` — capability provisions (GraphQL, HTTP, CLI, Admin UI, Storefront UI).
+- `ModulePackageProvides` — capability provisions (GraphQL, HTTP, CLI, Admin UI, Storefront UI, Admin/Storefront UI support crates via `ModuleUiSupportProvides`).
 
 ### Functions
 - `parse_modules_manifest`, `load_modules_manifest` — deserialize `modules.toml`.
