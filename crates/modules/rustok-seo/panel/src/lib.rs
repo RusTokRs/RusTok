@@ -12,6 +12,9 @@ pub use components::{
 pub use model::{
     SeoCompletenessReport, SeoControlPlaneWidgetState, SeoControlPlaneWidgetStateKind,
     SeoEntityForm, SeoEventDeliverySummary, SeoMetaView, SeoRevisionView,
-    derive_control_plane_widget_state, remediation_hint_for_issue_code,
+    derive_control_plane_widget_state, remediation_hint_for_issue_code, validate_target_id,
 };
 pub use panel::{SeoCapabilityNotice, SeoEntityPanel};
+
+#[cfg(test)]
+mod contract_tests;

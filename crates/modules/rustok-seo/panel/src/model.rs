@@ -621,7 +621,11 @@ pub fn validate_target_id(value: &str) -> Result<Uuid, String> {
         return Err("Target id is required.".to_string());
     }
 
-    Uuid::parse_str(value.trim()).map_err(|_| "Invalid target id.".to_string())
+    let parsed = Uuid::parse_str(value.trim()).map_err(|_| "Invalid target id.".to_string())?;
+    if parsed.is_nil() {
+        return Err("Invalid target id.".to_string());
+    }
+    Ok(parsed)
 }
 
 fn non_empty_option(value: &str) -> Option<String> {
@@ -956,5 +960,33 @@ mod tests {
         };
 
         assert_eq!(summary.total(), 12);
+    }
+
+    #[test]
+    fn validate_target_id_rejects_nil_and_invalid_uuids() {
+        use super::validate_target_id;
+
+        assert_eq!(
+            validate_target_id("").expect_err("empty id must fail"),
+            "Target id is required."
+        );
+        assert_eq!(
+            validate_target_id("   ").expect_err("whitespace id must fail"),
+            "Target id is required."
+        );
+        assert_eq!(
+            validate_target_id("not-a-uuid").expect_err("malformed id must fail"),
+            "Invalid target id."
+        );
+        assert_eq!(
+            validate_target_id("00000000-0000-0000-0000-000000000000").expect_err("nil uuid must fail"),
+            "Invalid target id."
+        );
+
+        let valid = Uuid::new_v4();
+        assert_eq!(
+            validate_target_id(&format!("  {}  ", valid)).expect("valid uuid must pass"),
+            valid
+        );
     }
 }

@@ -3,7 +3,13 @@ name = "rustok-seo-panel"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+readme = "README.md"
 description = "Reusable SEO authoring panel and widget helpers for entity editors"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [lib]
 crate-type = ["rlib"]
