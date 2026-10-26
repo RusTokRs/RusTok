@@ -7,13 +7,18 @@ use chrono::{DateTime, FixedOffset};
 use rust_decimal::Decimal;
 use rustok_api::{AuthContext, Permission, PortActor, PortContext, RequestContext, TenantContext};
 use rustok_cart::in_process_cart_checkout_port;
+use rustok_order::error::OrderError;
+use rustok_payment::error::PaymentError;
 use rustok_web::{HttpError, HttpResult};
 use sea_orm::DbErr;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-use super::{CommerceHttpRuntime, common::ensure_permissions};
+use super::{
+    AdminErrorPolicy, CommerceHttpRuntime, common::ensure_permissions, order_error_policy,
+    payment_error_policy, payment_orchestration_error_policy,
+};
 use crate::{
     CheckoutCompensationError, CheckoutInventoryReservationError, CheckoutOperationError,
     CheckoutReconciliationAction, CheckoutReconciliationActionRequest, CheckoutReconciliationError,
@@ -23,7 +28,8 @@ use crate::{
 const ADMIN_CHECKOUT_OPERATION_OWNER: &str = "rustok_commerce.admin_checkout_operation";
 const ADMIN_CHECKOUT_OPERATION_BOUNDARY: &str = "commerce_admin_checkout_operation_http";
 
-type AdminCheckoutOperationHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
+/// Admin HTTP policy shape shared with the other admin mappers in `super`.
+type AdminCheckoutOperationHttpPolicy = AdminErrorPolicy;
 
 struct AdminCheckoutOperationErrorContext {
     tenant_id: Uuid,
@@ -104,6 +110,60 @@ fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
         Some(value) if value.is_nil() => "present_nil",
         Some(_) => "present_non_nil",
     }
+}
+
+/// Per-route extras a checkout-operation entry line may carry, all shape-only.
+#[derive(Default)]
+struct AdminCheckoutOperationRouteFacts {
+    checkout_operation_id: Option<Uuid>,
+    status_filter_present: bool,
+    limit_present: bool,
+    reconciliation_action: Option<&'static str>,
+}
+
+/// Record that a route was entered, describing the request instead of repeating its identity.
+///
+/// The auth middleware already emits tenant and actor identity in the request span, so a boundary
+/// line repeats only shape: non-nil flags for identity, presence flags for the addressed operation
+/// and its bounded filters, and the typed action label.
+fn log_admin_checkout_operation_route_entry(
+    operation: &'static str,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    facts: AdminCheckoutOperationRouteFacts,
+) {
+    tracing::debug!(
+        boundary = ADMIN_CHECKOUT_OPERATION_BOUNDARY,
+        operation,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        actor_id_non_nil = !actor_id.is_nil(),
+        checkout_operation_id_present = facts.checkout_operation_id.is_some(),
+        checkout_operation_id_non_nil = facts
+            .checkout_operation_id
+            .is_some_and(|value| !value.is_nil()),
+        status_filter_present = facts.status_filter_present,
+        limit_present = facts.limit_present,
+        reconciliation_action = facts.reconciliation_action.unwrap_or("none"),
+        "commerce admin checkout operation route entered with bounded diagnostics"
+    );
+}
+
+/// Record one committed reconciliation action; labels and shapes only, no operator identity.
+fn log_admin_checkout_reconciliation_recorded(
+    tenant_id: Uuid,
+    operator_id: Uuid,
+    record: &crate::entities::checkout_reconciliation_action::Model,
+) {
+    tracing::info!(
+        owner = ADMIN_CHECKOUT_OPERATION_OWNER,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        operator_id_non_nil = !operator_id.is_nil(),
+        checkout_operation_id_non_nil = !record.checkout_operation_id.is_nil(),
+        reconciliation_action = record.action.as_str(),
+        result_status = record.result_status.as_str(),
+        boundary = ADMIN_CHECKOUT_OPERATION_BOUNDARY,
+        "checkout reconciliation action recorded"
+    );
 }
 
 #[derive(Clone, Debug, Serialize, ToSchema)]
@@ -252,13 +312,14 @@ pub async fn show_checkout_operation(
     if id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_id", "Checkout operation ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_CHECKOUT_OPERATION_BOUNDARY,
-        operation = "show_checkout_operation",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        operation_id = %id,
-        "showing checkout operation"
+    log_admin_checkout_operation_route_entry(
+        "show_checkout_operation",
+        tenant.id,
+        auth.user_id,
+        AdminCheckoutOperationRouteFacts {
+            checkout_operation_id: Some(id),
+            ..Default::default()
+        },
     );
     let operation = crate::CheckoutOperationJournal::new(runtime.db_clone(), runtime.event_bus())
         .get(tenant.id, id)
@@ -306,13 +367,14 @@ pub async fn compensate_checkout_operation(
     if id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_id", "Checkout operation ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_CHECKOUT_OPERATION_BOUNDARY,
-        operation = "compensate_checkout_operation",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        operation_id = %id,
-        "compensating checkout operation"
+    log_admin_checkout_operation_route_entry(
+        "compensate_checkout_operation",
+        tenant.id,
+        auth.user_id,
+        AdminCheckoutOperationRouteFacts {
+            checkout_operation_id: Some(id),
+            ..Default::default()
+        },
     );
     let service = crate::CheckoutCompensationService::new(
         runtime.db_clone(),
@@ -372,14 +434,15 @@ pub async fn list_checkout_operations(
     if tenant.id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_CHECKOUT_OPERATION_BOUNDARY,
-        operation = "list_checkout_operations",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        status = ?query.status,
-        limit = ?query.limit,
-        "listing checkout operations"
+    log_admin_checkout_operation_route_entry(
+        "list_checkout_operations",
+        tenant.id,
+        auth.user_id,
+        AdminCheckoutOperationRouteFacts {
+            status_filter_present: query.status.is_some(),
+            limit_present: query.limit.is_some(),
+            ..Default::default()
+        },
     );
     let operations = crate::CheckoutOperationJournal::new(runtime.db_clone(), runtime.event_bus())
         .list_by_status(
@@ -439,14 +502,15 @@ pub async fn execute_checkout_reconciliation_action(
     if id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_id", "Checkout operation ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_CHECKOUT_OPERATION_BOUNDARY,
-        operation = "execute_checkout_reconciliation_action",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        operation_id = %id,
-        action = ?action,
-        "executing checkout reconciliation action"
+    log_admin_checkout_operation_route_entry(
+        "execute_checkout_reconciliation_action",
+        tenant.id,
+        auth.user_id,
+        AdminCheckoutOperationRouteFacts {
+            checkout_operation_id: Some(id),
+            reconciliation_action: Some(action.as_str()),
+            ..Default::default()
+        },
     );
     let idempotency_key = require_idempotency_key(&headers)?;
     let context = reconciliation_port_context(
@@ -491,15 +555,7 @@ pub async fn execute_checkout_reconciliation_action(
                 error,
             )
         })?;
-    tracing::info!(
-        owner = ADMIN_CHECKOUT_OPERATION_OWNER,
-        tenant_id = %tenant.id,
-        operator_id = %auth.user_id,
-        checkout_operation_id = %record.checkout_operation_id,
-        reconciliation_action = record.action.as_str(),
-        result_status = record.result_status.as_str(),
-        "checkout reconciliation action recorded"
-    );
+    log_admin_checkout_reconciliation_recorded(tenant.id, auth.user_id, &record);
     Ok((StatusCode::CREATED, Json(map_reconciliation_action(record))))
 }
 
@@ -531,14 +587,15 @@ pub async fn list_checkout_reconciliation_actions(
     if id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_id", "Checkout operation ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_CHECKOUT_OPERATION_BOUNDARY,
-        operation = "list_checkout_reconciliation_actions",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        operation_id = %id,
-        limit = ?query.limit,
-        "listing checkout reconciliation actions"
+    log_admin_checkout_operation_route_entry(
+        "list_checkout_reconciliation_actions",
+        tenant.id,
+        auth.user_id,
+        AdminCheckoutOperationRouteFacts {
+            checkout_operation_id: Some(id),
+            limit_present: query.limit.is_some(),
+            ..Default::default()
+        },
     );
     let actions = CheckoutReconciliationService::new(
         runtime.db_clone(),
@@ -589,13 +646,14 @@ pub async fn sweep_checkout_compensations(
     if tenant.id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_CHECKOUT_OPERATION_BOUNDARY,
-        operation = "sweep_checkout_compensations",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        limit = ?input.limit,
-        "sweeping checkout compensations"
+    log_admin_checkout_operation_route_entry(
+        "sweep_checkout_compensations",
+        tenant.id,
+        auth.user_id,
+        AdminCheckoutOperationRouteFacts {
+            limit_present: input.limit.is_some(),
+            ..Default::default()
+        },
     );
     let report = crate::CheckoutCompensationSweepService::new(
         runtime.db_clone(),
@@ -894,6 +952,30 @@ fn adopt_reservation_error_identity(
     }
 }
 
+fn adopt_payment_error_identity(
+    context: &mut AdminCheckoutOperationErrorContext,
+    error: &PaymentError,
+) {
+    match error {
+        PaymentError::PaymentCollectionNotFound(id) => context.payment_collection_id = Some(*id),
+        PaymentError::PaymentNotFound(id) => context.payment_id = Some(*id),
+        PaymentError::RefundNotFound(id) => context.refund_id = Some(*id),
+        _ => {}
+    }
+}
+
+fn adopt_order_error_identity(
+    context: &mut AdminCheckoutOperationErrorContext,
+    error: &OrderError,
+) {
+    match error {
+        OrderError::OrderNotFound(id) => context.order_id = Some(*id),
+        OrderError::OrderReturnNotFound(id) => context.order_return_id = Some(*id),
+        OrderError::OrderChangeNotFound(id) => context.order_change_id = Some(*id),
+        _ => {}
+    }
+}
+
 fn admin_checkout_operation_http_error(
     context: &AdminCheckoutOperationErrorContext,
     source_owner: &'static str,
@@ -962,6 +1044,17 @@ fn map_compensation_error(
                 ),
                 "rustok_commerce.checkout_inventory_reservation",
             )
+        }
+        CheckoutCompensationError::Payment(source) => {
+            adopt_payment_error_identity(&mut context, source);
+            (payment_error_policy(source), "rustok_payment")
+        }
+        CheckoutCompensationError::PaymentOrchestration(source) => {
+            payment_orchestration_error_policy(source)
+        }
+        CheckoutCompensationError::Order(source) => {
+            adopt_order_error_identity(&mut context, source);
+            (order_error_policy(source), "rustok_order")
         }
         CheckoutCompensationError::ManualReconciliation(_) => (
             (
