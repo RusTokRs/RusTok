@@ -2,7 +2,7 @@
 
 Ветка `arena/a90c8cc9-rustok`. Дата разбора: 2026-10-26. Замеры сделаны на `5d0d325`;
 после прохода 5 (раздел 1.3) тот же прогон даёт **455 / 833**, после прохода 6 (раздел 1.4) —
-**447 / 846** на 1293 guard'ах.
+**447 / 846**, после проходов 7–8 (раздел 1.5, 1.6) — **443 / 850** на 1293 guard'ах.
 
 > Числа в этом документе получены двойным прогоном корпуса guard'ов: базовый коммит в
 > `git worktree` и рабочее дерево, с записью stdout+stderr и кода выхода. Артефакты прогона —
@@ -28,8 +28,10 @@
 | Всего починено за пять проходов | 50 guard'ов, 3 удалённых legacy-источника, 2 реальных дефекта в коде |
 | Проходят после прохода 6 | **846** (из 1293) |
 | Падают после прохода 6 | **447** |
-| Регрессий в проходах 5–6 | **0** |
-| Всего починено за шесть проходов | 61 guard, 3 удалённых legacy-источника, 3 реальных дефекта в коде |
+| Проходят после прохода 8 | **850** (из 1293) |
+| Падают после прохода 8 | **443** |
+| Регрессий в проходах 5–8 | **0** |
+| Всего починено за восемь проходов | 63 guard'а, 4 удалённых legacy-источника, 3 реальных дефекта в коде |
 
 **Методика.** Один и тот же список файлов прогоняется дважды: на базовом коммите в
 `git worktree` и на рабочем дереве, с записью stdout+stderr и кода выхода. Диф даёт два числа,
@@ -250,35 +252,92 @@ local-error,admission,service-error}-context`, `verify-commerce-storefront-order
   ветки `Order`, сырой `tenant_id = %tenant_id`, подмена `reserved_refund_error_policy` и
   возвращённая приватная копия политики — все четыре мутации ловятся.
 
-Практический вывод для продолжения: у оставшихся admin-семейств (`fulfillment`-половина
-`show_order` 10 guard'ов, два scaffold-guard'а мёртвого `admin/orders.rs` по 4) тот же рецепт —
-сначала boundary-хелпер и общая политика в коде, потом guard по живому контракту. Отдельно
-числится `admin/orders.rs`: файл **не входит в дерево модулей** (модуль `orders` монтируется из
-`orders_owner_ports.rs`), но три guard'а и один зелёный `verify-order-read-port` всё ещё читают
-именно его. Это работа по удалению, а не починке.
+Практический вывод для продолжения: у оставшихся admin-семейств тот же рецепт — сначала
+boundary-хелпер и общая политика в коде, потом guard по живому контракту.
+
+### 1.5. Проход 7: fulfillment-маршруты admin-commerce
+
+Восемь маршрутов `/admin/fulfillments/*` писали строку входа и строку ошибки вручную, поэтому
+каждый guard приходилось выводить по тексту конкретного `tracing::debug!`. Вместо этого в
+`controllers/admin/fulfillments_owner_commands.rs` появился один вход и одна политика:
+
+- `ADMIN_FULFILLMENT_COMMAND_OWNER`, `ADMIN_FULFILLMENT_CREATE_OWNER`, `ADMIN_FULFILLMENT_COMMAND_BOUNDARY`;
+- `AdminFulfillmentRouteFacts` + `log_admin_fulfillment_route_entry` — `tenant`/`actor` как наличие,
+  ресурс как наличие и nil-форма, фильтры как `status_filter_present`/`customer_filter_present`,
+  перевозчик как `carrier_length` (текст не пишется);
+- `fulfillment_command_error_policy` (`AdminErrorPolicy`) + `map_fulfillment_{command,create,read}_error`,
+  где code-first идут три кода владельца (`fulfillment.reconciliation_required` → 409,
+  `fulfillment.database_unavailable` → 503, `fulfillment.invalid_transition` → 409), затем 7 ветвей
+  `PortErrorKind`.
+
+Сырых директив в файле было 16, стало 0. Два guard'а переписаны по живому контракту
+(`verify-commerce-admin-order-fulfillment-http-error-safety` 10 → 0,
+`verify-commerce-admin-fulfillment-route-error-context` 1 → 0), всего 447 → 445 красных,
+регрессий нет. Мутации проверены: удалённый `Idempotency-Key`, сырой tenant в логе, снятый
+`carrier_length` — все три ловятся.
+
+### 1.6. Проход 8: удаление мёртвого `controllers/admin/orders.rs`
+
+Файл на 764 строки не входил в дерево модулей (`admin/mod.rs` монтирует
+`#[path = "orders_owner_ports.rs"] pub mod orders;`), но именно его читали три guard'а:
+`verify-order-read-port` (зелёный — то есть зелёный на мёртвом коде) и два
+`*-diagnostic-safety` (по 4 падения). Это худший вид проверки: она подтверждает контракт,
+которого нет в сборке. Файл удалён, guard'ы переписаны на живой контроллер:
+
+| Guard | Было | Стало |
+|---|---|---|
+| `verify-order-read-port` | 4 | 0 |
+| `verify-commerce-admin-order-mutation-diagnostic-safety` | 4 | 0 |
+| `verify-commerce-admin-order-read-diagnostic-safety` | 4 | 0 |
+
+Что теперь проверяется вместо описания удалённого файла:
+
+- **мутации** — 4 обработчика (`mark_order_paid`, `ship_order`, `deliver_order`, `cancel_order`)
+  идут через `.order_admin_command_port()` с типизированными `Owner*Request`, у каждого
+  `ORDERS_UPDATE`, guard'ы tenant/id, bounded-строка входа, обязательный
+  `require_idempotency_key(&headers)?` и общий `map_order_port_error`; проверка требует ветвь
+  на каждый из 7 `PortErrorKind`, поэтому новый вариант enum'а роняет guard, а не сборку;
+- **чтения** — `list_orders`/`show_order` не принимают `HeaderMap` и не вызывают
+  `require_idempotency_key` (чтение не может писать), фильтры логируются как наличие,
+  detail-маршрут читает три порта (`OrderReadPort`, `PaymentOrderReadPort`,
+  `FulfillmentReadPort`), а его два mapper'а (`map_payment_detail_port_error`,
+  `map_fulfillment_detail_port_error`) имеют ровно одну definition и один callsite — read-ошибка
+  не может уйти через write-конверт и наоборот;
+- **удаление** — guard падает, если файл `controllers/admin/orders.rs` появится снова.
+
+Мутационная проверка: сырой `tenant_id`, снятый `Idempotency-Key` в `ship_order`, wildcard в
+политике, возвращённый legacy-файл, read-ошибка через общий mapper, снятый `Timeout` из ветви
+`Unavailable | Timeout` — все ловятся. Итог: 445 → 443 красных, регрессий нет.
 
 ---
 
-## 2. Оставшиеся 447: по владельцам
+## 2. Оставшиеся 443: по владельцам
 
-Замер на `0f1314e`:
+Замер на текущем коммите (443 красных из 1293). Это то же число, что «Падают» в §0, то есть
+в нём есть 2 CLI-инструмента и 5 guard'ов, которым нужна среда; со «статическими красными» §0
+оно напрямую не сравнивается. Правило разнесения по областям одно и то же для всех строк:
+сначала модуль из пути (`crates/modules/rustok-<module>/…`), иначе — первое совпадение токена
+модуля в имени файла.
 
 | Область | Красных |
 |---|---|
 | forum | **128** |
-| commerce | **69** |
-| rustok-pages | 43 |
-| index | 43 |
-| product | 21 |
+| commerce | **65** |
+| rustok-pages | 41 |
+| index | 38 |
 | groups | 19 |
+| product | 19 |
 | fulfillment | 14 |
 | payment | 14 |
 | blog | 10 |
-| social / cart / notifications | 5 / 3 / 6 |
-| остальное (≤5 каждая) | ~72 |
+| social / cart / notifications | 10 / 3 / 6 |
+| прочее (≤5 каждая: page-builder, reaction, ai, inventory, order, rbac, profile, …) | 76 |
 
-(Для сравнения, замер на `5d0d325`: commerce 84, pages 41, index 39, fulfillment 15,
-social / cart / notifications 9 / 7 / 6.)
+Сравнивать с прошлой таблицей можно только commerce: там и правило, и замер совпадают —
+69 красных на `0f1314e` против 65 сейчас (проходы 7–8 сняли ровно четыре). Остальные строки
+прошлой таблицы разносились по более грубым группам, поэтому pages 43 → 41, index 43 → 38 и
+social 5 → 10 — это разница **правила**, а не регрессия или прогресс. Общий счётчик красных
+(447 → 443) считается по списку файлов и от разнесения не зависит.
 
 ---
 

@@ -1173,7 +1173,10 @@ Source inspection is not execution evidence.
 ## Audit correction 2026-09-25: active Admin Order command path
 
 - [x] Confirm the mounted Admin Order controller is `controllers/admin/orders_owner_ports.rs`;
-  the legacy `controllers/admin/orders.rs` is not mounted.
+  the legacy `controllers/admin/orders.rs` had never been mounted.
+- [x] Delete the unmounted legacy controller instead of keeping a second editable copy of the same
+  routes; the read, mutation, and route-error-context verifiers now pin
+  `controllers/admin/orders_owner_ports.rs` and fail if the duplicate is reintroduced.
 - [x] Revert the accidental edits previously made to that unmounted legacy controller; no
   legacy command migration is claimed as completed.
 - [x] Confirm the active controller already routes mark-paid, ship, deliver, and cancel through
