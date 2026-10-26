@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { deliveredLedgerSlices } from "./lib/forum-source-verification.mjs";
+import { deliveredLedgerSlices, requireValidationDisclosure } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -184,10 +184,10 @@ for (const marker of [
   "NotificationInboxStateService",
   "`requested`, `changed`, and `not_changed`",
   "tests/inbox_selected_state_sqlite.rs",
-  "not run by the implementation agent",
 ]) {
   requireText(note, marker, `owner contract note is missing ${marker}`);
 }
+requireValidationDisclosure(failures, note, "owner contract note is missing");
 
 if (
   upstream.schema_version !== 1 ||

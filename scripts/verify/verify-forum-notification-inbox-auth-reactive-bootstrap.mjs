@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { requireValidationDisclosure } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -172,10 +173,10 @@ for (const marker of [
   "source-ready / unvalidated",
   "Sign-in, sign-out, token refresh, or tenant change",
   "does not re-resolve credentials",
-  "not run by the implementation agent",
 ]) {
   requireText(note, marker, `owner note is missing ${marker}`);
 }
+requireValidationDisclosure(failures, note, "owner note is missing");
 for (const marker of [
   "FORUM-20A-AO provide",
   "### Delivered in `FORUM-20AO`",

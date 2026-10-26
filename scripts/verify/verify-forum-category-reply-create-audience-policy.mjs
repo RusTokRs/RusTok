@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertCanonicalLedger } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -193,15 +194,17 @@ if (
     "Forum CRATE_API must retain the FORUM-20AU persistence-only statement or document downstream FORUM-20AV/20AW composition",
   );
 }
-for (const marker of [
-  "FORUM-20A-AU provide",
-  "### Delivered in `FORUM-20AU`",
-  "reply-create command-time audience enforcement",
-  "Forum trust owner state and facts adapter",
-  "verify-forum-category-reply-create-audience-policy.mjs",
-]) {
-  requireText(plan, marker, `canonical Forum plan is missing ${marker}`);
-}
+assertCanonicalLedger({
+  failures,
+  plan,
+  slices: ["FORUM-20AU"],
+  markers: [
+    "keep reply-create policy separate from category/topic visibility",
+    "the host audience-facts capability only for unresolved trust, Channel, or Groups selectors",
+    "verify-forum-category-reply-create-audience-policy.mjs",
+  ],
+  label: "canonical Forum plan",
+});
 
 if (failures.length > 0) {
   console.error("Forum category reply-create audience verification failed:");

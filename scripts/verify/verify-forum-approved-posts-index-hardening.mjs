@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertCanonicalLedger, requireValidationDisclosure } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -117,10 +118,10 @@ for (const marker of [
   "owner query and its semantics remain unchanged",
   "posting-policy evaluation or precedence change",
   "topic, reply, edit, or bump owner enforcement",
-  "not run by the implementation agent",
 ]) {
   requireText(note, marker, `FORUM-26I owner note is missing ${marker}`);
 }
+requireValidationDisclosure(failures, note, "FORUM-26I owner note is missing");
 
 for (const marker of [
   '"downstream_index_hardening_task": "FORUM-26I"',
@@ -129,15 +130,22 @@ for (const marker of [
   requireText(upstream, marker, `FORUM-26H contract is missing downstream marker ${marker}`);
 }
 
-for (const marker of [
-  "| `FORUM-26` | `in_progress` |",
-  "### Delivered in `FORUM-26A` through `FORUM-26I`",
-  "approved-post author indexes",
-  "approved_posts_index_sqlite",
-  "approved_posts_index_postgres",
-]) {
-  requireText(plan, marker, `canonical Forum plan is missing FORUM-26I marker ${marker}`);
+// The 26I delivery is an append-only heading (`FORUM-26A` through `FORUM-26J` once 26J landed), so the
+// guard asks the ledger rather than the current summary row whether 26I is recorded.
+if (!plan.includes("| `FORUM-26` | `in_progress` |")) {
+  failures.push("canonical Forum plan no longer carries the FORUM-26 program-ledger row");
 }
+assertCanonicalLedger({
+  failures,
+  plan,
+  slices: ["FORUM-26I"],
+  markers: [
+    "`FORUM-26I` adds PostgreSQL/SQLite partial author indexes",
+    "approved_posts_index_sqlite",
+    "approved_posts_index_postgres",
+  ],
+  label: "canonical Forum plan",
+});
 
 for (const [key, expected] of [
   ["postgresql_sqlite_parity", true],

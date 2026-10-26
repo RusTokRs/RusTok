@@ -19,6 +19,8 @@ const MAX_SOURCE_BYTES = 4 * 1024 * 1024;
 // Layout-tolerant marker matching lives in `source-text.mjs` so guards outside the Forum corpus can
 // use the same rules without importing a Forum-specific module. Re-exported here to keep the Forum
 // guards' existing import path.
+import { containsMarker } from "./source-text.mjs";
+
 export { containsMarker, markeredIndexes, spaced } from "./source-text.mjs";
 
 /**
@@ -254,8 +256,15 @@ export function deliveredLedgerSlices(ledger) {
  * Assert that the canonical ledger records every slice the contract requires, and that the contract
  * itself has moved off the historical `pending` state once the ledger advanced past it.
  */
-export function assertCanonicalLedger({ failures, plan, slices, planSync, label }) {
-  if (!plan.includes("| `FORUM-20` |")) {
+export function assertCanonicalLedger({
+  failures,
+  plan,
+  slices = [],
+  markers = [],
+  planSync,
+  label,
+}) {
+  if (slices.length > 0 && !plan.includes("| `FORUM-20` |")) {
     failures.push(`${label}: the canonical plan no longer carries the FORUM-20 program-ledger row`);
   }
   const delivered = deliveredLedgerSlices(plan);
@@ -264,9 +273,33 @@ export function assertCanonicalLedger({ failures, plan, slices, planSync, label 
       failures.push(`${label}: the canonical plan does not record ${slice} as delivered`);
     }
   }
-  if (planSync.status !== "synchronized") {
+  // Content markers are matched layout-tolerantly: a delivered slice's sentence may be re-wrapped, and
+  // that is not a missing fact. They must come from an append-only delivered section, never from the
+  // mutable summary row - pinning the row is what made nineteen guards mutually unsatisfiable.
+  for (const marker of markers) {
+    if (!containsMarker(plan, marker)) {
+      failures.push(`${label}: the canonical plan does not record ${marker}`);
+    }
+  }
+  if (planSync && planSync.status !== "synchronized") {
     failures.push(
       `${label}: the canonical ledger records these slices as delivered; canonical_plan_sync.status must be synchronized`,
     );
+  }
+}
+
+/**
+ * The owner notes end with a validation disclosure, and every guard used to pin one exact spelling of
+ * it (`not run by the implementation agent`, `were not run by`, ...). The sentence differs only in
+ * where the note wraps, so the guard checks that the note discloses *that nothing was executed*
+ * instead of matching one line break.
+ */
+export function requireValidationDisclosure(failures, note, label) {
+  const flattened = note.replace(/\s+/g, " ");
+  const disclosed = /were not run by the implementation|not run by the implementation|No (tests|compile or runtime status)/.test(
+    flattened,
+  );
+  if (!disclosed) {
+    failures.push(`${label}: the note does not disclose that no tests, Cargo, formatting, or CI were run`);
   }
 }
