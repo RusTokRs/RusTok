@@ -30,6 +30,7 @@ mod inline_edit;
 pub use inline_edit::{
     AuthenticatedInlineEditSession, InlineEditApplyResult, InlineEditAuthorizationPort,
     InlineEditError, InlineEditGrant, InlineEditRequest,
+    PageBuilderAuthenticatedInlineStorefront,
 };
 
 use fly::{
