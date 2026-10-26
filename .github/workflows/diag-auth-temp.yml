@@ -46,7 +46,7 @@ jobs:
           while IFS= read -r f; do
             rustfmt --edition 2024 "$f" || echo "::error::rustfmt failed on $f"
           done < /tmp/existing_rs.txt
-          git add --pathspec-from-file=/tmp/existing_rs.txt
+          git add -A
           if git diff --cached --quiet; then
             echo "::notice::autofmt: no formatting changes needed"
             exit 0
@@ -57,7 +57,7 @@ jobs:
           ok=0
           PUSH_LOG=""
           for i in 1 2 3; do
-            OUT=$( (git pull --rebase origin arena/551d146c-rustok && git push origin HEAD:arena/551d146c-rustok) 2>&1 ) && { ok=1; PUSH_LOG="$OUT"; break; }
+            OUT=$( (git pull --rebase --autostash origin arena/551d146c-rustok && git push origin HEAD:arena/551d146c-rustok) 2>&1 ) && { ok=1; PUSH_LOG="$OUT"; break; }
             PUSH_LOG="$OUT"
             git rebase --abort 2>/dev/null || true
             sleep 5
