@@ -1,0 +1,152 @@
+name: ZZ Arena Baseline (temporary)
+
+# Temporary scaffolding for PR #4647: runs the rustok-modules unit test
+# suite against origin/main so failures on the PR branch can be split into
+# pre-existing baseline rot vs branch regressions. Delete together with
+# zz-arena-diagnostics.yml before the PR leaves draft.
+
+on:
+  push:
+    branches:
+      - arena/b606e380-rustok
+    paths:
+      - .github/workflows/zz-arena-baseline.yml
+      - .arena-baseline-trigger
+
+permissions:
+  contents: read
+  checks: write
+
+concurrency:
+  group: zz-arena-baseline-${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+  CARGO_INCREMENTAL: 0
+  SQLX_OFFLINE: "true"
+
+jobs:
+  baseline:
+    name: Baseline tests on origin/main
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_test
+    steps:
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force || true
+          df -h
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Check out origin/main tree
+        run: |
+          git fetch origin main --quiet
+          git checkout --detach origin/main
+          git log --oneline -1
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+        with:
+          toolchain: "1.96.0"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - name: Run rustok-modules lib tests on main and publish digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEADSHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess, time, urllib.request
+
+          def post_digest(name, title, summary, text):
+              if len(text) > 60000:
+                  text = text[:60000] + "\n... [truncated]"
+              payload = {
+                  "name": name,
+                  "head_sha": os.environ["HEADSHA"],
+                  "status": "completed",
+                  "conclusion": "neutral",
+                  "output": {"title": title, "summary": summary, "text": text},
+              }
+              req = urllib.request.Request(
+                  f"https://api.github.com/repos/{os.environ['REPO']}/check-runs",
+                  data=json.dumps(payload).encode(),
+                  headers={
+                      "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                      "Accept": "application/vnd.github+json",
+                      "Content-Type": "application/json",
+                  },
+                  method="POST",
+              )
+              try:
+                  with urllib.request.urlopen(req) as resp:
+                      print("posted", name, resp.status, flush=True)
+              except Exception as e:  # noqa: BLE001
+                  print("FAILED to post", name, e, flush=True)
+
+          out_path = "/tmp/baseline_test.log"
+          started = time.monotonic()
+          timed_out = False
+          with open(out_path, "wb") as outf:
+              try:
+                  proc = subprocess.run(
+                      ["cargo", "test", "-p", "rustok-modules", "--lib",
+                       "--no-fail-fast"],
+                      stdout=outf, stderr=subprocess.STDOUT, timeout=5400)
+                  rc = proc.returncode
+              except subprocess.TimeoutExpired:
+                  rc = -1
+                  timed_out = True
+          elapsed = int(time.monotonic() - started)
+          lines = open(out_path, encoding="utf-8",
+                       errors="replace").read().splitlines()
+          results = [l.strip() for l in lines if l.startswith("test result:")]
+          passed = failed = ignored = 0
+          for r in results:
+              m = re.search(r"(\d+) passed; (\d+) failed; (\d+) ignored", r)
+              if m:
+                  passed += int(m.group(1))
+                  failed += int(m.group(2))
+                  ignored += int(m.group(3))
+          failed_names = []
+          for l in lines:
+              m = re.match(r"test (\S+) \.\.\. FAILED", l)
+              if m:
+                  failed_names.append(m.group(1))
+          errors = [l.strip() for l in lines if l.startswith("error")][:30]
+          status = "TIMEOUT" if timed_out else f"rc={rc}"
+          head = (f"BASELINE origin/main {status} elapsed={elapsed}s "
+                  f"binaries={len(results)} passed={passed} failed={failed} "
+                  f"ignored={ignored}")
+          body = [head, "", "== per-binary results =="]
+          body += results or ["(no test binaries reported)"]
+          uniq_failed = sorted(set(failed_names))
+          body += ["", f"== failed tests on main ({len(uniq_failed)}) =="]
+          body += uniq_failed[:300] or ["(none)"]
+          body += ["", "== error lines (first 30) =="]
+          body += errors or ["(none)"]
+          body += ["", "== output tail =="] + lines[-25:]
+          post_digest("Arena diagnostics: BASELINE main test rustok-modules",
+                      "baseline cargo test rustok-modules (origin/main)",
+                      head, "\n".join(body))
+          print(head, flush=True)
+          PY
