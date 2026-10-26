@@ -310,6 +310,8 @@ pub struct ModulePublishValidationContract {
     pub marketplace_tags: Vec<String>,
     pub admin_ui_crate_name: Option<String>,
     pub storefront_ui_crate_name: Option<String>,
+    pub admin_support_crate_name: Option<String>,
+    pub storefront_support_crate_name: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -276,6 +276,8 @@ pub(crate) fn module_publish_validation_contract_from_row(
         marketplace_tags,
         admin_ui_crate_name: ui_crate_name("admin"),
         storefront_ui_crate_name: ui_crate_name("storefront"),
+        admin_support_crate_name: ui_crate_name("admin_support"),
+        storefront_support_crate_name: ui_crate_name("storefront_support"),
     })
 }
 

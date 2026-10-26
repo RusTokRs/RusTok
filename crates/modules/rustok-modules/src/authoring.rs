@@ -648,6 +648,8 @@ impl ModuleAuthoringPublishCommand {
             marketplace_tags: self.marketplace_tags.clone(),
             admin_ui_crate_name: None,
             storefront_ui_crate_name: None,
+            admin_support_crate_name: None,
+            storefront_support_crate_name: None,
         })
     }
 }

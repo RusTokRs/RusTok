@@ -410,9 +410,15 @@ impl ModulePublishRequestCreateCommand {
         let has_storefront = ui_packages
             .get("storefront")
             .is_some_and(|value| !value.is_null());
+        let has_support = ui_packages
+            .get("admin_support")
+            .is_some_and(|value| !value.is_null())
+            || ui_packages
+                .get("storefront_support")
+                .is_some_and(|value| !value.is_null());
 
         let mut warnings = Vec::new();
-        if !has_admin && !has_storefront {
+        if !has_admin && !has_storefront && !has_support {
             warnings.push(
                 "No publishable admin/storefront UI packages declared; only backend contract would be published."
                     .to_string(),

@@ -117,7 +117,29 @@ pub fn validate_module_ui_i18n_contract(
     module_root: &Path,
     ui: &ModulePackageUiProvides,
 ) -> Result<(), ManifestError> {
-    let Some(i18n) = ui.i18n.as_ref() else {
+    validate_module_ui_i18n_contract_parts(
+        slug,
+        surface,
+        module_root,
+        ui.leptos_crate
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty()),
+        ui.next_package
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty()),
+        ui.i18n.as_ref(),
+    )
+}
+
+fn validate_module_ui_i18n_contract_parts(
+    slug: &str,
+    surface: &str,
+    module_root: &Path,
+    has_leptos_crate: bool,
+    has_next_package: bool,
+    i18n: Option<&ModulePackageUiI18nContract>,
+) -> Result<(), ManifestError> {
+    let Some(i18n) = i18n else {
         return Ok(());
     };
     let i18n = rustok_modules::validate_static_module_ui_i18n_contract(
@@ -126,14 +148,8 @@ pub fn validate_module_ui_i18n_contract(
             supported_locales: i18n.supported_locales.clone(),
             leptos_locales_path: i18n.leptos_locales_path.clone(),
             next_messages_path: i18n.next_messages_path.clone(),
-            has_leptos_crate: ui
-                .leptos_crate
-                .as_deref()
-                .is_some_and(|value| !value.trim().is_empty()),
-            has_next_package: ui
-                .next_package
-                .as_deref()
-                .is_some_and(|value| !value.trim().is_empty()),
+            has_leptos_crate,
+            has_next_package,
         },
     )
     .map_err(|error| map_static_module_ui_i18n_validation_error(slug, surface, error))?;
@@ -729,7 +745,14 @@ pub fn validate_module_ui_wiring(
                 .provides
                 .admin_ui
                 .as_ref()
-                .and_then(|ui| ui.leptos_crate.as_deref()),
+                .and_then(|ui| ui.leptos_crate.as_deref())
+                .or_else(|| {
+                    package_manifest
+                        .provides
+                        .admin_support
+                        .as_ref()
+                        .and_then(|ui| ui.leptos_crate.as_deref())
+                }),
         ),
         (
             "storefront",
@@ -737,7 +760,14 @@ pub fn validate_module_ui_wiring(
                 .provides
                 .storefront_ui
                 .as_ref()
-                .and_then(|ui| ui.leptos_crate.as_deref()),
+                .and_then(|ui| ui.leptos_crate.as_deref())
+                .or_else(|| {
+                    package_manifest
+                        .provides
+                        .storefront_support
+                        .as_ref()
+                        .and_then(|ui| ui.leptos_crate.as_deref())
+                }),
         ),
     ] {
         let manifest_path = module_root.join(surface).join("Cargo.toml");
@@ -751,8 +781,9 @@ pub fn validate_module_ui_wiring(
                 slug: slug.to_string(),
                 surface: surface.to_string(),
                 reason: format!(
-                    "{} exists, but rustok-module.toml is missing [provides.{}_ui].leptos_crate",
+                    "{} exists, but rustok-module.toml is missing [provides.{}_ui].leptos_crate or [provides.{}_support].leptos_crate",
                     manifest_path.display(),
+                    surface,
                     surface
                 ),
             });
@@ -763,7 +794,8 @@ pub fn validate_module_ui_wiring(
                 slug: slug.to_string(),
                 surface: surface.to_string(),
                 reason: format!(
-                    "declares [provides.{}_ui].leptos_crate, but {} is missing",
+                    "declares [provides.{}_ui].leptos_crate or [provides.{}_support].leptos_crate, but {} is missing",
+                    surface,
                     surface,
                     manifest_path.display()
                 ),
@@ -777,6 +809,34 @@ pub fn validate_module_ui_wiring(
 
     if let Some(storefront_ui) = package_manifest.provides.storefront_ui.as_ref() {
         validate_module_ui_i18n_contract(slug, "storefront", module_root, storefront_ui)?;
+    }
+
+    if let Some(admin_support) = package_manifest.provides.admin_support.as_ref() {
+        validate_module_ui_i18n_contract_parts(
+            slug,
+            "admin",
+            module_root,
+            admin_support
+                .leptos_crate
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty()),
+            false,
+            admin_support.i18n.as_ref(),
+        )?;
+    }
+
+    if let Some(storefront_support) = package_manifest.provides.storefront_support.as_ref() {
+        validate_module_ui_i18n_contract_parts(
+            slug,
+            "storefront",
+            module_root,
+            storefront_support
+                .leptos_crate
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty()),
+            false,
+            storefront_support.i18n.as_ref(),
+        )?;
     }
 
     Ok(())
