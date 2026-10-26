@@ -805,6 +805,10 @@ mod tests {
         let client_id = app.client_id;
         let mut active: oauth_apps::ActiveModel = app.into();
         active.tenant_id = Set(tenant_id);
+        // `name` is a SeaORM-ignored localized field: Model -> ActiveModel
+        // conversion leaves it NotSet, and the display-copy insert path
+        // requires it explicitly.
+        active.name = Set("test".to_string());
         oauth_apps::scope_runtime_copy_locale("en".to_string(), active.insert(&db))
             .await
             .expect("OAuth app");

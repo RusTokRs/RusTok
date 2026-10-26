@@ -182,6 +182,7 @@ impl OAuthAppService {
         // client secret is explicitly excluded via NotSet so this
         // (possibly stale) read can never revert a concurrent secret
         // rotation.
+        let existing_secret_hash = app.client_secret_hash.clone();
         let mut active: OAuthAppActiveModel = app.into();
         active.client_secret_hash = ActiveValue::NotSet;
         active.name = Set(input.name);
@@ -197,16 +198,17 @@ impl OAuthAppService {
         active.granted_permissions = Set(to_json_array(&granted_permissions)?);
         active.updated_at = Set(Utc::now().into());
 
-        active
+        let mut updated = active
             .update(db)
             .await
             .map_err(|_| Error::InternalServerError)?;
-
-        OAuthApps::find_by_id(app_id)
-            .one(db)
-            .await
-            .map_err(|_| Error::InternalServerError)?
-            .ok_or(Error::NotFound)
+        // The update above deliberately leaves the stored secret
+        // untouched (NotSet); reflect the pre-existing hash in the
+        // returned model instead of reporting "no secret".
+        if updated.client_secret_hash.is_none() {
+            updated.client_secret_hash = existing_secret_hash;
+        }
+        Ok(updated)
     }
 
     /// Find an active app by its public client_id
