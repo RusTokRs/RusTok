@@ -181,6 +181,22 @@ jobs:
                       "cargo check distribution all-features digest", summary, text)
           print(summary, flush=True)
 
+          rc, diags, tail = cargo_json_diag(
+              ["cargo", "check", "-p", "rustok-manifest", "-p", "xtask",
+               "--all-targets", "--message-format", "json"])
+          summary, text = digest_for("cargo check rustok-manifest+xtask", rc, diags, tail)
+          post_digest("Arena diagnostics: cargo check manifest+xtask",
+                      "cargo check manifest+xtask digest", summary, text)
+          print(summary, flush=True)
+
+          rc, diags, tail = cargo_json_diag(
+              ["cargo", "clippy", "-p", "rustok-manifest", "-p", "xtask",
+               "--all-targets", "--message-format", "json"])
+          summary, text = digest_for("cargo clippy rustok-manifest+xtask", rc, diags, tail)
+          post_digest("Arena diagnostics: cargo clippy manifest+xtask",
+                      "cargo clippy manifest+xtask digest", summary, text)
+          print(summary, flush=True)
+
           fmt = subprocess.run(["cargo", "fmt", *PKGS, "--", "--check"],
                                capture_output=True, text=True)
           diff_lines = (fmt.stdout + fmt.stderr).splitlines()
@@ -246,6 +262,8 @@ jobs:
           import json, os, re, subprocess, time, urllib.request
 
           CRATES = [
+              ("rustok-manifest", 1200),
+              ("xtask", 2400),
               ("rustok-api", 1200),
               ("rustok-distribution", 1200),
               ("rustok-sandbox-transport", 1200),
@@ -493,4 +511,5 @@ jobs:
           _feats = ",".join(f for f in _default if f != "embed-storefront")
           run_check("default-minus-storefront", ["check", "-p", "rustok-server", "--no-default-features", "--features", _feats, "--message-format", "json"])
           run_check("all-features", ["check", "-p", "rustok-server", "--all-features", "--message-format", "json"])
+          run_check("admin", ["check", "-p", "rustok-admin", "--message-format", "json"])
           PY
