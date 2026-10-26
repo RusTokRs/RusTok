@@ -696,7 +696,12 @@ where
         request: ArtifactSettingsRecoveryPointCreateRequest,
     ) -> Result<ArtifactSettingsRecoveryPoint, ArtifactSettingsRecoveryError> {
         validate_recovery_point_request(&request)?;
-        let retention = self.authorizer.authorize_recovery_point(&request).await?;
+        let mut retention = self.authorizer.authorize_recovery_point(&request).await?;
+        // The authorizer is a host boundary; anything this owner persists
+        // and returns must already be in storage precision so the created
+        // record equals its replayed (loaded) form exactly.
+        retention.retain_until =
+            crate::backend::align_to_storage_precision(retention.retain_until);
         validate_retention(&retention, self.infrastructure.now())?;
 
         if let Some(existing) = self.find_recovery_operation(&request).await? {
@@ -1212,10 +1217,12 @@ where
         let recovery = self
             .load_recovery_material(request.tenant_id, request.recovery_point_id)
             .await?;
-        let retention = self
+        let mut retention = self
             .authorizer
             .authorize_retention_update(&request, &recovery.authorization_context())
             .await?;
+        retention.retain_until =
+            crate::backend::align_to_storage_precision(retention.retain_until);
         validate_retention_update(&retention)?;
 
         let transaction = self.db.begin().await.map_err(storage_error)?;

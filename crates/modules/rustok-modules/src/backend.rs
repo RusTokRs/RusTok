@@ -306,6 +306,19 @@ pub(crate) fn sqlite_datetime_text(value: chrono::DateTime<chrono::Utc>) -> Stri
     value.format("%Y-%m-%dT%H:%M:%S%.3f+00:00").to_string()
 }
 
+/// Align an app-side timestamp to the storage precision shared by every
+/// representation in this crate: fixed-millisecond SQLite text and
+/// microsecond PostgreSQL `timestamptz` both discard sub-millisecond
+/// digits, so owner-minted or owner-accepted timestamps are truncated at
+/// the boundary that persists them. A record returned by its creating
+/// call then equals the same record loaded back (including on idempotent
+/// replay) on both backends.
+pub(crate) fn align_to_storage_precision(
+    value: chrono::DateTime<chrono::Utc>,
+) -> chrono::DateTime<chrono::Utc> {
+    chrono::DateTime::from_timestamp_millis(value.timestamp_millis()).unwrap_or(value)
+}
+
 pub(crate) fn parse_sqlite_datetime(
     value: &str,
 ) -> Result<chrono::DateTime<chrono::Utc>, chrono::ParseError> {
