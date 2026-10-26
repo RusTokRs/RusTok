@@ -182,3 +182,91 @@ function closingBrace(text, open) {
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+// --- Canonical ledger ---------------------------------------------------------------------------
+//
+// The Forum plan's delivery ledger is append-only: each slice appears as `### Delivered in
+// `FORUM-20AV`` and consecutive slices are collapsed into `### Delivered in `FORUM-20H` through
+// `FORUM-20Q``. Guards used to assert the *current* summary row instead (`FORUM-20A-G provide`), so
+// every delivered slice turned twenty unrelated guards red at once and each guard pinned a different
+// historical frontier. Nineteen of them could never be green together.
+//
+// These helpers read the append-only headings instead: a range heading covers every slice inside it,
+// and the mutable summary row is never matched. A slice counts as delivered exactly when a heading
+// names it, which is the property the ledger actually guarantees.
+
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+/** `A` = 1, `Z` = 26, `AA` = 27, `AF` = 32. */
+export function taskSuffixNumber(suffix) {
+  let value = 0;
+  for (const character of suffix) {
+    value = value * 26 + (LETTERS.indexOf(character) + 1);
+  }
+  return value;
+}
+
+/** Inverse of `taskSuffixNumber`, used to expand a range's upper bound. */
+export function taskSuffixLetters(value) {
+  let remaining = value;
+  let suffix = "";
+  while (remaining > 0) {
+    const digit = (remaining - 1) % 26;
+    suffix = LETTERS[digit] + suffix;
+    remaining = Math.floor((remaining - 1) / 26);
+  }
+  return suffix;
+}
+
+/**
+ * Every task id a ledger records as delivered.
+ *
+ * Two house styles exist and both are append-only: the Forum plan writes
+ * `### Delivered in `FORUM-20H` through `FORUM-20Q``, the Notifications plan writes
+ * `### `FORUM-20AI / FORUM-20AJ``. Both name the slices they cover, so a single parser can read either
+ * ledger and no guard has to know which spelling its owner chose.
+ */
+export function deliveredLedgerSlices(ledger) {
+  const delivered = new Set();
+  for (const line of ledger.split("\n")) {
+    if (!line.startsWith("### ")) continue;
+    const ids = [...line.matchAll(/FORUM-([0-9]+)([A-Z]+)/g)];
+    if (ids.length === 0) continue;
+    const module = ids[0][1];
+    if (ids.length === 2 && /\bthrough\b/.test(line)) {
+      const first = taskSuffixNumber(ids[0][2]);
+      const last = taskSuffixNumber(ids[1][2]);
+      if (ids[1][1] !== module || last < first) {
+        delivered.add(`FORUM-${module}${ids[0][2]}`);
+        continue;
+      }
+      for (let value = first; value <= last; value += 1) {
+        delivered.add(`FORUM-${module}${taskSuffixLetters(value)}`);
+      }
+      continue;
+    }
+    for (const [, idModule, suffix] of ids) delivered.add(`FORUM-${idModule}${suffix}`);
+  }
+  return delivered;
+}
+
+/**
+ * Assert that the canonical ledger records every slice the contract requires, and that the contract
+ * itself has moved off the historical `pending` state once the ledger advanced past it.
+ */
+export function assertCanonicalLedger({ failures, plan, slices, planSync, label }) {
+  if (!plan.includes("| `FORUM-20` |")) {
+    failures.push(`${label}: the canonical plan no longer carries the FORUM-20 program-ledger row`);
+  }
+  const delivered = deliveredLedgerSlices(plan);
+  for (const slice of slices) {
+    if (!delivered.has(slice)) {
+      failures.push(`${label}: the canonical plan does not record ${slice} as delivered`);
+    }
+  }
+  if (planSync.status !== "synchronized") {
+    failures.push(
+      `${label}: the canonical ledger records these slices as delivered; canonical_plan_sync.status must be synchronized`,
+    );
+  }
+}

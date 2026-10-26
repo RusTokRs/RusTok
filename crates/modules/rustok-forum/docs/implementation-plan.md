@@ -605,17 +605,17 @@ is deferred to the final production-validation phase.
 | `FORUM-13` | `in_progress` | Forum-specific Category presentation ownership is retired: canonical icon, color and typed Media presentation references are owned by Taxonomy under TAXONOMY-CAT-3/CAT-5. Forum must not reintroduce a duplicate presentation validator, storage model or Category-cover owner. Remaining mounted/runtime evidence belongs to the Taxonomy/CAT-5 production-validation gate. |
 | `FORUM-14` | `in_progress` | Forum attachment relations over Media-owned assets are implemented through a dedicated CAS head, bounded ordered rows and durable Media owner reference retention. `source_revision` is content provenance only; attachment-only changes do not advance Forum content revisions. Runtime integration/reconciliation evidence remains open; FORUM-33 now audits conservative orphan holds through the public Media owner-reference listing contract. |
 | `FORUM-15` | `in_progress` | Profiles supplies `ProfilesReader`; FORUM-15A through 15E provide member-card owner service, user stats, GraphQL/native transport, and privacy-aware storefront UI composition. Retain live runtime evidence. |
-| `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
+| `FORUM-16` | `in_progress` | FORUM-16A-F add tenant-scoped monotonic topic read state, bounded unread projections, resumable category-subtree/all-read owner commands, REST/GraphQL contracts, authenticated visible-topic storefront composition and a source-ready PostgreSQL concurrency/query-plan proof; maintainer execution/output capture and visibility-scoped storefront bulk commands remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
 | `FORUM-18` | `in_progress` | Neutral API, optional owner registration/selection, tenant-composite persistence, shared receipts, atomic actor aggregates, semantic reaction events, bounded aggregate reconciliation, Forum topic/reply provider, Blog second producer, host materialization, composition-test source, bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport, bounded selected-topic/selected-reply host UI composition and Rust Playwright browser-evidence source are ready. Retain the browser execution plus event-digest, owner/event/repair/Forum+Blog/GraphQL/UI/runtime evidence and release lockfile verification; Forum votes remain separate and no reaction ownership moves into Forum. |
 | `FORUM-19` | `done` | Bounded Forum/Moderation integration is complete: neutral topic/reply adapters, Forum-owned revision fencing and exact supported effects, Moderation-owned durable dispatch/scheduler/audit/recovery, dedicated `moderation_cases` RBAC, authorized recovery GraphQL transport, replay-safe fresh-revision new-case/new-decision re-review, and retained PostgreSQL/SQLite/host/concurrency/lost-response/accounting evidence are present. `Unpublished`, temporary restrictions and broader neutral effects remain separate future feature scope rather than lossy approximations. Deployment/promotion evidence is deferred to `PROD-FORUM-19`; Moderation keeps cases, decisions, appeals and audit. |
-| `FORUM-20` | `in_progress` | FORUM-20A-G provide rich visibility and recipient-aware source/inbox slices. Reply anchoring on the Next.js surfaces is delivered through the `?reply=<uuid>` route contract (`DECISIONS/2026-10-11-forum-reply-anchor-route-contract.md`); remaining: an owner-side read for the page containing a reply, remaining reads, reconciliation, delivery and PostgreSQL evidence. |
+| `FORUM-20` | `in_progress` | FORUM-20A-G provide rich visibility and recipient-aware source/inbox slices; FORUM-20A-AO provide the notification inbox/group owner plane with authenticated storefront ports and native/GraphQL transport parity; FORUM-20A-AS provide exact topic-create audience enforcement with shared Channel, Groups and trust facts adapters; FORUM-20A-AU provide the inherited category reply-create layer and its owner enforcement; FORUM-20A-AZ provide inherited category moderation audience, existing solution-route composition and the synchronized ledger through FORUM-20BA. Reply anchoring on the Next.js surfaces is delivered through the `?reply=<uuid>` route contract (`DECISIONS/2026-10-11-forum-reply-anchor-route-contract.md`); remaining: an owner-side read for the page containing a reply, remaining reads, reconciliation, delivery and PostgreSQL evidence. |
 | `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |
 | `FORUM-22` | `planned` | Forum-owned Q&A/wiki/announcement kinds and scheduled lifecycle. |
 | `FORUM-23` | `in_progress` | Search projection/filtering, ordering, owner revisions and repair exist; maintainer PostgreSQL/Iggy plus LINK-FORUM-03 runtime evidence remain. |
 | `FORUM-24` | `in_progress` | A-S plus descriptor correction provide category/topic routes, transports, mounts, SEO/hreflang and Search URLs. Execute registered-host, HTTP, browser and reindex evidence. |
 | `FORUM-25` | `done` | Category backend/Translation implementation is complete: canonical Category copy/routes/hierarchy are Taxonomy-owned, the duplicate Forum provider/cursor/progress runtime and legacy donor storage are retired, and Arabic/admin/storefront locale boundaries are source-ready. Mounted multilingual/RTL browser execution is deferred to the final production-validation phase and does not keep FORUM-25 open; topic/reply UGC translation remains opt-in rather than an automatic provider. |
-| `FORUM-26` | `in_progress` | Forum trust/posting facts exist. Add Moderation/Reputation facts, persistence/enforcement, shared rate limits, transports/UI and evidence. |
+| `FORUM-26` | `in_progress` | FORUM-26A-J provide authoritative Forum trust state/facts, posting-policy contracts, evaluation/composition, account-age, topics-read, approved-post and topic/reply create-window facts, plus pre-enforcement author/query-plan hardening. Active flags/moderation history, reputation, edit windows, bump age, policy persistence, owner enforcement, shared rate-limit execution, duplicate hashing, optional scoring, transports, UI and maintainer runtime evidence remain. |
 | `FORUM-27` | `planned` | Compose Profiles directory/profile with Forum stats/activity and permitted reputation/achievements. |
 | `FORUM-28` | `in_progress` | Canonical storage, renderer, projections, shared editor runtime, Leptos and Next topic create/edit and reply composition, native SSR/hydrate plus GraphQL CSR reply writes, owner content-locale/direction/spellcheck propagation and dynamic read-only state are implemented. Dirty locale switching is now fail-closed for category/topic editors, fallback-only localized form state is scrubbed before writes, unsaved reply drafts block locale changes, and unchanged Taxonomy tag attachments are preserved. Complete owner-copy i18n and mounted save/reload/browser parity evidence. |
 | `FORUM-29` | `planned` | Shared realtime transport with Forum cursors/revisions and canonical reload. |
@@ -1598,6 +1598,176 @@ to Forum.
 
 FORUM-19 implementation is complete. Do not reopen it for deployment-only promotion; track deployed-host/runtime/release proof under `PROD-FORUM-19`. Unsupported `SetVisibility(Unpublished)`, temporary restrictions and other neutral effects remain fail-closed until a separately accepted feature slice defines exact Forum owner semantics. The broader Moderation admin UI, public event family and additional producer adapters remain Moderation-platform work rather than Forum-owned recovery or queue logic.
 
+## `FORUM-16` — read tracking and unread state
+
+**Status:** `in_progress`  
+**Priority:** P1  
+**Dependencies:** FORUM-07/10
+
+### Scope
+
+Persist monotonic per-user topic read position/revision. Expose unread count,
+last-read position and unread filters on bounded topic projections. Add mark
+topic/category/all read commands.
+
+Use `GREATEST(existing, incoming)` or equivalent compare-and-set semantics.
+Anonymous page views do not create read rows. Cache and realtime updates may
+accelerate the badge but database position/revision remains canonical.
+
+### Delivered in `FORUM-16A`
+
+- PostgreSQL and SQLite add `forum_topic_read_states` keyed by tenant, topic and
+  user, with a tenant-composite topic foreign key, nonnegative high-water marks
+  and database triggers that reject direct position or revision regression;
+- `ForumTopicReadStateService` exposes authenticated owner get/mark operations,
+  while anonymous reads return an implicit zero state and anonymous marks fail
+  without creating persistence;
+- mark validates the incoming position against the latest approved reply and the
+  incoming revision against the latest topic revision before independently
+  advancing both high-water marks through insert-or-no-op and conditional owner
+  updates in one transaction;
+- stale devices become no-ops instead of moving either cursor backwards, and a
+  SQLite owner scenario covers future-bound rejection plus the direct database
+  regression guard.
+
+### Delivered in `FORUM-16B`
+
+- `ForumReadModelService::list_topics_with_unread` exposes a separate
+  authenticated owner projection without changing the existing public topic
+  list contract;
+- each bounded cursor page is enriched through one aggregate owner query with
+  explicit read-state presence, last-read position/revision, approved-reply
+  unread count, topic-revision unread state and a canonical `is_unread` result;
+- a missing read-state row keeps a newly discovered topic unread even when it has
+  no replies, while an explicit zero row records that an empty topic was opened;
+- `unread_only` is applied before cursor pagination and includes unseen topics,
+  approved replies after the high-water mark and newer immutable topic revisions;
+- hidden, rejected and deleted replies are excluded by the approved-public
+  predicate, and the SQLite scenario covers visibility changes plus two-page
+  unread cursor behavior without N+1 reply reads.
+
+### Delivered in `FORUM-16C`
+
+- `ForumTopicReadStateService::mark_category_read` marks a root category and its
+  current descendant subtree, while `mark_all_read` covers the tenant scope;
+- each command processes at most 100 topics in one transaction and returns an
+  exact `(snapshot_at, created_at, topic_id)` continuation cursor bound to the
+  tenant, authenticated user and command scope;
+- the first page fixes the topic-creation snapshot, so topics created later are
+  excluded from that operation and picked up by a subsequent idempotent pass;
+- category traversal reuses the existing 512-node owner bound and fails closed
+  for an oversized, missing or cyclic tenant tree;
+- one aggregate query per bounded page resolves the latest approved-reply
+  position and latest immutable topic revision before monotonic owner upserts;
+- equal non-stale high-water marks refresh the read snapshot so a late moderator
+  approval below an already-read position can be acknowledged, while stale lower
+  markers cannot regress state or refresh the snapshot;
+- SQLite owner scenarios cover subtree pagination, snapshot exclusion, cursor
+  scope isolation, tenant-wide replay, bounds, anonymous rejection and late
+  approval acknowledgement.
+
+### Delivered in `FORUM-16D`
+
+- additive REST routes expose the authenticated unread cursor page, topic
+  read-state get/mark, category-subtree mark and tenant-wide mark-all commands;
+- additive GraphQL query and mutation fields expose the same owner contracts
+  with tenant-scope rejection, permission checks and opaque cursor passthrough;
+- both transports call `ForumReadModelService` and
+  `ForumTopicReadStateService` directly, so unread calculation, monotonic
+  updates, bounds and cursor validation remain owner policy;
+- the legacy offset-based topic endpoints remain unchanged, and the unread/read
+  state contracts do not open anonymous or realtime paths;
+- OpenAPI and GraphQL SDL contract coverage locks the route and field names plus
+  the shared request and response shapes.
+
+### Delivered in `FORUM-16E`
+
+- `ForumReadModelService::summarize_topic_ids` reuses the canonical unread
+  aggregate for an authenticated caller-supplied set capped at 100 exact topic
+  IDs, so storefront composition does not duplicate reply/revision policy;
+- `TopicService::get_storefront_visible_with_locale_fallback` centralizes the
+  single-topic open/channel visibility check used before a storefront mutation;
+- authenticated GraphQL and native server-function adapters enrich only the
+  topic IDs already selected by the storefront-visible owner list, while the
+  public category/topic/reply feed remains the anonymous compatibility path;
+- authentication or permission absence degrades explicitly to the public feed,
+  but network, HTTP, persistence and domain failures remain visible instead of
+  becoming synthetic anonymous state;
+- the selected visible topic can be marked at the current approved-reply and
+  immutable-revision high-water marks after visibility is rechecked, and content
+  published after that owner snapshot remains unread;
+- the module-owned storefront renders unread badges and a topic mark-read control
+  without creating anonymous rows; GraphQL SDL and SQLite owner-composition tests
+  lock the visible-topic-only contract and keep storefront bulk mutations closed.
+
+### Delivered in `FORUM-16F`
+
+- `topic_read_state_postgres` is source-ready in the isolated PostgreSQL Forum
+  fixture without changing production runtime APIs, migrations or transports;
+- two independent PostgreSQL connections mark the same tenant/user/topic with
+  separate reply-position and topic-revision advances, requiring durable state
+  to converge to the component-wise maximum and the database regression trigger
+  to reject a later direct downgrade;
+- a production-sized fixture creates 128 topics, 8,192 approved replies and 512
+  topic revisions, then validates the canonical owner summary across a bounded
+  100-topic page containing reply-unread, revision-unread, read and unseen rows;
+- a natural `EXPLAIN (ANALYZE, BUFFERS, COSTS OFF, FORMAT JSON)` proof requires
+  exactly 100 aggregate rows, no per-topic `SubPlan` and all four owner relations;
+- a separate `enable_seqscan = off` plan proves index capability for read-state,
+  reply-position and topic-revision access without claiming a latency threshold
+  or requiring the production planner to choose one fixed plan;
+- the machine contract, source verifier and proof record remain explicitly
+  source-ready; no successful PostgreSQL execution or captured plan output is
+  claimed until the maintainer runs `topic_read_state_postgres`.
+
+### Compatibility and degraded mode
+
+No migration or backfill is required: an absent row means position/revision zero
+and preserves unseen-topic identity. Existing public, offset-based and storefront
+topic reads remain source-compatible; storefront DTOs add only defaulted optional
+unread fields. Authenticated requests enrich the existing visibility-filtered
+page, while anonymous requests retain the public feed and never create read rows.
+Authentication/permission absence is the only personalization fallback; real
+transport or owner failures remain explicit. REST and GraphQL pass opaque cursors
+and owner DTOs without duplicating unread policy. Category membership is
+revalidated on every resumed owner bulk page; a subsequent idempotent pass
+converges after a concurrent category move. Storefront category/all-read controls
+remain closed because the current owner bulk scope is tenant/category based and
+cannot yet narrow to the channel-visible topic set. FORUM-16F adds only
+source-ready tests, contracts and documentation; it changes no persistence or
+degraded-mode behavior. Cache and realtime accelerators remain optional and
+never replace database owner state.
+
+### Remaining scope
+
+- add visibility/channel-scoped category and all-read storefront commands only
+  after the shared ACL/visibility policy can produce an exact bounded owner scope;
+- record successful maintainer PostgreSQL execution and capture the natural and
+  index-capability `EXPLAIN JSON` output for the source-ready proof.
+
+### Definition of done
+
+Concurrent devices cannot move read state backwards, deleted/hidden replies do
+not inflate unread counts, and category/all-read commands are resumable and
+bounded.
+
+### Verification
+
+```bash
+cargo test -p rustok-forum --test topic_read_state_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_unread_projection_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_bulk_read_state_sqlite -- --nocapture
+cargo test -p rustok-forum --test read_state_transport_contract -- --nocapture
+cargo test -p rustok-forum --test storefront_read_state_contract -- --nocapture
+cargo test -p rustok-forum --test storefront_read_state_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_read_state_postgres -- --nocapture --test-threads=1
+cargo test -p rustok-forum-storefront
+node scripts/verify/verify-forum-read-state-runtime-proof.mjs
+cargo xtask module validate forum
+npm run verify:forum:admin-boundary
+npm run verify:forum:storefront-boundary
+```
+
 ## `FORUM-20` — ACL and visibility inheritance
 
 **Status:** `in_progress`  
@@ -1614,6 +1784,587 @@ command.
 
 Forum reads, notifications, search, SEO and deep links must call the same
 visibility policy. Do not place ACL policy in arbitrary JSON.
+
+### Delivered in `FORUM-20A`
+
+- `ForumTopicVisibilityScope` and `ForumTopicVisibilityService` centralize the
+  current storefront topic rule: an open topic is visible when it has no channel
+  restriction or when the exact normalized request channel is present;
+- exact caller-selected topic IDs are bounded to 100 before deduplication,
+  filtered in one tenant-scoped owner query and returned in first-occurrence
+  order without discovering additional topics;
+- missing, foreign-tenant, closed and nonmatching-channel targets all resolve as
+  absent, so the exact evaluator does not expose an existence oracle;
+- the single-topic storefront facade preserves its existing owner read/RBAC
+  check before visibility evaluation, while the storefront list rechecks the
+  exact selected page and fails closed if the compatibility SQL prefilter drifts
+  from the owner scope;
+- storefront unread composition continues through the guarded topic facade, so
+  it cannot enrich or mark a topic outside the exact current scope;
+- `forum-topic-visibility-scope.json`, `topic_visibility_sqlite` and
+  `verify-forum-topic-visibility-scope.mjs` lock bounds, tenant isolation,
+  order-preserving deduplication, public/exact-channel behavior and the residual
+  full-ACL scope;
+- this slice adds no migration, transport field, endpoint or UI and does not
+  claim category inheritance, roles, groups, trust or explicit allow/deny.
+
+### Delivered in `FORUM-20B`
+
+- `ForumCategoryVisibility` defines the typed effective category audience floor
+  currently supported by Forum: `public` and `authenticated`;
+- `forum_category_policies.visibility_override` is nullable and stores only the
+  narrowing `authenticated` override; PostgreSQL and SQLite reject an explicit
+  `public` row, so a descendant cannot broaden an authenticated ancestor through
+  direct persistence;
+- `ForumCategoryVisibilityPolicyService` resolves the complete tenant category
+  hierarchy within the existing 512-node and depth-16 bounds, reports the exact
+  category that supplies an inherited authenticated floor, and fails closed for
+  missing, foreign, cyclic or over-bound trees;
+- the owner `set` command is guarded by `forum_categories:manage`; requesting
+  `public` clears a local override only beneath an effective public parent, while
+  requesting `authenticated` narrows the category and all descendants;
+- the existing `allows_topics` policy shares the row without overwriting the new
+  visibility field, and existing categories require no backfill because absence
+  remains the public root default;
+- `forum-category-visibility-policy.json`,
+  `category_visibility_policy_sqlite` and
+  `verify-forum-category-visibility-policy.mjs` lock inheritance, tenant
+  isolation, monotonic narrowing and database enforcement;
+- the static audit also repairs the already-merged FORUM-20A storefront drift
+  error to construct the typed `rustok_core::Error` required by
+  `ForumError::Internal`;
+- this slice adds no transport, storefront, topic/reply read composition, role,
+  trust, group or explicit allow/deny behavior.
+
+### Delivered in `FORUM-20C`
+
+- storefront topic exact and paginated reads compose the inherited category
+  floor with the existing open/exact-channel policy through the Forum owner;
+- public viewers see public categories only, while authenticated viewers may see
+  both public and inherited authenticated categories without page/count drift;
+- category exclusions are applied before storefront count and pagination and the
+  exact selected page is rechecked by the bounded visibility evaluator;
+- `topic_authenticated_visibility_sqlite` and the cumulative storefront contract
+  preserve non-oracular missing/denied behavior and tenant-scoped channel checks.
+
+### Delivered in `FORUM-20D`
+
+- exact topic reads authorize, evaluate the inherited category floor and only
+  then hydrate localized content; denied public targets resolve as
+  `TopicNotFound`;
+- ordinary topic pages exclude inherited authenticated categories before count
+  and pagination, while authenticated owner reads preserve existing behavior;
+- exact reply reads evaluate their parent topic before body/vote enrichment and
+  denied public targets resolve as `ReplyNotFound`;
+- reply pages reject a denied parent as `TopicNotFound` before reply count and
+  pagination;
+- `forum-owner-read-visibility.json`,
+  `topic_reply_owner_visibility_sqlite` and
+  `verify-forum-owner-read-visibility.mjs` lock the owner-read order and residual
+  scope.
+
+### Delivered in `FORUM-20E`
+
+- exact category reads authorize and evaluate the inherited category floor
+  before localization/subscription hydration; denied public targets resolve as
+  `CategoryNotFound`;
+- flat category pages exclude inherited authenticated categories before count
+  and pagination;
+- the bounded canonical category tree removes authenticated subtrees for public
+  viewers and recomputes visible `total_nodes`, `max_depth`, `children_count` and
+  `has_children` metadata;
+- monotonic inheritance guarantees that pruning a hidden node cannot orphan a
+  visible descendant, while authenticated tree reads retain the complete bounded
+  hierarchy;
+- `forum-category-owner-read-visibility.json`,
+  `category_owner_visibility_sqlite` and
+  `verify-forum-category-owner-read-visibility.mjs` lock exact, page and tree
+  composition.
+
+### Delivered in `FORUM-20F`
+
+- `ForumAudienceConstraints` models additional role, minimum-trust,
+  channel-member, group-member and explicit user allow/deny selectors after the
+  inherited public/authenticated floor; positive selectors form a union and
+  explicit deny always wins;
+- raw input is capped before normalization at four roles, 32 channel candidates,
+  32 group candidates and 100 allow plus 100 deny user IDs; trust is bounded to
+  0..100 and channel slugs to 128 characters;
+- `ForumAudienceFactsRequest` and `ForumAudienceFacts` form an exact tenant- and
+  actor-scoped request/response pair, rejecting cross-identity or unrequested
+  trust, channel or group facts;
+- `ForumAudienceFactsPort` is a transport-neutral optional owner boundary with
+  mandatory read-deadline semantics and no direct Forum dependency on Channel,
+  Groups or their private tables;
+- `ForumAudienceFactsResolver` binds the port context to the requested tenant and
+  user, skips the optional provider when local deny/allow/role facts already
+  decide the union, returns empty facts for public or non-user actors, and
+  otherwise fails closed with typed capability errors;
+- `ForumAudienceEvaluator` validates exact facts and returns an explainable
+  decision reason for unrestricted, deny, allow, role, trust, channel, group,
+  authentication-required or no-match outcomes;
+- `forum-audience-capability-ports.json`, `audience_capability_contract` and
+  `verify-forum-audience-capability-ports.mjs` lock bounds, precedence, exact
+  subsets, identity/deadline semantics and residual composition work;
+- this slice adds no storage, migration, owner-read composition, write policy,
+  transport, provider adapter or cross-consumer behavior.
+
+### Delivered in `FORUM-20G`
+
+- five normalized Forum-owned tables persist one optional local category layer
+  plus typed role, channel, group and explicit allow/deny relations without JSON;
+- every policy and relation is tenant/category scoped through composite foreign
+  keys, with typed checks for supported roles, trust `0..100`, canonical channel
+  slugs, non-nil identities and allow/deny effects;
+- direct channel/group/user inserts are bounded to the FORUM-20F limits and
+  policy and relation updates are rejected; owner replacement uses delete plus
+  insert;
+- `ForumCategoryAudiencePolicyService` exposes managed policy inspection and
+  atomically replaces a local layer under `forum_categories:manage` and the
+  tenant category-tree lock;
+- an empty constraint set deletes only the local layer and restores inheritance;
+- effective policy is an ordered root-to-target conjunction of every non-empty
+  local layer, preserving the local union/deny semantics while making child
+  broadening impossible;
+- storage reads remain bounded to the 512-node/depth-16 hierarchy and fail closed
+  for cycles, foreign categories, orphan relations, empty stored layers or
+  oversized direct writes;
+- `forum-category-audience-policy.json`, `category_audience_policy_sqlite` and
+  `verify-forum-category-audience-policy.mjs` lock normalized persistence,
+  inheritance, atomic replacement, tenant isolation and direct database guards;
+- this slice adds no topic narrowing, category/topic/reply read composition,
+  provider adapter, write-audience transport or cross-consumer behavior.
+
+### Delivered in `FORUM-20H` through `FORUM-20Q`
+
+- `FORUM-20H` adds normalized topic-local audience narrowing and owner replacement
+  commands that compose after the inherited category layers and cannot broaden them;
+- `FORUM-20I` migrates Forum notification description, audience, and target-open checks
+  to the canonical topic visibility owner instead of notification-local predicates;
+- `FORUM-20J` composes exact richer topic visibility from the route/channel rule,
+  inherited category layers, optional topic narrowing, and bounded owner facts;
+- `FORUM-20K` applies that richer exact decision to Forum notification source reads and
+  reauthorization while retaining public fail-closed degraded behavior;
+- `FORUM-20L` and `FORUM-20M` define and publish the exact recipient-context capability,
+  backed by authoritative Users/RBAC owners and preserving deadline and trace context;
+- `FORUM-20N` authorizes each notification target for the exact current recipient;
+- `FORUM-20O` re-resolves mentioned recipients before descriptor/audience publication;
+- `FORUM-20P` filters topic-subscription audience pages by current recipient visibility
+  while preserving sparse advancing cursors;
+- `FORUM-20Q` publishes the Groups-owned exact-membership facts adapter. Trust and
+  channel-membership adapters were delivered later through FORUM-26 and FORUM-20AT.
+
+### Delivered in `FORUM-20R` through `FORUM-20AF`
+
+- `FORUM-20R/20S` add non-oracular exact inbox open authorization with current recipient
+  privacy before source target authorization;
+- `FORUM-20T` through `FORUM-20AA` add bounded authorized listing, exact state commands,
+  reconciliation, mark-unread, exact unread count, and resumable mark-all read/unread/archive;
+- `FORUM-20AB` adds bounded explicit selected-ID state commands;
+- `FORUM-20AC` adds authorized exact-group listing over opaque group keys;
+- `FORUM-20AD` makes group keys durable through a bounded owner migration and backfill;
+- `FORUM-20AE` adds bounded group summaries with exact stored counts and an authorized
+  latest-item projection;
+- `FORUM-20AF` adds bounded exact-group mark-read, mark-unread, and archive commands.
+
+### Delivered in `FORUM-20AG` through `FORUM-20AL`
+
+- `FORUM-20AG` exposes a transport-neutral authenticated-user storefront inbox port with
+  context-derived tenant/recipient identity and read/write admission semantics;
+- `FORUM-20AH` adds native Leptos server-function adapters without owner identity fields;
+- `FORUM-20AI` replaces the storefront placeholder with bounded grouped inbox rendering,
+  paging, stale-response guards, allowed-only navigation, and authoritative refreshes;
+- `FORUM-20AJ` mounts the localized Notifications action and exact unread badge through a
+  generic manifest-driven storefront header slot;
+- `FORUM-20AK` adds GraphQL parity for unread count and grouped summary/item reads while
+  reusing the owner storefront port and host-composed policy/source runtime;
+- `FORUM-20AL` adds GraphQL parity for fresh open authorization. Missing, foreign,
+  suppressed, and no-longer-openable rows remain indistinguishable `UNAVAILABLE`, and
+  only an owner-authorized route can produce `ALLOWED`.
+
+### Delivered in `FORUM-20AM`
+
+- synchronize this canonical ledger, the Notifications owner-local plan, owner README,
+  and live contract through `FORUM-20AL` without rewriting unrelated task content;
+- record the historical `FORUM-20H` through `FORUM-20AL` execution chain as source-ready
+  and unvalidated rather than promoting the overall task to `done`;
+- add `forum-notification-plan-sync.json` and
+  `verify-forum-notification-plan-sync.mjs` so future owner/storefront work cannot silently
+  leave the four authoritative documents at different milestones;
+- update the latest `FORUM-20AL` handoff contract to point at this synchronization task.
+
+### Delivered in `FORUM-20AN`
+
+- add the module-owned GraphQL mutation `notificationInboxApplyGroupState` for bounded
+  exact-group `MARK_READ`, `MARK_UNREAD`, and `ARCHIVE` commands;
+- derive tenant and recipient identity from the authenticated human-user context, require
+  module admission before command validation, and carry a five-second deadline plus one
+  bounded caller idempotency key through `NotificationInboxStorefrontPort`;
+- return only `scanned`, `changed`, `next_cursor`, and `has_more`, preserving owner state,
+  timestamp, terminal-archive, pagination, and non-oracular invariants;
+- select native writes for SSR/hydrate and GraphQL writes for CSR/headless without fallback,
+  while keeping the existing UI call site and authoritative post-command refresh behavior.
+
+### Delivered in `FORUM-20AO`
+
+- expose one current storefront transport-context resolver that reads the reactive auth
+  session token and tenant signals without placing owner identity in request DTOs;
+- key the grouped bootstrap resource by both the existing manual refresh nonce and the
+  current transport context, so sign-in, sign-out, token refresh, and tenant changes refetch;
+- pass one resolved context snapshot through exact unread-count and first bounded summary-page
+  reads instead of re-resolving credentials between owner calls;
+- clear prior mutation feedback when the auth scope changes while preserving explicit
+  post-command refresh, compile-profile transport selection, and no-fallback behavior.
+
+### Delivered in `FORUM-20AP`
+
+- materialize `forum.topic.created` descriptors for active topics that are already non-public
+  when the host publishes the exact notification recipient-context capability;
+- keep public-only descriptor creation when that capability is absent, preserving the existing
+  fail-closed optional-module profile;
+- expose only topic/category identifiers in the descriptor and defer all recipient authority to
+  the bounded subscription audience recheck;
+- preserve author exclusion, raw subscription cursor progress, current category/topic audience
+  evaluation, non-oracular inactive targets, and later target-open authorization.
+
+### Delivered in `FORUM-20AQ`
+
+- add five normalized Forum-owned tables for a category-local topic-create audience layer plus
+  typed role, channel, group, and explicit allow/deny relations;
+- keep topic-create policy separate from category/topic visibility while inheriting every
+  non-empty root-to-category layer as a conjunction;
+- expose managed inspection and atomic replacement under `forum_categories:manage`, with an
+  empty constraint set clearing only the local layer and restoring inheritance;
+- enforce tenant/category composite ownership, raw relation bounds, immutable stored rows, and
+  PostgreSQL/SQLite parity without changing `TopicService::create` or any transport.
+
+### Delivered in `FORUM-20AR`
+
+- enforce `forum_topics:create` before loading the bounded inherited category topic-create
+  policy and require every root-to-category layer to allow the caller;
+- keep unrestricted categories and locally decidable role/explicit-user layers independent of
+  optional owner facts while preserving explicit-deny precedence;
+- require exact tenant/user `PortContext` plus the optional facts capability only when trust,
+  Channel, or Groups selectors remain unresolved, and fail closed when either is absent;
+- gate every public `TopicService` create path before topic, relation, counter, user-stat, or
+  event writes and publish context-aware owner seams without changing GraphQL or REST DTOs.
+
+### Delivered in `FORUM-20AS`
+
+- compose both legacy and inline-quote GraphQL topic-create mutations through one manifest-backed
+  runtime wrapper and the existing context-aware owner methods;
+- compose both REST topic-create handlers through `HostRuntimeContext`, using only authenticated
+  tenant/user identity plus the middleware-resolved locale and route channel;
+- attach read deadline, permission claims, and a bounded correlation id before any optional owner
+  facts call, rejecting mismatched request tenant or actor before provider access;
+- consume the existing feature-guarded Groups facts publication for both transports while keeping
+  provider absence fail closed and adding no topic-create DTO, migration, or Forum-to-Groups dependency.
+
+### Delivered in `FORUM-20AT`
+
+- publish one host-owned composite `SharedForumAudienceFactsPort` for every Forum build while
+  preserving the historical `FORUM-20Q` Groups adapter as an optional owner-backed fallback;
+- accept a Channel match only from the exact normalized requested `PortContext.channel`, then
+  confirm that slug through `ChannelReadPort` as active and tenant-matching;
+- never list or probe unrequested channels, and let an exact current-Channel match decide the
+  positive-selector union before optional Groups facts are consulted;
+- keep Channel-only topic-create policy operational when Groups is not compiled, while requested
+  Groups facts remain typed retryable unavailable when no delivered selector decides;
+- add inline host tests, a machine-readable contract and a static verifier without migrations,
+  public DTO changes, or a new Forum-to-Channel dependency.
+
+### Delivered in `FORUM-20AU`
+
+- add five normalized Forum-owned tables for a category-local reply-create audience layer plus
+  typed role, channel, group, and explicit allow/deny relations;
+- keep reply-create policy separate from category/topic visibility and topic-create eligibility
+  while inheriting every non-empty root-to-category layer as a conjunction;
+- expose managed inspection and atomic replacement under `forum_categories:manage`, with an
+  empty constraint set clearing only the local layer and restoring inheritance;
+- enforce tenant/category composite ownership, typed trust/role/effect values, raw relation
+  bounds, immutable stored rows, and PostgreSQL/SQLite parity;
+- leave `ReplyService::create`, REST, GraphQL and transport DTOs unchanged; command-time
+  authorization remains a separate follow-up slice.
+
+### Delivered in `FORUM-20AV`
+
+- require `forum_replies:create`, resolve the exact tenant-scoped topic category, and evaluate
+  every inherited category reply-create layer before reply-body preparation or owner writes;
+- preserve explicit-deny precedence and locally decidable role/explicit-user decisions without
+  optional facts calls;
+- require exact tenant/user context and the host audience-facts capability only for unresolved
+  trust, Channel, or Groups selectors;
+- route both public reply create facades through the owner gate before reply, relation, counter,
+  user-stat, journal, or event writes without changing DTOs.
+
+### Delivered in `FORUM-20AW`
+
+- compose both legacy and inline-quote GraphQL reply-create mutations through exact authenticated
+  read-only `PortContext` values;
+- compose both REST reply-create handlers from tenant, auth and middleware request context;
+- forward claims, locale, resolved route channel, five-second deadline and bounded correlation
+  identity without accepting owner identity from request DTOs;
+- reuse the same optional host-published `SharedForumAudienceFactsPort` already used by topic
+  creation, preserving fail-closed unresolved external selectors.
+
+### Delivered in `FORUM-20AX`
+
+- persist an optional normalized topic-local reply-create audience layer independently from topic
+  visibility and inherited category reply-create storage;
+- expose managed get/replace commands under `forum_topics:manage`, with empty constraints clearing
+  only the topic layer;
+- evaluate every category layer followed by the optional topic layer so topics may narrow but
+  never broaden inherited eligibility;
+- preserve existing owner and transport paths while PostgreSQL/SQLite enforce tenant ownership,
+  typed values, immutable rows and bounded direct relations.
+
+### Delivered in `FORUM-20AY`
+
+- persist normalized inherited category moderation audience layers independently from visibility,
+  topic-create and reply-create policy;
+- expose managed get/replace commands and evaluate every inherited layer before topic/reply
+  moderation transactions;
+- preserve the exact topic-author solution path while requiring non-author moderators to hold
+  scope and satisfy the moderation audience;
+- publish context-aware moderation owner methods and PostgreSQL/SQLite ownership, immutability,
+  bounds and advisory-lock guards.
+
+### Delivered in `FORUM-20AZ`
+
+- compose existing GraphQL and REST mark/clear-solution routes through one exact authenticated
+  moderation context and the same host-published audience-facts port;
+- derive tenant and actor only from authenticated transport context and forward claims, locale,
+  route channel, five-second deadline and bounded correlation identity;
+- preserve owner-side topic-author versus moderator authorization and keep the gate before
+  solution, counter, user-stat, journal and outbox writes;
+- add no new moderation endpoint; owner methods without an existing public route remain
+  transport-neutral and future routes must reuse the context-aware boundary.
+
+### Delivered in `FORUM-20BA`
+
+- synchronize this canonical ledger through `FORUM-20AZ` and remove reply-create enforcement,
+  topic-local narrowing, category moderation audience, and existing solution-route composition
+  from remaining scope;
+- correct historical owner-note text that still described delivered Forum trust facts as
+  unavailable or blocked while preserving that AV-AZ did not create trust state themselves;
+- add `forum-audience-plan-sync.json`, `forum-20ba-audience-plan-sync.md`, and
+  `verify-forum-audience-plan-sync.mjs` to lock the ledger, five owner notes, five contracts,
+  CRATE_API boundary and latest AZ handoff together;
+- change no runtime behavior, migration, dependency or public contract.
+
+### Compatibility and degraded mode
+
+The nullable public/authenticated category floor and normalized category/topic layers require no
+destructive backfill. Existing content and categories/topics without richer create or moderation
+layers retain their previous behavior. Locally decidable role and explicit-user decisions do not
+require optional facts providers. Exact trust, Channel, or Groups selectors use the shared
+host-published facts capability and fail closed only when a still-required owner fact is absent.
+Forum trust is authoritative and host-composed through `ForumUserTrustAudienceFactsPort`;
+`forum_user_stats` activity counters are never treated as trust.
+
+FORUM-20AV-AZ add no create/moderation DTO identity fields. GraphQL and REST derive tenant and
+actor from authenticated context, and topic/reply/moderation owners validate exact context before
+target lookup or mutation. Categories without reply-create layers and topics without local
+narrowing preserve historical reply behavior. Existing solution routes are context-composed;
+no new approve/reject/hide or pin/lock/status transport is claimed. Context-free owner methods
+remain available for direct locally decidable consumers, while future public moderation routes
+must use context-aware methods. FORUM-20BA is documentation-only.
+
+Forum producer commands remain independent from Notifications availability. The Notifications
+module stays default-off, derives storefront tenant and recipient identity from authenticated
+context, and exposes explicit unavailable/degraded states rather than shadow inbox data. Native
+and GraphQL storefront reads and writes select exactly one compile-profile transport path with no
+cross-path fallback. Both group-state paths delegate to the same owner port; the GraphQL path
+cannot select another tenant or recipient and must supply write deadline and idempotency semantics.
+
+### Remaining scope
+
+- migrate remaining Forum reads plus search/index, SEO, and deep-link authorization to the same
+  exact richer audience decision;
+- add visibility-scoped category/all-read commands over an exact bounded policy scope;
+- require any future public moderation transports to reuse the delivered context-aware owner
+  methods instead of implementing transport-local policy;
+- add tenant-wide scheduled reconciliation, payload redaction, channel enqueue/transports, and
+  delivery-time target authorization;
+- add PostgreSQL concurrency, lease/contention, inheritance, and cross-consumer runtime evidence
+  before promoting `FORUM-20` to `done`.
+
+### Definition of done
+
+Cross-tenant, blocked, private and channel-restricted content is consistently
+absent from reads, search, SEO and notifications, including replay and cache
+profiles.
+
+### Verification
+
+```bash
+cargo test -p rustok-forum --test topic_visibility_sqlite -- --nocapture
+cargo test -p rustok-forum --test category_visibility_policy_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_authenticated_visibility_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_reply_owner_visibility_sqlite -- --nocapture
+cargo test -p rustok-forum --test category_owner_visibility_sqlite -- --nocapture
+cargo test -p rustok-forum --test audience_capability_contract -- --nocapture
+cargo test -p rustok-forum --test category_audience_policy_sqlite -- --nocapture
+cargo test -p rustok-forum --test category_reply_create_audience_policy_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_reply_create_audience_policy_sqlite -- --nocapture
+cargo test -p rustok-forum --test moderation_audience_policy_sqlite -- --nocapture
+cargo test -p rustok-forum reply_create_transport -- --nocapture
+cargo test -p rustok-forum graphql::runtime_data -- --nocapture
+cargo test -p rustok-forum moderation_transport -- --nocapture
+node scripts/verify/verify-forum-topic-visibility-scope.mjs
+node scripts/verify/verify-forum-category-visibility-policy.mjs
+node scripts/verify/verify-forum-owner-read-visibility.mjs
+node scripts/verify/verify-forum-category-owner-read-visibility.mjs
+node scripts/verify/verify-forum-audience-capability-ports.mjs
+node scripts/verify/verify-forum-category-audience-policy.mjs
+node scripts/verify/verify-forum-topic-audience-policy.mjs
+node scripts/verify/verify-forum-topic-audience-visibility.mjs
+node scripts/verify/verify-forum-notification-visibility-composition.mjs
+node scripts/verify/verify-forum-notification-recipient-context.mjs
+node scripts/verify/verify-forum-notification-recipient-host-runtime.mjs
+node scripts/verify/verify-forum-notification-recipient-target-open.mjs
+node scripts/verify/verify-forum-notification-recipient-mention-audience.mjs
+node scripts/verify/verify-forum-notification-topic-subscription-audience.mjs
+node scripts/verify/verify-forum-audience-group-facts-host-runtime.mjs
+cargo test -p rustok-server --features mod-forum forum_audience_facts -- --nocapture
+cargo test -p rustok-server --features mod-forum,mod-groups forum_audience_facts -- --nocapture
+node scripts/verify/verify-forum-audience-channel-facts-host-runtime.mjs
+node scripts/verify/verify-forum-notification-inbox-storefront-port.mjs
+node scripts/verify/verify-forum-notification-inbox-native-storefront-adapter.mjs
+node scripts/verify/verify-forum-notification-inbox-grouped-storefront-ui.mjs
+node scripts/verify/verify-forum-notification-navigation-badge.mjs
+node scripts/verify/verify-forum-notification-inbox-grouped-graphql.mjs
+node scripts/verify/verify-forum-notification-inbox-open-graphql.mjs
+node scripts/verify/verify-forum-notification-inbox-group-state-graphql.mjs
+node scripts/verify/verify-forum-notification-inbox-auth-reactive-bootstrap.mjs
+node scripts/verify/verify-forum-notification-topic-descriptor-materialization.mjs
+node scripts/verify/verify-forum-category-topic-create-audience-policy.mjs
+cargo test -p rustok-forum --test topic_create_audience_enforcement_sqlite -- --nocapture
+node scripts/verify/verify-forum-topic-create-audience-enforcement.mjs
+cargo test -p rustok-forum topic_create_transport -- --nocapture
+node scripts/verify/verify-forum-topic-create-audience-transport-composition.mjs
+node scripts/verify/verify-forum-category-reply-create-audience-policy.mjs
+node scripts/verify/verify-forum-reply-create-audience-enforcement.mjs
+node scripts/verify/verify-forum-reply-create-audience-transport-composition.mjs
+node scripts/verify/verify-forum-topic-reply-create-audience-policy.mjs
+node scripts/verify/verify-forum-moderation-audience-policy.mjs
+node scripts/verify/verify-forum-moderation-audience-transport-composition.mjs
+node scripts/verify/verify-forum-notification-plan-sync.mjs
+node scripts/verify/verify-forum-audience-plan-sync.mjs
+cargo xtask module validate forum
+npm run verify:forum:storefront-boundary
+```
+
+Tests, Cargo, verifiers and CI were not run while publishing the source-ready
+FORUM-20C-AZ implementation slices or the FORUM-20BA documentation synchronization.
+`FORUM-20` remains `in_progress` until the remaining owner and cross-consumer paths are
+delivered with maintainer runtime evidence.
+
+## `FORUM-26` — anti-spam, limits and trust levels
+
+**Status:** `in_progress`  
+**Priority:** P0  
+**Dependencies:** FORUM-19, shared rate-limit capability
+
+### Scope
+
+Implement forum-local trust levels and explainable posting policy based on
+account age, reading/activity, approved posts, flags, reputation and moderation
+history. Bound topics/day, replies/minute, links, mentions, attachments, edits
+and bump intervals. Add duplicate-content hashing and optional external/AI spam
+scoring.
+
+External/AI scoring is optional and cannot be a synchronous correctness
+dependency. Forum owns policy; shared rate limiting owns distributed execution.
+
+### Delivered in `FORUM-26A` through `FORUM-26J`
+
+- Forum-owned tenant/user trust state, typed trust levels, managed writes and an
+  authoritative exact-user trust facts adapter replace activity-counter or role
+  inference;
+- bounded posting-action, candidate-metric, rule, outcome, evidence and decision
+  contracts define explainable local policy evaluation without executing owner
+  writes or distributed reservations;
+- the facts composer keeps missing owner capabilities explicit and preserves
+  exact tenant/user actor identity, deadlines, typed retryability and one unique
+  provider per fact kind;
+- authoritative server/users account age, Forum topic-reading activity and
+  current retained approved-post facts are published without copying owner data
+  into policy configuration;
+- `FORUM-26I` adds PostgreSQL/SQLite partial author indexes aligned to the exact
+  approved-post query, source-ready `EXPLAIN` proofs, index-definition guards and
+  the minimal platform-user fixture required by the isolated PostgreSQL Forum
+  migration bootstrap;
+- `FORUM-26J` publishes authoritative exact-user topic/reply create-window facts
+  over all persisted owner rows, keeps soft-deleted and moderated attempts in the
+  observed budget, composes both providers in the host, and adds PostgreSQL/
+  SQLite author-time indexes plus source-ready `EXPLAIN` proof;
+- none of these slices invokes the composer from topic/reply/edit/bump commands,
+  reserves shared rate-limit capacity, hashes duplicate content, calls external
+  scoring or automatically changes trust state.
+
+### Compatibility and degraded mode
+
+Trust rows, approved-post indexes and create-window indexes are additive.
+Existing users without a trust row retain the documented compatibility level;
+existing topic/reply rows are indexed automatically with no backfill or owner-
+state rewrite. The approved-post query and fact value remain unchanged by its
+index migration. Create-window facts count every persisted owner create inside
+the exact inclusive observation window, including rows later soft-deleted and
+replies in any moderation state, so ordinary deletion or moderation cannot reset
+the budget. A hard retention purge removes historical rows and must remain later
+than any configured production window unless a durable usage ledger replaces the
+snapshot. Missing fact owners continue to return explicit unavailable results,
+and optional external or AI scoring can never become a synchronous correctness
+dependency. These facts are not a concurrency-safe reservation; rolling back the
+index migrations changes only query performance, not fact semantics.
+
+### Remaining scope
+
+- publish authoritative active-flag and moderation-history facts from the
+  moderation/report owner without inferring them from reply-status totals;
+- publish authoritative reputation facts from the reputation owner and ledger;
+- publish edit-window and topic-target bump-age facts only after exact editing
+  actor and target identity are represented in the owner history and fact request;
+- persist and administer bounded policy configuration with versioned audit;
+- enforce the composed decision in topic, reply, edit and bump owner commands;
+- reserve, commit and release distributed rate-limit capacity through the shared
+  capability without making it Forum persistence;
+- add retained duplicate-content fingerprints and optional external/AI scoring;
+- add automatic trust promotion/demotion only through explicit explainable owner
+  commands and immutable evidence;
+- expose bounded admin/storefront/transport surfaces and capture maintainer-
+  executed PostgreSQL, SQLite and cross-consumer runtime evidence.
+
+### Definition of done
+
+All posting owner paths evaluate one versioned bounded policy before mutation,
+missing required facts fail closed with typed retryability, distributed limits
+cannot be bypassed through another transport, duplicate/replay behavior is
+idempotent, optional scoring failure does not break correctness, and every trust
+change and posting denial is explainable and auditable.
+
+### Verification
+
+```bash
+cargo test -p rustok-forum posting_policy
+cargo test -p rustok-forum posting_policy_approved_facts -- --nocapture
+cargo test -p rustok-forum posting_policy_create_window_facts -- --nocapture
+cargo test -p rustok-forum --test approved_posts_index_sqlite -- --nocapture
+cargo test -p rustok-forum --test approved_posts_index_postgres -- --nocapture --test-threads=1
+cargo test -p rustok-forum --test create_window_facts_index_sqlite -- --nocapture
+cargo test -p rustok-forum --test create_window_facts_index_postgres -- --nocapture --test-threads=1
+node scripts/verify/verify-forum-posting-policy-facts.mjs
+node scripts/verify/verify-forum-topic-reading-posting-facts.mjs
+node scripts/verify/verify-forum-approved-posts-posting-facts.mjs
+node scripts/verify/verify-forum-approved-posts-index-debt.mjs
+node scripts/verify/verify-forum-approved-posts-index-hardening.mjs
+node scripts/verify/verify-forum-create-window-posting-facts.mjs
+cargo xtask module validate forum
+```
+
+The FORUM-26J source and contract records do not claim successful runtime
+verification until the maintainer runs the commands above.
 
 ## `FORUM-35` — Collaborative Documents Integration & Universal Entity Reference
 

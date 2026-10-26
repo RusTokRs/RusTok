@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertCanonicalLedger } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -143,27 +144,13 @@ if (
 ) {
   failures.push("mark-all-unread contract must require the canonical ledger through FORUM-20Z");
 }
-if (planSync.status === "pending") {
-  if (planSync.current_plan_through !== "FORUM-20G") {
-    failures.push("pending canonical plan synchronization must identify FORUM-20G as current");
-  }
-  requireText(plan, "FORUM-20A-G provide", "pending canonical plan synchronization must remain grounded in FORUM-20A-G");
-  for (const slice of deliveredSlices) {
-    rejectText(
-      plan,
-      `### Delivered in \`${slice}\``,
-      `canonical plan now contains ${slice}; update canonical_plan_sync before claiming pending through G`,
-    );
-  }
-} else if (planSync.status === "synchronized") {
-  requireText(plan, "FORUM-20A-Z provide", "synchronized canonical plan must advance through Z");
-  for (const slice of deliveredSlices) {
-    requireText(plan, `### Delivered in \`${slice}\``, `canonical plan is missing ${slice}`);
-  }
-} else {
-  failures.push("canonical_plan_sync.status must be pending or synchronized");
-}
-
+assertCanonicalLedger({
+  failures,
+  plan,
+  slices: deliveredSlices,
+  planSync,
+  label: "canonical plan synchronization",
+});
 const unreadStart = owner.indexOf("pub struct NotificationInboxMarkAllUnreadRequest");
 const unreadOwner = unreadStart >= 0 ? owner.slice(unreadStart) : "";
 for (const marker of [

@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { deliveredLedgerSlices } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -124,9 +125,15 @@ for (const key of [
   }
 }
 
-for (const sync of [contract.canonical_plan_sync, contract.notifications_local_plan_sync]) {
-  if (sync?.status !== "pending" || sync.required_ledger_through !== "FORUM-20AK") {
-    failures.push("Forum and Notifications ledgers must remain pending through FORUM-20AK");
+for (const [sync, ledger] of [
+  [contract.canonical_plan_sync, canonicalPlan],
+  [contract.notifications_local_plan_sync, localPlan],
+]) {
+  if (sync?.status !== "synchronized" || sync.required_ledger_through !== "FORUM-20AK") {
+    failures.push("Forum and Notifications ledgers must record the delivered FORUM-20AK");
+  }
+  if (!deliveredLedgerSlices(ledger).has("FORUM-20AK")) {
+    failures.push(`ledger does not record FORUM-20AK as delivered`);
   }
 }
 requireText(canonicalPlan, "FORUM-20A-G provide", "canonical plan must remain grounded through G");

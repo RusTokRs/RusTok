@@ -15,7 +15,7 @@
   "owner_note": "crates/modules/rustok-notifications/docs/forum-20ad-group-key-population.md",
   "canonical_plan": "crates/modules/rustok-forum/docs/implementation-plan.md",
   "canonical_plan_sync": {
-    "status": "pending",
+    "status": "synchronized",
     "required_ledger_through": "FORUM-20AD",
     "required_delivered_sections": [
       "FORUM-20H",
@@ -42,8 +42,8 @@
       "FORUM-20AC",
       "FORUM-20AD"
     ],
-    "current_plan_through": "FORUM-20G",
-    "follow_up": "Synchronize the canonical plan without replacing unrelated concurrent task updates"
+    "current_plan_through": "FORUM-20BA",
+    "follow_up": "Keep the append-only delivered-ledger headings and this contract in step; the summary row is not a synchronization pin"
   },
   "policy": {
     "owner": "rustok-notifications persistence migration",
