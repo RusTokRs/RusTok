@@ -258,6 +258,25 @@ pub(crate) async fn protect_artifact_data_namespace_writes(
     Ok(())
 }
 
+pub(crate) async fn drop_artifact_data_namespace_write_guard(
+    manager: &sea_orm_migration::SchemaManager<'_>,
+    table: &str,
+) -> Result<(), sea_orm::DbErr> {
+    use sea_orm::ConnectionTrait;
+
+    use crate::backend::SupportedBackend;
+    let table = artifact_data_storage_table(table)?;
+    // SQLite drops table-owned triggers with the table; PostgreSQL also needs
+    // the function removed after its table and trigger have been dropped.
+    if SupportedBackend::new(manager.get_database_backend())? == SupportedBackend::Postgres {
+        manager
+            .get_connection()
+            .execute_unprepared(&format!("DROP FUNCTION {table}_namespace_write_guard()"))
+            .await?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
@@ -294,23 +313,4 @@ mod tests {
             "migration ordinals must be unique: {ordinals:?}"
         );
     }
-}
-
-pub(crate) async fn drop_artifact_data_namespace_write_guard(
-    manager: &sea_orm_migration::SchemaManager<'_>,
-    table: &str,
-) -> Result<(), sea_orm::DbErr> {
-    use sea_orm::ConnectionTrait;
-
-    use crate::backend::SupportedBackend;
-    let table = artifact_data_storage_table(table)?;
-    // SQLite drops table-owned triggers with the table; PostgreSQL also needs
-    // the function removed after its table and trigger have been dropped.
-    if SupportedBackend::new(manager.get_database_backend())? == SupportedBackend::Postgres {
-        manager
-            .get_connection()
-            .execute_unprepared(&format!("DROP FUNCTION {table}_namespace_write_guard()"))
-            .await?;
-    }
-    Ok(())
 }
