@@ -198,7 +198,7 @@ pub async fn compose_artifact_binding_executor(
 /// Capability route names this host actually registers with its broker.
 /// Readiness probes receive the same set, so a smoke receipt can never be
 /// minted for routes the host does not serve.
-const ARTIFACT_CAPABILITY_routes: [&str; 6] = [
+const ARTIFACT_CAPABILITY_ROUTES: [&str; 6] = [
     "platform.data",
     "platform.data.objects",
     "platform.secrets",
@@ -218,12 +218,12 @@ fn build_capability_resolver(
     storage: &StorageRuntime,
     registry: &ModuleRegistry,
 ) -> Result<ArtifactCapabilityBrokerResolverRouter> {
-    let data_capability = artifact_capability_name(ARTIFACT_CAPABILITY_routes[0])?;
-    let object_data_capability = artifact_capability_name(ARTIFACT_CAPABILITY_routes[1])?;
-    let secret_capability = artifact_capability_name(ARTIFACT_CAPABILITY_routes[2])?;
-    let mcp_capability = artifact_capability_name(ARTIFACT_CAPABILITY_routes[3])?;
-    let http_capability = artifact_capability_name(ARTIFACT_CAPABILITY_routes[4])?;
-    let events_capability = artifact_capability_name(ARTIFACT_CAPABILITY_routes[5])?;
+    let data_capability = artifact_capability_name(ARTIFACT_CAPABILITY_ROUTES[0])?;
+    let object_data_capability = artifact_capability_name(ARTIFACT_CAPABILITY_ROUTES[1])?;
+    let secret_capability = artifact_capability_name(ARTIFACT_CAPABILITY_ROUTES[2])?;
+    let mcp_capability = artifact_capability_name(ARTIFACT_CAPABILITY_ROUTES[3])?;
+    let http_capability = artifact_capability_name(ARTIFACT_CAPABILITY_ROUTES[4])?;
+    let events_capability = artifact_capability_name(ARTIFACT_CAPABILITY_ROUTES[5])?;
     let mcp_audit = ctx
         .shared_get::<Arc<crate::services::mcp_runtime::DbBackedMcpRuntimeBridge>>()
         .ok_or_else(|| {
@@ -426,7 +426,7 @@ fn build_pool_readiness_service(
     let probe = ArtifactRuntimeReadinessProbe::new(
         runtime,
         identity,
-        ARTIFACT_CAPABILITY_routes
+        ARTIFACT_CAPABILITY_ROUTES
             .iter()
             .map(|route| (*route).to_string()),
     )
