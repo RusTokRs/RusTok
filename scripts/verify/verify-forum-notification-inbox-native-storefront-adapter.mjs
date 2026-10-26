@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { deliveredLedgerSlices } from "./lib/forum-source-verification.mjs";
+import { deliveredLedgerSlices, requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -140,12 +140,20 @@ if (
 }
 requireText(canonicalPlan, "FORUM-20A-G provide", "canonical plan must remain grounded through G");
 requireText(localPlan, "### `FORUM-20AA`", "Notifications local plan must remain grounded through AA");
-requireText(
+// The native adapter and the grouped UI are delivered, so pin the delivered state instead of the
+// retired "remain closed" pending-sync sentence.
+requireProse(
+  failures,
   ownerReadme,
-  "External transport adapters and grouped UI remain closed",
-  "pending owner README sync must remain explicit",
+  "The native Leptos server-function adapter serves SSR/hydrate",
+  "owner README must describe the delivered native adapter",
 );
-requireText(liveContract, "grouped UI", "pending live-contract sync must remain explicit");
+requireProse(
+  failures,
+  liveContract,
+  "Native Leptos server functions are selected for SSR/hydrate",
+  "live contract must describe the delivered native adapter",
+);
 
 for (const marker of [
   "pub struct NotificationStorefrontUnreadCount",

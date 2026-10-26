@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertCanonicalLedger } from "./lib/forum-source-verification.mjs";
+import { assertCanonicalLedger, requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -300,22 +300,24 @@ for (const marker of [
 }
 
 for (const marker of [
-  "bounded mark-all-read",
-  "NotificationInboxMarkAllReadService",
+  "bounded mark-all-read, bounded mark-all-unread, bounded mark-all-archive",
   "### 7. Bounded mark-all-read",
+  "`NotificationInboxMarkAllReadService` selects only stored `unread` or `seen` rows",
+  "### 8. Bounded mark-all-unread",
+  "### 9. Bounded mark-all-archive",
   "tests/inbox_mark_all_read_sqlite.rs",
-  "mark-all-unread/archive",
 ]) {
-  requireText(rootReadme, marker, `notifications root README is missing ${marker}`);
+  requireProse(failures, rootReadme, marker, "notifications root README");
 }
 for (const marker of [
-  "### Bounded mark-all-read",
-  "NotificationInboxMarkAllReadService",
-  "unread or seen",
-  "tests/inbox_mark_all_read_sqlite.rs",
+  "### Exact and bounded inbox state commands",
+  "`NotificationInboxMarkAllReadService`",
+  "select bounded exact-recipient pages",
+  "delegate every row to the exact state owner",
+  "inbox_mark_all_read_sqlite",
   "verify-forum-notification-inbox-mark-all-read.mjs",
 ]) {
-  requireText(docs, marker, `notifications live contract is missing ${marker}`);
+  requireProse(failures, docs, marker, "notifications live contract");
 }
 for (const marker of [
   "### `FORUM-20Y`",

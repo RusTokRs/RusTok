@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertCanonicalLedger } from "./lib/forum-source-verification.mjs";
+import { assertCanonicalLedger, requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -262,22 +262,21 @@ for (const marker of [
   "NotificationInboxReconcileService",
   "bounded exact-recipient reconciliation",
   "crate-private `i1` inbox cursor",
-  "tenant-wide scheduled reconciliation",
+  "tenant-wide scheduled reconciliation and payload redaction",
   "inbox_reconcile_sqlite",
 ]) {
-  requireText(rootReadme, marker, `notifications root README is missing ${marker}`);
+  requireProse(failures, rootReadme, marker, "notifications root README");
 }
 for (const marker of [
   "### Bounded inbox reconciliation",
-  "privacy or source policy",
-  "durable and idempotent",
-  "crate-private `i1` inbox cursor",
-  "Tenant-wide scheduling",
-  "payload redaction",
+  "shared 20/64 bounds and `i1` cursor",
+  "privacy/source authorization",
+  "archives remain durable and retry-safe",
+  "tenant-wide scheduled reconciliation and payload redaction",
   "inbox_reconcile_sqlite",
   "verify-forum-notification-inbox-reconciliation.mjs",
 ]) {
-  requireText(docs, marker, `notifications live contract is missing ${marker}`);
+  requireProse(failures, docs, marker, "notifications live contract");
 }
 for (const marker of [
   "### `FORUM-20V`",

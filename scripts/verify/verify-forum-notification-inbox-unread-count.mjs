@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertCanonicalLedger } from "./lib/forum-source-verification.mjs";
+import { assertCanonicalLedger, requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -227,21 +227,21 @@ for (const marker of [
 
 for (const marker of [
   "exact unread counting",
-  "NotificationInboxUnreadCountService",
   "### 6. Exact unread count",
+  "`NotificationInboxUnreadCountService` counts rows in stored owner state `unread`",
+  "callers must not derive totals from bounded or privacy-filtered list pages",
   "tests/inbox_count_sqlite.rs",
-  "bulk/mark-all mutations and grouped inbox views",
 ]) {
-  requireText(rootReadme, marker, `notifications root README is missing ${marker}`);
+  requireProse(failures, rootReadme, marker, "notifications root README");
 }
 for (const marker of [
   "### Exact unread count",
-  "NotificationInboxUnreadCountService",
-  "stored owner state",
-  "tests/inbox_count_sqlite.rs",
+  "`NotificationInboxUnreadCountService` counts stored `unread` rows",
+  "reuses `idx_notifications_inbox`",
+  "inbox_count_sqlite",
   "verify-forum-notification-inbox-unread-count.mjs",
 ]) {
-  requireText(docs, marker, `notifications live contract is missing ${marker}`);
+  requireProse(failures, docs, marker, "notifications live contract");
 }
 for (const marker of [
   "### `FORUM-20X`",

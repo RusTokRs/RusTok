@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { requireValidationDisclosure } from "./lib/forum-source-verification.mjs";
+import { requireProse, requireValidationDisclosure } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -135,9 +135,19 @@ const helper = between(
 for (const marker of [
   "context: NotificationStorefrontTransportContext",
   "load_notification_unread_count_selected(context.clone())",
-  "load_notification_group_summaries_selected(context,",
+  "load_notification_group_summaries_selected(",
+  "NotificationStorefrontGroupSummaryRequest {",
 ]) {
-  requireText(helper, marker, `bootstrap helper is missing ${marker}`);
+  requireProse(failures, helper, marker, "bootstrap helper");
+}
+// Both reads must receive the same resolved context, so the summaries call carries the very same
+// binding the unread-count call cloned. A new context resolution would break the reactive reload.
+if (
+  !/load_notification_group_summaries_selected\(\s*context\s*,/.test(helper)
+) {
+  failures.push(
+    "bootstrap helper must pass the resolved context to the summaries read",
+  );
 }
 rejectText(
   helper,

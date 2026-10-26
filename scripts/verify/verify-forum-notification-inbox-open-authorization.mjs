@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertCanonicalLedger } from "./lib/forum-source-verification.mjs";
+import { assertCanonicalLedger, requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -234,13 +234,14 @@ for (const marker of [
 
 for (const marker of [
   "### Inbox open-time authorization",
-  "Missing, cross-tenant, and cross-recipient rows all",
-  "Only an allowed recipient reaches the registered source provider",
-  "### Bounded authorized inbox listing",
-  "seen/read/archive state APIs",
+  "Missing, cross-tenant, and cross-recipient rows return `Unavailable` before policy or source calls",
+  "recipient privacy runs before source target authorization",
+  "does not expose the stored row, mutate inbox state, or enqueue delivery attempts",
+  "### Exact and bounded inbox state commands",
+  "archived remains terminal",
   "inbox_open_authorization_sqlite",
 ]) {
-  requireText(docs, marker, `notifications live contract is missing ${marker}`);
+  requireProse(failures, docs, marker, "notifications live contract");
 }
 
 if (

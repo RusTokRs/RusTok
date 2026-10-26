@@ -201,9 +201,12 @@ for (const marker of [
   requireText(ownerPort, marker, `owner storefront port is missing ${marker}`);
 }
 
+// The manifest lists one dependency per line, so the feature wiring is pinned as its parts:
+// GraphQL stays optional, the server feature turns it on, and rustok-api server support is forwarded.
 for (const marker of [
-  "default = []",
-  "server = [\"rustok-api/server\", \"dep:async-graphql\"]",
+  "server = [",
+  "\"dep:async-graphql\"",
+  "\"rustok-api/server\"",
   "async-graphql = { workspace = true, optional = true }",
 ]) {
   requireText(ownerCargo, marker, `Notifications Cargo feature contract is missing ${marker}`);

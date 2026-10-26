@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertCanonicalLedger } from "./lib/forum-source-verification.mjs";
+import { assertCanonicalLedger, requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -175,8 +175,8 @@ for (const marker of [
   "items.push(materialize_inbox_item(stored)?)",
   "value.len() > MAX_NOTIFICATION_INBOX_CURSOR_BYTES",
   "value.chars().any(char::is_control)",
-  "stored.created_at.timestamp()",
-  "stored.created_at.timestamp_subsec_nanos()",
+  "created_at.timestamp(),",
+  "created_at.timestamp_subsec_nanos(),",
   "DateTime::<Utc>::from_timestamp(seconds, nanos)",
   "Uuid::parse_str(part)",
   ".filter(|id| !id.is_nil())",
@@ -272,18 +272,21 @@ for (const marker of [
   requireText(proof, marker, `inbox listing SQLite proof is missing ${marker}`);
 }
 
+// Prose pins, matched on flattened whitespace: the owner rewrote these paragraphs to say the same
+// thing in fewer words, and the guard was pinning the old wording rather than the rule.
 for (const marker of [
   "### Bounded authorized inbox listing",
-  "A request defaults to 20 rows, is capped at 64",
-  "Each scanned row is passed through `NotificationInboxOpenService`",
-  "adds no dedicated route or structural target owner, kind, or ID fields",
-  "last scanned raw row rather than the last returned item",
-  "empty page with a next cursor",
-  "seen/read/archive state APIs",
+  "Requests default to 20 rows, are capped at 64",
+  "Every raw row passes through `NotificationInboxOpenService`",
+  "but no dedicated route or structural target fields",
+  "Continuation derives from the last raw row",
+  "empty advancing page",
+  "### Exact and bounded inbox state commands",
+  "`mark_seen`, `mark_read`, `mark_unread`",
   "inbox_listing_sqlite",
   "verify-forum-notification-inbox-listing.mjs",
 ]) {
-  requireText(docs, marker, `notifications live contract is missing ${marker}`);
+  requireProse(failures, docs, marker, "notifications live contract");
 }
 
 for (const marker of [
@@ -292,22 +295,21 @@ for (const marker of [
   "NotificationInboxListService",
   "default page of 20 and a hard cap of 64",
   "empty page with a next cursor",
-  "seen/read/archive mutation APIs",
+  "exact seen/read/archive state APIs",
 ]) {
-  requireText(rootReadme, marker, `notifications root README is missing ${marker}`);
+  requireProse(failures, rootReadme, marker, "notifications root README");
 }
 
 for (const marker of [
-  "Exact inbox open and bounded listing services are now owner-public",
-  "### `FORUM-20R / FORUM-20S`",
+  "`NotificationInboxListService` provides exact-recipient bounded listing with default/hard limits 20/64",
   "### `FORUM-20T`",
-  "default/hard limits 20/64",
+  "each raw row reuses `NotificationInboxOpenService`",
   "empty page with a next cursor",
-  "seen/read/archive commands",
+  "the typed list item adds no route or structural target fields",
   "inbox_listing_sqlite",
   "verify-forum-notification-inbox-listing.mjs",
 ]) {
-  requireText(ownerPlan, marker, `notifications owner implementation plan is missing ${marker}`);
+  requireProse(failures, ownerPlan, marker, "notifications owner implementation plan");
 }
 
 if (

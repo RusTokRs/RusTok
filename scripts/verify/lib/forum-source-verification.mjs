@@ -296,10 +296,30 @@ export function assertCanonicalLedger({
  */
 export function requireValidationDisclosure(failures, note, label) {
   const flattened = note.replace(/\s+/g, " ");
-  const disclosed = /were not run by the implementation|not run by the implementation|No (tests|compile or runtime status)/.test(
-    flattened,
-  );
+  // Disclosures are written in several equivalent forms across the owner notes; match the claim,
+  // not one sentence layout.
+  const disclosed =
+    /were not run by the implementation|not run by the implementation|No (tests|compile or runtime status)|None were run by the implementation/.test(
+      flattened,
+    );
   if (!disclosed) {
     failures.push(`${label}: the note does not disclose that no tests, Cargo, formatting, or CI were run`);
   }
+}
+
+/**
+ * Prose pins for owner documentation.
+ *
+ * A guard that pins one exact sentence of a README breaks on a re-wrap, and a guard that pins the
+ * *old* sentence breaks when the owner rewrites a paragraph to say the same thing better. Both are
+ * layout and revision facts, not contract drift. `requireProse` compares on a whitespace-flattened copy,
+ * so only a change of meaning can fail it.
+ *
+ * The rules for the marker still live in the guard: pin the numbers, the API names and the sentence the
+ * owner actually writes today, never sentence scaffolding such as the article that opens it.
+ */
+export function requireProse(failures, source, marker, label) {
+  const haystack = (source ?? "").replace(/\s+/g, " ");
+  const needle = marker.replace(/\s+/g, " ");
+  if (!haystack.includes(needle)) failures.push(`${label}: missing ${marker}`);
 }

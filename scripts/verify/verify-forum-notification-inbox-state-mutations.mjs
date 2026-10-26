@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertCanonicalLedger } from "./lib/forum-source-verification.mjs";
+import { assertCanonicalLedger, requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -277,22 +277,22 @@ for (const marker of [
 }
 
 for (const marker of [
-  "NotificationInboxStateService",
-  "exact seen/read/archive state APIs",
-  "mark-unread, bulk/mark-all",
-  "inbox_state_sqlite",
+  "`NotificationInboxStateService` owns exact notification/tenant/recipient commands",
+  "seen/read/mark-unread/archive state APIs",
+  "bounded mark-all-read, bounded mark-all-unread, bounded mark-all-archive",
+  "tests/inbox_state_sqlite.rs",
 ]) {
-  requireText(rootReadme, marker, `notifications root README is missing ${marker}`);
+  requireProse(failures, rootReadme, marker, "notifications root README");
 }
 for (const marker of [
-  "### Exact inbox state mutations",
+  "### Exact and bounded inbox state commands",
   "unread → seen → read → archived",
-  "No command downgrades an archived row",
-  "mark-unread, bulk/mark-all",
+  "archived remains terminal",
+  "Missing, foreign, already-satisfied, and protected selected rows are all reported only as `not_changed`",
   "inbox_state_sqlite",
   "verify-forum-notification-inbox-state-mutations.mjs",
 ]) {
-  requireText(docs, marker, `notifications live contract is missing ${marker}`);
+  requireProse(failures, docs, marker, "notifications live contract");
 }
 for (const marker of [
   "### `FORUM-20U`",

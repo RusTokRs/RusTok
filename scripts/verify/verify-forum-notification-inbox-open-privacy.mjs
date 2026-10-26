@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertCanonicalLedger } from "./lib/forum-source-verification.mjs";
+import { assertCanonicalLedger, requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -202,14 +202,13 @@ for (const marker of [
 
 for (const marker of [
   "### Inbox open-time authorization",
-  "evaluates the same injected Profiles/Social Graph recipient policy",
-  "Suppression returns `Unavailable` without invoking the source provider",
-  "Only an allowed recipient reaches the registered source provider",
+  "For an owned row, recipient privacy runs before source target authorization",
+  "Missing, cross-tenant, and cross-recipient rows return `Unavailable` before policy",
   "### Bounded authorized inbox listing",
-  "seen/read/archive state APIs",
+  "no dedicated route or structural target fields",
   "verify-forum-notification-inbox-open-privacy.mjs",
 ]) {
-  requireText(docs, marker, `notifications live contract is missing ${marker}`);
+  requireProse(failures, docs, marker, "notifications live contract");
 }
 
 if (

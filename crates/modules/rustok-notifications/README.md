@@ -247,8 +247,9 @@ decision.
 The service exposes only state and inbox timestamps, calls no privacy/source or
 delivery owner, and creates no delivery attempt. SQLite owner evidence is
 `tests/inbox_state_sqlite.rs`. Exact-item, bounded mark-all, selected-ID, and bounded
-exact-group state commands are delivered. Authenticated native transport and grouped UI are
-also delivered; GraphQL group-state write parity remains open.
+exact-group state commands are delivered. Authenticated native transport, the feature-gated
+GraphQL transport, and the module-owned grouped UI are also delivered, and GraphQL group-state
+writes reuse the same owner port with explicit idempotency admission.
 
 ### 6. Exact unread count
 
@@ -413,8 +414,8 @@ The native Leptos server-function adapter serves SSR/hydrate. The feature-gated 
 root serves CSR/headless unread count, group summaries/items, and fresh open authorization.
 Both reuse the same owner port and host-composed source registry and recipient-policy runtime;
 there is no transport fallback and no direct storefront database authority. GraphQL now
-exposes the same bounded exact-group state commands with typed actions and explicit
-idempotency admission.
+exposes the same bounded exact-group state commands through
+`notificationInboxApplyGroupState` with typed actions and explicit idempotency admission.
 
 The module-owned grouped storefront view performs an owner-backed SSR bootstrap, bounded raw
 paging, one-group expansion, stale-response rejection, authoritative refresh after writes,
