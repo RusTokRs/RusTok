@@ -198,7 +198,10 @@ impl ResolutionSnapshot {
         let mut requested = BTreeSet::new();
         while let Some(constraint) = queued.pop_front() {
             validate_constraint(&constraint)?;
-            let request_key = (constraint.slug.clone(), constraint.version_requirement.clone());
+            let request_key = (
+                constraint.slug.clone(),
+                constraint.version_requirement.clone(),
+            );
             if !requested.insert(request_key) {
                 continue;
             }

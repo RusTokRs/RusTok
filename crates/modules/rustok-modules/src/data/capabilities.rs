@@ -498,19 +498,14 @@ pub(crate) fn data_capability_error(
             resource: format!("artifact_data_{resource}"),
             limit,
         },
-        ArtifactDataError::RevisionConflict => {
-            SandboxError::CapabilityConstraintDenied {
-                capability: capability.clone(),
-                reason: "artifact data revision conflict; re-read and retry".to_string(),
-            }
-        }
-        ArtifactDataError::IdempotencyConflict => {
-            SandboxError::CapabilityConstraintDenied {
-                capability: capability.clone(),
-                reason: "artifact data idempotency key was reused for a different write"
-                    .to_string(),
-            }
-        }
+        ArtifactDataError::RevisionConflict => SandboxError::CapabilityConstraintDenied {
+            capability: capability.clone(),
+            reason: "artifact data revision conflict; re-read and retry".to_string(),
+        },
+        ArtifactDataError::IdempotencyConflict => SandboxError::CapabilityConstraintDenied {
+            capability: capability.clone(),
+            reason: "artifact data idempotency key was reused for a different write".to_string(),
+        },
         error @ (ArtifactDataError::InvalidKey
         | ArtifactDataError::InvalidObject
         | ArtifactDataError::InvalidPage
@@ -519,12 +514,10 @@ pub(crate) fn data_capability_error(
         | ArtifactDataError::InvalidIdempotencyKey
         | ArtifactDataError::DataContractSchemaViolation
         | ArtifactDataError::NamespacePurged
-        | ArtifactDataError::NamespaceHeld) => {
-            SandboxError::CapabilityConstraintDenied {
-                capability: capability.clone(),
-                reason: error.to_string(),
-            }
-        }
+        | ArtifactDataError::NamespaceHeld) => SandboxError::CapabilityConstraintDenied {
+            capability: capability.clone(),
+            reason: error.to_string(),
+        },
         ArtifactDataError::InvalidScope
         | ArtifactDataError::PurgePrecondition
         | ArtifactDataError::ExportPrecondition

@@ -1145,9 +1145,7 @@ mod tests {
                 Arc::new(OutboxTransport::new(database.clone()));
             runtime_context.shared_insert(event_transport);
             runtime_context.shared_insert(
-                crate::services::event_bus::transactional_event_bus_from_context(
-                    &runtime_context,
-                ),
+                crate::services::event_bus::transactional_event_bus_from_context(&runtime_context),
             );
             // Production initializes a filesystem/S3 storage backend at
             // this point (`init_storage`); module routes only need the

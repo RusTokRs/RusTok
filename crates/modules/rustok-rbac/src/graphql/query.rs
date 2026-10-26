@@ -11,7 +11,9 @@ use uuid::Uuid;
 
 use crate::{RbacPresentationResourceKind, RbacPresentationStore, SeaOrmRbacPresentationStore};
 
-use super::control_plane::{availability_snapshot, prepare_statement, require_direct_control_plane_user};
+use super::control_plane::{
+    availability_snapshot, prepare_statement, require_direct_control_plane_user,
+};
 use super::types::{PlatformPermissionItem, RoleInfo};
 
 /// Map a storage failure to a generic internal error. Raw database errors
@@ -591,12 +593,7 @@ fn platform_permission_catalog() -> Vec<(Resource, Vec<Action>)> {
         ),
         (
             Resource::Messages,
-            vec![
-                Action::Create,
-                Action::Read,
-                Action::Delete,
-                Action::List,
-            ],
+            vec![Action::Create, Action::Read, Action::Delete, Action::List],
         ),
     ]
 }
@@ -627,9 +624,8 @@ impl RbacQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let backend = db.get_database_backend();
         let locale = ctx.data_opt::<Locale>().copied().unwrap_or_default();
-        let requested_locale = StoredLocale::new(locale.as_str()).map_err(|error| {
-            internal_db_error("resolve stored locale", error)
-        })?;
+        let requested_locale = StoredLocale::new(locale.as_str())
+            .map_err(|error| internal_db_error("resolve stored locale", error))?;
         let store = SeaOrmRbacPresentationStore::new(db.clone());
 
         let sql_roles = "SELECT id, name, slug, description, is_system FROM roles WHERE tenant_id = ? ORDER BY is_system DESC, name ASC";

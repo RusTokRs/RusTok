@@ -15,8 +15,8 @@ use rustok_api::Permission;
 use rustok_api::context::scope_matches;
 use rustok_core::{Rbac, UserRole};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    Set, TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
+    TransactionTrait, sea_query::Expr,
 };
 use std::str::FromStr;
 use subtle::ConstantTimeEq;
@@ -1857,22 +1857,22 @@ mod tests {
         let created = oauth_apps::scope_runtime_copy_locale(
             "en".to_string(),
             OAuthAppService::create_app(
-            &db,
-            tenant.id,
-            CreateOAuthAppInput {
-                name: "Partner app".to_string(),
-                slug: "partner-app".to_string(),
-                description: Some("Third-party integration".to_string()),
-                app_type: "third_party".to_string(),
-                icon_url: Some("https://example.com/icon.png".to_string()),
-                redirect_uris: vec!["https://partner.example.com/callback".to_string()],
-                scopes: vec!["catalog:read".to_string()],
-                grant_types: vec![
-                    "authorization_code".to_string(),
-                    "refresh_token".to_string(),
-                ],
-                granted_permissions: vec![],
-            },
+                &db,
+                tenant.id,
+                CreateOAuthAppInput {
+                    name: "Partner app".to_string(),
+                    slug: "partner-app".to_string(),
+                    description: Some("Third-party integration".to_string()),
+                    app_type: "third_party".to_string(),
+                    icon_url: Some("https://example.com/icon.png".to_string()),
+                    redirect_uris: vec!["https://partner.example.com/callback".to_string()],
+                    scopes: vec!["catalog:read".to_string()],
+                    grant_types: vec![
+                        "authorization_code".to_string(),
+                        "refresh_token".to_string(),
+                    ],
+                    granted_permissions: vec![],
+                },
             ),
         )
         .await
@@ -1890,21 +1890,21 @@ mod tests {
         let updated = oauth_apps::scope_runtime_copy_locale(
             "en".to_string(),
             OAuthAppService::update_app(
-            &db,
-            tenant.id,
-            created.app.id,
-            UpdateOAuthAppInput {
-                name: "Partner app v2".to_string(),
-                description: Some("Updated description".to_string()),
-                icon_url: None,
-                redirect_uris: vec!["https://partner.example.com/oauth/callback".to_string()],
-                scopes: vec!["catalog:*".to_string()],
-                grant_types: vec![
-                    "authorization_code".to_string(),
-                    "refresh_token".to_string(),
-                ],
-                granted_permissions: vec![],
-            },
+                &db,
+                tenant.id,
+                created.app.id,
+                UpdateOAuthAppInput {
+                    name: "Partner app v2".to_string(),
+                    description: Some("Updated description".to_string()),
+                    icon_url: None,
+                    redirect_uris: vec!["https://partner.example.com/oauth/callback".to_string()],
+                    scopes: vec!["catalog:*".to_string()],
+                    grant_types: vec![
+                        "authorization_code".to_string(),
+                        "refresh_token".to_string(),
+                    ],
+                    granted_permissions: vec![],
+                },
             ),
         )
         .await

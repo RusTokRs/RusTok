@@ -223,10 +223,8 @@ const USER_INVITE_ISSUED_FIELDS: &[FieldSchema] = &[
     field!("invite_id", "uuid"),
     field!("issued_by", "uuid", optional),
 ];
-const USER_INVITE_ACCEPTED_FIELDS: &[FieldSchema] = &[
-    field!("user_id", "uuid"),
-    field!("invite_id", "uuid"),
-];
+const USER_INVITE_ACCEPTED_FIELDS: &[FieldSchema] =
+    &[field!("user_id", "uuid"), field!("invite_id", "uuid")];
 const USER_INVITE_REVOKED_FIELDS: &[FieldSchema] = &[
     field!("invite_id", "uuid"),
     field!("revoked_by", "uuid", optional),

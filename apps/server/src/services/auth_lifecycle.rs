@@ -52,9 +52,7 @@ impl std::fmt::Display for AuthLifecycleError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AuthLifecycleError::EmailAlreadyExists => formatter.write_str("email already exists"),
-            AuthLifecycleError::InvalidCredentials => {
-                formatter.write_str("invalid credentials")
-            }
+            AuthLifecycleError::InvalidCredentials => formatter.write_str("invalid credentials"),
             AuthLifecycleError::UserInactive => formatter.write_str("user is inactive"),
             AuthLifecycleError::AccountLocked => {
                 formatter.write_str("account is temporarily locked")
@@ -62,14 +60,10 @@ impl std::fmt::Display for AuthLifecycleError {
             AuthLifecycleError::EmailNotVerified => {
                 formatter.write_str("email address is not verified")
             }
-            AuthLifecycleError::InvalidRefreshToken => {
-                formatter.write_str("invalid refresh token")
-            }
+            AuthLifecycleError::InvalidRefreshToken => formatter.write_str("invalid refresh token"),
             AuthLifecycleError::SessionExpired => formatter.write_str("session expired"),
             AuthLifecycleError::UserNotFound => formatter.write_str("user not found"),
-            AuthLifecycleError::InvalidResetToken => {
-                formatter.write_str("invalid reset token")
-            }
+            AuthLifecycleError::InvalidResetToken => formatter.write_str("invalid reset token"),
             AuthLifecycleError::InvalidVerificationToken => {
                 formatter.write_str("invalid verification token")
             }

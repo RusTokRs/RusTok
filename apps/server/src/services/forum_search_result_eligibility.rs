@@ -1,19 +1,21 @@
 use async_trait::async_trait;
-use rustok_api::{PortError, PortErrorKind, SharedStaticModuleSettingsReader, is_tenant_module_enabled};
+use rustok_api::{
+    PortError, PortErrorKind, SharedStaticModuleSettingsReader, is_tenant_module_enabled,
+};
 use rustok_core::SecurityContext;
 use rustok_forum::{
     ForumCategoryReadOperation, ForumCategoryReadTransport, ForumError, ForumSearchResultCandidate,
     ForumSearchResultCandidateKind, ForumSearchResultEligibilityService, ForumSettingsProviders,
     SharedForumAudienceFactsPort, category_read_audience_port_context,
 };
-#[allow(deprecated)]
-use rustok_search::{
-    SharedStorefrontSearchResultEligibilityPort, StorefrontSearchResultEligibilityPort,
-};
 use rustok_search::{
     FORUM_SEARCH_SOURCE_MODULE, SearchAudiencePolicyPort, SearchAudienceRequest,
     StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
     StorefrontSearchResultEligibilityRequest, StorefrontSearchTransport,
+};
+#[allow(deprecated)]
+use rustok_search::{
+    SharedStorefrontSearchResultEligibilityPort, StorefrontSearchResultEligibilityPort,
 };
 use sea_orm::DatabaseConnection;
 
@@ -30,7 +32,11 @@ impl ServerForumSearchResultEligibilityPort {
         audience_facts: Option<SharedForumAudienceFactsPort>,
         settings_reader: Option<SharedStaticModuleSettingsReader>,
     ) -> Self {
-        Self { db, audience_facts, settings_reader }
+        Self {
+            db,
+            audience_facts,
+            settings_reader,
+        }
     }
 
     #[allow(deprecated)]
@@ -179,7 +185,8 @@ impl SearchAudiencePolicyPort for ServerForumSearchResultEligibilityPort {
             .candidates
             .into_iter()
             .filter_map(|candidate| {
-                let kind = StorefrontSearchResultCandidateKind::from_entity_type(&candidate.entity_type)?;
+                let kind =
+                    StorefrontSearchResultCandidateKind::from_entity_type(&candidate.entity_type)?;
                 Some(StorefrontSearchResultCandidate {
                     document_id: candidate.document_id,
                     kind,
@@ -219,7 +226,6 @@ impl StorefrontSearchResultEligibilityPort for ServerForumSearchResultEligibilit
         self.filter_forum_result_candidates(request).await
     }
 }
-
 
 async fn ensure_forum_enabled(
     db: &DatabaseConnection,
