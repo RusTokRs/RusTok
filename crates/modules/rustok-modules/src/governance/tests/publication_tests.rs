@@ -87,7 +87,8 @@ async fn publication_persists_release_binding_request_and_audit_facts_together()
                 created_at TEXT NOT NULL, UNIQUE (request_id, evidence_digest_sha256)\
              )",
         "CREATE TABLE registry_validation_stages (\
-                request_id TEXT NOT NULL, stage_key TEXT NOT NULL, status TEXT NOT NULL,\
+                id INTEGER PRIMARY KEY AUTOINCREMENT, request_id TEXT NOT NULL, \
+                stage_key TEXT NOT NULL, status TEXT NOT NULL,\
                 attempt_number INTEGER NOT NULL, created_at TEXT NOT NULL\
              )",
         "CREATE TABLE registry_publish_build_staging (\

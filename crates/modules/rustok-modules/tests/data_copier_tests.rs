@@ -21,10 +21,13 @@ use std::path::PathBuf;
 use uuid::Uuid;
 
 fn digest(value: &impl serde::Serialize) -> String {
+    // Production contract digests are computed over canonical JSON bytes
+    // (`promotion::digest_json`); the fixture must seed rows with the same
+    // digest or authority validation denies every copy as a mismatch.
     format!(
         "sha256:{}",
         hex::encode(Sha256::digest(
-            serde_json::to_vec(value).expect("canonical JSON")
+            rustok_api::manifest_hash::canonical_json_bytes(value).expect("canonical JSON")
         ))
     )
 }

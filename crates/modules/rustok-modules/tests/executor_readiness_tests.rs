@@ -22,6 +22,7 @@ use rustok_modules::{
     ModuleCommandContext, ModuleDependencyLockGraph, ModuleInstallationScope,
     ModuleRuntimeBinding, ModuleRuntimeBindingKind, ModulesModule, OciArtifactReference,
     OwnerPlacementPolicy, ReleaseReadinessTarget, RuntimeFingerprint, VerifiedPayloadCache,
+    canonical_schema_digest,
 };
 use rustok_sandbox::{CapabilityName, RHAI_SANDBOX_RUNTIME_ABI, SandboxExecutorPlacement};
 use sea_orm::Database;
@@ -80,6 +81,14 @@ fn build_sample_target(
     capabilities: Vec<CapabilityName>,
 ) -> ReleaseReadinessTarget {
     let payload_digest = sha256_digest(payload_bytes);
+    // The readiness path revalidates the descriptor bundle: the schema
+    // document must declare the supported JSON Schema draft and every
+    // binding reference must resolve to its canonical digest.
+    let schema_document = serde_json::json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+    });
+    let schema_digest = canonical_schema_digest(&schema_document);
     let descriptor = ModuleArtifactDescriptor {
         schema_version: MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
         slug: slug.to_string(),
@@ -97,8 +106,8 @@ fn build_sample_target(
                 id: format!("{slug}.hook"),
                 kind: ModuleRuntimeBindingKind::PreEnable,
                 entrypoint: "src/main.rhai".to_string(),
-                input_schema_digest: sha256_digest(b"{}"),
-                output_schema_digest: sha256_digest(b"{}"),
+                input_schema_digest: schema_digest.clone(),
+                output_schema_digest: schema_digest.clone(),
                 permission: format!("{slug}.read"),
                 idempotency: ModuleBindingIdempotency::Required,
                 limit_profile: "standard".to_string(),
@@ -111,8 +120,8 @@ fn build_sample_target(
                 id: format!("{slug}.smoke"),
                 kind: ModuleRuntimeBindingKind::ActivationSmoke,
                 entrypoint: "src/main.rhai".to_string(),
-                input_schema_digest: sha256_digest(b"{}"),
-                output_schema_digest: sha256_digest(b"{}"),
+                input_schema_digest: schema_digest.clone(),
+                output_schema_digest: schema_digest.clone(),
                 permission: format!("{slug}.read"),
                 idempotency: ModuleBindingIdempotency::None,
                 limit_profile: "standard".to_string(),
@@ -132,8 +141,8 @@ fn build_sample_target(
             }],
         }],
         schema_documents: vec![ArtifactSchemaDocument {
-            digest: sha256_digest(b"{}"),
-            document: serde_json::json!({}),
+            digest: schema_digest,
+            document: schema_document,
         }],
         settings_schema_digest: None,
         data_schema_digest: None,

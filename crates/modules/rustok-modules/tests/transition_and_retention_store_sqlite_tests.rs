@@ -25,6 +25,18 @@ async fn setup_db() -> DatabaseConnection {
         .await
         .expect("sqlite in-memory database connection");
 
+    // `module_operations` carries a foreign key to the core `tenants`
+    // table, whose schema is owned outside this crate's migration set and
+    // therefore does not exist in this isolated database. The pool is
+    // pinned to a single connection above, so disabling FK enforcement
+    // here covers every statement in the test.
+    db.execute_raw(sea_orm::Statement::from_string(
+        sea_orm::DbBackend::Sqlite,
+        "PRAGMA foreign_keys = OFF".to_string(),
+    ))
+    .await
+    .expect("disable sqlite foreign keys for the isolated crate schema");
+
     let manager = SchemaManager::new(&db);
     for migration in rustok_modules::migrations::migrations() {
         migration

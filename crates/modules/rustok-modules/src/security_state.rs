@@ -814,20 +814,10 @@ mod tests {
             .up(&SchemaManager::new(&database))
             .await
             .expect("outbox migration");
-        database
-            .execute_raw(Statement::from_string(
-                DbBackend::Sqlite,
-                "CREATE TABLE registry_module_releases (
-                    id TEXT PRIMARY KEY,
-                    slug TEXT NOT NULL,
-                    version TEXT NOT NULL,
-                    checksum_sha256 TEXT NOT NULL,
-                    status TEXT NOT NULL
-                 )"
-                .to_string(),
-            ))
-            .await
-            .expect("registry release fixture");
+        // `registry_module_releases` is created by migration 000061 with
+        // the full column set the later data migrations read; a minimal
+        // hand-made pre-create would shadow it (`IF NOT EXISTS`) and break
+        // the chain (000069 backfill).
         for migration in ModulesModule.migrations() {
             migration
                 .up(&SchemaManager::new(&database))

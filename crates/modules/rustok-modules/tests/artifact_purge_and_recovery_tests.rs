@@ -378,10 +378,15 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
         schema_digest.clone(),
         schema.clone(),
     );
+    // The owner recomputes the contract digest over canonical JSON bytes
+    // (`promotion::digest_json`); seed the stored digest identically.
     let data_contract_digest = format!(
         "sha256:{}",
         hex::encode(Sha256::digest(
-            serde_json::to_vec(desc.persistence_contract.as_ref().unwrap()).unwrap()
+            rustok_api::manifest_hash::canonical_json_bytes(
+                desc.persistence_contract.as_ref().unwrap(),
+            )
+            .unwrap()
         ))
     );
 
