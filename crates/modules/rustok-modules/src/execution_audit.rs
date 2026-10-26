@@ -406,7 +406,11 @@ mod tests {
             context,
             executor: SandboxExecutorKind::WasmComponent,
             status: ExecutionStatus::Started,
-            started_at: Utc::now(),
+            // Audit timestamps persist at the crate's fixed-millisecond
+            // text precision; align the fixture so the stored evidence
+            // string can be asserted exactly.
+            started_at: chrono::DateTime::from_timestamp_millis(Utc::now().timestamp_millis())
+                .expect("millis-aligned timestamp"),
             finished_at: None,
             metrics: None,
             error_code: None,

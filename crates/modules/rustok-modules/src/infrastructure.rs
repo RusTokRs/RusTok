@@ -54,7 +54,15 @@ impl ControlPlaneInfrastructure {
     }
 
     pub fn now(&self) -> DateTime<Utc> {
-        self.clock.now()
+        // Millisecond alignment is the owner-clock contract: SQLite text
+        // timestamps in this crate are fixed-millisecond RFC 3339 (see
+        // `backend::sqlite_datetime_text`) and PostgreSQL `timestamptz`
+        // keeps microseconds, so sub-millisecond digits can never
+        // round-trip through storage. Minting aligned time here keeps
+        // returned records identical to their stored representation (and
+        // to idempotent replays of them) on both backends.
+        let now = self.clock.now();
+        DateTime::from_timestamp_millis(now.timestamp_millis()).unwrap_or(now)
     }
 
     pub fn new_id(&self) -> Uuid {
