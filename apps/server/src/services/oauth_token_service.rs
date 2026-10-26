@@ -805,7 +805,9 @@ mod tests {
         let client_id = app.client_id;
         let mut active: oauth_apps::ActiveModel = app.into();
         active.tenant_id = Set(tenant_id);
-        active.insert(&db).await.expect("OAuth app");
+        oauth_apps::scope_runtime_copy_locale("en".to_string(), active.insert(&db))
+            .await
+            .expect("OAuth app");
 
         let request = TokenRequest {
             grant_type: "client_credentials".to_string(),

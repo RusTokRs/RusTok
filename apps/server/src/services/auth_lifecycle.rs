@@ -1321,7 +1321,9 @@ impl AuthLifecycleService {
     ) -> std::result::Result<chrono::DateTime<Utc>, AuthLifecycleError> {
         let ttl_seconds = i64::try_from(ttl_seconds)
             .map_err(|_| AuthLifecycleError::Internal(Error::InternalServerError))?;
-        now.checked_add_signed(Duration::seconds(ttl_seconds))
+        let ttl = Duration::try_seconds(ttl_seconds)
+            .ok_or(AuthLifecycleError::Internal(Error::InternalServerError))?;
+        now.checked_add_signed(ttl)
             .ok_or(AuthLifecycleError::Internal(Error::InternalServerError))
     }
 

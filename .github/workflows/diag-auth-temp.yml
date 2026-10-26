@@ -266,6 +266,12 @@ jobs:
             cargo test -p rustok-migrations --test ecommerce_schema_smoke -- --nocapture 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tail -120
             echo "=== cargo test -p rustok-server --lib auth, no embed-storefront (raw tail) ==="
             cargo test -p rustok-server --lib --no-default-features --features "redis-cache embed-admin mod-product mod-product_relations mod-brand mod-product_bundles mod-profiles mod-social_graph mod-reactions mod-groups mod-region mod-pricing mod-inventory mod-cart mod-customer mod-order mod-payment mod-fulfillment mod-commerce mod-accounting mod-moderation mod-content mod-blog mod-forum mod-notifications mod-newsletter mod-comments mod-pages mod-docs mod-forms mod-navigation mod-page_builder mod-taxonomy mod-alloy mod-flex mod-media mod-seo mod-workflow mod-ai ai-translation" auth 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tail -120
+            echo "=== focused reruns (raw) ==="
+            FEATS="redis-cache embed-admin mod-product mod-product_relations mod-brand mod-product_bundles mod-profiles mod-social_graph mod-reactions mod-groups mod-region mod-pricing mod-inventory mod-cart mod-customer mod-order mod-payment mod-fulfillment mod-commerce mod-accounting mod-moderation mod-content mod-blog mod-forum mod-notifications mod-newsletter mod-comments mod-pages mod-docs mod-forms mod-navigation mod-page_builder mod-taxonomy mod-alloy mod-flex mod-media mod-seo mod-workflow mod-ai ai-translation"
+            for f in access_token_role_is_derived_from_relations logout_by_refresh_token_is_tenant_scoped confirm_reset application_router_executes_authenticated_server_function; do
+              echo "--- rerun: $f ---"
+              cargo test -p rustok-server --lib --no-default-features --features "$FEATS" "$f" -- --nocapture 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tail -45
+            done
           } > /tmp/test_results.txt 2>&1
           wc -l /tmp/test_results.txt
       - name: Post PR comment (tests)

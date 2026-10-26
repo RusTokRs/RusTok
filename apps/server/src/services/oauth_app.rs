@@ -1852,7 +1852,9 @@ mod tests {
     async fn manual_app_crud_and_token_revocation_round_trip() {
         let (db, tenant) = test_db_with_tenant().await;
 
-        let created = OAuthAppService::create_app(
+        let created = oauth_apps::scope_runtime_copy_locale(
+            "en".to_string(),
+            OAuthAppService::create_app(
             &db,
             tenant.id,
             CreateOAuthAppInput {
@@ -1869,6 +1871,7 @@ mod tests {
                 ],
                 granted_permissions: vec![],
             },
+            ),
         )
         .await
         .expect("create app");
@@ -1882,7 +1885,9 @@ mod tests {
             vec!["https://partner.example.com/callback".to_string()]
         );
 
-        let updated = OAuthAppService::update_app(
+        let updated = oauth_apps::scope_runtime_copy_locale(
+            "en".to_string(),
+            OAuthAppService::update_app(
             &db,
             tenant.id,
             created.app.id,
@@ -1898,6 +1903,7 @@ mod tests {
                 ],
                 granted_permissions: vec![],
             },
+            ),
         )
         .await
         .expect("update app");

@@ -53,7 +53,9 @@ where
         error = %error,
         "Auth administration operation failed"
     );
-    AuthAdminMutationError::Internal(format!("Auth administration operation failed: {error}"))
+    // The detail goes to the log above only; the returned error is
+    // sealed so no consumer of the port can leak it to a client.
+    AuthAdminMutationError::Internal("Auth administration operation failed".to_string())
 }
 
 pub(crate) async fn build_oauth_app_record<C>(

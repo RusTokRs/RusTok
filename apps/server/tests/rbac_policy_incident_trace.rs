@@ -60,6 +60,8 @@ async fn insert_tenant_and_user(db: &sea_orm::DatabaseConnection) -> (Uuid, Uuid
     .expect("insert incident tenant");
 
     users::Entity::insert(users::ActiveModel {
+        failed_login_count: Set(0),
+        locked_until: Set(None),
         id: Set(user_id),
         tenant_id: Set(tenant_id),
         email: Set(format!("rbac-policy-incident-{user_id}@example.com")),
