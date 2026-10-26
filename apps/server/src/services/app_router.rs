@@ -1170,7 +1170,12 @@ mod tests {
             )
             .expect("build shared runtime extensions");
             runtime_context.shared_insert(runtime_extensions);
-            runtime_context.shared_insert(registry.clone());
+            // Deliberately unlike production, the registry is not inserted
+            // into the server runtime context: that activates dormant-grant
+            // filtering in the auth extractor, which resolves the tenant's
+            // effective module policy from platform-composition tables this
+            // minimal fixture does not migrate. Route composition uses the
+            // bootstrap registry below directly.
             let access_token = encode_access_token(
                 &auth_config,
                 user.id,
