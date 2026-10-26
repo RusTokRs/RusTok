@@ -499,12 +499,12 @@ impl ModuleOperatorService {
                     .to_string(),
             );
         }
-        if mode == UpdateMode::Automatic {
-            if let Some(release_digest) = schema_unverifiable_digest {
-                denial_reasons.push(format!(
-                    "Automatic mode denied: candidate release {release_digest} has no admitted descriptor; data-schema compatibility with the active installation cannot be verified"
-                ));
-            }
+        if mode == UpdateMode::Automatic
+            && let Some(release_digest) = schema_unverifiable_digest
+        {
+            denial_reasons.push(format!(
+                "Automatic mode denied: candidate release {release_digest} has no admitted descriptor; data-schema compatibility with the active installation cannot be verified"
+            ));
         }
         let eligibility = TransitionEligibility {
             eligible: denial_reasons.is_empty(),
