@@ -726,7 +726,7 @@ impl ExternalPrebuiltIngressService {
             )
             .await;
         if let Some(path) = temporary_payload_path {
-            crate::oci::remove_staged_file_best_effort(&path).await;
+            crate::installation::remove_staged_file_best_effort(&path).await;
         }
         result
     }

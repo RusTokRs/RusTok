@@ -554,6 +554,14 @@ pub trait DurableArtifactBlobStore: ArtifactBlobStore {
     async fn delete(&self, digest: &str) -> Result<(), ModuleInstallationError>;
 }
 
+/// Best-effort removal of a persisted staging temp file on a path whose
+/// primary result is already determined: a leftover file under the system
+/// temp dir is janitorial, and a removal failure must not mask that
+/// result. Same policy as [`DurableArtifactBlobStore::discard_best_effort`].
+pub(crate) async fn remove_staged_file_best_effort(path: &std::path::Path) {
+    let _ = tokio::fs::remove_file(path).await;
+}
+
 #[async_trait]
 impl<B: ArtifactBlobStore + ?Sized> ArtifactBlobStore for Arc<B> {
     async fn put_verified(
@@ -7747,7 +7755,7 @@ where
             .admit_fetched_package(command, request_digest, package)
             .await;
         if let Some(path) = temporary_payload_path {
-            crate::oci::remove_staged_file_best_effort(&path).await;
+            remove_staged_file_best_effort(&path).await;
         }
         result
     }

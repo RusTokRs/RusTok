@@ -165,6 +165,14 @@ jobs:
           post_digest("Arena diagnostics: cargo clippy", "cargo clippy digest", summary, text)
           print(summary, flush=True)
 
+          rc, diags, tail = cargo_json_diag(
+              ["cargo", "check", "-p", "rustok-modules", "--no-default-features",
+               "--all-targets", "--message-format", "json"])
+          summary, text = digest_for("cargo check (no-default-features)", rc, diags, tail)
+          post_digest("Arena diagnostics: cargo check no-default-features",
+                      "cargo check no-default-features digest", summary, text)
+          print(summary, flush=True)
+
           fmt = subprocess.run(["cargo", "fmt", *PKGS, "--", "--check"],
                                capture_output=True, text=True)
           diff_lines = (fmt.stdout + fmt.stderr).splitlines()
