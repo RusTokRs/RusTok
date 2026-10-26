@@ -17604,6 +17604,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "moka",
+ "reqwest 0.13.5",
  "rustok-api",
  "rustok-core",
  "rustok-outbox",

@@ -9,3 +9,11 @@
  */
 
 //! SeaORM persistence mappings owned by security.
+
+pub mod audit_log;
+pub mod ip_rule;
+pub mod policy;
+
+pub use audit_log::Entity as SecurityAuditLogEntity;
+pub use ip_rule::Entity as SecurityIpRuleEntity;
+pub use policy::Entity as SecurityPolicyEntity;

@@ -1,5 +1,6 @@
 {
   "scripts": {
+    "verify:ast-grep": "npx -p @ast-grep/cli ast-grep scan",
     "verify:pricing:public-error": "node scripts/verify/verify-pricing-public-error.mjs",
     "verify:product:error-boundary": "node scripts/verify/verify-product-error-boundary.mjs",
     "verify:product:variant-patches": "node scripts/verify/verify-product-variant-patches.mjs",

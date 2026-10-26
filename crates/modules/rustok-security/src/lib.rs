@@ -19,12 +19,14 @@
 
 #![deny(clippy::float_arithmetic)]
 
+pub mod adapters;
 pub mod domain;
 pub mod dto;
 pub mod error;
 pub mod events;
 pub mod integrations;
 pub mod module;
+pub mod ports;
 pub mod services;
 
 #[cfg(test)]
@@ -33,11 +35,20 @@ mod contract_tests;
 pub mod entities;
 pub mod migrations;
 
-pub use domain::SecurityStatus;
+pub use adapters::{HoneypotVerifier, MokaBruteForceTracker, MokaRateLimiter, NoopCaptchaVerifier};
+#[cfg(feature = "captcha-http")]
+pub use adapters::{RecaptchaVerifier, TurnstileVerifier};
+pub use domain::{
+    CaptchaProviderKind, IpNet, IpRule, IpRuleType, LockoutDecision, RateLimitDecision,
+    SecurityAuditLog, SecurityEventType, SecurityPolicy, SecuritySeverity, SecurityStatus,
+};
+pub use dto::{CreateIpRuleInput, LogSecurityEventInput, SecuritySummary, UpdateSecurityPolicyInput};
 pub use error::{SecurityError, SecurityResult};
 pub use events::{
     SecurityCreatedEvent, SecurityDeletedEvent, SecurityDomainEvent, SecurityUpdatedEvent,
     SECURITY_EVENT_TOPIC,
 };
 pub use module::SecurityModule;
+pub use ports::{BruteForceTrackerPort, CaptchaVerifierPort, IpFilterPort, RateLimiterPort};
 pub use services::SecurityService;
+

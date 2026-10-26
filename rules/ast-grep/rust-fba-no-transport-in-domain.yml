@@ -1,0 +1,25 @@
+id: rust-fba-no-transport-in-domain
+language: rust
+severity: error
+message: "FBA Domain must not reference transport types (axum, actix, warp, hyper). Response mapping and HTTP status codes belong in transport adapters."
+note: |-
+  Rule in AGENTS.md and docs/backend/module-backend-implementation.md:
+  Domain modules must not leak transport concerns. They return typed domain
+  errors and entities, leaving HTTP mapping to the transport layer.
+files:
+  - "crates/modules/**/src/domain/**"
+ignores:
+  - "**/test.rs"
+  - "**/tests.rs"
+  - "**/tests/**"
+rule:
+  any:
+    - kind: scoped_identifier
+      regex: ^(axum|actix_web|warp|hyper)\b
+      not:
+        inside:
+          kind: scoped_identifier
+    - kind: scoped_type_identifier
+      regex: ^(axum|actix_web|warp|hyper)\b
+    - kind: use_declaration
+      regex: ^use (axum|actix_web|warp|hyper)\b
