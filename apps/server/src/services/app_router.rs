@@ -1144,7 +1144,23 @@ mod tests {
             let event_transport: Arc<dyn EventTransport> =
                 Arc::new(OutboxTransport::new(database.clone()));
             runtime_context.shared_insert(event_transport);
-            runtime_context.shared_insert(Arc::new(ModuleRuntimeExtensions::default()));
+            // Mirror production host composition
+            // (`build_shared_runtime_extensions_with_host_providers`):
+            // blog HTTP routes hard-require the taxonomy category
+            // delete-cleanup port in the shared runtime extensions.
+            #[cfg(feature = "mod-taxonomy")]
+            let extensions = {
+                let mut extensions = ModuleRuntimeExtensions::default();
+                extensions.insert(
+                    Arc::new(
+                        crate::services::flex_attached_values::FlexTaxonomyCategoryDeleteCleanup,
+                    ) as Arc<dyn rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort>,
+                );
+                extensions
+            };
+            #[cfg(not(feature = "mod-taxonomy"))]
+            let extensions = ModuleRuntimeExtensions::default();
+            runtime_context.shared_insert(Arc::new(extensions));
 
             let auth_config =
                 AuthConfig::new("translation-router-test-secret-with-32-bytes".to_string());
