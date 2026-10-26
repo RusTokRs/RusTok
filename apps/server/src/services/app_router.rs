@@ -891,7 +891,7 @@ mod tests {
         use rustok_build::DeploymentProfile;
         use rustok_cache::CacheService;
         use rustok_channel::ChannelService;
-        use rustok_core::{ModuleRuntimeExtensions, UserRole, events::EventTransport};
+        use rustok_core::{UserRole, events::EventTransport};
         use rustok_outbox::{OutboxTransport, SysEventsMigration};
         use rustok_tenant::{
             PortActor, PortContext, TenantLocalePolicyPort, TenantService, entities::tenant_locale,
@@ -1144,26 +1144,28 @@ mod tests {
             let event_transport: Arc<dyn EventTransport> =
                 Arc::new(OutboxTransport::new(database.clone()));
             runtime_context.shared_insert(event_transport);
-            // Mirror production host composition
-            // (`build_shared_runtime_extensions_with_host_providers`):
-            // blog HTTP routes hard-require the taxonomy category
-            // delete-cleanup port in the shared runtime extensions.
-            #[cfg(feature = "mod-taxonomy")]
-            let extensions = {
-                let mut extensions = ModuleRuntimeExtensions::default();
-                extensions.insert(
-                    Arc::new(
-                        crate::services::flex_attached_values::FlexTaxonomyCategoryDeleteCleanup,
-                    ) as Arc<dyn rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort>,
-                );
-                extensions
-            };
-            #[cfg(not(feature = "mod-taxonomy"))]
-            let extensions = ModuleRuntimeExtensions::default();
-            runtime_context.shared_insert(Arc::new(extensions));
+            runtime_context.shared_insert(
+                crate::services::event_bus::transactional_event_bus_from_context(
+                    &runtime_context,
+                ),
+            );
 
             let auth_config =
                 AuthConfig::new("translation-router-test-secret-with-32-bytes".to_string());
+            // Mirror production host composition (`app_runtime` bootstrap):
+            // build the real shared runtime extensions for the generated
+            // registry so optional module routers find the provider
+            // handles they hard-require.
+            let registry = build_registry();
+            let runtime_extensions = crate::services::module_event_dispatcher::build_shared_runtime_extensions_with_host_providers(
+                &registry,
+                &settings,
+                runtime_context.clone(),
+                auth_config.clone(),
+            )
+            .expect("build shared runtime extensions");
+            runtime_context.shared_insert(runtime_extensions);
+            runtime_context.shared_insert(registry.clone());
             let access_token = encode_access_token(
                 &auth_config,
                 user.id,
@@ -1187,7 +1189,7 @@ mod tests {
                     embed_admin: false,
                     embed_storefront: false,
                 },
-                registry: build_registry(),
+                registry,
                 graphql_schema: Arc::new(
                     async_graphql::Schema::build(
                         Query::default(),
