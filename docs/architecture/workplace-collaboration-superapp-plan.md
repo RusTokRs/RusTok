@@ -279,6 +279,16 @@ A database in `rustok-docs` is an aggregate of structured pages conforming to a 
    - **Gallery View:** Visual cards highlighting image covers and key attributes.
    - **List View:** Minimalist linear summary.
 
+### 4.2.1 Collaborative Spreadsheets & Live Formulas (`Loro CRDT` + `IronCalc`)
+While Notion-like databases (`flex`) handle structured metadata, computational commercial workflows (quotations, margin models, inventory balancing, cost rollups) require true spreadsheet capabilities governed by [ADR 2026-10-26-collaborative-spreadsheet-engine-loro-ironcalc](../../DECISIONS/2026-10-26-collaborative-spreadsheet-engine-loro-ironcalc.md):
+1. **Loro CRDT Container Storage:** Every spreadsheet workbook models sheets, rows, and cells inside Loro CRDT maps and lists, preserving cell coordinates and formatting (`currency`, `accounting`, `percent`) across concurrent multi-user edits without merge conflicts.
+2. **IronCalc High-Performance Formula DAG:** Formula evaluation (`=SUM(...)`, `=VLOOKUP(...)`, structured references `Table[Column]`, financial and math functions) is driven by the pure Rust **IronCalc** engine compiled natively for server jobs and into WebAssembly for zero-latency client calculation.
+3. **Live UER Formulas (RusToK Killer Feature):** Spreadsheet formulas natively query live transactional business data:
+   - `=RUSTOK_PRICE("sku-402", "RUB")` — fetches authoritative catalog price from `rustok-pricing`.
+   - `=RUSTOK_STOCK("wh-moscow", "sku-402")` — fetches real-time available inventory from `rustok-inventory`.
+   Changes to inventory or prices emit outbox events that trigger reactive recalculation across dependent spreadsheet cells.
+4. **AI-Agent Sandbox:** Agents calculate formulas and propose sheet modifications on isolated, disposable Loro forks (`prepareSpreadsheetEdit`), merging verified atomic deltas under an explicit AI peer ID.
+
 ### 4.3 Universal Entity Reference Protocol (UER / `EntityRef`)
 To enable Notion-like live embedding of any platform entity across all 50+ RusToK modules, `rustok-docs` establishes a unified, strongly-typed reference protocol:
 

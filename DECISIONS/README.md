@@ -52,6 +52,7 @@ Non-ADR plans and research documents do not belong in this registry.
 ## Index
 
 | ADR | Title | Decision status | Implementation status | Relations |
+| [2026-10-26](./2026-10-26-collaborative-spreadsheet-engine-loro-ironcalc.md) | Collaborative Spreadsheet Engine on Loro CRDT and IronCalc with Live Business References | Accepted | In progress | Extends [Unified Workplace & Collaboration SuperApp](../docs/architecture/workplace-collaboration-superapp-plan.md) |
 | [2026-10-21](./2026-10-21-order-shipment-status-projection.md) | Order shipped/delivered status follows fulfillment truth; stock consumption stays trigger-owned for now | Accepted | In progress | — |
 | [2026-10-21](./2026-10-21-return-refund-server-side-valuation.md) | Return refund amounts are valued on the server from the order line snapshot | Accepted | In progress | — |
 | [2026-10-21](./2026-10-21-order-cancellation-orchestration.md) | Order cancellation is a commerce-owned idempotent saga over fulfillment and payment | Accepted | In progress | Extends [Checkout operation invariants are owned by typed Rust](./2026-10-07-checkout-operation-invariants-owned-by-rust.md) |
