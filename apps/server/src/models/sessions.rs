@@ -1,4 +1,5 @@
 use chrono::{DateTime, Duration, Utc};
+use uuid::Uuid;
 
 use rustok_core::generate_id;
 

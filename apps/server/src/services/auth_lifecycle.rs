@@ -13,7 +13,8 @@ use sea_orm::{
 
 use crate::auth::{
     AuthConfig, encode_access_token, generate_refresh_token, hash_password_async,
-    hash_refresh_token, verify_password_async,
+    hash_refresh_token, normalize_display_name, normalize_email, validate_password_policy,
+    verify_password_async,
 };
 use crate::models::{sessions, users};
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -45,6 +46,37 @@ pub enum AuthLifecycleError {
     InvalidVerificationToken,
     Validation(String),
     Internal(Error),
+}
+
+impl std::fmt::Display for AuthLifecycleError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AuthLifecycleError::EmailAlreadyExists => formatter.write_str("email already exists"),
+            AuthLifecycleError::InvalidCredentials => {
+                formatter.write_str("invalid credentials")
+            }
+            AuthLifecycleError::UserInactive => formatter.write_str("user is inactive"),
+            AuthLifecycleError::AccountLocked => {
+                formatter.write_str("account is temporarily locked")
+            }
+            AuthLifecycleError::EmailNotVerified => {
+                formatter.write_str("email address is not verified")
+            }
+            AuthLifecycleError::InvalidRefreshToken => {
+                formatter.write_str("invalid refresh token")
+            }
+            AuthLifecycleError::SessionExpired => formatter.write_str("session expired"),
+            AuthLifecycleError::UserNotFound => formatter.write_str("user not found"),
+            AuthLifecycleError::InvalidResetToken => {
+                formatter.write_str("invalid reset token")
+            }
+            AuthLifecycleError::InvalidVerificationToken => {
+                formatter.write_str("invalid verification token")
+            }
+            AuthLifecycleError::Validation(message) => formatter.write_str(message),
+            AuthLifecycleError::Internal(err) => write!(formatter, "{err}"),
+        }
+    }
 }
 
 impl From<Error> for AuthLifecycleError {
@@ -95,6 +127,7 @@ impl From<AuthLifecycleError> for Error {
             AuthLifecycleError::InvalidVerificationToken => {
                 Error::Unauthorized("Invalid verification token".into())
             }
+            AuthLifecycleError::Validation(message) => Error::BadRequest(message),
             AuthLifecycleError::Internal(err) => err,
         }
     }
@@ -1358,9 +1391,7 @@ mod tests {
         AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL, AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL,
         AuthLifecycleError, AuthLifecycleMetricsSnapshot, AuthLifecycleService, Error,
     };
-    use crate::auth::{
-        AuthConfig, decode_access_token, hash_password, hash_refresh_token, verify_password,
-    };
+    use crate::auth::{AuthConfig, decode_access_token, hash_password, hash_refresh_token};
     use crate::models::_entities::user_roles;
     use crate::models::{sessions, tenants, users};
     use crate::services::rbac_service::RbacService;
