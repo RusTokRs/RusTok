@@ -185,3 +185,148 @@ jobs:
                       f"({len(our_fmt)} changed)", text)
           print("fmt files:", len(files), "changed:", len(our_fmt), flush=True)
           PY
+
+  tests:
+    name: Crate-scoped tests digest
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_test
+    steps:
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force || true
+          df -h
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+        with:
+          toolchain: "1.96.0"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - name: Run crate-scoped tests and publish digests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEADSHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess, time, urllib.request
+
+          CRATES = [
+              ("rustok-api", 1200),
+              ("rustok-distribution", 1200),
+              ("rustok-sandbox-transport", 1200),
+              ("rustok-sandbox-worker", 1800),
+              ("rustok-modules", 5400),
+          ]
+
+          def post_digest(name, title, summary, text):
+              if len(text) > 60000:
+                  text = text[:60000] + "\n... [truncated]"
+              payload = {
+                  "name": name,
+                  "head_sha": os.environ["HEADSHA"],
+                  "status": "completed",
+                  "conclusion": "neutral",
+                  "output": {"title": title, "summary": summary, "text": text},
+              }
+              req = urllib.request.Request(
+                  f"https://api.github.com/repos/{os.environ['REPO']}/check-runs",
+                  data=json.dumps(payload).encode(),
+                  headers={
+                      "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                      "Accept": "application/vnd.github+json",
+                      "Content-Type": "application/json",
+                  },
+                  method="POST",
+              )
+              try:
+                  with urllib.request.urlopen(req) as resp:
+                      print("posted", name, resp.status, flush=True)
+              except Exception as e:  # noqa: BLE001
+                  print("FAILED to post", name, e, flush=True)
+
+          def run_crate_tests(crate, timeout_s):
+              out_path = f"/tmp/test_{crate}.log"
+              started = time.monotonic()
+              timed_out = False
+              with open(out_path, "wb") as outf:
+                  try:
+                      proc = subprocess.run(
+                          ["cargo", "test", "-p", crate, "--all-targets"],
+                          stdout=outf, stderr=subprocess.STDOUT,
+                          timeout=timeout_s)
+                      rc = proc.returncode
+                  except subprocess.TimeoutExpired:
+                      rc = -1
+                      timed_out = True
+              elapsed = int(time.monotonic() - started)
+              try:
+                  lines = open(out_path, encoding="utf-8",
+                               errors="replace").read().splitlines()
+              except Exception:  # noqa: BLE001
+                  lines = []
+              results = [l.strip() for l in lines if l.startswith("test result:")]
+              passed = failed = ignored = 0
+              for r in results:
+                  m = re.search(r"(\d+) passed; (\d+) failed; (\d+) ignored", r)
+                  if m:
+                      passed += int(m.group(1))
+                      failed += int(m.group(2))
+                      ignored += int(m.group(3))
+              failed_names = []
+              for l in lines:
+                  m = re.match(r"test (\S+) \.\.\. FAILED", l)
+                  if m:
+                      failed_names.append(m.group(1))
+              panic_ctx = []
+              current = ""
+              for l in lines:
+                  if l.startswith("---- ") and l.rstrip().endswith("stdout ----"):
+                      current = l.strip()
+                  if "panicked at" in l:
+                      if current:
+                          panic_ctx.append(current)
+                      panic_ctx.append(l.strip())
+                      if len(panic_ctx) >= 120:
+                          break
+              errors = [l.strip() for l in lines if l.startswith("error")][:30]
+              tail = lines[-25:]
+              status = "TIMEOUT" if timed_out else f"rc={rc}"
+              head = (f"{status} elapsed={elapsed}s binaries={len(results)} "
+                      f"passed={passed} failed={failed} ignored={ignored}")
+              body = [head, "", "== per-binary results =="]
+              body += results or ["(no test binaries reported)"]
+              uniq_failed = sorted(set(failed_names))
+              body += ["", f"== failed tests ({len(uniq_failed)}) =="]
+              body += uniq_failed[:200] or ["(none)"]
+              body += ["", "== panic context (first 60) =="]
+              body += panic_ctx[:120] or ["(none)"]
+              body += ["", "== error lines (first 30) =="]
+              body += errors or ["(none)"]
+              body += ["", "== output tail =="] + tail
+              summary = f"test {crate}: {head}"
+              post_digest(f"Arena diagnostics: test {crate}",
+                          f"cargo test {crate}", summary, "\n".join(body))
+              print(summary, flush=True)
+
+          for crate, t in CRATES:
+              run_crate_tests(crate, t)
+          PY
