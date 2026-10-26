@@ -1262,8 +1262,6 @@ struct OperationRecord {
     operation_kind: String,
     request_digest: String,
     principal_id: String,
-    trace_id: Option<String>,
-    correlation_id: Option<Uuid>,
     reconciliation_id: Option<Uuid>,
     reconciliation_revision: Option<u64>,
     reconciliation_state_revision: Option<u64>,
@@ -2577,7 +2575,7 @@ async fn load_operation<C: ConnectionTrait>(
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
-                "SELECT operation_kind, request_digest, principal_id, trace_id, correlation_id, reconciliation_id, \
+                "SELECT operation_kind, request_digest, principal_id, reconciliation_id, \
                         reconciliation_revision, reconciliation_state_revision, reconciliation_status, \
                         node_id, installation_id, observation_revision, assignment_phase, \
                         CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END AS completed \
@@ -2596,8 +2594,6 @@ async fn load_operation<C: ConnectionTrait>(
         operation_kind: row.try_get("", "operation_kind").map_err(store_error)?,
         request_digest: row.try_get("", "request_digest").map_err(store_error)?,
         principal_id: row.try_get("", "principal_id").map_err(store_error)?,
-        trace_id: row.try_get("", "trace_id").map_err(store_error)?,
-        correlation_id: optional_uuid_from_row(&row, "correlation_id", backend)?,
         reconciliation_id: optional_uuid_from_row(&row, "reconciliation_id", backend)?,
         reconciliation_revision: optional_revision_from_row(&row, "reconciliation_revision")?,
         reconciliation_state_revision: optional_revision_from_row(

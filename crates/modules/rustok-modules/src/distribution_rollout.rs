@@ -17,8 +17,9 @@ use rustok_events::DomainEvent;
 
 use crate::backend::SupportedBackend;
 use crate::{
-    ControlPlaneInfrastructure, ModuleCommandContext, ModuleStaticDistributionExecutorMode,
-    ModuleStaticDistributionRelease, ModuleStaticDistributionReleaseState,
+    ControlPlaneInfrastructure, ModuleCommandContext, ModuleStaticDistributionBuildEvidence,
+    ModuleStaticDistributionExecutorMode, ModuleStaticDistributionRelease,
+    ModuleStaticDistributionReleaseAdmission, ModuleStaticDistributionReleaseState,
     ModuleStaticDistributionReleaseStatus, ModuleStaticDistributionRole,
     data::uuid_from_row,
     distribution_release::{commit_recovery_release, load_release_record, load_release_state},
@@ -1291,8 +1292,6 @@ struct OperationRecord {
     operation_kind: String,
     request_digest: String,
     principal_id: String,
-    trace_id: Option<String>,
-    correlation_id: Option<Uuid>,
     rollout_id: Option<Uuid>,
     rollout_revision: Option<u64>,
     rollout_state_revision: Option<u64>,
@@ -2582,7 +2581,7 @@ async fn load_operation<C: ConnectionTrait>(
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
-                "SELECT operation_kind, request_digest, principal_id, trace_id, correlation_id, rollout_id,
+                "SELECT operation_kind, request_digest, principal_id, rollout_id,
                         rollout_revision, rollout_state_revision, rollout_status,
                         node_id, role, observation_revision, assignment_phase,
                         CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END AS completed
@@ -2601,8 +2600,6 @@ async fn load_operation<C: ConnectionTrait>(
         operation_kind: row.try_get("", "operation_kind").map_err(store_error)?,
         request_digest: row.try_get("", "request_digest").map_err(store_error)?,
         principal_id: row.try_get("", "principal_id").map_err(store_error)?,
-        trace_id: row.try_get("", "trace_id").map_err(store_error)?,
-        correlation_id: optional_uuid_from_row(&row, "correlation_id", backend)?,
         rollout_id: optional_uuid_from_row(&row, "rollout_id", backend)?,
         rollout_revision: optional_revision_from_row(&row, "rollout_revision")?,
         rollout_state_revision: optional_revision_from_row(&row, "rollout_state_revision")?,
@@ -2983,6 +2980,56 @@ mod tests {
         }
     }
 
+    fn release_record_fixture(
+        distribution_release_id: Uuid,
+        status: ModuleStaticDistributionReleaseStatus,
+    ) -> ModuleStaticDistributionRelease {
+        ModuleStaticDistributionRelease {
+            distribution_release_id,
+            distribution_build_id: Uuid::new_v4(),
+            predecessor_release_id: None,
+            release_revision: 3,
+            composition_revision: 1,
+            composition_digest: digest('a'),
+            evidence: ModuleStaticDistributionBuildEvidence {
+                bundle_reference: "registry.example/bundle".to_string(),
+                bundle_root_digest: digest('b'),
+                role_set_digest: digest('c'),
+                roles: Vec::new(),
+                sbom_reference: "sbom:test".to_string(),
+                sbom_digest: digest('e'),
+                provenance_reference: "provenance:test".to_string(),
+                provenance_digest: digest('f'),
+                signature_reference: "signature:test".to_string(),
+                signature_digest: digest('0'),
+                test_evidence_reference: "tests:test".to_string(),
+                test_evidence_digest: digest('1'),
+            },
+            status,
+            admitted_by: Uuid::new_v4(),
+            admitted_at: Utc::now(),
+            activated_at: None,
+            superseded_at: None,
+            revoked_by: None,
+            revoked_at: None,
+            revocation_reason: None,
+            revocation_policy_revision: None,
+            verified_at: Utc::now(),
+            admission: ModuleStaticDistributionReleaseAdmission {
+                verifier_identity: "verifier:test".to_string(),
+                policy_revision: "policy-1".to_string(),
+                evidence_reference: "evidence:test".to_string(),
+                evidence_digest: digest('2'),
+                signature_verified: true,
+                provenance_verified: true,
+                sbom_verified: true,
+                test_evidence_verified: true,
+                dependency_policy_verified: true,
+            },
+            items: Vec::new(),
+        }
+    }
+
     #[test]
     fn rollout_release_identity_uses_frozen_snapshot_before_convergence_and_active_head_after() {
         let release_id = Uuid::new_v4();
@@ -2997,8 +3044,10 @@ mod tests {
         assert!(rollout_release_identity_valid(
             &preparing,
             &pre_convergence_state,
-            ModuleStaticDistributionReleaseStatus::Admitted,
-            3,
+            &release_record_fixture(
+                release_id,
+                ModuleStaticDistributionReleaseStatus::Admitted,
+            ),
             None,
         ));
         // After the head moved, pre-convergence work is stale.
@@ -3008,8 +3057,10 @@ mod tests {
                 revision: 4,
                 active_release_id: Some(release_id),
             },
-            ModuleStaticDistributionReleaseStatus::Active,
-            3,
+            &release_record_fixture(
+                release_id,
+                ModuleStaticDistributionReleaseStatus::Active,
+            ),
             None,
         ));
 
@@ -3024,8 +3075,10 @@ mod tests {
         assert!(rollout_release_identity_valid(
             &converged,
             &post_convergence_state,
-            ModuleStaticDistributionReleaseStatus::Active,
-            3,
+            &release_record_fixture(
+                release_id,
+                ModuleStaticDistributionReleaseStatus::Active,
+            ),
             None,
         ));
         // A later release taking the head retires drift observation.
@@ -3035,8 +3088,10 @@ mod tests {
                 revision: 5,
                 active_release_id: Some(Uuid::new_v4()),
             },
-            ModuleStaticDistributionReleaseStatus::Active,
-            3,
+            &release_record_fixture(
+                release_id,
+                ModuleStaticDistributionReleaseStatus::Active,
+            ),
             None,
         ));
 

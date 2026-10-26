@@ -1909,54 +1909,54 @@ mod tests {
 
     #[test]
     fn descriptor_collection_limits_are_rejected_before_publish() {
-        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
-        descriptor.dependencies = (0..=MAX_DESCRIPTOR_DEPENDENCIES)
+        let mut candidate = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        candidate.dependencies = (0..=MAX_DESCRIPTOR_DEPENDENCIES)
             .map(|index| ModuleDependencyConstraint {
                 slug: format!("dependency_{index}"),
                 version_requirement: "*".to_string(),
             })
             .collect();
         assert!(matches!(
-            descriptor.validate(),
+            candidate.validate(),
             Err(ModuleArtifactError::TooManyDependencies)
         ));
 
-        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
-        descriptor.permissions = (0..=MAX_DESCRIPTOR_PERMISSIONS)
+        let mut candidate = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        candidate.permissions = (0..=MAX_DESCRIPTOR_PERMISSIONS)
             .map(|index| ArtifactPermissionDescriptor {
                 key: format!("sample_module.permission_{index}"),
                 localizations: vec![permission_localization("Permission")],
             })
             .collect();
         assert!(matches!(
-            descriptor.validate(),
+            candidate.validate(),
             Err(ModuleArtifactError::TooManyPermissions)
         ));
     }
 
     #[test]
     fn descriptor_rejects_malformed_permission_suffix_and_escaping_entrypoint() {
-        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
-        descriptor.permissions = vec![ArtifactPermissionDescriptor {
+        let mut candidate = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        candidate.permissions = vec![ArtifactPermissionDescriptor {
             key: "sample_module.".to_string(),
             localizations: vec![permission_localization("Manage")],
         }];
         assert!(matches!(
-            descriptor.validate(),
+            candidate.validate(),
             Err(ModuleArtifactError::InvalidPermission(_))
         ));
 
-        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
-        descriptor.entrypoint = "../outside.rhai".to_string();
+        let mut candidate = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        candidate.entrypoint = "../outside.rhai".to_string();
         assert!(matches!(
-            descriptor.validate(),
+            candidate.validate(),
             Err(ModuleArtifactError::InvalidEntrypoint(_))
         ));
 
         // Confined relative payload paths remain valid entrypoints.
-        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
-        descriptor.entrypoint = "tests/publication_smoke.rhai".to_string();
-        descriptor.validate().expect("confined relative entrypoint");
+        let mut candidate = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        candidate.entrypoint = "tests/publication_smoke.rhai".to_string();
+        candidate.validate().expect("confined relative entrypoint");
     }
 
     #[test]
