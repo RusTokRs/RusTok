@@ -1,7 +1,8 @@
 # Разбор падающих проверок RusTok — инвентаризация и план
 
 Ветка `arena/a90c8cc9-rustok`. Дата разбора: 2026-10-26. Замеры сделаны на `5d0d325`;
-после прохода 5 (раздел 1.3) тот же прогон даёт **455 / 833**.
+после прохода 5 (раздел 1.3) тот же прогон даёт **455 / 833**, после прохода 6 (раздел 1.4) —
+**447 / 846** на 1293 guard'ах.
 
 > Числа в этом документе получены двойным прогоном корпуса guard'ов: базовый коммит в
 > `git worktree` и рабочее дерево, с записью stdout+stderr и кода выхода. Артефакты прогона —
@@ -25,6 +26,10 @@
 | Регрессий в проходе 4 (`550afbe` → `5d0d325`) | **0** |
 | Всего починено за четыре прохода | 40 guard'ов, 3 удалённых legacy-источника, 2 реальных дефекта в коде |
 | Всего починено за пять проходов | 50 guard'ов, 3 удалённых legacy-источника, 2 реальных дефекта в коде |
+| Проходят после прохода 6 | **846** (из 1293) |
+| Падают после прохода 6 | **447** |
+| Регрессий в проходах 5–6 | **0** |
+| Всего починено за шесть проходов | 61 guard, 3 удалённых legacy-источника, 3 реальных дефекта в коде |
 
 **Методика.** Один и тот же список файлов прогоняется дважды: на базовом коммите в
 `git worktree` и на рабочем дереве, с записью stdout+stderr и кода выхода. Диф даёт два числа,
@@ -194,21 +199,86 @@ local-error,admission,service-error}-context`, `verify-commerce-storefront-order
 
 ---
 
-## 2. Оставшиеся 455: по владельцам
+### 1.4. Проход 6: изоляция блоков в admin-commerce
+
+Второй шаг плана — системная причина 3.2. Здесь не появлялось новой политики: наоборот,
+каждый guard пришлось писать заново, потому что прежний описывал архитектуру, которой уже нет.
+Правило, которое я вывел и больше не нарушаю: **если guard называет исчезнувшие helper'ы
+(`payment_error_policy` внутри контроллера, `admin_checkout_operation_http_error<E>(`,
+`AdminOrderErrorContext::new`, `PaymentService::new(self.db.clone())`), это не «съехавший якорь» —
+это guard о другом коде, и его надо выводить заново по текущему контракту.**
+
+Одиннадцать guard'ов переписаны (458 → 447 красных, регрессий нет):
+
+| Guard | Было | Стало |
+|---|---|---|
+| `verify-commerce-storefront-line-item-http-error-safety` | 88 | 0 |
+| `verify-commerce-storefront-line-item-owner-context` | 41 | 0 |
+| `verify-commerce-storefront-cart-shipping-http-error-safety` | 67 | 0 |
+| `verify-commerce-admin-checkout-operation-error-context` | 89 | 0 |
+| `verify-commerce-admin-checkout-operation-diagnostic-safety` | 40 | 0 |
+| `verify-commerce-admin-order-return-owner-error-context` | 50 | 0 |
+| `verify-commerce-admin-order-return-orchestration-error-context` | 51 | 0 |
+| `verify-commerce-admin-order-route-error-context` | 15 | 0 |
+| `verify-commerce-admin-order-detail-payment-error-context` | 37 | 0 |
+| `verify-commerce-admin-order-change-owner-error-context` | 22 | 0 |
+| `verify-commerce-admin-order-change-orchestration-error-context` | 20 | 0 |
+
+Что изменилось в коде, а не только в проверках:
+
+- **Найден настоящий дефект компиляции.** `map_compensation_error`
+  (`controllers/admin/checkout_operations.rs`) разбирал 7 из 9 вариантов
+  `CheckoutCompensationError`: ветки `Payment`, `PaymentOrchestration` и `Order` пропали, когда
+  политики переезжали в общий модуль. Match был неисчерпывающим, а компенсация, упавшая в
+  payment- или order-владельце, не получала публичного конверта вообще. Ветки восстановлены,
+  личность владельца подставляется в контекст (`adopt_payment_error_identity`,
+  `adopt_order_error_identity`).
+- **Политики владельцев стали общими.** `controllers/admin/mod.rs` теперь хранит их как данные:
+  `AdminErrorPolicy` (status, code, message, error_kind) и `payment_error_policy`,
+  `reserved_refund_error_policy`, `order_error_policy`, `payment_orchestration_error_policy`.
+  `changes.rs` и `returns.rs` свои копии удалили (по три в каждом) — конверты не изменились.
+- **Route-entry логи во всех затронутых контроллерах перешли на bounded-хелперы**:
+  `log_admin_checkout_operation_route_entry`, `log_admin_checkout_reconciliation_recorded`,
+  `log_admin_post_order_command_entry`, `log_admin_order_return_entry`, `log_admin_order_entry`,
+  `log_admin_order_change_entry`. `post_order_commands.rs`, `post_order_reads.rs`, `returns.rs`,
+  `changes.rs`, `orders_owner_ports.rs`, `checkout_operations.rs` теперь дают `0` сырых директив.
+  В `returns.rs` заодно ушёл `action = %input.decision.action` — это пользовательский текст,
+  вместо него пишутся `decision_action_length` и `decision_moves_money`.
+- **Guard'ы выводят обязательные ветки из enum'ов, а не из списка в тесте.** Каждый
+  «policy/mapper»-guard парсит `pub enum` соответствующего владельца и требует ветку на вариант;
+  добавление варианта теперь валит guard, а не сборку. Мутационная проверка подтвердила: удаление
+  ветки `Order`, сырой `tenant_id = %tenant_id`, подмена `reserved_refund_error_policy` и
+  возвращённая приватная копия политики — все четыре мутации ловятся.
+
+Практический вывод для продолжения: у оставшихся admin-семейств (`fulfillment`-половина
+`show_order` 10 guard'ов, два scaffold-guard'а мёртвого `admin/orders.rs` по 4) тот же рецепт —
+сначала boundary-хелпер и общая политика в коде, потом guard по живому контракту. Отдельно
+числится `admin/orders.rs`: файл **не входит в дерево модулей** (модуль `orders` монтируется из
+`orders_owner_ports.rs`), но три guard'а и один зелёный `verify-order-read-port` всё ещё читают
+именно его. Это работа по удалению, а не починке.
+
+---
+
+## 2. Оставшиеся 447: по владельцам
+
+Замер на `0f1314e`:
 
 | Область | Красных |
 |---|---|
 | forum | **128** |
-| commerce | **84** |
-| rustok-pages | 41 |
-| index | 39 |
+| commerce | **69** |
+| rustok-pages | 43 |
+| index | 43 |
 | product | 21 |
 | groups | 19 |
-| fulfillment | 15 |
+| fulfillment | 14 |
 | payment | 14 |
 | blog | 10 |
-| social / cart / notifications | 9 / 7 / 6 |
-| остальное (≤5 каждая) | ~80 |
+| social / cart / notifications | 5 / 3 / 6 |
+| остальное (≤5 каждая) | ~72 |
+
+(Для сравнения, замер на `5d0d325`: commerce 84, pages 41, index 39, fulfillment 15,
+social / cart / notifications 9 / 7 / 6.)
 
 ---
 
