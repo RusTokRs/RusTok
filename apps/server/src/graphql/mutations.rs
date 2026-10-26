@@ -2209,7 +2209,7 @@ mod tests {
                 error: ToggleModuleError::Manifest(crate::modules::ManifestError::UnknownModule(
                     "custom".into(),
                 )),
-                expected_message: "Unknown module: custom".to_string(),
+                expected_message: "Unknown module 'custom'".to_string(),
                 expected_code: Some("BAD_USER_INPUT"),
                 case_name: "manifest",
             },
