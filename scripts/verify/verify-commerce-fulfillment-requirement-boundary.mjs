@@ -24,7 +24,7 @@ const orderEntity = read('crates/modules/rustok-order/src/entities/order_line_it
 const orderService = read('crates/modules/rustok-order/src/services/order.rs');
 const plan = read('crates/modules/rustok-commerce/src/services/checkout_plan_builder.rs');
 const planJournal = read('crates/modules/rustok-commerce/src/services/checkout_order_plan.rs');
-const fulfillmentStage = read('crates/modules/rustok-commerce/src/services/checkout_fulfillment_stages_legacy.rs');
+const fulfillmentStage = read('crates/modules/rustok-commerce/src/services/checkout_fulfillment_stages.rs');
 const storefrontRest = read('crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs');
 const storefrontGraphql = read('crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs');
 const graphqlShipping = read('crates/modules/rustok-commerce/src/graphql/mutations/typed_shipping_option_helper.rs');
@@ -33,8 +33,12 @@ const graphqlRuntime = read('crates/modules/rustok-commerce/src/graphql_runtime.
 for (const marker of [
   'pub enum ProductFulfillmentRequirement',
   'from_product_type',
-  'pub fulfillment_requirement: ProductFulfillmentRequirement',
 ]) requireText(product, marker, 'Product fulfillment authority');
+requireText(
+  productDto,
+  'pub fulfillment_requirement: ProductFulfillmentRequirement',
+  'Product response fulfillment projection',
+);
 
 for (const marker of [
   'pub enum CartLineFulfillmentRequirement',

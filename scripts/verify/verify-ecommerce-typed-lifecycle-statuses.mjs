@@ -34,13 +34,19 @@ if (existsSync(new URL(orderStageLegacy, root))) {
 const orderStage = orderStageFacade;
 const payment = read('crates/modules/rustok-payment/src/dto/payment.rs');
 const paymentPorts = read('crates/modules/rustok-payment/src/ports.rs');
-const paymentStageFacade = read(
+// The payment-stage compatibility source was retired; the mounted facade is the
+// only payment-stage implementation.
+const paymentStage = read(
   'crates/modules/rustok-commerce/src/services/checkout_payment_stages.rs',
 );
-const paymentStageLegacy = read(
+for (const retired of [
   'crates/modules/rustok-commerce/src/services/checkout_payment_stages_legacy.rs',
-);
-const paymentStage = `${paymentStageFacade}\n${paymentStageLegacy}`;
+  'crates/modules/rustok-commerce/src/services/checkout_fulfillment_stages_legacy.rs',
+]) {
+  if (existsSync(new URL(retired, root))) {
+    failures.push(`${retired}: retired source must not return`);
+  }
+}
 const fulfillment = read('crates/modules/rustok-fulfillment/src/status.rs');
 const fulfillmentTypedExecution = read(
   'crates/modules/rustok-fulfillment/src/checkout_execution_typed.rs',
@@ -74,12 +80,7 @@ requireText(
   'mounted order-stage projection read',
 );
 requireText(
-  paymentStageFacade,
-  '#[path = "checkout_payment_stages_legacy.rs"]',
-  'mounted payment-stage facade',
-);
-requireText(
-  paymentStageFacade,
+  paymentStage,
   'struct SanitizingCheckoutPaymentExecutionPort',
   'mounted payment-stage typed owner adapter',
 );

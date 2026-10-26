@@ -4,9 +4,9 @@ Status: **source-reviewed / unvalidated**
 
 ## Scope
 
-The mounted durable checkout fulfillment stage keeps its established business logic
-behind a private retained source and now sanitizes failures from all three typed owner
-calls before they reach the stage mapper:
+The checkout fulfillment stage keeps its established business logic in the mounted
+module and sanitizes failures from all three typed owner calls before they reach the
+stage mapper:
 
 - `CheckoutFulfillmentExecutionPort::ensure_checkout_fulfillments`;
 - `CheckoutFulfillmentExecutionPort::read_checkout_fulfillments`;
@@ -56,20 +56,24 @@ Unavailable, timeout, and invariant failures remain error-level diagnostics.
 Validation, not-found, conflict, forbidden, and other ordinary owner rejections remain
 warning-level diagnostics.
 
-## Legacy isolation
+## Retired sources
 
-`checkout_fulfillment_stages_legacy.rs` retains the previously mounted business logic
-unchanged. The mounted facade:
+`checkout_fulfillment_stages_legacy.rs` — the compatibility include source — is
+retired, together with the `rustok_api_shim`, `rustok_fulfillment_shim`,
+`rustok_order_shim`, and `tracing_shim` modules that existed only to mount it. The
+guard fails if any of them returns.
 
-1. wraps the canonical fulfillment and order-settlement owner ports;
-2. sanitizes owner failures before the retained mapper receives them;
-3. suppresses the retained raw compatibility tracing macros;
-4. keeps the retained implementation private;
+The mounted module:
+
+1. wraps the canonical fulfillment and order-settlement owner ports in
+   `fulfillment_execution_port` and `order_payment_settlement_port`;
+2. sanitizes owner failures in `owner_execution_boundary` before the stage mapper
+   receives them;
+3. has no raw compatibility tracing macros to suppress;
+4. re-derives the static message in `fulfillment_stage_boundary_error`, so a custom
+   port cannot publish owner text through the boundary variant;
 5. preserves canonical custom owner-port injection on
    `CheckoutFulfillmentStageExecutor`.
-
-The retained mapper therefore still preserves stage, code, message, and retryability
-structurally, but the message it receives is already the static Commerce-owned message.
 
 ## Retry policy
 

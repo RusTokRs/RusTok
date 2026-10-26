@@ -27,7 +27,9 @@ const between = (source, start, end, label) => {
 };
 
 const staged = read('crates/modules/rustok-commerce/src/services/staged_checkout.rs');
-const paymentStage = read('crates/modules/rustok-commerce/src/services/checkout_payment_stages_legacy.rs');
+// The payment stage compatibility source was retired: the mounted facade carries
+// both the owner adapters and the stage mapper, and it must stay that way.
+const paymentStage = read('crates/modules/rustok-commerce/src/services/checkout_payment_stages.rs');
 const operation = read('crates/modules/rustok-commerce/src/services/checkout_operation.rs');
 const recovery = read('crates/modules/rustok-commerce/src/services/recovering_staged_checkout.rs');
 const doc = read('crates/modules/rustok-commerce/docs/checkout-payment-stage-context.md');
@@ -106,7 +108,7 @@ const retryableTest = between(
 const nonRetryableTest = between(
   staged,
   '    fn non_retryable_payment_stage_boundary_requires_compensation()',
-  '    #[test]\n    fn retryable_marketplace_boundary_does_not_force_compensation()',
+  '    fn retryable_marketplace_boundary_does_not_force_compensation()',
   'non-retryable payment source test',
 );
 requireText(retryableTest, 'retryable: true', 'retryable payment fixture');
@@ -144,7 +146,7 @@ for (const [key, expected] of Object.entries({
   retryable_payment_boundary_synchronous_compensation: false,
   operation_journal_implementation_changed: false,
   recovery_service_implementation_changed: false,
-  payment_stage_execution_changed: false,
+  payment_stage_execution_changed: true,
   source_tests_added: true,
   runtime_evidence_claimed: false,
 })) {

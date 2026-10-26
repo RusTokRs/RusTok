@@ -104,10 +104,6 @@ This slice does not change:
 - The GraphQL order boundary classifies `CommandReceiptCorrupt` as retryable and
   temporarily unavailable, while this stage treats it as an invariant failure
   that needs operator review. Both mappers should agree.
-- `checkout_payment_stages_legacy.rs` and
-  `checkout_fulfillment_stages_legacy.rs` are still mounted and still carry raw
-  `tenant_id = %context.tenant_id` style diagnostics; retiring them is the next
-  block.
 - Compile, runtime, replay, restart, and database evidence remain open.
 
 ## Intended maintainer checks

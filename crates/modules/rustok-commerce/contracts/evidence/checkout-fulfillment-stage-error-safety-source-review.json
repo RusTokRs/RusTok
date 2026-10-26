@@ -3,7 +3,6 @@
   "status": "commerce_checkout_fulfillment_stage_error_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
     "crates/modules/rustok-commerce/src/services/checkout_fulfillment_stages.rs",
-    "crates/modules/rustok-commerce/src/services/checkout_fulfillment_stages_legacy.rs",
     "crates/modules/rustok-commerce/docs/checkout-fulfillment-stage-context.md",
     "scripts/verify/verify-commerce-checkout-fulfillment-stage-context.mjs",
     "scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs",
@@ -12,8 +11,7 @@
   ],
   "source_contract": {
     "mounted_facade_active": true,
-    "legacy_source_private": true,
-    "legacy_source_business_logic_changed": false,
+    "legacy_source_retired": true,
     "canonical_fulfillment_port_api_preserved": true,
     "canonical_order_payment_port_api_preserved": true,
     "owner_context_delegation_preserved": true,
@@ -27,8 +25,8 @@
     "owner_message_length_logged": true,
     "owner_code_preserved": true,
     "owner_retryability_preserved": true,
+    "stage_mapper_message_rederived": true,
     "typed_kind_policy_preserved": true,
-    "legacy_tracing_suppressed": true,
     "retry_disposition_preserved": true,
     "successful_dtos_changed": false,
     "checkpoint_order_changed": false,

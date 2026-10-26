@@ -21,7 +21,7 @@
     "retryable_fulfillment_boundary_synchronous_compensation": false,
     "retryable_error_execution_claimable": true,
     "compensation_claim_requires_compensation_status": true,
-    "fulfillment_stage_execution_changed": false,
+    "fulfillment_stage_execution_changed": true,
     "operation_journal_implementation_changed": false,
     "recovery_service_implementation_changed": false,
     "pipeline_error_code_mapping_changed": false,

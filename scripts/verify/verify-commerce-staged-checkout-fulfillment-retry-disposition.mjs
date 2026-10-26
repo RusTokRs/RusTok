@@ -27,11 +27,9 @@ const between = (source, start, end, label) => {
 };
 
 const staged = read('crates/modules/rustok-commerce/src/services/staged_checkout.rs');
-const fulfillmentFacade = read('crates/modules/rustok-commerce/src/services/checkout_fulfillment_stages.rs');
-const fulfillmentLegacy = read(
-  'crates/modules/rustok-commerce/src/services/checkout_fulfillment_stages_legacy.rs',
-);
-const fulfillment = `${fulfillmentFacade}\n${fulfillmentLegacy}`;
+// The fulfillment stage compatibility source was retired: the mounted facade
+// carries both the owner adapters and the stage mapper, and it must stay that way.
+const fulfillment = read('crates/modules/rustok-commerce/src/services/checkout_fulfillment_stages.rs');
 const operation = read('crates/modules/rustok-commerce/src/services/checkout_operation.rs');
 const recovery = read('crates/modules/rustok-commerce/src/services/recovering_staged_checkout.rs');
 const doc = read('crates/modules/rustok-commerce/docs/checkout-fulfillment-stage-context.md');
@@ -68,7 +66,7 @@ for (const [source, value, label] of [
   [staged, 'CheckoutFulfillmentStageError', 'typed fulfillment stage import'],
   [
     disposition,
-    'CheckoutStagePipelineError::FulfillmentStage(\n            CheckoutFulfillmentStageError::Boundary {\n                retryable: true,',
+    'CheckoutStagePipelineError::FulfillmentStage(CheckoutFulfillmentStageError::Boundary {\n            retryable: true,',
     'retryable fulfillment boundary disposition',
   ],
   [disposition, '=> FailureDisposition::Retryable', 'retryable disposition target'],
@@ -119,9 +117,9 @@ for (const [source, value, label] of [
     'fulfillment checkpoint preservation',
   ],
   [
-    fulfillmentFacade,
-    'include!("checkout_fulfillment_stages_legacy.rs");',
-    'safe facade preserves retained implementation',
+    fulfillment,
+    'fn fulfillment_stage_boundary_error(',
+    'sanitized fulfillment stage boundary',
   ],
 ]) requireText(source, value, label);
 
@@ -153,7 +151,7 @@ for (const [key, expected] of Object.entries({
   retryable_fulfillment_boundary_synchronous_compensation: false,
   retryable_error_execution_claimable: true,
   compensation_claim_requires_compensation_status: true,
-  fulfillment_stage_execution_changed: false,
+  fulfillment_stage_execution_changed: true,
   operation_journal_implementation_changed: false,
   recovery_service_implementation_changed: false,
   source_tests_added: true,

@@ -402,16 +402,19 @@ for (const commerceJournalOwner of [
   );
 }
 
-const legacyStages = read(
-  'crates/modules/rustok-commerce/src/services/checkout_payment_stages_legacy.rs',
-);
-const legacyWiring =
-  countText(legacyStages, 'in_process_checkout_payment_execution_port(') +
-  countText(legacyStages, 'InProcessCheckoutPaymentExecutionPort::with_provider_registry(');
-if (legacyWiring !== 2) {
-  failures.push(
-    `expected both legacy checkout payment stage constructors to wire the admission port, found ${legacyWiring}`,
-  );
+// Both checkout payment stage constructors must build the admission reader and
+// hand it to the owner port factory. The retired compatibility source had its
+// own copy of these constructors; it is gone, so the two live constructors in
+// the mounted facade are the only place the wiring can drift.
+for (const constructor of [
+  'pub fn with_provider_registry(',
+  'pub fn in_process_checkout_payment_execution_port(',
+]) {
+  const start = stages.indexOf(constructor);
+  const block = start < 0 ? '' : stages.slice(start, stages.indexOf('\n    }\n', start));
+  if (!block.includes('checkout_admission')) {
+    failures.push(`${constructor} must wire the admission reader`);
+  }
 }
 const serverRuntime = read('apps/server/src/services/commerce_provider_runtime.rs');
 requireText(

@@ -74,11 +74,6 @@ requireText(
   '#[path = "checkout_stage_pipeline_owner_ports.rs"]',
   "commerce services mount",
 );
-requireText(
-  paymentStageFacade,
-  '#[path = "checkout_payment_stages_legacy.rs"]',
-  "payment stage legacy mount",
-);
 
 for (const [source, label, required] of [
   [
@@ -136,13 +131,13 @@ for (const [value, label] of [
 
 for (const [value, label] of [
   ["SanitizingCheckoutPaymentExecutionPort", "payment-stage owner adapter"],
-  ["mod rustok_payment_shim", "payment-stage owner shim"],
+  ["mod payment_execution_port", "payment-stage owner port module"],
 ]) {
   requireText(paymentStageFacade, value, label);
 }
 
 for (const [value, label] of [
-  ['include!("checkout_fulfillment_stages_legacy.rs");', "mounted fulfillment-stage include"],
+  ["mod fulfillment_execution_port", "fulfillment-stage owner port module"],
   ["struct SanitizingCheckoutFulfillmentExecutionPort", "fulfillment-stage owner adapter"],
   ["struct SanitizingCheckoutOrderPaymentSettlementPort", "order-settlement owner adapter"],
 ]) {
