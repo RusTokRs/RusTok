@@ -235,7 +235,7 @@ impl ModuleOperationJournal {
         ))
         .await
         .map_err(database_error)?
-        .map(operation_snapshot)
+        .map(|row| operation_snapshot(backend, row))
         .transpose()
     }
 
@@ -297,7 +297,7 @@ impl ModuleOperationJournal {
         .await
         .map_err(database_error)?
         .into_iter()
-        .map(operation_snapshot)
+        .map(|row| operation_snapshot(backend, row))
         .collect()
     }
 
@@ -477,7 +477,7 @@ impl ModuleOperationJournal {
         ))
         .await
         .map_err(database_error)?
-        .map(operation_snapshot)
+        .map(|row| operation_snapshot(backend, row))
         .transpose()
     }
 
@@ -761,7 +761,7 @@ impl ModuleOperationJournal {
             .map_err(database_error)?;
         let candidates = rows
             .into_iter()
-            .map(operation_snapshot)
+            .map(|row| operation_snapshot(backend, row))
             .collect::<Result<Vec<_>, _>>()?;
 
         let mut report = StaleModuleOperationReapReport::default();
@@ -999,7 +999,7 @@ impl StaticTenantLifecycleStore {
         ))
         .await
         .map_err(static_lifecycle_database_error)?
-        .map(|row| static_lifecycle_snapshot_from_row(row, tenant_id, module_slug))
+        .map(|row| static_lifecycle_snapshot_from_row(backend, row, tenant_id, module_slug))
         .transpose()
     }
 
@@ -1157,7 +1157,7 @@ impl StaticTenantLifecycleStore {
             let module_slug: String = row
                 .try_get("", "module_slug")
                 .map_err(static_lifecycle_database_error)?;
-            let snapshot = static_lifecycle_snapshot_from_row(row, tenant_id, &module_slug)?;
+            let snapshot = static_lifecycle_snapshot_from_row(backend, row, tenant_id, &module_slug)?;
             snapshots.insert(module_slug, snapshot);
         }
         Ok(snapshots)
@@ -1560,6 +1560,7 @@ impl StaticTenantLifecycleStore {
 }
 
 fn static_lifecycle_snapshot_from_row(
+    backend: SupportedBackend,
     row: sea_orm::QueryResult,
     tenant_id: Uuid,
     module_slug: &str,
@@ -1578,8 +1579,8 @@ fn static_lifecycle_snapshot_from_row(
         revision: u64::try_from(revision).map_err(|_| {
             StaticTenantLifecycleStoreError::InconsistentState(module_slug.to_string())
         })?,
-        active_idempotency_key: row
-            .try_get("", "active_idempotency_key")
+        active_idempotency_key: backend
+            .optional_uuid_from_row(&row, "active_idempotency_key")
             .map_err(static_lifecycle_database_error)?,
     })
 }
@@ -1616,12 +1617,15 @@ fn replay_or_conflict(
 }
 
 fn operation_snapshot(
+    backend: SupportedBackend,
     row: sea_orm::QueryResult,
 ) -> Result<ModuleOperationSnapshot, ModuleOperationStoreError> {
     let status: String = row.try_get("", "status").map_err(database_error)?;
     Ok(ModuleOperationSnapshot {
-        id: row.try_get("", "id").map_err(database_error)?,
-        tenant_id: row.try_get("", "tenant_id").map_err(database_error)?,
+        id: backend.uuid_from_row(&row, "id").map_err(database_error)?,
+        tenant_id: backend
+            .uuid_from_row(&row, "tenant_id")
+            .map_err(database_error)?,
         module_slug: row.try_get("", "module_slug").map_err(database_error)?,
         requested_enabled: row
             .try_get("", "requested_enabled")
@@ -1637,7 +1641,9 @@ fn operation_snapshot(
         requested_by: row.try_get("", "requested_by").map_err(database_error)?,
         trace_id: row.try_get("", "trace_id").map_err(database_error)?,
         correlation_id: row.try_get("", "correlation_id").map_err(database_error)?,
-        idempotency_key: row.try_get("", "idempotency_key").map_err(database_error)?,
+        idempotency_key: backend
+            .optional_uuid_from_row(&row, "idempotency_key")
+            .map_err(database_error)?,
         expected_revision: row
             .try_get::<Option<i64>>("", "expected_revision")
             .map_err(database_error)?
@@ -1684,7 +1690,7 @@ impl TenantModuleStateStore {
         .map(|row| {
             let enabled: Option<bool> = row.try_get("", "enabled").map_err(database_error)?;
             Ok(TenantModuleStateRecord {
-                id: row.try_get("", "id").map_err(database_error)?,
+                id: backend.uuid_from_row(&row, "id").map_err(database_error)?,
                 enabled,
                 previous_enabled: enabled,
                 changed: false,
@@ -1718,8 +1724,8 @@ impl TenantModuleStateStore {
             .await
             .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?
         {
-            let id: Uuid = row
-                .try_get("", "id")
+            let id: Uuid = backend
+                .uuid_from_row(&row, "id")
                 .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?;
             let previous_enabled: Option<bool> = row
                 .try_get("", "enabled")
@@ -1798,7 +1804,7 @@ impl TenantModuleStateStore {
             .await
             .map_err(database_error)?;
         if let Some(row) = existing {
-            let id: Uuid = row.try_get("", "id").map_err(database_error)?;
+            let id: Uuid = backend.uuid_from_row(&row, "id").map_err(database_error)?;
             let enabled: Option<bool> = row.try_get("", "enabled").map_err(database_error)?;
             // A settings save never changes recorded enablement intent:
             // the column is not part of this UPDATE at all.
@@ -2058,8 +2064,8 @@ mod tests {
                     expected_revision INTEGER, \
                     error_message TEXT, \
                     result_snapshot TEXT, \
-                    created_at TEXT NOT NULL, \
-                    updated_at TEXT NOT NULL\
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
                  )"
                 .to_string(),
             ))
