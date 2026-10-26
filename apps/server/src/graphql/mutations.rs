@@ -2516,6 +2516,7 @@ mod tests {
             error: PlatformCompositionError,
             expected_code: &'static str,
             message_fragment: &'static str,
+            forbidden_fragment: Option<&'static str>,
         }
 
         let cases = vec![
@@ -2527,18 +2528,21 @@ mod tests {
                 },
                 expected_code: "BAD_USER_INPUT",
                 message_fragment: "revision conflict",
+                forbidden_fragment: None,
             },
             Case {
                 name: "serialize failure",
                 error: PlatformCompositionError::Serialize("serde exploded".to_string()),
                 expected_code: "INTERNAL_ERROR",
-                message_fragment: "serde exploded",
+                message_fragment: "module composition is unavailable",
+                forbidden_fragment: Some("serde exploded"),
             },
             Case {
                 name: "deserialize failure",
                 error: PlatformCompositionError::Deserialize("bad snapshot".to_string()),
                 expected_code: "INTERNAL_ERROR",
-                message_fragment: "bad snapshot",
+                message_fragment: "module composition is unavailable",
+                forbidden_fragment: Some("bad snapshot"),
             },
             Case {
                 name: "database failure",
@@ -2546,7 +2550,8 @@ mod tests {
                     "db is unavailable".to_string(),
                 )),
                 expected_code: "INTERNAL_ERROR",
-                message_fragment: "db is unavailable",
+                message_fragment: "module composition is unavailable",
+                forbidden_fragment: Some("db is unavailable"),
             },
             Case {
                 name: "manifest validation direct mapping",
@@ -2555,6 +2560,7 @@ mod tests {
                 )),
                 expected_code: "BAD_USER_INPUT",
                 message_fragment: "required",
+                forbidden_fragment: None,
             },
         ];
 
@@ -2568,6 +2574,13 @@ mod tests {
                 "message contract drifted for case `{}`",
                 case.name
             );
+            if let Some(forbidden) = case.forbidden_fragment {
+                assert!(
+                    !mapped.message.to_lowercase().contains(forbidden),
+                    "internal error detail leaked into client message for case `{}`",
+                    case.name
+                );
+            }
             let gql = mapped.extend();
             assert_eq!(
                 error_code(&gql).as_deref(),
@@ -2590,6 +2603,7 @@ mod tests {
             error: PlatformCompositionBuildError,
             expected_code: &'static str,
             expected_message_fragment: &'static str,
+            forbidden_fragment: Option<&'static str>,
             exact_message: Option<&'static str>,
         }
 
@@ -2598,7 +2612,8 @@ mod tests {
                 name: "build enqueue failure",
                 error: PlatformCompositionBuildError::Build("enqueue failed".to_string()),
                 expected_code: "INTERNAL_ERROR",
-                expected_message_fragment: "enqueue failed",
+                expected_message_fragment: "Module composition build is unavailable",
+                forbidden_fragment: Some("enqueue failed"),
                 exact_message: None,
             },
             Case {
@@ -2610,6 +2625,7 @@ mod tests {
                 ),
                 expected_code: "BAD_USER_INPUT",
                 expected_message_fragment: "required",
+                forbidden_fragment: None,
                 exact_message: None,
             },
             Case {
@@ -2618,7 +2634,8 @@ mod tests {
                     PlatformCompositionError::Serialize("serde exploded".to_string()),
                 ),
                 expected_code: "INTERNAL_ERROR",
-                expected_message_fragment: "serde exploded",
+                expected_message_fragment: "Module composition is unavailable",
+                forbidden_fragment: Some("serde exploded"),
                 exact_message: None,
             },
             Case {
@@ -2627,7 +2644,8 @@ mod tests {
                     PlatformCompositionError::Deserialize("bad snapshot".to_string()),
                 ),
                 expected_code: "INTERNAL_ERROR",
-                expected_message_fragment: "bad snapshot",
+                expected_message_fragment: "Module composition is unavailable",
+                forbidden_fragment: Some("bad snapshot"),
                 exact_message: None,
             },
             Case {
@@ -2638,7 +2656,8 @@ mod tests {
                     )),
                 ),
                 expected_code: "INTERNAL_ERROR",
-                expected_message_fragment: "db is unavailable",
+                expected_message_fragment: "Module composition is unavailable",
+                forbidden_fragment: Some("db is unavailable"),
                 exact_message: None,
             },
             Case {
@@ -2651,6 +2670,7 @@ mod tests {
                 ),
                 expected_code: "BAD_USER_INPUT",
                 expected_message_fragment: "revision conflict",
+                forbidden_fragment: None,
                 exact_message: Some(
                     "Platform composition revision conflict: expected 11, current 13",
                 ),
@@ -2662,6 +2682,7 @@ mod tests {
                 )),
                 expected_code: "BAD_USER_INPUT",
                 expected_message_fragment: "positive expected revision",
+                forbidden_fragment: None,
                 exact_message: None,
             },
             Case {
@@ -2674,6 +2695,7 @@ mod tests {
                 )),
                 expected_code: "BAD_USER_INPUT",
                 expected_message_fragment: "module selection is invalid",
+                forbidden_fragment: None,
                 exact_message: None,
             },
         ];
@@ -2685,6 +2707,13 @@ mod tests {
                 "message fragment drifted for case `{}`",
                 case.name
             );
+            if let Some(forbidden) = case.forbidden_fragment {
+                assert!(
+                    !mapped.message.contains(forbidden),
+                    "internal error detail leaked into client message for case `{}`",
+                    case.name
+                );
+            }
             if let Some(exact) = case.exact_message {
                 assert_eq!(
                     mapped.message, exact,
