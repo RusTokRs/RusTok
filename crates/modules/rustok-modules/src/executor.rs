@@ -651,6 +651,27 @@ pub(crate) enum ClaimHeartbeatDispatchError {
     Persistence(String),
 }
 
+/// One claim-lease renewal tick. Extracted as a named future so the
+/// dispatch loop can re-arm the same pinned future type after each
+/// successful renewal (distinct `async move` blocks are distinct types).
+async fn lifecycle_claim_heartbeat_tick(
+    db: &DatabaseConnection,
+    tenant_id: uuid::Uuid,
+    module_slug: &str,
+    expected_revision: u64,
+    idempotency_key: uuid::Uuid,
+) -> Result<bool, StaticTenantLifecycleStoreError> {
+    tokio::time::sleep(LIFECYCLE_CLAIM_HEARTBEAT_INTERVAL).await;
+    StaticTenantLifecycleStore::heartbeat(
+        db,
+        tenant_id,
+        module_slug,
+        expected_revision,
+        idempotency_key,
+    )
+    .await
+}
+
 /// Dispatches one lifecycle hook while renewing the exact aggregate claim.
 /// If the claim lease has already been reclaimed or the revision advanced,
 /// dispatch is abandoned before the caller performs any further durable
@@ -671,17 +692,13 @@ pub(crate) async fn dispatch_lifecycle_with_claim_heartbeat(
     // inside the timer branch. A hook may temporarily hold the only pooled
     // SQLite connection; the dispatch future must keep making progress so
     // it can release that connection for the heartbeat query.
-    let mut heartbeat = Box::pin(async move {
-        tokio::time::sleep(LIFECYCLE_CLAIM_HEARTBEAT_INTERVAL).await;
-        StaticTenantLifecycleStore::heartbeat(
-            db,
-            tenant_id,
-            module_slug,
-            expected_revision,
-            idempotency_key,
-        )
-        .await
-    });
+    let mut heartbeat = Box::pin(lifecycle_claim_heartbeat_tick(
+        db,
+        tenant_id,
+        module_slug,
+        expected_revision,
+        idempotency_key,
+    ));
     loop {
         tokio::select! {
             biased;
@@ -704,17 +721,13 @@ pub(crate) async fn dispatch_lifecycle_with_claim_heartbeat(
                         ));
                     }
                 }
-                heartbeat = Box::pin(async move {
-                    tokio::time::sleep(LIFECYCLE_CLAIM_HEARTBEAT_INTERVAL).await;
-                    StaticTenantLifecycleStore::heartbeat(
-                        db,
-                        tenant_id,
-                        module_slug,
-                        expected_revision,
-                        idempotency_key,
-                    )
-                    .await
-                });
+                heartbeat = Box::pin(lifecycle_claim_heartbeat_tick(
+                    db,
+                    tenant_id,
+                    module_slug,
+                    expected_revision,
+                    idempotency_key,
+                ));
             }
         }
     }

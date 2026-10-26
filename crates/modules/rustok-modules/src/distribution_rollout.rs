@@ -807,6 +807,7 @@ where
         claim_rollout_assignment(
             &transaction,
             rollout_id,
+            rollout.status,
             &assignment,
             claim_id,
             &command.agent_id,
@@ -1919,11 +1920,8 @@ async fn validate_rollout_release_identity(
     if !rollout_release_identity_valid(
         rollout,
         &release_state,
-        current_release.status,
-        current_release.release_revision,
-        recovery_source_release
-            .as_ref()
-            .map(|release| (release.distribution_release_id, release.status)),
+        &current_release,
+        recovery_source_release.as_ref(),
     ) {
         return Err(ModuleStaticDistributionRolloutError::StaleRollout);
     }
