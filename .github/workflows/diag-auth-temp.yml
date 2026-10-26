@@ -54,11 +54,22 @@ jobs:
           git config user.name "diag-autofmt"
           git config user.email "diag-autofmt@users.noreply.github.com"
           git commit -m "style: rustfmt on PR-changed files (diag autofmt)"
+          ok=0
+          PUSH_LOG=""
           for i in 1 2 3; do
-            git pull --rebase origin arena/551d146c-rustok && git push origin HEAD:arena/551d146c-rustok && break
+            OUT=$( (git pull --rebase origin arena/551d146c-rustok && git push origin HEAD:arena/551d146c-rustok) 2>&1 ) && { ok=1; PUSH_LOG="$OUT"; break; }
+            PUSH_LOG="$OUT"
+            git rebase --abort 2>/dev/null || true
             sleep 5
           done
-          echo "::notice::autofmt: done"
+          {
+            echo "### AUTOFMT result ok=$ok for ${GITHUB_SHA:0:8}"
+            echo '```'
+            echo "$PUSH_LOG" | tail -25
+            echo '```'
+          } > /tmp/autofmt_comment.md
+          GH_TOKEN="${{ github.token }}" gh pr comment 4646 --body-file /tmp/autofmt_comment.md || true
+          echo "::notice::autofmt: done ok=$ok"
 
   regen-event-artifact:
     name: Regenerate event contract digests
