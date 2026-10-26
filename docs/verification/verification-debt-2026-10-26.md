@@ -1,0 +1,244 @@
+# Разбор падающих проверок RusTok — инвентаризация и план
+
+Ветка `arena/a90c8cc9-rustok`, HEAD `5d0d325`. Дата разбора: 2026-10-26.
+
+> Числа в этом документе получены двойным прогоном корпуса guard'ов: базовый коммит в
+> `git worktree` и рабочее дерево, с записью stdout+stderr и кода выхода. Артефакты прогона —
+> `guards.txt`, `base.status`, `now.status`, `triage.json` — лежат вне репозитория, в рабочей
+> папке сессии; методика воспроизводится командами из раздела 0.
+
+---
+
+## 0. Коротко
+
+| Показатель | Значение |
+|---|---|
+| Guard-скриптов `verify-*.mjs` (без `*.test.mjs`) | **1288** |
+| Проходят на `5d0d325` | **823** |
+| Падают | **465** |
+| Из них не guard'ы (CLI-инструменты, ждут аргументов) | **2** |
+| Из них нужна среда (`node_modules`/сеть) | **5** |
+| **Красных статических guard'ов** | **458** (465 минус 2 CLI и 5 env) |
+| Регрессий в проходе 4 (`550afbe` → `5d0d325`) | **0** |
+| Всего починено за четыре прохода | 40 guard'ов, 3 удалённых legacy-источника, 2 реальных дефекта в коде |
+
+**Методика.** Один и тот же список файлов прогоняется дважды: на базовом коммите в
+`git worktree` и на рабочем дереве, с записью stdout+stderr и кода выхода. Диф даёт два числа,
+которым можно верить: сколько стало зелёными и сколько стало красными. Всё остальное —
+классификация текста ошибок.
+
+```
+guards.txt     список 1288 файлов
+base.status    коды выхода на 550afbe
+base/          stdout+stderr каждого guard'а на 550afbe
+now.status     коды выхода на 5d0d325
+now/           stdout+stderr каждого guard'а на 5d0d325
+triage.json    строка на красный guard: путь, класс, wiring
+runone.sh      раннер одного файла
+```
+
+Воспроизведение:
+
+```bash
+git worktree add --detach ../base 550afbe
+find scripts/verify crates -type f -name 'verify-*.mjs' -not -name '*.test.mjs' | sort -u > guards.txt
+xargs -a guards.txt -P 8 -n 1 ./runone.sh base > base.status   # в worktree
+xargs -a guards.txt -P 8 -n 1 ./runone.sh now  > now.status    # в рабочем дереве
+```
+
+Один прогон — около 36 секунд на 16 ядрах.
+
+**Классы 465 красных:**
+
+| Класс | Сколько | Что значит |
+|---|---|---|
+| `missing` | 360 | guard требует маркер, которого нет в коде |
+| `other` | 74 | падает по своей причине (assert, исключение, парсинг) |
+| `missing+forbidden` | 18 | и требует одного, и требует отсутствия другого |
+| `forbidden` | 6 | находит то, что запрещено |
+| `env:node-module` | 5 | нет `node_modules` (playwright и пр.) |
+| `cli-not-a-guard` | 2 | CLI-инструмент, без аргументов печатает usage |
+
+**Wiring (как guard вообще запускается):**
+
+| | Сколько |
+|---|---|
+| нигде не подключён (orphan) | **408** |
+| в GitHub workflow | 38 |
+| в `package.json` скрипте | 16 |
+| и там, и там | 3 |
+
+То есть **87% красных guard'ов никто никогда не запускает**. Красный guard, которого нет в CI,
+не защищает ничего — он просто лежит.
+
+---
+
+## 1. Что уже сделано (хронология)
+
+| Проход | Коммит | Итог |
+|---|---|---|
+| 1 | `4a7f4df` | 5 нерабочих guard'ов + реальный дефект: `FulfillmentCreateLabelRecoveryService::retry` декодировал `request_payload` до `claim_execution` |
+| 2 | `550afbe` | 27 guard'ов: FBA-контракты вместо wildcard-экспортов, пины GitHub Actions по имени+40-hex, снятие git-blob пинов, библиотека `source-text.mjs` |
+| 3 | `b46b6d2` | ограниченная диагностика order-владельца + ретайрмент мёртвого дубликата пайплайна |
+| 4 | `5d0d325` | ретайрмент `checkout_payment_stages_legacy.rs` и `checkout_fulfillment_stages_legacy.rs` |
+
+### 1.1. Проход 3: утечка текста order-владельца (`b46b6d2`)
+
+`checkout_order_stages.rs` читал заказ напрямую через `OrderService` и заворачивал ошибку в
+`CheckoutOrderStageError::Conflict(format!("… {err}"))`; `staged_checkout.rs` сохранял
+`pipeline.to_string()` в журнал операции через `mark_retryable_error` /
+`mark_compensation_required`. Сырой `Display` ошибки rustok-order (включая текст `sea_orm::DbErr`
+с SQL-деталями) попадал в **персистентное поле операции** и в API статуса checkout-операции.
+
+Сделано:
+
+1. `checkout_order_owner_failure.rs` — тотальная проекция всех вариантов `OrderError` на
+   стабильный код `checkout.order_*` + статичное сообщение + retryability; текст владельца живёт
+   только как `owner_message_shape`/`owner_message_len` за `Debug = redacted`.
+2. Чтение проекции переведено на `CheckoutOrderRecoveryAdapter::read_checkout_order`
+   (владелец сохраняет `require_policy(read)`), стадия больше не держит `OrderService`.
+3. `OrderBoundary { code, message, retryable }` в creation/confirmation, `#[from] OrderError`
+   удалены — новый вызов не обойдёт проекцию.
+4. `bounded_failure()` отдаёт код и retryability в пайплайн: retryable-сбой заказа больше не
+   эскалируется в `CompensationRequired`.
+5. `pipeline_failure_message` персистит только commerce-authored текст, иначе — статичную фразу.
+6. `checkout_stage_pipeline.rs` (575 строк, мёртвый дубликат смонтированного
+   `checkout_stage_pipeline_owner_ports.rs`) удалён.
+
+### 1.2. Проход 4: ретайрмент payment/fulfillment (`5d0d325`)
+
+`checkout_payment_stages_legacy.rs` (600 строк) и `checkout_fulfillment_stages_legacy.rs`
+(578 строк) были смонтированы только через `#[path]`/`include!` и несли «сырые» контекстные
+диагностики (`tenant_id = %context.tenant_id`, `actor = ?context.actor`,
+`correlation_id = %context.correlation_id`, `idempotency_key = ?context.idempotency_key`) под
+`tracing_shim`, единственная задача которого — реэкспортировать настоящие макросы.
+
+Не «перепин», а слияние: ограниченные адаптеры (`sanitize_owner_error`) и мапперы стадий, уже
+жившие в фасадах, теперь лежат в смонтированных модулях (`payment_execution_boundary`,
+`payment_execution_port`, `owner_execution_boundary`, `fulfillment_execution_port`,
+`order_payment_settlement_port`). Удалены вместе с файлами: `rustok_api_shim`,
+`rustok_payment_shim`, `rustok_fulfillment_shim`, `rustok_order_shim`, `tracing_shim`.
+
+**Усиление, которого не было:** маппер теперь *пересчитывает* статичное сообщение из
+типизированного `PortErrorKind`, а не берёт `error.message` из `BoundaryPortError`. Кастомный
+порт (`with_payment_port` / `with_fulfillment_port` / `with_order_payment_port`) больше не может
+протащить текст владельца через `Boundary`-вариант.
+
+---
+
+## 2. Оставшиеся 465: по владельцам
+
+| Область | Красных |
+|---|---|
+| forum | **128** |
+| commerce | **84** |
+| rustok-pages | 41 |
+| index | 39 |
+| product | 21 |
+| groups | 19 |
+| fulfillment | 15 |
+| payment | 14 |
+| blog | 10 |
+| social / cart / notifications | 9 / 7 / 6 |
+| остальное (≤5 каждая) | ~80 |
+
+---
+
+## 3. Три системные причины (а не 465 разных проблем)
+
+### 3.1. Guard'ы требуют ровно того, что политика запрещает — 21 guard
+
+Это самый опасный класс: **не код нарушает контракт, а проверка его требует нарушить**.
+
+```
+✗ tenant log: missing tenant_id = %context.tenant_id
+✗ tenant logging: missing tenant_id = %tenant_id
+✗ internal message: missing internal_message = %error.message
+✗ message: error.message
+```
+
+21 guard (≈76 отдельных требований) буквально требует писать сырые tenant/correlation/
+idempotency-значения и текст ошибки владельца в лог. В commerce и cart такие проверки писались
+до перехода на bounded-диагностику и с тех пор не обновлялись. Примеры:
+`verify-cart-checkout-tenant-context` (9), `verify-cart-checkout-local-error-context` (9),
+`verify-cart-checkout-admission-context` (9), `verify-cart-checkout-service-error-context` (8),
+`verify-commerce-storefront-order-customer-context` (10).
+
+**Вывод:** эти 21 guard надо переписывать *наоборот* — с `forbidText` вместо `requireText`, как
+уже сделано в `verify-commerce-checkout-owner-stage-boundary`. Это не «покрасить», это смена
+политики в проверке.
+
+### 3.2. Guard'ы не умеют находить свой блок в изменившемся файле — 19 guard
+
+Сообщение `unable to isolate source block` / `failed to isolate` означает: helper
+`between(source, start, end)` не нашёл одну из границ. Причина почти всегда одна — **маркер
+конца блока изменился** (добавили `#[cfg]`, `map_err` стал однострочным, поменялся порядок
+функций), а начало нашлось. Guard падает не потому, что код плохой, а потому что перестал
+узнавать хороший код.
+
+Пример из этого прохода: `verify-commerce-staged-checkout-payment-retry-disposition` искал конец
+теста по `#[test]\n    fn retryable_marketplace…`, а между ними стоял
+`#[cfg(feature = "marketplace-financial")]`. Guard был красным годами.
+
+Лечение: `between` должен сообщать, **какая** граница не найдена, и по возможности искать по
+уникальному якорю функции, а не по паре «начало+конец».
+
+### 3.3. Guard'ы-сироты — 408 из 465
+
+408 красных guard'ов не вызываются ни из `package.json`, ни из workflow. Их нельзя «держать
+зелёными», потому что никто не заметит, когда они станут красными. Это главная причина, по
+которой долг накопился: 128 forum- и 84 commerce-проверки писались под архитектуру, которую
+потом меняли, и никто об этом не узнал.
+
+**Первое, что нужно сделать (до любой починки):** решить судьбу каждого сироты — подключить
+в `verify:all`, либо удалить. Мёртвый guard хуже отсутствующего: он создаёт иллюзию покрытия и
+съедает время при каждом массовом прогоне.
+
+---
+
+## 4. Что чинить и в каком порядке
+
+| # | Блок | Объём | Почему сейчас |
+|---|---|---|---|
+| 1 | 21 guard «требует сырых значений» → `forbidText` | 21 | Прямое противоречие безопасности; пока они красные, их нельзя включить в CI, а включить надо |
+| 2 | 19 guard'ов с `unable to isolate` | 19 | Механическая причина, лечится библиотекой `between` с диагностикой |
+| 3 | forum: 128 | 128 | Самый большой кусок; после (1) и (2) станет видно, сколько из них — настоящий дрейф |
+| 4 | content-gap в rustok-pages (41) | 41 | Требует дописывания кода, а не guard'ов |
+| 5 | index (39), product (21), groups (19) | 79 | Маркерный дрейф, правится пакетами |
+| 6 | inventory 422 сироты: подключить/удалить | 408 | Без этого всё остальное не имеет смысла |
+
+---
+
+## 5. Ошибки, которые я уже совершил и не повторяю
+
+Записано, чтобы не наступить снова:
+
+- **Нельзя «перепинить» guard на код механически.** В commerce код уже на bounded-диагностике,
+  а guard'ы пиннят `error = ?error`. Замена пути даёт `unable to isolate`; нужна
+  пере-выводка маркеров из реального контракта.
+- **Нельзя хардкодить один SHA workflow-экшена.** Правильно: имя + 40 hex.
+- **Нельзя реанимировать git-blob пины.** Вместо них — контентные маркеры и `historical_record`.
+- **Удалённый legacy нельзя ни удалять из guard'а, ни перепинивать**: правильная реакция guard'а —
+  утверждение, что файла нет.
+- **`include!` — не единственный способ монтирования**: `#[path]` монтирует файл без `include!`,
+  поэтому grep по `include!` не находит такие модули.
+- **`node guard.mjs | head` маскирует код выхода** — только `node … > file 2>&1; echo $?`.
+- **Нельзя судить по коду выхода**: 2 guard'а — CLI-инструменты, 5 падают из-за отсутствия
+  `node_modules`, 8 — из-за отсутствия cargo. Это среда, а не дрейф.
+
+---
+
+## 6. Ограничение, которое надо помнить
+
+Всё выше — статический анализ исходников Node-скриптами. **Rust не собирался, тесты не
+запускались**: в песочнице нет toolchain'а. Результаты сборки может дать только ваш прогон:
+
+```bash
+cargo check -p rustok-commerce --lib
+cargo clippy --workspace --all-targets --no-deps -- -D warnings   # CI гоняет именно это
+node --test scripts/verify/verify-commerce-checkout-completion-cutover.test.mjs
+```
+
+Отдельно стоит посмотреть на слитые в проходе 4 модули (`checkout_payment_stages.rs` 896 строк,
+`checkout_fulfillment_stages.rs` 877 строк): после удаления шимов там мог остаться
+неиспользуемый импорт, а clippy в CI идёт с `-D warnings`.
