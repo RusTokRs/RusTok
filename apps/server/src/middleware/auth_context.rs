@@ -705,9 +705,13 @@ mod tests {
         )
         .expect("forge access token");
 
+        // The canonical decoder rejects nil tenant claims before the
+        // middleware's own guard runs, so the caller sees the generic
+        // credential failure; the middleware check stays as defense in
+        // depth if decoder policy ever relaxes.
         assert_eq!(
             verified_tenant_id_from_access_token(&config, &token),
-            Err((StatusCode::UNAUTHORIZED, "Token tenant claim is invalid"))
+            Err((StatusCode::UNAUTHORIZED, "Invalid token signature"))
         );
     }
 

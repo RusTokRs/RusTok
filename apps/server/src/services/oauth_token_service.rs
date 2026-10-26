@@ -793,11 +793,19 @@ mod tests {
             .expect("SQLite database");
         let backend = db.get_database_backend();
         let schema = Schema::new(backend);
+        db.execute_raw(
+            backend.build(&schema.create_table_from_entity(crate::models::tenants::Entity)),
+        )
+        .await
+        .expect("tenants table");
         db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_apps::Entity)))
             .await
             .expect("OAuth apps table");
 
         let tenant_id = Uuid::new_v4();
+        let mut tenant = crate::models::tenants::ActiveModel::new("Test tenant", "test-tenant");
+        tenant.id = Set(tenant_id);
+        tenant.insert(&db).await.expect("insert tenant");
         let app = app(
             serde_json::json!(["catalog:read"]),
             serde_json::json!(["client_credentials"]),
