@@ -523,7 +523,7 @@ impl AuthLifecycleService {
         }
 
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
-        let locked_user = Self::find_user_for_login_in_tx(&txn, tenant_id, email)
+        let locked_user = Self::find_user_for_login_in_tx(&txn, tenant_id, &email)
             .await?
             .ok_or(AuthLifecycleError::InvalidCredentials)?;
 
@@ -792,8 +792,10 @@ impl AuthLifecycleService {
 
         let new_refresh_token = generate_refresh_token().map_err(AuthLifecycleError::from)?;
         let new_token_hash = hash_refresh_token(&new_refresh_token);
-        let expires_at =
-            Self::session_expiration(now, config.refresh_expiration)?.min(absolute_deadline);
+        let expires_at = Ord::min(
+            Self::session_expiration(now, config.refresh_expiration)?,
+            absolute_deadline,
+        );
 
         let session_id = session.id;
         let replaced_token_hash = session.token_hash.clone();
@@ -879,6 +881,7 @@ impl AuthLifecycleService {
         current_session_id: uuid::Uuid,
         current_password: &str,
         new_password: &str,
+        min_password_length: usize,
     ) -> std::result::Result<(), AuthLifecycleError> {
         Self::change_password_db(
             ctx.db(),
@@ -887,6 +890,7 @@ impl AuthLifecycleService {
             current_session_id,
             current_password,
             new_password,
+            min_password_length,
         )
         .await
     }
