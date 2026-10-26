@@ -42,12 +42,15 @@ pub(crate) fn validate_module_admin_surface_contract(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn validate_module_docs_navigation_contract(
     manifest_path: &Path,
     slug: &str,
     spec: &ModuleSpec,
     admin_ui_crate: Option<&str>,
     storefront_ui_crate: Option<&str>,
+    admin_support_crate: Option<&str>,
+    storefront_support_crate: Option<&str>,
     showcase_admin_surfaces: &[String],
 ) -> Result<()> {
     let workspace_root = manifest_path.parent().with_context(|| {
@@ -103,6 +106,28 @@ pub(crate) fn validate_module_docs_navigation_contract(
                 "Module '{slug}' declares storefront UI, but {} is missing '{}'",
                 ui_index_path.display(),
                 storefront_link
+            );
+        }
+    }
+
+    if admin_support_crate.is_some() {
+        let admin_support_link = format!("../../{module_path}/admin/README.md");
+        if !ui_index.contains(&admin_support_link) {
+            anyhow::bail!(
+                "Module '{slug}' declares an admin support crate, but {} is missing '{}'",
+                ui_index_path.display(),
+                admin_support_link
+            );
+        }
+    }
+
+    if storefront_support_crate.is_some() {
+        let storefront_support_link = format!("../../{module_path}/storefront/README.md");
+        if !ui_index.contains(&storefront_support_link) {
+            anyhow::bail!(
+                "Module '{slug}' declares a storefront support crate, but {} is missing '{}'",
+                ui_index_path.display(),
+                storefront_support_link
             );
         }
     }

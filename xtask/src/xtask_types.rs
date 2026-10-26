@@ -5,7 +5,8 @@ pub(crate) use rustok_manifest::{
     BuildConfig, Manifest, ModuleGraphqlProvides, ModuleHttpProvides, ModulePackageCliProvides,
     ModulePackageCrateContract, ModulePackageDependency, ModulePackageManifest,
     ModulePackageMarketplaceMetadata, ModulePackageMetadata, ModulePackageProvides, ModuleSpec,
-    ModuleUiComponentProvides, ModuleUiI18nProvides, ModuleUiProvides, Settings,
+    ModuleUiComponentProvides, ModuleUiI18nProvides, ModuleUiProvides, ModuleUiSupportProvides,
+    Settings,
 };
 
 #[derive(Debug, Serialize)]
@@ -36,6 +37,8 @@ pub(crate) struct ModuleMarketplacePreview {
 pub(crate) struct ModuleUiPackagesPreview {
     pub(crate) admin: Option<ModuleUiPackagePreview>,
     pub(crate) storefront: Option<ModuleUiPackagePreview>,
+    pub(crate) admin_support: Option<ModuleUiPackagePreview>,
+    pub(crate) storefront_support: Option<ModuleUiPackagePreview>,
 }
 
 #[derive(Debug, Serialize)]

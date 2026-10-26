@@ -68,7 +68,14 @@ pub(crate) fn build_module_publish_preview(
             .provides
             .admin_ui
             .as_ref()
-            .and_then(|ui| ui.leptos_crate.as_deref()),
+            .and_then(|ui| ui.leptos_crate.as_deref())
+            .or_else(|| {
+                package_manifest
+                    .provides
+                    .admin_support
+                    .as_ref()
+                    .and_then(|ui| ui.leptos_crate.as_deref())
+            }),
     )?;
     validate_module_ui_surface_contract(
         slug,
@@ -78,13 +85,21 @@ pub(crate) fn build_module_publish_preview(
             .provides
             .storefront_ui
             .as_ref()
-            .and_then(|ui| ui.leptos_crate.as_deref()),
+            .and_then(|ui| ui.leptos_crate.as_deref())
+            .or_else(|| {
+                package_manifest
+                    .provides
+                    .storefront_support
+                    .as_ref()
+                    .and_then(|ui| ui.leptos_crate.as_deref())
+            }),
     )?;
 
     let admin_preview = validate_module_ui_package(
         slug,
         &module_root,
         "admin",
+        "admin_ui",
         package_manifest
             .provides
             .admin_ui
@@ -97,9 +112,36 @@ pub(crate) fn build_module_publish_preview(
         slug,
         &module_root,
         "storefront",
+        "storefront_ui",
         package_manifest
             .provides
             .storefront_ui
+            .as_ref()
+            .and_then(|ui| ui.leptos_crate.as_deref()),
+        &package_manifest.module.version,
+        workspace_manifest,
+    )?;
+    let admin_support_preview = validate_module_ui_package(
+        slug,
+        &module_root,
+        "admin",
+        "admin_support",
+        package_manifest
+            .provides
+            .admin_support
+            .as_ref()
+            .and_then(|ui| ui.leptos_crate.as_deref()),
+        &package_manifest.module.version,
+        workspace_manifest,
+    )?;
+    let storefront_support_preview = validate_module_ui_package(
+        slug,
+        &module_root,
+        "storefront",
+        "storefront_support",
+        package_manifest
+            .provides
+            .storefront_support
             .as_ref()
             .and_then(|ui| ui.leptos_crate.as_deref()),
         &package_manifest.module.version,
@@ -134,6 +176,16 @@ pub(crate) fn build_module_publish_preview(
             .storefront_ui
             .as_ref()
             .and_then(|ui| ui.leptos_crate.as_deref()),
+        package_manifest
+            .provides
+            .admin_support
+            .as_ref()
+            .and_then(|ui| ui.leptos_crate.as_deref()),
+        package_manifest
+            .provides
+            .storefront_support
+            .as_ref()
+            .and_then(|ui| ui.leptos_crate.as_deref()),
         &package_manifest.module.showcase_admin_surfaces,
     )?;
     let module_default_locale = package_manifest
@@ -146,6 +198,22 @@ pub(crate) fn build_module_publish_preview(
             package_manifest
                 .provides
                 .storefront_ui
+                .as_ref()
+                .and_then(|ui| ui.i18n.as_ref())
+                .and_then(|i18n| i18n.default_locale.clone())
+        })
+        .or_else(|| {
+            package_manifest
+                .provides
+                .admin_support
+                .as_ref()
+                .and_then(|ui| ui.i18n.as_ref())
+                .and_then(|i18n| i18n.default_locale.clone())
+        })
+        .or_else(|| {
+            package_manifest
+                .provides
+                .storefront_support
                 .as_ref()
                 .and_then(|ui| ui.i18n.as_ref())
                 .and_then(|i18n| i18n.default_locale.clone())
@@ -172,6 +240,8 @@ pub(crate) fn build_module_publish_preview(
         ui_packages: ModuleUiPackagesPreview {
             admin: admin_preview,
             storefront: storefront_preview,
+            admin_support: admin_support_preview,
+            storefront_support: storefront_support_preview,
         },
     })
 }

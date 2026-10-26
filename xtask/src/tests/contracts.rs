@@ -2831,6 +2831,8 @@ fn validate_module_docs_navigation_contract_rejects_missing_ui_navigation_link()
         &spec,
         Some("rustok-demo-admin"),
         None,
+        None,
+        None,
         &[],
     )
     .expect_err("missing admin ui link must fail");
@@ -2882,6 +2884,8 @@ fn validate_module_docs_navigation_contract_accepts_documented_storefront_module
         &spec,
         None,
         Some("rustok-demo-storefront"),
+        None,
+        None,
         &[],
     )
     .expect("documented storefront UI should validate");
@@ -2938,6 +2942,8 @@ fn validate_module_docs_navigation_contract_rejects_missing_next_admin_showcase_
         "blog",
         &spec,
         Some("rustok-blog-admin"),
+        None,
+        None,
         None,
         &["next-admin".to_string()],
     )

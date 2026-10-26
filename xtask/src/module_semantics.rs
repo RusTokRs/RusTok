@@ -123,14 +123,14 @@ pub(crate) fn validate_module_ui_surface_contract(
 
     if has_subcrate && crate_name.is_none() {
         anyhow::bail!(
-            "Module '{slug}' contains {}, but rustok-module.toml is missing [provides.{surface}_ui].leptos_crate",
+            "Module '{slug}' contains {}, but rustok-module.toml is missing [provides.{surface}_ui].leptos_crate or [provides.{surface}_support].leptos_crate",
             manifest_path.display()
         );
     }
 
     if !has_subcrate && crate_name.is_some() {
         anyhow::bail!(
-            "Module '{slug}' declares [provides.{surface}_ui].leptos_crate, but {} is missing",
+            "Module '{slug}' declares [provides.{surface}_ui].leptos_crate or [provides.{surface}_support].leptos_crate, but {} is missing",
             manifest_path.display()
         );
     }
@@ -142,6 +142,7 @@ pub(crate) fn validate_module_ui_package(
     slug: &str,
     module_root: &Path,
     surface: &str,
+    section: &str,
     crate_name: Option<&str>,
     expected_version: &str,
     workspace_manifest: &TomlValue,
@@ -153,7 +154,7 @@ pub(crate) fn validate_module_ui_package(
     let manifest_path = module_root.join(surface).join("Cargo.toml");
     if !manifest_path.exists() {
         anyhow::bail!(
-            "Module '{slug}' declares provides.{surface}_ui.leptos_crate='{crate_name}', but {} is missing",
+            "Module '{slug}' declares provides.{section}.leptos_crate='{crate_name}', but {} is missing",
             manifest_path.display()
         );
     }
@@ -161,7 +162,7 @@ pub(crate) fn validate_module_ui_package(
     let package = load_resolved_cargo_package(&manifest_path, workspace_manifest)?;
     if package.name != crate_name {
         anyhow::bail!(
-            "Module '{slug}' declares provides.{surface}_ui.leptos_crate='{crate_name}', but {} declares '{}'",
+            "Module '{slug}' declares provides.{section}.leptos_crate='{crate_name}', but {} declares '{}'",
             manifest_path.display(),
             package.name
         );

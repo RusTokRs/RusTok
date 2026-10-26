@@ -28,6 +28,8 @@ fn build_module_test_plan_includes_main_and_ui_crates() {
                 crate_name: "rustok-blog-storefront".to_string(),
                 manifest_path: "crates/modules/rustok-blog/storefront/Cargo.toml".to_string(),
             }),
+            admin_support: None,
+            storefront_support: None,
         },
     };
 
@@ -73,6 +75,8 @@ fn build_publish_registry_request_serializes_v2_contract() {
                 crate_name: "rustok-blog-storefront".to_string(),
                 manifest_path: "crates/modules/rustok-blog/storefront/Cargo.toml".to_string(),
             }),
+            admin_support: None,
+            storefront_support: None,
         },
     };
 
@@ -139,6 +143,8 @@ fn build_live_publish_registry_request_turns_off_dry_run() {
                 crate_name: "rustok-blog-storefront".to_string(),
                 manifest_path: "crates/modules/rustok-blog/storefront/Cargo.toml".to_string(),
             }),
+            admin_support: None,
+            storefront_support: None,
         },
     };
 

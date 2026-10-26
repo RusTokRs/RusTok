@@ -110,6 +110,53 @@ pub(crate) fn validate_module_ui_metadata_contract(
         )?;
     }
 
+    validate_ui_support_metadata_contract(
+        slug,
+        "admin",
+        manifest.provides.admin_ui.is_some(),
+        manifest.provides.admin_support.as_ref(),
+    )?;
+    validate_ui_support_metadata_contract(
+        slug,
+        "storefront",
+        manifest.provides.storefront_ui.is_some(),
+        manifest.provides.storefront_support.as_ref(),
+    )?;
+
+    Ok(())
+}
+
+/// A support sub-crate publishes reusable components for composition into
+/// other surfaces. It is mutually exclusive with the surface section for
+/// the same host and is not a UI surface, so it carries no route, slot, or
+/// navigation metadata; only the crate identity (and optional i18n bundle
+/// declaration) is contract-checked here.
+fn validate_ui_support_metadata_contract(
+    slug: &str,
+    surface: &str,
+    has_surface_section: bool,
+    support: Option<&ModuleUiSupportProvides>,
+) -> Result<()> {
+    let Some(support) = support else {
+        return Ok(());
+    };
+    if has_surface_section {
+        anyhow::bail!(
+            "Module '{slug}' declares both [provides.{surface}_ui] and [provides.{surface}_support]; the {surface}/ sub-crate is either a UI surface or a support crate, not both"
+        );
+    }
+    validate_ui_surface_metadata_field(
+        slug,
+        &format!("provides.{surface}_support.leptos_crate"),
+        support.leptos_crate.as_deref(),
+    )?;
+    if support.i18n.is_some() {
+        validate_ui_i18n_contract(
+            slug,
+            &format!("provides.{surface}_support.i18n"),
+            support.i18n.as_ref(),
+        )?;
+    }
     Ok(())
 }
 
