@@ -32,6 +32,43 @@ const ADMIN_FULFILLMENT_COMMAND_BOUNDARY: &str = "commerce_admin_fulfillment_com
 
 type AdminFulfillmentCommandHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
 
+/// Shape-only facts a fulfillment route entry line may carry.
+#[derive(Default)]
+struct AdminFulfillmentRouteFacts {
+    fulfillment_id: Option<Uuid>,
+    order_id: Option<Uuid>,
+    status_filter_present: bool,
+    customer_filter_present: bool,
+    carrier_length: Option<usize>,
+}
+
+/// Record that a fulfillment route was entered without repeating any caller value.
+///
+/// The request span already carries tenant and actor identity, so this line records only whether
+/// they are non-nil, which resource the route addresses, and the shape of the caller's filters. The
+/// carrier is caller text, so only its length is kept.
+fn log_admin_fulfillment_route_entry(
+    operation: &'static str,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    facts: AdminFulfillmentRouteFacts,
+) {
+    tracing::debug!(
+        boundary = ADMIN_FULFILLMENT_COMMAND_BOUNDARY,
+        operation,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        actor_id_non_nil = !actor_id.is_nil(),
+        fulfillment_id_present = facts.fulfillment_id.is_some(),
+        fulfillment_id_non_nil = facts.fulfillment_id.is_some_and(|value| !value.is_nil()),
+        order_id_present = facts.order_id.is_some(),
+        order_id_non_nil = facts.order_id.is_some_and(|value| !value.is_nil()),
+        status_filter_present = facts.status_filter_present,
+        customer_filter_present = facts.customer_filter_present,
+        carrier_length = facts.carrier_length.unwrap_or_default(),
+        "commerce admin fulfillment route entered with bounded diagnostics"
+    );
+}
+
 fn require_idempotency_key(headers: &HeaderMap) -> Result<String, HttpError> {
     let value = headers
         .get("Idempotency-Key")
@@ -314,15 +351,16 @@ pub async fn list_fulfillments(
     if tenant.id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_FULFILLMENT_COMMAND_BOUNDARY,
-        operation = "list_fulfillments",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        status = ?params.status,
-        order_id = ?params.order_id,
-        customer_id = ?params.customer_id,
-        "listing admin fulfillments"
+    log_admin_fulfillment_route_entry(
+        "list_fulfillments",
+        tenant.id,
+        auth.user_id,
+        AdminFulfillmentRouteFacts {
+            status_filter_present: params.status.is_some(),
+            order_id: params.order_id,
+            customer_filter_present: params.customer_id.is_some(),
+            ..Default::default()
+        },
     );
 
     let pagination = params.pagination.unwrap_or_default();
@@ -392,13 +430,14 @@ pub async fn show_fulfillment(
     if id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_id", "Fulfillment ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_FULFILLMENT_COMMAND_BOUNDARY,
-        operation = "show_fulfillment",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        fulfillment_id = %id,
-        "showing admin fulfillment"
+    log_admin_fulfillment_route_entry(
+        "show_fulfillment",
+        tenant.id,
+        auth.user_id,
+        AdminFulfillmentRouteFacts {
+            fulfillment_id: Some(id),
+            ..Default::default()
+        },
     );
 
     let read_context = admin_fulfillment_read_context(
@@ -461,13 +500,14 @@ pub async fn create_fulfillment(
     if order_id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_id", "Order ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_FULFILLMENT_CREATE_OWNER,
-        operation = "create_fulfillment",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        order_id = %order_id,
-        "creating admin fulfillment"
+    log_admin_fulfillment_route_entry(
+        "create_fulfillment",
+        tenant.id,
+        auth.user_id,
+        AdminFulfillmentRouteFacts {
+            order_id: Some(order_id),
+            ..Default::default()
+        },
     );
     let idempotency_key = require_idempotency_key(&headers)?;
     let read_context =
@@ -529,14 +569,15 @@ pub async fn ship_fulfillment(
     if id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_id", "Fulfillment ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_FULFILLMENT_COMMAND_BOUNDARY,
-        operation = "ship_fulfillment",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        fulfillment_id = %id,
-        carrier = ?input.carrier,
-        "shipping fulfillment"
+    log_admin_fulfillment_route_entry(
+        "ship_fulfillment",
+        tenant.id,
+        auth.user_id,
+        AdminFulfillmentRouteFacts {
+            fulfillment_id: Some(id),
+            carrier_length: Some(input.carrier.chars().count()),
+            ..Default::default()
+        },
     );
     let idempotency_key = require_idempotency_key(&headers)?;
     let context = admin_fulfillment_command_context(
@@ -605,13 +646,14 @@ pub async fn deliver_fulfillment(
     if id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_id", "Fulfillment ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_FULFILLMENT_COMMAND_BOUNDARY,
-        operation = "deliver_fulfillment",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        fulfillment_id = %id,
-        "delivering fulfillment"
+    log_admin_fulfillment_route_entry(
+        "deliver_fulfillment",
+        tenant.id,
+        auth.user_id,
+        AdminFulfillmentRouteFacts {
+            fulfillment_id: Some(id),
+            ..Default::default()
+        },
     );
     let idempotency_key = require_idempotency_key(&headers)?;
     let context = admin_fulfillment_command_context(
@@ -680,13 +722,14 @@ pub async fn reopen_fulfillment(
     if id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_id", "Fulfillment ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_FULFILLMENT_COMMAND_BOUNDARY,
-        operation = "reopen_fulfillment",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        fulfillment_id = %id,
-        "reopening fulfillment"
+    log_admin_fulfillment_route_entry(
+        "reopen_fulfillment",
+        tenant.id,
+        auth.user_id,
+        AdminFulfillmentRouteFacts {
+            fulfillment_id: Some(id),
+            ..Default::default()
+        },
     );
     let idempotency_key = require_idempotency_key(&headers)?;
     let context = admin_fulfillment_command_context(
@@ -755,13 +798,14 @@ pub async fn reship_fulfillment(
     if id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_id", "Fulfillment ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_FULFILLMENT_COMMAND_BOUNDARY,
-        operation = "reship_fulfillment",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        fulfillment_id = %id,
-        "reshipping fulfillment"
+    log_admin_fulfillment_route_entry(
+        "reship_fulfillment",
+        tenant.id,
+        auth.user_id,
+        AdminFulfillmentRouteFacts {
+            fulfillment_id: Some(id),
+            ..Default::default()
+        },
     );
     let idempotency_key = require_idempotency_key(&headers)?;
     let context = admin_fulfillment_command_context(
@@ -830,13 +874,14 @@ pub async fn cancel_fulfillment(
     if id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_id", "Fulfillment ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_FULFILLMENT_COMMAND_BOUNDARY,
-        operation = "cancel_fulfillment",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        fulfillment_id = %id,
-        "cancelling fulfillment"
+    log_admin_fulfillment_route_entry(
+        "cancel_fulfillment",
+        tenant.id,
+        auth.user_id,
+        AdminFulfillmentRouteFacts {
+            fulfillment_id: Some(id),
+            ..Default::default()
+        },
     );
     let idempotency_key = require_idempotency_key(&headers)?;
     let context = admin_fulfillment_command_context(
