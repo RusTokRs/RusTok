@@ -8,7 +8,7 @@
   "rest_handler": "crates/modules/rustok-forum/src/controllers/moderation.rs",
   "rest_runtime": "crates/modules/rustok-forum/src/controllers/mod.rs",
   "owner_authorization": "crates/modules/rustok-forum/src/services/moderation_audience_authorization.rs",
-  "owner_service": "crates/modules/rustok-forum/src/services/moderation.rs",
+  "owner_service": "crates/modules/rustok-forum/src/services/moderation_owner.rs",
   "crate_root": "crates/modules/rustok-forum/src/lib.rs",
   "owner_note": "crates/modules/rustok-forum/docs/forum-20az-moderation-audience-transport-composition.md",
   "downstream_plan_sync_task": "FORUM-20BA",

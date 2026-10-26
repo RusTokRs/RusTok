@@ -40,7 +40,6 @@ const topicOwnerPath = "crates/modules/rustok-forum/src/services/topic_owner.rs"
 const replyOwnerPath = "crates/modules/rustok-forum/src/services/reply_owner.rs";
 const replyInlinePath = "crates/modules/rustok-forum/src/services/reply_inline.rs";
 const moderationOwnerPath = "crates/modules/rustok-forum/src/services/moderation_owner.rs";
-const moderationPublicPath = "crates/modules/rustok-forum/src/services/moderation_public_owner.rs";
 const searchContractPath = "crates/modules/rustok-forum/contracts/forum-search-projection.json";
 const contractPath = "crates/modules/rustok-forum/contracts/forum-projection-invalidation.json";
 const visibilityBulkPath = "crates/modules/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json";
@@ -63,7 +62,6 @@ const topicOwner = read(topicOwnerPath);
 const replyOwner = read(replyOwnerPath);
 const replyInline = read(replyInlinePath);
 const moderationOwner = read(moderationOwnerPath);
-const moderationPublic = read(moderationPublicPath);
 const note = read(notePath);
 let searchContract = null;
 let contract = null;
@@ -202,11 +200,15 @@ for (const marker of [
   requireMarker(moderationOwner, marker, moderationOwnerPath);
 }
 
+// Moderation is one owner behind one seam. The service used to be split into a private
+// transactional owner plus a public facade and a `moderation_legacy` delegate; that split was retired,
+// and the guard has to fail if either half is reintroduced, because a second constructible path is
+// exactly the bypass this slice is about.
 for (const marker of [
-  "mod moderation_legacy;",
   "mod moderation_owner;",
-  "mod moderation_public_owner;",
-  "pub use super::moderation_public_owner::ModerationService;",
+  "pub mod moderation {",
+  "pub use super::moderation_owner::ModerationService;",
+  "pub use moderation::ModerationService;",
   "ForumCategoryAudiencePolicyOwnerService as ForumCategoryAudiencePolicyService",
   "ForumTopicAudiencePolicyOwnerService as ForumTopicAudiencePolicyService",
   'include!("category_projection_owner.rs")',
@@ -215,19 +217,28 @@ for (const marker of [
 ]) {
   requireMarker(servicesMod, marker, servicesModPath);
 }
-for (const forbidden of ["__ModerationServiceLegacyTarget", "pub use super::moderation_owner::ModerationService"]) {
+for (const forbidden of [
+  "__ModerationServiceLegacyTarget",
+  "mod moderation_legacy;",
+  "mod moderation_public_owner;",
+  "moderation_public_owner",
+]) {
   rejectMarker(servicesMod, forbidden, servicesModPath);
 }
 for (const marker of [
   "pub struct ModerationService",
-  "inner: super::moderation_owner::ModerationService",
+  "pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus)",
+  "pub fn with_audience_facts(",
   "pub async fn pin_topic",
   "pub async fn lock_topic",
   "pub async fn mark_solution",
 ]) {
-  requireMarker(moderationPublic, marker, moderationPublicPath);
+  requireMarker(moderationOwner, marker, moderationOwnerPath);
 }
-rejectMarker(moderationPublic, "impl Deref", moderationPublicPath);
+for (const forbidden of ["impl Deref", "pub struct ModerationPublicService", "pub struct ModerationLegacy"]) {
+  rejectMarker(moderationOwner, forbidden, moderationOwnerPath);
+}
+rejectMarker(moderationOwner, "inner: super::moderation_owner::ModerationService", moderationOwnerPath);
 
 for (const marker of [
   "search.reindex_requested",
