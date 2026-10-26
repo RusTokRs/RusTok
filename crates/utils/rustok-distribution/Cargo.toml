@@ -134,6 +134,7 @@ rustok-media = { workspace = true, optional = true }
 rustok-translation = { workspace = true, optional = true }
 rustok-seo = { workspace = true, optional = true }
 rustok-workflow = { workspace = true, optional = true }
+rustok-security = { workspace = true, optional = true }
 rustok-ai = { workspace = true, optional = true }
 rustok-ai-translation = { workspace = true, optional = true, features = ["server"] }
 alloy = { workspace = true, optional = true }

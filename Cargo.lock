@@ -13627,6 +13627,7 @@ dependencies = [
  "rustok-region-admin",
  "rustok-search",
  "rustok-search-admin",
+ "rustok-security-admin",
  "rustok-seo",
  "rustok-seo-admin",
  "rustok-storage",
@@ -15026,6 +15027,7 @@ dependencies = [
  "rustok-region",
  "rustok-runtime",
  "rustok-search",
+ "rustok-security",
  "rustok-seo",
  "rustok-social-graph",
  "rustok-tasks",
@@ -17597,6 +17599,77 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-security"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "rustok-core",
+ "rustok-outbox",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-security-admin"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos",
+ "leptos-auth",
+ "leptos-ui",
+ "leptos-ui-routing",
+ "leptos_axum",
+ "leptos_router",
+ "rustok-api",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-grid",
+ "rustok-grid-leptos",
+ "rustok-security",
+ "rustok-ui-core",
+ "rustok-ui-i18n",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-security-storefront"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos",
+ "leptos-auth",
+ "leptos-ui",
+ "leptos-ui-routing",
+ "leptos_axum",
+ "leptos_router",
+ "rustok-api",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-security",
+ "rustok-ui-core",
+ "rustok-ui-i18n",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-seo"
 version = "0.1.0"
 dependencies = [
@@ -17812,6 +17885,7 @@ dependencies = [
  "rustok-sandbox-transport",
  "rustok-search",
  "rustok-secrets",
+ "rustok-security",
  "rustok-seo",
  "rustok-social-graph",
  "rustok-starter",
@@ -18002,6 +18076,7 @@ dependencies = [
  "rustok-reactions-storefront",
  "rustok-region-storefront",
  "rustok-search-storefront",
+ "rustok-security-storefront",
  "rustok-seo",
  "rustok-seo-storefront",
  "rustok-tenant",

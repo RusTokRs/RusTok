@@ -60,31 +60,35 @@ pub fn SecurityAdminPage() -> impl IntoView {
             "created_at" => view! {
                 <span class="text-xs text-muted-foreground">{row.created_at}</span>
             }.into_any(),
-            "actions" => view! {
-                <div class="flex items-center gap-2">
-                    // RBAC-guarded action buttons
-                    <button
-                        type="button"
-                        class="text-xs text-primary hover:underline font-medium"
-                        disabled=!row.can_edit
-                        on:click=move |_| {
-                            tracing::info!(id = %row_id, "edit action triggered");
-                        }
-                    >
-                        {t(None, "security-action-edit", "Edit")}
-                    </button>
-                    <button
-                        type="button"
-                        class="text-xs text-destructive hover:underline font-medium"
-                        disabled=!row.can_delete
-                        on:click=move |_| {
-                            tracing::info!(id = %row_id, "delete action triggered");
-                        }
-                    >
-                        {t(None, "security-action-delete", "Delete")}
-                    </button>
-                </div>
-            }.into_any(),
+            "actions" => {
+                let edit_id = row_id.clone();
+                let delete_id = row_id;
+                view! {
+                    <div class="flex items-center gap-2">
+                        // RBAC-guarded action buttons
+                        <button
+                            type="button"
+                            class="text-xs text-primary hover:underline font-medium"
+                            disabled=!row.can_edit
+                            on:click=move |_| {
+                                tracing::info!(id = %edit_id, "edit action triggered");
+                            }
+                        >
+                            {t(None, "security-action-edit", "Edit")}
+                        </button>
+                        <button
+                            type="button"
+                            class="text-xs text-destructive hover:underline font-medium"
+                            disabled=!row.can_delete
+                            on:click=move |_| {
+                                tracing::info!(id = %delete_id, "delete action triggered");
+                            }
+                        >
+                            {t(None, "security-action-delete", "Delete")}
+                        </button>
+                    </div>
+                }.into_any()
+            },
             _ => ().into_any(),
         }
     });
