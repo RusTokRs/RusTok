@@ -34,6 +34,14 @@ struct ModuleMetadata {
 struct ModuleProvides {
     #[serde(default)]
     storefront_ui: Option<LeptosUiContract>,
+    #[serde(default)]
+    storefront_support: Option<LeptosUiSupportContract>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct LeptosUiSupportContract {
+    #[serde(default)]
+    leptos_crate: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -224,17 +232,28 @@ fn validate_storefront_ui_wiring(
     package_manifest: &ModulePackageManifest,
 ) -> Result<(), Box<dyn Error>> {
     let ui_manifest_path = module_root.join("storefront").join("Cargo.toml");
+    // The storefront/ sub-crate is declared either as a UI surface
+    // ([provides.storefront_ui]) or as a support crate
+    // ([provides.storefront_support]) whose components are composed into
+    // other surfaces; support crates are not registered by codegen.
     let declared_crate = package_manifest
         .provides
         .storefront_ui
         .as_ref()
         .and_then(|ui| ui.leptos_crate.as_deref())
+        .or_else(|| {
+            package_manifest
+                .provides
+                .storefront_support
+                .as_ref()
+                .and_then(|ui| ui.leptos_crate.as_deref())
+        })
         .map(str::trim)
         .filter(|value| !value.is_empty());
 
     if ui_manifest_path.exists() && declared_crate.is_none() {
         return Err(format!(
-            "module '{}' contains {}, but rustok-module.toml is missing [provides.storefront_ui].leptos_crate",
+            "module '{}' contains {}, but rustok-module.toml is missing [provides.storefront_ui].leptos_crate or [provides.storefront_support].leptos_crate",
             package_manifest.module.slug,
             ui_manifest_path.display()
         )
@@ -243,7 +262,7 @@ fn validate_storefront_ui_wiring(
 
     if !ui_manifest_path.exists() && declared_crate.is_some() {
         return Err(format!(
-            "module '{}' declares [provides.storefront_ui].leptos_crate, but {} is missing",
+            "module '{}' declares [provides.storefront_ui].leptos_crate or [provides.storefront_support].leptos_crate, but {} is missing",
             package_manifest.module.slug,
             ui_manifest_path.display()
         )
