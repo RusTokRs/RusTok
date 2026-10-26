@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { forbidRawContextLogging } from './lib/bounded-diagnostics.mjs';
+
 const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
@@ -39,7 +41,7 @@ const between = (content, start, end, label) => {
 const auxiliaryPortMapper = between(
   controller,
   'fn map_storefront_auxiliary_port_error(',
-  'fn storefront_auxiliary_public_error<E>(',
+  'fn storefront_auxiliary_public_error(',
   'storefront auxiliary port mapper',
 );
 const shippingContextMapper = between(
@@ -82,12 +84,21 @@ for (const [value, label] of [
 ]) requireText(controller, value, label);
 
 for (const [value, label] of [
-  ['port_error_to_http_error(error.clone())', 'shared auxiliary mapping'],
-  ['error_kind = ?error.kind', 'auxiliary error kind'],
-  ['retryable = error.retryable', 'auxiliary retryability'],
-  ['public_code = %public.code', 'auxiliary public code'],
-  ['status = %public.status', 'auxiliary public status'],
+  ['port_error_to_http_error(error)', 'shared auxiliary mapping'],
+  ['owner_error_kind = error_kind', 'auxiliary error kind'],
+  ['owner_code_length,', 'auxiliary owner code shape'],
+  ['retryable,', 'auxiliary retryability'],
+  ['public_status = %public.status', 'auxiliary public status'],
+  ['tenant_non_nil = !tenant_id.is_nil()', 'auxiliary tenant shape'],
+  ['cart_id_present = cart_id.is_some()', 'auxiliary cart presence'],
+  ['"storefront auxiliary port operation failed with bounded diagnostics"', 'auxiliary technical event'],
 ]) requireText(auxiliaryPortMapper, value, label);
+forbidRawContextLogging(failures, auxiliaryPortMapper, 'storefront auxiliary port mapper');
+
+// The pre-hardening mapper cloned the error to log it after mapping; the value is now consumed and
+// classified by the public status.
+forbidText(auxiliaryPortMapper, 'error.clone()', 'cloned auxiliary error');
+forbidText(auxiliaryPortMapper, 'port_error_to_http_error(error.clone())', 'cloned auxiliary mapping');
 
 for (const [value, label] of [
   ['CommerceError::Database(_)', 'context database variant'],
@@ -97,7 +108,7 @@ for (const [value, label] of [
   ['"commerce_store_not_found"', 'context not-found code'],
   ['"commerce_store_shipping_unavailable"', 'context unavailable code'],
   ['"commerce_store_shipping_failed"', 'context fail-closed code'],
-  ['HttpError::new(status, code, message)', 'context static envelope'],
+  ['storefront_auxiliary_public_error(', 'context static envelope'],
 ]) requireText(shippingContextMapper, value, label);
 
 for (const [value, label] of [
@@ -120,7 +131,7 @@ for (const [value, label] of [
   ['StatusCode::BAD_REQUEST', 'validation status'],
   ['StatusCode::NOT_FOUND', 'not-found status'],
   ['StatusCode::CONFLICT', 'conflict status'],
-  ['StatusCode::UNAUTHORIZED', 'forbidden status'],
+  ['StatusCode::FORBIDDEN', 'forbidden status'],
   ['StatusCode::SERVICE_UNAVAILABLE', 'unavailable status'],
   ['StatusCode::INTERNAL_SERVER_ERROR', 'invariant status'],
   ['"commerce_store_shipping_invalid"', 'invalid code'],
@@ -131,12 +142,15 @@ for (const [value, label] of [
   ['"commerce_store_shipping_failed"', 'invariant code'],
   ['owner_operation = "list_shipping_option_projections"', 'owner operation log'],
   ['correlation_id = %context.correlation_id', 'correlation log'],
-  ['channel = ?context.channel', 'channel log'],
-  ['deadline_ms = ?context.deadline_ms', 'deadline log'],
-  ['internal_code = %error.code', 'owner code log'],
+  ['tenant_non_nil = !tenant_id.is_nil()', 'tenant shape log'],
+  ['cart_id_present = cart_id.is_some()', 'cart presence log'],
+  ['owner_error_kind = error_kind', 'owner error kind log'],
+  ['owner_code_length = error.code.chars().count()', 'owner code shape log'],
   ['retryable = error.retryable', 'retryability log'],
+  ['public_status = %status', 'public status log'],
   ['HttpError::new(status, code, message)', 'static HTTP envelope'],
 ]) requireText(shippingPortMapper, value, label);
+forbidRawContextLogging(failures, shippingPortMapper, 'storefront shipping port mapper');
 
 for (const [value, label] of [
   ['ensure_storefront_channel_enabled_for_db(', 'region channel guard'],
@@ -152,7 +166,7 @@ for (const [value, label] of [
   ['let requested_cart_id = query.cart_id;', 'cart identity'],
   ['in_process_cart_storefront_port(runtime.db_clone())', 'cart port'],
   ['CartStorefrontReadRequest { cart_id }', 'cart request'],
-  ['ensure_store_cart_access(&cart, customer_id)', 'cart access'],
+  ['ensure_store_cart_access(&cart, customer_id, auth.0.as_ref())', 'cart access'],
   ['load_cart_shipping_profile_slugs(runtime.db(), tenant.id, &cart)', 'profile projection'],
   ['storefront_public_channel_slug_for_cart(&cart, &request_context)', 'cart effective channel'],
   ['public_channel_slug_from_request(&request_context)', 'request effective channel'],
@@ -193,8 +207,16 @@ for (const value of [
   'error.to_string()',
   'error.message',
   'format!("{}: {}", error.code, error.message)',
-  'HttpError::bad_request(',
 ]) forbidText(auxiliaryBoundary, value, 'unsafe storefront auxiliary public conversion');
+
+// The only literal `bad_request` left in the auxiliary boundary is the nil-tenant guard, which is a
+// caller envelope rather than an owner conversion.
+const auxiliaryBadRequests = auxiliaryBoundary.match(/HttpError::bad_request\(/g) ?? [];
+if (auxiliaryBadRequests.length !== 2) {
+  failures.push(
+    `expected two nil-identity bad-request guards in the auxiliary boundary, found ${auxiliaryBadRequests.length}`,
+  );
+}
 
 const auxiliaryMapperUses = auxiliaryBoundary.match(/map_storefront_auxiliary_port_error\(/g) ?? [];
 if (auxiliaryMapperUses.length !== 2) {

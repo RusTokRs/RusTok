@@ -1,6 +1,7 @@
 # Разбор падающих проверок RusTok — инвентаризация и план
 
-Ветка `arena/a90c8cc9-rustok`, HEAD `5d0d325`. Дата разбора: 2026-10-26.
+Ветка `arena/a90c8cc9-rustok`. Дата разбора: 2026-10-26. Замеры сделаны на `5d0d325`;
+после прохода 5 (раздел 1.3) тот же прогон даёт **455 / 833**.
 
 > Числа в этом документе получены двойным прогоном корпуса guard'ов: базовый коммит в
 > `git worktree` и рабочее дерево, с записью stdout+stderr и кода выхода. Артефакты прогона —
@@ -16,11 +17,14 @@
 | Guard-скриптов `verify-*.mjs` (без `*.test.mjs`) | **1288** |
 | Проходят на `5d0d325` | **823** |
 | Падают | **465** |
+| Проходят после прохода 5 | **833** |
+| Падают после прохода 5 | **455** |
 | Из них не guard'ы (CLI-инструменты, ждут аргументов) | **2** |
 | Из них нужна среда (`node_modules`/сеть) | **5** |
 | **Красных статических guard'ов** | **458** (465 минус 2 CLI и 5 env) |
 | Регрессий в проходе 4 (`550afbe` → `5d0d325`) | **0** |
 | Всего починено за четыре прохода | 40 guard'ов, 3 удалённых legacy-источника, 2 реальных дефекта в коде |
+| Всего починено за пять проходов | 50 guard'ов, 3 удалённых legacy-источника, 2 реальных дефекта в коде |
 
 **Методика.** Один и тот же список файлов прогоняется дважды: на базовом коммите в
 `git worktree` и на рабочем дереве, с записью stdout+stderr и кода выхода. Диф даёт два числа,
@@ -126,7 +130,71 @@ xargs -a guards.txt -P 8 -n 1 ./runone.sh now  > now.status    # в рабоче
 
 ---
 
-## 2. Оставшиеся 465: по владельцам
+### 1.3. Проход 5: guard'ы, требующие сырых значений (`262d25b` + текущий коммит)
+
+Первый шаг плана из раздела 4 — системная причина 3.1. Вместо 21 отдельной правки появилась одна
+общая политика, на которую теперь ссылаются все проверки семейства:
+
+- `scripts/verify/lib/bounded-diagnostics.mjs` — список запрещённых директив
+  (`tenant_id = %…`, `actor = ?context.actor`, `channel`, `locale`, `causation_id`, `traceparent`,
+  `idempotency_key`, `actor_id`, `user_id`, `internal_message = %…error.message`,
+  `message: error.message`, `error = ?boundary_error`) и три функции:
+  `rawContextLogging`, `forbidRawContextLogging`, `requireFactFields`,
+  `assertBoundedDiagnostics`. Покрыт `node --test` (9 тестов рядом с модулем).
+  Сознательно **не** запрещены `correlation_id` (ключ склейки событий, его сохраняют
+  payment-срезы) и `deadline_ms` (число, посчитанное платформой).
+- `scripts/verify/lib/cart-checkout-source.mjs` — модель `checkout_snapshot.rs`: 17 блоков
+  (`parser`, `admission`, `portImpl`, `prepare`, …, `publicErrorMapper`) и контракт bounded-фактов
+  (`CART_CONTEXT_FACT_FIELDS` и др.). Пять guard'ов больше не держат собственных копий
+  `between()`/`from()` и строк-якорей.
+
+Переписаны на bounded-контракт (10 guard'ов, все зелёные): `verify-cart-checkout-{tenant,
+local-error,admission,service-error}-context`, `verify-commerce-storefront-order-customer-context`,
+`verify-commerce-storefront-cart-http-error-safety`,
+`verify-commerce-storefront-auxiliary-http-error-safety`,
+`verify-commerce-admin-post-order-read-diagnostic-safety`,
+`verify-commerce-graphql-cart-pricing-context`,
+`verify-fulfillment-storefront-native-client-error-safety`.
+
+Где пришлось поправить не проверку, а код (иначе guard справедливо красный):
+
+- `rustok-cart/src/checkout_snapshot.rs` — четыре `tracing::debug!` с `tenant_id = %tenant_id`
+  и `cart_id = %…` заменены одним `log_cart_checkout_operation_start`, который печатает
+  bounded-факты и `cart_id_non_nil` / `order_id_present`;
+- `rustok-commerce/src/controllers/store/orders.rs` — пять route-entry логов с
+  `tenant_id = %tenant.id` / `actor_id = %auth.user_id` заменены `log_storefront_order_route_entry`;
+  в customer-маппер добавлены недостающие факты (`claim_count`, `role_count`,
+  `causation_id_length`, `traceparent_length`, `idempotency_key_length`, `deadline_ms`);
+- `rustok-commerce/src/controllers/store/carts.rs` — шесть route-entry логов заменены
+  `log_storefront_cart_route_entry`, а маппер теперь выбирает `error!`/`warn!` по публичному
+  статусу, как в остальных storefront-мапперах;
+- `rustok-commerce/src/controllers/store/products.rs`, `.../admin/post_order_reads.rs` —
+  то же для пяти и четырёх route-entry логов.
+
+Два guard'а вдобавок правили *документ и evidence*, потому что политика изменилась не только в
+коде: `admin-post-order-read-diagnostic-safety.md` и его evidence-файл больше не заявляют
+маркер `redacted` — источник печатает `error_kind` и `owner_code_length`;
+`storefront-native-client-error-safety-source.json` — `raw_error_shape_logged` вместо
+`original_error_logged_privately`.
+
+**Оставшиеся 11 guard'ов семейства — это уже другая болезнь.** Их падение не про сырые поля:
+`verify-commerce-admin-checkout-operation-error-context` (89 замечаний),
+`verify-commerce-storefront-line-item-http-error-safety` (88),
+`verify-commerce-storefront-cart-shipping-http-error-safety` (67),
+`verify-commerce-admin-order-return-owner-error-context` (50),
+`verify-commerce-admin-order-return-orchestration-error-context` (51),
+`verify-commerce-storefront-line-item-owner-context` (41),
+`verify-commerce-admin-checkout-operation-diagnostic-safety` (40),
+`verify-commerce-admin-order-detail-payment-error-context` (37),
+`verify-commerce-admin-order-change-owner-error-context` (22),
+`verify-commerce-graphql-provider-operation-error-safety` (20),
+`verify-payment-checkout-execution-local-context` (17). Они описаны в 3.2: маркеры блоков и
+имена функций ушли, поэтому guard не находит даже свой участок файла. Это отдельная работа —
+заново вывести контракт по текущему коду, — и её нельзя делать «на глаз» по диффу.
+
+---
+
+## 2. Оставшиеся 455: по владельцам
 
 | Область | Красных |
 |---|---|
@@ -144,7 +212,7 @@ xargs -a guards.txt -P 8 -n 1 ./runone.sh now  > now.status    # в рабоче
 
 ---
 
-## 3. Три системные причины (а не 465 разных проблем)
+## 3. Три системные причины (а не 455 разных проблем)
 
 ### 3.1. Guard'ы требуют ровно того, что политика запрещает — 21 guard
 
@@ -167,6 +235,10 @@ idempotency-значения и текст ошибки владельца в л
 **Вывод:** эти 21 guard надо переписывать *наоборот* — с `forbidText` вместо `requireText`, как
 уже сделано в `verify-commerce-checkout-owner-stage-boundary`. Это не «покрасить», это смена
 политики в проверке.
+
+**Статус:** 10 из 21 переписаны в проходе 5 (раздел 1.3), у всех общий источник политики —
+`scripts/verify/lib/bounded-diagnostics.mjs`. Оставшиеся 11 упираются уже не в поля, а в
+разъехавшиеся маркеры блоков, то есть относятся к 3.2.
 
 ### 3.2. Guard'ы не умеют находить свой блок в изменившемся файле — 19 guard
 
@@ -200,7 +272,7 @@ idempotency-значения и текст ошибки владельца в л
 
 | # | Блок | Объём | Почему сейчас |
 |---|---|---|---|
-| 1 | 21 guard «требует сырых значений» → `forbidText` | 21 | Прямое противоречие безопасности; пока они красные, их нельзя включить в CI, а включить надо |
+| 1 | 21 guard «требует сырых значений» → `forbidText` | 21 → **10 сделано** | Прямое противоречие безопасности; пока они красные, их нельзя включить в CI, а включить надо. Общая политика — `lib/bounded-diagnostics.mjs`; остаток упирается в маркеры блоков и переходит в пункт 2 |
 | 2 | 19 guard'ов с `unable to isolate` | 19 | Механическая причина, лечится библиотекой `between` с диагностикой |
 | 3 | forum: 128 | 128 | Самый большой кусок; после (1) и (2) станет видно, сколько из них — настоящий дрейф |
 | 4 | content-gap в rustok-pages (41) | 41 | Требует дописывания кода, а не guard'ов |

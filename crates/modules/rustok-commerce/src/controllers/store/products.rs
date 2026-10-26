@@ -428,8 +428,8 @@ pub async fn list_products(
     tracing::debug!(
         boundary = "commerce_storefront_product_http",
         operation = "list_products",
-        tenant_id = %tenant.id,
-        "handling list_products"
+        tenant_id_non_nil = !tenant.id.is_nil(),
+        "handling list_products with bounded diagnostics"
     );
 
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
@@ -664,8 +664,8 @@ pub async fn list_regions(
     tracing::debug!(
         boundary = "commerce_storefront_auxiliary_http",
         operation = "list_regions",
-        tenant_id = %tenant.id,
-        "handling list_regions"
+        tenant_id_non_nil = !tenant.id.is_nil(),
+        "handling list_regions with bounded diagnostics"
     );
 
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
@@ -730,8 +730,8 @@ pub async fn list_shipping_options(
     tracing::debug!(
         boundary = "commerce_storefront_auxiliary_http",
         operation = "list_shipping_options",
-        tenant_id = %tenant.id,
-        "handling list_shipping_options"
+        tenant_id_non_nil = !tenant.id.is_nil(),
+        "handling list_shipping_options with bounded diagnostics"
     );
 
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;

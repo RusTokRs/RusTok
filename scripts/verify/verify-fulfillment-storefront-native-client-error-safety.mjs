@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { forbidRawContextLogging } from "./lib/bounded-diagnostics.mjs";
+
 const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
   ? path.resolve(configuredRoot)
@@ -124,7 +126,9 @@ for (const [value, label] of [
     "option validation message",
   ],
   ["ShippingSelectionTransportError::Validation(message) =>", "validation pass-through"],
-  ["raw_error = ?error", "private raw cause"],
+  ["error_kind,", "private bounded error kind"],
+  ["raw_message_present,", "private raw message presence"],
+  ["raw_message_length,", "private raw message length"],
   ["correlation_id = %self.correlation_id", "correlation diagnostics"],
   ["cart_id_length = self.cart_id_length", "cart length fact"],
   ["delivery_group_count = self.delivery_group_count", "group count fact"],
@@ -156,6 +160,9 @@ if (!(cartValidationIndex >= 0 && selectionValidationIndex > cartValidationIndex
   failures.push(`${paths.safety}: native validation order must remain cart -> selection plan -> option`);
 }
 
+const safetyProduction = safety.split("#[cfg(test)]")[0];
+forbidRawContextLogging(failures, safetyProduction, `${paths.safety}: bounded diagnostics`);
+
 for (const value of [
   "cart_id = %",
   "cart_id = ?",
@@ -166,7 +173,6 @@ for (const value of [
   "shipping_option_id = %",
   "shipping_option_id = ?",
   "delivery_groups =",
-  "available_shipping_option_ids =",
   "request = ?",
   "error.to_string()",
 ]) forbidText(safety, value, `${paths.safety}: raw request or error text`);
@@ -245,7 +251,7 @@ for (const [key, expected] of Object.entries({
   technical_native_error_public: false,
   static_technical_public_message: true,
   context_created_before_server_function_call: true,
-  original_error_logged_privately: true,
+  raw_error_shape_logged: true,
   per_call_correlation_logging: true,
   safe_request_shape_only: true,
   cart_id_values_logged: false,

@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { forbidRawContextLogging } from './lib/bounded-diagnostics.mjs';
+
 const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
@@ -49,33 +51,60 @@ const updateLineHandler = between(
   '/// Remove storefront cart line item',
   'update line item handler',
 );
+const routeEntry = between(
+  controller,
+  'fn log_storefront_cart_route_entry(',
+  'fn map_cart_port_error(',
+  'storefront cart route entry diagnostics',
+);
 
 for (const [value, label] of [
   ['OptionalAuthContext, PortError, RequestContext, TenantContext', 'typed port error import'],
   ['port_error_to_http_error', 'shared port HTTP mapper import'],
   ['mod shipping_owner_reads;', 'mounted shipping owner read helper'],
+  ['fn log_storefront_cart_route_entry(', 'bounded route-entry diagnostics'],
   ['fn map_cart_port_error(', 'cart port mapper'],
-  ['error = ?error', 'raw internal error logging'],
   ['owner = "rustok_cart"', 'cart owner logging'],
   ['operation,', 'operation logging'],
-  ['tenant_id = %tenant_id', 'tenant logging'],
-  ['cart_id = ?cart_id', 'optional cart logging'],
-  ['error_kind = ?error.kind', 'typed error-kind logging'],
-  ['retryable = error.retryable', 'retryability logging'],
-  ['public_code = %public.code', 'public-code logging'],
-  ['status = %public.status', 'status logging'],
+  ['owner_error_kind,', 'typed error-kind logging'],
+  ['retryable,', 'retryability logging'],
+  ['public_status = %public.status', 'status logging'],
   ['boundary = "commerce_storefront_cart_http"', 'cart HTTP boundary logging'],
 ]) {
   requireText(controller, value, label);
 }
 
+// The mapper consumes the error into the shared safe HTTP envelope, then classifies by the public
+// status: transport and invariant failures are technical, everything else is a rejected request.
 for (const [value, label] of [
-  ['let public = port_error_to_http_error(error.clone());', 'shared safe mapping'],
-  ['"storefront cart port operation failed"', 'boundary log message'],
+  ['let public = port_error_to_http_error(error);', 'shared safe mapping'],
+  ['let critical = matches!(', 'severity selection from the public status'],
+  ['StatusCode::SERVICE_UNAVAILABLE', 'unavailable severity input'],
+  ['if critical {', 'technical severity branch'],
+  ['tracing::error!(', 'technical severity'],
+  ['tracing::warn!(', 'ordinary severity'],
+  ['tenant_id_non_nil = !tenant_id.is_nil()', 'tenant identity shape'],
+  ['cart_id_present = cart_id.is_some()', 'cart identity presence'],
+  ['owner_code_length,', 'owner code shape'],
+  ['"storefront cart port operation failed with bounded diagnostics"', 'technical event'],
+  ['"storefront cart port operation was rejected with bounded diagnostics"', 'ordinary event'],
   ['public\n}', 'mapped error return'],
 ]) {
   requireText(mapper, value, label);
 }
+
+// Route entry diagnostics name the operation and the identity shapes only.
+for (const [value, label] of [
+  ['boundary = "commerce_storefront_cart_http"', 'route boundary'],
+  ['tenant_id_non_nil = !tenant_id.is_nil()', 'route tenant shape'],
+  ['cart_id_non_nil = cart_id.is_some_and(|value| !value.is_nil())', 'route cart shape'],
+  ['line_item_id_non_nil = line_item_id.is_some_and(|value| !value.is_nil())', 'route line-item shape'],
+  ['"storefront cart route entered with bounded diagnostics"', 'route entry event'],
+]) {
+  requireText(routeEntry, value, label);
+}
+
+forbidRawContextLogging(failures, controller, 'storefront cart controller');
 
 for (const value of [
   'commerce_operation_failed',
@@ -83,15 +112,25 @@ for (const value of [
   'err.to_string()',
   'error.to_string()',
   'map_err(rustok_web::port_error_to_http_error)',
+  'port_error_to_http_error(error.clone())',
 ]) {
   forbidText(controller, value, 'unsafe storefront cart public conversion');
+}
+
+for (const [pattern, expected, label] of [
+  [/log_storefront_cart_route_entry\(/g, 7, 'route entry helper definition/use count'],
+  [/tracing::warn!\(/g, 1, 'ordinary severity count'],
+  [/tracing::error!\(/g, 1, 'technical severity count'],
+]) {
+  const count = controller.match(pattern)?.length ?? 0;
+  if (count !== expected) failures.push(`${label}: expected ${expected}, found ${count}`);
 }
 
 for (const [value, label] of [
   ['"commerce_store_cart_context_invalid"', 'cart-context validation code'],
   ['"Currency code is required unless it can be resolved from region or country"', 'static currency message'],
   ['super::resolve_context_for_db(', 'store context resolution'],
-  ['context.currency_code', 'resolved currency preference'],
+  ['currency_code', 'resolved currency preference'],
   ['CartStorefrontCreateRequest {', 'typed create request'],
   ['customer_id,', 'customer identity propagation'],
   ['region_id: context.region.as_ref().map(|region| region.id)', 'resolved region propagation'],

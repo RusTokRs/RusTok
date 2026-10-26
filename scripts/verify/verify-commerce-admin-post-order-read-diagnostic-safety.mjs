@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { forbidRawContextLogging } from "./lib/bounded-diagnostics.mjs";
+
 const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
   ? path.resolve(configuredRoot)
@@ -132,9 +134,9 @@ requireOrder(
     "let order_id_shape = optional_uuid_shape(order_id);",
     "let channel_present = port_context.channel.is_some();",
     "let locale_length = port_context.locale.len();",
-    "let internal_code = error.code.as_str();",
+    "let owner_code_length = error.code.chars().count();",
     "let retryable = error.retryable;",
-    'let error = "redacted";',
+    "let error_kind = match error.kind {",
     "tracing::error!(",
     "HttpError::new(status, code, message)",
   ],
@@ -142,7 +144,6 @@ requireOrder(
 );
 
 for (const marker of [
-  "error = ?error",
   "owner = ADMIN_POST_ORDER_OWNER",
   "owner_operation,",
   "consumer_operation,",
@@ -157,14 +158,16 @@ for (const marker of [
   "channel_length,",
   "locale_length,",
   "deadline_ms = ?port_context.deadline_ms",
-  "internal_code,",
+  "owner_code_length,",
   "retryable,",
   "error_kind,",
   "public_code = code",
   "status = %status",
   "boundary = ADMIN_POST_ORDER_BOUNDARY",
-  '"commerce admin post-order owner read failed"',
+  '"commerce admin post-order owner read failed with bounded diagnostics"',
 ]) requireText(mapper, marker, `${paths.source}: bounded diagnostic field`);
+
+forbidRawContextLogging(failures, mapper, `${paths.source}: bounded diagnostic projection`);
 
 for (const forbidden of [
   "correlation_id = %port_context.correlation_id",
@@ -177,7 +180,7 @@ for (const forbidden of [
   "channel = ?port_context.channel",
   "locale = %port_context.locale",
   "internal_code = %error.code",
-  "retryable = error.retryable",
+  "internal_message = %error.message",
   "error.message",
   "error.to_string()",
 ]) forbidText(mapper, forbidden, `${paths.source}: raw diagnostic payload`);
@@ -229,7 +232,8 @@ for (const [key, expected] of Object.entries({
   raw_port_actor_logged: false,
   raw_channel_logged: false,
   raw_locale_logged: false,
-  redacted_error_marker_logged: true,
+  bounded_error_kind_logged: true,
+  owner_code_length_logged: true,
   correlation_presence_and_length_logged: true,
   tenant_uuid_text_shape_logged: true,
   actor_uuid_shape_logged: true,
@@ -237,7 +241,7 @@ for (const [key, expected] of Object.entries({
   channel_presence_and_length_logged: true,
   locale_length_logged: true,
   deadline_logged: true,
-  internal_code_preserved: true,
+  owner_code_length_preserved: true,
   retryability_preserved: true,
   port_error_kind_policy_preserved: true,
   http_envelopes_preserved: true,
@@ -266,7 +270,7 @@ for (const key of [
 for (const marker of [
   "Status: **source-ready / unvalidated**",
   "correlation presence and length",
-  "The full `PortError` is replaced in the event by the stable marker `redacted`.",
+  "The full `PortError` never reaches the event: the projection records the typed error kind and the owner code length instead.",
   "The broader ecommerce correlation-safe mapper and non-`PortError` envelope cleanup remains open.",
 ]) requireText(doc, marker, `${paths.doc}: documentation contract`);
 requireText(

@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { forbidRawContextLogging } from './lib/bounded-diagnostics.mjs';
+
 const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
@@ -41,15 +43,25 @@ for (const [value, label] of [
   ['use self::rustok_pricing_shim as rustok_pricing;', 'resolver pricing shim alias'],
   ['pub(crate) use super::pricing_read_owner_boundary::in_process_pricing_read_port;', 'resolver contextual constructor export'],
   ['pub use ::rustok_pricing::{ResolveProductPriceRequest, ResolvedPrice};', 'resolver pricing API re-export'],
-  ['correlation_id = %context.correlation_id', 'correlation logging'],
-  ['tenant_id = %context.tenant_id', 'tenant logging'],
-  ['channel = ?context.channel', 'channel logging'],
-  ['locale = %context.locale', 'locale logging'],
-  ['actor_kind = ?context.actor.kind', 'actor kind logging'],
-  ['actor_id = %context.actor.id', 'actor id logging'],
-  ['causation_id = ?context.causation_id', 'causation logging'],
-  ['owner_code = %error.code', 'owner code logging'],
-  ['owner_kind = ?error.kind', 'owner kind logging'],
+  ['let diagnostic_context = PricingOwnerDiagnosticContext::from(context);', 'bounded context projection'],
+  ['correlation_id_shape = diagnostic_context.correlation_id_shape', 'correlation shape logging'],
+  ['tenant_id_shape = diagnostic_context.tenant_id_shape', 'tenant shape logging'],
+  ['channel_shape = diagnostic_context.channel_shape', 'channel shape logging'],
+  ['locale_shape = diagnostic_context.locale_shape', 'locale shape logging'],
+  ['actor_kind = diagnostic_context.actor_kind', 'actor kind logging'],
+  ['actor_id_shape = diagnostic_context.actor_id_shape', 'actor id shape logging'],
+  ['claim_count = diagnostic_context.claim_count', 'claim count logging'],
+  ['role_count = diagnostic_context.role_count', 'role count logging'],
+  ['causation_id_shape = diagnostic_context.causation_id_shape', 'causation shape logging'],
+  ['traceparent_shape = diagnostic_context.traceparent_shape', 'trace shape logging'],
+  ['idempotency_key_shape = diagnostic_context.idempotency_key_shape', 'idempotency shape logging'],
+  ['deadline_ms = ?diagnostic_context.deadline_ms', 'deadline logging'],
+  ['let diagnostic_error = PricingOwnerDiagnosticError;', 'redacted owner error marker'],
+  ['error = ?diagnostic_error', 'redacted owner error evidence'],
+  ['owner_code = %owner_code', 'owner code logging'],
+  ['owner_message_shape,', 'owner message shape logging'],
+  ['owner_message_len,', 'owner message length logging'],
+  ['owner_kind = ?owner_kind', 'owner kind logging'],
   ['owner_retryable = error.retryable', 'owner retryability logging'],
   ['owner = "rustok_pricing"', 'pricing owner logging'],
   ['boundary = PRICING_GRAPHQL_OWNER_BOUNDARY', 'boundary logging'],
@@ -79,6 +91,9 @@ for (const [pattern, expected, label] of [
   const count = pricingBoundary.match(pattern)?.length ?? 0;
   if (count !== expected) failures.push(`${label}: expected ${expected}, found ${count}`);
 }
+
+forbidRawContextLogging(failures, pricingBoundary, 'pricing owner boundary');
+forbidRawContextLogging(failures, facade, 'safe cart facade');
 
 for (const value of [
   'async_graphql::Error::new(error.to_string())',

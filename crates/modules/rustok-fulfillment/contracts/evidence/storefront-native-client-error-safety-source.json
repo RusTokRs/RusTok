@@ -19,7 +19,7 @@
     "technical_native_error_public": false,
     "static_technical_public_message": true,
     "context_created_before_server_function_call": true,
-    "original_error_logged_privately": true,
+    "raw_error_shape_logged": true,
     "per_call_correlation_logging": true,
     "safe_request_shape_only": true,
     "cart_id_values_logged": false,
