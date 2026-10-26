@@ -2184,10 +2184,6 @@ pub(crate) fn event_actor_id(context: &PortContext) -> Option<Uuid> {
         .filter(|actor_id| !actor_id.is_nil())
 }
 
-fn operation_idempotency_key(context: &PortContext) -> TranslationResult<String> {
-    require_idempotency_key(context)
-}
-
 fn require_idempotency_key(context: &PortContext) -> TranslationResult<String> {
     Ok(crate::idempotency::IdempotencyKey::require(context)?.into_string())
 }

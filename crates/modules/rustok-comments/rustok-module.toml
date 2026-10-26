@@ -26,3 +26,8 @@ registry = "contracts/comments-fba-registry.json"
 contract_version = "comments.thread.v1"
 context = "rustok_api::ports::PortContext"
 error = "rustok_api::ports::PortError"
+
+# Support crate embedded by other modules' storefront surfaces (for example
+# rustok-blog); it has no standalone storefront page of its own.
+[provides.storefront_ui]
+leptos_crate = "rustok-comments-storefront-support"
