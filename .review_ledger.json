@@ -1342,9 +1342,9 @@
       "category": "modules",
       "files": 1,
       "loc": 17,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-26T08:37:00Z",
+      "notes": "Consolidated into crates/modules/rustok-seo/storefront/src/render.rs in commit cfd1524edf; headless HTML meta rendering engine verified with 8/8 tests under rustok-seo-storefront; no separate crate remains."
     },
     "crates/modules/rustok-seo-admin-support": {
       "name": "rustok-seo-admin-support",
@@ -1352,19 +1352,19 @@
       "category": "modules",
       "files": 6,
       "loc": 2627,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-26T08:38:00Z",
+      "notes": "Renamed and consolidated into crates/modules/rustok-seo/panel in commit b05b0f6c37; audited and verified under rustok-seo/panel with 28/28 tests passed, zero defects."
     },
     "crates/modules/rustok-seo-targets": {
       "name": "rustok-seo-targets",
-      "path": "crates/modules/rustok-seo-targets",
-      "category": "modules",
+      "path": "crates/libs/rustok-seo-targets",
+      "category": "libs",
       "files": 1,
       "loc": 1487,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-26T08:40:00Z",
+      "notes": "Relocated to crates/libs/rustok-seo-targets; standardized with CRATE_API.md and contract_tests.rs; verified capability registry, slug validation, and JSON-LD schema builder with 8/8 tests passed, zero defects."
     },
     "crates/modules/rustok-social-graph": {
       "name": "rustok-social-graph",
