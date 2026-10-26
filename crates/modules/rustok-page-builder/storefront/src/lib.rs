@@ -29,7 +29,7 @@ mod inline_edit;
 #[cfg(feature = "inline-edit")]
 pub use inline_edit::{
     AuthenticatedInlineEditSession, InlineEditApplyResult, InlineEditAuthorizationPort,
-    InlineEditError, InlineEditGrant, InlineEditRequest,
+    InlineEditError, InlineEditGrant, InlineEditRequest, PageBuilderAuthenticatedInlineStorefront,
 };
 
 use fly::{
