@@ -32,6 +32,28 @@ const ADMIN_ORDER_DETAIL_PAYMENT_OWNER: &str = "rustok_payment.admin_order_detai
 const ADMIN_ORDER_DETAIL_FULFILLMENT_OWNER: &str = "rustok_fulfillment.admin_order_detail";
 const ADMIN_ORDER_DETAIL_BOUNDARY: &str = "commerce_admin_order_detail_http";
 
+/// Bounded facts for the admin order entry line: identity as shape, filters as presence.
+fn log_admin_order_entry(
+    operation: &'static str,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    order_id: Option<Uuid>,
+    status_filter_present: bool,
+    customer_filter_present: bool,
+) {
+    tracing::debug!(
+        boundary = ADMIN_ORDER_BOUNDARY,
+        operation,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        actor_id_non_nil = !actor_id.is_nil(),
+        order_id_present = order_id.is_some(),
+        order_id_non_nil = order_id.is_some_and(|value| !value.is_nil()),
+        status_filter_present,
+        customer_filter_present,
+        "commerce admin order route entered with bounded diagnostics"
+    );
+}
+
 fn require_idempotency_key(headers: &HeaderMap) -> Result<String, HttpError> {
     let value = headers
         .get("Idempotency-Key")
@@ -306,14 +328,13 @@ pub async fn list_orders(
     if tenant.id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_ORDER_BOUNDARY,
-        operation = "list_orders",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        status = ?params.status,
-        customer_id = ?params.customer_id,
-        "listing admin orders"
+    log_admin_order_entry(
+        "list_orders",
+        tenant.id,
+        auth.user_id,
+        None,
+        params.status.is_some(),
+        params.customer_id.is_some(),
     );
 
     let pagination = params.pagination.unwrap_or_default();
@@ -382,13 +403,13 @@ pub async fn show_order(
     if id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_id", "Order ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_ORDER_BOUNDARY,
-        operation = "show_order",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        order_id = %id,
-        "showing admin order detail"
+    log_admin_order_entry(
+        "show_order",
+        tenant.id,
+        auth.user_id,
+        Some(id),
+        false,
+        false,
     );
 
     let order_context =
@@ -485,13 +506,13 @@ pub async fn mark_order_paid(
     if id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_id", "Order ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_ORDER_BOUNDARY,
-        operation = "mark_order_paid",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        order_id = %id,
-        "marking order as paid"
+    log_admin_order_entry(
+        "mark_order_paid",
+        tenant.id,
+        auth.user_id,
+        Some(id),
+        false,
+        false,
     );
 
     let idempotency_key = require_idempotency_key(&headers)?;
@@ -563,14 +584,13 @@ pub async fn ship_order(
     if id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_id", "Order ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_ORDER_BOUNDARY,
-        operation = "ship_order",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        order_id = %id,
-        carrier = ?input.carrier,
-        "shipping order"
+    log_admin_order_entry(
+        "ship_order",
+        tenant.id,
+        auth.user_id,
+        Some(id),
+        false,
+        false,
     );
 
     let idempotency_key = require_idempotency_key(&headers)?;
@@ -642,13 +662,13 @@ pub async fn deliver_order(
     if id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_id", "Order ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_ORDER_BOUNDARY,
-        operation = "deliver_order",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        order_id = %id,
-        "delivering order"
+    log_admin_order_entry(
+        "deliver_order",
+        tenant.id,
+        auth.user_id,
+        Some(id),
+        false,
+        false,
     );
 
     let idempotency_key = require_idempotency_key(&headers)?;
@@ -719,14 +739,13 @@ pub async fn cancel_order(
     if id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_id", "Order ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_ORDER_BOUNDARY,
-        operation = "cancel_order",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        order_id = %id,
-        reason = ?input.reason,
-        "cancelling order"
+    log_admin_order_entry(
+        "cancel_order",
+        tenant.id,
+        auth.user_id,
+        Some(id),
+        false,
+        false,
     );
 
     let idempotency_key = require_idempotency_key(&headers)?;
