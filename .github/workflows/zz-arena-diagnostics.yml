@@ -173,6 +173,14 @@ jobs:
                       "cargo check no-default-features digest", summary, text)
           print(summary, flush=True)
 
+          rc, diags, tail = cargo_json_diag(
+              ["cargo", "check", "-p", "rustok-distribution", "--all-features",
+               "--all-targets", "--message-format", "json"])
+          summary, text = digest_for("cargo check rustok-distribution (all-features)", rc, diags, tail)
+          post_digest("Arena diagnostics: cargo check distribution all-features",
+                      "cargo check distribution all-features digest", summary, text)
+          print(summary, flush=True)
+
           fmt = subprocess.run(["cargo", "fmt", *PKGS, "--", "--check"],
                                capture_output=True, text=True)
           diff_lines = (fmt.stdout + fmt.stderr).splitlines()
