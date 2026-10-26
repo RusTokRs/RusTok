@@ -1189,7 +1189,7 @@ mod tests {
             .expect("insert tenant");
 
         let temp = tempdir().expect("tempdir");
-        let content_dir = temp.path().join("crates").join("rustok-content");
+        let content_dir = temp.path().join("crates").join("modules").join("rustok-content");
         write_module_manifest(
             &content_dir,
             r#"[module]
