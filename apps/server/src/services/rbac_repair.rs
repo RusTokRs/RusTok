@@ -119,6 +119,8 @@ mod tests {
     ) -> uuid::Uuid {
         let user_id = rustok_core::generate_id();
         users::Entity::insert(users::ActiveModel {
+            failed_login_count: Set(0),
+            locked_until: Set(None),
             id: Set(user_id),
             tenant_id: Set(tenant_id),
             email: Set(email.to_string()),

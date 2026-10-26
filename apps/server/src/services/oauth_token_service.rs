@@ -385,7 +385,7 @@ async fn validate_refresh_token(
 ) -> Result<oauth_tokens::Model, OAuthTokenProtocolError> {
     let token_hash = auth::hash_refresh_token(raw_token);
     let token = OAuthTokens::find()
-        .filter(oauth_tokens::Column::TokenHash.eq(token_hash))
+        .filter(oauth_tokens::Column::TokenHash.eq(token_hash.clone()))
         .filter(oauth_tokens::Column::AppId.eq(app.id))
         .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
         .filter(oauth_tokens::Column::GrantType.eq(AUTHORIZATION_CODE_GRANT))

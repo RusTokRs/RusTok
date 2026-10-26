@@ -15,8 +15,8 @@ use rustok_api::Permission;
 use rustok_api::context::scope_matches;
 use rustok_core::{Rbac, UserRole};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
-    TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    Set, TransactionTrait, sea_query::Expr,
 };
 use std::str::FromStr;
 use subtle::ConstantTimeEq;
@@ -176,44 +176,29 @@ impl OAuthAppService {
             &granted_permissions,
         )?;
 
-        // Column-scoped write: persisting the whole loaded row would also
-        // rewrite client_secret_hash from a stale read and could silently
-        // revert a concurrent secret rotation.
-        oauth_apps::Entity::update_many()
-            .col_expr(oauth_apps::Column::Name, Expr::value(input.name))
-            .col_expr(
-                oauth_apps::Column::Description,
-                Expr::value(input.description),
-            )
-            .col_expr(oauth_apps::Column::IconUrl, Expr::value(input.icon_url))
-            .col_expr(
-                oauth_apps::Column::RedirectUris,
-                Expr::value(
-                    serde_json::to_value(&input.redirect_uris)
-                        .map_err(|_| Error::InternalServerError)?,
-                ),
-            )
-            .col_expr(
-                oauth_apps::Column::Scopes,
-                Expr::value(
-                    serde_json::to_value(&input.scopes).map_err(|_| Error::InternalServerError)?,
-                ),
-            )
-            .col_expr(
-                oauth_apps::Column::GrantTypes,
-                Expr::value(
-                    serde_json::to_value(&input.grant_types)
-                        .map_err(|_| Error::InternalServerError)?,
-                ),
-            )
-            .col_expr(
-                oauth_apps::Column::GrantedPermissions,
-                Expr::value(to_json_array(&granted_permissions)?),
-            )
-            .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(Utc::now()))
-            .filter(oauth_apps::Column::Id.eq(app_id))
-            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-            .exec(db)
+        // Go through the ActiveModel wrapper: name/description are
+        // translation-owned (`#[sea_orm(ignore)]` here) and its update
+        // path syncs them into oauth_app_translations. The stored
+        // client secret is explicitly excluded via NotSet so this
+        // (possibly stale) read can never revert a concurrent secret
+        // rotation.
+        let mut active: OAuthAppActiveModel = app.into();
+        active.client_secret_hash = ActiveValue::NotSet;
+        active.name = Set(input.name);
+        active.description = Set(input.description);
+        active.icon_url = Set(input.icon_url);
+        active.redirect_uris =
+            Set(serde_json::to_value(&input.redirect_uris)
+                .map_err(|_| Error::InternalServerError)?);
+        active.scopes =
+            Set(serde_json::to_value(&input.scopes).map_err(|_| Error::InternalServerError)?);
+        active.grant_types =
+            Set(serde_json::to_value(&input.grant_types).map_err(|_| Error::InternalServerError)?);
+        active.granted_permissions = Set(to_json_array(&granted_permissions)?);
+        active.updated_at = Set(Utc::now().into());
+
+        active
+            .update(db)
             .await
             .map_err(|_| Error::InternalServerError)?;
 
