@@ -72,9 +72,11 @@ pub fn check_any_permission(
     user_permissions: &[Permission],
     required_permissions: &[Permission],
 ) -> PermissionCheckOutcome {
+    // Fail closed: an empty "any" requirement set is a caller bug, not a grant.
+    // (`check_all_permissions` keeps the vacuous-true convention for `all`.)
     if required_permissions.is_empty() {
         return PermissionCheckOutcome {
-            allowed: true,
+            allowed: false,
             missing_permissions: Vec::new(),
         };
     }
@@ -192,9 +194,9 @@ mod tests {
     }
 
     #[test]
-    fn check_any_permission_accepts_empty_requirements() {
+    fn check_any_permission_denies_empty_requirements() {
         let outcome = check_any_permission(&[], &[]);
-        assert!(outcome.allowed);
+        assert!(!outcome.allowed);
         assert!(outcome.missing_permissions.is_empty());
     }
 

@@ -22,6 +22,19 @@ pub(super) fn prepare_statement(backend: DbBackend, sql: &str, values: Vec<Value
     Statement::from_sql_and_values(backend, rendered, values)
 }
 
+/// Resolve the host-provided module availability snapshot for a tenant.
+/// Hosts that register no provider get `None`: all permissions are treated
+/// as platform-core and no grant is ever dormant.
+pub(super) async fn availability_snapshot(
+    ctx: &async_graphql::Context<'_>,
+    tenant_id: Uuid,
+) -> Option<crate::PermissionAvailability> {
+    match ctx.data_opt::<super::RbacModuleAvailabilityHandle>() {
+        Some(handle) => handle.0.permission_availability(&tenant_id).await,
+        None => None,
+    }
+}
+
 pub(super) fn require_direct_control_plane_user(
     auth: &AuthContext,
     principal_context: AuthPrincipalContext,

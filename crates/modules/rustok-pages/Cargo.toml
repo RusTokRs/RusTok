@@ -31,7 +31,7 @@ rustok-events.workspace = true
 rustok-content.workspace = true
 rustok-outbox.workspace = true
 rustok-page-builder = { path = "../rustok-page-builder", default-features = false }
-rustok-seo-targets.workspace = true
+rustok-seo-targets = { workspace = true, features = ["server"] }
 rustok-translation-targets.workspace = true
 rustok-telemetry.workspace = true
 rustok-tenant.workspace = true

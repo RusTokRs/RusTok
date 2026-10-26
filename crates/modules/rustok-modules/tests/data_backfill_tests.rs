@@ -23,7 +23,7 @@ async fn test_multi_page_backfill_convergence() {
     let page1 = coordinator
         .process_page(backfill_id, |cursor| async move {
             assert!(cursor.is_none());
-            Ok(BackfillPageResult {
+            Ok::<BackfillPageResult, String>(BackfillPageResult {
                 processed_count: 50,
                 next_cursor: Some("cursor_50".to_string()),
                 has_more: true,
@@ -39,7 +39,7 @@ async fn test_multi_page_backfill_convergence() {
     let page2 = coordinator
         .process_page(backfill_id, |cursor| async move {
             assert_eq!(cursor.as_deref(), Some("cursor_50"));
-            Ok(BackfillPageResult {
+            Ok::<BackfillPageResult, String>(BackfillPageResult {
                 processed_count: 50,
                 next_cursor: Some("cursor_100".to_string()),
                 has_more: false,
@@ -54,6 +54,12 @@ async fn test_multi_page_backfill_convergence() {
     let idempotent = coordinator
         .process_page(backfill_id, |_| async {
             panic!("should not be called on converged backfill");
+            #[allow(unreachable_code)]
+            Ok::<BackfillPageResult, String>(BackfillPageResult {
+                processed_count: 0,
+                next_cursor: None,
+                has_more: false,
+            })
         })
         .await
         .expect("idempotent");
@@ -77,7 +83,7 @@ async fn test_resumption_from_last_checkpoint_after_crash() {
     // Commit page 1
     coordinator
         .process_page(backfill_id, |_| async {
-            Ok(BackfillPageResult {
+            Ok::<BackfillPageResult, String>(BackfillPageResult {
                 processed_count: 25,
                 next_cursor: Some("key_25".to_string()),
                 has_more: true,
@@ -99,7 +105,7 @@ async fn test_resumption_from_last_checkpoint_after_crash() {
     let page2 = coordinator
         .process_page(backfill_id, |cursor| async move {
             assert_eq!(cursor.as_deref(), Some("key_25"));
-            Ok(BackfillPageResult {
+            Ok::<BackfillPageResult, String>(BackfillPageResult {
                 processed_count: 25,
                 next_cursor: Some("key_50".to_string()),
                 has_more: false,
@@ -144,7 +150,7 @@ async fn test_uncertain_outcome_reconciliation() {
     // Successfully complete remaining work
     let finished = coordinator
         .process_page(backfill_id, |_| async {
-            Ok(BackfillPageResult {
+            Ok::<BackfillPageResult, String>(BackfillPageResult {
                 processed_count: 10,
                 next_cursor: Some("final".to_string()),
                 has_more: false,

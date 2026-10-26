@@ -118,6 +118,15 @@ pub enum RbacRoleMutationPolicyError {
     },
     #[error("cannot remove, demote, or deactivate the last active super administrator")]
     LastActiveSuperAdmin,
+    #[error("built-in role `{0}` must be assigned through the canonical role path")]
+    BuiltInRoleRequiresCanonicalPath(String),
+    #[error(
+        "cannot assign role `{role_slug}` because permission `{permission}` exceeds the current request authority"
+    )]
+    CustomRequestAuthorityCeiling {
+        role_slug: String,
+        permission: rustok_api::Permission,
+    },
     #[error("RBAC role mutation durable generation must be greater than zero")]
     InvalidDurableGeneration,
 }
@@ -237,6 +246,8 @@ pub enum RbacRolePersistenceError {
     Policy(#[from] RbacRoleMutationPolicyError),
     #[error("RBAC target user was not found in the requested tenant")]
     TargetNotFound,
+    #[error("RBAC role `{0}` was not found in the requested tenant")]
+    RoleNotFound(String),
     #[error("active super administrator role assignment is inconsistent")]
     InconsistentAuthority,
 }
@@ -507,6 +518,297 @@ pub async fn replace_persisted_user_role_on(
     )
     .await?;
     crate::RbacRoleAssignmentDbWriter::replace_role_on(db, tenant_id, user_id, role).await?;
+    Ok(true)
+}
+
+/// Request to assign a tenant-persisted role (built-in defaults excluded)
+/// identified by slug. Custom roles have no platform rank, so authority is
+/// derived from the role's persisted permission set: an actor may only assign
+/// a custom role whose grants fit entirely inside the actor's own effective
+/// permissions.
+#[derive(Clone, Debug)]
+pub struct RbacCustomRoleAssignmentRequest {
+    pub tenant_id: Uuid,
+    pub actor_id: Uuid,
+    pub actor_tenant_id: Uuid,
+    pub actor_role: UserRole,
+    pub actor_permissions: Vec<rustok_api::Permission>,
+    pub target_user_id: Uuid,
+    pub requested_role_slug: String,
+    pub resulting_status: Option<UserStatus>,
+}
+
+/// A validated custom-role assignment. `previous_role_slug` is set only when
+/// the target held exactly one tenant role before the change.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RbacCustomRoleAssignmentPlan {
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    target_user_id: Uuid,
+    role_id: Uuid,
+    role_slug: String,
+    previous_role_slug: Option<String>,
+    change: RbacRoleMutationChange,
+}
+
+impl RbacCustomRoleAssignmentPlan {
+    pub fn tenant_id(&self) -> Uuid {
+        self.tenant_id
+    }
+
+    pub fn actor_id(&self) -> Uuid {
+        self.actor_id
+    }
+
+    pub fn target_user_id(&self) -> Uuid {
+        self.target_user_id
+    }
+
+    pub fn role_id(&self) -> Uuid {
+        self.role_id
+    }
+
+    pub fn role_slug(&self) -> &str {
+        &self.role_slug
+    }
+
+    pub fn previous_role_slug(&self) -> Option<&str> {
+        self.previous_role_slug.as_deref()
+    }
+
+    pub fn change(&self) -> RbacRoleMutationChange {
+        self.change
+    }
+
+    pub fn integration_event(
+        &self,
+        durable_generation: u64,
+    ) -> Result<RbacRoleMutationEvent, RbacRoleMutationPolicyError> {
+        if durable_generation == 0 {
+            return Err(RbacRoleMutationPolicyError::InvalidDurableGeneration);
+        }
+        Ok(match self.change {
+            RbacRoleMutationChange::RoleReplaced => RbacRoleMutationEvent::user_role_replaced(
+                self.target_user_id,
+                self.previous_role_slug.clone().unwrap_or_default(),
+                self.role_slug.clone(),
+                durable_generation,
+            ),
+            RbacRoleMutationChange::AssignmentRepaired => {
+                RbacRoleMutationEvent::user_role_assignment_repaired(
+                    self.target_user_id,
+                    self.role_slug.clone(),
+                    durable_generation,
+                )
+            }
+        })
+    }
+}
+
+fn normalize_role_slug(slug: &str) -> String {
+    slug.trim().to_lowercase()
+}
+
+async fn load_role_row_on<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    tenant_id: Uuid,
+    slug: &str,
+) -> Result<Option<Uuid>, RbacRolePersistenceError> {
+    use sea_orm::ConnectionTrait;
+    let row = db
+        .query_one_raw(role_statement(
+            db,
+            "SELECT id FROM roles WHERE tenant_id = ? AND slug = ? LIMIT 1",
+            vec![tenant_id.into(), slug.to_string().into()],
+        )?)
+        .await?;
+    match row {
+        Some(row) => Ok(Some(row.try_get("", "id")?)),
+        None => Ok(None),
+    }
+}
+
+async fn load_tenant_role_memberships_on<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    tenant_id: Uuid,
+    user_id: Uuid,
+) -> Result<Vec<(Uuid, String)>, RbacRolePersistenceError> {
+    use sea_orm::ConnectionTrait;
+    let rows = db
+        .query_all_raw(role_statement(
+            db,
+            "SELECT r.id, r.slug FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ? AND r.tenant_id = ? ORDER BY r.slug",
+            vec![user_id.into(), tenant_id.into()],
+        )?)
+        .await?;
+    let mut memberships = Vec::with_capacity(rows.len());
+    for row in rows {
+        memberships.push((row.try_get("", "id")?, row.try_get("", "slug")?));
+    }
+    Ok(memberships)
+}
+
+async fn load_role_permissions_on<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    tenant_id: Uuid,
+    role_id: Uuid,
+) -> Result<Vec<rustok_api::Permission>, RbacRolePersistenceError> {
+    use sea_orm::ConnectionTrait;
+    let rows = db
+        .query_all_raw(role_statement(
+            db,
+            "SELECT p.resource, p.action FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = ? AND p.tenant_id = ?",
+            vec![role_id.into(), tenant_id.into()],
+        )?)
+        .await?;
+    let mut permissions = Vec::with_capacity(rows.len());
+    for row in rows {
+        let resource: String = row.try_get("", "resource")?;
+        let action: String = row.try_get("", "action")?;
+        let permission = format!("{resource}:{action}")
+            .parse::<rustok_api::Permission>()
+            .map_err(|_| RbacRolePersistenceError::InconsistentAuthority)?;
+        permissions.push(permission);
+    }
+    Ok(permissions)
+}
+
+/// Build the custom-role assignment plan from owner-read facts under the
+/// host's transaction. Returns `Ok(None)` when the target already holds
+/// exactly the requested role (no-op: no event, no generation advance).
+pub async fn plan_persisted_custom_role_assignment_on(
+    db: &sea_orm::DatabaseTransaction,
+    request: RbacCustomRoleAssignmentRequest,
+) -> Result<Option<RbacCustomRoleAssignmentPlan>, RbacRolePersistenceError> {
+    validate_identity("tenant_id", request.tenant_id)?;
+    validate_identity("actor_id", request.actor_id)?;
+    validate_identity("actor_tenant_id", request.actor_tenant_id)?;
+    validate_identity("target_user_id", request.target_user_id)?;
+    if request.actor_tenant_id != request.tenant_id {
+        return Err(RbacRoleMutationPolicyError::ActorTenantMismatch.into());
+    }
+
+    let slug = normalize_role_slug(&request.requested_role_slug);
+    if slug.parse::<UserRole>().is_ok() {
+        return Err(
+            RbacRoleMutationPolicyError::BuiltInRoleRequiresCanonicalPath(slug).into(),
+        );
+    }
+    if request.actor_role == UserRole::Customer {
+        return Err(RbacRoleMutationPolicyError::CannotAssignPeerOrHigherRole.into());
+    }
+
+    let target_status =
+        lock_target_authority_on(db, request.tenant_id, request.target_user_id).await?;
+    let role_id = load_role_row_on(db, request.tenant_id, &slug)
+        .await?
+        .ok_or_else(|| RbacRolePersistenceError::RoleNotFound(slug.clone()))?;
+
+    // Authority ceiling: the actor may only hand out grants it effectively
+    // holds itself. This is the custom-role analogue of
+    // `require_request_role_grant` for built-in roles.
+    for permission in load_role_permissions_on(db, request.tenant_id, role_id).await? {
+        if !crate::has_effective_permission_in_set(&request.actor_permissions, &permission) {
+            return Err(RbacRoleMutationPolicyError::CustomRequestAuthorityCeiling {
+                role_slug: slug.clone(),
+                permission,
+            }
+            .into());
+        }
+    }
+
+    let target_permissions =
+        crate::resolve_persisted_permissions_on(db, &request.tenant_id, &request.target_user_id)
+            .await?;
+    let target_role = rustok_core::infer_user_role_from_permissions(&target_permissions);
+    require_user_management(
+        request.actor_id,
+        request.target_user_id,
+        &request.actor_role,
+        &target_role,
+    )?;
+
+    let memberships =
+        load_tenant_role_memberships_on(db, request.tenant_id, request.target_user_id).await?;
+    if memberships.len() == 1 && memberships[0].0 == role_id {
+        return Ok(None);
+    }
+
+    // Continuity: replacing the membership of an active super administrator
+    // removes them from the active administrator set by definition here (the
+    // requested role is never `super_admin` on this path).
+    let holds_super_admin = memberships
+        .iter()
+        .any(|(_, membership_slug)| membership_slug == &UserRole::SuperAdmin.to_string());
+    if holds_super_admin
+        && target_status == UserStatus::Active
+        && count_remaining_active_super_admins_on(db, request.tenant_id, request.target_user_id)
+            .await?
+            == 0
+    {
+        return Err(RbacRoleMutationPolicyError::LastActiveSuperAdmin.into());
+    }
+
+    let (previous_role_slug, change) = if memberships.len() == 1 {
+        (
+            Some(memberships[0].1.clone()),
+            RbacRoleMutationChange::RoleReplaced,
+        )
+    } else {
+        (None, RbacRoleMutationChange::AssignmentRepaired)
+    };
+    Ok(Some(RbacCustomRoleAssignmentPlan {
+        tenant_id: request.tenant_id,
+        actor_id: request.actor_id,
+        target_user_id: request.target_user_id,
+        role_id,
+        role_slug: slug,
+        previous_role_slug,
+        change,
+    }))
+}
+
+/// Replace a persisted role by slug within the caller's transaction. Returns
+/// false only for an exact single-role assignment. Any tenant role may be
+/// assigned this way, but built-in slugs should normally go through the
+/// canonical planning path; this writer re-checks continuity itself so it is
+/// safe to call standalone.
+pub async fn replace_persisted_user_role_by_slug_on(
+    db: &sea_orm::DatabaseTransaction,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    role_slug: &str,
+) -> Result<bool, RbacRolePersistenceError> {
+    use sea_orm::ConnectionTrait;
+    validate_identity("tenant_id", tenant_id)?;
+    validate_identity("target_user_id", user_id)?;
+    let slug = normalize_role_slug(role_slug);
+    let target_status = lock_target_authority_on(db, tenant_id, user_id).await?;
+    let role_id = load_role_row_on(db, tenant_id, &slug)
+        .await?
+        .ok_or_else(|| RbacRolePersistenceError::RoleNotFound(slug.clone()))?;
+    let memberships = load_tenant_role_memberships_on(db, tenant_id, user_id).await?;
+    if memberships.len() == 1 && memberships[0].0 == role_id {
+        return Ok(false);
+    }
+    let holds_super_admin = memberships
+        .iter()
+        .any(|(_, membership_slug)| membership_slug == &UserRole::SuperAdmin.to_string());
+    if holds_super_admin
+        && slug != UserRole::SuperAdmin.to_string()
+        && target_status == UserStatus::Active
+        && count_remaining_active_super_admins_on(db, tenant_id, user_id).await? == 0
+    {
+        return Err(RbacRoleMutationPolicyError::LastActiveSuperAdmin.into());
+    }
+    crate::RbacRoleAssignmentDbWriter::remove_tenant_role_assignments_on(db, tenant_id, user_id)
+        .await?;
+    db.execute_raw(role_statement(
+        db,
+        "INSERT INTO user_roles (id, user_id, role_id) VALUES (?, ?, ?) ON CONFLICT (user_id, role_id) DO NOTHING",
+        vec![rustok_core::generate_id().into(), user_id.into(), role_id.into()],
+    )?)
+    .await?;
     Ok(true)
 }
 
@@ -856,4 +1158,158 @@ mod tests {
             RbacRoleMutationOutcome::Apply(_)
         ));
     }
+
+    #[tokio::test]
+    async fn custom_role_assignment_by_slug_enforces_ceiling_and_noop() {
+        use sea_orm::{ConnectionTrait, Database, TransactionTrait};
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        for ddl in [
+            "CREATE TABLE users (id BLOB PRIMARY KEY, tenant_id BLOB NOT NULL, status TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE TABLE roles (id BLOB PRIMARY KEY, tenant_id BLOB NOT NULL, name TEXT NOT NULL, slug TEXT NOT NULL, description TEXT, is_system BOOLEAN NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (tenant_id, slug))",
+            "CREATE TABLE user_roles (id BLOB PRIMARY KEY, user_id BLOB NOT NULL REFERENCES users(id), role_id BLOB NOT NULL REFERENCES roles(id), UNIQUE (user_id, role_id))",
+            "CREATE TABLE permissions (id BLOB PRIMARY KEY, tenant_id BLOB NOT NULL, resource TEXT NOT NULL, action TEXT NOT NULL, description TEXT, UNIQUE (tenant_id, resource, action))",
+            "CREATE TABLE role_permissions (id BLOB PRIMARY KEY, role_id BLOB NOT NULL REFERENCES roles(id), permission_id BLOB NOT NULL REFERENCES permissions(id), UNIQUE (role_id, permission_id))",
+        ] {
+            db.execute_unprepared(ddl).await.unwrap();
+        }
+        let tenant = Uuid::new_v4();
+        let actor = Uuid::new_v4();
+        let target = Uuid::new_v4();
+        for id in [actor, target] {
+            db.execute_raw(
+                role_statement(
+                    &db,
+                    "INSERT INTO users (id, tenant_id, status) VALUES (?, ?, 'active')",
+                    vec![id.into(), tenant.into()],
+                )
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        }
+        let role_id = Uuid::new_v4();
+        db.execute_raw(
+            role_statement(
+                &db,
+                "INSERT INTO roles (id, tenant_id, name, slug, is_system) VALUES (?, ?, 'Content Editor', 'content_editor', FALSE)",
+                vec![role_id.into(), tenant.into()],
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+        for permission in [
+            rustok_api::Permission::POSTS_READ,
+            rustok_api::Permission::POSTS_DELETE,
+        ] {
+            let permission_id = Uuid::new_v4();
+            db.execute_raw(
+                role_statement(
+                    &db,
+                    "INSERT INTO permissions (id, tenant_id, resource, action) VALUES (?, ?, ?, ?)",
+                    vec![
+                        permission_id.into(),
+                        tenant.into(),
+                        permission.resource.to_string().into(),
+                        permission.action.to_string().into(),
+                    ],
+                )
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+            db.execute_raw(
+                role_statement(
+                    &db,
+                    "INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?, ?, ?)",
+                    vec![Uuid::new_v4().into(), role_id.into(), permission_id.into()],
+                )
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        }
+
+        let request = |actor_permissions: Vec<rustok_api::Permission>| {
+            RbacCustomRoleAssignmentRequest {
+                tenant_id: tenant,
+                actor_id: actor,
+                actor_tenant_id: tenant,
+                actor_role: UserRole::Admin,
+                actor_permissions,
+                target_user_id: target,
+                requested_role_slug: "content_editor".to_string(),
+                resulting_status: None,
+            }
+        };
+
+        // Ceiling: the role grants posts:delete, which this actor lacks.
+        let tx = db.begin().await.unwrap();
+        let error = plan_persisted_custom_role_assignment_on(
+            &tx,
+            request(vec![rustok_api::Permission::POSTS_READ]),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            RbacRolePersistenceError::Policy(
+                RbacRoleMutationPolicyError::CustomRequestAuthorityCeiling { .. }
+            )
+        ));
+        tx.rollback().await.unwrap();
+
+        // Built-in slugs are refused on the custom path.
+        let tx = db.begin().await.unwrap();
+        let mut builtin_request = request(vec![rustok_api::Permission::POSTS_MANAGE]);
+        builtin_request.requested_role_slug = "admin".to_string();
+        let error = plan_persisted_custom_role_assignment_on(&tx, builtin_request)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            RbacRolePersistenceError::Policy(
+                RbacRoleMutationPolicyError::BuiltInRoleRequiresCanonicalPath(_)
+            )
+        ));
+        tx.rollback().await.unwrap();
+
+        // Within the ceiling the assignment plans, applies, and then no-ops.
+        let tx = db.begin().await.unwrap();
+        let plan = plan_persisted_custom_role_assignment_on(
+            &tx,
+            request(vec![rustok_api::Permission::POSTS_MANAGE]),
+        )
+        .await
+        .unwrap()
+        .expect("custom role assignment should plan");
+        assert_eq!(plan.role_slug(), "content_editor");
+        assert!(replace_persisted_user_role_by_slug_on(
+            &tx,
+            tenant,
+            target,
+            "content_editor"
+        )
+        .await
+        .unwrap());
+        assert!(!replace_persisted_user_role_by_slug_on(
+            &tx,
+            tenant,
+            target,
+            "content_editor"
+        )
+        .await
+        .unwrap());
+        assert!(
+            plan_persisted_custom_role_assignment_on(
+                &tx,
+                request(vec![rustok_api::Permission::POSTS_MANAGE])
+            )
+            .await
+            .unwrap()
+            .is_none()
+        );
+        tx.commit().await.unwrap();
+    }
 }
+

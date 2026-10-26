@@ -77,7 +77,7 @@ flowchart TD
 
     MGMT --> DB[(AI control-plane tables)]
     MCP --> MCPDB[(MCP policies / audit / tokens)]
-    GQL --> RBAC[Casbin-backed RBAC]
+    GQL --> RBAC[Relation-based RBAC]
     GQL --> OBS[OTel + Prometheus]
 ```
 
@@ -118,7 +118,7 @@ Separately, rate-limit engineering needs emphasis. OpenAI works with RPM/TPM/RPD
 
 ## RBAC and Data Security
 
-RBAC in RusTok is already designed as a typed permission vocabulary. In `rustok-core`, separate resources and actions are defined for `ai:providers`, `ai:task_profiles`, `ai:sessions`, `ai:runs`, `ai:approvals`, `ai:router`, as well as task groups `ai:tasks:text`, `ai:tasks:image`, `ai:tasks:code`, `ai:tasks:alloy`, `ai:tasks:multimodal`. There are also domain permissions for `products`, `orders`, `analytics`, `scripts`, `mcp`, and moderation-related permissions for forum topics and replies. The `rustok-rbac` layer is declared as a Casbin-backed live authorization runtime, and GraphQL AI resolvers actually check permissions for read/manage/run/cancel/resolve. This is an excellent foundation for AI governance "by roles" rather than by ad-hoc flags.
+RBAC in RusTok is already designed as a typed permission vocabulary. In `rustok-core`, separate resources and actions are defined for `ai:providers`, `ai:task_profiles`, `ai:sessions`, `ai:runs`, `ai:approvals`, `ai:router`, as well as task groups `ai:tasks:text`, `ai:tasks:image`, `ai:tasks:code`, `ai:tasks:alloy`, `ai:tasks:multimodal`. There are also domain permissions for `products`, `orders`, `analytics`, `scripts`, `mcp`, and moderation-related permissions for forum topics and replies. The `rustok-rbac` layer is the platform's own relation-based live authorization runtime (persisted role/permission graph plus a set-based evaluator), and GraphQL AI resolvers actually check permissions for read/manage/run/cancel/resolve. This is an excellent foundation for AI governance "by roles" rather than by ad-hoc flags.
 
 At the same time, the current persisted model shows where the real data risks lie. The AI control plane stores `api_key_secret`, chat messages, tool traces with `input_payload`/`output_payload`, approval requests with `tool_input`, metadata, etc. The MCP model stores token hashes/previews, granted permissions/scopes, allowed/denied tools and audit logs. For production, this is enough to ensure manageability; but it is also enough to unintentionally retain PII, commercial secrets or sensitive tool payloads if redaction and encryption discipline are not introduced.
 

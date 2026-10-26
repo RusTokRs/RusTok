@@ -36,7 +36,7 @@ pub async fn cancel_machine_operation(
         return Err(TranslationError::Forbidden);
     }
     let request_hash = hash_manifest(&input)?;
-    let idempotency_key = context.idempotency_key.clone().unwrap_or_default();
+    let idempotency_key = require_idempotency_key(&context)?;
     if let Some(existing) =
         find_cancellation_by_idempotency(database, tenant_id, &idempotency_key).await?
     {
@@ -71,6 +71,14 @@ pub async fn cancel_machine_operation(
         propagate_machine_cancellation(machine_port, &context, &operation).await;
 
     let transaction = database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation machine busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
     let cancellation_id = generate_id();
     let now = Utc::now().fixed_offset();
     machine_cancellation::Entity::insert(machine_cancellation::ActiveModel {
@@ -260,7 +268,7 @@ pub(crate) fn validate_machine_cancellation_replay(
     context: &PortContext,
     request_hash: &str,
 ) -> TranslationResult<()> {
-    if model.idempotency_key != context.idempotency_key.as_deref().unwrap_or_default() {
+    if model.idempotency_key != require_idempotency_key(&context)? {
         return Err(TranslationError::MachineOperationTerminal(
             "cancelled".to_string(),
         ));
@@ -410,4 +418,8 @@ pub(crate) async fn refresh_machine_cancellation_provider_evidence(
         .await?
         .map(machine_cancellation_record)
         .ok_or(TranslationError::WorkflowRevisionConflict)
+}
+
+fn require_idempotency_key(context: &PortContext) -> TranslationResult<String> {
+    Ok(crate::idempotency::IdempotencyKey::require(context)?.into_string())
 }

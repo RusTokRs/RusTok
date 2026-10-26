@@ -35,7 +35,7 @@ rustok-ui-i18n.workspace = true
 rustok-core = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 rustok-seo = { path = "..", default-features = false }
-rustok-seo-targets = { path = "../../rustok-seo-targets", default-features = false }
+rustok-seo-targets.workspace = true
 rustok-tenant = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }

@@ -1,6 +1,8 @@
 # rustok-search / CRATE_API
 
-## Public Modules
+## Public surface
+
+### Public modules
 `analytics`, `audience_security`, `diagnostics`, `dictionaries`, `engine`, `forum_document_filters`, `forum_storefront_execution`, `ingestion`, `migrations`, `models`, `module`, `pg_engine`, `ports`, `presets`, `projection_source`, `projector`, `ranking`, `search_settings`, `storefront_category_scope`, `storefront_channel_authority`, `storefront_result_eligibility`, `suggestions`.
 
 ## Platform Capability Bindings

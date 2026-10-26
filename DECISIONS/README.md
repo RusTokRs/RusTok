@@ -203,8 +203,6 @@ Non-ADR plans and research documents do not belong in this registry.
 | [2026-03-11](./2026-03-11-queue-runtime-source-of-truth-outbox.md) | Queue runtime source of truth: `rustok-outbox` and `event_transport_factory` | Accepted | Not tracked | — |
 | [2026-03-07](./2026-03-07-deployment-profiles-and-ui-stack.md) | Deployment profiles and UI stack | Accepted | Not tracked | Partially superseded by [Leptos server functions](./2026-03-29-leptos-server-functions-as-internal-data-layer.md) |
 | [2026-03-07](./2026-03-07-admin-module-ui-unification.md) | UI module unification between Next.js and Leptos Admin | Accepted | Implemented | — |
-| [2026-03-05](./2026-03-05-rbac-relation-only-final-cutover-gate.md) | Final cutover gate for `casbin_only` RBAC | Accepted | Not tracked | — |
-| [2026-02-26](./2026-02-26-rbac-relation-source-of-truth-cutover.md) | RBAC source of truth and staged runtime rollout | Accepted | Not tracked | — |
 | [2026-02-26](./2026-02-26-auth-lifecycle-unification-session-invalidation.md) | Auth lifecycle unification and session invalidation policy | Accepted | Not tracked | — |
 | [2026-02-25](./2026-02-25-shared-design-system-shadcn-port.md) | Unified design system with shadcn/ui CSS variables | Accepted | Not tracked | — |
 | [2026-02-19](./2026-02-19-rustok-events-canonical-contract.md) | Canonical event contract in `rustok-events` | Proposed | Not started | — |

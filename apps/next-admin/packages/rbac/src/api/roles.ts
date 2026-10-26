@@ -14,6 +14,8 @@ export interface RoleInfo {
   description?: string | null;
   isSystem?: boolean;
   permissions: string[];
+  /** Grants whose owning module is disabled for this tenant: persisted but not effective. */
+  inactivePermissions?: string[];
 }
 
 export interface PlatformPermissionItem {
@@ -21,6 +23,10 @@ export interface PlatformPermissionItem {
   resource: string;
   action: string;
   description?: string | null;
+  /** Owning module slug when a module declares this permission. */
+  moduleSlug?: string | null;
+  /** Availability for this tenant: 'core' | 'enabled' | 'disabled'. */
+  moduleStatus?: string;
 }
 
 export interface CreateRoleInput {
@@ -47,24 +53,10 @@ export interface DeleteRolePayload {
   slug: string;
 }
 
-export type UserRoleEnum = 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'CUSTOMER';
-
-export function roleSlugToUserRoleEnum(slug: string): UserRoleEnum {
-  const normalized = slug.trim().toUpperCase();
-  if (
-    normalized === 'SUPER_ADMIN' ||
-    normalized === 'ADMIN' ||
-    normalized === 'MANAGER' ||
-    normalized === 'CUSTOMER'
-  ) {
-    return normalized as UserRoleEnum;
-  }
-  return 'CUSTOMER';
-}
-
 export interface AssignUserRoleInput {
   userId: string;
-  role: UserRoleEnum | string;
+  /** Slug of any tenant role (built-in or custom). */
+  roleSlug: string;
 }
 
 export interface AssignUserRolePayload {
@@ -84,6 +76,7 @@ query Roles {
     description
     isSystem
     permissions
+    inactivePermissions
   }
 }
 `;
@@ -95,6 +88,8 @@ query PlatformPermissions {
     resource
     action
     description
+    moduleSlug
+    moduleStatus
   }
 }
 `;
@@ -110,6 +105,7 @@ mutation CreateRole($input: CreateRoleInput!) {
       description
       isSystem
       permissions
+      inactivePermissions
     }
   }
 }
@@ -126,6 +122,7 @@ mutation UpdateRole($input: UpdateRoleInput!) {
       description
       isSystem
       permissions
+      inactivePermissions
     }
   }
 }
@@ -237,10 +234,10 @@ export async function assignUserRole(
 ): Promise<AssignUserRolePayload> {
   const payload = {
     userId: input.userId,
-    role: roleSlugToUserRoleEnum(input.role)
+    roleSlug: input.roleSlug
   };
   const data = await graphqlRequest<
-    { input: { userId: string; role: UserRoleEnum } },
+    { input: { userId: string; roleSlug: string } },
     AssignUserRoleResponse
   >(ASSIGN_USER_ROLE_MUTATION, { input: payload }, opts.token, opts.tenantSlug);
   return data.assignUserRole;

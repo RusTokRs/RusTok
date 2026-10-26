@@ -383,6 +383,7 @@ where
         user_id = %user_id,
         "Resolving permissions with cache"
     );
+    let mut last_resolved: Option<Vec<Permission>> = None;
     for _ in 0..MAX_PERMISSION_CACHE_RESOLUTION_ATTEMPTS {
         let (cached_permissions, token) = cache.lookup(tenant_id, user_id).await.into_parts();
         if let Some(cached_permissions) = cached_permissions {
@@ -403,12 +404,15 @@ where
                 cache_hit: false,
             });
         }
+        last_resolved = Some(resolved_permissions);
     }
 
-    // Continuous invalidation means no permission snapshot can be proven current. Deny by returning
-    // an empty set instead of exposing a value loaded from a superseded generation.
+    // Continuous invalidation means the snapshot cannot be *cached* as proven
+    // current, but it was just read from the authoritative relation graph.
+    // Return it uncached instead of fabricating an empty (deny-all) snapshot:
+    // cache churn must not become an availability outage.
     Ok(crate::PermissionResolution {
-        permissions: Vec::new(),
+        permissions: last_resolved.unwrap_or_default(),
         cache_hit: false,
     })
 }
@@ -905,7 +909,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn continuous_invalidation_fails_closed() {
+    async fn continuous_invalidation_returns_uncached_authoritative_snapshot() {
         let role_id = uuid::Uuid::new_v4();
         let store = StubStore {
             role_ids: vec![role_id],
@@ -922,7 +926,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(result.permissions.is_empty());
+        assert_eq!(result.permissions, vec![Permission::USERS_MANAGE]);
         assert!(!result.cache_hit);
     }
 

@@ -11,8 +11,12 @@ export const metadata = {
 
 export default async function Page() {
   const session = await auth();
-  const role = session?.user?.role;
-  if (!role || role === 'CUSTOMER') {
+  // UX gate only (the server remains the authorization source of truth):
+  // aligned with the nav item access (`admin` minimum in the role hierarchy),
+  // so manager/customer sessions are not shown a page whose API calls the
+  // server would deny for lack of settings/users read.
+  const role = session?.user?.role?.toUpperCase();
+  if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') {
     redirect('/dashboard');
   }
 

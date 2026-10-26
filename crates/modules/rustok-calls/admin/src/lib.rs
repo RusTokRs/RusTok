@@ -15,4 +15,4 @@ pub mod ui;
 
 pub use core::*;
 pub use transport::*;
-pub use ui::CallsAdminPage;
+pub use ui::{CallsAdmin, CallsAdminPage};

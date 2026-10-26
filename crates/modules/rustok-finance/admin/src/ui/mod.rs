@@ -19,6 +19,8 @@ use rustok_grid_leptos::prelude::*;
 use crate::core::{filter_rows, FinanceAdminTableRow};
 use crate::i18n::t;
 
+pub use FinanceAdminPage as FinanceAdmin;
+
 #[component]
 pub fn FinanceAdminPage() -> impl IntoView {
     let (search_query, set_search_query) = signal(String::new());
@@ -47,7 +49,6 @@ pub fn FinanceAdminPage() -> impl IntoView {
     ];
 
     let cell_renderer = Callback::new(move |(row, col_id): (FinanceAdminTableRow, String)| {
-        let row_id = row.id.clone();
         match col_id.as_str() {
             "title" => view! {
                 <span class="font-medium text-foreground">{row.title}</span>
@@ -60,31 +61,35 @@ pub fn FinanceAdminPage() -> impl IntoView {
             "created_at" => view! {
                 <span class="text-xs text-muted-foreground">{row.created_at}</span>
             }.into_any(),
-            "actions" => view! {
-                <div class="flex items-center gap-2">
-                    // RBAC-guarded action buttons
-                    <button
-                        type="button"
-                        class="text-xs text-primary hover:underline font-medium"
-                        disabled=!row.can_edit
-                        on:click=move |_| {
-                            tracing::info!(id = %row_id, "edit action triggered");
-                        }
-                    >
-                        {t(None, "finance-action-edit", "Edit")}
-                    </button>
-                    <button
-                        type="button"
-                        class="text-xs text-destructive hover:underline font-medium"
-                        disabled=!row.can_delete
-                        on:click=move |_| {
-                            tracing::info!(id = %row_id, "delete action triggered");
-                        }
-                    >
-                        {t(None, "finance-action-delete", "Delete")}
-                    </button>
-                </div>
-            }.into_any(),
+            "actions" => {
+                let edit_id = row.id.clone();
+                let delete_id = row.id.clone();
+                view! {
+                    <div class="flex items-center gap-2">
+                        // RBAC-guarded action buttons
+                        <button
+                            type="button"
+                            class="text-xs text-primary hover:underline font-medium"
+                            disabled=!row.can_edit
+                            on:click=move |_| {
+                                tracing::info!(id = %edit_id, "edit action triggered");
+                            }
+                        >
+                            {t(None, "finance-action-edit", "Edit")}
+                        </button>
+                        <button
+                            type="button"
+                            class="text-xs text-destructive hover:underline font-medium"
+                            disabled=!row.can_delete
+                            on:click=move |_| {
+                                tracing::info!(id = %delete_id, "delete action triggered");
+                            }
+                        >
+                            {t(None, "finance-action-delete", "Delete")}
+                        </button>
+                    </div>
+                }.into_any()
+            }
             _ => ().into_any(),
         }
     });

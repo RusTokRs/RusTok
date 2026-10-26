@@ -116,6 +116,8 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Result<Arc<AppSchema>>
         runtime_extensions,
         stop_handle,
         rbac_role_writer: rbac_graphql_role_writer_from_context(ctx),
+        rbac_module_availability:
+            crate::services::rbac_module_availability::rbac_module_availability_handle(ctx),
         search_rate_limiter: search_graphql_rate_limiter_from_context(ctx),
         #[cfg(feature = "mod-blog")]
         blog_rate_limiter: blog_graphql_rate_limiter_from_context(ctx),

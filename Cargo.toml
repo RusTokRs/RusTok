@@ -283,7 +283,9 @@ rust_decimal = "1.42"
 utoipa = "5.5"
 utoipa-swagger-ui = { version = "7.0", features = ["vendored"] }
 moka = { version = "0.12", features = ["future"] }
-rhai = "1.25.0"
+# compact_str prepares for rhai 2.0, where it replaces the archived
+# smartstring dependency (RUSTSEC-2026-0249) as the default string type.
+rhai = { version = "1.27.0", features = ["compact_str"] }
 argon2 = "0.6"
 jsonwebtoken = { version = "11.0.0", features = ["aws_lc_rs"] }
 rand = "0.10.1"
@@ -344,7 +346,7 @@ rustok-social-graph = { path = "crates/modules/rustok-social-graph" }
 rustok-comments = { path = "crates/modules/rustok-comments", default-features = false }
 rustok-region = { path = "crates/modules/rustok-region" }
 rustok-pricing = { path = "crates/modules/rustok-pricing" }
-rustok-pricing-persistence = { path = "crates/modules/rustok-pricing-persistence" }
+rustok-pricing-persistence = { path = "crates/libs/rustok-pricing-persistence" }
 rustok-tax = { path = "crates/modules/rustok-tax" }
 rustok-inventory = { path = "crates/modules/rustok-inventory" }
 rustok-order = { path = "crates/modules/rustok-order" }
@@ -367,8 +369,8 @@ rustok-taxonomy = { path = "crates/modules/rustok-taxonomy" }
 rustok-index = { path = "crates/modules/rustok-index" }
 rustok-search = { path = "crates/modules/rustok-search" }
 rustok-seo = { path = "crates/modules/rustok-seo" }
-rustok-seo-targets = { path = "crates/modules/rustok-seo-targets" }
-rustok-translation-targets = { path = "crates/modules/rustok-translation-targets" }
+rustok-seo-targets = { path = "crates/libs/rustok-seo-targets", default-features = false }
+rustok-translation-targets = { path = "crates/libs/rustok-translation-targets" }
 rustok-translation = { path = "crates/modules/rustok-translation" }
 rustok-seo-storefront = { path = "crates/modules/rustok-seo/storefront" }
 rustok-seo-panel = { path = "crates/modules/rustok-seo/panel" }

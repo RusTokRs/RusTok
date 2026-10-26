@@ -3,7 +3,8 @@
 > **For contributors and AI agents — choose the relevant guide before modifying this package:**
 > [Architecture](../../../../docs/UI/module-package-architecture.md) |
 > [Implementation](../../../../docs/UI/module-package-implementation.md) |
-> [Verification](../../../../docs/UI/module-package-verification.md)
+> [Verification](../../../../docs/UI/module-package-verification.md) |
+> [Public API Contract](CRATE_API.md)
 
 Leptos admin UI package for the `rustok-search` module.
 
@@ -32,4 +33,5 @@ Leptos admin UI package for the `rustok-search` module.
 
 ## Documentation
 
+- [CRATE_API.md](CRATE_API.md) — Public API contract, FFA view-models, and capability bindings.
 - See [platform docs](../../../../docs/index.md).

@@ -38,12 +38,10 @@ impl CreatePageDto {
                 ));
             }
         }
-        if let Some(parent_id) = self.parent_id {
-            if parent_id.is_nil() {
-                return Err(DocsError::Validation(
-                    "Parent page ID cannot be a nil UUID".to_string(),
-                ));
-            }
+        if self.parent_id.is_some_and(|parent_id| parent_id.is_nil()) {
+            return Err(DocsError::Validation(
+                "Parent page ID cannot be a nil UUID".to_string(),
+            ));
         }
         Ok(())
     }
@@ -84,12 +82,10 @@ impl UpdatePageDto {
                 ));
             }
         }
-        if let Some(Some(parent_id)) = self.parent_id {
-            if parent_id.is_nil() {
-                return Err(DocsError::Validation(
-                    "Parent page ID cannot be a nil UUID".to_string(),
-                ));
-            }
+        if matches!(self.parent_id, Some(Some(parent_id)) if parent_id.is_nil()) {
+            return Err(DocsError::Validation(
+                "Parent page ID cannot be a nil UUID".to_string(),
+            ));
         }
         Ok(())
     }

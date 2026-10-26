@@ -38,7 +38,7 @@ rustok-notifications.workspace = true
 rustok-outbox.workspace = true
 rustok-profiles = { workspace = true, features = ["server"] }
 rustok-reactions = { workspace = true, default-features = false }
-rustok-seo-targets.workspace = true
+rustok-seo-targets = { workspace = true, features = ["server"] }
 rustok-translation-targets.workspace = true
 rustok-media.workspace = true
 rustok-taxonomy.workspace = true

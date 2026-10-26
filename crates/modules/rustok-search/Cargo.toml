@@ -2,8 +2,11 @@
 name = "rustok-search"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Core search module for RusTok - Postgres-first search contracts, engine selection, and connector registry"
+repository.workspace = true
+readme = "README.md"
 
 [package.metadata.docs.rs]
 all-features = true

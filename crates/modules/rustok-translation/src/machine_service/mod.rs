@@ -33,6 +33,10 @@ pub(crate) use cancellation::*;
 pub(crate) use helpers::*;
 pub(crate) use operations::*;
 
+fn require_idempotency_key(context: &PortContext) -> crate::TranslationResult<String> {
+    Ok(crate::idempotency::IdempotencyKey::require(context)?.into_string())
+}
+
 pub struct TranslationMachineControlService {
     database: DatabaseConnection,
     machine_port: Option<Arc<dyn MachineTranslationPort>>,
@@ -107,7 +111,7 @@ impl TranslationMachineService {
     ) -> TranslationResult<MachineProposalOutcome> {
         let tenant_id = authorize_machine_generation(&context)?;
         validate_generation_input(&input)?;
-        let idempotency_key = context.idempotency_key.clone().unwrap_or_default();
+        let idempotency_key = require_idempotency_key(&context)?;
         let command_hash = hash_manifest(&input)?;
 
         let existing_operation =
@@ -299,7 +303,7 @@ impl TranslationMachineService {
         let tenant_id = authorize_machine_recovery(&context)?;
         validate_machine_recovery_reason(&input.reason)?;
         validate_generation_input(&input.proposal)?;
-        let idempotency_key = context.idempotency_key.clone().unwrap_or_default();
+        let idempotency_key = require_idempotency_key(&context)?;
         let request_hash = hash_manifest(&input)?;
 
         if let Some(existing) =
@@ -329,6 +333,14 @@ impl TranslationMachineService {
         let recovery_id = generate_id();
         let now = chrono::Utc::now().fixed_offset();
         let transaction = self.database.begin().await?;
+        {
+            use sea_orm::{ConnectionTrait as _, DbBackend};
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
+                    tracing::debug!(error = %error, "translation machine busy_timeout PRAGMA best-effort failed");
+                }
+            }
+        }
         machine_recovery::Entity::insert(machine_recovery::ActiveModel {
             id: Set(recovery_id),
             tenant_id: Set(tenant_id),

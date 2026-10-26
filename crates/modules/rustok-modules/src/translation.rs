@@ -1,17 +1,16 @@
-//! # rustok-modules-translation
+//! # rustok-modules translation adapter
 //!
 //! Owner adapter boundary between static module Settings and the neutral
 //! Translation target SPI.
 //!
-//! This crate deliberately contains no persistence access and does not register
+//! This module deliberately contains no persistence access and does not register
 //! a `TranslationTargetProvider`. It maps stable owner identities, conservative
 //! field descriptors, opaque revision facts, and neutral patch preconditions
-//! into deterministic owner apply commands. Execution remains behind
-//! `rustok-modules` owner services until runtime provider registration is proven.
+//! into deterministic owner apply commands.
 
 use std::collections::BTreeMap;
 
-use rustok_modules::{
+use crate::{
     ModuleCommandContext, StaticLocalizedSettingApplyCommand, StaticSettingsLocalizationRegistry,
     is_valid_static_module_slug,
     static_settings_translation_read::{
@@ -320,8 +319,7 @@ impl StaticSettingsTranslationIdentity {
                 expected_target_revision: field.target_revision.unwrap_or(0),
                 context: step_context,
             });
-            expected_owner_revision = expected_owner_revision
-                .checked_add(1)
+            expected_owner_revision = expected_owner_revision.checked_add(1)
                 .ok_or(StaticSettingsTranslationIdentityError::OwnerRevisionOverflow)?;
         }
 
@@ -509,7 +507,7 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet, HashMap};
 
     use rustok_api::TenantLocale;
-    use rustok_modules::{
+    use crate::{
         ModuleSettingSpec,
         static_settings_translation_read::{
             StaticSettingsExactLocaleField, StaticSettingsExactLocaleSnapshot,
@@ -822,6 +820,3 @@ mod tests {
         ));
     }
 }
-
-#[cfg(test)]
-mod contract_tests;
