@@ -841,8 +841,8 @@ hand-copied schemas.** 91 `setup_test_db()` harnesses connect
 `sqlite::memory:` and replay **all 73 migrations per test**; zero
 PostgreSQL anywhere in `tests/`; several unit tests hand-write
 `CREATE TABLE` (121 non-migration occurrences incl. fixtures) that can
-diverge from real DDL (e.g. missing CHECKs that production relies on).
-Consequences already visible: R3-2 shipped; SQLite CHECKs are weaker
+diverge from real DDL (e.g. missing CHECK constraints that production relies on).
+Consequences already visible: R3-2 shipped; SQLite CHECK constraints are weaker
 than PG (`length(x)=71` vs `~ '^sha256:[0-9a-f]{64}$'`), so states PG
 forbids are creatable in tests; the suite's cost profile discourages
 running it. Add: (1) a PG lane (testcontainers or CI service) running at
