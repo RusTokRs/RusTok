@@ -127,6 +127,31 @@ mod tests {
             .is_err()
         );
 
+        // Persisted grants are the source of truth: a system role that merely
+        // lacks canonical grants is legitimate tenant state. The remaining
+        // corruption class the stats must surface is a permission row that
+        // cannot be parsed into the canonical vocabulary at all.
+        let bogus_permission_id = rustok_core::generate_id();
+        permissions::Entity::insert(permissions::ActiveModel {
+            id: Set(bogus_permission_id),
+            tenant_id: Set(tenant_b),
+            resource: Set("bogus".to_string()),
+            action: Set("bogus".to_string()),
+            description: Set(None),
+            created_at: Set(Utc::now().into()),
+        })
+        .exec(&db)
+        .await
+        .expect("insert unparseable permission");
+        role_permissions::Entity::insert(role_permissions::ActiveModel {
+            id: Set(rustok_core::generate_id()),
+            role_id: Set(foreign_role_id),
+            permission_id: Set(bogus_permission_id),
+        })
+        .exec(&db)
+        .await
+        .expect("link unparseable permission");
+
         roles::Entity::insert(roles::ActiveModel {
             id: Set(rustok_core::generate_id()),
             tenant_id: Set(tenant_a),
@@ -150,8 +175,8 @@ mod tests {
         assert_eq!(stats.cross_tenant_role_permissions_total, 0);
         assert_eq!(stats.reserved_role_slug_collisions_total, 1);
         assert_eq!(stats.system_roles_with_permission_drift_total, 1);
-        assert!(stats.missing_system_role_permissions_total > 0);
-        assert_eq!(stats.extra_system_role_permissions_total, 0);
+        assert_eq!(stats.missing_system_role_permissions_total, 0);
+        assert_eq!(stats.extra_system_role_permissions_total, 1);
         assert_eq!(stats.orphan_user_roles_total, 0);
         assert_eq!(stats.orphan_role_permissions_total, 0);
     }

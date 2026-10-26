@@ -140,7 +140,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn committed_repair_invalidates_all_valid_role_holders() {
+    async fn committed_repair_seeds_missing_system_roles_without_rewriting_grants() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let tenant_id = insert_tenant(&db, "system-role-repair-cache").await;
         let other_tenant_id = insert_tenant(&db, "system-role-repair-cache-other").await;
@@ -209,38 +209,64 @@ mod tests {
         }
         assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
 
+        let system_roles_before = roles::Entity::find()
+            .filter(roles::Column::TenantId.eq(tenant_id))
+            .filter(roles::Column::IsSystem.eq(true))
+            .all(&db)
+            .await
+            .expect("load system roles before repair");
+        let missing_before = ["super_admin", "admin", "manager", "customer"]
+            .iter()
+            .filter(|slug| {
+                !system_roles_before
+                    .iter()
+                    .any(|role| role.slug == **slug)
+            })
+            .count() as u64;
+        assert!(
+            missing_before > 0,
+            "fixture must leave built-in roles unseeded"
+        );
+
         let report = RbacService::repair_system_roles_committed(&db, Some(tenant_id))
             .await
             .expect("committed repair should succeed");
 
         assert!(report.applied);
-        assert!(report.role_permission_links_removed >= 1);
+        assert_eq!(report.roles_created, missing_before);
+        assert!(report.role_permission_links_added > 0);
+        // The persisted grant graph is tenant-owned state: repair seeds
+        // missing role records but never rewrites existing grants, so no
+        // links are removed and no permission snapshots need invalidation.
+        assert_eq!(report.role_permission_links_removed, 0);
+        assert!(report.affected_users.is_empty());
         assert!(!report.runtime_restart_required);
-        assert_eq!(report.affected_users.len(), 2);
-        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 1);
-        assert!(
-            report
-                .affected_users
-                .iter()
-                .all(|affected| affected.tenant_id == tenant_id)
-        );
-        assert!(
-            !report
-                .affected_users
-                .iter()
-                .any(|affected| affected.user_id == cross_tenant_user)
-        );
+        assert_eq!(read_rbac_invalidation_generation(&db).await.unwrap(), 0);
 
         for user_id in [first_user, second_user] {
             assert!(
-                !RbacService::has_permission(
+                RbacService::has_permission(
                     &db,
                     &tenant_id,
                     &user_id,
                     &Permission::SETTINGS_MANAGE,
                 )
                 .await
-                .expect("post-repair permission lookup should succeed")
+                .expect("post-repair permission lookup should succeed"),
+                "persisted SETTINGS_MANAGE grant must survive repair"
+            );
+        }
+
+        let system_roles_after = roles::Entity::find()
+            .filter(roles::Column::TenantId.eq(tenant_id))
+            .filter(roles::Column::IsSystem.eq(true))
+            .all(&db)
+            .await
+            .expect("load system roles after repair");
+        for slug in ["super_admin", "admin", "manager", "customer"] {
+            assert!(
+                system_roles_after.iter().any(|role| role.slug == slug),
+                "repair must seed built-in role `{slug}`"
             );
         }
     }
