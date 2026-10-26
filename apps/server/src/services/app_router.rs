@@ -936,6 +936,7 @@ mod tests {
                 "m20250101_000004_create_sessions",
                 "m20250101_000005_create_roles_and_permissions",
                 "m20250130_000004_create_tenant_locales",
+                "m20261025_000001_add_user_login_lockout",
             ];
             const CHANNEL_MIGRATIONS: &[&str] = &[
                 "m20260325_000001_create_channels",

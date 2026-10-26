@@ -803,15 +803,12 @@ mod tests {
             serde_json::json!(["client_credentials"]),
         );
         let client_id = app.client_id;
-        let mut active: oauth_apps::ActiveModel = app.into();
+        // Insert at the entity level, bypassing the display-copy sync:
+        // this test proves client resolution works without any
+        // presentation translations being written.
+        let mut active: crate::models::_entities::oauth_apps::ActiveModel = app.into();
         active.tenant_id = Set(tenant_id);
-        // `name` is a SeaORM-ignored localized field: Model -> ActiveModel
-        // conversion leaves it NotSet, and the display-copy insert path
-        // requires it explicitly.
-        active.name = Set("test".to_string());
-        oauth_apps::scope_runtime_copy_locale("en".to_string(), active.insert(&db))
-            .await
-            .expect("OAuth app");
+        active.insert(&db).await.expect("OAuth app");
 
         let request = TokenRequest {
             grant_type: "client_credentials".to_string(),

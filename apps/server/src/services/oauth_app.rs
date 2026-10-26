@@ -1930,10 +1930,19 @@ mod tests {
                 .expect("verify rotated secret")
         );
 
+        let token_user = crate::models::users::ActiveModel::new(
+            tenant.id,
+            "oauth-app-token-user@example.com",
+            "unused-password-hash",
+        )
+        .insert(&db)
+        .await
+        .expect("insert token user");
+
         oauth_tokens::ActiveModel {
             id: Set(Uuid::new_v4()),
             app_id: Set(created.app.id),
-            user_id: Set(Some(Uuid::new_v4())),
+            user_id: Set(Some(token_user.id)),
             tenant_id: Set(tenant.id),
             token_hash: Set("refresh-token-hash".to_string()),
             family_id: Set(None),
