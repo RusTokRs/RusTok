@@ -1149,6 +1149,11 @@ mod tests {
                     &runtime_context,
                 ),
             );
+            // Production initializes a filesystem/S3 storage backend at
+            // this point (`init_storage`); module routes only need the
+            // handle to exist, so the in-memory backend keeps the
+            // fixture hermetic.
+            runtime_context.shared_insert(rustok_storage::StorageRuntime::in_memory());
 
             let auth_config =
                 AuthConfig::new("translation-router-test-secret-with-32-bytes".to_string());
