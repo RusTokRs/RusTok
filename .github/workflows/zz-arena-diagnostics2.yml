@@ -1,0 +1,440 @@
+name: ZZ Arena Diagnostics 2 (temporary)
+
+# Temporary scaffolding for PR #4647: replicates the repo's own PR checks
+# that fail on this branch and republishes their output as check-run text
+# (the authoring sandbox cannot download Actions logs). Delete before merge.
+
+on:
+  push:
+    branches:
+      - arena/b606e380-rustok
+    paths:
+      - .github/workflows/zz-arena-diagnostics2.yml
+      - .arena-diag-trigger
+
+permissions:
+  contents: read
+  checks: write
+
+concurrency:
+  group: zz-arena-diagnostics2-${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+  CARGO_INCREMENTAL: 0
+  SQLX_OFFLINE: "true"
+
+jobs:
+  lock-fmt-xtask:
+    name: Lock, fmt, platform contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          shared-key: arena-diag2-lock-fmt-xtask
+      - name: Run replicated checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEADSHA: ${{ github.sha }}
+          JOBNAME: lock-fmt-xtask
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, urllib.request
+          STEPS = [
+            ("cargo metadata --locked", "cargo metadata --locked --format-version 1 > /tmp/meta.json && echo LOCK_OK", None, {}),
+            ("cargo fmt -p rustok-modules --check", "cargo fmt -p rustok-modules -- --check", None, {}),
+            ("cargo xtask validate-manifest", "cargo xtask validate-manifest", None, {}),
+            ("cargo xtask module validate", "cargo xtask module validate", None, {}),
+          ]
+          results = []
+          for name, cmd, cwd, extra in STEPS:
+              env = dict(os.environ); env.update(extra)
+              p = subprocess.run(["bash", "-lc", cmd], cwd=cwd, env=env, capture_output=True, text=True)
+              results.append((name, p.returncode, (p.stdout or "") + (p.stderr or "")))
+          summary = "; ".join(f"{n}: rc={rc}" for n, rc, _ in results)
+          def render(rows):
+              t = summary + "\n"
+              for n, rc, out in rows:
+                  t += f"\n===== {n} rc={rc} =====\n" + "\n".join(out.splitlines()[-150:]) + "\n"
+              return t
+          text = render(results)
+          if len(text) > 60000:
+              text = render([r for r in results if r[1] != 0] or results)
+          if len(text) > 60000:
+              text = text[:60000] + "\n... [truncated]"
+          payload = {"name": f"Arena diagnostics2: {os.environ['JOBNAME']}", "head_sha": os.environ["HEADSHA"],
+                     "status": "completed", "conclusion": "neutral",
+                     "output": {"title": os.environ["JOBNAME"], "summary": summary[:900], "text": text}}
+          req = urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['REPO']}/check-runs",
+              data=json.dumps(payload).encode(),
+              headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                       "Accept": "application/vnd.github+json", "Content-Type": "application/json"},
+              method="POST")
+          try:
+              with urllib.request.urlopen(req) as resp:
+                  print("posted", resp.status)
+          except Exception as e:
+              print("FAILED to post digest:", e)
+          print(summary)
+          PY
+
+  settings-cas:
+    name: Settings CAS tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          shared-key: arena-diag2-settings-cas
+      - name: Run replicated checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEADSHA: ${{ github.sha }}
+          JOBNAME: settings-cas
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, urllib.request
+          STEPS = [
+            ("cargo test -p rustok-modules --lib settings_", "cargo test -p rustok-modules --lib settings_", None, {}),
+          ]
+          results = []
+          for name, cmd, cwd, extra in STEPS:
+              env = dict(os.environ); env.update(extra)
+              p = subprocess.run(["bash", "-lc", cmd], cwd=cwd, env=env, capture_output=True, text=True)
+              results.append((name, p.returncode, (p.stdout or "") + (p.stderr or "")))
+          summary = "; ".join(f"{n}: rc={rc}" for n, rc, _ in results)
+          def render(rows):
+              t = summary + "\n"
+              for n, rc, out in rows:
+                  t += f"\n===== {n} rc={rc} =====\n" + "\n".join(out.splitlines()[-150:]) + "\n"
+              return t
+          text = render(results)
+          if len(text) > 60000:
+              text = render([r for r in results if r[1] != 0] or results)
+          if len(text) > 60000:
+              text = text[:60000] + "\n... [truncated]"
+          payload = {"name": f"Arena diagnostics2: {os.environ['JOBNAME']}", "head_sha": os.environ["HEADSHA"],
+                     "status": "completed", "conclusion": "neutral",
+                     "output": {"title": os.environ["JOBNAME"], "summary": summary[:900], "text": text}}
+          req = urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['REPO']}/check-runs",
+              data=json.dumps(payload).encode(),
+              headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                       "Accept": "application/vnd.github+json", "Content-Type": "application/json"},
+              method="POST")
+          try:
+              with urllib.request.urlopen(req) as resp:
+                  print("posted", resp.status)
+          except Exception as e:
+              print("FAILED to post digest:", e)
+          print(summary)
+          PY
+
+  migration-plan:
+    name: Migration plan and backfill contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout base migration source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          path: base
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout head migration source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: head
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+        with:
+          toolchain: "1.96.0"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Run replicated checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEADSHA: ${{ github.sha }}
+          JOBNAME: migration-plan
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, urllib.request
+          ws = os.environ["GITHUB_WORKSPACE"]
+          STEPS = [
+            ("export base plan",
+             f"mkdir -p {ws}/migration-plans && cargo run --manifest-path {ws}/base/Cargo.toml -p rustok-migrations --bin export_migration_plan -- --output {ws}/migration-plans/base.json",
+             None, {"CARGO_TARGET_DIR": f"{ws}/target/plan-base"}),
+            ("export head plan (--locked)",
+             f"cargo run --locked --manifest-path {ws}/head/Cargo.toml -p rustok-migrations --bin export_migration_plan -- --output {ws}/migration-plans/head.json",
+             None, {"CARGO_TARGET_DIR": f"{ws}/target/plan-head"}),
+            ("verify plans non-empty",
+             f"test -s {ws}/migration-plans/base.json && test -s {ws}/migration-plans/head.json && python3 -c \"import json; b=json.load(open('{ws}/migration-plans/base.json')); h=json.load(open('{ws}/migration-plans/head.json')); print('base', len(b['migrations']), 'head', len(h['migrations'])); print('appended:', h['migrations'][len(b['migrations']):])\"",
+             None, {}),
+            ("compare migration plans",
+             f"node {ws}/base/scripts/verify/verify-migration-plan-compatibility.mjs --base {ws}/migration-plans/base.json --head {ws}/migration-plans/head.json",
+             None, {}),
+            ("select backfill fixtures",
+             f"node {ws}/base/scripts/verify/verify-migration-backfill-contracts.mjs --base-plan {ws}/migration-plans/base.json --head-plan {ws}/migration-plans/head.json --contracts {ws}/head/docs/migrations/backfill-contracts.json --output {ws}/migration-plans/backfill-fixtures.json && cat {ws}/migration-plans/backfill-fixtures.json | head -c 2000",
+             None, {}),
+          ]
+          results = []
+          for name, cmd, cwd, extra in STEPS:
+              env = dict(os.environ); env.update(extra)
+              p = subprocess.run(["bash", "-lc", cmd], cwd=cwd, env=env, capture_output=True, text=True)
+              results.append((name, p.returncode, (p.stdout or "") + (p.stderr or "")))
+          summary = "; ".join(f"{n}: rc={rc}" for n, rc, _ in results)
+          def render(rows):
+              t = summary + "\n"
+              for n, rc, out in rows:
+                  t += f"\n===== {n} rc={rc} =====\n" + "\n".join(out.splitlines()[-150:]) + "\n"
+              return t
+          text = render(results)
+          if len(text) > 60000:
+              text = render([r for r in results if r[1] != 0] or results)
+          if len(text) > 60000:
+              text = text[:60000] + "\n... [truncated]"
+          payload = {"name": f"Arena diagnostics2: {os.environ['JOBNAME']}", "head_sha": os.environ["HEADSHA"],
+                     "status": "completed", "conclusion": "neutral",
+                     "output": {"title": os.environ["JOBNAME"], "summary": summary[:900], "text": text}}
+          req = urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['REPO']}/check-runs",
+              data=json.dumps(payload).encode(),
+              headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                       "Accept": "application/vnd.github+json", "Content-Type": "application/json"},
+              method="POST")
+          try:
+              with urllib.request.urlopen(req) as resp:
+                  print("posted", resp.status)
+          except Exception as e:
+              print("FAILED to post digest:", e)
+          print(summary)
+          PY
+
+  pg-smoke:
+    name: PostgreSQL migration smoke and N-1 upgrade
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://rustok_migration:rustok_migration@localhost:5432/postgres
+    steps:
+      - name: Checkout base migration source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          path: base
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout head migration source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: head
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+        with:
+          toolchain: "1.96.0"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Create bounded migration test role
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host localhost --port 5432 --username postgres --dbname postgres \
+            --set ON_ERROR_STOP=1 \
+            --command "CREATE ROLE rustok_migration LOGIN PASSWORD 'rustok_migration' CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 8"
+      - name: Run replicated checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEADSHA: ${{ github.sha }}
+          JOBNAME: pg-smoke
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, urllib.request
+          ws = os.environ["GITHUB_WORKSPACE"]
+          TEST = "postgres_zero_migration_smoke_applies_from_empty_database"
+          def headtest(db, incr, roll, keep, reuse, fixtures=None, target="smoke-head"):
+              env = {"CARGO_TARGET_DIR": f"{ws}/target/{target}",
+                     "RUSTOK_MIGRATION_SMOKE_DB_NAME": db,
+                     "RUSTOK_MIGRATION_SMOKE_INCREMENTAL": incr,
+                     "RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST": roll,
+                     "RUSTOK_MIGRATION_SMOKE_KEEP_DB": keep,
+                     "RUSTOK_MIGRATION_SMOKE_REUSE_DB": reuse}
+              if fixtures:
+                  env["RUSTOK_MIGRATION_SMOKE_BACKFILL_FIXTURES"] = fixtures
+              cmd = (f"cargo test --locked --manifest-path {ws}/head/Cargo.toml -p rustok-migrations "
+                     f"--test postgres_zero_migration_smoke {TEST} -- --ignored --nocapture")
+              return cmd, env
+          def step(name, cmd_env):
+              cmd, env = cmd_env
+              return (name, cmd, None, env)
+          STEPS = []
+          STEPS.append(step("fresh apply-all (head)", headtest("rustok_diag2_all", "0", "0", "0", "0")))
+          STEPS.append(step("fresh incremental (head)", headtest("rustok_diag2_incr", "1", "0", "0", "0")))
+          STEPS.append(step("fresh rollback-latest (head)", headtest("rustok_diag2_roll", "0", "1", "0", "0")))
+          STEPS.append(("export plans for fixtures",
+              f"mkdir -p {ws}/migration-plans && cargo run --manifest-path {ws}/base/Cargo.toml -p rustok-migrations --bin export_migration_plan -- --output {ws}/migration-plans/base.json && cargo run --locked --manifest-path {ws}/head/Cargo.toml -p rustok-migrations --bin export_migration_plan -- --output {ws}/migration-plans/head.json && node {ws}/base/scripts/verify/verify-migration-backfill-contracts.mjs --base-plan {ws}/migration-plans/base.json --head-plan {ws}/migration-plans/head.json --contracts {ws}/head/docs/migrations/backfill-contracts.json --output {ws}/migration-plans/backfill-fixtures.json",
+              None, {"CARGO_TARGET_DIR": f"{ws}/target/plan-mixed"}))
+          STEPS.append(("N-1 apply base migrations (keep db)",
+              f"cargo test --manifest-path {ws}/base/Cargo.toml -p rustok-migrations --test postgres_zero_migration_smoke {TEST} -- --ignored --nocapture",
+              None, {"CARGO_TARGET_DIR": f"{ws}/target/smoke-base",
+                     "RUSTOK_MIGRATION_SMOKE_DB_NAME": "rustok_diag2_upgrade",
+                     "RUSTOK_MIGRATION_SMOKE_INCREMENTAL": "0",
+                     "RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST": "0",
+                     "RUSTOK_MIGRATION_SMOKE_KEEP_DB": "1",
+                     "RUSTOK_MIGRATION_SMOKE_REUSE_DB": "0"}))
+          STEPS.append(step("N-1 upgrade with fixtures (head)",
+              headtest("rustok_diag2_upgrade", "1", "0", "0", "1", fixtures=f"{ws}/migration-plans/backfill-fixtures.json")))
+          results = []
+          for name, cmd, cwd, extra in STEPS:
+              env = dict(os.environ); env.update(extra)
+              p = subprocess.run(["bash", "-lc", cmd], cwd=cwd, env=env, capture_output=True, text=True)
+              results.append((name, p.returncode, (p.stdout or "") + (p.stderr or "")))
+          summary = "; ".join(f"{n}: rc={rc}" for n, rc, _ in results)
+          def render(rows):
+              t = summary + "\n"
+              for n, rc, out in rows:
+                  t += f"\n===== {n} rc={rc} =====\n" + "\n".join(out.splitlines()[-150:]) + "\n"
+              return t
+          text = render(results)
+          if len(text) > 60000:
+              text = render([r for r in results if r[1] != 0] or results)
+          if len(text) > 60000:
+              text = text[:60000] + "\n... [truncated]"
+          payload = {"name": f"Arena diagnostics2: {os.environ['JOBNAME']}", "head_sha": os.environ["HEADSHA"],
+                     "status": "completed", "conclusion": "neutral",
+                     "output": {"title": os.environ["JOBNAME"], "summary": summary[:900], "text": text}}
+          req = urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['REPO']}/check-runs",
+              data=json.dumps(payload).encode(),
+              headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                       "Accept": "application/vnd.github+json", "Content-Type": "application/json"},
+              method="POST")
+          try:
+              with urllib.request.urlopen(req) as resp:
+                  print("posted", resp.status)
+          except Exception as e:
+              print("FAILED to post digest:", e)
+          print(summary)
+          PY
+
+  api-contracts:
+    name: API contracts compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout base contract source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          path: base
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout head contract source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: head
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+        with:
+          toolchain: "1.96.0"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Run replicated checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEADSHA: ${{ github.sha }}
+          JOBNAME: api-contracts
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, urllib.request
+          ws = os.environ["GITHUB_WORKSPACE"]
+          STEPS = [
+            ("comparator self-test",
+             f"node {ws}/base/scripts/verify/verify-api-compatibility.mjs --self-test", None, {}),
+            ("infra approval (no label)",
+             f"node {ws}/base/scripts/verify/verify-api-compatibility-infrastructure-approval.mjs --base-dir {ws}/base --head-dir {ws}/head --labels-json '[]' --explicitly-approved false", None, {}),
+            ("exception approval (no label)",
+             f"node {ws}/base/scripts/verify/verify-api-compatibility-exception-approval.mjs --base-file {ws}/base/docs/api/compatibility-exceptions.json --head-file {ws}/head/docs/api/compatibility-exceptions.json --labels-json '[]' --explicitly-approved false", None, {}),
+            ("validate head exceptions",
+             f"node {ws}/base/scripts/verify/verify-api-compatibility-exceptions.mjs --file {ws}/head/docs/api/compatibility-exceptions.json", None, {}),
+            ("export base contracts",
+             f"cargo run --all-features --manifest-path {ws}/base/Cargo.toml -p rustok-server --bin export_api_contracts -- --output-dir {ws}/contracts/base",
+             None, {"CARGO_TARGET_DIR": f"{ws}/target/contracts-base"}),
+            ("export head contracts (--locked)",
+             f"cargo run --locked --all-features --manifest-path {ws}/head/Cargo.toml -p rustok-server --bin export_api_contracts -- --output-dir {ws}/contracts/head",
+             None, {"CARGO_TARGET_DIR": f"{ws}/target/contracts-head"}),
+            ("verify exported set",
+             f"test -s {ws}/contracts/base/openapi.json && test -s {ws}/contracts/base/schema.graphql && test -s {ws}/contracts/head/openapi.json && test -s {ws}/contracts/head/schema.graphql && echo SET_OK", None, {}),
+            ("compare contracts",
+             f"node {ws}/base/scripts/verify/verify-api-compatibility.mjs --base-dir {ws}/contracts/base --head-dir {ws}/contracts/head --exceptions {ws}/head/docs/api/compatibility-exceptions.json", None, {}),
+          ]
+          results = []
+          for name, cmd, cwd, extra in STEPS:
+              env = dict(os.environ); env.update(extra)
+              p = subprocess.run(["bash", "-lc", cmd], cwd=cwd, env=env, capture_output=True, text=True)
+              results.append((name, p.returncode, (p.stdout or "") + (p.stderr or "")))
+          summary = "; ".join(f"{n}: rc={rc}" for n, rc, _ in results)
+          def render(rows):
+              t = summary + "\n"
+              for n, rc, out in rows:
+                  t += f"\n===== {n} rc={rc} =====\n" + "\n".join(out.splitlines()[-150:]) + "\n"
+              return t
+          text = render(results)
+          if len(text) > 60000:
+              text = render([r for r in results if r[1] != 0] or results)
+          if len(text) > 60000:
+              text = text[:60000] + "\n... [truncated]"
+          payload = {"name": f"Arena diagnostics2: {os.environ['JOBNAME']}", "head_sha": os.environ["HEADSHA"],
+                     "status": "completed", "conclusion": "neutral",
+                     "output": {"title": os.environ["JOBNAME"], "summary": summary[:900], "text": text}}
+          req = urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['REPO']}/check-runs",
+              data=json.dumps(payload).encode(),
+              headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                       "Accept": "application/vnd.github+json", "Content-Type": "application/json"},
+              method="POST")
+          try:
+              with urllib.request.urlopen(req) as resp:
+                  print("posted", resp.status)
+          except Exception as e:
+              print("FAILED to post digest:", e)
+          print(summary)
+          PY
