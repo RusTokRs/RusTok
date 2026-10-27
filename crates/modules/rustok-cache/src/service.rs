@@ -43,9 +43,10 @@ where
         .map_err(|error| format!("{operation} failed: {error}"))
 }
 
-/// Shared cache service providing backend creation from a centralized Redis connection.
+/// Identity of one backend configuration inside the shared registry.
 ///
-/// Other modules (tenant, RBAC, rate-limit) call `CacheService::backend()` instead of
+/// Every factory option that changes the resulting instance is part of the key, so two callers get
+/// the same backend exactly when they asked for the same backend.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct SharedBackendKey {
     pub prefix: String,
@@ -99,8 +100,13 @@ impl SharedBackendRegistry {
     }
 }
 
-/// Resolves Redis URLs once per service instead of having callers construct or
-/// resolving Redis URLs themselves. This keeps Redis lifecycle in one place.
+/// Shared cache service: the single owner of Redis configuration, backend construction and
+/// invalidation for a host process.
+///
+/// Other modules (tenant, RBAC, rate limit, channel, …) obtain backends through this service and
+/// publish invalidations through it instead of resolving Redis URLs or opening connections
+/// themselves. Backends built here are process-local singletons keyed by their construction
+/// options, bounded by [`DEFAULT_MAX_SHARED_CACHE_BACKENDS`].
 #[derive(Clone)]
 pub struct CacheService {
     /// Requested Redis URL, present in every build so that a deployment which

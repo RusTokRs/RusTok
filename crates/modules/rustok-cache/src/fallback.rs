@@ -1,18 +1,16 @@
-use std::collections::{HashSet, VecDeque, hash_map::DefaultHasher};
-use std::hash::{Hash, Hasher};
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use rustok_core::{CacheBackend, CacheCompareAndSetOutcome, CacheStats, InMemoryCacheBackend};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 
 const MAX_DEGRADED_WRITE_KEYS: usize = 4_096;
 const MAX_DEGRADED_WRITE_KEY_BYTES: usize = 4 * 1_024;
 const DEGRADED_WRITE_PRUNE_SCAN: usize = 16;
 const MAX_PENDING_INVALIDATION_KEYS: usize = 4_096;
-const FALLBACK_KEY_LOCK_STRIPES: usize = 256;
 
 #[derive(Debug)]
 struct DegradedWriteTracker {
@@ -170,15 +168,19 @@ fn validate_degraded_key(key: &str, operation: &str) -> rustok_core::Result<()> 
 /// invalidation retry may clear shared state. Tracker capacity is never recovered by evicting a live
 /// mutation; when a new unsynchronized mutation cannot be retained safely the backend enters a
 /// fail-closed state in which reads, writes and CAS are rejected until the owner confirms a healthy
-/// shared primary through [`CacheBackend::reconcile_local_state`]. A fixed set of striped locks
-/// serializes local bookkeeping for the same key without introducing an unbounded per-key registry;
-/// network calls are made outside those stripes so a slow primary cannot serialize unrelated keys.
+/// shared primary through [`CacheBackend::reconcile_local_state`].
+///
+/// Operations on the same key are serialized end to end (including the primary round trip) so a
+/// concurrent invalidation cannot be reordered behind a slower write. Locks are per key: the
+/// stripe array this used to share across 256 keys meant one stalled Redis call blocked every key
+/// that happened to hash into the same stripe. Registry entries exist only while an operation is in
+/// flight and are removed by [`KeyLockLease`], so the lock map cannot grow with key cardinality.
 pub struct DegradationAwareFallbackBackend {
     primary: Arc<dyn CacheBackend>,
     fallback: Arc<InMemoryCacheBackend>,
     degraded_writes: DegradedWriteTracker,
     pending_invalidations: PendingInvalidationTracker,
-    key_locks: Vec<Mutex<()>>,
+    key_locks: Arc<StdMutex<HashMap<String, Arc<AsyncMutex<()>>>>>,
     tombstone_saturation: AtomicBool,
 }
 
@@ -189,9 +191,7 @@ impl DegradationAwareFallbackBackend {
             fallback,
             degraded_writes: DegradedWriteTracker::new(MAX_DEGRADED_WRITE_KEYS),
             pending_invalidations: PendingInvalidationTracker::new(MAX_PENDING_INVALIDATION_KEYS),
-            key_locks: (0..FALLBACK_KEY_LOCK_STRIPES)
-                .map(|_| Mutex::new(()))
-                .collect(),
+            key_locks: Arc::new(StdMutex::new(HashMap::new())),
             tombstone_saturation: AtomicBool::new(false),
         }
     }
@@ -211,10 +211,29 @@ impl DegradationAwareFallbackBackend {
         Ok(())
     }
 
-    fn key_lock(&self, key: &str) -> &Mutex<()> {
-        let mut hasher = DefaultHasher::new();
-        key.hash(&mut hasher);
-        &self.key_locks[(hasher.finish() as usize) % self.key_locks.len()]
+    /// Take the exclusive per-key lock.
+    ///
+    /// The returned lease holds the async mutex guard *and* owns the registry entry, so the entry
+    /// disappears as soon as the last operation on that key finishes.
+    async fn key_lock(&self, key: &str) -> KeyLockLease {
+        let lock = {
+            let mut registry = self
+                .key_locks
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            Arc::clone(
+                registry
+                    .entry(key.to_string())
+                    .or_insert_with(|| Arc::new(AsyncMutex::new(()))),
+            )
+        };
+        let guard = Arc::clone(&lock).lock_owned().await;
+        KeyLockLease {
+            guard: Some(guard),
+            key: key.to_string(),
+            lock,
+            registry: Arc::clone(&self.key_locks),
+        }
     }
 
 
@@ -333,20 +352,21 @@ impl DegradationAwareFallbackBackend {
         value: Vec<u8>,
         ttl: Option<Duration>,
     ) -> rustok_core::Result<()> {
-        {
-            let _guard = self.key_lock(&key).lock().await;
-            self.ensure_operation_allowed()?;
-            let local = match ttl {
-                Some(ttl) => {
-                    self.fallback
-                        .set_with_ttl(key.clone(), value.clone(), ttl)
-                        .await
-                }
-                None => self.fallback.set(key.clone(), value.clone()).await,
-            };
-            if let Err(error) = local {
-                tracing::warn!(%error, key, "Failed to retain local cache fallback write");
+        // The lease is held across the primary call so operations on this key stay ordered: a slow
+        // write cannot land after a later invalidation, and a concurrent writer cannot commit a
+        // marker for bytes it no longer owns. Other keys are never affected.
+        let _lease = self.key_lock(&key).await;
+        self.ensure_operation_allowed()?;
+        let local = match ttl {
+            Some(ttl) => {
+                self.fallback
+                    .set_with_ttl(key.clone(), value.clone(), ttl)
+                    .await
             }
+            None => self.fallback.set(key.clone(), value.clone()).await,
+        };
+        if let Err(error) = local {
+            tracing::warn!(%error, key, "Failed to retain local cache fallback write");
         }
 
         let primary_result = match ttl {
@@ -358,7 +378,6 @@ impl DegradationAwareFallbackBackend {
             None => self.primary.set(key.clone(), value.clone()).await,
         };
 
-        let _guard = self.key_lock(&key).lock().await;
         match primary_result {
             Ok(()) => {
                 self.clear_degraded_write(&key).await;
@@ -406,6 +425,33 @@ impl DegradationAwareFallbackBackend {
     }
 }
 
+/// Exclusive key lease that also owns the per-key registry entry.
+///
+/// Dropping the lease releases the guard first and only then removes the entry, so a waiter that
+/// already holds the `Arc` is never orphaned: the entry is removed only when this lease holds the
+/// last reference besides the registry itself.
+struct KeyLockLease {
+    guard: Option<OwnedMutexGuard<()>>,
+    key: String,
+    lock: Arc<AsyncMutex<()>>,
+    registry: Arc<StdMutex<HashMap<String, Arc<AsyncMutex<()>>>>>,
+}
+
+impl Drop for KeyLockLease {
+    fn drop(&mut self) {
+        self.guard.take();
+        let mut registry = self
+            .registry
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if registry.get(&self.key).is_some_and(|current| {
+            Arc::ptr_eq(current, &self.lock) && Arc::strong_count(current) <= 2
+        }) {
+            registry.remove(&self.key);
+        }
+    }
+}
+
 #[async_trait]
 impl CacheBackend for DegradationAwareFallbackBackend {
     async fn health(&self) -> rustok_core::Result<()> {
@@ -416,22 +462,7 @@ impl CacheBackend for DegradationAwareFallbackBackend {
     async fn get(&self, key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
         // A saturated backend must not serve anything: unmarked local bytes could be older than the
         // shared value, and shared bytes may be stale because an invalidation was never retained.
-        self.ensure_operation_allowed()?;
-
-        {
-            let _guard = self.key_lock(key).lock().await;
-            if self.pending_invalidation_active(key).await {
-                return Ok(None);
-            }
-            if let Some(value) = self.read_degraded_write(key).await? {
-                return Ok(Some(value));
-            }
-        }
-
-        let primary_result = self.primary.get(key).await;
-
-        let _guard = self.key_lock(key).lock().await;
-        // Re-check after async read to catch a saturation or invalidation that raced with the network call.
+        let _lease = self.key_lock(key).await;
         self.ensure_operation_allowed()?;
         if self.pending_invalidation_active(key).await {
             return Ok(None);
@@ -439,6 +470,12 @@ impl CacheBackend for DegradationAwareFallbackBackend {
         if let Some(value) = self.read_degraded_write(key).await? {
             return Ok(Some(value));
         }
+
+        let primary_result = self.primary.get(key).await;
+
+        // Re-check after the network call: saturation is process-wide and can be raised by another
+        // key while this read was in flight.
+        self.ensure_operation_allowed()?;
 
         match primary_result {
             Ok(Some(value)) => Ok(Some(value)),
@@ -479,7 +516,7 @@ impl CacheBackend for DegradationAwareFallbackBackend {
         if ttl.is_zero() {
             // Zero TTL is a deletion, not an availability-preserving write. A failed shared delete
             // remains visible to the caller while a bounded local tombstone prevents resurrection.
-            let _guard = self.key_lock(&key).lock().await;
+            let _lease = self.key_lock(&key).await;
             self.ensure_operation_allowed()?;
             return self.invalidate_locked(&key).await;
         }
@@ -493,25 +530,23 @@ impl CacheBackend for DegradationAwareFallbackBackend {
         value: Vec<u8>,
         ttl: Option<Duration>,
     ) -> rustok_core::Result<CacheCompareAndSetOutcome> {
-        {
-            let _guard = self.key_lock(key).lock().await;
-            self.ensure_operation_allowed()?;
-            if self.has_unsynchronized_mutation(key).await {
-                return Err(rustok_core::Error::Cache(
-                    "cache compare-and-set rejected while local and shared state are unsynchronized"
-                        .to_string(),
-                ));
-            }
+        let _lease = self.key_lock(key).await;
+        self.ensure_operation_allowed()?;
+        if self.has_unsynchronized_mutation(key).await {
+            return Err(rustok_core::Error::Cache(
+                "cache compare-and-set rejected while local and shared state are unsynchronized"
+                    .to_string(),
+            ));
         }
 
-        // The shared primary is authoritative for CAS: no stripe is held across the network call so
-        // an unavailable primary cannot serialize unrelated keys.
+        // The shared primary is authoritative for CAS. The per-key lease stays held so this
+        // key's compare-and-set cannot interleave with its own writes or invalidations; no other
+        // key can be blocked by this call.
         let outcome = self
             .primary
             .compare_and_set(key, expected, value.clone(), ttl)
             .await?;
 
-        let _guard = self.key_lock(key).lock().await;
         match outcome {
             CacheCompareAndSetOutcome::Applied => {
                 self.clear_degraded_write(key).await;
@@ -534,7 +569,7 @@ impl CacheBackend for DegradationAwareFallbackBackend {
     }
 
     async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
-        let _guard = self.key_lock(key).lock().await;
+        let _lease = self.key_lock(key).await;
         self.ensure_operation_allowed()?;
         self.invalidate_locked(key).await
     }
@@ -547,7 +582,7 @@ impl CacheBackend for DegradationAwareFallbackBackend {
 
         let mut replay_failures = 0usize;
         for key in self.pending_invalidations.snapshot().await {
-            let _guard = self.key_lock(&key).lock().await;
+            let _lease = self.key_lock(&key).await;
             match self.primary.invalidate(&key).await {
                 Ok(()) => {
                     if let Err(error) = self.fallback.invalidate(&key).await {
@@ -606,7 +641,6 @@ impl CacheBackend for DegradationAwareFallbackBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex as StdMutex;
     use std::sync::atomic::{AtomicBool, Ordering};
     use tokio::sync::Notify;
 
@@ -817,19 +851,59 @@ mod tests {
         DegradationAwareFallbackBackend::new(primary, fallback)
     }
 
-    #[test]
-    fn same_key_uses_one_bounded_lock_stripe() {
+    #[tokio::test]
+    async fn same_key_shares_one_lock_and_unrelated_keys_never_do() {
         let primary = Arc::new(HealthControlledBackend {
             healthy: AtomicBool::new(false),
         });
         let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 16));
         let backend = backend(primary, fallback);
 
-        assert_eq!(backend.key_locks.len(), FALLBACK_KEY_LOCK_STRIPES);
-        assert!(std::ptr::eq(
-            backend.key_lock("same-key"),
-            backend.key_lock("same-key")
-        ));
+        let first = backend.key_lock("same-key").await;
+        let second = backend.key_lock("same-key").await;
+        assert!(Arc::ptr_eq(&first.lock, &second.lock));
+        let other = backend.key_lock("other-key").await;
+        assert!(!Arc::ptr_eq(&first.lock, &other.lock));
+
+        // Entries exist only while an operation is in flight: after the last lease is released the
+        // map is empty again, so key cardinality cannot grow it.
+        drop(first);
+        drop(second);
+        drop(other);
+        assert_eq!(
+            backend
+                .key_locks
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .len(),
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn a_stalled_primary_call_does_not_block_unrelated_keys() {
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let primary = Arc::new(BlockingMissBackend {
+            started: Arc::clone(&started),
+            release: Arc::clone(&release),
+        });
+        let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 16));
+        let backend = Arc::new(backend(primary, fallback));
+
+        let slow = Arc::clone(&backend);
+        let stalled = tokio::spawn(async move { slow.get("slow-key").await });
+        started.notified().await;
+
+        // The stalled key holds its own lease; an unrelated key must still complete promptly.
+        let unrelated = tokio::time::timeout(Duration::from_millis(500), backend.get("fast-key"))
+            .await
+            .expect("an unrelated key must not wait for a stalled primary call")
+            .unwrap();
+        assert_eq!(unrelated, None);
+
+        release.notify_one();
+        assert_eq!(stalled.await.unwrap().unwrap(), None);
     }
 
     #[tokio::test]

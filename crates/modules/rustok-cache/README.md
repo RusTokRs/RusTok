@@ -73,7 +73,11 @@ TTL outright.
 Backends that cannot provide a real atomic primitive return an error. They must not emulate
 CAS using an independent `GET` followed by `SET`.
 
-In-memory writes, invalidations and CAS share bounded striped write locks. Redis uses one
+Operations on the same key are serialized by an exclusive per-key lease that is held for the
+whole operation, including the primary round trip: a slow write can never land after a later
+invalidation of the same key, while unrelated keys are never blocked. The lock registry holds an
+entry only while an operation on that key is in flight, so it cannot grow with key cardinality.
+In-memory writes, invalidations and CAS use those same leases. Redis uses one
 binary-safe Lua command that compares the stored bytes and performs `PSETEX` or conditional
 `DEL`. Circuit-breaker and operation-timeout accounting cover the complete Redis CAS command.
 Instrumentation and weighted wrappers delegate the atomic primitive unchanged.

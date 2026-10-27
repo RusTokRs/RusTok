@@ -266,8 +266,11 @@ None of these are claimed as compiled or live verified until the P0 evidence ste
   `CacheService::reconcile_local_state()` and executed on the same successful `PING` that drives
   `redis_status()`. Saturation now fails closed on the write path as well as the read path.
 - [x] Degraded reads serve only locally confirmed degraded writes; a primary miss discards local
-  bytes so a later outage cannot resurrect them, and the key stripe is never held across network
-  I/O.
+  bytes so a later outage cannot resurrect them.
+- [x] Same-key operations are serialized end to end by a per-key lease (`fallback.rs`
+  `KeyLockLease`), which restores strict per-key ordering without the 256-stripe collateral
+  blocking that made one stalled Redis call stall ~256 unrelated keys. The lock map drops an entry
+  as soon as its last holder releases it, so it cannot grow with key cardinality.
 - [x] `CacheInvalidationMessage` is the single owner of transport limits;
   `VersionedCacheInvalidation::to_message` validates through `try_new` and returns
   `CacheInvalidationPayloadError::TransportRejected` instead of an `Ok` that publish would drop.
