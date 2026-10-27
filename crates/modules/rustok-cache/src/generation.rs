@@ -11,6 +11,17 @@ use crate::CacheService;
 const GENERATION_KEY_PREFIX: &str = "rustok:cache-generation:v1";
 const DEFAULT_GENERATION_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
 const MAX_GENERATION_NAMESPACE_BYTES: usize = 512;
+/// Advance the shared counter to a trusted local observation, never lowering it.
+#[cfg(feature = "redis-cache")]
+const GENERATION_CATCH_UP_SCRIPT: &str = r#"
+local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+local target = tonumber(ARGV[1])
+if current < target then
+    redis.call('SET', KEYS[1], target)
+    return target
+end
+return current
+"#;
 pub const DEFAULT_MAX_LOCAL_GENERATION_SNAPSHOTS: usize = 65_536;
 pub const DEFAULT_MAX_SHARED_GENERATION_STORES: usize = 256;
 
@@ -53,6 +64,10 @@ pub struct CacheGenerationStats {
     pub read_failures: u64,
     pub bump_failures: u64,
     pub local_fallback_reads: u64,
+    /// Regression detections that were healed by writing the local observation back to Redis.
+    pub shared_catch_up_writes: u64,
+    /// Regression detections that could not be healed; the namespace is still divergent.
+    pub shared_catch_up_failures: u64,
 }
 
 #[derive(Default)]
@@ -62,6 +77,8 @@ struct CacheGenerationMetrics {
     read_failures: AtomicU64,
     bump_failures: AtomicU64,
     local_fallback_reads: AtomicU64,
+    shared_catch_up_writes: AtomicU64,
+    shared_catch_up_failures: AtomicU64,
 }
 
 /// Shared namespace generation store.
@@ -183,19 +200,56 @@ impl CacheNamespaceGenerationStore {
                         });
                     }
                     Err(CacheGenerationError::GenerationRegressed { local, shared }) => {
-                        self.metrics
-                            .local_fallback_reads
-                            .fetch_add(1, Ordering::Relaxed);
-                        tracing::warn!(
-                            namespace,
-                            local,
-                            shared,
-                            "Shared cache generation regressed behind local observation; using local fallback"
-                        );
-                        return Ok(CacheNamespaceGeneration {
-                            value: local,
-                            source: CacheGenerationSource::LocalFallback,
-                        });
+                        // A shared value below a trusted local observation means the shared counter
+                        // was lost (for example a Redis restart without persistence). Serving only
+                        // the local value leaves the fleet in different key spaces, so write the
+                        // trusted observation back and converge on it when Redis accepts the write.
+                        match self.catch_up_shared(client, &namespace_key, local).await {
+                            Ok(healed) => {
+                                match self.observe_shared(&namespace_key, healed) {
+                                    Ok(()) => {}
+                                    Err(error) => tracing::warn!(
+                                        %error,
+                                        namespace,
+                                        "Shared cache generation catch-up was not recorded locally"
+                                    ),
+                                }
+                                self.metrics
+                                    .shared_catch_up_writes
+                                    .fetch_add(1, Ordering::Relaxed);
+                                self.metrics.shared_reads.fetch_add(1, Ordering::Relaxed);
+                                tracing::warn!(
+                                    namespace,
+                                    local,
+                                    shared,
+                                    generation = healed,
+                                    "Shared cache generation regressed; restored it from the trusted local observation"
+                                );
+                                return Ok(CacheNamespaceGeneration {
+                                    value: healed,
+                                    source: CacheGenerationSource::SharedRedis,
+                                });
+                            }
+                            Err(error) => {
+                                self.metrics
+                                    .shared_catch_up_failures
+                                    .fetch_add(1, Ordering::Relaxed);
+                                self.metrics
+                                    .local_fallback_reads
+                                    .fetch_add(1, Ordering::Relaxed);
+                                tracing::warn!(
+                                    %error,
+                                    namespace,
+                                    local,
+                                    shared,
+                                    "Shared cache generation regressed and could not be restored; this namespace stays divergent until Redis recovers"
+                                );
+                                return Ok(CacheNamespaceGeneration {
+                                    value: local,
+                                    source: CacheGenerationSource::LocalFallback,
+                                });
+                            }
+                        }
                     }
                     Err(CacheGenerationError::LocalSnapshotCapacityExceeded { .. }) => {
                         self.metrics.shared_reads.fetch_add(1, Ordering::Relaxed);
@@ -258,7 +312,12 @@ impl CacheNamespaceGenerationStore {
                 Ok(value) => {
                     if let Err(error) = self.observe_shared(&namespace_key, value) {
                         self.metrics.bump_failures.fetch_add(1, Ordering::Relaxed);
-                        return Err(error);
+                        // The shared counter already moved: report it distinctly so a caller does
+                        // not retry the bump and rotate the namespace a second time.
+                        return Err(CacheGenerationError::SharedBumpAppliedLocalLag {
+                            generation: value,
+                            detail: error.to_string(),
+                        });
                     }
                     self.metrics.shared_bumps.fetch_add(1, Ordering::Relaxed);
                     return Ok(CacheNamespaceGeneration {
@@ -307,6 +366,14 @@ impl CacheNamespaceGenerationStore {
             read_failures: self.metrics.read_failures.load(Ordering::Relaxed),
             bump_failures: self.metrics.bump_failures.load(Ordering::Relaxed),
             local_fallback_reads: self.metrics.local_fallback_reads.load(Ordering::Relaxed),
+            shared_catch_up_writes: self
+                .metrics
+                .shared_catch_up_writes
+                .load(Ordering::Relaxed),
+            shared_catch_up_failures: self
+                .metrics
+                .shared_catch_up_failures
+                .load(Ordering::Relaxed),
         }
     }
 
@@ -391,6 +458,34 @@ impl CacheNamespaceGenerationStore {
         )
         .await?;
         Ok(value.unwrap_or(0))
+    }
+
+    /// Restore a lost shared counter from this process's trusted local observation.
+    ///
+    /// The comparison and the write happen in one script so a concurrent bump cannot be rolled
+    /// back: the script only advances the counter, never lowers it.
+    #[cfg(feature = "redis-cache")]
+    async fn catch_up_shared(
+        &self,
+        client: &redis::Client,
+        key: &str,
+        trusted_generation: u64,
+    ) -> Result<u64, CacheGenerationError> {
+        let mut connection = generation_timeout(
+            self.operation_timeout,
+            "generation connection",
+            client.get_multiplexed_async_connection(),
+        )
+        .await?;
+        generation_timeout(
+            self.operation_timeout,
+            "generation catch-up",
+            redis::Script::new(GENERATION_CATCH_UP_SCRIPT)
+                .key(key)
+                .arg(trusted_generation)
+                .invoke_async::<u64>(&mut connection),
+        )
+        .await
     }
 
     #[cfg(feature = "redis-cache")]
@@ -512,6 +607,14 @@ pub enum CacheGenerationError {
         local: u64,
         shared: u64,
     },
+    /// The shared counter was advanced but this process could not record the new value.
+    ///
+    /// The increment is already durable in Redis and visible to the fleet, so retrying the bump
+    /// would rotate the namespace twice. The caller must re-`read()` the generation instead.
+    SharedBumpAppliedLocalLag {
+        generation: u64,
+        detail: String,
+    },
     Redis(String),
     Timeout {
         operation: &'static str,
@@ -557,6 +660,11 @@ impl std::fmt::Display for CacheGenerationError {
             Self::GenerationRegressed { local, shared } => write!(
                 formatter,
                 "shared cache generation regressed from local {local} to {shared}"
+            ),
+            Self::SharedBumpAppliedLocalLag { generation, detail } => write!(
+                formatter,
+                "shared cache generation advanced to {generation} but the local snapshot was not \
+                 updated ({detail}); re-read the generation instead of bumping again"
             ),
             Self::Redis(message) => write!(formatter, "cache generation Redis error: {message}"),
             Self::Timeout {
@@ -809,5 +917,32 @@ mod tests {
         let key = generation_key("never-observed").unwrap();
 
         assert_eq!(generations.local_snapshot(&key), None);
+    }
+
+    #[test]
+    fn applied_bump_with_a_stale_local_snapshot_is_reported_distinctly() {
+        let error = CacheGenerationError::SharedBumpAppliedLocalLag {
+            generation: 12,
+            detail: "local snapshot capacity exceeded".to_string(),
+        };
+        let rendered = error.to_string();
+        assert!(rendered.contains("advanced to 12"), "{rendered}");
+        assert!(
+            rendered.contains("re-read the generation instead of bumping again"),
+            "the message must prevent a double rotation: {rendered}"
+        );
+    }
+
+    #[test]
+    fn generation_stats_expose_catch_up_outcomes_separately() {
+        let service = CacheService::from_url(None);
+        let stats = service.namespace_generations().stats();
+        // Nothing observed yet: healing counters stay at zero rather than borrowing other series.
+        assert_eq!(stats.shared_catch_up_writes, 0);
+        assert_eq!(stats.shared_catch_up_failures, 0);
+
+        let metrics = crate::format_cache_generation_prometheus_metrics(&stats);
+        assert!(metrics.contains("rustok_cache_generation_shared_catch_up_writes_total 0"));
+        assert!(metrics.contains("rustok_cache_generation_shared_catch_up_failures_total 0"));
     }
 }

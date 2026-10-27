@@ -154,18 +154,27 @@ impl CacheService {
         })
     }
 
+    /// Recover untrusted backend generations from the shared Redis snapshot.
+    ///
+    /// Returns a report instead of a bare error so the caller can distinguish "Redis is unreachable"
+    /// (transport) from "Redis answered but generations still need recovery" (backlog), and can
+    /// expose the pending count without pretending the transport failed.
     #[cfg(feature = "redis-cache")]
     pub(crate) async fn recover_registered_backend_generations(
         &self,
-    ) -> rustok_core::Result<usize> {
+    ) -> CacheGenerationRecoveryReport {
         if !self.redis_configuration_present() {
-            return Ok(0);
+            return CacheGenerationRecoveryReport::default();
         }
         if !self.redis_client_initialized() {
-            return Err(rustok_core::Error::Cache(
-                "Redis is configured but its client is unavailable for cache generation recovery"
-                    .to_string(),
-            ));
+            return CacheGenerationRecoveryReport {
+                recovered: 0,
+                pending: 0,
+                error: Some(
+                    "Redis is configured but its client is unavailable for cache generation recovery"
+                        .to_string(),
+                ),
+            };
         }
 
         let identity = self.generation_store_identity();
@@ -237,17 +246,32 @@ impl CacheService {
             }
         }
 
-        if let Some(error) = first_error {
-            return Err(rustok_core::Error::Cache(error));
+        let pending = total.saturating_sub(MAX_GENERATION_RECOVERIES_PER_PROBE);
+        let mut error = first_error;
+        if pending > 0 {
+            let pending_message = format!(
+                "cache backend generation recovery remains pending for {pending} unique namespaces"
+            );
+            error = Some(match error {
+                Some(existing) => format!("{existing}; {pending_message}"),
+                None => pending_message,
+            });
         }
-        if total > MAX_GENERATION_RECOVERIES_PER_PROBE {
-            return Err(rustok_core::Error::Cache(format!(
-                "cache backend generation recovery remains pending for {} unique namespaces",
-                total - MAX_GENERATION_RECOVERIES_PER_PROBE
-            )));
+
+        CacheGenerationRecoveryReport {
+            recovered,
+            pending,
+            error,
         }
-        Ok(recovered)
     }
+}
+
+/// Outcome of one bounded backend-generation recovery probe.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct CacheGenerationRecoveryReport {
+    pub recovered: usize,
+    pub pending: usize,
+    pub error: Option<String>,
 }
 
 impl GenerationRecoveryHealthBackend {
@@ -342,6 +366,11 @@ impl CacheBackend for GenerationRecoveryHealthBackend {
     async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
         self.ensure_owner()?;
         self.inner.invalidate(key).await
+    }
+
+    async fn reconcile_local_state(&self) -> rustok_core::Result<()> {
+        self.ensure_owner()?;
+        self.inner.reconcile_local_state().await
     }
 
     fn stats(&self) -> CacheStats {

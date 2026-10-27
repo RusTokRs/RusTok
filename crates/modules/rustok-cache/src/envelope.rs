@@ -221,8 +221,17 @@ where
             });
         }
 
-        let envelope: Self = postcard::from_bytes(bytes)
+        // `from_bytes` accepts trailing data; a concatenated or corrupted tail would decode as a
+        // valid envelope. Consumption must be exact so a mangled entry is a hard decode error
+        // instead of a plausible-looking value.
+        let (envelope, remainder): (Self, &[u8]) = postcard::take_from_bytes(bytes)
             .map_err(|error| CacheEnvelopeError::Decode(error.to_string()))?;
+        if !remainder.is_empty() {
+            return Err(CacheEnvelopeError::Decode(format!(
+                "cache envelope has {} trailing bytes after a complete record",
+                remainder.len()
+            )));
+        }
         envelope.validate_metadata(expected_schema_version)?;
         Ok(envelope)
     }

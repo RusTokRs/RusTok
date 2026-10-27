@@ -7,12 +7,21 @@ use tokio::sync::{Mutex as AsyncMutex, broadcast};
 
 #[cfg(feature = "redis-cache")]
 use rustok_core::CircuitBreakerConfig;
-use rustok_core::{CacheBackend, CacheCompareAndSetOutcome, CacheStats, InMemoryCacheBackend};
+use rustok_core::{CacheBackend, InMemoryCacheBackend};
+
+use crate::instrumentation::InstrumentedCacheBackend;
 
 pub const MAX_CACHE_INVALIDATION_CHANNEL_BYTES: usize = 256;
 pub const MAX_CACHE_INVALIDATION_KEY_BYTES: usize = 4 * 1024;
 pub const MAX_CACHE_LOAD_KEY_BYTES: usize = 512;
 pub const DEFAULT_MAX_IN_FLIGHT_CACHE_LOADS: usize = 1_024;
+/// Hard bound for process-local backend instances and their construction gates.
+///
+/// The registry prunes entries that no caller still references, so this cap only rejects a
+/// deployment that genuinely holds this many live backend configurations at once.
+pub const DEFAULT_MAX_SHARED_CACHE_BACKENDS: usize = 4_096;
+/// Minimum meaningful cache TTL; a shorter positive TTL is rounded up by the backends anyway.
+pub const MIN_CACHE_BACKEND_TTL: Duration = Duration::from_millis(1);
 
 #[cfg(feature = "redis-cache")]
 const CACHE_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
@@ -46,6 +55,50 @@ pub(crate) struct SharedBackendKey {
     pub metrics_enabled: bool,
 }
 
+struct ConstructionGateLease {
+    key: SharedBackendKey,
+    gate: Arc<AsyncMutex<()>>,
+    registry: Arc<StdMutex<SharedBackendRegistry>>,
+}
+
+impl Drop for ConstructionGateLease {
+    fn drop(&mut self) {
+        let mut registry = self
+            .registry
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if registry
+            .construction_gates
+            .get(&self.key)
+            .is_some_and(|current| Arc::ptr_eq(current, &self.gate) && Arc::strong_count(current) <= 2)
+        {
+            registry.construction_gates.remove(&self.key);
+        }
+    }
+}
+
+/// Process-local backend instances keyed by their construction options, plus the per-key gates
+/// that make construction single-flight.
+#[derive(Default)]
+struct SharedBackendRegistry {
+    backends: HashMap<SharedBackendKey, Arc<dyn CacheBackend>>,
+    construction_gates: HashMap<SharedBackendKey, Arc<AsyncMutex<()>>>,
+    constructions: u64,
+    rejected_insertions: u64,
+}
+
+impl SharedBackendRegistry {
+    /// Drop entries that no caller references any more.
+    ///
+    /// The registry itself holds exactly one strong reference per entry, so `strong_count == 1`
+    /// proves the backend is dead and can be released without changing observable behavior.
+    fn prune_unreferenced(&mut self) {
+        self.backends
+            .retain(|_, backend| Arc::strong_count(backend) > 1);
+        self.construction_gates.retain(|_, gate| Arc::strong_count(gate) > 1);
+    }
+}
+
 /// Resolves Redis URLs once per service instead of having callers construct or
 /// resolving Redis URLs themselves. This keeps Redis lifecycle in one place.
 #[derive(Clone)]
@@ -59,7 +112,8 @@ pub struct CacheService {
     default_backend_options: CacheBackendOptions,
     loaders: Arc<CacheLoadCoordinator>,
     invalidations: CacheInvalidationService,
-    shared_backends: Arc<StdMutex<HashMap<SharedBackendKey, Arc<dyn CacheBackend>>>>,
+    shared_backends: Arc<StdMutex<SharedBackendRegistry>>,
+    invalid_backend_configuration: Arc<AtomicU64>,
 }
 
 /// Backend construction options used by `CacheService`.
@@ -121,7 +175,8 @@ impl CacheService {
             default_backend_options: options,
             loaders: Arc::new(CacheLoadCoordinator::default()),
             invalidations,
-            shared_backends: Arc::new(StdMutex::new(HashMap::new())),
+            shared_backends: Arc::new(StdMutex::new(SharedBackendRegistry::default())),
+            invalid_backend_configuration: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -140,7 +195,8 @@ impl CacheService {
             default_backend_options: options,
             loaders: Arc::new(CacheLoadCoordinator::default()),
             invalidations: CacheInvalidationService::new(),
-            shared_backends: Arc::new(StdMutex::new(HashMap::new())),
+            shared_backends: Arc::new(StdMutex::new(SharedBackendRegistry::default())),
+            invalid_backend_configuration: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -148,32 +204,184 @@ impl CacheService {
         &self,
         key: &SharedBackendKey,
     ) -> Option<Arc<dyn CacheBackend>> {
-        self.shared_backends
+        self.shared_registry()
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .backends
             .get(key)
             .cloned()
     }
 
+    fn shared_registry(&self) -> &StdMutex<SharedBackendRegistry> {
+        &self.shared_backends
+    }
+
+    /// Register a backend, returning the instance that callers must use.
+    ///
+    /// The registry is bounded: unreferenced entries are pruned first, and a deployment that
+    /// genuinely holds the maximum number of live configurations gets an error log plus the newly
+    /// built backend without registration (correct, just unshared) instead of an unbounded map or a
+    /// silently duplicated instance.
     pub(crate) fn insert_shared_backend(
         &self,
         key: SharedBackendKey,
         backend: Arc<dyn CacheBackend>,
     ) -> Arc<dyn CacheBackend> {
-        let mut backends = self
-            .shared_backends
+        let mut registry = self
+            .shared_registry()
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        backends.entry(key).or_insert(backend).clone()
+
+        if let Some(existing) = registry.backends.get(&key) {
+            return Arc::clone(existing);
+        }
+        if registry.backends.len() >= DEFAULT_MAX_SHARED_CACHE_BACKENDS {
+            registry.prune_unreferenced();
+        }
+        if registry.backends.len() >= DEFAULT_MAX_SHARED_CACHE_BACKENDS {
+            registry.rejected_insertions = registry.rejected_insertions.saturating_add(1);
+            tracing::error!(
+                maximum = DEFAULT_MAX_SHARED_CACHE_BACKENDS,
+                prefix = %key.prefix,
+                "Shared cache backend registry is full of live backends; serving an unregistered instance"
+            );
+            return backend;
+        }
+
+        registry
+            .backends
+            .insert(key, Arc::clone(&backend));
+        backend
+    }
+
+    /// Build a backend at most once per construction key.
+    ///
+    /// Two concurrent callers for the same `(prefix, ttl, capacity, metrics)` options must not
+    /// observe independent fallback trackers or open duplicate Redis connections, so construction is
+    /// single-flight per key rather than check-then-act.
+    pub(crate) async fn shared_backend_slot<F, Fut>(
+        &self,
+        key: SharedBackendKey,
+        build: F,
+    ) -> Arc<dyn CacheBackend>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Arc<dyn CacheBackend>>,
+    {
+        if let Some(existing) = self.get_shared_backend(&key) {
+            return existing;
+        }
+
+        let Some(gate) = self.construction_gate(&key) else {
+            // Saturated registry: build without registering rather than serializing forever.
+            return build().await;
+        };
+        let _guard = gate.gate.lock().await;
+        if let Some(existing) = self.get_shared_backend(&key) {
+            return existing;
+        }
+
+        let backend = build().await;
+        let registered = self.insert_shared_backend(key, backend);
+        {
+            let mut registry = self
+                .shared_registry()
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            registry.constructions = registry.constructions.saturating_add(1);
+        }
+        registered
+    }
+
+    fn construction_gate(&self, key: &SharedBackendKey) -> Option<ConstructionGateLease> {
+        let mut registry = self
+            .shared_registry()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let gate = if let Some(existing) = registry.construction_gates.get(key) {
+            Arc::clone(existing)
+        } else {
+            if registry.construction_gates.len() >= DEFAULT_MAX_SHARED_CACHE_BACKENDS {
+                registry.prune_unreferenced();
+            }
+            if registry.construction_gates.len() >= DEFAULT_MAX_SHARED_CACHE_BACKENDS {
+                return None;
+            }
+            let gate = Arc::new(AsyncMutex::new(()));
+            registry
+                .construction_gates
+                .insert(key.clone(), Arc::clone(&gate));
+            gate
+        };
+        Some(ConstructionGateLease {
+            key: key.clone(),
+            gate,
+            registry: Arc::clone(&self.shared_backends),
+        })
+    }
+
+    /// Number of distinct backend configurations built through the shared registry.
+    ///
+    /// Exposed so hosts and tests can prove that concurrent factory calls are single-flight and
+    /// that long-lived processes do not rebuild backends for unchanged configuration.
+    pub fn shared_backend_construction_count(&self) -> u64 {
+        self.shared_registry()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .constructions
+    }
+
+    pub fn shared_backend_registry_len(&self) -> usize {
+        self.shared_registry()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .backends
+            .len()
     }
 
     /// Clears cached backend instances so newly requested configurations or credentials rebuild backends.
     pub fn clear_shared_backends(&self) {
-        let mut backends = self
-            .shared_backends
+        let mut registry = self
+            .shared_registry()
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        backends.clear();
+        registry.backends.clear();
+        registry.construction_gates.clear();
+    }
+
+    /// Reconcile degradation-aware local cache state with the shared primary.
+    ///
+    /// Hosts call this after an explicit confirmation that Redis answered (a successful status
+    /// probe does it automatically). A backend that suspended reads because unsynchronized local
+    /// mutations exceeded its bounded capacity resumes only when this returns `Ok`; failures are
+    /// reported so readiness stays degraded instead of silently serving possibly stale bytes.
+    pub async fn reconcile_local_state(&self) -> rustok_core::Result<usize> {
+        let backends: Vec<Arc<dyn CacheBackend>> = self
+            .shared_registry()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .backends
+            .values()
+            .cloned()
+            .collect();
+
+        let mut reconciled = 0usize;
+        let mut failures = Vec::new();
+        for backend in backends {
+            match backend.reconcile_local_state().await {
+                Ok(()) => reconciled = reconciled.saturating_add(1),
+                Err(error) => failures.push(error.to_string()),
+            }
+        }
+
+        if failures.is_empty() {
+            return Ok(reconciled);
+        }
+        Err(rustok_core::Error::Cache(format!(
+            "cache local state reconciliation failed for {} backend(s): {}",
+            failures.len(),
+            failures.join("; ")
+        )))
     }
 
     /// Returns `true` if a Redis connection is available.
@@ -204,6 +412,43 @@ impl CacheService {
         self.redis_client.as_ref()
     }
 
+    /// Reject degenerate backend configuration loudly and return the effective values.
+    ///
+    /// A zero TTL means every write expires immediately and a zero capacity means every entry is
+    /// evicted immediately; both silently turn the cache into a permanent miss and are reachable from
+    /// operator configuration. They are counted, logged and floored to the smallest usable value so
+    /// the defect is visible in metrics instead of degrading silently.
+    pub fn validated_backend_configuration(
+        &self,
+        prefix: &str,
+        ttl: Duration,
+        capacity: u64,
+    ) -> (Duration, u64) {
+        if ttl.is_zero() || capacity == 0 {
+            self.invalid_backend_configuration
+                .fetch_add(1, Ordering::Relaxed);
+            tracing::error!(
+                prefix,
+                ttl_ms = ttl.as_millis(),
+                capacity,
+                zero_ttl = ttl.is_zero(),
+                zero_capacity = capacity == 0,
+                "Invalid cache backend configuration; applying the documented minimum TTL and capacity"
+            );
+        }
+        let effective_ttl = if ttl.is_zero() {
+            MIN_CACHE_BACKEND_TTL
+        } else {
+            ttl
+        };
+        (effective_ttl, capacity.max(1))
+    }
+
+    /// Number of backend factory calls that received degenerate configuration.
+    pub fn invalid_backend_configuration_total(&self) -> u64 {
+        self.invalid_backend_configuration.load(Ordering::Relaxed)
+    }
+
     /// Create a cache backend with the given prefix, TTL, and capacity.
     ///
     /// Redis backends reuse the client owned by this service. When Redis is unavailable,
@@ -231,6 +476,8 @@ impl CacheService {
 
     /// Create a pure in-memory backend (no Redis).
     pub fn memory_backend(&self, ttl: Duration, max_capacity: u64) -> Arc<dyn CacheBackend> {
+        let (ttl, max_capacity) =
+            self.validated_backend_configuration("memory", ttl, max_capacity);
         let backend = Arc::new(InMemoryCacheBackend::new(ttl, max_capacity));
         if self.default_backend_options.metrics_enabled {
             Arc::new(InstrumentedCacheBackend::new("memory", backend))
@@ -258,6 +505,14 @@ impl CacheService {
     {
         let key = key.into();
         validate_cache_load_key(&key)?;
+        // Backends interpret a zero TTL as deletion, which would make every caller a permanent
+        // leader and report `Filled` for a value that was never stored.
+        if ttl.is_some_and(|ttl| ttl.is_zero()) {
+            return Err(rustok_core::Error::Cache(
+                "cache load TTL must be greater than zero; use unbounded caching instead"
+                    .to_string(),
+            ));
+        }
         tracing::debug!(
             key = %key,
             ttl_ms = ttl.map(|t| t.as_millis()),
@@ -289,7 +544,7 @@ impl CacheService {
     pub async fn publish_invalidation(
         &self,
         message: CacheInvalidationMessage,
-    ) -> CacheInvalidationOutcome {
+    ) -> Result<CacheInvalidationOutcome, CacheInvalidationError> {
         tracing::debug!(
             channel = %message.channel,
             key = %message.key,
@@ -317,6 +572,7 @@ impl CacheService {
             &self.health().await,
             self.in_flight_loads().await,
             &self.invalidations.stats(),
+            self.invalid_backend_configuration_total(),
         )
     }
 
@@ -419,6 +675,8 @@ pub struct CacheInvalidationOutcome {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CacheInvalidationStats {
+    /// Messages forwarded to the process-local broadcast bus, independent of subscriber count
+    /// (the Prometheus series keeps its historical name for dashboard compatibility).
     pub local_published_total: u64,
     pub redis_publish_success_total: u64,
     pub redis_publish_failure_total: u64,
@@ -429,6 +687,10 @@ pub struct CacheInvalidationStats {
 pub struct CacheInvalidationService {
     #[cfg(feature = "redis-cache")]
     redis_client: Option<redis::Client>,
+    /// Reused publish connection. Opening a connection per `PUBLISH` turns a burst of
+    /// invalidations into a connection storm and adds handshake latency to every fan-out.
+    #[cfg(feature = "redis-cache")]
+    publish_manager: Arc<AsyncMutex<Option<redis::aio::ConnectionManager>>>,
     local: broadcast::Sender<CacheInvalidationMessage>,
     stats: Arc<CacheInvalidationMetrics>,
 }
@@ -447,6 +709,7 @@ impl CacheInvalidationService {
         let (local, _) = broadcast::channel(256);
         Self {
             redis_client,
+            publish_manager: Arc::new(AsyncMutex::new(None)),
             local,
             stats: Arc::new(CacheInvalidationMetrics::default()),
         }
@@ -566,69 +829,144 @@ impl CacheInvalidationService {
         Err("pubsub stream closed".to_string())
     }
 
-    pub async fn publish(&self, message: CacheInvalidationMessage) -> CacheInvalidationOutcome {
+    /// Publish one validated invalidation to local subscribers and, when configured, to Redis.
+    ///
+    /// Local delivery is always attempted first so single-instance runtimes and tests use the same
+    /// contract. A configured-but-unreachable Redis is reported as an error: acknowledging a
+    /// best-effort fan-out as success would let other instances keep stale entries without any
+    /// signal to the caller.
+    pub async fn publish(
+        &self,
+        message: CacheInvalidationMessage,
+    ) -> Result<CacheInvalidationOutcome, CacheInvalidationError> {
         if let Err(error) = message.validate() {
-            tracing::warn!(?error, "Ignoring invalid cache invalidation message");
+            tracing::warn!(?error, "Rejected invalid cache invalidation message");
             self.stats.rejected_total.fetch_add(1, Ordering::Relaxed);
-            return CacheInvalidationOutcome {
-                local_subscribers: 0,
-                redis_published: false,
-            };
+            return Err(CacheInvalidationError::InvalidMessage(error));
         }
 
-        let mut outcome = CacheInvalidationOutcome {
-            local_subscribers: 0,
-            redis_published: false,
-        };
-
-        outcome.local_subscribers = self.local.send(message.clone()).unwrap_or(0);
+        let local_subscribers = self.local.send(message.clone()).unwrap_or(0);
         self.stats
             .local_published_total
             .fetch_add(1, Ordering::Relaxed);
 
         #[cfg(feature = "redis-cache")]
-        {
-            if let Some(client) = &self.redis_client {
-                match redis_with_timeout(
-                    "Redis invalidation publish connection",
-                    client.get_multiplexed_async_connection(),
-                )
-                .await
-                {
-                    Ok(mut conn) => {
-                        let published = redis_with_timeout(
-                            "Redis invalidation PUBLISH",
-                            redis::cmd("PUBLISH")
-                                .arg(&message.channel)
-                                .arg(&message.key)
-                                .query_async::<i64>(&mut conn),
-                        )
-                        .await;
-                        outcome.redis_published = published.is_ok();
-                        if outcome.redis_published {
-                            self.stats
-                                .redis_publish_success_total
-                                .fetch_add(1, Ordering::Relaxed);
-                        } else {
-                            if let Err(error) = published {
-                                tracing::warn!(%error, "Redis invalidation publish failed");
-                            }
-                            self.stats
-                                .redis_publish_failure_total
-                                .fetch_add(1, Ordering::Relaxed);
-                        }
-                    }
-                    Err(error) => {
-                        tracing::warn!(%error, "Redis invalidation connection failed");
-                        self.stats
-                            .redis_publish_failure_total
-                            .fetch_add(1, Ordering::Relaxed);
-                    }
+        if let Some(client) = &self.redis_client {
+            return match self.publish_shared(client, &message).await {
+                Ok(()) => {
+                    self.stats
+                        .redis_publish_success_total
+                        .fetch_add(1, Ordering::Relaxed);
+                    Ok(CacheInvalidationOutcome {
+                        local_subscribers,
+                        redis_published: true,
+                    })
                 }
-            }
+                Err(detail) => {
+                    self.stats
+                        .redis_publish_failure_total
+                        .fetch_add(1, Ordering::Relaxed);
+                    tracing::warn!(
+                        channel = %message.channel,
+                        error = %detail,
+                        "Redis invalidation publish failed"
+                    );
+                    Err(CacheInvalidationError::SharedTransport {
+                        local_subscribers,
+                        detail,
+                    })
+                }
+            };
         }
 
-        outcome
+        Ok(CacheInvalidationOutcome {
+            local_subscribers,
+            redis_published: false,
+        })
+    }
+
+    #[cfg(feature = "redis-cache")]
+    async fn publish_connection_manager(
+        &self,
+        client: &redis::Client,
+    ) -> Result<redis::aio::ConnectionManager, String> {
+        let mut state = self.publish_manager.lock().await;
+        if let Some(manager) = state.as_ref() {
+            return Ok(manager.clone());
+        }
+        let manager = redis_with_timeout(
+            "Redis invalidation publish connection",
+            client.get_connection_manager(),
+        )
+        .await?;
+        *state = Some(manager.clone());
+        Ok(manager)
+    }
+
+    #[cfg(feature = "redis-cache")]
+    async fn publish_shared(
+        &self,
+        client: &redis::Client,
+        message: &CacheInvalidationMessage,
+    ) -> Result<(), String> {
+        let mut manager = self.publish_connection_manager(client).await?;
+        let published = redis_with_timeout(
+            "Redis invalidation PUBLISH",
+            redis::cmd("PUBLISH")
+                .arg(&message.channel)
+                .arg(&message.key)
+                .query_async::<i64>(&mut manager),
+        )
+        .await;
+
+        match published {
+            // A zero receiver count is a successful publish: no peer happens to be subscribed.
+            Ok(_receivers) => Ok(()),
+            Err(detail) => {
+                // Drop the broken connection so the next publish can reconnect instead of reusing it.
+                *self.publish_manager.lock().await = None;
+                Err(detail)
+            }
+        }
+    }
+}
+
+/// Failure of the cache invalidation fan-out.
+///
+/// Both variants reach the caller instead of being reduced to a best-effort counter, because a lost
+/// invalidation means another process may keep serving a stale entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CacheInvalidationError {
+    /// The message violated the transport contract and was not published anywhere.
+    InvalidMessage(CacheInvalidationMessageError),
+    /// Redis is configured but the shared publish failed after local delivery was attempted.
+    SharedTransport {
+        local_subscribers: usize,
+        detail: String,
+    },
+}
+
+impl std::fmt::Display for CacheInvalidationError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidMessage(error) => write!(formatter, "invalid cache invalidation: {error}"),
+            Self::SharedTransport {
+                local_subscribers,
+                detail,
+            } => write!(
+                formatter,
+                "cache invalidation reached {local_subscribers} local subscriber(s) but failed on the shared transport: {detail}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for CacheInvalidationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InvalidMessage(error) => Some(error),
+            Self::SharedTransport { .. } => None,
+        }
     }
 }
 
@@ -642,6 +980,12 @@ impl LocalCacheInvalidationSubscription {
         &self.channel
     }
 
+    /// Receive the next message for this channel.
+    ///
+    /// `RecvError::Lagged(n)` means this subscription fell behind the bounded local bus and `n`
+    /// messages were dropped; the caller must not treat it as a transport hiccup. The documented
+    /// contract is that a lagged consumer clears (or rebuilds) its owned namespace before resuming
+    /// fast-path processing, because an unknown number of invalidations for it were lost.
     pub async fn recv(&mut self) -> Result<CacheInvalidationMessage, broadcast::error::RecvError> {
         loop {
             let message = self.receiver.recv().await?;
@@ -819,12 +1163,14 @@ pub fn format_cache_service_prometheus_metrics(
     report: &CacheHealthReport,
     in_flight_loads: usize,
     invalidation_stats: &CacheInvalidationStats,
+    invalid_backend_configurations: u64,
 ) -> String {
     format!(
         "rustok_cache_redis_configured {redis_configured}\n\
 rustok_cache_redis_healthy {redis_healthy}\n\
 rustok_cache_metrics_enabled {metrics_enabled}\n\
 rustok_cache_in_flight_loads {in_flight_loads}\n\
+rustok_cache_invalid_backend_configuration_total {invalid_backend_configurations}\n\
 rustok_cache_invalidation_local_published_total {local_published_total}\n\
 rustok_cache_invalidation_redis_publish_success_total {redis_publish_success_total}\n\
 rustok_cache_invalidation_redis_publish_failure_total {redis_publish_failure_total}\n\
@@ -855,104 +1201,10 @@ impl CacheHealthReport {
     }
 }
 
-struct InstrumentedCacheBackend {
-    name: String,
-    inner: Arc<dyn CacheBackend>,
-    hits: AtomicU64,
-    misses: AtomicU64,
-    evictions: AtomicU64,
-}
-
-impl InstrumentedCacheBackend {
-    fn new(name: impl Into<String>, inner: Arc<dyn CacheBackend>) -> Self {
-        Self {
-            name: name.into(),
-            inner,
-            hits: AtomicU64::new(0),
-            misses: AtomicU64::new(0),
-            evictions: AtomicU64::new(0),
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl CacheBackend for InstrumentedCacheBackend {
-    async fn health(&self) -> rustok_core::Result<()> {
-        self.inner.health().await
-    }
-
-    async fn get(&self, key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
-        let value = self.inner.get(key).await?;
-        if value.is_some() {
-            self.hits.fetch_add(1, Ordering::Relaxed);
-        } else {
-            self.misses.fetch_add(1, Ordering::Relaxed);
-        }
-        Ok(value)
-    }
-
-    async fn set(&self, key: String, value: Vec<u8>) -> rustok_core::Result<()> {
-        self.inner.set(key, value).await
-    }
-
-    async fn set_with_ttl(
-        &self,
-        key: String,
-        value: Vec<u8>,
-        ttl: Duration,
-    ) -> rustok_core::Result<()> {
-        self.inner.set_with_ttl(key, value, ttl).await
-    }
-
-    async fn compare_and_set(
-        &self,
-        key: &str,
-        expected: &[u8],
-        value: Vec<u8>,
-        ttl: Option<Duration>,
-    ) -> rustok_core::Result<CacheCompareAndSetOutcome> {
-        self.inner.compare_and_set(key, expected, value, ttl).await
-    }
-
-    async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
-        self.inner.invalidate(key).await?;
-        self.evictions.fetch_add(1, Ordering::Relaxed);
-        Ok(())
-    }
-
-    fn stats(&self) -> CacheStats {
-        let inner = self.inner.stats();
-        CacheStats {
-            hits: self.hits.load(Ordering::Relaxed).saturating_add(inner.hits),
-            misses: self
-                .misses
-                .load(Ordering::Relaxed)
-                .saturating_add(inner.misses),
-            evictions: self
-                .evictions
-                .load(Ordering::Relaxed)
-                .saturating_add(inner.evictions),
-            entries: inner.entries,
-        }
-    }
-}
-
-impl Drop for InstrumentedCacheBackend {
-    fn drop(&mut self) {
-        tracing::debug!(cache = %self.name, stats = ?self.stats(), "cache backend dropped");
-    }
-}
-
-fn resolve_redis_url() -> Option<String> {
-    std::env::var("RUSTOK_REDIS_URL")
-        .ok()
-        .or_else(|| std::env::var("REDIS_URL").ok())
-        .filter(|url| !url.trim().is_empty())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rustok_core::{CacheCompareAndSetOutcome, CacheStats};
     use std::sync::atomic::AtomicUsize;
     use tokio::sync::{Barrier, oneshot};
 
@@ -1249,13 +1501,136 @@ mod tests {
 
         let outcome = service
             .publish_invalidation(CacheInvalidationMessage::new("cache.test", "key-1"))
-            .await;
+            .await
+            .unwrap();
         let message = subscriber.recv().await.unwrap();
 
         assert_eq!(message.channel, "cache.test");
         assert_eq!(message.key, "key-1");
         assert_eq!(outcome.local_subscribers, 1);
         assert!(!outcome.redis_published);
+    }
+
+    #[tokio::test]
+    async fn load_or_fill_rejects_a_zero_ttl_instead_of_reporting_an_unsaved_fill() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let loader_calls = Arc::clone(&calls);
+
+        let error = service
+            .load_or_fill(
+                Arc::clone(&backend),
+                "zero-ttl",
+                Some(Duration::ZERO),
+                move || async move {
+                    loader_calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(b"value".to_vec())
+                },
+            )
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("TTL must be greater than zero"));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert!(backend.get("zero-ttl").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn degenerate_backend_configuration_is_counted_and_floored() {
+        let service = CacheService::from_url(None);
+
+        let (ttl, capacity) = service.validated_backend_configuration("test", Duration::ZERO, 0);
+        assert_eq!(ttl, MIN_CACHE_BACKEND_TTL);
+        assert_eq!(capacity, 1);
+        assert_eq!(service.invalid_backend_configuration_total(), 1);
+
+        let (ttl, capacity) =
+            service.validated_backend_configuration("test", Duration::from_secs(5), 8);
+        assert_eq!(ttl, Duration::from_secs(5));
+        assert_eq!(capacity, 8);
+        assert_eq!(service.invalid_backend_configuration_total(), 1);
+
+        assert!(
+            service
+                .prometheus_metrics()
+                .await
+                .contains("rustok_cache_invalid_backend_configuration_total 1")
+        );
+    }
+
+    #[tokio::test]
+    async fn concurrent_factory_calls_build_each_backend_configuration_once() {
+        let service = CacheService::from_url(None);
+        let barrier = Arc::new(Barrier::new(4));
+
+        let mut tasks = Vec::new();
+        for _ in 0..4 {
+            let service = service.clone();
+            let barrier = Arc::clone(&barrier);
+            tasks.push(tokio::spawn(async move {
+                barrier.wait().await;
+                service
+                    .backend_shared_client("shared-single-flight", Duration::from_secs(30), 8)
+                    .await
+            }));
+        }
+
+        let mut backends = Vec::new();
+        for task in tasks {
+            backends.push(task.await.unwrap());
+        }
+
+        assert!(
+            backends
+                .iter()
+                .all(|backend| Arc::ptr_eq(backend, &backends[0])),
+            "concurrent factory calls must share one backend instance"
+        );
+        assert_eq!(service.shared_backend_construction_count(), 1);
+        assert_eq!(service.shared_backend_registry_len(), 1);
+    }
+
+    #[tokio::test]
+    async fn clearing_shared_backends_releases_registry_entries() {
+        let service = CacheService::from_url(None);
+        let backend = service
+            .backend_shared_client("shared-clear", Duration::from_secs(30), 8)
+            .await;
+        assert_eq!(service.shared_backend_registry_len(), 1);
+
+        service.clear_shared_backends();
+        assert_eq!(service.shared_backend_registry_len(), 0);
+        drop(backend);
+
+        let rebuilt = service
+            .backend_shared_client("shared-clear", Duration::from_secs(30), 8)
+            .await;
+        assert_eq!(rebuilt.stats().entries, 0);
+        assert_eq!(service.shared_backend_construction_count(), 2);
+    }
+
+    #[cfg(feature = "redis-cache")]
+    #[tokio::test]
+    async fn unreachable_configured_redis_surfaces_a_publish_error_instead_of_a_silent_false() {
+        let service = CacheService::from_url(Some("redis://127.0.0.1:1/"));
+        let mut subscriber = service.invalidations().subscribe_local();
+
+        let error = service
+            .publish_invalidation(CacheInvalidationMessage::new("cache.test", "key-1"))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            CacheInvalidationError::SharedTransport {
+                local_subscribers: 1,
+                ..
+            }
+        ));
+        // Local delivery still happened before the shared transport failed.
+        assert_eq!(subscriber.recv().await.unwrap().key, "key-1");
+        assert_eq!(service.invalidations().stats().redis_publish_failure_total, 1);
     }
 
     #[tokio::test]
@@ -1301,12 +1676,15 @@ mod tests {
         let service = CacheService::from_url(None);
         let mut subscriber = service.invalidations().subscribe_local();
 
-        let outcome = service
+        let error = service
             .publish_invalidation(CacheInvalidationMessage::new("cache.test", ""))
-            .await;
+            .await
+            .unwrap_err();
 
-        assert_eq!(outcome.local_subscribers, 0);
-        assert!(!outcome.redis_published);
+        assert_eq!(
+            error,
+            CacheInvalidationError::InvalidMessage(CacheInvalidationMessageError::EmptyKey)
+        );
         assert!(subscriber.try_recv().is_err());
     }
 
@@ -1316,10 +1694,12 @@ mod tests {
 
         service
             .publish_invalidation(CacheInvalidationMessage::new("cache.test", "key-1"))
-            .await;
+            .await
+            .unwrap();
         service
             .publish_invalidation(CacheInvalidationMessage::new("cache.test", ""))
-            .await;
+            .await
+            .unwrap_err();
 
         let stats = service.invalidations().stats();
         assert_eq!(stats.local_published_total, 1);
@@ -1334,10 +1714,12 @@ mod tests {
 
         service
             .publish_invalidation(CacheInvalidationMessage::new("cache.test", "key-1"))
-            .await;
+            .await
+            .unwrap();
         service
             .publish_invalidation(CacheInvalidationMessage::new("", "key-2"))
-            .await;
+            .await
+            .unwrap_err();
 
         let metrics = service.prometheus_metrics().await;
         assert!(metrics.contains("rustok_cache_invalidation_local_published_total 1"));
@@ -1361,13 +1743,15 @@ mod tests {
                 "rbac.cache.invalidate",
                 "role:admin",
             ))
-            .await;
+            .await
+            .unwrap();
         service
             .publish_invalidation(CacheInvalidationMessage::new(
                 "tenant.cache.invalidate",
                 "tenant-a",
             ))
-            .await;
+            .await
+            .unwrap();
 
         let tenant_message = tenant_subscriber.recv().await.unwrap();
         let rbac_message = rbac_subscriber.recv().await.unwrap();
@@ -1453,7 +1837,8 @@ mod tests {
 
         let outcome = service
             .publish_invalidation(CacheInvalidationMessage::try_new(&channel, key).unwrap())
-            .await;
+            .await
+            .expect("Redis invalidation publish must succeed against a live instance");
         assert!(outcome.redis_published);
 
         let message = tokio::time::timeout(Duration::from_secs(5), message_rx.recv())

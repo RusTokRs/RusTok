@@ -85,7 +85,15 @@ pub fn CacheAdmin() -> impl IntoView {
             redis_url: redis_url.get(),
         };
 
-        let payload = build_cache_settings_payload(&draft);
+        let payload = match build_cache_settings_payload(&draft) {
+            Ok(payload) => payload,
+            Err(error) => {
+                // Surface the validation error instead of sending a silently corrected payload.
+                set_saving.set(false);
+                set_save_result.set(Some(Err(error)));
+                return;
+            }
+        };
         let settings_str = payload.to_string();
 
         set_saving.set(true);

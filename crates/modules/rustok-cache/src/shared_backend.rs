@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -12,6 +11,7 @@ use tokio::sync::Mutex as AsyncMutex;
 
 #[cfg(feature = "redis-cache")]
 use crate::fallback::DegradationAwareFallbackBackend;
+use crate::instrumentation::InstrumentedCacheBackend as SharedInstrumentedCacheBackend;
 use crate::{CacheBackendOptions, CacheService};
 
 #[cfg(feature = "redis-cache")]
@@ -316,6 +316,7 @@ impl CacheService {
             metrics_enabled = options.metrics_enabled,
             "Obtaining shared cache backend"
         );
+        let (ttl, max_capacity) = self.validated_backend_configuration(prefix, ttl, max_capacity);
         let key = crate::service::SharedBackendKey {
             prefix: prefix.to_string(),
             ttl,
@@ -323,21 +324,21 @@ impl CacheService {
             weighted: false,
             metrics_enabled: options.metrics_enabled,
         };
-        if let Some(existing) = self.get_shared_backend(&key) {
-            return existing;
-        }
 
-        let backend = self
-            .raw_shared_client_backend(prefix, ttl, max_capacity, &options)
-            .await;
-        let backend = self.wrap_generation_aware_backend(prefix, backend).await;
-        let backend = self.wrap_generation_recovery_health(prefix, backend);
-        let result: Arc<dyn CacheBackend> = if options.metrics_enabled {
-            Arc::new(SharedInstrumentedCacheBackend::new(prefix, backend))
-        } else {
-            backend
-        };
-        self.insert_shared_backend(key, result)
+        self.shared_backend_slot(key, || async {
+            let backend = self
+                .raw_shared_client_backend(prefix, ttl, max_capacity, &options)
+                .await;
+            let backend = self.wrap_generation_aware_backend(prefix, backend).await;
+            let backend = self.wrap_generation_recovery_health(prefix, backend);
+            if options.metrics_enabled {
+                Arc::new(SharedInstrumentedCacheBackend::new(prefix, backend))
+                    as Arc<dyn CacheBackend>
+            } else {
+                backend
+            }
+        })
+        .await
     }
 
     pub(crate) async fn raw_shared_client_backend(
@@ -374,94 +375,6 @@ impl CacheService {
         }
 
         Arc::new(InMemoryCacheBackend::new(ttl, max_capacity))
-    }
-}
-
-struct SharedInstrumentedCacheBackend {
-    name: String,
-    inner: Arc<dyn CacheBackend>,
-    hits: AtomicU64,
-    misses: AtomicU64,
-    invalidations: AtomicU64,
-}
-
-impl SharedInstrumentedCacheBackend {
-    fn new(name: impl Into<String>, inner: Arc<dyn CacheBackend>) -> Self {
-        Self {
-            name: name.into(),
-            inner,
-            hits: AtomicU64::new(0),
-            misses: AtomicU64::new(0),
-            invalidations: AtomicU64::new(0),
-        }
-    }
-}
-
-#[async_trait]
-impl CacheBackend for SharedInstrumentedCacheBackend {
-    async fn health(&self) -> rustok_core::Result<()> {
-        self.inner.health().await
-    }
-
-    async fn get(&self, key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
-        let value = self.inner.get(key).await?;
-        if value.is_some() {
-            self.hits.fetch_add(1, Ordering::Relaxed);
-        } else {
-            self.misses.fetch_add(1, Ordering::Relaxed);
-        }
-        Ok(value)
-    }
-
-    async fn set(&self, key: String, value: Vec<u8>) -> rustok_core::Result<()> {
-        self.inner.set(key, value).await
-    }
-
-    async fn set_with_ttl(
-        &self,
-        key: String,
-        value: Vec<u8>,
-        ttl: Duration,
-    ) -> rustok_core::Result<()> {
-        self.inner.set_with_ttl(key, value, ttl).await
-    }
-
-    async fn compare_and_set(
-        &self,
-        key: &str,
-        expected: &[u8],
-        value: Vec<u8>,
-        ttl: Option<Duration>,
-    ) -> rustok_core::Result<CacheCompareAndSetOutcome> {
-        self.inner.compare_and_set(key, expected, value, ttl).await
-    }
-
-    async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
-        self.inner.invalidate(key).await?;
-        self.invalidations.fetch_add(1, Ordering::Relaxed);
-        Ok(())
-    }
-
-    fn stats(&self) -> CacheStats {
-        let inner = self.inner.stats();
-        CacheStats {
-            hits: self.hits.load(Ordering::Relaxed).saturating_add(inner.hits),
-            misses: self
-                .misses
-                .load(Ordering::Relaxed)
-                .saturating_add(inner.misses),
-            evictions: self
-                .invalidations
-                .load(Ordering::Relaxed)
-                .saturating_add(inner.evictions),
-            entries: inner.entries,
-        }
-    }
-}
-
-impl Drop for SharedInstrumentedCacheBackend {
-    fn drop(&mut self) {
-        tracing::debug!(cache = %self.name, stats = ?self.stats(), "shared-client cache backend dropped");
     }
 }
 

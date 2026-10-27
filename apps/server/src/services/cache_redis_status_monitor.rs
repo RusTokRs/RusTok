@@ -163,6 +163,8 @@ fn log_transition(previous: Option<&RedisCacheStatus>, current: &RedisCacheStatu
             redis_url_present = current.url_present,
             redis_client_initialized = current.client_initialized,
             redis_connectivity_healthy = current.connectivity_healthy,
+            generation_recovery_pending = current.generation_recovery_pending,
+            generation_recovery_failed = current.recovery_error.is_some(),
             "Cache Redis lifecycle entered degraded state"
         );
     } else {
@@ -170,16 +172,26 @@ fn log_transition(previous: Option<&RedisCacheStatus>, current: &RedisCacheStatu
             redis_url_present = current.url_present,
             redis_client_initialized = current.client_initialized,
             redis_connectivity_healthy = current.connectivity_healthy,
+            generation_recovery_pending = current.generation_recovery_pending,
+            generation_recovery_failed = current.recovery_error.is_some(),
             "Cache Redis lifecycle state changed"
         );
     }
 }
 
-fn state_tuple(status: &RedisCacheStatus) -> (bool, bool, bool) {
+/// Lifecycle identity of a status sample.
+///
+/// Error *text* is deliberately excluded (it can carry credentials and would retrigger the log on
+/// every probe), but presence of a recovery error and the pending-generation backlog are part of
+/// the identity: a monitor that ignores them would never announce that generation recovery is
+/// still unfinished after Redis answered again.
+fn state_tuple(status: &RedisCacheStatus) -> (bool, bool, bool, usize, bool) {
     (
         status.url_present,
         status.client_initialized,
         status.connectivity_healthy,
+        status.generation_recovery_pending,
+        status.recovery_error.is_some(),
     )
 }
 
@@ -196,6 +208,8 @@ mod tests {
             client_initialized: true,
             connectivity_healthy: false,
             last_error: Some("secret-a".to_string()),
+            generation_recovery_pending: 0,
+            recovery_error: None,
         };
         let second = RedisCacheStatus {
             last_error: Some("secret-b".to_string()),
@@ -205,10 +219,43 @@ mod tests {
     }
 
     #[test]
+    fn state_transition_reports_generation_recovery_backlog() {
+        let reached = RedisCacheStatus {
+            url_present: true,
+            client_initialized: true,
+            connectivity_healthy: true,
+            last_error: None,
+            generation_recovery_pending: 0,
+            recovery_error: None,
+        };
+        assert!(reached.is_healthy());
+        assert!(!reached.is_degraded());
+
+        let recovering = RedisCacheStatus {
+            generation_recovery_pending: 3,
+            ..reached.clone()
+        };
+        assert!(recovering.is_connectivity_healthy());
+        assert!(!recovering.is_healthy());
+        assert!(recovering.is_degraded());
+        assert_ne!(state_tuple(&reached), state_tuple(&recovering));
+
+        let failed = RedisCacheStatus {
+            recovery_error: Some("recovery rejected".to_string()),
+            ..recovering.clone()
+        };
+        assert_ne!(state_tuple(&recovering), state_tuple(&failed));
+        assert_ne!(state_tuple(&failed), state_tuple(&reached));
+    }
+
+    #[test]
     fn healthy_memory_only_state_is_not_degraded() {
         let status = RedisCacheStatus::default();
         assert!(!status.is_degraded());
-        assert_eq!(state_tuple(&status), (false, false, false));
+        assert_eq!(
+            state_tuple(&status),
+            (false, false, false, 0, false)
+        );
     }
 
     #[tokio::test]

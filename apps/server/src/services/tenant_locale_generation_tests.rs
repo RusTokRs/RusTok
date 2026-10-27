@@ -194,7 +194,8 @@ async fn publish_until_locale(
         loop {
             let outcome = cache
                 .publish_invalidation(invalidation_message(key, generation))
-                .await;
+                .await
+                .expect("publish invalidation failed");
             assert!(outcome.redis_published);
             if request_locale(app, tenant).await == expected {
                 return;
@@ -429,7 +430,8 @@ async fn deterministic_local_lag_recovers_two_replica_locale_values() {
     for _ in 0..300 {
         let outcome = cache
             .publish_invalidation(invalidation_message("*", generation))
-            .await;
+            .await
+            .expect("publish invalidation failed");
         assert_eq!(outcome.local_subscribers, 3);
         assert!(!outcome.redis_published);
     }

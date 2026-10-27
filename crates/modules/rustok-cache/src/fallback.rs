@@ -44,6 +44,12 @@ impl DegradedWriteTracker {
         state.insertion_order.retain(|candidate| candidate != key);
     }
 
+    async fn clear(&self) {
+        let mut state = self.state.lock().await;
+        state.keys.clear();
+        state.insertion_order.clear();
+    }
+
     async fn insert(
         &self,
         key: &str,
@@ -117,6 +123,14 @@ impl PendingInvalidationTracker {
         self.keys.lock().await.clear();
     }
 
+    async fn snapshot(&self) -> Vec<String> {
+        self.keys.lock().await.iter().cloned().collect()
+    }
+
+    async fn is_empty(&self) -> bool {
+        self.keys.lock().await.is_empty()
+    }
+
     async fn insert(&self, key: &str) -> rustok_core::Result<()> {
         validate_degraded_key(key, "invalidation")?;
         let mut keys = self.keys.lock().await;
@@ -147,15 +161,18 @@ fn validate_degraded_key(key: &str, operation: &str) -> rustok_core::Result<()> 
 /// Availability-preserving fallback whose health and atomic mutations remain strict about the
 /// shared primary.
 ///
-/// Ordinary writes are mirrored locally before they reach Redis. A bounded fail-closed tracker
-/// records only writes whose primary operation failed, so those newer local bytes remain
-/// authoritative during reconnects instead of being overwritten by stale shared data. Failed
-/// invalidations retain a separate bounded process-local tombstone: reads never resurrect stale
-/// shared bytes, but they also never replay a delete because a newer cross-instance write may have
-/// happened after the failed invalidation. Only an explicit invalidation retry may clear shared
-/// state. Tracker capacity is never recovered by evicting a live mutation; new mutations surface
-/// the primary error when they cannot be retained safely. A fixed set of striped locks serializes
-/// operations for the same key without introducing an unbounded per-key registry.
+/// Every write is retained locally before it reaches Redis, but only writes whose primary
+/// operation **failed** are marked as authoritative local state. Reads therefore serve local bytes
+/// exclusively for those marked writes: an ordinary primary miss never resurrects a value that only
+/// exists as an unmarked local mirror. Failed invalidations retain a separate bounded process-local
+/// tombstone: reads never resurrect stale shared bytes, but they also never replay a delete because
+/// a newer cross-instance write may have happened after the failed invalidation. Only an explicit
+/// invalidation retry may clear shared state. Tracker capacity is never recovered by evicting a live
+/// mutation; when a new unsynchronized mutation cannot be retained safely the backend enters a
+/// fail-closed state in which reads, writes and CAS are rejected until the owner confirms a healthy
+/// shared primary through [`CacheBackend::reconcile_local_state`]. A fixed set of striped locks
+/// serializes local bookkeeping for the same key without introducing an unbounded per-key registry;
+/// network calls are made outside those stripes so a slow primary cannot serialize unrelated keys.
 pub struct DegradationAwareFallbackBackend {
     primary: Arc<dyn CacheBackend>,
     fallback: Arc<InMemoryCacheBackend>,
@@ -179,9 +196,18 @@ impl DegradationAwareFallbackBackend {
         }
     }
 
-    pub async fn reconcile_tombstones(&self) -> rustok_core::Result<()> {
-        self.pending_invalidations.clear().await;
-        self.tombstone_saturation.store(false, Ordering::Release);
+    fn saturation_error() -> rustok_core::Error {
+        rustok_core::Error::Cache(
+            "cache invalidation tombstone tracker saturated; cache reads and writes are suspended until \
+             CacheBackend::reconcile_local_state() confirms a healthy shared primary"
+                .to_string(),
+        )
+    }
+
+    fn ensure_operation_allowed(&self) -> rustok_core::Result<()> {
+        if self.tombstone_saturation.load(Ordering::Acquire) {
+            return Err(Self::saturation_error());
+        }
         Ok(())
     }
 
@@ -190,6 +216,7 @@ impl DegradationAwareFallbackBackend {
         key.hash(&mut hasher);
         &self.key_locks[(hasher.finish() as usize) % self.key_locks.len()]
     }
+
 
     async fn mark_degraded_write(&self, key: &str, expected: &[u8]) -> rustok_core::Result<()> {
         self.degraded_writes
@@ -293,6 +320,55 @@ impl DegradationAwareFallbackBackend {
         Ok(())
     }
 
+    /// Retain a write locally, publish it to the shared primary outside the key stripe, then
+    /// record or clear the degraded marker under the stripe.
+    ///
+    /// The order is deliberate: local bytes exist before the network attempt, so a primary failure
+    /// can be retained with [`DegradedWriteTracker`]; the marker is committed only after the primary
+    /// outcome is known, and the byte comparison in `insert` rejects a marker whose payload a
+    /// concurrent writer already replaced.
+    async fn write_with_ttl(
+        &self,
+        key: String,
+        value: Vec<u8>,
+        ttl: Option<Duration>,
+    ) -> rustok_core::Result<()> {
+        {
+            let _guard = self.key_lock(&key).lock().await;
+            self.ensure_operation_allowed()?;
+            let local = match ttl {
+                Some(ttl) => {
+                    self.fallback
+                        .set_with_ttl(key.clone(), value.clone(), ttl)
+                        .await
+                }
+                None => self.fallback.set(key.clone(), value.clone()).await,
+            };
+            if let Err(error) = local {
+                tracing::warn!(%error, key, "Failed to retain local cache fallback write");
+            }
+        }
+
+        let primary_result = match ttl {
+            Some(ttl) => {
+                self.primary
+                    .set_with_ttl(key.clone(), value.clone(), ttl)
+                    .await
+            }
+            None => self.primary.set(key.clone(), value.clone()).await,
+        };
+
+        let _guard = self.key_lock(&key).lock().await;
+        match primary_result {
+            Ok(()) => {
+                self.clear_degraded_write(&key).await;
+                self.clear_pending_invalidation(&key).await;
+                Ok(())
+            }
+            Err(error) => self.retain_degraded_write_or_fail(&key, &value, error).await,
+        }
+    }
+
     async fn invalidate_locked(&self, key: &str) -> rustok_core::Result<()> {
         if let Err(error) = self.fallback.invalidate(key).await {
             tracing::warn!(%error, key, "Failed to invalidate local cache fallback");
@@ -333,16 +409,15 @@ impl DegradationAwareFallbackBackend {
 #[async_trait]
 impl CacheBackend for DegradationAwareFallbackBackend {
     async fn health(&self) -> rustok_core::Result<()> {
-        if self.tombstone_saturation.load(Ordering::Acquire) {
-            return Err(rustok_core::Error::Cache(
-                "cache invalidation tombstone tracker saturated; fail-closed recovery required"
-                    .to_string(),
-            ));
-        }
+        self.ensure_operation_allowed()?;
         self.primary.health().await
     }
 
     async fn get(&self, key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
+        // A saturated backend must not serve anything: unmarked local bytes could be older than the
+        // shared value, and shared bytes may be stale because an invalidation was never retained.
+        self.ensure_operation_allowed()?;
+
         {
             let _guard = self.key_lock(key).lock().await;
             if self.pending_invalidation_active(key).await {
@@ -351,77 +426,48 @@ impl CacheBackend for DegradationAwareFallbackBackend {
             if let Some(value) = self.read_degraded_write(key).await? {
                 return Ok(Some(value));
             }
-            if self.tombstone_saturation.load(Ordering::Acquire) {
-                return Err(rustok_core::Error::Cache(
-                    "cache invalidation tombstone tracker saturated; shared reads suspended until reconciliation"
-                        .to_string(),
-                ));
-            }
         }
 
-        match self.primary.get(key).await {
-            Ok(primary_value) => {
-                let _guard = self.key_lock(key).lock().await;
-                // Re-check after async read to catch invalidations or writes that raced with the network call.
-                if self.pending_invalidation_active(key).await {
-                    return Ok(None);
-                }
-                if let Some(value) = self.read_degraded_write(key).await? {
-                    return Ok(Some(value));
-                }
+        let primary_result = self.primary.get(key).await;
 
-                match primary_value {
-                    Some(value) => {
-                        if let Err(error) = self.fallback.set(key.to_string(), value.clone()).await
-                        {
-                            tracing::warn!(
-                                %error,
-                                key,
-                                "Failed to refresh local cache mirror from primary read"
-                            );
-                        }
-                        Ok(Some(value))
-                    }
-                    None => {
-                        // A successful primary miss is authoritative. Remove any older local mirror
-                        // so a later Redis outage cannot resurrect stale bytes.
-                        self.clear_degraded_write(key).await;
-                        self.clear_pending_invalidation(key).await;
-                        if let Err(error) = self.fallback.invalidate(key).await {
-                            tracing::warn!(%error, key, "Failed to discard stale local cache mirror");
-                        }
-                        Ok(None)
-                    }
+        let _guard = self.key_lock(key).lock().await;
+        // Re-check after async read to catch a saturation or invalidation that raced with the network call.
+        self.ensure_operation_allowed()?;
+        if self.pending_invalidation_active(key).await {
+            return Ok(None);
+        }
+        if let Some(value) = self.read_degraded_write(key).await? {
+            return Ok(Some(value));
+        }
+
+        match primary_result {
+            Ok(Some(value)) => Ok(Some(value)),
+            Ok(None) => {
+                // A successful primary miss is authoritative. Drop any older marked local write so a
+                // later outage cannot resurrect bytes the shared primary has already discarded.
+                self.clear_degraded_write(key).await;
+                self.clear_pending_invalidation(key).await;
+                if let Err(error) = self.fallback.invalidate(key).await {
+                    tracing::warn!(%error, key, "Failed to discard stale local cache state");
                 }
+                Ok(None)
             }
             Err(error) => {
-                tracing::debug!(%error, key, "Primary cache GET failed, using local fallback");
-                let _guard = self.key_lock(key).lock().await;
-                if self.pending_invalidation_active(key).await {
-                    return Ok(None);
-                }
-                self.fallback.get(key).await
+                // Degraded reads serve only locally confirmed degraded writes. An unmarked local
+                // mirror is deliberately ignored: it may predate the current shared value and its
+                // remaining lifetime is not observable through this backend.
+                tracing::debug!(
+                    %error,
+                    key,
+                    "Primary cache GET failed; serving only locally confirmed degraded writes"
+                );
+                Ok(None)
             }
         }
     }
 
     async fn set(&self, key: String, value: Vec<u8>) -> rustok_core::Result<()> {
-        let _guard = self.key_lock(&key).lock().await;
-        if let Err(error) = self.fallback.set(key.clone(), value.clone()).await {
-            tracing::warn!(%error, key, "Failed to update local cache fallback");
-        }
-
-        match self.primary.set(key.clone(), value.clone()).await {
-            Ok(()) => {
-                self.clear_degraded_write(&key).await;
-                self.clear_pending_invalidation(&key).await;
-                Ok(())
-            }
-            Err(error) => {
-                self.retain_degraded_write_or_fail(&key, &value, error)
-                    .await
-            }
-        }
+        self.write_with_ttl(key, value, None).await
     }
 
     async fn set_with_ttl(
@@ -430,36 +476,14 @@ impl CacheBackend for DegradationAwareFallbackBackend {
         value: Vec<u8>,
         ttl: Duration,
     ) -> rustok_core::Result<()> {
-        let _guard = self.key_lock(&key).lock().await;
         if ttl.is_zero() {
             // Zero TTL is a deletion, not an availability-preserving write. A failed shared delete
             // remains visible to the caller while a bounded local tombstone prevents resurrection.
+            let _guard = self.key_lock(&key).lock().await;
+            self.ensure_operation_allowed()?;
             return self.invalidate_locked(&key).await;
         }
-
-        if let Err(error) = self
-            .fallback
-            .set_with_ttl(key.clone(), value.clone(), ttl)
-            .await
-        {
-            tracing::warn!(%error, key, "Failed to update local cache fallback");
-        }
-
-        match self
-            .primary
-            .set_with_ttl(key.clone(), value.clone(), ttl)
-            .await
-        {
-            Ok(()) => {
-                self.clear_degraded_write(&key).await;
-                self.clear_pending_invalidation(&key).await;
-                Ok(())
-            }
-            Err(error) => {
-                self.retain_degraded_write_or_fail(&key, &value, error)
-                    .await
-            }
-        }
+        self.write_with_ttl(key, value, Some(ttl)).await
     }
 
     async fn compare_and_set(
@@ -469,20 +493,25 @@ impl CacheBackend for DegradationAwareFallbackBackend {
         value: Vec<u8>,
         ttl: Option<Duration>,
     ) -> rustok_core::Result<CacheCompareAndSetOutcome> {
-        let _guard = self.key_lock(key).lock().await;
-        if self.tombstone_saturation.load(Ordering::Acquire)
-            || self.has_unsynchronized_mutation(key).await
         {
-            return Err(rustok_core::Error::Cache(
-                "cache compare-and-set rejected while local and shared state are unsynchronized"
-                    .to_string(),
-            ));
+            let _guard = self.key_lock(key).lock().await;
+            self.ensure_operation_allowed()?;
+            if self.has_unsynchronized_mutation(key).await {
+                return Err(rustok_core::Error::Cache(
+                    "cache compare-and-set rejected while local and shared state are unsynchronized"
+                        .to_string(),
+                ));
+            }
         }
 
+        // The shared primary is authoritative for CAS: no stripe is held across the network call so
+        // an unavailable primary cannot serialize unrelated keys.
         let outcome = self
             .primary
             .compare_and_set(key, expected, value.clone(), ttl)
             .await?;
+
+        let _guard = self.key_lock(key).lock().await;
         match outcome {
             CacheCompareAndSetOutcome::Applied => {
                 self.clear_degraded_write(key).await;
@@ -506,7 +535,60 @@ impl CacheBackend for DegradationAwareFallbackBackend {
 
     async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
         let _guard = self.key_lock(key).lock().await;
+        self.ensure_operation_allowed()?;
         self.invalidate_locked(key).await
+    }
+
+    async fn reconcile_local_state(&self) -> rustok_core::Result<()> {
+        // Clearing fail-closed state on a bare health signal would hide an invalidation that never
+        // happened, so reconciliation both confirms the shared primary and *replays* every retained
+        // invalidation. Saturation is lifted only when the whole replay succeeded.
+        self.primary.health().await?;
+
+        let mut replay_failures = 0usize;
+        for key in self.pending_invalidations.snapshot().await {
+            let _guard = self.key_lock(&key).lock().await;
+            match self.primary.invalidate(&key).await {
+                Ok(()) => {
+                    if let Err(error) = self.fallback.invalidate(&key).await {
+                        tracing::warn!(
+                            %error,
+                            key,
+                            "Failed to discard local state during cache reconciliation"
+                        );
+                    }
+                    self.degraded_writes.remove(&key).await;
+                    self.pending_invalidations.remove(&key).await;
+                }
+                Err(error) => {
+                    replay_failures = replay_failures.saturating_add(1);
+                    tracing::warn!(
+                        %error,
+                        key,
+                        "Retained cache invalidation replay failed during reconciliation"
+                    );
+                }
+            }
+        }
+
+        // Degraded writes are newer local bytes that were never acknowledged to the shared primary.
+        // They cannot be replayed safely (a newer cross-instance write may exist), so reconciliation
+        // drops the markers: those entries become misses instead of stale hits.
+        self.degraded_writes.clear().await;
+
+        if replay_failures > 0 {
+            return Err(rustok_core::Error::Cache(format!(
+                "cache fallback reconciliation replayed {} retained invalidation(s) unsuccessfully; \
+                 fail-closed state is retained",
+                replay_failures
+            )));
+        }
+
+        self.tombstone_saturation.store(false, Ordering::Release);
+        tracing::info!(
+            "Reconciled degradation-aware cache fallback after primary health confirmation and invalidation replay"
+        );
+        Ok(())
     }
 
     fn stats(&self) -> CacheStats {
@@ -955,7 +1037,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn primary_hit_refreshes_the_local_mirror() {
+    async fn unmarked_local_mirror_is_never_served_during_a_primary_outage() {
         let primary = Arc::new(RecoveringStaleBackend {
             fail_writes: AtomicBool::new(false),
             value: StdMutex::new(Some(b"fresh".to_vec())),
@@ -965,10 +1047,39 @@ mod tests {
             .set("key".to_string(), b"stale".to_vec())
             .await
             .unwrap();
-        let backend = backend(primary, Arc::clone(&fallback));
+        let backend = backend(Arc::clone(&primary) as Arc<dyn CacheBackend>, Arc::clone(&fallback));
 
+        // The local layer may hold bytes the shared primary never acknowledged; a read must use the
+        // primary value and must not treat the local copy as authoritative.
         assert_eq!(backend.get("key").await.unwrap(), Some(b"fresh".to_vec()));
-        assert_eq!(fallback.get("key").await.unwrap(), Some(b"fresh".to_vec()));
+        assert!(!backend.degraded_writes.contains("key").await);
+
+        // With the primary unavailable those older local bytes stay unreachable: the entry becomes a
+        // miss instead of a stale hit whose remaining lifetime this backend cannot observe.
+        primary.fail_writes.store(true, Ordering::SeqCst);
+        assert_eq!(backend.get("key").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn degraded_read_prefers_the_marked_write_over_the_shared_value() {
+        let primary = Arc::new(RecoveringStaleBackend {
+            fail_writes: AtomicBool::new(true),
+            value: StdMutex::new(Some(b"old".to_vec())),
+        });
+        let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 16));
+        let backend = backend(Arc::clone(&primary) as Arc<dyn CacheBackend>, fallback);
+
+        backend
+            .set("key".to_string(), b"new".to_vec())
+            .await
+            .unwrap();
+
+        // Read while the primary is still failing: the marked local write is authoritative.
+        assert_eq!(backend.get("key").await.unwrap(), Some(b"new".to_vec()));
+        primary.fail_writes.store(false, Ordering::SeqCst);
+        // Once the primary answers, the marked local write still wins until it is republished or the
+        // marker expires; it is never silently replaced by older shared bytes.
+        assert_eq!(backend.get("key").await.unwrap(), Some(b"new".to_vec()));
     }
 
     #[tokio::test]
@@ -1128,15 +1239,43 @@ mod tests {
         // Health/readiness now fails closed
         assert!(backend.health().await.is_err());
 
-        // Even though primary now recovers, key-2 cannot return stale value from primary
-        primary.fail_writes.store(false, Ordering::SeqCst);
+        // Fail-closed applies to *every* read path, including a primary that still fails: an
+        // untracked invalidation means both shared bytes and local bytes may be stale.
         assert!(backend.get("key-2").await.is_err());
+        assert!(backend.get("key-1").await.is_err());
+        assert!(backend.set("key-3".to_string(), b"v".to_vec()).await.is_err());
 
-        // Tracked key-1 still safely returns None (tombstone active)
-        assert_eq!(backend.get("key-1").await.unwrap(), None);
+        // Reconciliation while the primary is still unhealthy must be rejected...
+        assert!(backend.reconcile_local_state().await.is_err());
+        assert!(backend.health().await.is_err());
 
-        // Explicit reconciliation clears saturation and restores healthy reads
-        backend.reconcile_tombstones().await.unwrap();
+        // ...and must replay retained invalidations before lifting the fail-closed state.
+        primary.fail_writes.store(false, Ordering::SeqCst);
+        backend.reconcile_local_state().await.unwrap();
+        assert!(backend.health().await.is_ok());
+
+        // The replayed tombstone is gone and the confirmed primary is authoritative again.
+        assert_eq!(backend.get("key-2").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn reconciliation_stays_fail_closed_while_a_retained_invalidation_cannot_be_replayed() {
+        let primary = Arc::new(RecoveringStaleBackend {
+            fail_writes: AtomicBool::new(true),
+            value: StdMutex::new(Some(b"stale".to_vec())),
+        });
+        let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 16));
+        let backend = backend(Arc::clone(&primary) as Arc<dyn CacheBackend>, fallback);
+
+        assert!(backend.invalidate("key").await.is_err());
+        assert!(!backend.pending_invalidations.is_empty().await);
+
+        let error = backend.reconcile_local_state().await.unwrap_err().to_string();
+        assert!(error.contains("retained invalidation"));
+        assert!(backend.get("key").await.is_err());
+
+        primary.fail_writes.store(false, Ordering::SeqCst);
+        backend.reconcile_local_state().await.unwrap();
         assert!(backend.health().await.is_ok());
     }
 }

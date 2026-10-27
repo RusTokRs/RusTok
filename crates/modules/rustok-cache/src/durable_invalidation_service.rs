@@ -1,6 +1,7 @@
 use crate::{
-    CacheInvalidationOutcome, CacheInvalidationService, DurableCacheInvalidationError,
-    DurableCacheInvalidationRecord, durable_invalidation_to_message,
+    CacheInvalidationError, CacheInvalidationOutcome, CacheInvalidationService,
+    DurableCacheInvalidationError, DurableCacheInvalidationRecord,
+    durable_invalidation_to_message,
 };
 
 impl CacheInvalidationService {
@@ -20,7 +21,16 @@ impl CacheInvalidationService {
             "Publishing durable cache invalidation"
         );
         let message = durable_invalidation_to_message(record)?;
-        Ok(self.publish(message).await)
+        self.publish(message).await.map_err(|error| match error {
+            CacheInvalidationError::InvalidMessage(detail) => {
+                DurableCacheInvalidationError::Invalidation(
+                    crate::CacheInvalidationPayloadError::TransportRejected(detail.to_string()),
+                )
+            }
+            CacheInvalidationError::SharedTransport { detail, .. } => {
+                DurableCacheInvalidationError::Transport(detail)
+            }
+        })
     }
 }
 

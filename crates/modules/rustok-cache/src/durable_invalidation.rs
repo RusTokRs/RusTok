@@ -273,6 +273,8 @@ pub enum DurableCacheInvalidationError {
     Invalidation(CacheInvalidationPayloadError),
     Encode(String),
     Decode(String),
+    /// Redis is configured but the invalidation fan-out failed; the record must be retried.
+    Transport(String),
 }
 
 impl std::fmt::Display for DurableCacheInvalidationError {
@@ -306,6 +308,9 @@ impl std::fmt::Display for DurableCacheInvalidationError {
             Self::Invalidation(error) => write!(formatter, "invalid cache invalidation: {error}"),
             Self::Encode(message) => {
                 write!(formatter, "durable invalidation encode failed: {message}")
+            }
+            Self::Transport(message) => {
+                write!(formatter, "durable invalidation transport failed: {message}")
             }
             Self::Decode(message) => {
                 write!(formatter, "durable invalidation decode failed: {message}")

@@ -78,9 +78,37 @@ pub fn parse_cache_settings_json(json_str: &str) -> Option<CacheAdminFormDraft> 
     Some(draft)
 }
 
-pub fn build_cache_settings_payload(draft: &CacheAdminFormDraft) -> serde_json::Value {
-    let port: u16 = draft.redis_port.parse().unwrap_or(6379);
-    let db: u32 = draft.redis_db.parse().unwrap_or(0);
+/// Build the settings payload, refusing to silently replace invalid input with defaults.
+///
+/// A typo in the port or database used to be swallowed by `unwrap_or`, so the UI reported success
+/// while a different target than the typed one was saved (AGENTS §14: no silent substitution).
+pub fn build_cache_settings_payload(
+    draft: &CacheAdminFormDraft,
+) -> Result<serde_json::Value, String> {
+    let port: u16 = draft.redis_port.trim().parse().map_err(|_| {
+        format!(
+            "redis_port must be a number between 1 and 65535, got '{}'",
+            draft.redis_port.trim()
+        )
+    })?;
+    if port == 0 {
+        return Err("redis_port must be greater than 0".to_string());
+    }
+    let db: u32 = draft.redis_db.trim().parse().map_err(|_| {
+        format!(
+            "redis_db must be a number between 0 and 255, got '{}'",
+            draft.redis_db.trim()
+        )
+    })?;
+    if db > 255 {
+        return Err("redis_db must be between 0 and 255".to_string());
+    }
+    if !matches!(draft.mode.as_str(), "in-memory" | "redis" | "hybrid") {
+        return Err(format!(
+            "mode must be one of in-memory, redis, hybrid; got '{}'",
+            draft.mode
+        ));
+    }
     let mut map = serde_json::Map::new();
     map.insert(
         "mode".to_string(),
@@ -102,7 +130,7 @@ pub fn build_cache_settings_payload(draft: &CacheAdminFormDraft) -> serde_json::
             serde_json::Value::String(draft.redis_password.clone()),
         );
     }
-    serde_json::Value::Object(map)
+    Ok(serde_json::Value::Object(map))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -248,12 +276,35 @@ mod tests {
             redis_db: "2".to_string(),
             redis_url: "redis://10.0.0.1:6380".to_string(),
         };
-        let payload = build_cache_settings_payload(&draft);
+        let payload = build_cache_settings_payload(&draft).expect("valid draft builds a payload");
         assert_eq!(payload["mode"], "redis");
         assert_eq!(payload["redis_host"], "10.0.0.1");
         assert_eq!(payload["redis_port"], 6380);
         assert_eq!(payload["redis_password"], "secret");
         assert_eq!(payload["redis_db"], 2);
+    }
+
+    #[test]
+    fn payload_builder_rejects_invalid_port_and_db_instead_of_defaulting() {
+        let mut draft = CacheAdminFormDraft::default();
+        draft.mode = "redis".to_string();
+        draft.redis_port = "not-a-port".to_string();
+        let port_error =
+            build_cache_settings_payload(&draft).expect_err("invalid port must not be defaulted");
+        assert!(port_error.contains("redis_port"));
+
+        draft.redis_port = "0".to_string();
+        assert!(build_cache_settings_payload(&draft).is_err());
+
+        draft.redis_port = "6379".to_string();
+        draft.redis_db = "900".to_string();
+        let db_error =
+            build_cache_settings_payload(&draft).expect_err("invalid database must not be defaulted");
+        assert!(db_error.contains("redis_db"));
+
+        draft.redis_db = "0".to_string();
+        draft.mode = "memcached".to_string();
+        assert!(build_cache_settings_payload(&draft).is_err());
     }
 
     #[test]

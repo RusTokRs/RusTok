@@ -16,12 +16,36 @@ use crate::{
 
 pub const MAX_CACHE_REFRESH_KEY_BYTES: usize = crate::service::MAX_CACHE_LOAD_KEY_BYTES;
 
+/// Clock used to validate the *result* of a background refresh.
+///
+/// The request-time decision (`now_unix_ms`) is a snapshot taken before the loader runs; the loader
+/// may take up to `policy.loader_timeout`, so validating the produced envelope with that snapshot
+/// would accept an envelope that is already hard-expired and would cache it for a TTL that
+/// outlives its own hard expiry. `System` re-reads the clock at validation time; `Fixed` keeps
+/// deterministic test clocks working.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheRefreshClock {
+    System,
+    Fixed(u64),
+}
+
+impl CacheRefreshClock {
+    fn resolve(self) -> rustok_core::Result<u64> {
+        match self {
+            Self::System => unix_time_millis(),
+            Self::Fixed(unix_ms) => Ok(unix_ms),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CacheRefreshLoadOptions {
     pub expected_schema_version: u32,
     pub policy: CacheLoadPolicy,
     pub max_encoded_bytes: usize,
     pub now_unix_ms: u64,
+    /// Clock for validating the asynchronously produced envelope.
+    pub clock: CacheRefreshClock,
 }
 
 struct RefreshEnvelopeRequest {
@@ -331,6 +355,7 @@ impl CacheService {
                 policy,
                 max_encoded_bytes: DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
                 now_unix_ms,
+                clock: CacheRefreshClock::System,
             },
             loader,
         )
@@ -341,8 +366,9 @@ impl CacheService {
     ///
     /// A stale hit carries the exact encoded bytes observed by the request. The background
     /// loader uses the backend's atomic compare-and-set primitive, so a concurrent replacement
-    /// or invalidation wins without any read/write time-of-check gap. The same injected clock is
-    /// used to validate the asynchronously refreshed envelope.
+    /// or invalidation wins without any read/write time-of-check gap. `options.now_unix_ms` is the
+    /// request-time snapshot; `options.clock` decides what the background refresh uses to validate
+    /// the envelope it produced (see [`CacheRefreshClock`]).
     pub async fn load_enveloped_stale_while_revalidate_with_limit_at<T, F, Fut>(
         &self,
         coordinator: &CacheRefreshCoordinator,
@@ -362,6 +388,7 @@ impl CacheService {
             policy,
             max_encoded_bytes,
             now_unix_ms,
+            clock,
         } = options;
         validate_refresh_request(&key, expected_schema_version, max_encoded_bytes)?;
 
@@ -390,6 +417,7 @@ impl CacheService {
                                         policy: refresh_policy,
                                         max_encoded_bytes,
                                         now_unix_ms,
+                                        clock,
                                     },
                                 },
                                 refresh_loader,
@@ -449,6 +477,28 @@ fn typed_hit_result<T>(
     }
 }
 
+/// Cap a refresh TTL at the envelope's own hard expiry.
+///
+/// A policy TTL that outlives `hard_expires_at_unix_ms` would keep serving bytes the envelope
+/// itself declares unservable, so the stored lifetime is clamped to what the envelope allows
+/// (and defaults to exactly that bound when the policy asked for no TTL).
+fn clamp_ttl_to_hard_expiry<T>(
+    ttl: Option<Duration>,
+    envelope: &CacheEnvelope<T>,
+    now_unix_ms: u64,
+) -> rustok_core::Result<Option<Duration>> {
+    let Some(hard_expires_at_unix_ms) = envelope.hard_expires_at_unix_ms() else {
+        return Ok(ttl);
+    };
+    let remaining = Duration::from_millis(hard_expires_at_unix_ms.saturating_sub(now_unix_ms));
+    if remaining.is_zero() {
+        return Err(rustok_core::Error::Cache(
+            "cache refresh TTL would outlive the envelope hard expiry".to_string(),
+        ));
+    }
+    Ok(Some(ttl.map_or(remaining, |ttl| ttl.min(remaining))))
+}
+
 async fn refresh_envelope<T, F, Fut>(
     request: RefreshEnvelopeRequest,
     loader: F,
@@ -467,7 +517,8 @@ where
                 expected_schema_version,
                 policy,
                 max_encoded_bytes,
-                now_unix_ms,
+                clock,
+                ..
             },
     } = request;
     let ttl = match policy.ttl.ttl_for(&key) {
@@ -498,11 +549,16 @@ where
             expected_schema_version
         )));
     }
-    if envelope.is_hard_expired(now_unix_ms) {
+    // Validation happens after the loader returned, so it must read the clock *now* rather than
+    // trust the request-time snapshot.
+    let validation_now_unix_ms = clock.resolve()?;
+    if envelope.is_hard_expired(validation_now_unix_ms) {
         return Err(rustok_core::Error::Cache(
             "cache refresh produced an already hard-expired envelope".to_string(),
         ));
     }
+    // The stored TTL must never outlive the envelope's own hard expiry.
+    let ttl = clamp_ttl_to_hard_expiry(ttl, &envelope, validation_now_unix_ms)?;
 
     let bytes = envelope
         .encode_with_limit(max_encoded_bytes)
@@ -782,6 +838,7 @@ mod tests {
                     policy: CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
                     max_encoded_bytes: 1024,
                     now_unix_ms: 2_000,
+                    clock: CacheRefreshClock::Fixed(2_000),
                 },
                 move || {
                     let loader_calls = Arc::clone(&loader_calls);
@@ -833,6 +890,7 @@ mod tests {
                         ))),
                         max_encoded_bytes,
                         now_unix_ms: 2_000,
+                    clock: CacheRefreshClock::Fixed(2_000),
                     },
                     move || {
                         let loader_calls = Arc::clone(&loader_calls);
@@ -881,6 +939,7 @@ mod tests {
                     policy: CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
                     max_encoded_bytes: 1024,
                     now_unix_ms: 2_000,
+                    clock: CacheRefreshClock::Fixed(2_000),
                 },
                 || async {
                     CacheEnvelope::new(1, 2_000, "fresh".to_string())
@@ -996,6 +1055,7 @@ mod tests {
                     policy: CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
                     max_encoded_bytes: 1024,
                     now_unix_ms: 2_000,
+                    clock: CacheRefreshClock::Fixed(2_000),
                 },
                 move || {
                     let loader_calls = Arc::clone(&loader_calls);
@@ -1058,6 +1118,7 @@ mod tests {
                     policy: CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
                     max_encoded_bytes: 1024,
                     now_unix_ms: 2_000,
+                    clock: CacheRefreshClock::Fixed(2_000),
                 },
                 move || {
                     let loader_started = Arc::clone(&loader_started);
@@ -1126,6 +1187,7 @@ mod tests {
                     policy: CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
                     max_encoded_bytes: 1024,
                     now_unix_ms: 2_000,
+                    clock: CacheRefreshClock::Fixed(2_000),
                 },
                 move || {
                     let loader_calls = Arc::clone(&loader_calls);
@@ -1146,5 +1208,42 @@ mod tests {
         assert_eq!(result.refresh, CacheRefreshSchedule::NotNeeded);
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         assert_eq!(coordinator.stats().started, 0);
+    }
+
+    #[test]
+    fn clamp_ttl_never_outlives_the_envelope_hard_expiry() {
+        let envelope = CacheEnvelope::new(1, 1_000, "value".to_string())
+            .unwrap()
+            .with_expirations(Some(1_500), Some(2_000))
+            .unwrap();
+
+        // Policy TTL longer than the remaining hard lifetime is clamped.
+        let clamped = clamp_ttl_to_hard_expiry(
+            Some(Duration::from_secs(60)),
+            &envelope,
+            1_900,
+        )
+        .unwrap();
+        assert_eq!(clamped, Some(Duration::from_millis(100)));
+
+        // A policy without a TTL inherits the hard-expiry bound instead of the backend default.
+        let inherited = clamp_ttl_to_hard_expiry(None, &envelope, 1_900).unwrap();
+        assert_eq!(inherited, Some(Duration::from_millis(100)));
+
+        // An envelope without hard expiry keeps the policy TTL untouched.
+        let unbounded = CacheEnvelope::new(1, 1_000, "value".to_string()).unwrap();
+        assert_eq!(
+            clamp_ttl_to_hard_expiry(Some(Duration::from_secs(60)), &unbounded, 1_900).unwrap(),
+            Some(Duration::from_secs(60))
+        );
+
+        // Nothing to store once the hard expiry has passed.
+        assert!(clamp_ttl_to_hard_expiry(None, &envelope, 2_000).is_err());
+    }
+
+    #[test]
+    fn fixed_refresh_clock_is_deterministic() {
+        assert_eq!(CacheRefreshClock::Fixed(42).resolve().unwrap(), 42);
+        assert!(CacheRefreshClock::System.resolve().unwrap() > 1_600_000_000_000);
     }
 }

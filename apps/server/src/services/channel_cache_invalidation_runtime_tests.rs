@@ -57,7 +57,8 @@ async fn wait_for_readiness(handle: &ChannelCacheInvalidationListenerHandle, exp
 async fn publish_local(cache: &CacheService, generation: u64) {
     let outcome = cache
         .publish_invalidation(invalidation_message(generation))
-        .await;
+        .await
+        .expect("publish invalidation failed");
     assert_eq!(outcome.local_subscribers, 1);
 }
 
@@ -71,7 +72,8 @@ async fn publish_redis_until_readiness(
         loop {
             let outcome = cache
                 .publish_invalidation(invalidation_message(generation))
-                .await;
+                .await
+                .expect("publish invalidation failed");
             assert!(outcome.redis_published);
             if remote.is_ready() == expected {
                 return;
@@ -150,7 +152,10 @@ async fn local_listener_lag_fails_closed_and_recovers_from_durable_state() {
     // The local bus holds 256 messages. Publishing without Redis has no await
     // point, so neither subscription can drain until this burst completes.
     for _ in 0..300 {
-        let outcome = cache.publish_invalidation(invalidation_message(2)).await;
+        let outcome = cache
+            .publish_invalidation(invalidation_message(2))
+            .await
+            .expect("publish invalidation failed");
         assert_eq!(outcome.local_subscribers, 2);
     }
     match probe.recv().await {

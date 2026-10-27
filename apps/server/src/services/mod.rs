@@ -21,6 +21,7 @@ pub mod build_event_hub;
 pub mod build_executor;
 pub mod cache_redis_status_monitor;
 pub mod cache_runtime;
+pub mod cache_settings_admin;
 pub mod channel_cache_invalidation;
 #[cfg(test)]
 mod channel_cache_invalidation_resolved_value_tests;

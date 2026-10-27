@@ -21,6 +21,7 @@ mod fallback;
 mod generation;
 mod invalidation;
 mod invalidation_consumer;
+mod instrumentation;
 mod invalidation_processor;
 mod key;
 mod key_generation;
@@ -33,6 +34,7 @@ mod redis_status;
 mod refresh;
 mod service;
 pub mod settings;
+mod settings_admin;
 mod shared_backend;
 #[cfg(all(test, feature = "redis-cache"))]
 mod startup_recovery_tests;
@@ -44,7 +46,11 @@ mod weighted;
 mod contract_tests;
 
 pub use module::CacheModule;
-pub use settings::CacheSettings;
+pub use settings::{
+    CacheSettings, DEFAULT_CACHE_MODE, DEFAULT_REDIS_DB, DEFAULT_REDIS_HOST, DEFAULT_REDIS_MODE,
+    DEFAULT_REDIS_PORT, REDACTED_SECRET, preserve_url_password,
+};
+pub use settings_admin::{CacheSettingsAdminPort, SharedCacheSettingsAdmin};
 
 
 pub use backend_generation::{
@@ -85,8 +91,7 @@ pub use generation::{
     CacheNamespaceGenerationStore, DEFAULT_MAX_LOCAL_GENERATION_SNAPSHOTS,
 };
 pub use invalidation::{
-    CacheInvalidationGapTracker, CacheInvalidationObservation, CacheInvalidationPayloadError,
-    VersionedCacheInvalidation,
+    CacheInvalidationObservation, CacheInvalidationPayloadError, VersionedCacheInvalidation,
 };
 pub use invalidation_consumer::{
     DurableCacheInvalidationConsumer, DurableInvalidationConsumerStats,
@@ -110,18 +115,20 @@ pub use observability::{
 pub use policy::{CacheLoadPolicy, CachePolicyError, CacheTtlPolicy};
 pub use redis_status::{RedisCacheStatus, format_redis_cache_status_prometheus_metrics};
 pub use refresh::{
-    CacheRefreshCoordinator, CacheRefreshCoordinatorError, CacheRefreshLoadOptions,
+    CacheRefreshClock, CacheRefreshCoordinator, CacheRefreshCoordinatorError,
+    CacheRefreshLoadOptions,
     CacheRefreshSchedule, CacheRefreshStats, MAX_CACHE_REFRESH_KEY_BYTES,
     StaleWhileRevalidateResult,
 };
 pub use rustok_core::CacheCompareAndSetOutcome;
 pub use service::{
-    CacheBackendOptions, CacheHealthReport, CacheInvalidationMessage,
+    CacheBackendOptions, CacheHealthReport, CacheInvalidationError, CacheInvalidationMessage,
     CacheInvalidationMessageError, CacheInvalidationOutcome, CacheInvalidationService,
     CacheInvalidationStats, CacheLoadResult, CacheLoadSource, CacheService,
-    DEFAULT_MAX_IN_FLIGHT_CACHE_LOADS, LocalCacheInvalidationSubscription,
-    MAX_CACHE_INVALIDATION_CHANNEL_BYTES, MAX_CACHE_INVALIDATION_KEY_BYTES,
-    MAX_CACHE_LOAD_KEY_BYTES, format_cache_service_prometheus_metrics,
+    DEFAULT_MAX_IN_FLIGHT_CACHE_LOADS, DEFAULT_MAX_SHARED_CACHE_BACKENDS,
+    LocalCacheInvalidationSubscription, MAX_CACHE_INVALIDATION_CHANNEL_BYTES,
+    MAX_CACHE_INVALIDATION_KEY_BYTES, MAX_CACHE_LOAD_KEY_BYTES, MIN_CACHE_BACKEND_TTL,
+    format_cache_service_prometheus_metrics, resolve_redis_url,
 };
 pub use tenant_generation_observability::{
     TenantGenerationListenerMetrics, format_tenant_generation_listener_prometheus_metrics,

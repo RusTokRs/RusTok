@@ -146,19 +146,69 @@ mod native_server_adapter {
     use super::*;
     use leptos::server;
 
+    /// Permission the host requires for cache diagnostics and the persisted `cache` category.
+    ///
+    /// The GraphQL path uses host-global authority (`settings:manage` included); the native path
+    /// checks the same capability from the authenticated snapshot so both transports agree on who
+    /// may read or change cache configuration.
+    #[cfg(feature = "ssr")]
+    fn ensure_cache_admin_permission(
+        auth: &rustok_api::AuthContext,
+    ) -> Result<(), ServerFnError> {
+        if rustok_api::has_effective_permission(
+            &auth.permissions,
+            &rustok_api::Permission::SETTINGS_MANAGE,
+        ) {
+            return Ok(());
+        }
+        Err(ServerFnError::new("Permission denied: settings:manage required"))
+    }
+
+    #[cfg(feature = "ssr")]
+    async fn native_scope() -> Result<
+        (
+            rustok_api::HostRuntimeContext,
+            rustok_api::AuthContext,
+            rustok_api::TenantContext,
+        ),
+        ServerFnError,
+    > {
+        let auth = leptos_axum::extract::<rustok_api::AuthContext>()
+            .await
+            .map_err(|error| ServerFnError::new(format!("cache admin authentication: {error}")))?;
+        let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
+            .await
+            .map_err(|error| ServerFnError::new(format!("cache admin tenant scope: {error}")))?;
+        ensure_cache_admin_permission(&auth)?;
+        Ok((
+            leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>(),
+            auth,
+            tenant,
+        ))
+    }
+
     #[server(CacheHealthNative, "/api")]
     pub async fn cache_health_native() -> Result<GraphqlCacheHealthResponse, ServerFnError> {
         #[cfg(feature = "ssr")]
         {
-            let redis_healthy = false;
-            let redis_configured = false;
-            let backend = "in-memory".to_string();
+            let (host, _auth, _tenant) = native_scope().await?;
+            let cache = host.shared_get::<rustok_cache::CacheService>().ok_or_else(|| {
+                ServerFnError::new("cache runtime is not published in the host context")
+            })?;
+
+            let report = cache.health().await;
+            let backend = if report.redis_configured {
+                "redis"
+            } else {
+                "in-memory"
+            }
+            .to_string();
 
             Ok(GraphqlCacheHealthResponse {
                 cache_health: CacheHealthPayload {
-                    redis_configured,
-                    redis_healthy,
-                    redis_error: None,
+                    redis_configured: report.redis_configured,
+                    redis_healthy: report.redis_healthy,
+                    redis_error: report.redis_error,
                     backend,
                 },
             })
@@ -173,18 +223,25 @@ mod native_server_adapter {
     pub async fn cache_settings_native() -> Result<GraphqlPlatformSettingsResponse, ServerFnError> {
         #[cfg(feature = "ssr")]
         {
+            let (host, _auth, tenant) = native_scope().await?;
+            let port = host
+                .shared_get::<rustok_cache::SharedCacheSettingsAdmin>()
+                .ok_or_else(|| {
+                    ServerFnError::new("cache settings admin port is not published in the host")
+                })?;
+
+            let settings = port
+                .port()
+                .read(tenant.id)
+                .await
+                .map_err(ServerFnError::new)?;
+            let settings = serde_json::to_string(&settings)
+                .map_err(|error| ServerFnError::new(format!("cache settings encoding: {error}")))?;
+
             Ok(GraphqlPlatformSettingsResponse {
                 platform_settings: PlatformSettingsData {
                     category: "cache".to_string(),
-                    settings: serde_json::json!({
-                        "mode": "in-memory",
-                        "redis_host": "127.0.0.1",
-                        "redis_port": 6379,
-                        "redis_password": "",
-                        "redis_db": 0,
-                        "redis_url": ""
-                    })
-                    .to_string(),
+                    settings,
                 },
             })
         }
@@ -200,11 +257,33 @@ mod native_server_adapter {
     ) -> Result<GraphqlUpdatePlatformSettingsResponse, ServerFnError> {
         #[cfg(feature = "ssr")]
         {
+            let (host, auth, tenant) = native_scope().await?;
+            let port = host
+                .shared_get::<rustok_cache::SharedCacheSettingsAdmin>()
+                .ok_or_else(|| {
+                    ServerFnError::new("cache settings admin port is not published in the host")
+                })?;
+
+            let draft: serde_json::Value = serde_json::from_str(&settings).map_err(|error| {
+                ServerFnError::new(format!("Invalid JSON in cache settings: {error}"))
+            })?;
+
+            // Persistence, validation and secret preservation belong to the host settings service;
+            // the adapter only reports what was actually stored.
+            let stored = port
+                .port()
+                .update(tenant.id, Some(auth.user_id), draft)
+                .await
+                .map_err(ServerFnError::new)?;
+            let stored = serde_json::to_string(&stored).map_err(|error| {
+                ServerFnError::new(format!("cache settings encoding: {error}"))
+            })?;
+
             Ok(GraphqlUpdatePlatformSettingsResponse {
                 update_platform_settings: UpdatePlatformSettingsPayload {
                     success: true,
                     category: "cache".to_string(),
-                    settings,
+                    settings: stored,
                 },
             })
         }

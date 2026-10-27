@@ -439,7 +439,17 @@ pub fn compose_application_router(
             .with_shared_value(static_module_lifecycle_reader)
             .with_shared_value(static_installed_module_reader)
             .with_shared_value(static_module_registry_reader)
-            .with_shared_value(HostSettingsSnapshot::new(settings_snapshot));
+            .with_shared_value(HostSettingsSnapshot::new(settings_snapshot))
+            // The cache admin server functions report real runtime health and persist the
+            // `cache` settings category; without these handles they would have to fake both.
+            .with_shared_value(crate::services::cache_runtime::ensure_cache_service(
+                &middleware_runtime_ctx,
+            ))
+            .with_shared_value(
+                crate::services::cache_settings_admin::ServerCacheSettingsAdmin::shared(
+                    &middleware_runtime_ctx,
+                ),
+            );
         let runtime_ctx = if let Some(registry) =
             middleware_runtime_ctx.shared_get::<rustok_core::ModuleRegistry>()
         {

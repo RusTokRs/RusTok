@@ -256,6 +256,57 @@ The detailed active-cache contract is maintained in
 - [x] Add regression coverage proving that a second failed invalidation at capacity cannot become a
   stale Redis hit after the primary recovers.
 
+### P2. Logical-consistency pass (2026-10-27)
+
+Source-complete; every item is covered by a regression test in this crate or `apps/server`.
+None of these are claimed as compiled or live verified until the P0 evidence steps pass.
+
+- [x] Fail-closed fallback state has an owner-provided exit: `CacheBackend::reconcile_local_state`
+  (defaulted on the trait), forwarded by all six wrappers, aggregated by
+  `CacheService::reconcile_local_state()` and executed on the same successful `PING` that drives
+  `redis_status()`. Saturation now fails closed on the write path as well as the read path.
+- [x] Degraded reads serve only locally confirmed degraded writes; a primary miss discards local
+  bytes so a later outage cannot resurrect them, and the key stripe is never held across network
+  I/O.
+- [x] `CacheInvalidationMessage` is the single owner of transport limits;
+  `VersionedCacheInvalidation::to_message` validates through `try_new` and returns
+  `CacheInvalidationPayloadError::TransportRejected` instead of an `Ok` that publish would drop.
+  The duplicate unbounded `CacheInvalidationGapTracker` was deleted;
+  `BoundedCacheInvalidationGapTracker` is canonical.
+- [x] `publish` / `publish_invalidation` return `Result` (`CacheInvalidationError::{InvalidMessage,
+  SharedTransport}`), `publish_durable` propagates `DurableCacheInvalidationError::Transport`, and
+  publishing reuses one lazy `ConnectionManager`.
+- [x] Process-local registries are bounded and prune dead entries (`shared_backends` 4096 with
+  `strong_count` pruning; backend-generation registry prunes states that only the registry still
+  references). Backend construction is single-flighted per key.
+- [x] Degenerate backend configuration (zero TTL / zero capacity) is floored, logged at `error`
+  level and counted in `rustok_cache_invalid_backend_configuration_total`; `load_or_fill` rejects a
+  zero TTL outright.
+- [x] Redis readiness distinguishes transport from recovery: `connectivity_healthy`,
+  `generation_recovery_pending`, `recovery_error`, `is_connectivity_healthy()`, and the
+  `rustok_cache_redis_generation_recovery_{pending,failed}` gauges.
+- [x] Refresh validates the envelope against a clock read after the loader returns
+  (`CacheRefreshClock::{System, Fixed}`) and clamps the stored TTL to the envelope hard expiry.
+- [x] `CacheEnvelope::decode` rejects trailing bytes instead of accepting a plausible prefix.
+- [x] Cache settings have one owner: `CacheSettings` resolves/validates/redacts/merges, the host
+  settings service reports the deployment-resolved document and rejects a write that would
+  redirect the running process, and a redacted read preserves the password inside `redis_url`.
+- [x] The cache admin server functions are real adapters: runtime `CacheService` health and a
+  host-provided `CacheSettingsAdminPort` for settings, both requiring `settings:manage`, and the
+  form builder returns a validation error instead of substituting defaults.
+- [x] One instrumentation wrapper (`src/instrumentation.rs`): the three near-identical copies
+  reported different `stats()`. Counting is now defined once — `hits`/`misses` are the calls the
+  wrapper observed (no adding inner counters, which double counted every hit), `evictions` are
+  inner capacity evictions plus successful invalidations, `entries` is delegated.
+- [x] Shared generation loss converges the fleet instead of splitting it: a shared counter below a
+  trusted local observation is restored with an atomic "advance only" script
+  (`GENERATION_CATCH_UP_SCRIPT`) and served as `SharedRedis`; the catch-up outcome is exported as
+  `rustok_cache_generation_shared_catch_up_{writes,failures}_total`, and a divergence that could
+  not be healed still degrades to `LocalFallback` with an explicit warning.
+- [x] A bump whose `INCR` succeeded but whose local snapshot could not be updated returns
+  `CacheGenerationError::SharedBumpAppliedLocalLag { generation, detail }` instead of a generic
+  error, so callers re-read the generation instead of retrying and rotating twice.
+
 ### P1. Load, chaos and tuning evidence
 
 - [ ] Exercise synchronized expiry, oversized payloads, hot-key contention, refresh saturation,
