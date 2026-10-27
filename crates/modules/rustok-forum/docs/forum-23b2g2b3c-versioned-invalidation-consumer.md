@@ -42,7 +42,7 @@ The adapter reuses:
 - `search_projection_inbox`;
 - `ForumProjectionInbox`;
 - `ForumProjectionReconciler`;
-- `ForumSearchProjector`;
+- `SearchProjectionDriver`;
 - Search-owned `ingest_sequence` ordering.
 
 No second inbox, reconciler, projector or projection watermark was introduced.

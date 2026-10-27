@@ -45,7 +45,7 @@
   },
   "owner_journal": {
     "entity": "crates/modules/rustok-forum/src/entities/forum_domain_event.rs",
-    "migration": "crates/modules/rustok-forum/src/migrations/m20260722_000006_add_forum_mention_events.rs",
+    "migration": "crates/modules/rustok-forum/src/migrations/m20260713_000011_add_forum_domain_events",
     "same_event_id_as_outbox": true,
     "append_only": true
   },

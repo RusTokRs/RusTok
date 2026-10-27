@@ -172,15 +172,15 @@ fn parse_uuid(value: &str, field: &str) -> Result<uuid::Uuid, ServerFnError> {
 }
 
 #[cfg(feature = "ssr")]
-fn require_manage_permission(auth: &rustok_api::AuthContext) -> Result<(), ServerFnError> {
+fn require_moderation_permission(auth: &rustok_api::AuthContext) -> Result<(), ServerFnError> {
     if rustok_api::has_any_effective_permission(
         &auth.permissions,
-        &[rustok_api::Permission::BLOG_POSTS_MANAGE],
+        &[rustok_api::Permission::COMMENTS_MODERATE],
     ) {
         Ok(())
     } else {
         Err(ServerFnError::new(
-            "Permission denied: blog_posts:manage required",
+            "Permission denied: comments:moderate required",
         ))
     }
 }
@@ -576,7 +576,7 @@ async fn blog_admin_moderation_comments_native(
         use rustok_blog::ListCommentsFilter;
 
         let context = native_context().await?;
-        require_manage_permission(&context.auth)?;
+        require_moderation_permission(&context.auth)?;
         let post_id = parse_uuid(&post_id, "post_id")?;
         let locale = requested_locale(locale, context.tenant.default_locale.as_str());
         let (items, total) = comment_service(&context)
@@ -621,7 +621,7 @@ async fn blog_admin_moderate_comment_native(
         use rustok_blog::{ModerateCommentInput, ModerateCommentStatus};
 
         let context = native_context().await?;
-        require_manage_permission(&context.auth)?;
+        require_moderation_permission(&context.auth)?;
         let comment_id = parse_uuid(&comment_id, "comment_id")?;
         let command_id = parse_uuid(&command_id, "command_id")?;
         let status = match status {

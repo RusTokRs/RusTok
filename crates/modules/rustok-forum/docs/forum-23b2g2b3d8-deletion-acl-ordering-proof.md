@@ -43,7 +43,8 @@ category and three independent public targets:
 3. a topic that contains `d8acltopicmarker`.
 
 A real approved-reply legacy root drives the first production Forum rebuild.
-Each marker is then queried through `execute_forum_storefront_search`. The
+Each marker is then queried through `execute_audience_eligible_search` (the
+Forum-only entry point this proof originally used was removed on 2026-10-25). The
 production PostgreSQL engine, exact category scope and real Forum public result
 eligibility must return exactly the corresponding owner object before the
 negative mutations.

@@ -83,7 +83,7 @@
     "execution_status": "not_run_by_implementation_agent",
     "commands": [
       "cargo test -p rustok-core search_projection -- --nocapture",
-      "cargo test -p rustok-search forum_projector -- --nocapture",
+      "cargo test -p rustok-search --test search_scope_preservation_contract -- --nocapture",
       "cargo test -p rustok-forum search_projection -- --nocapture",
       "node scripts/verify/verify-forum-public-discovery-seo.mjs",
       "node scripts/verify/verify-forum-search-projection.mjs",

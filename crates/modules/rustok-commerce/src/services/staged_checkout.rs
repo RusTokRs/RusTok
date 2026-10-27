@@ -14,9 +14,9 @@ use crate::dto::{CompleteCheckoutInput, CompleteCheckoutResponse};
 use super::{
     BeginCheckoutOperation, CheckoutCompletedState, CheckoutError, CheckoutFulfillmentStageError,
     CheckoutOperationCheckpoint, CheckoutOperationError, CheckoutOperationJournal,
-    CheckoutOperationStage, CheckoutOperationStatus, CheckoutPaymentStageError,
-    CheckoutPlanBuilder, CheckoutStagePipeline, CheckoutStagePipelineError,
-    DEFAULT_CHECKOUT_LEASE_SECONDS,
+    CheckoutOperationStage, CheckoutOperationStatus, CheckoutOrderStageError,
+    CheckoutPaymentStageError, CheckoutPlanBuilder, CheckoutStagePipeline,
+    CheckoutStagePipelineError, DEFAULT_CHECKOUT_LEASE_SECONDS,
 };
 #[cfg(feature = "marketplace-financial")]
 use super::{
@@ -323,7 +323,7 @@ impl StagedCheckoutService {
                         operation_id,
                         lease_owner,
                         pipeline_error_code(&pipeline),
-                        pipeline.to_string(),
+                        pipeline_failure_message(&pipeline),
                     )
                     .await
             }
@@ -334,7 +334,7 @@ impl StagedCheckoutService {
                         operation_id,
                         lease_owner,
                         pipeline_error_code(&pipeline),
-                        pipeline.to_string(),
+                        pipeline_failure_message(&pipeline),
                     )
                     .await
             }
@@ -379,6 +379,14 @@ fn pipeline_failure_disposition(error: &CheckoutStagePipelineError) -> FailureDi
             retryable: true,
             ..
         }) => FailureDisposition::Retryable,
+        CheckoutStagePipelineError::OrderStage(error)
+            if error
+                .bounded_failure()
+                .map(|(_, retryable)| retryable)
+                .unwrap_or(false) =>
+        {
+            FailureDisposition::Retryable
+        }
         #[cfg(feature = "marketplace-financial")]
         CheckoutStagePipelineError::MarketplaceAllocation(
             CheckoutMarketplaceAllocationError::Boundary {
@@ -441,7 +449,59 @@ fn pipeline_error_code(error: &CheckoutStagePipelineError) -> String {
         CheckoutStagePipelineError::MarketplaceFinancial(_) => {
             "checkout.marketplace_financial_operator_review".to_string()
         }
+        CheckoutStagePipelineError::OrderStage(error) => error
+            .bounded_failure()
+            .map(|(code, _)| code.to_string())
+            .unwrap_or_else(|| "checkout.order_stage_failed".to_string()),
         _ => "checkout.pipeline_failed".to_string(),
+    }
+}
+
+/// Stage label used when a failure has no bounded Commerce text of its own.
+fn pipeline_failure_stage(error: &CheckoutStagePipelineError) -> &'static str {
+    match error {
+        CheckoutStagePipelineError::Operation(_) => "operation",
+        CheckoutStagePipelineError::Plan(_) => "order_plan",
+        CheckoutStagePipelineError::OrderStage(_) => "order",
+        #[cfg(feature = "marketplace-financial")]
+        CheckoutStagePipelineError::MarketplaceAllocation(_)
+        | CheckoutStagePipelineError::MarketplaceCommission(_)
+        | CheckoutStagePipelineError::MarketplaceEconomicsCheckpoint(_)
+        | CheckoutStagePipelineError::MarketplaceFinancial(_) => "marketplace_financial",
+        CheckoutStagePipelineError::PaymentStage(_) => "payment",
+        CheckoutStagePipelineError::FulfillmentStage(_) => "fulfillment",
+        CheckoutStagePipelineError::Finalization(_) => "finalization",
+    }
+}
+
+/// Text persisted to the checkout operation journal, and therefore returned by
+/// the operation status API.
+///
+/// Only Commerce-authored text qualifies: a sanitized stage boundary such as
+/// `CheckoutOrderStageError::Boundary` or `CheckoutPaymentStageError::Boundary`.
+/// Every owner, database, or event payload falls back to a static sentence so
+/// the journal can never store third-party error text. The stable code travels
+/// in its own column and remains the machine-readable signal.
+fn pipeline_failure_message(error: &CheckoutStagePipelineError) -> String {
+    match error {
+        CheckoutStagePipelineError::OrderStage(error) if error.bounded_failure().is_some() => {
+            error.to_string()
+        }
+        CheckoutStagePipelineError::PaymentStage(CheckoutPaymentStageError::Boundary { .. })
+        | CheckoutStagePipelineError::FulfillmentStage(CheckoutFulfillmentStageError::Boundary {
+            ..
+        }) => error.to_string(),
+        #[cfg(feature = "marketplace-financial")]
+        CheckoutStagePipelineError::MarketplaceAllocation(
+            CheckoutMarketplaceAllocationError::Boundary { .. },
+        )
+        | CheckoutStagePipelineError::MarketplaceCommission(
+            CheckoutMarketplaceCommissionError::Boundary { .. },
+        ) => error.to_string(),
+        _ => format!(
+            "checkout pipeline failed at stage `{}`",
+            pipeline_failure_stage(error)
+        ),
     }
 }
 
@@ -558,6 +618,68 @@ mod tests {
             pipeline_failure_disposition(&error),
             FailureDisposition::Retryable
         ));
+    }
+
+    #[test]
+    fn retryable_order_stage_boundary_does_not_force_compensation() {
+        let error = CheckoutStagePipelineError::OrderStage(Box::new(
+            CheckoutOrderStageError::Boundary {
+                stage: "load_order",
+                code: "checkout.order_temporarily_unavailable".to_string(),
+                message: "Checkout order service is temporarily unavailable".to_string(),
+                retryable: true,
+            },
+        ));
+        assert!(matches!(
+            pipeline_failure_disposition(&error),
+            FailureDisposition::Retryable
+        ));
+    }
+
+    #[test]
+    fn non_retryable_order_stage_boundary_requires_compensation() {
+        let error =
+            CheckoutStagePipelineError::OrderStage(Box::new(CheckoutOrderStageError::Boundary {
+                stage: "load_order",
+                code: "checkout.order_resource_not_found".to_string(),
+                message: "Checkout order resource was not found".to_string(),
+                retryable: false,
+            }));
+        assert!(matches!(
+            pipeline_failure_disposition(&error),
+            FailureDisposition::CompensationRequired
+        ));
+    }
+
+    #[test]
+    fn bounded_order_stage_failure_keeps_its_code_and_message() {
+        let error =
+            CheckoutStagePipelineError::OrderStage(Box::new(CheckoutOrderStageError::Boundary {
+                stage: "load_order",
+                code: "checkout.order_resource_not_found".to_string(),
+                message: "Checkout order resource was not found".to_string(),
+                retryable: false,
+            }));
+        assert_eq!(
+            pipeline_error_code(&error),
+            "checkout.order_resource_not_found"
+        );
+        assert_eq!(
+            pipeline_failure_message(&error),
+            "checkout order boundary failed at `load_order` with `checkout.order_resource_not_found` (retryable=false): Checkout order resource was not found"
+        );
+    }
+
+    #[test]
+    fn unbounded_pipeline_failure_persists_a_static_stage_sentence() {
+        let error = CheckoutStagePipelineError::Operation(CheckoutOperationError::Database(
+            sea_orm::DbErr::Custom("connection reset by peer".to_string()),
+        ));
+        assert_eq!(pipeline_error_code(&error), "checkout.pipeline_failed");
+        assert_eq!(
+            pipeline_failure_message(&error),
+            "checkout pipeline failed at stage `operation`"
+        );
     }
 
     #[test]

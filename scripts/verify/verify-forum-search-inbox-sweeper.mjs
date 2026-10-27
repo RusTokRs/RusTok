@@ -72,9 +72,9 @@ for (const marker of [
   "self.inbox.claim_next(tenant_id).await?",
   "claim.complete().await?",
   "claim.retry(&error).await?",
-  "self.forum_projector.rebuild_tenant",
-  "self.forum_projector.refresh_entity",
-  "self.forum_projector.delete_tenant",
+  "self.projection_driver.rebuild_tenant",
+  ".refresh_entity(envelope.tenant_id",
+  "self.projection_driver.delete_tenant",
 ]) {
   requireMarker(reconciler, marker, reconcilerPath);
 }

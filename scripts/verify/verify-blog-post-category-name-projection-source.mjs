@@ -77,7 +77,10 @@ if (evidence) {
     tenant_fallback_precedence: true,
     platform_fallback_precedence: true,
     first_available_fallback_retained: true,
-    incomplete_projection_fails_closed: true,
+    incomplete_projection_fails_closed: false,
+    damaged_category_projection_degrades_with_warning: true,
+    duplicate_category_identity_fails_closed: true,
+    category_read_storage_failure_surfaces: true,
     legacy_category_translation_read_removed: true,
     category_translation_write_semantics_changed: false,
     category_translation_readiness_promoted: false,
@@ -131,18 +134,32 @@ for (const marker of [
   'TaxonomyScopeType::Module',
   'const BLOG_TAXONOMY_SCOPE: &str = "blog";',
   'Some(&category_ids)',
-  'coverage is incomplete',
-  'canonical.len() != category_ids.len()',
-  'canonical_by_id.len() != category_ids.len()',
-  'available_locales.is_empty()',
-  'projection is missing',
+  // A damaged reference degrades the projection instead of failing the page, which is
+  // the same policy the tag list and the SEO scan apply. The strict behaviours that
+  // must survive are the owner-invariant one (a duplicate identity) and the
+  // availability one (a storage failure is not damaged data).
+  'Blog post Category Taxonomy projection contains duplicate identities',
+  'return Err(BlogError::invariant(',
+  'if !degraded.is_empty() {',
+  'degraded.push(category.id);',
+  'projections.insert(',
+  'name: category.name,',
+  'slug: category.slug,',
+  'reference Categories without a canonical Taxonomy projection',
+  'their category name is omitted from this page',
   // The Taxonomy read must receive the caller's fallback locale: the argument
   // list is pinned so the parameter declaration cannot satisfy the guard.
   'Some(&category_ids),\n            locale,\n            fallback_locale,\n        )',
-  'canonical.name.clone()',
 ]) need(categoryProjection, marker, files.categoryProjection);
+// The row-level fail-closed behaviour was deliberately replaced by a warning; it must
+// not come back, because it turned one damaged Taxonomy row into a 500 for the public
+// list, the admin list, the post detail and one Search projection page.
+forbid(categoryProjection, 'coverage is incomplete', files.categoryProjection);
+forbid(categoryProjection, 'without localized copy', files.categoryProjection);
 forbid(categoryProjection, 'blog_category_translation', files.categoryProjection);
-forbid(categoryProjection, 'CategoryService', files.categoryProjection);
+// The read projection must not reach the owner write service; a doc comment that names
+// it is fine, a call is not.
+forbid(categoryProjection, 'CategoryService::new(', files.categoryProjection);
 
 for (const marker of [
   'post_category_name_projects_across_detail_and_list_paths',

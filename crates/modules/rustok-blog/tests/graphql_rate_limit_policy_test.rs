@@ -263,9 +263,9 @@ async fn unauthorized_write_skips_module_limiter_and_reaches_resolver() {
 }
 
 #[tokio::test]
-async fn moderation_uses_manage_permission_and_dedicated_surface() {
+async fn moderation_uses_the_comments_moderate_grant_and_a_dedicated_surface() {
     let tenant_id = Uuid::new_v4();
-    let actor = auth(tenant_id, vec![Permission::BLOG_POSTS_MANAGE]);
+    let actor = auth(tenant_id, vec![Permission::COMMENTS_MODERATE]);
     let actor_id = actor.user_id;
     let limiter = Arc::new(ScriptedLimiter::new(LimiterOutcome::Allow));
     let schema = schema(tenant(tenant_id), Some(actor), None, limiter.clone());

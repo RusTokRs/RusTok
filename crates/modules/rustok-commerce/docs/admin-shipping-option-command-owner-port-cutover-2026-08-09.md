@@ -52,6 +52,14 @@ The existing stable Commerce HTTP error families are preserved through the share
 mapper. Raw owner/database details are not returned to clients. The mapper is shared by the existing
 shipping-option reads and the new command calls and logs only bounded owner/context facts.
 
+## Evidence boundary
+
+This record documents a source-level cutover only. It does **not** claim that the cutover
+was executed: no tests, Cargo commands, Node verifiers or formatter were run for it, and no
+runtime receipt from a live provider was captured. The Fulfillment owner write admission
+(`require_write_admission` → `PortCallPolicy::write()`) is pinned as source text, not as an
+observed runtime decision.
+
 ## Still open
 
 The canonical ecommerce topology item

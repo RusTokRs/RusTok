@@ -1,4 +1,4 @@
-use async_graphql::{InputObject, SimpleObject};
+use async_graphql::{InputObject, MaybeUndefined, SimpleObject};
 use uuid::Uuid;
 
 use crate::BlogError;
@@ -75,7 +75,11 @@ pub struct UpdateBlogCategoryInput {
     pub locale: String,
     pub name: Option<String>,
     pub slug: Option<String>,
-    pub description: Option<String>,
+    /// Absent keeps the current description; an explicit `null` clears it.
+    /// The SDL type is unchanged (`String`), and `MaybeUndefined` is the
+    /// only GraphQL input shape that keeps "not supplied" and "clear"
+    /// distinguishable.
+    pub description: MaybeUndefined<String>,
     pub settings: Option<String>,
 }
 
@@ -155,8 +159,10 @@ impl TryFrom<UpdateBlogCategoryInput> for crate::dto::UpdateCategoryInput {
     type Error = BlogError;
     fn try_from(input: UpdateBlogCategoryInput) -> Result<Self, Self::Error> {
         Ok(Self {
-            locale: input.locale, name: input.name, slug: input.slug,
-            description: input.description,
+            locale: input.locale,
+            name: input.name,
+            slug: input.slug,
+            description: super::graphql_patch(input.description),
             settings: parse_settings(input.settings.as_deref())?,
         })
     }

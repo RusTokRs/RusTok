@@ -402,6 +402,40 @@ pub fn in_process_cart_checkout_port(service: CartService) -> Arc<dyn CartChecko
     Arc::new(InProcessCartCheckoutPort::new(service))
 }
 
+fn log_cart_checkout_operation_start(
+    context: &PortContext,
+    owner_operation: &'static str,
+    cart_id: Uuid,
+    order_id: Option<Uuid>,
+) {
+    let facts = cart_checkout_context_facts(context);
+    tracing::debug!(
+        owner = CART_CHECKOUT_OWNER,
+        owner_operation,
+        boundary = CART_CHECKOUT_BOUNDARY,
+        correlation_id_length = facts.correlation_id_length,
+        tenant_id_length = facts.tenant_id_length,
+        actor_kind = facts.actor_kind,
+        actor_id_length = facts.actor_id_length,
+        claim_count = facts.claim_count,
+        role_count = facts.role_count,
+        channel_present = facts.channel_present,
+        channel_length = ?facts.channel_length,
+        locale_length = facts.locale_length,
+        causation_id_present = facts.causation_id_present,
+        causation_id_length = ?facts.causation_id_length,
+        traceparent_present = facts.traceparent_present,
+        traceparent_length = ?facts.traceparent_length,
+        idempotency_key_present = facts.idempotency_key_present,
+        idempotency_key_length = ?facts.idempotency_key_length,
+        deadline_ms = ?facts.deadline_ms,
+        cart_id_non_nil = !cart_id.is_nil(),
+        order_id_present = order_id.is_some(),
+        order_id_non_nil = order_id.is_some_and(|value| !value.is_nil()),
+        "cart checkout owner operation started with bounded diagnostics"
+    );
+}
+
 fn require_cart_checkout_read_admission(
     context: &PortContext,
     owner_operation: &'static str,
@@ -453,12 +487,11 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
                 PortError::validation("cart.cart_id_nil", "cart_id must not be a nil UUID"),
             ));
         }
-        tracing::debug!(
-            boundary = CART_CHECKOUT_BOUNDARY,
-            operation = PREPARE_CHECKOUT_OPERATION,
-            tenant_id = %tenant_id,
-            cart_id = %request.cart_id,
-            "preparing cart checkout snapshot"
+        log_cart_checkout_operation_start(
+            &context,
+            PREPARE_CHECKOUT_OPERATION,
+            request.cart_id,
+            None,
         );
         let prepare_input_result = (|| {
             validate_prepare_input(&request.input).map_err(cart_error_to_port_error)?;
@@ -562,12 +595,11 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
                 PortError::validation("cart.cart_id_nil", "cart_id must not be a nil UUID"),
             ));
         }
-        tracing::debug!(
-            boundary = CART_CHECKOUT_BOUNDARY,
-            operation = READ_CHECKOUT_SNAPSHOT_OPERATION,
-            tenant_id = %tenant_id,
-            cart_id = %cart_id,
-            "reading cart checkout snapshot"
+        log_cart_checkout_operation_start(
+            &context,
+            READ_CHECKOUT_SNAPSHOT_OPERATION,
+            cart_id,
+            None,
         );
         let snapshot_result = self
             .service
@@ -615,13 +647,11 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
                 PortError::validation("cart.order_id_nil", "order_id must not be a nil UUID"),
             ));
         }
-        tracing::debug!(
-            boundary = CART_CHECKOUT_BOUNDARY,
-            operation = COMPLETE_CHECKOUT_OPERATION,
-            tenant_id = %tenant_id,
-            cart_id = %request.cart_id,
-            order_id = %request.order_id,
-            "completing cart checkout"
+        log_cart_checkout_operation_start(
+            &context,
+            COMPLETE_CHECKOUT_OPERATION,
+            request.cart_id,
+            Some(request.order_id),
         );
         let cart = self
             .service
@@ -662,13 +692,7 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
                 PortError::validation("cart.cart_id_nil", "cart_id must not be a nil UUID"),
             ));
         }
-        tracing::debug!(
-            boundary = CART_CHECKOUT_BOUNDARY,
-            operation = RELEASE_CHECKOUT_OPERATION,
-            tenant_id = %tenant_id,
-            cart_id = %cart_id,
-            "releasing cart checkout"
-        );
+        log_cart_checkout_operation_start(&context, RELEASE_CHECKOUT_OPERATION, cart_id, None);
         let cart = self
             .service
             .abandon_cart(tenant_id, cart_id)

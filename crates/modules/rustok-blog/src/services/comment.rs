@@ -409,7 +409,12 @@ impl CommentService {
         if input.command_id.is_nil() {
             return Err(BlogError::validation("Command ID must not be nil"));
         }
-        enforce_scope(&security, Resource::BlogPosts, Action::Manage)?;
+        // Moderation is authority over a comment, not over the post: the
+        // canonical grant is `comments:moderate` (Blog reaches comments through
+        // the Comments port). Gating it on `blog_posts:manage` let a Blog
+        // manager moderate a module it does not own and denied the operation to
+        // a moderator who holds only the Comments grant.
+        enforce_scope(&security, Resource::Comments, Action::Moderate)?;
 
         let locale = input
             .locale
@@ -439,7 +444,7 @@ impl CommentService {
             .require_comments_thread_port()?
             .set_comment_status(
                 // The write crosses into the Comments owner under system
-                // delegation (Blog already enforced `BlogPosts:Manage`
+                // delegation (Blog already enforced `comments:moderate`
                 // above), but the human moderator must stay attributable:
                 // carry the actor identity as a port claim instead of
                 // letting the audit trail end at "system".
@@ -607,6 +612,15 @@ impl CommentService {
         ))
     }
 
+    /// Resolves the Blog post a comment operation targets.
+    ///
+    /// Module enablement is **not** re-checked here. It is a transport-level
+    /// gate (`ensure_blog_module_enabled`, `require_module_enabled`) that the
+    /// host applies before Blog services are reachable, backed by a
+    /// host-owned `tenant_modules` table that a domain service cannot portably
+    /// depend on (module migrations do not create it, and the module must stay
+    /// usable in hosts that scope enablement differently). The check this
+    /// service does own is that the target row exists *in this tenant*.
     async fn ensure_post_exists(&self, tenant_id: Uuid, post_id: Uuid) -> BlogResult<()> {
         if tenant_id.is_nil() {
             return Err(BlogError::validation("Tenant ID must not be nil"));

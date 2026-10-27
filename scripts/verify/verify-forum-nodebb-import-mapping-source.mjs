@@ -2,16 +2,20 @@
 
 import fs from "node:fs";
 
+import { requirePublicReexport } from "./lib/forum-source-verification.mjs";
+
 function read(path) {
   return fs.readFileSync(path, "utf8");
 }
 
+const failures = [];
+
 function requireText(text, marker, message) {
-  if (!text.includes(marker)) throw new Error(message);
+  if (!text.includes(marker)) failures.push(message);
 }
 
 function requireAbsent(text, marker, message) {
-  if (text.includes(marker)) throw new Error(message);
+  if (text.includes(marker)) failures.push(message);
 }
 
 const mappingPath = "crates/modules/rustok-forum/src/import_mapping.rs";
@@ -50,12 +54,14 @@ for (const marker of [
   requireText(mapping, marker, `${mappingPath}: missing ${marker}`);
 }
 
-for (const marker of [
-  "pub mod import_mapping;",
-  "pub use import_mapping::*;",
-]) {
-  requireText(lib, marker, `${libPath}: missing public mapping export ${marker}`);
-}
+// Crate-root re-exports are explicit lists, so a glob string pin cannot prove the public surface:
+// require the module to be public *and* actually re-exported from the root.
+requirePublicReexport(
+  failures,
+  lib,
+  "import_mapping",
+  `${libPath}: missing public mapping export`,
+);
 
 for (const forbidden of [
   "sea_orm",
@@ -72,9 +78,14 @@ for (const forbidden of [
   "INSERT ",
   "UPDATE ",
   "DELETE ",
-  ".insert(",
-  ".update(",
-  ".delete(",
+  // Collection inserts (`BTreeMap`/`BTreeSet`) are pure and legitimate here; pin the database write
+  // shapes instead so the guard forbids persistence, not in-memory bookkeeping.
+  ".exec(",
+  ".execute(",
+  ".execute_unprepared(",
+  ".insert_one(",
+  ".update_many(",
+  ".delete_many(",
   "register_runtime_extensions",
 ]) {
   requireAbsent(
@@ -103,7 +114,7 @@ for (const forbiddenIdentity of [
 const mapperStart = mapping.indexOf("impl NodebbForumImportMapper");
 const testsStart = mapping.indexOf("#[cfg(test)]", mapperStart);
 if (mapperStart < 0 || testsStart <= mapperStart) {
-  throw new Error(`${mappingPath}: mapper source boundary is invalid`);
+  failures.push(`${mappingPath}: mapper source boundary is invalid`);
 }
 const mapper = mapping.slice(mapperStart, testsStart);
 for (const forbidden of [
@@ -134,6 +145,12 @@ for (const marker of [
   "no tests, Cargo command",
 ]) {
   requireText(packet, marker, `${packetPath}: missing ${marker}`);
+}
+
+if (failures.length > 0) {
+  console.error("Forum source guard failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
 }
 
 console.log("Forum FORUM-34A NodeBB import mapping source: ok");

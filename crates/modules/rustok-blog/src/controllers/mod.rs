@@ -1,4 +1,5 @@
 use anyhow::Context;
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::{Router, http::StatusCode};
 use rustok_api::{HostRuntimeContext, SharedStaticModuleSettingsReader};
@@ -10,7 +11,22 @@ use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::services::MAX_POST_ARTICLE_BYTES;
 use crate::{CategoryService, CommentService};
+
+/// Upper bound of a Blog HTTP request body.
+///
+/// The largest legitimate payload is one rich-text article, which the domain
+/// separately bounds at [`MAX_POST_ARTICLE_BYTES`]; the transport limit leaves
+/// room for JSON framing, metadata and the other input fields, and rejects an
+/// oversized body while it is still a stream instead of after it has been read
+/// and parsed.
+const MAX_BLOG_REQUEST_BODY_BYTES: usize = 2 * MAX_POST_ARTICLE_BYTES;
+
+/// Bulk endpoints carry at most 100 UUIDs, so a few kilobytes is a legitimate
+/// body; the tight limit means a huge `post_ids` array is refused before the
+/// service-level bound is reached, not after it is deserialized.
+const MAX_BLOG_BULK_BODY_BYTES: usize = 64 * 1024;
 
 pub mod categories;
 #[cfg(feature = "comment-assets")]
@@ -151,32 +167,37 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
             get(tags::get_tag).put(tags::update_tag).delete(tags::delete_tag),
         )
         .route(
-            "/api/blog/posts/bulk/publish",
-            post(posts::bulk_publish_posts),
-        )
-        .route(
-            "/api/blog/posts/bulk/unpublish",
-            post(posts::bulk_unpublish_posts),
-        )
-        .route(
-            "/api/blog/posts/bulk/archive",
-            post(posts::bulk_archive_posts),
-        )
-        .route(
-            "/api/blog/posts/bulk/restore",
-            post(posts::bulk_restore_posts),
-        )
-        .route(
-            "/api/blog/posts/bulk/delete",
-            post(posts::bulk_delete_posts),
-        )
-        .route(
             "/api/blog/posts/{id}/preview-tokens",
             get(posts::list_preview_tokens).post(posts::create_preview_token),
         )
         .route(
             "/api/blog/preview-tokens/{id}",
             axum::routing::delete(posts::revoke_preview_token),
+        )
+        .layer(DefaultBodyLimit::max(MAX_BLOG_REQUEST_BODY_BYTES))
+        .merge(
+            Router::new()
+                .route(
+                    "/api/blog/posts/bulk/publish",
+                    post(posts::bulk_publish_posts),
+                )
+                .route(
+                    "/api/blog/posts/bulk/unpublish",
+                    post(posts::bulk_unpublish_posts),
+                )
+                .route(
+                    "/api/blog/posts/bulk/archive",
+                    post(posts::bulk_archive_posts),
+                )
+                .route(
+                    "/api/blog/posts/bulk/restore",
+                    post(posts::bulk_restore_posts),
+                )
+                .route(
+                    "/api/blog/posts/bulk/delete",
+                    post(posts::bulk_delete_posts),
+                )
+                .layer(DefaultBodyLimit::max(MAX_BLOG_BULK_BODY_BYTES)),
         )
         .with_state(state);
     #[cfg(feature = "comment-assets")]

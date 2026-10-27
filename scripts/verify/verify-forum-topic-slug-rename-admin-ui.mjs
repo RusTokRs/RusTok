@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { containsMarker } from "./lib/forum-source-verification.mjs";
+
 const paths = {
   contract:
     "crates/modules/rustok-forum/contracts/forum-topic-slug-rename-admin-ui.json",
@@ -48,9 +50,11 @@ function parseFtl(content) {
   }
   return result;
 }
+// Layout-tolerant by policy: a marker describes an invariant, not where rustfmt or a prose editor put
+// the newline. Tokens are unchanged, so an absent call or sentence is still absent.
 const includesAll = (text, markers, label) => {
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing marker: ${marker}`);
+    assert.ok(containsMarker(text, marker), `${label} is missing marker: ${marker}`);
   }
 };
 const excludesAll = (text, markers, label) => {
@@ -136,7 +140,7 @@ includesAll(
     "RENAME_TOPIC_SLUG_MUTATION",
     "renameForumTopicSlug",
     "RenameForumTopicSlugGraphqlInput",
-    "limit: 100",
+    "per_page: 100",
     "pub async fn rename_topic_slug(",
     "GraphqlRequest::new",
   ],

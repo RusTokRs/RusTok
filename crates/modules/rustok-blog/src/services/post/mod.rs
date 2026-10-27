@@ -29,7 +29,7 @@ use serde_json::Value;
 use crate::dto::{
     AdminPostCursor, BulkOperationResult, CreatePostInput, PostListQuery, PostListResponse,
     PostResponse, PostSortField, PostSortOrder, PostSummary, PublicPostPage, PublicPostsPageQuery,
-    PublishedPostCursor, PublishedPostScanPage, UpdatePostInput,
+    PublishedPostCursor, PublishedPostScanPage, PublishedSeoPost, UpdatePostInput,
 };
 use crate::entities::{
     blog_comment_projection_delivery, blog_post, blog_post_channel_visibility, blog_post_tag,
@@ -42,7 +42,8 @@ use crate::services::rbac::{
     can_read_non_public_posts, enforce_create_author, enforce_owned_scope, enforce_scope,
 };
 use crate::services::tag::{
-    load_post_tags_map, remove_post_tag_usage_in_tx, resolve_tag_id_for_posts, sync_post_tags_in_tx,
+    load_post_tags_map, remove_post_tag_links_in_tx, resolve_tag_id_for_posts,
+    sync_post_tags_in_tx,
 };
 use crate::state_machine::BlogPostStatus;
 
@@ -75,7 +76,8 @@ pub use routes::{BLOG_POST_TARGET_TYPE, BLOG_ROUTE_PREFIX, BlogPostRedirect, Blo
 
 pub(crate) use repository::load_post_subject_snapshot;
 pub(crate) use queries::{
-    order_public_post_list, public_post_after_condition, public_post_cursor,
+    order_public_post_list, order_published_post_scan, public_post_after_condition,
+    public_post_cursor, published_post_scan_after_condition, published_post_scan_cursor,
 };
 
 #[cfg(test)]
@@ -396,6 +398,24 @@ const MAX_POST_ARCHIVE_REASON_CHARS: usize = 1000;
 /// Upper bound for one `publish_scheduled_posts` iteration. The scheduler is a host
 /// boundary; a bounded batch keeps a large backlog from being processed in one pass.
 pub(crate) const MAX_SCHEDULED_PUBLISH_BATCH: u32 = 200;
+
+/// Upper bound of one canonical article document (per locale).
+///
+/// A post body is the largest field the write path accepts, and without a bound
+/// the JSON document, its plain-text projection and every response that carries
+/// it are unbounded. 1 MiB of canonical richtext is far above a real article
+/// and still small enough that a page of summaries cannot exhaust memory.
+pub(crate) const MAX_POST_ARTICLE_BYTES: usize = 1024 * 1024;
+
+/// Rejects an article whose canonical JSON exceeds [`MAX_POST_ARTICLE_BYTES`].
+fn ensure_article_body_within_bounds(article_body: &str) -> BlogResult<()> {
+    if article_body.len() > MAX_POST_ARTICLE_BYTES {
+        return Err(BlogError::validation(format!(
+            "Post content cannot exceed {MAX_POST_ARTICLE_BYTES} bytes"
+        )));
+    }
+    Ok(())
+}
 
 fn normalize_custom_metadata(metadata: Option<Value>) -> BlogResult<Value> {
     let metadata = metadata.unwrap_or_else(|| serde_json::json!({}));

@@ -27,6 +27,23 @@ const requireText = (content, value, label) => {
 const forbidText = (content, value, label) => {
   if (content.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
+const matchArmBody = (content, arm, label) => {
+  const start = content.indexOf(arm);
+  if (start < 0) {
+    failures.push(`${label}: unable to find match arm ${arm}`);
+    return '';
+  }
+  let depth = 0;
+  for (let index = content.indexOf('{', start); index < content.length; index += 1) {
+    if (content[index] === '{') depth += 1;
+    else if (content[index] === '}') {
+      depth -= 1;
+      if (depth === 0) return content.slice(start, index + 1);
+    }
+  }
+  failures.push(`${label}: unterminated match arm ${arm}`);
+  return '';
+};
 const between = (content, start, end, label) => {
   const startIndex = content.indexOf(start);
   const endIndex = content.indexOf(end, startIndex + start.length);
@@ -72,10 +89,17 @@ forbidText(
   '.mark_committed(tenant_id, operation_id)',
   'create-label recovery journal-only commit',
 );
-forbidText(
+// The arm is pinned by its body, not by a copied indentation: brace matching keeps the
+// check valid when the arm is reformatted, which the previous multi-line literal was not
+// (it was a syntax error, so this guard never ran at all).
+const createLabelArm = matchArmBody(
   localRecovery,
-  '"create_label" => {
-                    journal.mark_committed',
+  '"create_label" => {',
+  'create-label local reconciliation arm',
+);
+forbidText(
+  createLabelArm,
+  'journal.mark_committed',
   'create-label local reconciliation journal-only commit',
 );
 requireText(
@@ -94,13 +118,25 @@ forbidText(
   'create-label recovery silent reconciliation checkpoint suppression',
 );
 
-const requestDeserialize = labelRecovery.indexOf('serde_json::from_value(operation.request_payload.clone())');
+// Ordering is pinned by call sites, not by one formatting of them: rustfmt splits the
+// `serde_json::from_value(...)` call across lines, and an exact-string marker silently
+// degraded into "the payload is never validated".
+const requestDeserialize = labelRecovery.indexOf('serde_json::from_value(');
+const requestPayloadBinding = labelRecovery.indexOf('operation.request_payload.clone()');
+if (requestDeserialize < 0 || requestPayloadBinding < requestDeserialize) {
+  failures.push('create-label recovery must decode the stored request payload');
+}
 const providerExecute = labelRecovery.indexOf('.execute_create_label(operation.provider_id.as_str(), request)');
-if (requestDeserialize < 0 || providerExecute < 0 || requestDeserialize > providerExecute) {
+if (providerExecute < 0 || requestDeserialize > providerExecute) {
   failures.push('create-label recovery request payload must be validated before provider execution');
 }
+// `claim_execution` moves the operation to `executing`, which is not claimable again, so
+// a corrupt payload discovered after the claim strands the operation. Validation has to
+// happen first.
 const claimMarker = labelRecovery.indexOf('.claim_execution(tenant_id, operation_id)');
-if (claimMarker >= 0 && requestDeserialize > claimMarker) {
+if (claimMarker < 0) {
+  failures.push('create-label recovery must claim the provider operation before execution');
+} else if (requestDeserialize > claimMarker) {
   failures.push('create-label recovery request payload must be validated before claim_execution');
 }
 
@@ -300,9 +336,20 @@ for (const value of [
   'provider_operation_id = ?provider_operation_id',
   'provider_operation_id = %provider_operation_id',
   'error.to_string()',
-  'HttpError::bad_request(',
   'format!("failed to serialize provider result:',
 ]) forbidText(source, value, 'unsafe reconciliation diagnostic or public mapping');
+
+// A `bad_request` with a static code and a static message is an input guard, which this
+// controller is allowed to have. What must not exist is a response built from a runtime
+// error, so the rule is about the argument rather than about the constructor.
+const dynamicBadRequest = [
+  ...source.matchAll(/HttpError::bad_request\(\s*([^\s)][^,)]*)/g),
+].filter((match) => !/^"[^"]*"$/.test(match[1].trim()));
+for (const match of dynamicBadRequest) {
+  failures.push(
+    `unsafe reconciliation public mapping: forbids dynamic HttpError::bad_request argument ${match[1].trim()}`,
+  );
+}
 
 for (const [value, label] of [
   ['crate::controllers::reconciliation::list_reconciliation_required', 'OpenAPI reconciliation list registration'],

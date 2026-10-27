@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { requireProse, requireValidationDisclosure } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -155,8 +156,9 @@ for (const marker of [
   "source-ready / unvalidated",
   "does not claim maintainer-run tests or runtime evidence",
 ]) {
-  requireText(note, marker, `FORUM-20AM owner note is missing ${marker}`);
+  requireProse(failures, note, marker, "FORUM-20AM owner note");
 }
+requireValidationDisclosure(failures, note, "FORUM-20AM owner note");
 
 if (failures.length > 0) {
   console.error("Forum notification plan synchronization verification failed:");

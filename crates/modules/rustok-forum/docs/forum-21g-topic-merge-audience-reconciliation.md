@@ -210,7 +210,7 @@ One successful historical repair transaction performs:
 6. bounded normalized local-layer loading;
 7. one safe historical outcome transformation;
 8. source-emptiness and retained-target state proof;
-9. one `forum.topic.merge_audience_reconciled` semantic event;
+9. one `forum.topic.merge.audience_reconciled` semantic event;
 10. one immutable reconciliation receipt;
 11. source and target Search projection invalidations;
 12. commit.

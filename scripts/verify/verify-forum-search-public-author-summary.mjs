@@ -175,7 +175,7 @@ requireAll(
     "mod upsert_write;",
     "mod visibility_write;",
     "pub use account_redaction::redact_profile_for_account_deactivation_in_tx;",
-    "pub use mutations::ProfileMutationService;",
+    "pub use mutations::{ProfileBackfillRequest, ProfileMutationContext, ProfileMutationService};",
   ],
   paths.profilesLib,
 );
@@ -248,7 +248,7 @@ rejectMarker(localeWrite, "profile_translation", paths.localeWrite);
 requireAll(
   upsertWrite,
   [
-    "pub async fn backfill_profile_with_event(",
+    "pub(crate) async fn backfill_profile_with_event(",
     "ExistingProfilePolicy::Update",
     "ExistingProfilePolicy::Skip",
     "db.begin().await?",
@@ -338,7 +338,7 @@ requireAll(
     "DomainEvent::ProfileUpdated { .. }",
     "DomainEvent::UserDeleted { .. }",
     '"rebuild_forum_author_projection"',
-    "projector.rebuild_tenant(envelope.tenant_id).await",
+    "forum_driver.rebuild_tenant(envelope.tenant_id).await",
   ],
   paths.ingestion,
 );

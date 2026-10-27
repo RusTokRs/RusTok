@@ -1,7 +1,7 @@
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError};
 use rustok_order::{
     CheckoutOrderIdentityPort, CheckoutOrderIdentitySnapshot, CreateCheckoutOrderIdentityInput,
-    CreateOrderInput, OrderError, OrderResponse, OrderService,
+    CreateOrderInput, OrderError, OrderResponse, OrderService, OrderStatusKind,
     ReadCheckoutOrderIdentityByOperationRequest, in_process_checkout_order_identity_port,
 };
 use rustok_outbox::TransactionalEventBus;
@@ -15,6 +15,7 @@ use std::{
 use thiserror::Error;
 use uuid::Uuid;
 
+use super::checkout_order_owner_failure::CheckoutOrderBoundaryFailure;
 use super::{
     CheckoutInventoryOrderAdoptionError, CheckoutInventoryOrderAdoptionService,
     CheckoutOperationError, CheckoutOperationJournal, CheckoutOperationStage,
@@ -25,8 +26,16 @@ const ORDER_IDENTITY_PORT_DEADLINE_SECONDS: u64 = 3;
 
 #[derive(Debug, Error)]
 pub enum CheckoutOrderCreationError {
-    #[error(transparent)]
-    Order(#[from] OrderError),
+    /// Bounded projection of an Order owner failure. The owner code and
+    /// retryability are preserved; the owner message never crosses the boundary.
+    #[error(
+        "checkout order creation owner boundary failed with `{code}` (retryable={retryable}): {message}"
+    )]
+    OrderBoundary {
+        code: String,
+        message: String,
+        retryable: bool,
+    },
     #[error(transparent)]
     Operation(#[from] CheckoutOperationError),
     #[error(transparent)]
@@ -44,6 +53,32 @@ pub enum CheckoutOrderCreationError {
 }
 
 pub type CheckoutOrderCreationResult<T> = Result<T, CheckoutOrderCreationError>;
+
+impl CheckoutOrderCreationError {
+    /// The bounded code and retryability carried by a sanitized owner failure.
+    pub fn bounded_failure(&self) -> Option<(&str, bool)> {
+        match self {
+            Self::OrderBoundary { code, retryable, .. } => Some((code.as_str(), *retryable)),
+            _ => None,
+        }
+    }
+
+    fn owner_failure(
+        owner_operation: &'static str,
+        tenant_id: Uuid,
+        operation_id: Uuid,
+        order_id: Option<Uuid>,
+        error: OrderError,
+    ) -> Self {
+        let failure = CheckoutOrderBoundaryFailure::from_owner_error(&error);
+        failure.observe_owner_error(owner_operation, tenant_id, operation_id, order_id);
+        Self::OrderBoundary {
+            code: failure.code,
+            message: failure.message.to_string(),
+            retryable: failure.retryable,
+        }
+    }
+}
 
 pub struct CheckoutOrderCreationExecutor {
     order_service: OrderService,
@@ -166,7 +201,16 @@ impl CheckoutOrderCreationExecutor {
                         locale,
                         fallback_locale,
                     )
-                    .await?;
+                    .await
+                    .map_err(|error| {
+                        CheckoutOrderCreationError::owner_failure(
+                            "get_order_after_identity_recovery",
+                            tenant_id,
+                            operation_id,
+                            Some(identity.order_id),
+                            error,
+                        )
+                    })?;
                 (order, identity)
             }
             None => {
@@ -231,7 +275,13 @@ impl CheckoutOrderCreationExecutor {
                             .await
                             .map_err(identity_boundary_error)?
                         else {
-                            return Err(create_error.into());
+                            return Err(CheckoutOrderCreationError::owner_failure(
+                                "create_checkout_order",
+                                tenant_id,
+                                operation_id,
+                                None,
+                                create_error,
+                            ));
                         };
                         let order = self
                             .order_service
@@ -241,7 +291,16 @@ impl CheckoutOrderCreationExecutor {
                                 locale,
                                 fallback_locale,
                             )
-                            .await?;
+                            .await
+                            .map_err(|error| {
+                                CheckoutOrderCreationError::owner_failure(
+                                    "get_order_after_create_conflict",
+                                    tenant_id,
+                                    operation_id,
+                                    Some(identity.order_id),
+                                    error,
+                                )
+                            })?;
                         (order, identity)
                     }
                 }
@@ -264,7 +323,7 @@ impl CheckoutOrderCreationExecutor {
             )));
         }
         if operation.stage == CheckoutOperationStage::InventoryReserved.as_str()
-            && order.status != "pending"
+            && order.status_kind() != OrderStatusKind::Pending
         {
             return Err(CheckoutOrderCreationError::Conflict(format!(
                 "order {} advanced to `{}` before inventory adoption was checkpointed",
@@ -412,16 +471,28 @@ fn order_request_hash(
     channel_id: Option<Uuid>,
     channel_slug: Option<&str>,
 ) -> CheckoutOrderCreationResult<String> {
-    let value = serde_json::to_value((input, channel_id, channel_slug)).map_err(|error| {
-        CheckoutOrderCreationError::Conflict(format!(
-            "failed to serialize order creation request: {error}"
-        ))
+    let value = serde_json::to_value((input, channel_id, channel_slug)).map_err(|_| {
+        tracing::error!(
+            owner = "rustok_commerce",
+            owner_operation = "order_request_hash",
+            boundary = "commerce_checkout_order_creation_adapter",
+            "checkout order creation request could not be serialized"
+        );
+        CheckoutOrderCreationError::Conflict(
+            "checkout order creation request could not be serialized".to_string(),
+        )
     })?;
     let canonical = canonicalize_json(value);
-    let payload = serde_json::to_vec(&canonical).map_err(|error| {
-        CheckoutOrderCreationError::Conflict(format!(
-            "failed to encode order creation request: {error}"
-        ))
+    let payload = serde_json::to_vec(&canonical).map_err(|_| {
+        tracing::error!(
+            owner = "rustok_commerce",
+            owner_operation = "order_request_hash",
+            boundary = "commerce_checkout_order_creation_adapter",
+            "checkout order creation request could not be encoded"
+        );
+        CheckoutOrderCreationError::Conflict(
+            "checkout order creation request could not be encoded".to_string(),
+        )
     })?;
     Ok(Sha256::digest(payload)
         .iter()

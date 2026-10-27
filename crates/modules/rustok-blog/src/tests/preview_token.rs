@@ -15,7 +15,10 @@ use super::hardening::{
 use crate::BlogError;
 use crate::entities::blog_preview_token;
 use crate::services::PreviewTokenService;
-use crate::services::preview_token::MAX_PREVIEW_TOKEN_CLEANUP_BATCH;
+use crate::services::preview_token::{
+    MAX_ACTIVE_PREVIEW_TOKENS_PER_POST, MAX_PREVIEW_TOKEN_CLEANUP_BATCH,
+    MAX_PREVIEW_TOKEN_LIST_LIMIT,
+};
 
 /// The length bound the service enforces; the constant lives in the service module.
 const MAX_TTL_HOURS: i64 = 720;
@@ -442,5 +445,95 @@ async fn preview_tokens_are_stored_as_digests_and_never_listed() {
             .expect("token read should not fail")
             .is_some(),
         "the minted plaintext resolves through its stored digest"
+    );
+}
+
+/// Minting is capped per post: the oldest live token is evicted instead of
+/// letting a long-lived draft accumulate an unbounded set of live credentials.
+#[tokio::test]
+async fn preview_token_minting_is_capped_per_post() {
+    let (db, event_bus) = setup_hardening_schema().await;
+    let tenant_id = Uuid::new_v4();
+    set_blog_module_enabled(&db, tenant_id, true).await;
+    let post_id = create_draft_post(&db, &event_bus, tenant_id, "active-cap").await;
+    let service = token_service(&db, &event_bus);
+
+    let mut minted = Vec::new();
+    for _ in 0..MAX_ACTIVE_PREVIEW_TOKENS_PER_POST {
+        let token = service
+            .create_token(tenant_id, post_id, admin(), None)
+            .await
+            .expect("a draft may be previewed");
+        minted.push(token);
+    }
+    assert_eq!(
+        token_rows(&db, tenant_id).await as usize,
+        MAX_ACTIVE_PREVIEW_TOKENS_PER_POST,
+        "the cap is reached exactly"
+    );
+
+    let newest = service
+        .create_token(tenant_id, post_id, admin(), None)
+        .await
+        .expect("the cap evicts instead of refusing the mint");
+
+    assert_eq!(
+        token_rows(&db, tenant_id).await as usize,
+        MAX_ACTIVE_PREVIEW_TOKENS_PER_POST,
+        "the row count stays at the cap"
+    );
+    // Several tokens can share a `created_at` timestamp inside one loop, so the
+    // test asserts the eviction *count*, not which tied row lost.
+    let mut still_live = 0;
+    for token in &minted {
+        if service
+            .get_post_by_token(
+                token
+                    .token
+                    .as_deref()
+                    .expect("a created token carries its one-time plaintext"),
+                "en",
+                None,
+            )
+            .await
+            .expect("token read should not fail")
+            .is_some()
+        {
+            still_live += 1;
+        }
+    }
+    assert_eq!(
+        still_live,
+        MAX_ACTIVE_PREVIEW_TOKENS_PER_POST - 1,
+        "minting at the cap evicts exactly one live credential"
+    );
+    assert!(
+        service
+            .get_post_by_token(
+                newest
+                    .token
+                    .as_deref()
+                    .expect("a created token carries its one-time plaintext"),
+                "en",
+                None,
+            )
+            .await
+            .expect("token read should not fail")
+            .is_some(),
+        "the token minted at the cap still resolves"
+    );
+
+    let listed = service
+        .list_tokens(tenant_id, post_id, admin())
+        .await
+        .expect("the author may list token metadata");
+    assert!(
+        listed.len() as u64 <= MAX_PREVIEW_TOKEN_LIST_LIMIT,
+        "listing is bounded even when rows await cleanup"
+    );
+    assert_eq!(
+        listed.len() as usize,
+        MAX_ACTIVE_PREVIEW_TOKENS_PER_POST,
+        "listing shows the live set"
     );
 }

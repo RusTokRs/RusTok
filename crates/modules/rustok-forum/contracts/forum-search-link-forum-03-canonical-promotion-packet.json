@@ -18,7 +18,7 @@
     "automatic_canonical_source_mutation": false
   },
   "required_plan_state": {
-    "forum_21": "planned",
+    "forum_21": "in_progress",
     "forum_23": "in_progress",
     "link_forum_03": "planned"
   },
@@ -32,13 +32,13 @@
     "the canonical pull request cites the retained D18 promotion candidate and complete D17 artifact paths",
     "the canonical pull request records the D18 reviewer identity review time retention reference and exact retained digest",
     "the canonical pull request lists all six canonical LINK-FORUM-03 scenarios",
-    "the canonical pull request states that FORUM-21 remains planned and FORUM-23 remains in_progress",
+    "the canonical pull request states that FORUM-21 remains in_progress and FORUM-23 remains in_progress",
     "the canonical pull request does not claim that the source-ready D13-D19 chain ran unless the retained candidate exists and validates"
   ],
   "fail_closed_requirements": [
     "the D18 contract has exact pending identity paths and proposed LINK-only transition",
     "the D18 promotion candidate has exact approved identity current source commit reviewer retention and transition fields",
-    "the candidate canonical-plan digest equals the exact current plan bytes and records FORUM-21 planned FORUM-23 in_progress LINK-FORUM-03 planned",
+    "the candidate canonical-plan digest equals the exact current plan bytes and records FORUM-21 in_progress FORUM-23 in_progress LINK-FORUM-03 planned",
     "the candidate complete-artifact metadata equals the exact retained complete artifact bytes",
     "the candidate review-contract digest equals the current D18 contract bytes",
     "all four candidate source-artifact records match the exact retained D13 D14 D15 and D16 bytes metadata and scenario identities",

@@ -1,10 +1,9 @@
-use super::{
-    ensure_public_blog_channel_enabled, is_post_visible_for_request, security_context_from_auth,
-};
+use super::{ensure_public_blog_channel_enabled, post_is_readable, security_context_from_auth};
 use rustok_api::AuthContext;
 use rustok_api::{RequestContext, context::ChannelResolutionSource};
 use rustok_channel::{BindChannelModuleInput, ChannelService, CreateChannelInput, migrations};
-use rustok_core::SecurityActorKind;
+use rustok_core::{SecurityActorKind, SecurityContext, UserRole};
+use crate::BlogPostStatus;
 use rustok_test_utils::setup_test_db;
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use sea_orm_migration::SchemaManager;
@@ -204,12 +203,54 @@ async fn public_request_allows_blog_channel_without_explicit_binding() {
     );
 }
 
+/// Visibility follows the caller's authority, not the presence of a token.
+///
+/// A signed-in customer sees exactly the public view (published, and visible in
+/// the current channel); an editor with tenant-wide `blog_posts:read` sees
+/// non-public and other-channel posts too. The previous rule treated *any*
+/// authentication as authorization, which gave every customer a different view
+/// of the same post than an anonymous reader.
 #[test]
-fn authenticated_request_bypasses_post_channel_allowlist() {
+fn channel_visibility_follows_authority_not_authentication() {
     let channel_slugs = vec!["web".to_string()];
+    let customer = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+    let editor = SecurityContext::from_permissions(
+        UserRole::Manager,
+        Some(Uuid::new_v4()),
+        [rustok_api::Permission::BLOG_POSTS_READ],
+    );
 
-    assert!(is_post_visible_for_request(&channel_slugs, None, true));
-    assert!(!is_post_visible_for_request(&channel_slugs, None, false));
+    assert!(!post_is_readable(
+        &customer,
+        BlogPostStatus::Published,
+        &channel_slugs,
+        None
+    ));
+    assert!(post_is_readable(
+        &customer,
+        BlogPostStatus::Published,
+        &channel_slugs,
+        Some("web")
+    ));
+    assert!(!post_is_readable(
+        &customer,
+        BlogPostStatus::Draft,
+        &channel_slugs,
+        Some("web")
+    ));
+
+    assert!(post_is_readable(
+        &editor,
+        BlogPostStatus::Draft,
+        &channel_slugs,
+        None
+    ));
+    assert!(post_is_readable(
+        &editor,
+        BlogPostStatus::Published,
+        &channel_slugs,
+        Some("other")
+    ));
 }
 
 #[tokio::test]

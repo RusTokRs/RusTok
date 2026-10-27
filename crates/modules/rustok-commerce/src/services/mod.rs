@@ -24,6 +24,7 @@ mod checkout_marketplace_financial_legacy;
 mod checkout_operation;
 mod checkout_order_confirmation;
 mod checkout_order_creation;
+mod checkout_order_owner_failure;
 mod checkout_order_plan;
 mod checkout_order_stages;
 mod checkout_payment_stages;

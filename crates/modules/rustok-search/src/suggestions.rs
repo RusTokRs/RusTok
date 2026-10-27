@@ -1,11 +1,29 @@
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement, Value};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
+use rustok_api::{AuthContext, RequestContext};
 use rustok_core::{Error, Result};
 
 use crate::TrustedStorefrontChannel;
+use crate::audience_security::{
+    SearchAudienceClass, SearchAudienceRegistry, SearchCandidateDescriptor,
+    resolve_audience_eligible_candidates, search_audience_error,
+};
+use crate::storefront_category_scope::StorefrontSearchTransport;
 use crate::storefront_product_channel_visibility::product_channel_visibility_sql;
+
+/// Audience context required by every public storefront suggestion read.
+///
+/// Suggestions expose document titles, so they must obey the same declared module
+/// corpus and the same per-candidate authorization as storefront Search itself.
+#[derive(Clone, Copy)]
+pub struct StorefrontSuggestionAudience<'a> {
+    pub registry: &'a SearchAudienceRegistry,
+    pub auth: Option<&'a AuthContext>,
+    pub request_context: Option<&'a RequestContext>,
+    pub transport: StorefrontSearchTransport,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -51,26 +69,39 @@ impl SearchSuggestionService {
         db: &DatabaseConnection,
         query: SearchSuggestionQuery,
     ) -> Result<Vec<SearchSuggestion>> {
-        Self::suggestions_with_storefront_channel(db, query, None).await
+        Self::suggestions_with_storefront_channel(db, query, None, None).await
     }
 
     pub async fn storefront_suggestions(
         db: &DatabaseConnection,
         query: SearchSuggestionQuery,
         channel: &TrustedStorefrontChannel,
+        audience: StorefrontSuggestionAudience<'_>,
     ) -> Result<Vec<SearchSuggestion>> {
-        Self::suggestions_with_storefront_channel(db, query, Some(channel)).await
+        Self::suggestions_with_storefront_channel(db, query, Some(channel), Some(audience)).await
     }
 
     async fn suggestions_with_storefront_channel(
         db: &DatabaseConnection,
         query: SearchSuggestionQuery,
         storefront_channel: Option<&TrustedStorefrontChannel>,
+        audience: Option<StorefrontSuggestionAudience<'_>>,
     ) -> Result<Vec<SearchSuggestion>> {
         ensure_postgres(db)?;
 
         let normalized_query = normalize_suggestion_query(&query.query);
         if normalized_query.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let scope_modules = match audience {
+            Some(audience) => {
+                resolve_suggestion_scope_modules(audience.registry, query.tenant_id, audience.auth)
+                    .await?
+            }
+            None => Vec::new(),
+        };
+        if audience.is_some() && scope_modules.is_empty() {
             return Ok(Vec::new());
         }
 
@@ -96,8 +127,22 @@ impl SearchSuggestionService {
             query.published_only,
             limit,
             storefront_channel,
+            &scope_modules,
         )
         .await?;
+        let document_rows = match audience {
+            Some(audience) => {
+                authorize_suggestion_documents(
+                    audience.registry,
+                    query.tenant_id,
+                    query.locale.as_deref(),
+                    document_rows,
+                    audience,
+                )
+                .await?
+            }
+            None => document_rows,
+        };
 
         Ok(merge_suggestions(query_rows, document_rows, limit))
     }
@@ -165,12 +210,116 @@ async fn fetch_query_suggestions(
         .collect()
 }
 
-fn suggestion_document_source_scope(storefront: bool) -> &'static str {
-    if storefront {
-        "source_module <> 'forum'"
-    } else {
-        "TRUE"
+fn suggestion_module_placeholders(
+    scope_modules: &[String],
+    values: &mut Vec<Value>,
+    next_param: &mut usize,
+) -> String {
+    scope_modules
+        .iter()
+        .map(|module| {
+            let placeholder = format!("${}", *next_param);
+            values.push(module.clone().into());
+            *next_param += 1;
+            placeholder
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Declared modules that this caller may see in storefront suggestions.
+///
+/// Anonymous callers must pass the per-module public discovery gate; authenticated
+/// callers are filtered per candidate afterwards. Undeclared modules never appear.
+async fn resolve_suggestion_scope_modules(
+    registry: &SearchAudienceRegistry,
+    tenant_id: Uuid,
+    auth: Option<&AuthContext>,
+) -> Result<Vec<String>> {
+    let mut scope = Vec::new();
+    for module in registry.declared_source_modules() {
+        match registry.audience_class(&module) {
+            Some(SearchAudienceClass::Public) => scope.push(module),
+            Some(SearchAudienceClass::Gated) if auth.is_some() => scope.push(module),
+            Some(SearchAudienceClass::Gated) => {
+                match registry.public_discovery_allowed(&module, tenant_id).await {
+                    Ok(true) => scope.push(module),
+                    Ok(false) => {}
+                    Err(error)
+                        if matches!(
+                            error.kind,
+                            rustok_api::PortErrorKind::NotFound
+                                | rustok_api::PortErrorKind::Forbidden
+                        ) => {}
+                    Err(error) => {
+                        return Err(search_audience_error(
+                            error,
+                            "suggestion discovery preflight",
+                        ));
+                    }
+                }
+            }
+            None => {}
+        }
     }
+    Ok(scope)
+}
+
+async fn authorize_suggestion_documents(
+    registry: &SearchAudienceRegistry,
+    tenant_id: Uuid,
+    locale: Option<&str>,
+    suggestions: Vec<SearchSuggestion>,
+    audience: StorefrontSuggestionAudience<'_>,
+) -> Result<Vec<SearchSuggestion>> {
+    if suggestions.is_empty() {
+        return Ok(suggestions);
+    }
+    let descriptors = suggestions
+        .iter()
+        .filter_map(|suggestion| {
+            Some(SearchCandidateDescriptor::new(
+                suggestion.document_id?,
+                suggestion.source_module.clone()?,
+                suggestion.entity_type.clone()?,
+            ))
+        })
+        .collect::<Vec<_>>();
+    if descriptors.is_empty() {
+        return Ok(suggestions);
+    }
+
+    let allowed = resolve_audience_eligible_candidates(
+        registry,
+        tenant_id,
+        locale.unwrap_or("en"),
+        &descriptors,
+        audience.auth.cloned(),
+        audience.request_context.cloned(),
+        audience.transport,
+    )
+    .await
+    .map_err(|error| search_audience_error(error, "suggestion candidate authorization"))?;
+
+    let mut allowed_by_module: HashMap<&str, HashSet<Uuid>> = HashMap::new();
+    for descriptor in &descriptors {
+        if allowed.contains(&descriptor.document_id) {
+            allowed_by_module
+                .entry(descriptor.source_module.as_str())
+                .or_default()
+                .insert(descriptor.document_id);
+        }
+    }
+
+    Ok(suggestions
+        .into_iter()
+        .filter(|suggestion| match (&suggestion.source_module, suggestion.document_id) {
+            (Some(module), Some(document_id)) => allowed_by_module
+                .get(module.as_str())
+                .is_some_and(|ids| ids.contains(&document_id)),
+            _ => false,
+        })
+        .collect())
 }
 
 async fn fetch_document_suggestions(
@@ -181,6 +330,7 @@ async fn fetch_document_suggestions(
     published_only: bool,
     limit: usize,
     storefront_channel: Option<&TrustedStorefrontChannel>,
+    scope_modules: &[String],
 ) -> Result<Vec<SearchSuggestion>> {
     let mut values = vec![
         tenant_id.into(),
@@ -202,11 +352,16 @@ async fn fetch_document_suggestions(
             )
         })
         .unwrap_or_else(|| "TRUE".to_string());
+    let module_scope = if scope_modules.is_empty() {
+        "TRUE".to_string()
+    } else {
+        format!(
+            "source_module IN ({})",
+            suggestion_module_placeholders(scope_modules, &mut values, &mut next_param)
+        )
+    };
     let limit_param = next_param;
     values.push(Value::from(limit as i64));
-    // Generic storefront suggestions have no Forum audience owner. The
-    // dedicated Forum storefront path is the only public Forum Search reader.
-    let forum_scope = suggestion_document_source_scope(storefront_channel.is_some());
 
     let stmt = Statement::from_sql_and_values(
         DbBackend::Postgres,
@@ -231,7 +386,7 @@ async fn fetch_document_suggestions(
           AND ($5 = '' OR locale = $5)
           AND ($6 = FALSE OR is_public = TRUE)
           AND {product_scope}
-          AND {forum_scope}
+          AND {module_scope}
           AND (
               lower(title) LIKE $4
               OR lower(COALESCE(slug, '')) LIKE $4
@@ -355,16 +510,23 @@ fn ensure_postgres(db: &DatabaseConnection) -> Result<()> {
 mod tests {
     use super::{
         SearchSuggestion, SearchSuggestionKind, merge_suggestions, normalize_suggestion_query,
-        suggestion_document_source_scope,
+        suggestion_module_placeholders,
     };
+    use sea_orm::Value;
 
     #[test]
-    fn public_suggestions_never_read_raw_forum_documents() {
-        assert_eq!(
-            suggestion_document_source_scope(true),
-            "source_module <> 'forum'"
+    fn suggestion_module_scope_is_bound_and_ordered() {
+        let mut values: Vec<Value> = Vec::new();
+        let mut next_param = 7;
+        let placeholders = suggestion_module_placeholders(
+            &["blog".to_string(), "docs".to_string()],
+            &mut values,
+            &mut next_param,
         );
-        assert_eq!(suggestion_document_source_scope(false), "TRUE");
+
+        assert_eq!(placeholders, "$7, $8");
+        assert_eq!(values.len(), 2);
+        assert_eq!(next_param, 9);
     }
 
     #[test]

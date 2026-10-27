@@ -19,7 +19,7 @@
     "category_route_owner": "ForumCategoryRouteService",
     "topic_route_owner": "ForumTopicRouteService",
     "search_ingestion": "crates/modules/rustok-search/src/ingestion.rs",
-    "search_projector": "crates/modules/rustok-search/src/forum_projector.rs",
+    "search_projection_driver": "crates/modules/rustok-search/src/projection_driver.rs",
     "search_url_projection": "crates/modules/rustok-search/src/engine.rs",
     "source_guardrail": "scripts/verify/verify-forum-search-canonical-route-reindex-harness.mjs"
   },

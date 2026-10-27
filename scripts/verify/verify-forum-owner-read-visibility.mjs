@@ -96,33 +96,63 @@ for (const forbidden of [
   rejectText(owner, forbidden, `owner category-floor evaluation must not depend on ${forbidden}`);
 }
 
+// The authorization + category-visibility gate lives in `resolve_canonical_topic_for_security`, and the
+// public read composes it. Anchoring the gate on `get_with_locale_fallback` searched a block that no
+// longer contains it, so the guard reported the gate missing instead of reading where it moved.
 const topicExactRead = between(
   topicFacade,
-  "pub async fn get_with_locale_fallback(",
-  "pub async fn get_storefront_visible_with_locale_fallback(",
+  "async fn resolve_canonical_topic_for_security(",
+  "pub async fn get(",
   "topic exact owner read",
 );
 for (const marker of [
-  "enforce_scope(&security, Resource::ForumTopics, Action::Read)?",
+  "enforce_scope(security, Resource::ForumTopics, Action::Read)?",
   ".is_topic_category_visible_to_viewer(",
   "!security.is_public_read()",
   "return Err(ForumError::TopicNotFound(topic_id))",
-  "let response = self",
+  ".resolve_unchecked(tenant_id, topic_id)",
 ]) {
   requireText(topicExactRead, marker, `topic exact owner read is missing ${marker}`);
 }
 const topicReadScopeIndex = topicExactRead.indexOf("enforce_scope(");
+const topicResolutionIndex = topicExactRead.indexOf(".resolve_unchecked(");
 const topicVisibilityIndex = topicExactRead.indexOf(".is_topic_category_visible_to_viewer(");
-const topicHydrationIndex = topicExactRead.indexOf("let response = self");
 if (
   topicReadScopeIndex < 0 ||
+  topicResolutionIndex < 0 ||
   topicVisibilityIndex < 0 ||
-  topicHydrationIndex < 0 ||
-  topicReadScopeIndex > topicVisibilityIndex ||
-  topicVisibilityIndex > topicHydrationIndex
+  topicReadScopeIndex > topicResolutionIndex ||
+  topicResolutionIndex > topicVisibilityIndex
 ) {
-  failures.push("topic exact owner read must authorize, check category visibility, then hydrate");
+  failures.push(
+    "topic exact owner read must authorize, resolve canonical identity, then check category visibility",
+  );
 }
+
+const topicReadDelegation = between(
+  topicFacade,
+  "pub async fn get_with_canonical_resolution_and_locale_fallback(",
+  "pub(crate) async fn list_widget_preview_owner_visible(",
+  "topic canonical read delegation",
+);
+for (const marker of [
+  ".resolve_canonical_topic_for_security(tenant_id, &security, topic_id)",
+  "resolution.canonical_topic_id",
+  "return Err(ForumError::TopicNotFound(topic_id))",
+  "require_localized_topic_response(response)?",
+]) {
+  requireText(topicReadDelegation, marker, `topic canonical read delegation is missing ${marker}`);
+}
+requireText(
+  between(
+    topicFacade,
+    "pub async fn get_with_locale_fallback(",
+    "pub async fn get_with_canonical_resolution_and_locale_fallback(",
+    "topic public read",
+  ),
+  "self.get_with_canonical_resolution_and_locale_fallback(",
+  "the public topic read must route through the gated canonical read",
+);
 
 const topicPageRead = between(
   topicFacade,
@@ -141,22 +171,24 @@ for (const marker of [
 for (const marker of [
   "pub(crate) async fn list_with_locale_fallback_and_hidden_categories(",
   "forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec())",
-  "let paginator = select",
-  "let total = paginator.num_items().await?",
-  "let topics = paginator.fetch_page",
+  "let mut select =",
+  "self.fetch_localized_topic_page(",
 ]) {
   requireText(topicSelector, marker, `topic owner selector is missing ${marker}`);
 }
+// The list is keyset-paginated now, so the ordering rule is: the hidden-category filter is applied to
+// the query, and *that* query is the one handed to the paginating reader. It is not enough for both to
+// exist somewhere in the file.
 const ownerSelector = between(
   topicSelector,
   "pub(crate) async fn list_with_locale_fallback_and_hidden_categories(",
-  "#[instrument(skip(self, security, hidden_category_ids))]",
+  "#[instrument(",
   "topic owner hidden-category selector",
 );
 const ownerCategoryFilterIndex = ownerSelector.indexOf(
   "forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec())",
 );
-const ownerPaginatorIndex = ownerSelector.indexOf("let paginator = select");
+const ownerPaginatorIndex = ownerSelector.indexOf("self.fetch_localized_topic_page(");
 if (
   ownerCategoryFilterIndex < 0 ||
   ownerPaginatorIndex < 0 ||
@@ -214,12 +246,15 @@ for (const marker of [
   "inherited_authenticated_floor_guards_topic_and_reply_owner_reads",
   "ForumCategoryVisibility::Authenticated",
   "SecurityContext::public_read()",
-  "assert_eq!(public_total, 1)",
-  "assert_eq!(authenticated_total, 2)",
+  "assert_eq!(public_topics.len(), 1)",
+  "HashSet::from([public_topic])",
+  "assert_eq!(authenticated_topics.len(), 2)",
+  "HashSet::from([public_topic, restricted_topic])",
   "Err(ForumError::TopicNotFound(id)) if id == restricted_topic",
   "Err(ForumError::ReplyNotFound(id)) if id == restricted_reply",
   "public reply page must fail as an absent hidden topic before pagination",
-  "assert_eq!(authenticated_reply_total, 1)",
+  "assert_eq!(authenticated_reply_page.items.len(), 1)",
+  "assert_eq!(authenticated_reply_page.items[0].id, restricted_reply)",
 ]) {
   requireText(testSource, marker, `owner visibility SQLite scenario is missing ${marker}`);
 }

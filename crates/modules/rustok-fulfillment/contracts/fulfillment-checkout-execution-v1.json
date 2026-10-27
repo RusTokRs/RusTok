@@ -49,6 +49,7 @@
   "source": "crates/modules/rustok-fulfillment/src/checkout_execution.rs",
   "verification": {
     "guard": "scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs",
-    "runtime_evidence": "not_executed"
+    "runtime_evidence": "not_executed",
+    "identity_guard": "scripts/verify/verify-fulfillment-checkout-typed-identity.mjs"
   }
 }

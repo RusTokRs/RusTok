@@ -6,14 +6,27 @@ import { resolve } from "node:path";
 
 const root = process.cwd();
 const read = (path) => readFileSync(resolve(root, path), "utf8");
+// Markdown handoffs are hard-wrapped at ~80 columns, so a required phrase must not
+// depend on where the author put a newline (and a forbidden phrase must not become
+// invisible when it is re-wrapped). Collapse whitespace on both sides first.
+const spaced = (value) => value.replace(/\s+/g, " ");
+
 const requireAll = (text, markers, label) => {
+  const haystack = spaced(text);
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing required marker: ${marker}`);
+    assert.ok(
+      haystack.includes(spaced(marker)),
+      `${label} is missing required marker: ${marker}`,
+    );
   }
 };
 const forbidAll = (text, markers, label) => {
+  const haystack = spaced(text);
   for (const marker of markers) {
-    assert.ok(!text.includes(marker), `${label} contains forbidden marker: ${marker}`);
+    assert.ok(
+      !haystack.includes(spaced(marker)),
+      `${label} contains forbidden marker: ${marker}`,
+    );
   }
 };
 

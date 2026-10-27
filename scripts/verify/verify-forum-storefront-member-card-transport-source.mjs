@@ -6,12 +6,16 @@ function read(path) {
   return fs.readFileSync(path, "utf8");
 }
 
+// Collect every drift instead of aborting on the first one: a guard that throws hides the rest of
+// the contract behind whichever marker happened to move first.
+const failures = [];
+
 function need(text, marker, label) {
-  if (!text.includes(marker)) throw new Error(`${label}: missing ${marker}`);
+  if (!text.includes(marker)) failures.push(`${label}: missing ${marker}`);
 }
 
 function forbid(text, marker, label) {
-  if (text.includes(marker)) throw new Error(`${label}: forbidden ${marker}`);
+  if (text.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
 const memberCardQuery = read("crates/modules/rustok-forum/src/graphql/member_card_query.rs");
@@ -86,8 +90,17 @@ for (const marker of [
   "member_cards,",
 ]) need(native, marker, "FORUM-15D native storefront path");
 
-need(ui, "member_cards: _,", "FORUM-15D UI compile-shape acceptance");
-forbid(ui, "ForumMemberCard", "FORUM-15D visual member-card rendering remains open");
+// FORUM-15E has since landed the rendering, so the transport payload must be *consumed* by the
+// view (destructured by name and published through the owner context) while the UI stays a pure
+// consumer: it never fetches member cards and never grows its own transport DTO.
+need(ui, "member_cards,", "FORUM-15D UI transport-payload acceptance");
+need(
+  ui,
+  "provide_context(member_card_context(member_cards));",
+  "FORUM-15D UI transport-payload acceptance",
+);
+forbid(ui, "member_cards: _,", "FORUM-15D UI must not drop the member-card payload");
+forbid(ui, "request_raw", "FORUM-15D UI must not read member cards from the transport itself");
 forbid(cargo, "rustok-profiles", "FORUM-15D storefront must not depend directly on Profiles");
 
 for (const marker of [
@@ -100,5 +113,11 @@ for (const marker of [
   "at most one `ForumMemberCardService` call",
   "no Cargo command, test, Node verifier",
 ]) need(packet, marker, "FORUM-15D actualization");
+
+if (failures.length > 0) {
+  console.error("Forum FORUM-15D storefront member-card transport source failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
 
 console.log("Forum FORUM-15D storefront member-card transport source: ok");

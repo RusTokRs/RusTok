@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { containsMarker, ledgerRowProblems } from "./lib/forum-source-verification.mjs";
+
 const paths = {
   contract: "crates/modules/rustok-forum/contracts/forum-topic-merge-tag-reconciliation.json",
   docs: "crates/modules/rustok-forum/docs/forum-21e-topic-merge-tag-reconciliation.md",
@@ -26,9 +28,11 @@ function read(path) {
   return readFileSync(path, "utf8");
 }
 
+// Layout-tolerant by policy: a marker describes an invariant, not where rustfmt or a prose editor put
+// the newline. Tokens are unchanged, so an absent call or sentence is still absent.
 function includesAll(text, markers, label) {
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing marker: ${marker}`);
+    assert.ok(containsMarker(text, marker), `${label} is missing marker: ${marker}`);
   }
 }
 
@@ -84,7 +88,7 @@ assert.deepEqual(contract.projection_repair, {
   same_owner_transaction: true,
   reason: "forum tags are search projection facets",
 });
-assert.equal(contract.semantic_event.event_type, "forum.topic.merge_tags_reconciled");
+assert.equal(contract.semantic_event.event_type, "forum.topic.merge.tags_reconciled");
 assert.equal(contract.semantic_event.schema_version, 1);
 assert.equal(contract.semantic_event.aggregate_is_retained_target, true);
 assert.equal(contract.semantic_event.event_id_equals_operation_id, true);
@@ -134,7 +138,7 @@ includesAll(
   migrationsMod,
   [
     "mod m20260803_000013_add_forum_topic_merge_tag_reconciliations;",
-    "m20260803_000013_add_forum_topic_merge_tag_reconciliations::Migration,",
+    "m20260803_000013_add_forum_topic_merge_tag_reconciliations::Migration",
   ],
   "migration registry",
 );
@@ -214,7 +218,7 @@ includesAll(
     "pub struct ForumTopicMergeTagReconciliationService",
     "pub async fn reconcile_merge_tags(",
     "enforce_scope(&security, Resource::ForumTopics, Action::Manage)?;",
-    "lock_reconciliation_tenant_in_tx(&txn, tenant_id).await?;",
+    "lock_reconciliation_tenant_in_tx(txn, tenant_id).await?;",
     "forum_topic_merge_tag_reconciliation::Entity::find_by_id",
     "TopicMergeTagReconciliationConflict",
     "forum_topic_merge_operation::Entity::find_by_id",
@@ -228,7 +232,7 @@ includesAll(
     "move_source_row_in_tx",
     "delete_source_row_in_tx",
     "ensure_source_tags_empty_in_tx",
-    '"forum.topic.merge_tags_reconciled"',
+    '"forum.topic.merge.tags_reconciled"',
     "forum_domain_event::ActiveModel",
     "forum_topic_merge_tag_reconciliation::ActiveModel",
     "publish_forum_topic_projection_in_tx",
@@ -310,7 +314,7 @@ includesAll(
     "TopicMergeTagReconciliationConflict",
     "UPDATE forum_topic_merge_tag_reconciliations",
     "DELETE FROM forum_topic_merge_tag_reconciliations",
-    '"forum.topic.merge_tags_reconciled"',
+    '"forum.topic.merge.tags_reconciled"',
     "new_projection_ids.len(), 2",
   ],
   "SQLite regression",
@@ -323,20 +327,20 @@ includesAll(
     paths.contract,
     "Set-union policy",
     "same row `id`",
-    "at most 500 existing source rows",
+    // Prose marker, so it is compared with whitespace normalised: the sentence wraps at 80 columns.
+    "at most 500 existing source rows so bounded cleanup remains possible",
     "Tags are Forum Search facets",
     "FORUM_TOPIC_MERGE_TAG_RECONCILIATION_CONFLICT",
     "No command above was run by the implementation agent",
   ],
   "FORUM-21E handoff",
 );
-assert.ok(
-  plan.includes(
-    "| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |",
-  ),
+assert.deepEqual(
+  ledgerRowProblems(plan, "FORUM-21", {
+    mentions: ["move/merge/split/fork/range owners"],
+  }),
+  [],
 );
-assert.ok(!plan.includes("| `FORUM-21` | `done` |"));
-assert.ok(!plan.includes("| `FORUM-21` | `in_progress` |"));
 assert.ok(verifier.includes("source_ready_maintainer_execution_pending"));
 
 console.log(

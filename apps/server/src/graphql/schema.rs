@@ -62,9 +62,7 @@ use rustok_rbac::graphql::{
     RbacGraphqlRoleWriterHandle, RbacModuleAvailabilityHandle, RbacMutation, RbacQuery,
 };
 #[cfg(feature = "mod-forum")]
-use rustok_search::graphql::{
-    ForumSearchProjectionReconciliationQuery, ForumStorefrontSearchQuery,
-};
+use rustok_search::graphql::ForumSearchProjectionReconciliationQuery;
 use rustok_search::graphql::{SearchGraphqlRateLimiterHandle, SearchMutationRoot, SearchQueryRoot};
 
 /// Slugs used for runtime `tenant_modules.is_enabled()` guards.
@@ -83,7 +81,6 @@ pub struct Query(
     RootQuery,
     SearchQueryRoot,
     #[cfg(feature = "mod-forum")] ForumSearchProjectionReconciliationQuery,
-    #[cfg(feature = "mod-forum")] ForumStorefrontSearchQuery,
     AuthQuery,
     OAuthQuery,
     McpQuery,
@@ -202,6 +199,16 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
     let marketplace_catalog = graphql_runtime_inputs
         .shared_get::<rustok_modules::SharedModuleMarketplaceCatalog>()
         .expect("module marketplace catalog must be composed before GraphQL schema construction");
+    // Search composes its audience corpus once at boot: the declaration and the gated
+    // policies are inserted into the host runtime by
+    // `build_shared_runtime_extensions_with_host_providers`. The schema must hand that
+    // registry to every request, otherwise the storefront fields cannot tell which
+    // source modules are gated and would have to fail closed on every query. Search is a
+    // required module, so the manifest `runtime_data_factory` hook does not cover it and
+    // the attachment is explicit here.
+    let search_audience_registry = graphql_runtime_inputs
+        .shared_get::<rustok_search::SearchAudienceRegistry>()
+        .expect("search audience registry must be composed before GraphQL schema construction");
     let flex_runtime = FlexGraphqlRuntime::new(
         Arc::new(FlexStandaloneSeaOrmService::new(db.clone())),
         db.clone(),
@@ -271,6 +278,7 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         .data(build_event_hub)
         .data(flex_runtime)
         .data(marketplace_catalog)
+        .data(search_audience_registry)
         .data(runtime_extensions)
         .data(stop_handle)
         .data(rbac_role_writer);

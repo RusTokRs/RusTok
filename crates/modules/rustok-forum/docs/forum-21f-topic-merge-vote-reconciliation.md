@@ -130,7 +130,7 @@ One transaction performs:
 6. bounded source-row and overlap loading;
 7. source-only row moves and duplicate/conflict deletion;
 8. source-emptiness and count-conservation proof;
-9. one `forum.topic.merge_votes_reconciled` Forum-local semantic event;
+9. one `forum.topic.merge.votes_reconciled` Forum-local semantic event;
 10. one immutable reconciliation receipt;
 11. commit.
 

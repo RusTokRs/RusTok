@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -168,18 +169,18 @@ for (const marker of [
   "NotificationInboxMarkAllArchiveService",
   "### 9. Bounded mark-all-archive",
   "tests/inbox_mark_all_archive_sqlite.rs",
-  "arbitrary selected-ID bulk",
+  "bounded selected-ID state commands",
 ]) {
-  requireText(rootReadme, marker, `root README is missing ${marker}`);
+  requireProse(failures, rootReadme, marker, "root README");
 }
 for (const marker of [
-  "### Bounded mark-all-archive",
-  "NotificationInboxMarkAllArchiveService",
-  "`unread`, `seen`, or `read`",
-  "tests/inbox_mark_all_archive_sqlite.rs",
+  "### Exact and bounded inbox state commands",
+  "`NotificationInboxMarkAllArchiveService`",
+  "delegate every row to the exact state owner",
+  "inbox_mark_all_archive_sqlite",
   "verify-forum-notification-inbox-mark-all-archive.mjs",
 ]) {
-  requireText(docs, marker, `live contract is missing ${marker}`);
+  requireProse(failures, docs, marker, "live contract");
 }
 for (const marker of [
   "### `FORUM-20AA`",

@@ -136,10 +136,12 @@ is used. Topic identity, translations, replies, accepted solution, tags,
 mentions, attachments, subscriptions, votes, read state and revision rows remain
 attached through the unchanged topic ID.
 
-The canonical FORUM-21 ledger entry deliberately remains `planned` while this
-slice is `source_ready_maintainer_execution_pending`. It may be promoted to
-`in_progress` only after the maintainer executes both the source verifier and
-the SQLite regression on one exact checkout. Later bounded slices still need:
+The canonical FORUM-21 ledger entry is `in_progress`: the owner, transport and UI
+slices are delivered and retained runtime evidence is outstanding. This slice
+itself stays `source_ready_maintainer_execution_pending` until the maintainer
+executes both the source verifier and the SQLite regression on one exact
+checkout; the ledger entry does not assert that execution. Later bounded slices
+still need:
 
 - public/admin transport composition and authorization context;
 - canonical URL aliases and redirect/tombstone behavior;

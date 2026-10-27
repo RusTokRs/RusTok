@@ -80,8 +80,17 @@ reject(
   /MentionTargetUnavailable\s*\{/,
   `${errorPath}: safe mention target error must not retain requested identifiers`,
 );
-requireText(lib, "pub mod mentions;", `${libPath}: mention module is not public`);
-requireText(lib, "pub use mentions::*;", `${libPath}: mention contracts are not exported`);
+// The module is assembled from two included files and re-exported by name, so pin that the module
+// is public and that the mention contracts reach the crate root - not one declaration shape.
+requireText(lib, "pub mod mentions", `${libPath}: mention module is not public`);
+for (const exportName of [
+  "ForumMentionPolicy",
+  "ForumMentionRevisionProjection",
+  "ForumQuoteReference",
+  "diff_forum_mentions",
+]) {
+  requireText(lib, exportName, `${libPath}: mention contract ${exportName} is not exported`);
+}
 
 for (const marker of [
   "canonical_extraction_ignores_code_and_email_addresses",
@@ -128,7 +137,7 @@ reject(
 
 requireText(
   plan,
-  "Forum richtext cutover is complete",
+  "Shared richtext storage and server projection are live",
   `${planPath}: canonical Forum richtext cutover is not recorded`,
 );
 requireText(

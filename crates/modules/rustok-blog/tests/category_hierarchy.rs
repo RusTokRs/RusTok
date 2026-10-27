@@ -186,7 +186,7 @@ async fn move_reparents_subtree_and_failed_moves_leave_tree_unchanged() {
                 locale: "en".to_string(),
                 name: Some("Child Renamed".to_string()),
                 slug: Some("child-renamed".to_string()),
-                description: None,
+                description: rustok_api::Patch::Keep,
                 settings: None,
             },
         )

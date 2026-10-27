@@ -9,9 +9,10 @@ use crate::{
 };
 
 /// Raw Search owner boundary for trusted admin/host consumers only. This port
-/// does not resolve a storefront channel or compose Forum's audience owner;
-/// never expose it directly through a public search transport. Use the
-/// storefront-specific owner execution path for public requests instead.
+/// does not resolve a storefront channel and does not compose the declared
+/// audience classes, so it can read gated documents. Never expose it directly
+/// through a public search transport; public requests must use
+/// `execute_audience_eligible_search` instead.
 #[async_trait]
 pub trait SearchQueryPort: Send + Sync {
     async fn execute_search(
@@ -58,8 +59,9 @@ impl SearchQueryPort for PgSearchEngine {
 }
 
 /// Transport-neutral owner boundary for autocomplete suggestions.
-/// Raw suggestions for trusted admin/host consumers only; a storefront must
-/// use `SearchSuggestionService::storefront_suggestions` with a resolved channel.
+/// Raw suggestions for trusted admin/host consumers only; a storefront must use
+/// `SearchSuggestionService::storefront_suggestions` with a resolved channel and a
+/// `StorefrontSuggestionAudience`, because raw suggestions bypass audience classes.
 #[async_trait]
 pub trait SearchSuggestionPort: Send + Sync {
     async fn suggest(

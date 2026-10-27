@@ -208,7 +208,7 @@ const plan = read(planPath);
 requireAll(
   plan,
   [
-    "| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |",
+    "| `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |",
     "| `FORUM-23` | `in_progress` |",
     "| `LINK-FORUM-03` | `planned` | Forum/index/search ordering and visibility proof. |",
   ],

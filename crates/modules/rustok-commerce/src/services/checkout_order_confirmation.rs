@@ -1,9 +1,10 @@
-use rustok_order::{OrderError, OrderResponse, OrderService};
+use rustok_order::{OrderError, OrderResponse, OrderService, OrderStatusKind};
 use rustok_outbox::TransactionalEventBus;
 use serde_json::Value;
 use thiserror::Error;
 use uuid::Uuid;
 
+use super::checkout_order_owner_failure::CheckoutOrderBoundaryFailure;
 use super::{
     CheckoutOperationCheckpoint, CheckoutOperationError, CheckoutOperationJournal,
     CheckoutOperationStage, CheckoutOperationStatus, DEFAULT_CHECKOUT_LEASE_SECONDS,
@@ -11,8 +12,16 @@ use super::{
 
 #[derive(Debug, Error)]
 pub enum CheckoutOrderConfirmationError {
-    #[error(transparent)]
-    Order(#[from] OrderError),
+    /// Bounded projection of an Order owner failure. The owner code and
+    /// retryability are preserved; the owner message never crosses the boundary.
+    #[error(
+        "checkout order confirmation owner boundary failed with `{code}` (retryable={retryable}): {message}"
+    )]
+    OrderBoundary {
+        code: String,
+        message: String,
+        retryable: bool,
+    },
     #[error(transparent)]
     Operation(#[from] CheckoutOperationError),
     #[error("checkout order confirmation conflict: {0}")]
@@ -20,6 +29,32 @@ pub enum CheckoutOrderConfirmationError {
 }
 
 pub type CheckoutOrderConfirmationResult<T> = Result<T, CheckoutOrderConfirmationError>;
+
+impl CheckoutOrderConfirmationError {
+    /// The bounded code and retryability carried by a sanitized owner failure.
+    pub fn bounded_failure(&self) -> Option<(&str, bool)> {
+        match self {
+            Self::OrderBoundary { code, retryable, .. } => Some((code.as_str(), *retryable)),
+            _ => None,
+        }
+    }
+
+    fn owner_failure(
+        owner_operation: &'static str,
+        tenant_id: Uuid,
+        operation_id: Uuid,
+        order_id: Option<Uuid>,
+        error: OrderError,
+    ) -> Self {
+        let failure = CheckoutOrderBoundaryFailure::from_owner_error(&error);
+        failure.observe_owner_error(owner_operation, tenant_id, operation_id, order_id);
+        Self::OrderBoundary {
+            code: failure.code,
+            message: failure.message.to_string(),
+            retryable: failure.retryable,
+        }
+    }
+}
 
 pub struct CheckoutOrderConfirmationExecutor {
     order_service: OrderService,
@@ -81,13 +116,25 @@ impl CheckoutOrderConfirmationExecutor {
         let order = self
             .order_service
             .get_order_with_locale_fallback(tenant_id, order_id, locale, fallback_locale)
-            .await?;
+            .await
+            .map_err(|error| {
+                CheckoutOrderConfirmationError::owner_failure(
+                    "get_order_before_confirmation",
+                    tenant_id,
+                    operation_id,
+                    Some(order_id),
+                    error,
+                )
+            })?;
         validate_order_identity(&order, operation_id)?;
 
         if operation.stage == CheckoutOperationStage::PaymentReady.as_str() {
             if !matches!(
-                order.status.as_str(),
-                "confirmed" | "paid" | "shipped" | "delivered"
+                order.status_kind(),
+                OrderStatusKind::Confirmed
+                    | OrderStatusKind::Paid
+                    | OrderStatusKind::Shipped
+                    | OrderStatusKind::Delivered
             ) {
                 return Err(CheckoutOrderConfirmationError::Conflict(format!(
                     "checkout operation {} is payment_ready but order {} is `{}`",
@@ -103,17 +150,25 @@ impl CheckoutOrderConfirmationExecutor {
             )));
         }
 
-        let order = match order.status.as_str() {
-            "pending" => {
-                self.order_service
-                    .confirm_order(tenant_id, actor_id, order_id)
-                    .await?
-            }
-            "confirmed" => order,
-            status => {
+        let order = match order.status_kind() {
+            OrderStatusKind::Pending => self
+                .order_service
+                .confirm_order(tenant_id, actor_id, order_id)
+                .await
+                .map_err(|error| {
+                    CheckoutOrderConfirmationError::owner_failure(
+                        "confirm_order",
+                        tenant_id,
+                        operation_id,
+                        Some(order_id),
+                        error,
+                    )
+                })?,
+            OrderStatusKind::Confirmed => order,
+            _ => {
                 return Err(CheckoutOrderConfirmationError::Conflict(format!(
-                    "order {} cannot be adopted into payment_ready from status `{status}`",
-                    order_id
+                    "order {} cannot be adopted into payment_ready from status `{}`",
+                    order_id, order.status
                 )));
             }
         };

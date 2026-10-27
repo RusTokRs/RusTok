@@ -15,7 +15,7 @@ The routes continue to call the host-selected typed order read port with the sam
 
 ## Bounded diagnostic projection
 
-The full `PortError` is replaced in the event by the stable marker `redacted`.
+The full `PortError` never reaches the event: the projection records the typed error kind and the owner code length instead.
 
 The event no longer records the complete correlation ID, tenant string, actor UUID, return UUID, change UUID, order UUID, `PortActor`, channel, or locale. Instead it records:
 
@@ -25,7 +25,7 @@ The event no longer records the complete correlation ID, tenant string, actor UU
 - channel presence and length;
 - locale length;
 - the configured deadline;
-- the stable internal code and retryability;
+- the owner code length and retryability;
 - owner/consumer operations, error kind, public code, HTTP status, owner, boundary, and static event message.
 
 Required UUID shapes are `nil` or `non_nil`. Optional resource shapes are `absent`, `present_nil`, or `present_non_nil`. Tenant text additionally fails closed to `empty` or `invalid` if it is not a UUID.

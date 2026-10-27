@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { requirePortSurface } from './lib/rust-public-surface.mjs';
 const root = new URL('../../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
 const json = (path) => JSON.parse(read(path));
@@ -26,7 +27,12 @@ if (!port || port.name !== 'OutboxRelayPort' || !port.operations.includes('proce
 if (port.context !== 'rustok_api::ports::PortContext' || port.error !== 'rustok_api::ports::PortError') fail('context/error drift');
 if (port.deadline_required !== true || port.idempotency_required !== true) fail('relay control must keep deadline + write idempotency semantics');
 if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/outbox-fba-registry.json"') || !manifest.includes('contract_version = "outbox.relay_control.v1"') || !manifest.includes('context = "rustok_api::ports::PortContext"') || !manifest.includes('error = "rustok_api::ports::PortError"')) fail('manifest FBA provider drift');
-if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib must export ports');
+{
+  // The registry names the ports consumers import; the crate root has to publish exactly those,
+  // whichever re-export shape it uses (the wildcard is accepted, explicit lists are preferred).
+  const surface = requirePortSurface(lib, registry);
+  if (!surface.ok) fail(surface.message);
+}
 for (const marker of ['trait OutboxRelayPort', 'impl OutboxRelayPort for crate::OutboxRelay', 'require_outbox_relay_policy(&context)?', 'PortCallPolicy::write()', 'OutboxRelayRunOnceProjection', 'PortErrorKind::Validation', 'outbox.idempotency_required']) {
   if (!ports.includes(marker)) fail(`ports marker missing ${marker}`);
 }

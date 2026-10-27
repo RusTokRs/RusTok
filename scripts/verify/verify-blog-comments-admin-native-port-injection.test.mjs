@@ -51,7 +51,7 @@ function fixture({
 
   const permission = missingPermission
     ? ''
-    : 'require_manage_permission(&context.auth)?;';
+    : 'require_moderation_permission(&context.auth)?;';
   const listSelector = missingListHandoff ? '' : 'comment_service(&context)';
   const mutationSelector = missingMutationHandoff ? '' : 'comment_service(&context)';
   const listAuthorization = permissionAfterSelector ? `${listSelector}\n${permission}` : `${permission}\n${listSelector}`;
@@ -77,9 +77,9 @@ context.comments_thread_port.clone()
 ${missingInjected || missingFallback ? '' : 'rustok_blog::CommentService::from_runtime_capabilities('}
 }
 ${directConstruction ? 'rustok_blog::CommentService::new(' : ''}
-fn require_manage_permission(
-&[rustok_api::Permission::BLOG_POSTS_MANAGE]
-"Permission denied: blog_posts:manage required"
+fn require_moderation_permission(
+&[rustok_api::Permission::COMMENTS_MODERATE]
+"Permission denied: comments:moderate required"
 #[server(prefix = "/api/fn", endpoint = "blog/admin/moderation-comments")]
 ${listAuthorization}
 page: page.max(1)
@@ -268,7 +268,7 @@ test('rejects removal of the moderation-mutation selector handoff', () => {
   assert.notEqual(rejects({ missingMutationHandoff: true }).status, 0);
 });
 
-test('rejects removal of manage permission checks', () => {
+test('rejects removal of moderation permission checks', () => {
   assert.notEqual(rejects({ missingPermission: true }).status, 0);
 });
 

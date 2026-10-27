@@ -177,7 +177,7 @@ requireAll(inbox, [
 requireAll(reconciler, [
   "pub struct ForumProjectionReconciler",
   "ForumProjectionInbox",
-  "ForumSearchProjector",
+  "SearchProjectionDriver",
 ], `${paths.reconciler} existing execution owner`);
 
 requireAll(worker, [

@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertCanonicalLedger } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -98,15 +99,13 @@ const deliveredSlices = ["FORUM-20H", "FORUM-20I", "FORUM-20J", "FORUM-20K", "FO
 const planSync = contract.canonical_plan_sync ?? {};
 if (planSync.required_ledger_through !== "FORUM-20P") failures.push("forum topic subscription audience contract must require the canonical ledger through FORUM-20P");
 if (JSON.stringify(planSync.required_delivered_sections) !== JSON.stringify(deliveredSlices)) failures.push("forum topic subscription audience contract must require FORUM-20H through FORUM-20P delivered sections");
-if (planSync.status === "pending") {
-  if (planSync.current_plan_through !== "FORUM-20G") failures.push("pending canonical plan synchronization must identify FORUM-20G as the current plan boundary");
-  requireText(plan, "FORUM-20A-G provide", "pending canonical plan synchronization must remain grounded in the current FORUM-20A-G ledger row");
-  for (const slice of deliveredSlices) rejectText(plan, `### Delivered in \`${slice}\``, `canonical plan now contains ${slice}; update canonical_plan_sync before claiming pending through G`);
-} else if (planSync.status === "synchronized") {
-  requireText(plan, "FORUM-20A-P provide", "synchronized canonical plan must advance the FORUM-20 ledger through P");
-  for (const slice of deliveredSlices) requireText(plan, `### Delivered in \`${slice}\``, `synchronized canonical plan is missing the delivered ${slice} section`);
-} else failures.push("canonical_plan_sync.status must be pending or synchronized");
-
+assertCanonicalLedger({
+  failures,
+  plan,
+  slices: deliveredSlices,
+  planSync,
+  label: "canonical plan synchronization",
+});
 for (const marker of [
   "const TOPIC_SUBSCRIPTION_AUDIENCE_ACTOR: &str = \"forum-notification-topic-subscription-audience\"",
   "async fn load_active_topic(",

@@ -12,7 +12,7 @@
   "owner_note": "crates/modules/rustok-notifications/docs/forum-20ab-selected-state.md",
   "canonical_plan": "crates/modules/rustok-forum/docs/implementation-plan.md",
   "canonical_plan_sync": {
-    "status": "pending",
+    "status": "synchronized",
     "required_ledger_through": "FORUM-20AB",
     "required_delivered_sections": [
       "FORUM-20H",
@@ -37,8 +37,8 @@
       "FORUM-20AA",
       "FORUM-20AB"
     ],
-    "current_plan_through": "FORUM-20G",
-    "follow_up": "Synchronize the canonical plan without replacing unrelated concurrent task updates"
+    "current_plan_through": "FORUM-20BA",
+    "follow_up": "Keep the append-only delivered-ledger headings and this contract in step; the summary row is not a synchronization pin"
   },
   "policy": {
     "ownership_scope": "exact non-nil tenant and recipient identities supplied by an authorized caller",

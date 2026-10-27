@@ -13,11 +13,8 @@ use rustok_telemetry::metrics;
 use tracing::Instrument;
 
 use crate::SearchProjectionSource;
-use crate::blog_projector::BlogSearchProjector;
 use crate::forum_inbox::{ForumProjectionInbox, ForumProjectionScope};
-use crate::forum_projector::ForumSearchProjector;
-use crate::docs_projector::DocsSearchProjector;
-use crate::pages_projector::PagesSearchProjector;
+use crate::projection_driver::SearchProjectionDriver;
 use crate::projector::SearchProjector;
 
 const FORUM_INBOX_EVENT_BATCH: usize = 64;
@@ -26,14 +23,11 @@ const FORUM_INBOX_OPPORTUNISTIC_BATCH: usize = 8;
 #[derive(Clone)]
 pub struct SearchIngestionHandler {
     projector: SearchProjector,
-    blog_projector: BlogSearchProjector,
-    blog_source: Option<Arc<dyn SearchProjectionSource>>,
-    forum_projector: Option<ForumSearchProjector>,
+    blog_driver: Option<SearchProjectionDriver>,
+    forum_driver: Option<SearchProjectionDriver>,
     forum_inbox: Option<ForumProjectionInbox>,
-    pages_projector: Option<PagesSearchProjector>,
-    pages_source: Option<Arc<dyn SearchProjectionSource>>,
-    docs_projector: Option<DocsSearchProjector>,
-    docs_source: Option<Arc<dyn SearchProjectionSource>>,
+    pages_driver: Option<SearchProjectionDriver>,
+    docs_driver: Option<SearchProjectionDriver>,
 }
 
 impl SearchIngestionHandler {
@@ -63,53 +57,41 @@ impl SearchIngestionHandler {
         pages_source: Option<Arc<dyn SearchProjectionSource>>,
         docs_source: Option<Arc<dyn SearchProjectionSource>>,
     ) -> Self {
-        let forum_projector =
-            forum_source.map(|source| ForumSearchProjector::new(db.clone(), source));
-        let forum_inbox = forum_projector
+        let forum_driver = build_projection_driver(&db, forum_source);
+        let forum_inbox = forum_driver
             .as_ref()
             .map(|_| ForumProjectionInbox::new(db.clone()));
-        let pages_projector =
-            pages_source.clone().map(|source| PagesSearchProjector::new(db.clone(), source));
-        let docs_projector =
-            docs_source.clone().map(|source| DocsSearchProjector::new(db.clone(), source));
         Self {
             projector: SearchProjector::new(db.clone()),
-            blog_projector: BlogSearchProjector::new(db),
-            blog_source,
-            forum_projector,
+            blog_driver: build_projection_driver(&db, blog_source),
+            forum_driver,
             forum_inbox,
-            pages_projector,
-            pages_source,
-            docs_projector,
-            docs_source,
+            pages_driver: build_projection_driver(&db, pages_source),
+            docs_driver: build_projection_driver(&db, docs_source),
         }
-    }
-
-    pub fn blog_source(&self) -> Option<&Arc<dyn SearchProjectionSource>> {
-        self.blog_source.as_ref()
-    }
-
-    pub fn pages_source(&self) -> Option<&Arc<dyn SearchProjectionSource>> {
-        self.pages_source.as_ref()
-    }
-
-    pub fn docs_source(&self) -> Option<&Arc<dyn SearchProjectionSource>> {
-        self.docs_source.as_ref()
     }
 
     async fn rebuild_tenant(&self, tenant_id: Uuid) -> HandlerResult {
         self.projector.rebuild_tenant(tenant_id).await?;
-        self.blog_projector.rebuild_tenant(tenant_id).await?;
-        if let Some(projector) = &self.forum_projector {
-            projector.rebuild_tenant(tenant_id).await?;
-        }
-        if let Some(projector) = &self.pages_projector {
-            projector.rebuild_tenant(tenant_id).await?;
-        }
-        if let Some(projector) = &self.docs_projector {
-            projector.rebuild_tenant(tenant_id).await?;
+        for driver in self.owner_drivers().into_iter().flatten() {
+            driver.rebuild_tenant(tenant_id).await?;
         }
         Ok(())
+    }
+
+    /// The neutral storage drivers of every owner source that Search is hosting.
+    ///
+    /// Search does not ask which module a driver belongs to: each entry is the same
+    /// `SearchProjectionDriver`, scoped by its own source module. The order is
+    /// therefore not part of the contract — every driver replaces only its own
+    /// `(tenant, source_module)` scope.
+    fn owner_drivers(&self) -> [Option<&SearchProjectionDriver>; 4] {
+        [
+            self.blog_driver.as_ref(),
+            self.forum_driver.as_ref(),
+            self.pages_driver.as_ref(),
+            self.docs_driver.as_ref(),
+        ]
     }
 
     async fn handle_reindex_request(
@@ -126,79 +108,42 @@ impl SearchIngestionHandler {
                 self.projector.upsert_product(tenant_id, product_id).await
             }
             ("product", None) => self.projector.rebuild_product_scope(tenant_id).await,
-            ("blog", Some(post_id)) => self.blog_projector.upsert_post(tenant_id, post_id).await,
-            ("blog", None) => self.blog_projector.rebuild_tenant(tenant_id).await,
+            ("blog", Some(post_id)) => {
+                refresh_owner_entity(self.blog_driver.as_ref(), tenant_id, "blog_post", post_id)
+                    .await
+            }
+            ("blog", None) => rebuild_owner_scope(self.blog_driver.as_ref(), tenant_id).await,
             ("pages" | "page", Some(page_id)) => {
-                if let Some(projector) = &self.pages_projector {
-                    projector.refresh_entity(tenant_id, "page", page_id).await?;
-                }
-                Ok(())
+                refresh_owner_entity(self.pages_driver.as_ref(), tenant_id, "page", page_id).await
             }
             ("pages" | "page", None) => {
-                if let Some(projector) = &self.pages_projector {
-                    projector.rebuild_tenant(tenant_id).await?;
-                }
-                Ok(())
+                rebuild_owner_scope(self.pages_driver.as_ref(), tenant_id).await
             }
             ("docs" | "doc" | "doc_page", Some(doc_id)) => {
-                if let Some(projector) = &self.docs_projector {
-                    projector.refresh_entity(tenant_id, "doc_page", doc_id).await?;
-                }
-                Ok(())
+                refresh_owner_entity(self.docs_driver.as_ref(), tenant_id, "doc_page", doc_id).await
             }
             ("docs" | "doc" | "doc_page", None) => {
-                if let Some(projector) = &self.docs_projector {
-                    projector.rebuild_tenant(tenant_id).await?;
-                }
-                Ok(())
+                rebuild_owner_scope(self.docs_driver.as_ref(), tenant_id).await
             }
             _ => Ok(()),
         }
     }
 
-    async fn handle_pages_module_toggle(&self, tenant_id: Uuid, enabled: bool) -> HandlerResult {
-        let Some(projector) = &self.pages_projector else {
-            return Ok(());
-        };
-        if enabled {
-            projector.rebuild_tenant(tenant_id).await
-        } else {
-            projector.delete_tenant(tenant_id).await
-        }
-    }
-
-    async fn handle_docs_module_toggle(&self, tenant_id: Uuid, enabled: bool) -> HandlerResult {
-        let Some(projector) = &self.docs_projector else {
-            return Ok(());
-        };
-        if enabled {
-            projector.rebuild_tenant(tenant_id).await
-        } else {
-            projector.delete_tenant(tenant_id).await
-        }
-    }
-
-    async fn handle_blog_module_toggle(&self, tenant_id: Uuid, enabled: bool) -> HandlerResult {
-        if enabled {
-            self.blog_projector.rebuild_tenant(tenant_id).await
-        } else {
-            self.blog_projector.delete_tenant(tenant_id).await
-        }
-    }
-
-    async fn handle_forum_module_toggle(&self, tenant_id: Uuid, enabled: bool) -> HandlerResult {
-        let Some(projector) = &self.forum_projector else {
-            return Ok(());
-        };
-        if enabled {
-            projector.rebuild_tenant(tenant_id).await
-        } else {
-            projector.delete_tenant(tenant_id).await
-        }
+    /// Replaces every Blog document that embeds a public author summary.
+    ///
+    /// The author name is a related-owner value: it is not part of the post row, so
+    /// the source cannot enumerate "the documents of one author" from the storage
+    /// side, and Search cannot filter stored rows by an owner payload key it does not
+    /// own. A tenant-scoped rebuild is the only correct answer the neutral contract
+    /// can give, and it is the same trade-off the Forum author projection already
+    /// makes. It keeps the previous scope on failure, because the driver replaces it
+    /// in one transaction.
+    async fn refresh_blog_author_scope(&self, tenant_id: Uuid) -> HandlerResult {
+        rebuild_owner_scope(self.blog_driver.as_ref(), tenant_id).await
     }
 
     async fn apply_forum_inbox_event(&self, envelope: &EventEnvelope) -> HandlerResult {
-        let Some(projector) = &self.forum_projector else {
+        let Some(forum_driver) = &self.forum_driver else {
             return Ok(());
         };
         match &envelope.event {
@@ -208,14 +153,15 @@ impl SearchIngestionHandler {
             | DomainEvent::ForumTopicPinned { .. }
             | DomainEvent::ForumReplyStatusChanged { .. }
             | DomainEvent::ProfileUpdated { .. }
-            | DomainEvent::UserDeleted { .. } => projector.rebuild_tenant(envelope.tenant_id).await,
+            | DomainEvent::UserDeleted { .. } => {
+                forum_driver.rebuild_tenant(envelope.tenant_id).await
+            }
             DomainEvent::TenantModuleToggled {
                 module_slug,
                 enabled,
                 ..
             } if module_slug == "forum" => {
-                self.handle_forum_module_toggle(envelope.tenant_id, *enabled)
-                    .await
+                toggle_owner_scope(Some(forum_driver), envelope.tenant_id, *enabled).await
             }
             DomainEvent::LocaleEnabled { .. }
             | DomainEvent::LocaleDisabled { .. }
@@ -227,10 +173,10 @@ impl SearchIngestionHandler {
             } => match (target_type.as_str(), target_id) {
                 ("search", _) => self.rebuild_tenant(envelope.tenant_id).await,
                 ("forum", _) | ("forum_topic", Some(_)) => {
-                    projector.rebuild_tenant(envelope.tenant_id).await
+                    forum_driver.rebuild_tenant(envelope.tenant_id).await
                 }
                 ("forum_category", Some(category_id)) => {
-                    projector
+                    forum_driver
                         .refresh_entity(envelope.tenant_id, "forum_category", *category_id)
                         .await
                 }
@@ -260,6 +206,70 @@ impl SearchIngestionHandler {
             }
         }
         Ok(())
+    }
+}
+
+/// Builds the neutral storage driver for a source the host registered.
+///
+/// `None` means the host did not enable that module, which is not an error: the
+/// handler simply stops claiming its events and reindex requests.
+fn build_projection_driver(
+    db: &DatabaseConnection,
+    source: Option<Arc<dyn SearchProjectionSource>>,
+) -> Option<SearchProjectionDriver> {
+    source.map(|source| SearchProjectionDriver::new(db.clone(), source))
+}
+
+/// Re-projects one entity through the driver that owns it.
+///
+/// An unregistered source is a no-op rather than a failure: the module is not part
+/// of this installation, so there is no document to refresh.
+async fn refresh_owner_entity(
+    driver: Option<&SearchProjectionDriver>,
+    tenant_id: Uuid,
+    entity_type: &str,
+    entity_id: Uuid,
+) -> HandlerResult {
+    match driver {
+        Some(driver) => driver.refresh_entity(tenant_id, entity_type, entity_id).await,
+        None => Ok(()),
+    }
+}
+
+/// Replaces the whole tenant scope of one owner.
+async fn rebuild_owner_scope(
+    driver: Option<&SearchProjectionDriver>,
+    tenant_id: Uuid,
+) -> HandlerResult {
+    match driver {
+        Some(driver) => driver.rebuild_tenant(tenant_id).await,
+        None => Ok(()),
+    }
+}
+
+/// Removes the stored documents of one entity that left the public corpus.
+async fn delete_owner_entity(
+    driver: Option<&SearchProjectionDriver>,
+    tenant_id: Uuid,
+    entity_type: &str,
+    entity_id: Uuid,
+) -> HandlerResult {
+    match driver {
+        Some(driver) => driver.delete_entity(tenant_id, entity_type, entity_id).await,
+        None => Ok(()),
+    }
+}
+
+/// Applies a module enable/disable switch to one owner scope.
+async fn toggle_owner_scope(
+    driver: Option<&SearchProjectionDriver>,
+    tenant_id: Uuid,
+    enabled: bool,
+) -> HandlerResult {
+    match driver {
+        Some(driver) if enabled => driver.rebuild_tenant(tenant_id).await,
+        Some(driver) => driver.delete_tenant(tenant_id).await,
+        None => Ok(()),
     }
 }
 
@@ -306,29 +316,33 @@ impl EventHandler for SearchIngestionHandler {
             | DomainEvent::ForumTopicReplied { .. }
             | DomainEvent::ForumTopicStatusChanged { .. }
             | DomainEvent::ForumTopicPinned { .. }
-            | DomainEvent::ForumReplyStatusChanged { .. }
-            | DomainEvent::ProfileUpdated { .. } => self.forum_projector.is_some(),
+            | DomainEvent::ForumReplyStatusChanged { .. } => self.forum_driver.is_some(),
+            // A public author summary is embedded in both Forum and Blog documents,
+            // so either hosted source makes the profile event relevant.
+            DomainEvent::ProfileUpdated { .. } => {
+                self.forum_driver.is_some() || self.blog_driver.is_some()
+            }
             DomainEvent::TagAttached { target_type, .. }
             | DomainEvent::TagDetached { target_type, .. } => target_type == "node",
             DomainEvent::TenantModuleToggled { module_slug, .. } => {
                 module_slug == "blog"
-                    || (module_slug == "forum" && self.forum_projector.is_some())
-                    || (module_slug == "pages" && self.pages_projector.is_some())
-                    || (module_slug == "docs" && self.docs_projector.is_some())
+                    || (module_slug == "forum" && self.forum_driver.is_some())
+                    || (module_slug == "pages" && self.pages_driver.is_some())
+                    || (module_slug == "docs" && self.docs_driver.is_some())
             }
             DomainEvent::ReindexRequested { target_type, .. } => {
                 target_type == "search"
                     || target_type == "content"
                     || target_type == "product"
                     || target_type == "blog"
-                    || (self.forum_projector.is_some()
+                    || (self.forum_driver.is_some()
                         && matches!(
                             target_type.as_str(),
                             "forum" | "forum_category" | "forum_topic"
                         ))
-                    || (self.pages_projector.is_some()
+                    || (self.pages_driver.is_some()
                         && matches!(target_type.as_str(), "pages" | "page"))
-                    || (self.docs_projector.is_some()
+                    || (self.docs_driver.is_some()
                         && matches!(target_type.as_str(), "docs" | "doc" | "doc_page"))
             }
             _ => false,
@@ -350,19 +364,17 @@ impl EventHandler for SearchIngestionHandler {
         );
 
         async {
+            // The Blog documents embed a public author summary, so an author identity
+            // change has to refresh them before the Forum inbox is given the event:
+            // `UserDeleted` and `ProfileUpdated` are Forum inbox scopes, and the early
+            // return below would otherwise keep the stale Blog author name forever.
             if matches!(
                 &envelope.event,
-                DomainEvent::UserUpdated { .. } | DomainEvent::UserDeleted { .. }
+                DomainEvent::UserUpdated { .. }
+                    | DomainEvent::UserDeleted { .. }
+                    | DomainEvent::ProfileUpdated { .. }
             ) {
-                let user_id = match &envelope.event {
-                    DomainEvent::UserUpdated { user_id } | DomainEvent::UserDeleted { user_id } => {
-                        *user_id
-                    }
-                    _ => unreachable!(),
-                };
-                self.blog_projector
-                    .refresh_author_projection(envelope.tenant_id, user_id)
-                    .await?;
+                self.refresh_blog_author_scope(envelope.tenant_id).await?;
             }
 
             if let Some(scope) = ForumProjectionScope::for_event(&envelope.event)
@@ -392,10 +404,13 @@ impl EventHandler for SearchIngestionHandler {
                 | DomainEvent::NodeUpdated { node_id, kind }
                 | DomainEvent::NodePublished { node_id, kind } => {
                     if kind == "page" {
-                        if let Some(projector) = &self.pages_projector {
-                            projector.refresh_entity(envelope.tenant_id, "page", *node_id).await?;
-                        }
-                        Ok(())
+                        refresh_owner_entity(
+                            self.pages_driver.as_ref(),
+                            envelope.tenant_id,
+                            "page",
+                            *node_id,
+                        )
+                        .await
                     } else {
                         self.projector
                             .upsert_node(envelope.tenant_id, *node_id)
@@ -404,10 +419,13 @@ impl EventHandler for SearchIngestionHandler {
                 }
                 DomainEvent::NodeUnpublished { node_id, kind } => {
                     if kind == "page" {
-                        if let Some(projector) = &self.pages_projector {
-                            projector.delete_entity(envelope.tenant_id, "page", *node_id).await?;
-                        }
-                        Ok(())
+                        delete_owner_entity(
+                            self.pages_driver.as_ref(),
+                            envelope.tenant_id,
+                            "page",
+                            *node_id,
+                        )
+                        .await
                     } else {
                         self.projector
                             .upsert_node(envelope.tenant_id, *node_id)
@@ -422,10 +440,13 @@ impl EventHandler for SearchIngestionHandler {
                 }
                 DomainEvent::NodeDeleted { node_id, kind } => {
                     if kind == "page" {
-                        if let Some(projector) = &self.pages_projector {
-                            projector.delete_entity(envelope.tenant_id, "page", *node_id).await?;
-                        }
-                        Ok(())
+                        delete_owner_entity(
+                            self.pages_driver.as_ref(),
+                            envelope.tenant_id,
+                            "page",
+                            *node_id,
+                        )
+                        .await
                     } else {
                         self.projector
                             .delete_node(envelope.tenant_id, *node_id)
@@ -468,32 +489,42 @@ impl EventHandler for SearchIngestionHandler {
                 }
                 DomainEvent::BlogPostCreated { post_id, .. }
                 | DomainEvent::BlogPostPublished { post_id, .. }
-                | DomainEvent::BlogPostUnpublished { post_id }
-                | DomainEvent::BlogPostUpdated { post_id, .. }
-                | DomainEvent::BlogPostArchived { post_id, .. } => {
-                    self.blog_projector
-                        .upsert_post(envelope.tenant_id, *post_id)
-                        .await
+                | DomainEvent::BlogPostUpdated { post_id, .. } => {
+                    refresh_owner_entity(
+                        self.blog_driver.as_ref(),
+                        envelope.tenant_id,
+                        "blog_post",
+                        *post_id,
+                    )
+                    .await
                 }
-                DomainEvent::BlogPostDeleted { post_id } => {
-                    self.blog_projector
-                        .delete_post(envelope.tenant_id, *post_id)
-                        .await
+                // Unpublishing or archiving removes the post from the public corpus,
+                // so the stored document is deleted without asking the source to
+                // re-resolve a row it can no longer see there.
+                DomainEvent::BlogPostUnpublished { post_id }
+                | DomainEvent::BlogPostArchived { post_id, .. }
+                | DomainEvent::BlogPostDeleted { post_id } => {
+                    delete_owner_entity(
+                        self.blog_driver.as_ref(),
+                        envelope.tenant_id,
+                        "blog_post",
+                        *post_id,
+                    )
+                    .await
                 }
                 DomainEvent::TenantModuleToggled {
                     module_slug,
                     enabled,
                     ..
                 } if module_slug == "blog" => {
-                    self.handle_blog_module_toggle(envelope.tenant_id, *enabled)
-                        .await
+                    toggle_owner_scope(self.blog_driver.as_ref(), envelope.tenant_id, *enabled).await
                 }
                 DomainEvent::TenantModuleToggled {
                     module_slug,
                     enabled,
                     ..
                 } if module_slug == "pages" => {
-                    self.handle_pages_module_toggle(envelope.tenant_id, *enabled)
+                    toggle_owner_scope(self.pages_driver.as_ref(), envelope.tenant_id, *enabled)
                         .await
                 }
                 DomainEvent::TenantModuleToggled {
@@ -501,7 +532,7 @@ impl EventHandler for SearchIngestionHandler {
                     enabled,
                     ..
                 } if module_slug == "docs" => {
-                    self.handle_docs_module_toggle(envelope.tenant_id, *enabled)
+                    toggle_owner_scope(self.docs_driver.as_ref(), envelope.tenant_id, *enabled)
                         .await
                 }
                 DomainEvent::LocaleEnabled { .. }

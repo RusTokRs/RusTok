@@ -1,5 +1,204 @@
 # rustok-search implementation plan
 
+## 2026-10-25 Phase 4 — Forum storefront legacy retirement
+
+The specialized Forum storefront pipeline is gone; the generic declared-corpus path is the
+only storefront Search path. No compatibility bridge remains.
+
+- [x] Deleted `forum_storefront_execution.rs`, `forum_storefront_execution_public.rs`,
+      `storefront_result_eligibility.rs`, `forum_document_filters.rs`,
+      `forum_current_channel_filter.rs` and `graphql/forum_storefront.rs` from this crate,
+      plus `transport/forum_graphql_adapter.rs` and
+      `transport/forum_native_server_adapter.rs` from `rustok-search-storefront`. Module
+      declarations, `pub use` re-exports, GraphQL schema wiring and storefront transport
+      selection were pruned in the same change.
+- [x] Removed `ExecuteForumStorefrontSearch`/`execute_forum_storefront_search`, the
+      `forumStorefrontSearch` GraphQL operation, `StorefrontSearchResultEligibilityPort`
+      (type, shared alias, resolver, candidate kind) and
+      `MAX_FORUM_SEARCH_RESULT_CANDIDATES`. §14 of `AGENTS.md` forbids keeping a stub, and
+      a `#[deprecated]` bridge over the same SPI is a stub with a comment.
+- [x] `StorefrontSearchCategoryScopePort` lost its Forum name: it now declares
+      `source_module()` and `expand_category_scope()`, and
+      `resolve_storefront_search_category_ids` consults it only when the request scope is
+      exactly that single module. A missing capability, or a scope naming any other
+      module, keeps the caller's exact `category_ids` instead of failing the request —
+      category scope is an enrichment, not an authorization decision.
+- [x] The host Forum policy
+      (`apps/server/src/services/forum_search_result_eligibility.rs`) implements
+      `SearchAudiencePolicyPort` and nothing else; it owns status, category and
+      topic/reply authorization and converts neutral `SearchCandidateDescriptor`s by
+      entity type.
+- [x] The five `apps/server/tests/forum_versioned_invalidation_*` integration tests were
+      migrated to `execute_audience_eligible_search` with a locally composed
+      `SearchAudienceRegistry`, not deleted and not re-pointed at a bridge.
+- [x] `execute_audience_eligible_search` now takes its transport boundary as
+      `StorefrontSearchAudienceContext` (registry, optional owner category-scope
+      capability, auth, request context, transport). A caller can no longer forget one
+      security input by miscounting positional arguments, and a future capability is a
+      field instead of a sixth parameter.
+- [x] Category scope became a real part of the generic path instead of a legacy-only
+      feature: the executor consults it after the discovery preflight, uses the locale
+      the request actually runs in (explicit query locale, else the host-resolved request
+      locale) and never invents a default. An owner that resolves a requested root to no
+      visible category short-circuits to an empty result — previously the empty
+      `category_ids` fell through to "no category predicate", i.e. the whole corpus.
+      `audience_security.rs` regression test:
+      `category_scope_resolved_to_nothing_returns_empty_result`.
+- [x] `FORUM_SEARCH_SOURCE_MODULE` moved out of `rustok-search` to its owner
+      (`rustok_forum::FORUM_MODULE_SLUG`), so the engine crate exports no per-module named
+      constant.
+- [x] Nine `scripts/verify/verify-forum-search-*.mjs` guards that pinned the deleted
+      surface were removed together with their contract JSONs; four contracts that
+      described only the deleted pipeline were deleted as well; the survivors point at the
+      generic owner and `verify-search-audience-classes.mjs`, and that verifier now fails
+      when any retired file or symbol reappears, when a Forum Search contract names a
+      missing path or a retired symbol, or when the category-scope capability loses its
+      `source_module` gate.
+- [x] Guards that pinned the same legacy markers were moved to the durable spelling:
+      `verify-forum-anonymous-discovery`, the three LINK-FORUM-03 proofs, the two
+      versioned-invalidation proofs (`deletion_acl_ordering`, `normal_delivery`), the
+      rebuild scope-preservation guard (now pinning one projector instead of the retired
+      `projector_legacy` name) and the projection-reconciliation status guard.
+
+## 2026-10-25 Blog projection cutover
+
+`blog_projector.rs` is deleted. Blog is the fourth owner source that Search stores through
+`SearchProjectionDriver`, and the last one in `rustok-search` that owned a copy of the
+transactional scope replacement for a module.
+
+- [x] The documents come from `rustok-blog`'s `BlogSearchProjectionSource`, which was
+      already complete: article-body indexing through
+      `crate::richtext::project_stored_article`, canonical tag and category names through
+      the Blog tag service and the Taxonomy owner reader, author names through the
+      `ProfileSummaryReader` port, cursor pagination over `published` + stamped posts.
+- [x] The indexed corpus is the owner's public corpus. A draft is no longer stored as a
+      non-public row, and unpublishing, archiving or deleting removes the document
+      through `delete_entity` without asking the source to re-resolve a row it can no
+      longer see. This is the same rule Pages, Docs and Forum already follow; the draft
+      rows were a `blog_projector` behaviour, not a Search contract.
+- [x] The author name no longer comes from `LEFT JOIN users u`: the legacy join published
+      the account name of profiles whose visibility forbids it. The port answers in the
+      document tenant with `ProfileSummaryAudience::Anonymous`, and a missing port
+      degrades to no author name with a warning instead of a hard failure.
+- [x] `UserUpdated`, `UserDeleted` and `ProfileUpdated` rebuild the tenant Blog scope
+      through the driver. The author name is a related-owner value: the source cannot
+      enumerate "the documents of one author" and Search cannot filter stored rows by a
+      payload key it does not own, so a tenant-scoped rebuild is the only correct answer
+      the neutral contract can give. It runs before the Forum inbox is given the event,
+      because `UserDeleted` and `ProfileUpdated` are Forum inbox scopes and the early
+      return used to keep the stale Blog author name forever.
+- [x] `ForumProjectionReconciler::with_blog_source` gives the Forum sweeper the same Blog
+      driver. The inbox owns tenant-wide scopes that also invalidate Blog, so a sweep that
+      skipped Blog would leave a deleted account's author name in place. A host without
+      the Blog module leaves the optional driver empty.
+- [x] Guards were re-pointed, not weakened: `verify-search-blog-projection`,
+      `verify-blog-tag-canonical-projection-source` and
+      `verify-blog-category-search-reindex` now pin the owner source (tag and category
+      sources, article body, public corpus) instead of the deleted SQL;
+      `verify-search-projection-writer-boundary` shrank its allowlist to
+      `projector_core.rs`; `verify-forum-search-rebuild-scope-preservation` pins the
+      driver's `source_module`-scoped transaction and the ingestion loop instead of
+      `self.blog_projector.rebuild_tenant`.
+- [x] The PostgreSQL lifecycle harness runs the real owner source and a Profiles port
+      stub. It also documents why the harness sets the test schema on the *startup*
+      `search_path` of every pooled connection: the driver replaces a scope inside a
+      transaction while the owner source answers on another connection, so one
+      `SET search_path` on one checkout is not enough (and a single-connection pool would
+      deadlock).
+
+Static review only: no Rust toolchain ran in the authoring environment. The guard family
+and the crate's source-text contracts are the executable part.
+
+## 2026-10-25 Declared Search audience corpus
+
+The audience mechanism was audited end to end and rebuilt around declared audience
+classes ([ADR 2026-10-25](../../../../DECISIONS/2026-10-25-search-audience-declared-corpus.md)):
+
+- [x] `SearchAudienceRegistry` declares each source module exactly once as
+      `SearchAudienceClass::Public` or `SearchAudienceClass::Gated`; duplicate
+      declarations are `conflict` errors and `with_policy` (panic + silent overwrite)
+      is removed.
+- [x] Undeclared modules are denied: they never pass through as public candidates and
+      `public_discovery_allowed` answers `false` for them.
+- [x] GraphQL `storefrontSearch` / `storefrontSearchSuggestions` and the native SSR
+      adapter fail closed when the host did not compose the registry; `apps/server`
+      propagates declaration and registration failures instead of `let _ =`.
+- [x] The GraphQL schema now receives the registry as request data
+      (`apps/server/src/graphql/schema.rs`). Search is a required module, so the manifest
+      `runtime_data_factory` hook is not wired for it; without the explicit attachment the
+      storefront fields resolved no registry at all and failed closed on every call.
+- [x] `apps/server` owns the corpus inventory in `search_public_source_modules()`
+      (`blog`, `commerce`, `docs`, `pages`, `content` plus
+      `rustok_content::CONTENT_NODE_KINDS`) and registers Forum as gated in the same
+      composition step. `content` is the projector's fallback bucket for an empty stored
+      kind.
+- [x] Content node kinds are a single closed list: `projector_core` writes
+      `source_module = node.kind`, so `CONTENT_NODE_KINDS` is both the write allowlist and
+      the public corpus declaration. Before this, the projector emitted `post`/`page`/
+      `article`/`custom`/`block`/`menu`/`menu_item` while the host declared `content`, and
+      every published CMS document would have become invisible in public Search.
+- [x] `SearchAudiencePolicyPort::public_discovery_allowed` is a required method; no
+      permissive default remains.
+- [x] Candidate authorization is batched (`MAX_SEARCH_AUDIENCE_CANDIDATES` per call) and
+      the scan is bounded by `MAX_SEARCH_AUDIENCE_SCAN_DOCUMENTS`; the former
+      100-candidate *request* rejection is gone and public modules are never bounded.
+- [x] One scoped SQL query (`source_module NOT IN (gated) OR document_id IN (authorized)`)
+      produces totals, facets, ordering and pagination; `build_authorized_facets`, the
+      `forum_visible_status` fallback and the duplicated facet vocabulary are removed.
+- [x] `PortError` keeps its taxonomy across the SPI boundary: `NotFound`/`Forbidden`
+      exclude a module, `Unavailable`/`Timeout` fail the request, `InvariantViolation`
+      is internal.
+- [x] Storefront suggestions take `StorefrontSuggestionAudience`, apply the declared
+      module scope, the anonymous discovery preflight, and per-candidate authorization.
+- [x] `exclude_forum`, `source_module <> 'forum'` and the exclusion special case are
+      removed from `pg_engine`; the engine receives only `SearchAudienceDocumentScope`.
+- [x] Query rules cannot inject a pinned document while a gated module is in scope, and
+      pinned documents pass payload channel visibility for every entity type.
+- [x] `npm run verify:search:audience` guards the declared corpus, the fail-closed
+      boundaries, the neutral engine scope and suggestion parity.
+
+Follow-up completed on 2026-10-25: physical removal of the legacy Forum storefront
+files and of `graphql/forum_storefront.rs` (see the Phase 4 entry above).
+
+Open follow-up:
+
+- [ ] Decide whether Blog indexing keeps the SQL projector in this crate or switches to
+      the Blog-owned `SearchProjectionSource`; today the module-side source is composed
+      but not consulted by `SearchIngestionHandler`, and the two implementations must
+      stay semantically identical.
+
+## 2026-10-25 Pages and Docs projections use the neutral storage driver
+
+`pages_projector.rs` and `docs_projector.rs` were two near-verbatim copies of
+`projection_driver.rs` with the module name hard-coded and a private staging table
+each. Both files are deleted. `SearchIngestionHandler` now holds one
+`SearchProjectionDriver` per registered owner source (`forum`, `pages`, `docs`), so a
+page or doc entity refresh, a scope rebuild, a module toggle and an entity deletion all
+run through the same transactional storage path the Forum projection already used.
+
+- The driver gained `delete_entity` (delete one entity's documents without asking the
+  source, for a lifecycle event that reports the entity as gone) and one shared
+  `validate_entity_type`; `refresh_entity` and `delete_entity` reject a blank or
+  oversized entity type before touching the database.
+- The driver now rejects a document whose `document_id` is nil. That was the invariant
+  the two deleted projectors enforced locally, and the driver is the only writer, so it
+  belongs to the storage contract.
+- Nothing changes for a caller: `with_all_projection_sources` keeps its signature, the
+  reindex target names (`pages`/`page`, `docs`/`doc`/`doc_page`) and the
+  `TenantModuleToggled` handling are unchanged, and an unregistered source stays a
+  no-op instead of an error. Metric operations become the driver's neutral names with a
+  `source_module` label instead of `pages_projection`/`docs_projection`.
+- The duplicated toggle helpers (`handle_pages_module_toggle`,
+  `handle_docs_module_toggle`, `handle_forum_module_toggle`) collapsed into one
+  `toggle_owner_scope`, and the same for refresh/rebuild/delete, so a fourth owner
+  source does not add a fourth copy of the same dispatch.
+- Still open: only `projector_core.rs` (content/product) keeps its own SQL. Blog was cut
+  over in the 2026-10-25 Blog projection cutover section.
+
+This slice was statically reviewed only: no Rust toolchain ran in the authoring
+environment. The Search/Forum/LINK-FORUM-03 guard family and the crate's source-text
+contracts are the executable part and were updated in the same change.
+
 ## 2026-10-16 Audience Security SPI and Projection Source Decoupling
 
 The Search module generalizes cross-module authorization and ingestion boundaries:
@@ -7,7 +206,7 @@ The Search module generalizes cross-module authorization and ingestion boundarie
    - Introduced `SearchAudiencePolicyPort` and `SearchAudienceRegistry` replacing hard-coded Forum audience couplings with a generic port-based registry.
    - Domain modules implement `SearchAudiencePolicyPort` directly (`ServerForumSearchResultEligibilityPort`), registered directly in `apps/server/src/services/mod.rs`.
    - Wired `SearchAudienceRegistry` into GraphQL `storefrontSearch` and native SSR `storefront_search_native`, providing real-time multi-module candidate post-authorization.
-   - Historical Forum endpoints (`execute_forum_storefront_search` and `StorefrontSearchResultEligibilityPort`) are preserved as `#[deprecated]` adapter bridges over the generic SPI, satisfying ADR `2026-10-16-generic-search-audience-security-spi.md` (§3) and existing contract verification suites.
+   - Historical Forum endpoints (`execute_forum_storefront_search` and `StorefrontSearchResultEligibilityPort`) were preserved at first as `#[deprecated]` adapter bridges over the generic SPI, satisfying ADR `2026-10-16-generic-search-audience-security-spi.md` (§3) and the then-current contract verification suites. They were physically removed on 2026-10-25 (Phase 4) once every caller, verifier and contract moved to the generic SPI.
 2. **Search Projection Sources (`SearchProjectionSourceRegistry`):**
    - Generalizes projection ingestion from domain modules via `SearchProjectionSource` and `SearchProjectionSourceFactory`.
    - `SearchIngestionHandler::with_projection_sources` accepts both `blog_source` and `forum_source` registered via module runtime extensions.
@@ -106,6 +305,11 @@ preserves allowed ranking order, and computes visible totals, facets, offset, an
 limit after owner eligibility. Mixed, unspecified, Product, Blog, Content, and
 Forum-without-category requests remain on the existing exact-category
 `storefrontSearch` path.
+
+> Historical note: the dedicated Forum-only path described in this section was removed
+> on 2026-10-25 (Phase 4). The durable design is the declared-corpus path at the top of
+> this file; the owner port that survives is `SearchAudiencePolicyPort`, and category
+> scope survives as the module-neutral `StorefrontSearchCategoryScopePort`.
 
 `FORUM-23B2F1` adds an exact bounded Forum author filter without changing the
 neutral `SearchQuery`, `SearchPreviewInput`, or shared storefront filter DTO.
@@ -239,7 +443,7 @@ projection can remain stale after recovery.
 - Exact Forum category filter contract:
   `crates/modules/rustok-forum/contracts/forum-search-exact-category-filter.json`.
 - Exact Forum category filter guardrail:
-  `scripts/verify/verify-forum-search-exact-category-filter.mjs`.
+  `scripts/verify/verify-search-audience-classes.mjs`.
 - Forum category-subtree owner status: `source_complete_execution_pending`.
 - Forum richer-audience subtree contract:
   `crates/modules/rustok-forum/contracts/forum-search-category-audience-scope.json`.
@@ -247,42 +451,42 @@ projection can remain stale after recovery.
   `source_complete_execution_pending`.
 - Forum-only storefront Search contract and guardrail:
   `crates/modules/rustok-forum/contracts/forum-search-storefront-scope.json` and
-  `scripts/verify/verify-forum-search-storefront-scope.mjs`.
+  `scripts/verify/verify-search-audience-classes.mjs`.
 - Forum topic/reply result eligibility status:
   `source_complete_execution_pending` under `FORUM-23B2D`.
 - Forum result eligibility contract and guardrail:
   `crates/modules/rustok-forum/contracts/forum-search-result-eligibility.json` and
-  `scripts/verify/verify-forum-search-result-eligibility.mjs`.
+  `scripts/verify/verify-search-audience-classes.mjs`.
 - Trusted storefront channel authority status:
   `source_complete_execution_pending` under `FORUM-23B2E1`.
 - Trusted channel contract and guardrail:
   `crates/modules/rustok-forum/contracts/forum-search-trusted-channel-authority.json` and
-  `scripts/verify/verify-forum-search-trusted-channel-authority.mjs`.
+  `scripts/verify/verify-search-audience-classes.mjs`.
 - Product channel visibility status:
   `source_complete_execution_pending` under `FORUM-23B2E2`.
 - Product channel visibility contract and guardrail:
   `crates/modules/rustok-forum/contracts/forum-search-product-channel-visibility.json` and
-  `scripts/verify/verify-forum-search-product-channel-visibility.mjs`.
+  `scripts/verify/verify-search-audience-classes.mjs`.
 - Exact Forum author filter status:
   `source_complete_execution_pending` under `FORUM-23B2F1`.
 - Exact Forum author filter contract and guardrail:
   `crates/modules/rustok-forum/contracts/forum-search-author-filter.json` and
-  `scripts/verify/verify-forum-search-author-filter.mjs`.
+  `scripts/verify/verify-search-audience-classes.mjs`.
 - Exact Forum tag and solved filter status:
   `source_complete_execution_pending` under `FORUM-23B2F2`.
 - Exact Forum tag and solved contract and guardrail:
   `crates/modules/rustok-forum/contracts/forum-search-tag-solved-filter.json` and
-  `scripts/verify/verify-forum-search-tag-solved-filter.mjs`.
+  `scripts/verify/verify-search-audience-classes.mjs`.
 - Exact Forum locale and date filter status:
   `source_complete_execution_pending` under `FORUM-23B2F3`.
 - Exact Forum locale/date contract and guardrail:
   `crates/modules/rustok-forum/contracts/forum-search-locale-date-filter.json` and
-  `scripts/verify/verify-forum-search-locale-date-filter.mjs`.
+  `scripts/verify/verify-search-audience-classes.mjs`.
 - Trusted current-channel Forum filter status:
   `source_complete_execution_pending` under `FORUM-23B2F4`.
 - Trusted current-channel contract and guardrail:
   `crates/modules/rustok-forum/contracts/forum-search-current-channel-filter.json` and
-  `scripts/verify/verify-forum-search-current-channel-filter.mjs`.
+  `scripts/verify/verify-search-audience-classes.mjs`.
 - Durable Forum inbox ingest-sequence status:
   `source_complete_execution_pending` under `FORUM-23B2G1`.
 - Durable ingest-sequence contract and guardrail:
@@ -444,25 +648,21 @@ should run the relevant subset, including:
 
 - `cargo test -p rustok-server settings_service`
 - `cargo test -p rustok-search engine::tests::canonical_url`
-- `cargo test -p rustok-search category_filter_preserves_product_and_adds_exact_forum_scope -- --nocapture`
+- `cargo test -p rustok-search category_filter -- --nocapture`
 - `cargo test -p rustok-search storefront_category_scope -- --nocapture`
-- `cargo test -p rustok-search storefront_result_eligibility -- --nocapture`
-- `cargo test -p rustok-search forum_document_filters -- --nocapture`
-- `cargo test -p rustok-search forum_storefront_locale_date_filters -- --nocapture`
+- `cargo test -p rustok-search audience_security -- --nocapture`
 - `cargo test -p rustok-search storefront_product_channel_visibility -- --nocapture`
 - `cargo test -p rustok-search product_channel_visibility_legacy_projection_is_detected -- --nocapture`
 - `cargo test -p rustok-search product_channel_reconciliation -- --nocapture`
-- `cargo test -p rustok-search visible_forum_statuses_match_owner_eligibility -- --nocapture`
-- `cargo test -p rustok-search-storefront transport::tests::only_explicit_forum_category_scope_selects_owner_path -- --nocapture`
 - `cargo test -p rustok-server --features mod-forum forum_search_category_scope -- --nocapture`
 - `cargo test -p rustok-server --features mod-forum forum_search_result_eligibility -- --nocapture`
-- `node scripts/verify/verify-forum-search-exact-category-filter.mjs`
-- `node scripts/verify/verify-forum-search-storefront-scope.mjs`
-- `node scripts/verify/verify-forum-search-result-eligibility.mjs`
-- `node scripts/verify/verify-forum-search-product-channel-visibility.mjs`
-- `node scripts/verify/verify-forum-search-author-filter.mjs`
-- `node scripts/verify/verify-forum-search-tag-solved-filter.mjs`
-- `node scripts/verify/verify-forum-search-locale-date-filter.mjs`
+- `node scripts/verify/verify-search-audience-classes.mjs`
+- `node scripts/verify/verify-search-audience-classes.mjs`
+- `node scripts/verify/verify-search-audience-classes.mjs`
+- `node scripts/verify/verify-search-audience-classes.mjs`
+- `node scripts/verify/verify-search-audience-classes.mjs`
+- `node scripts/verify/verify-search-audience-classes.mjs`
+- `node scripts/verify/verify-search-audience-classes.mjs`
 - `npm run verify:search:canonical-url`
 - `npm run test:verify:search:canonical-url`
 - `npm run verify:search:blog-projection`

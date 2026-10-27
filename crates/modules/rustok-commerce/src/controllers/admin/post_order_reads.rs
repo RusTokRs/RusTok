@@ -25,6 +25,23 @@ use super::{
 const ADMIN_POST_ORDER_OWNER: &str = "rustok_order.admin_post_order_reads";
 const ADMIN_POST_ORDER_BOUNDARY: &str = "commerce_admin_post_order_http";
 
+fn log_admin_post_order_read_entry(
+    operation: &'static str,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    resource_id: Option<Uuid>,
+) {
+    tracing::debug!(
+        boundary = ADMIN_POST_ORDER_BOUNDARY,
+        operation,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        actor_id_non_nil = !actor_id.is_nil(),
+        resource_id_present = resource_id.is_some(),
+        resource_id_non_nil = resource_id.is_some_and(|value| !value.is_nil()),
+        "commerce admin post-order read entered with bounded diagnostics"
+    );
+}
+
 fn admin_post_order_read_context(
     tenant_id: Uuid,
     auth: &AuthContext,
@@ -192,13 +209,7 @@ pub async fn list_order_returns(
     if tenant.id.is_nil() {
         return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_POST_ORDER_BOUNDARY,
-        operation = "list_order_returns",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        "handling list_order_returns"
-    );
+    log_admin_post_order_read_entry("list_order_returns", tenant.id, auth.user_id, None);
     let pagination = params.pagination.unwrap_or_default();
     let order_id = params.order_id;
     let context = admin_post_order_read_context(
@@ -269,14 +280,7 @@ pub async fn show_order_return(
     if id.is_nil() {
         return Err(HttpError::bad_request("invalid_order_return_id", "Order return ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_POST_ORDER_BOUNDARY,
-        operation = "show_order_return",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        return_id = %id,
-        "handling show_order_return"
-    );
+    log_admin_post_order_read_entry("show_order_return", tenant.id, auth.user_id, Some(id));
     let context = admin_post_order_read_context(
         tenant.id,
         &auth,
@@ -333,13 +337,7 @@ pub async fn list_order_changes(
     if tenant.id.is_nil() {
         return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_POST_ORDER_BOUNDARY,
-        operation = "list_order_changes",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        "handling list_order_changes"
-    );
+    log_admin_post_order_read_entry("list_order_changes", tenant.id, auth.user_id, None);
     let pagination = params.pagination.unwrap_or_default();
     let order_id = params.order_id;
     let context = admin_post_order_read_context(
@@ -411,14 +409,7 @@ pub async fn show_order_change(
     if id.is_nil() {
         return Err(HttpError::bad_request("invalid_order_change_id", "Order change ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_POST_ORDER_BOUNDARY,
-        operation = "show_order_change",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        change_id = %id,
-        "handling show_order_change"
-    );
+    log_admin_post_order_read_entry("show_order_change", tenant.id, auth.user_id, Some(id));
     let context = admin_post_order_read_context(
         tenant.id,
         &auth,

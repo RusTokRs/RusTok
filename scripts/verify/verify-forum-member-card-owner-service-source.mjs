@@ -6,8 +6,12 @@ function read(path) {
   return fs.readFileSync(path, "utf8");
 }
 
+// Collect every drift instead of aborting on the first one: a guard that throws hides the rest of
+// the contract behind whichever marker happened to move first.
+const failures = [];
+
 function need(text, marker, label) {
-  if (!text.includes(marker)) throw new Error(`${label}: missing ${marker}`);
+  if (!text.includes(marker)) failures.push(`${label}: missing ${marker}`);
 }
 
 function forbid(text, marker, label) {
@@ -51,18 +55,24 @@ const presentationIndex = owner.indexOf(".find_profile_summaries(");
 const visibleIndex = owner.indexOf("profiles.contains_key(user_id)");
 const statsIndex = owner.indexOf("forum_user_stat::Entity::find()");
 if (!(presentationIndex >= 0 && visibleIndex > presentationIndex && statsIndex > visibleIndex)) {
-  throw new Error("FORUM-15C Profiles admission must precede Forum statistics access");
+  failures.push("FORUM-15C Profiles admission must precede Forum statistics access");
 }
 
+// The admission entrypoint is crate-private on purpose: the transport must reach statistics only
+// through it, and the owner must not grow a second profile or social-graph composition path.
 for (const marker of [
   "pub async fn compose_admitted_profiles(",
+  "pub fn compose_admitted_profiles(",
   "ProfileService::new(",
   "rustok_profiles::entities",
   "SocialGraphService::new",
   "PROFILES_PRESENTATION_FAILED",
 ]) forbid(owner, marker, "FORUM-15C owner boundary");
 
-need(userStats, 'include!("member_card.rs");', "FORUM-15C user-stats wiring");
+// The member-card owner is a path module of `user_stats`, re-exported by name; the crate root and the
+// GraphQL surface both see the same names.
+need(userStats, '#[path = "member_card.rs"]', "FORUM-15C user-stats wiring");
+need(userStats, "pub use member_card_file::{", "FORUM-15C user-stats re-export");
 
 for (const marker of [
   "ForumMemberCardService::new(db.clone())",
@@ -99,5 +109,11 @@ for (const marker of [
   "storefront package has no direct `rustok-profiles` dependency",
   "no Cargo command, test, Node verifier",
 ]) need(packet, marker, "FORUM-15C actualization");
+
+if (failures.length > 0) {
+  console.error("Forum FORUM-15C member-card owner service source failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
 
 console.log("Forum FORUM-15C member-card owner service source: ok");

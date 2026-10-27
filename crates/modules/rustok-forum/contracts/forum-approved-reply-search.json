@@ -8,7 +8,7 @@
   "public_discovery_owner": "crates/modules/rustok-forum/src/services/public_discovery.rs",
   "forum_projection_source": "crates/modules/rustok-forum/src/search_projection.rs",
   "reply_update_owner": "crates/modules/rustok-forum/src/services/reply_inline.rs",
-  "search_projector": "crates/modules/rustok-search/src/forum_projector.rs",
+  "search_projection_driver": "crates/modules/rustok-search/src/projection_driver.rs",
   "search_ingestion": "crates/modules/rustok-search/src/ingestion.rs",
   "canonical_url_owner": "crates/modules/rustok-search/src/engine.rs",
   "admin_global_search_consumer": "apps/admin/src/widgets/app_shell/native_server_adapter.rs",

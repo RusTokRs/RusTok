@@ -46,6 +46,21 @@ pub struct SearchProjectionPage {
     pub next_cursor: Option<String>,
 }
 
+/// How much of a source module a single-entity refresh has to replace.
+///
+/// The owner decides, because only the owner knows which documents depend on a
+/// changed row: some entities are replaceable on their own, while an entity that
+/// aggregates child documents has to replace that whole child scope. Search never
+/// guesses this from an entity-type name.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum SearchProjectionRefreshScope {
+    /// Replace exactly the documents returned for this entity.
+    #[default]
+    Entity,
+    /// Replace the whole tenant scope of the source module.
+    Tenant,
+}
+
 /// Runtime source boundary used by the Search ingestion owner.
 ///
 /// Cursors advance over bounded raw owner candidates, not only visible output,
@@ -53,6 +68,14 @@ pub struct SearchProjectionPage {
 #[async_trait]
 pub trait SearchProjectionSource: Send + Sync {
     fn source_module(&self) -> &'static str;
+
+    /// Scope Search must replace when one entity of this source changes.
+    ///
+    /// The default replaces the changed entity; a source whose entities aggregate
+    /// other documents widens it to the tenant scope.
+    fn refresh_scope(&self, _entity_type: &str) -> SearchProjectionRefreshScope {
+        SearchProjectionRefreshScope::Entity
+    }
 
     async fn list_public_documents(
         &self,

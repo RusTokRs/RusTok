@@ -29,6 +29,7 @@ mod m20261009_000034_create_blog_preview_tokens;
 mod m20261009_000035_add_blog_post_pinned;
 mod m20261017_000036_enforce_blog_comment_projection_delivery_integrity;
 mod m20261021_000037_enforce_blog_post_column_integrity;
+mod m20261025_000038_enforce_blog_preview_token_tenant_integrity;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -66,6 +67,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261009_000035_add_blog_post_pinned::Migration),
         Box::new(m20261017_000036_enforce_blog_comment_projection_delivery_integrity::Migration),
         Box::new(m20261021_000037_enforce_blog_post_column_integrity::Migration),
+        Box::new(m20261025_000038_enforce_blog_preview_token_tenant_integrity::Migration),
     ]
 }
 

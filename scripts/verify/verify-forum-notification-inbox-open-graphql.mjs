@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -278,10 +279,10 @@ for (const marker of [
   "notificationInboxAuthorizeOpen",
   "Fresh GraphQL open authorization accepts only one bounded non-nil notification UUID",
   "Missing, foreign, suppressed, or no-longer-openable notifications",
-  "open authorization is now dual-path",
+  "Fresh notification open authorization and group-state commands now share the same compile-profile selection rule without fallback",
   "notificationInboxApplyGroupState",
 ]) {
-  requireText(readme, marker, `storefront README is missing ${marker}`);
+  requireProse(failures, readme, marker, "storefront README");
 }
 for (const marker of [
   "# FORUM-20AL notification open GraphQL authorization",

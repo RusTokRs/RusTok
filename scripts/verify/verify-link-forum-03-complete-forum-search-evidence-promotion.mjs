@@ -6,14 +6,25 @@ import { resolve } from "node:path";
 
 const root = process.cwd();
 const read = (path) => readFileSync(resolve(root, path), "utf8");
+// Handoff prose is hard-wrapped at ~80 columns; compare with whitespace collapsed so a
+// correct sentence cannot fail because of where a newline landed.
+const spaced = (value) => value.replace(/\s+/g, " ");
 const requireAll = (text, markers, label) => {
+  const haystack = spaced(text);
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing required marker: ${marker}`);
+    assert.ok(
+      haystack.includes(spaced(marker)),
+      `${label} is missing required marker: ${marker}`,
+    );
   }
 };
 const forbidAll = (text, markers, label) => {
+  const haystack = spaced(text);
   for (const marker of markers) {
-    assert.ok(!text.includes(marker), `${label} contains forbidden marker: ${marker}`);
+    assert.ok(
+      !haystack.includes(spaced(marker)),
+      `${label} contains forbidden marker: ${marker}`,
+    );
   }
 };
 
@@ -188,7 +199,7 @@ const plan = read(planPath);
 requireAll(
   plan,
   [
-    "| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |",
+    "| `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |",
     "| `FORUM-23` | `in_progress` |",
     "| `LINK-FORUM-03` | `planned` | Forum/index/search ordering and visibility proof. |",
   ],
@@ -225,7 +236,7 @@ requireAll(
     "promotes_forum_23 = false",
     "canonical_source_mutated_by_reviewer = false",
     "does not retrieve the retention object",
-    "does not create a cryptographic signature",
+    "authenticate an external retention service or create a cryptographic signature",
     "No command above was run by the implementation agent",
   ],
   "D18 handoff",

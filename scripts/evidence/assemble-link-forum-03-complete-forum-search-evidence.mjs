@@ -515,7 +515,7 @@ const output = {
       broker_used: false,
       ingress: "ForumSearchContractIngress",
       projector: "ForumProjectionReconciler",
-      storefront: "execute_forum_storefront_search",
+      storefront: "execute_audience_eligible_search",
     },
   },
   scenario_evidence: scenarioEvidence,

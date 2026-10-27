@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertCanonicalLedger, requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -120,31 +121,13 @@ if (planSync.required_ledger_through !== "FORUM-20X") {
 if (JSON.stringify(planSync.required_delivered_sections) !== JSON.stringify(deliveredSlices)) {
   failures.push("unread count contract must require FORUM-20H through FORUM-20X delivered sections");
 }
-if (planSync.status === "pending") {
-  if (planSync.current_plan_through !== "FORUM-20G") {
-    failures.push("pending canonical plan synchronization must identify FORUM-20G as current");
-  }
-  requireText(
-    plan,
-    "FORUM-20A-G provide",
-    "pending canonical plan synchronization must remain grounded in FORUM-20A-G",
-  );
-  for (const slice of deliveredSlices) {
-    rejectText(
-      plan,
-      `### Delivered in \`${slice}\``,
-      `canonical plan now contains ${slice}; update canonical_plan_sync before claiming pending through G`,
-    );
-  }
-} else if (planSync.status === "synchronized") {
-  requireText(plan, "FORUM-20A-X provide", "synchronized canonical plan must advance through X");
-  for (const slice of deliveredSlices) {
-    requireText(plan, `### Delivered in \`${slice}\``, `canonical plan is missing ${slice}`);
-  }
-} else {
-  failures.push("canonical_plan_sync.status must be pending or synchronized");
-}
-
+assertCanonicalLedger({
+  failures,
+  plan,
+  slices: deliveredSlices,
+  planSync,
+  label: "canonical plan synchronization",
+});
 for (const marker of [
   "pub struct NotificationInboxUnreadCountRequest",
   "pub tenant_id: Uuid",
@@ -244,21 +227,21 @@ for (const marker of [
 
 for (const marker of [
   "exact unread counting",
-  "NotificationInboxUnreadCountService",
   "### 6. Exact unread count",
+  "`NotificationInboxUnreadCountService` counts rows in stored owner state `unread`",
+  "callers must not derive totals from bounded or privacy-filtered list pages",
   "tests/inbox_count_sqlite.rs",
-  "bulk/mark-all mutations and grouped inbox views",
 ]) {
-  requireText(rootReadme, marker, `notifications root README is missing ${marker}`);
+  requireProse(failures, rootReadme, marker, "notifications root README");
 }
 for (const marker of [
   "### Exact unread count",
-  "NotificationInboxUnreadCountService",
-  "stored owner state",
-  "tests/inbox_count_sqlite.rs",
+  "`NotificationInboxUnreadCountService` counts stored `unread` rows",
+  "reuses `idx_notifications_inbox`",
+  "inbox_count_sqlite",
   "verify-forum-notification-inbox-unread-count.mjs",
 ]) {
-  requireText(docs, marker, `notifications live contract is missing ${marker}`);
+  requireProse(failures, docs, marker, "notifications live contract");
 }
 for (const marker of [
   "### `FORUM-20X`",

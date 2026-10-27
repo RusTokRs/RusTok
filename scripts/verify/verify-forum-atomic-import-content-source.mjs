@@ -6,12 +6,16 @@ function read(path) {
   return fs.readFileSync(path, "utf8");
 }
 
+// Collect every drift instead of aborting on the first one: a guard that throws hides the rest of
+// the contract behind whichever marker happened to move first.
+const failures = [];
+
 function need(text, marker, label) {
-  if (!text.includes(marker)) throw new Error(`${label}: missing ${marker}`);
+  if (!text.includes(marker)) failures.push(`${label}: missing ${marker}`);
 }
 
 function forbid(text, marker, label) {
-  if (text.includes(marker)) throw new Error(`${label}: forbidden ${marker}`);
+  if (text.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
 const files = {
@@ -66,14 +70,14 @@ for (const marker of [
 const beginCount = source.importWrite.split("self.db.begin().await?").length - 1;
 const commitCount = source.importWrite.split("txn.commit().await?").length - 1;
 if (beginCount !== 1 || commitCount !== 1) {
-  throw new Error(`atomic adapter transaction count begin=${beginCount} commit=${commitCount}`);
+  failures.push(`atomic adapter transaction count begin=${beginCount} commit=${commitCount}`);
 }
 
 for (const marker of [
   "insert_import_category_in_tx(",
   "id: Set(record.id)",
-  "lock_category_tree_in_tx(txn, tenant_id)",
-  "shift_siblings_for_insert_in_tx(",
+  "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(txn, tenant_id)",
+  "taxonomy_sync::shift_category_siblings_for_insert_in_tx(",
   "sync_category_copy_in_tx(",
 ]) need(source.categoryImport, marker, "FORUM-34O category owner primitive");
 
@@ -157,8 +161,14 @@ for (const [label, text] of [
   ["reply", source.replyImport],
 ]) {
   if (!text.includes("id: Set(record.id)") && !text.includes("id: Set(prepared.record.id)")) {
-    throw new Error(`${label} imported entity ID is not visibly caller-admitted`);
+    failures.push(`${label} imported entity ID is not visibly caller-admitted`);
   }
+}
+
+if (failures.length > 0) {
+  console.error("Forum FORUM-34O atomic prepared import content source failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
 }
 
 console.log("Forum FORUM-34O atomic prepared import content source: ok");

@@ -16,7 +16,7 @@
     "http_adapter": "crates/modules/rustok-blog/src/controllers/categories.rs",
     "router": "crates/modules/rustok-blog/src/controllers/mod.rs",
     "openapi": "crates/modules/rustok-blog/src/controllers/openapi.rs",
-    "search_projector": "crates/modules/rustok-search/src/blog_projector.rs",
+    "search_projector": "crates/modules/rustok-blog/src/services/search_projection.rs",
     "search_ingestion": "crates/modules/rustok-search/src/ingestion.rs"
   },
   "cases": [

@@ -15,7 +15,7 @@ use rustok_blog::dto::{
     CreateCategoryInput, CreatePostInput, CreateTagInput, ListCategoriesFilter, ListCommentsFilter,
     ListTagsFilter, ModerateCommentInput, ModerateCommentStatus, PostListQuery, UpdateCommentInput,
 };
-use rustok_blog::state_machine::{BlogPostStatus, CommentStatus};
+use rustok_blog::state_machine::BlogPostStatus;
 use rustok_blog::{BlogError, BlogModule};
 use rustok_blog::{CategoryService, CommentService, PostService, TagService};
 use rustok_comments::{CommentsModule, in_process_comments_thread_port};
@@ -1348,7 +1348,7 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
 }
 
 #[tokio::test]
-async fn test_moderate_comment_with_blog_manage_permission() -> TestResult<()> {
+async fn test_moderate_comment_requires_comments_moderate_permission() -> TestResult<()> {
     let db = setup_blog_test_db().await;
     ensure_blog_schema(&db).await;
 
@@ -1404,17 +1404,39 @@ async fn test_moderate_comment_with_blog_manage_permission() -> TestResult<()> {
         )
         .await?;
 
-    let blog_moderator = SecurityContext::from_permissions(
+    // Blog reads and moderates comments through the Comments owner, so the
+    // authority to moderate is the Comments grant — not `blog_posts:manage`.
+    let blog_manager = SecurityContext::from_permissions(
         UserRole::Manager,
         Some(Uuid::new_v4()),
         [Permission::BLOG_POSTS_MANAGE],
     );
+    let forbidden = comment_service
+        .moderate_comment(
+            tenant_id,
+            comment.id,
+            blog_manager,
+            ModerateCommentInput {
+                command_id: Uuid::new_v4(),
+                status: ModerateCommentStatus::Approved,
+                locale: Some("en".to_string()),
+            },
+            Some("en"),
+        )
+        .await
+        .expect_err("blog_posts:manage is not a comment-moderation grant");
+    assert!(matches!(forbidden, BlogError::Forbidden(_)));
 
+    let comment_moderator = SecurityContext::from_permissions(
+        UserRole::Manager,
+        Some(Uuid::new_v4()),
+        [Permission::COMMENTS_MODERATE],
+    );
     let moderated = comment_service
         .moderate_comment(
             tenant_id,
             comment.id,
-            blog_moderator,
+            comment_moderator,
             ModerateCommentInput {
                 command_id: Uuid::new_v4(),
                 status: ModerateCommentStatus::Approved,
@@ -1425,7 +1447,7 @@ async fn test_moderate_comment_with_blog_manage_permission() -> TestResult<()> {
         .await?;
     assert_eq!(moderated.status, "approved");
 
-    let without_manage = SecurityContext::from_permissions(
+    let without_grant = SecurityContext::from_permissions(
         UserRole::Manager,
         Some(Uuid::new_v4()),
         std::iter::empty::<Permission>(),
@@ -1434,7 +1456,7 @@ async fn test_moderate_comment_with_blog_manage_permission() -> TestResult<()> {
         .moderate_comment(
             tenant_id,
             comment.id,
-            without_manage,
+            without_grant,
             ModerateCommentInput {
                 command_id: Uuid::new_v4(),
                 status: ModerateCommentStatus::Spam,
@@ -1443,7 +1465,7 @@ async fn test_moderate_comment_with_blog_manage_permission() -> TestResult<()> {
             Some("en"),
         )
         .await
-        .expect_err("moderation requires blog_posts:manage");
+        .expect_err("moderation requires comments:moderate");
     assert!(matches!(forbidden, BlogError::Forbidden(_)));
 
     Ok(())
@@ -1504,14 +1526,6 @@ mod unit_tests {
 
         assert!(!BlogPostStatus::Draft.can_transition_to(BlogPostStatus::Archived));
         assert!(!BlogPostStatus::Archived.can_transition_to(BlogPostStatus::Published));
-    }
-
-    #[test]
-    fn test_comment_status_transitions() {
-        assert_eq!(CommentStatus::Pending.approve(), CommentStatus::Approved);
-        assert_eq!(CommentStatus::Approved.mark_spam(), CommentStatus::Spam);
-        assert_eq!(CommentStatus::Spam.approve(), CommentStatus::Approved);
-        assert_eq!(CommentStatus::Pending.trash(), CommentStatus::Trash);
     }
 
     #[test]

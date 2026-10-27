@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { requirePortSurface } from './lib/rust-public-surface.mjs';
 
 function read(path) { return fs.readFileSync(path, 'utf8'); }
 function json(path) { return JSON.parse(read(path)); }
@@ -44,7 +45,11 @@ const manifest = read('crates/modules/rustok-media/rustok-module.toml');
 hasAll(manifest, ['[fba.provider]', 'registry = "contracts/media-fba-registry.json"', 'contract_version = "media.asset_read.v1"'], 'manifest');
 
 const lib = read('crates/modules/rustok-media/src/lib.rs');
-hasAll(lib, ['pub mod ports;', 'pub use ports::*;'], 'lib.rs');
+{
+  // See lib/rust-public-surface.mjs: the registry names the ports, the crate root must publish them.
+  const surface = requirePortSurface(lib, registry);
+  if (!surface.ok) fail(surface.message);
+}
 const ports = read('crates/modules/rustok-media/src/ports.rs');
 const dto = read('crates/modules/rustok-media/src/dto.rs');
 hasAll(ports, ['pub trait MediaAssetReadPort', 'impl MediaAssetReadPort for MediaService', 'pub trait MediaAssetWritePort', 'impl MediaAssetWritePort for MediaService', 'MediaImageDescriptor', 'MediaUploadRequest', 'MEDIA_OWNER_STREAMING_UPLOAD_PATH', 'PortContext', 'PortError'], 'ports.rs');

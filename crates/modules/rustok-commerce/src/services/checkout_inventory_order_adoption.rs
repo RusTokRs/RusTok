@@ -1,5 +1,6 @@
 use chrono::Utc;
 use rustok_commerce_foundation::entities::{inventory_item, reservation_item};
+use rustok_order::OrderStatusKind;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
@@ -136,7 +137,10 @@ impl CheckoutInventoryOrderAdoptionService {
                 operation.id, operation.stage
             )));
         }
-        if !matches!(order.status.as_str(), "pending" | "confirmed") {
+        if !matches!(
+            order.status_kind(),
+            OrderStatusKind::Pending | OrderStatusKind::Confirmed
+        ) {
             return Err(CheckoutInventoryOrderAdoptionError::Conflict(format!(
                 "order {} must be pending or confirmed while checkout reservations are adopted, not `{}`",
                 order.id, order.status

@@ -32,6 +32,13 @@ Forum's persisted `category.topic_count` and `category.reply_count` are **global
 - Generic storefront FTS and autocomplete paths exclude Forum documents in SQL.
 - Explicit Forum-only storefront Search endpoint alone may fetch raw Forum candidates and reauthorize each through Forum owner.
 
+> Amended 2026-10-25 by [Declared Search audience corpus](./2026-10-25-search-audience-declared-corpus.md):
+> the blanket SQL exclusion of Forum documents is replaced by the declared
+> `SearchAudienceClass::Gated` scope. Generic storefront Search and suggestions still
+> never expose an unauthorized Forum document: Forum is excluded unless its discovery
+> preflight admits it and its owner authorizes each candidate, and an undeclared module
+> is denied outright.
+
 ## Non-goals
 
 - Inventing new settings keys or running database schema migrations for forum discovery.

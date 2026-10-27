@@ -21,8 +21,11 @@ impl PostService {
     ///   reach another tenant's rows;
     /// - the batch is bounded by `limit` (`MAX_SCHEDULED_PUBLISH_BATCH`), oldest
     ///   schedule first, so a backlog drains across bounded iterations;
-    /// - each post is published in its own transaction, and a concurrent edit
-    ///   conflict skips that post instead of aborting the whole batch;
+    /// - each post is published in its own transaction, and **any** per-post
+    ///   failure (a concurrent edit conflict, a storage invariant, a transient
+    ///   database error) skips that post instead of aborting the whole batch;
+    ///   the failing post keeps its due schedule and is retried on the next
+    ///   iteration, so one poisoned row cannot head-of-line block the tenant;
     /// - the actor is the system actor, so it must not be reachable from a
     ///   request path or an end-user transport.
     pub async fn publish_scheduled_posts(
@@ -52,7 +55,7 @@ impl PostService {
 
             // Same transition logic as a manual publish: it carries the version CAS,
             // so a post edited after the scan is skipped rather than overwritten.
-            match apply_status_transition_in_tx(
+            if let Err(error) = apply_status_transition_in_tx(
                 &txn,
                 post.tenant_id,
                 post.id,
@@ -63,20 +66,33 @@ impl PostService {
             )
             .await
             {
-                Ok(()) => {}
-                Err(BlogError::Conflict(_)) => {
-                    tracing::warn!(
+                // The batch is best-effort per post. Returning here would leave every
+                // remaining due post of the tenant unpublished behind one bad row
+                // (head-of-line blocking); the failed post keeps `scheduled_at`, so the
+                // next iteration retries it after the rest of the backlog drains.
+                match error {
+                    BlogError::Conflict(message) => tracing::warn!(
                         tenant_id = %post.tenant_id,
                         post_id = %post.id,
+                        error = %message,
                         "Scheduled Blog post changed concurrently; leaving it for the next scheduler iteration"
-                    );
-                    drop(txn);
-                    continue;
+                    ),
+                    error => tracing::error!(
+                        tenant_id = %post.tenant_id,
+                        post_id = %post.id,
+                        error = %error,
+                        "Scheduled Blog post could not be published; leaving it for the next scheduler iteration"
+                    ),
                 }
-                Err(error) => return Err(error),
+                drop(txn);
+                continue;
             }
 
-            self.event_bus
+            // The status write and its announcement commit atomically: a rollback of
+            // the event rolls the status back too, so a post is never silently
+            // published without the event its consumers rely on.
+            if let Err(error) = self
+                .event_bus
                 .publish_in_tx(
                     &txn,
                     post.tenant_id,
@@ -87,9 +103,26 @@ impl PostService {
                     },
                 )
                 .await
-                .map_err(BlogError::from)?;
+            {
+                tracing::error!(
+                    tenant_id = %post.tenant_id,
+                    post_id = %post.id,
+                    error = %error,
+                    "Scheduled Blog post could not be announced; leaving it for the next scheduler iteration"
+                );
+                drop(txn);
+                continue;
+            }
 
-            txn.commit().await.map_err(BlogError::from)?;
+            if let Err(error) = txn.commit().await {
+                tracing::error!(
+                    tenant_id = %post.tenant_id,
+                    post_id = %post.id,
+                    error = %error,
+                    "Scheduled Blog post commit failed; leaving it for the next scheduler iteration"
+                );
+                continue;
+            }
             published.push(post.id);
         }
 

@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { containsMarker, ledgerRowProblems } from "./lib/forum-source-verification.mjs";
+
 const contractPath =
   "crates/modules/rustok-forum/contracts/forum-topic-merge-read-state-reconciliation.json";
 const docsPath =
@@ -33,9 +35,11 @@ function read(path) {
   return readFileSync(path, "utf8");
 }
 
+// Layout-tolerant by policy: a marker describes an invariant, not where rustfmt or a prose editor put
+// the newline. Tokens are unchanged, so an absent call or sentence is still absent.
 function includesAll(text, markers, label) {
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing marker: ${marker}`);
+    assert.ok(containsMarker(text, marker), `${label} is missing marker: ${marker}`);
   }
 }
 
@@ -96,7 +100,7 @@ assert.deepEqual(contract.conservative_target_authority_policy, {
 });
 assert.equal(
   contract.semantic_event.event_type,
-  "forum.topic.merge_read_states_reconciled",
+  "forum.topic.merge.read_state_reconciled",
 );
 assert.equal(contract.semantic_event.schema_version, 1);
 assert.equal(contract.semantic_event.aggregate_is_retained_target, true);
@@ -147,7 +151,7 @@ includesAll(
   migrationsMod,
   [
     "mod m20260801_000012_add_forum_topic_merge_read_state_reconciliations;",
-    "m20260801_000012_add_forum_topic_merge_read_state_reconciliations::Migration,",
+    "m20260801_000012_add_forum_topic_merge_read_state_reconciliations::Migration",
   ],
   "migration registry",
 );
@@ -273,7 +277,7 @@ includesAll(
     "pub struct ForumTopicMergeReadStateReconciliationService",
     "pub async fn reconcile_merge_read_states(",
     "enforce_scope(&security, Resource::ForumTopics, Action::Manage)?;",
-    "lock_reconciliation_tenant_in_tx(&txn, tenant_id).await?;",
+    "lock_reconciliation_tenant_in_tx(txn, tenant_id).await?;",
     "forum_topic_merge_read_state_reconciliation::Entity::find_by_id",
     "TopicMergeReadStateReconciliationConflict",
     "forum_topic_merge_operation::Entity::find_by_id",
@@ -287,7 +291,7 @@ includesAll(
     "discarded_target_overlap_count",
     "forum_topic_read_state::Entity::delete_many()",
     "ensure_source_read_states_empty_in_tx",
-    '"forum.topic.merge_read_states_reconciled"',
+    '"forum.topic.merge.read_state_reconciled"',
     "forum_domain_event::ActiveModel",
     "forum_topic_merge_read_state_reconciliation::ActiveModel",
     "txn.commit().await?;",
@@ -305,7 +309,7 @@ assert.ok(
   "first execution must lock topic rows before read-state scopes",
 );
 const firstExecutionEmptiness = service.indexOf(
-  "ensure_source_read_states_empty_in_tx(&txn, tenant_id, merge.source_topic_id).await?;",
+  "ensure_source_read_states_empty_in_tx(txn, tenant_id, merge.source_topic_id).await?;",
 );
 const evidenceInsert = service.indexOf("forum_domain_event::ActiveModel");
 assert.ok(
@@ -358,12 +362,13 @@ includesAll(
     "source_read_state_count, 3",
     "discarded_source_only_count, 1",
     "discarded_target_overlap_count, 2",
-    "read_state_snapshots(&db, tenant_id, target_topic_id).await?, target_before",
+    // rustfmt splits the assertion across lines once the call exceeds the width budget.
+    "read_state_snapshots(&db, tenant_id, target_topic_id).await?,\n        target_before",
     "bulk.processed, 1",
     "TopicMergeReadStateReconciliationConflict",
     "UPDATE forum_topic_merge_read_state_reconciliations",
     "DELETE FROM forum_topic_merge_read_state_reconciliations",
-    '"forum.topic.merge_read_states_reconciled"',
+    '"forum.topic.merge.read_state_reconciled"',
   ],
   "SQLite regression",
 );
@@ -382,13 +387,12 @@ includesAll(
   ],
   "FORUM-21D handoff",
 );
-assert.ok(
-  plan.includes(
-    "| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |",
-  ),
+assert.deepEqual(
+  ledgerRowProblems(plan, "FORUM-21", {
+    mentions: ["move/merge/split/fork/range owners"],
+  }),
+  [],
 );
-assert.ok(!plan.includes("| `FORUM-21` | `done` |"));
-assert.ok(!plan.includes("| `FORUM-21` | `in_progress` |"));
 assert.ok(verifier.includes("source_ready_maintainer_execution_pending"));
 
 console.log(

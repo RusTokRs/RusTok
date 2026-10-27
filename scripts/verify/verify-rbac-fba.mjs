@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { validateProviderRegistryBaseline } from './lib/fba-registry-validation.mjs';
+import { requirePortSurface } from './lib/rust-public-surface.mjs';
 
 const root = new URL('../../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
@@ -35,7 +36,12 @@ if (!port.operations.includes('check_permissions')) fail('port lacks check_permi
 if (port.deadline_required !== true || port.idempotency_required !== false) fail('permission decision must be read-like with deadline semantics');
 if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/rbac-fba-registry.json"') || !manifest.includes('contract_version = "rbac.permission_decision.v1"')) fail('manifest metadata drift');
 if (!cargo.includes('rustok-api.workspace = true')) fail('Cargo.toml must depend on rustok-api');
-if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib.rs must export ports');
+{
+  // The registry names the ports consumers import; the crate root has to publish exactly those,
+  // whichever re-export shape it uses (the wildcard is accepted, explicit lists are preferred).
+  const surface = requirePortSurface(lib, registry);
+  if (!surface.ok) fail(surface.message);
+}
 for (const marker of ['trait RbacPermissionDecisionPort', 'struct RbacPermissionDecisionProvider', 'impl<R> RbacPermissionDecisionPort for RbacPermissionDecisionProvider<R>', 'context.require_policy(PortCallPolicy::read())?', 'parse_tenant_id(&context)?', 'parse_user_actor(&context)?', '.resolve_permissions(&tenant_id, &user_id)', 'RbacPermissionCheckRequest', 'RbacPermissionCheckResponse', 'rbac.permissions_empty', 'PortErrorKind::Validation']) {
   if (!ports.includes(marker)) fail(`ports source missing ${marker}`);
 }

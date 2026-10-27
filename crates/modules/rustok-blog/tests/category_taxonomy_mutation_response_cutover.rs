@@ -124,7 +124,7 @@ async fn update_response_comes_from_taxonomy_without_requiring_read_permission()
                 locale: "en".to_string(),
                 name: Some("Help".to_string()),
                 slug: Some("help".to_string()),
-                description: Some("Help centre".to_string()),
+                description: rustok_api::Patch::Set("Help centre".to_string()),
                 settings: Some(serde_json::json!({"layout": "updated"})),
             },
         )

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { containsMarker, markeredIndexes } from "./lib/forum-source-verification.mjs";
 
@@ -38,9 +38,7 @@ const ingressPath = "crates/modules/rustok-search/src/forum_contract_ingress.rs"
 const reconciliationPath = "crates/modules/rustok-search/src/forum_reconciliation.rs";
 const ownerCheckpointPath =
   "crates/modules/rustok-search/src/forum_owner_checkpoint.rs";
-const projectorPath = "crates/modules/rustok-search/src/forum_projector.rs";
-const storefrontExecutionPath =
-  "crates/modules/rustok-search/src/forum_storefront_execution.rs";
+const projectorPath = "crates/modules/rustok-search/src/projection_driver.rs";
 const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
 
 const contract = JSON.parse(read(contractPath));
@@ -103,7 +101,7 @@ requireAll(
     "ForumSearchContractIngress::new",
     "ensure_pending_inbox(&inbox, revision, fixture)?",
     "group.acknowledge(&delivery).await?",
-    "ForumSearchProjectionSourceFactory.build",
+    "forum_public_settings::projection_source(db.clone())",
     "ForumProjectionReconciler::with_owner_revision_source",
     "report.claimed_events != 2",
     "report.completed_events != 2",
@@ -112,9 +110,9 @@ requireAll(
     "forum_normal_delivery_checkpoint_audit",
     'row.outcome != "delivery_covered"',
     "row.observed_forum_documents != 2",
-    "execute_forum_storefront_search",
-    "ForumSearchResultEligibilityService::new",
-    "execution.result.total != 1",
+    "execute_audience_eligible_search",
+    "forum_public_settings::eligibility_service",
+    "assert_storefront_topic",
     "caught_up.claimed_events != 0",
     "caught_up.owner_revisions_checkpointed != 0",
     'id: "normal_delivery"',
@@ -218,32 +216,46 @@ requireAll(
   projector,
   [
     ".list_public_documents(",
-    "delete_forum_scope(&tx, tenant_id)",
+    "self.delete_scope(&tx, tenant_id).await?",
     "INSERT INTO search_documents",
     "tx.commit().await",
   ],
   "production current-state Forum projector",
 );
 
-const storefrontExecution = read(storefrontExecutionPath);
+// The Forum-only execution owner is retired: its visible totals, facets and pagination
+// were computed in Rust over a capped candidate window. The generic executor must keep
+// computing all of them in PostgreSQL over the authorized row set instead, so the guard
+// now asserts the durable shape rather than the retired pipeline's ordering.
+const audienceExecutorPath =
+  "crates/modules/rustok-search/src/audience_security.rs";
+const audienceExecutor = read(audienceExecutorPath);
 requireAll(
-  storefrontExecution,
+  audienceExecutor,
   [
-    "resolve_storefront_search_result_candidates",
-    "let total = visible_items.len() as u64",
-    "build_forum_result_facets(&visible_items)",
+    "pub async fn execute_audience_eligible_search",
+    "SearchAudienceDocumentScope::new",
+    ".search_storefront_scoped(",
+  ],
+  "generic audience executor",
+);
+forbidAll(
+  audienceExecutor,
+  [
+    "visible_items",
+    "build_forum_result_facets",
     ".skip(request.query.offset)",
     ".take(request.query.limit)",
   ],
-  "production Forum storefront execution",
+  "generic audience executor",
 );
-const eligibilityIndex = markerIndex(storefrontExecution, "resolve_storefront_search_result_candidates");
-const totalIndex = markerIndex(storefrontExecution, "let total = visible_items.len() as u64");
-const facetsIndex = markerIndex(storefrontExecution, "build_forum_result_facets(&visible_items)");
-const offsetIndex = markerIndex(storefrontExecution, ".skip(request.query.offset)");
-assert.ok(eligibilityIndex >= 0 && eligibilityIndex < totalIndex);
-assert.ok(totalIndex >= 0 && totalIndex < facetsIndex);
-assert.ok(facetsIndex >= 0 && facetsIndex < offsetIndex);
+for (const retiredPath of [
+  "crates/modules/rustok-search/src/forum_storefront_execution.rs",
+  "crates/modules/rustok-search/src/forum_storefront_execution_public.rs",
+  "crates/modules/rustok-search/src/storefront_result_eligibility.rs",
+]) {
+  assert.ok(!existsSync(resolve(root, retiredPath)), `${retiredPath}: retired file must not exist`);
+}
 
 const doc = read(docPath);
 requireAll(

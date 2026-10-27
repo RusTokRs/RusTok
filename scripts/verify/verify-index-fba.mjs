@@ -1,4 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { reExportedNames } from './lib/rust-public-surface.mjs';
+import { containsMarker } from './lib/source-text.mjs';
+import { pinnedActionProblem } from './lib/workflow-pins.mjs';
 
 const root = new URL('../../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
@@ -10,6 +13,8 @@ const fail = (message) => {
 
 const lib = read('crates/modules/rustok-index/src/lib.rs');
 const domain = read('crates/modules/rustok-index/src/domain/mod.rs');
+// The Module trait impl owns the migration entry points; `lib.rs` only declares the module.
+const moduleSource = read('crates/modules/rustok-index/src/module.rs');
 const cargo = read('crates/modules/rustok-index/Cargo.toml');
 const productionDependencySections = cargo
   .split(/\n(?=\[)/u)
@@ -65,8 +70,20 @@ for (const obsolete of [
   if (exists(obsolete)) fail(`obsolete rewrite artifact still exists: ${obsolete}`);
 }
 
-for (const marker of ['pub mod domain;', 'pub mod application;', 'pub mod migrations;', 'pub use domain::*;', 'pub use application::*;', 'migrations::migrations()']) {
+for (const marker of ['pub mod domain;', 'pub mod application;', 'pub mod migrations;']) {
   if (!lib.includes(marker)) fail(`lib.rs missing ${marker}`);
+}
+for (const marker of ['crate::migrations::migrations()', 'crate::migrations::migration_dependencies()']) {
+  if (!containsMarker(moduleSource, marker)) fail(`IndexModule missing ${marker}`);
+}
+// The invariant is that the domain and application surfaces are published from the crate root, not
+// that they are published through a wildcard re-export: `lib.rs` lists them explicitly, and the
+// wildcard form is forbidden elsewhere in this corpus. See lib/source-text.mjs for the policy.
+for (const moduleName of ['domain', 'application']) {
+  const surface = reExportedNames(lib, moduleName);
+  if (!surface.glob && surface.names.length === 0) {
+    fail(`lib.rs must re-export the ${moduleName} surface from \`${moduleName}\``);
+  }
 }
 for (const marker of ['IndexSchema', 'IndexRecord', 'IndexMutation', 'IndexQuery', 'FilterExpr']) {
   if (!domain.includes(marker)) fail(`domain surface missing ${marker}`);
@@ -141,14 +158,18 @@ for (const runner of [benchmarkRunner, mutationRunner, maintenanceRunner]) {
     fail('every benchmark runner must use the single-session connection helper');
   }
 }
+// The evidence upload must go through a pinned action; the commit itself is governed by
+// verify:workflow-action-pins.
+{
+  const problem = pinnedActionProblem(smokeWorkflow, 'actions/upload-artifact');
+  if (problem) fail(`smoke evidence workflow: ${problem}`);
+}
 for (const marker of [
   'postgres:16',
   'INDEX_BENCH_SCALE: smoke',
   'index-storage-benchmark',
   'index-storage-mutation-benchmark',
   'index-storage-maintenance-benchmark',
-  // SHA-pinned upload-artifact (v7); verify:workflow-action-pins forbids mutable tags.
-  'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
   'retention-days: 90',
 ]) {
   if (!smokeWorkflow.includes(marker)) fail(`smoke evidence workflow missing ${marker}`);

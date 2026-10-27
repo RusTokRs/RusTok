@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertCanonicalLedger, requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -108,31 +109,13 @@ if (planSync.required_ledger_through !== "FORUM-20S") {
 if (JSON.stringify(planSync.required_delivered_sections) !== JSON.stringify(deliveredSlices)) {
   failures.push("inbox privacy contract must require FORUM-20H through FORUM-20S delivered sections");
 }
-if (planSync.status === "pending") {
-  if (planSync.current_plan_through !== "FORUM-20G") {
-    failures.push("pending canonical plan synchronization must identify FORUM-20G as current");
-  }
-  requireText(
-    plan,
-    "FORUM-20A-G provide",
-    "pending canonical plan synchronization must remain grounded in FORUM-20A-G",
-  );
-  for (const slice of deliveredSlices) {
-    rejectText(
-      plan,
-      `### Delivered in \`${slice}\``,
-      `canonical plan now contains ${slice}; update canonical_plan_sync before claiming pending through G`,
-    );
-  }
-} else if (planSync.status === "synchronized") {
-  requireText(plan, "FORUM-20A-S provide", "synchronized canonical plan must advance through S");
-  for (const slice of deliveredSlices) {
-    requireText(plan, `### Delivered in \`${slice}\``, `canonical plan is missing ${slice}`);
-  }
-} else {
-  failures.push("canonical_plan_sync.status must be pending or synchronized");
-}
-
+assertCanonicalLedger({
+  failures,
+  plan,
+  slices: deliveredSlices,
+  planSync,
+  label: "canonical plan synchronization",
+});
 for (const marker of [
   "policy: Arc<dyn NotificationRecipientPolicy>",
   "policy: Arc<dyn NotificationRecipientPolicy>,",
@@ -219,14 +202,13 @@ for (const marker of [
 
 for (const marker of [
   "### Inbox open-time authorization",
-  "evaluates the same injected Profiles/Social Graph recipient policy",
-  "Suppression returns `Unavailable` without invoking the source provider",
-  "Only an allowed recipient reaches the registered source provider",
+  "For an owned row, recipient privacy runs before source target authorization",
+  "Missing, cross-tenant, and cross-recipient rows return `Unavailable` before policy",
   "### Bounded authorized inbox listing",
-  "seen/read/archive state APIs",
+  "no dedicated route or structural target fields",
   "verify-forum-notification-inbox-open-privacy.mjs",
 ]) {
-  requireText(docs, marker, `notifications live contract is missing ${marker}`);
+  requireProse(failures, docs, marker, "notifications live contract");
 }
 
 if (

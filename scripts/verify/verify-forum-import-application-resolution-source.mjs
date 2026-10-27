@@ -6,12 +6,16 @@ function read(path) {
   return fs.readFileSync(path, "utf8");
 }
 
+// Collect every drift instead of aborting on the first one: a guard that throws hides the rest of
+// the contract behind whichever marker happened to move first.
+const failures = [];
+
 function need(text, marker, label) {
-  if (!text.includes(marker)) throw new Error(`${label}: missing ${marker}`);
+  if (!text.includes(marker)) failures.push(`${label}: missing ${marker}`);
 }
 
 function forbid(text, marker, label) {
-  if (text.includes(marker)) throw new Error(`${label}: forbidden ${marker}`);
+  if (text.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
 const files = {
@@ -28,7 +32,7 @@ const source = Object.fromEntries(
 
 for (const marker of [
   "pub mod import_resolution;",
-  "pub use import_resolution::*;",
+  "pub use import_resolution::{",
 ]) need(source.lib, marker, "forum import resolution export");
 
 for (const marker of [
@@ -128,7 +132,13 @@ for (const marker of [
 
 const newUuidCalls = source.resolution.split("Uuid::new_v4").length - 1;
 if (newUuidCalls !== 0) {
-  throw new Error(`resolution boundary generated UUIDs: ${newUuidCalls}`);
+  failures.push(`resolution boundary generated UUIDs: ${newUuidCalls}`);
+}
+
+if (failures.length > 0) {
+  console.error("Forum FORUM-34K bounded import application resolution source failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
 }
 
 console.log("Forum FORUM-34K bounded import application resolution source: ok");

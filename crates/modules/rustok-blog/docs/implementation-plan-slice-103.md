@@ -26,7 +26,7 @@ Canonical interpretation:
 
 ### Search projection
 
-`BlogSearchProjector` now requires `blog_post_tags`, `taxonomy_terms`, and `taxonomy_term_translations` in addition to the existing Blog projection tables.
+`BlogSearchProjector` now requires `blog_post_tags`, `taxonomy_terms`, and `taxonomy_term_translations` in addition to the existing Blog projection tables. Historical: the projector was deleted on 2026-10-25 and the same requirement now lives in `rustok-blog/src/services/search_projection.rs` through `load_post_tags_map`, which is what the guard pins.
 
 Search tag names are resolved from attached term IDs with this bounded fallback chain:
 

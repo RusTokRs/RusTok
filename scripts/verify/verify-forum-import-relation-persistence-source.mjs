@@ -6,12 +6,16 @@ function read(path) {
   return fs.readFileSync(path, "utf8");
 }
 
+// Collect every drift instead of aborting on the first one: a guard that throws hides the rest of
+// the contract behind whichever marker happened to move first.
+const failures = [];
+
 function need(text, marker, label) {
-  if (!text.includes(marker)) throw new Error(`${label}: missing ${marker}`);
+  if (!text.includes(marker)) failures.push(`${label}: missing ${marker}`);
 }
 
 function forbid(text, marker, label) {
-  if (text.includes(marker)) throw new Error(`${label}: forbidden ${marker}`);
+  if (text.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
 const files = {
@@ -42,7 +46,8 @@ for (const marker of [
   'mod mention_relation {',
   'include!("mention_relation_import.rs");',
   'include!("mention_relation.rs");',
-  'pub(crate) use mention_relation::MentionRelationService;',
+  'mod mention_relation {',
+  'include!("mention_relation_import.rs");',
 ]) need(source.services, marker, "forum import relation persistence wiring");
 if (source.services.indexOf('include!("mention_relation_import.rs");') > source.services.indexOf('include!("mention_relation.rs");')) {
   throw new Error("forum import relation persistence include must precede mention_relation.rs");
@@ -133,5 +138,11 @@ for (const marker of [
   'FORUM-34O',
   'no tests, Cargo commands',
 ]) need(source.packet, marker, "FORUM-34N packet");
+
+if (failures.length > 0) {
+  console.error("Forum source guard failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
 
 console.log("Forum FORUM-34N owner import relation persistence source: ok");

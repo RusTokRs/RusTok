@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -217,15 +218,15 @@ for (const marker of [
   "NotificationInboxGroupStateService",
   "bounded exact-group state commands",
   "tests/inbox_group_state_sqlite.rs",
-  "External transport adapters and grouped UI remain closed",
+  "GraphQL group-state writes reuse the same owner port with explicit idempotency admission",
 ]) {
-  requireText(readme, marker, `notifications README is missing ${marker}`);
+  requireProse(failures, readme, marker, "notifications README");
 }
 for (const marker of [
   "NotificationInboxGroupStateService",
   "Bounded group state commands",
   "inbox_group_state_sqlite",
-  "grouped UI",
+  "The grouped Notifications view uses owner-backed SSR bootstrap",
 ]) {
   requireText(liveContract, marker, `notifications live contract is missing ${marker}`);
 }

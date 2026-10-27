@@ -29,7 +29,7 @@ const replyAudiencePath = "crates/modules/rustok-forum/src/services/reply_audien
 const publicDiscoveryPath = "crates/modules/rustok-forum/src/services/public_discovery.rs";
 const sourcePath = "crates/modules/rustok-forum/src/search_projection.rs";
 const replyUpdatePath = "crates/modules/rustok-forum/src/services/reply_inline.rs";
-const projectorPath = "crates/modules/rustok-search/src/forum_projector.rs";
+const projectorPath = "crates/modules/rustok-search/src/projection_driver.rs";
 const ingestionPath = "crates/modules/rustok-search/src/ingestion.rs";
 const enginePath = "crates/modules/rustok-search/src/engine.rs";
 const pgEnginePath = "crates/modules/rustok-search/src/pg_engine.rs";
@@ -144,13 +144,21 @@ for (const marker of [
 rejectMarker(replyUpdate, 'target_type: "forum_reply"', replyUpdatePath);
 
 for (const marker of [
-  'const FORUM_REPLY_ENTITY_TYPE: &str = "forum_reply"',
-  "FORUM_TOPIC_ENTITY_TYPE | FORUM_REPLY_ENTITY_TYPE",
+  // The Forum owner, not Search, decides that a topic refresh replaces its replies.
+  "fn refresh_scope(&self, entity_type: &str) -> SearchProjectionRefreshScope",
   "if entity_type == FORUM_TOPIC_ENTITY_TYPE",
-  "return self.rebuild_tenant(tenant_id).await",
-  "'forum_category', 'forum_topic', 'forum_reply'",
-  "CREATE TEMP TABLE forum_search_projection_stage",
+  "SearchProjectionRefreshScope::Tenant",
+]) {
+  requireMarker(source, marker, sourcePath);
+}
+for (const marker of [
+  'const STAGE_TABLE: &str = "search_projection_stage";',
+  "CREATE TEMP TABLE {STAGE_TABLE}",
   "ON COMMIT DROP",
+  "if self.source.refresh_scope(entity_type) == SearchProjectionRefreshScope::Tenant",
+  "return self.rebuild_tenant(tenant_id).await",
+  "DELETE FROM search_documents WHERE tenant_id = $1 AND source_module = $2",
+  "SearchProjectionDriver requires PostgreSQL backend",
 ]) {
   requireMarker(projector, marker, projectorPath);
 }

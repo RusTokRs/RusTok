@@ -161,23 +161,33 @@ async fn storefront_search_native(
         };
 
         let engine = PgSearchEngine::new(db.clone());
-        let default_registry = rustok_search::SearchAudienceRegistry::new();
-        let audience_registry = runtime_ctx.shared_get::<rustok_search::SearchAudienceRegistry>();
-        let registry = audience_registry.as_ref().unwrap_or(&default_registry);
+        // Fail closed: without the host-composed audience registry nothing is declared,
+        // and treating that as "no module is gated" would publish gated documents.
+        let registry = runtime_ctx
+            .shared_get::<rustok_search::SearchAudienceRegistry>()
+            .ok_or_else(|| {
+                ServerFnError::new("Search audience registry is unavailable for this surface")
+            })?;
         let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
             .await
             .map_err(ServerFnError::new)?
             .0;
 
+        let category_scope = runtime_ctx
+            .shared_get::<rustok_search::SharedStorefrontSearchCategoryScopePort>()
+            .cloned();
         let result = rustok_search::execute_audience_eligible_search(
             &db,
             &engine,
             search_query.clone(),
             &trusted_channel,
-            registry,
-            auth,
-            Some(request_context.clone()),
-            rustok_search::StorefrontSearchTransport::NativeServer,
+            rustok_search::StorefrontSearchAudienceContext {
+                registry: &registry,
+                category_scope,
+                auth,
+                request_context: Some(request_context.clone()),
+                transport: rustok_search::StorefrontSearchTransport::NativeServer,
+            },
         )
         .await
         .map_err(server_error)?;
@@ -276,6 +286,15 @@ async fn storefront_search_suggestions_native(
         if query.is_empty() {
             return Ok(Vec::new());
         }
+        let registry = runtime_ctx
+            .shared_get::<rustok_search::SearchAudienceRegistry>()
+            .ok_or_else(|| {
+                ServerFnError::new("Search audience registry is unavailable for this surface")
+            })?;
+        let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
+            .await
+            .map_err(ServerFnError::new)?
+            .0;
         let suggestions = SearchSuggestionService::storefront_suggestions(
             &db,
             SearchSuggestionQuery {
@@ -286,6 +305,12 @@ async fn storefront_search_suggestions_native(
                 published_only: true,
             },
             &trusted_channel,
+            rustok_search::StorefrontSuggestionAudience {
+                registry: &registry,
+                auth: auth.as_ref(),
+                request_context: Some(&request_context),
+                transport: rustok_search::StorefrontSearchTransport::NativeServer,
+            },
         )
         .await
         .map_err(server_error)?;

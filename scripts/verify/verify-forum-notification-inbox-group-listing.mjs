@@ -131,8 +131,10 @@ for (const marker of [
   ".authorize_open(NotificationInboxOpenRequest",
   "NotificationInboxOpenDecision::Allowed",
   "NotificationInboxPage {",
-  "request.group_key != request.group_key.trim()",
-  "request.group_key.chars().any(char::is_control)",
+  "validate_inbox_group_key(&request.group_key)",
+  "group_key != group_key.trim()",
+  "group_key.chars().any(char::is_control)",
+  "group_key.len() > MAX_NOTIFICATION_INBOX_GROUP_KEY_BYTES",
   "notification inbox group list identity must not be nil",
   "notification inbox group key must contain between 1 and",
 ]) {
