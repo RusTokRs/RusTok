@@ -83,7 +83,10 @@ pub fn product_translation_title_and_locale_search_condition(
 
     Condition::all().add(Expr::cust_with_values(
         exists_sql,
-        vec![Value::from(trimmed_locale.to_string()), Value::from(pattern)],
+        vec![
+            Value::from(trimmed_locale.to_string()),
+            Value::from(pattern),
+        ],
     ))
 }
 
@@ -103,7 +106,8 @@ mod tests {
 
     #[test]
     fn test_search_condition_trimmed_query() {
-        let cond = product_translation_title_search_condition(DbBackend::Postgres, "en", "  shoe  ");
+        let cond =
+            product_translation_title_search_condition(DbBackend::Postgres, "en", "  shoe  ");
         assert!(!cond.is_empty());
     }
 

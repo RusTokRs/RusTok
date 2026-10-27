@@ -231,16 +231,30 @@ mod tests {
 
     #[async_trait::async_trait]
     impl IggyConnector for DummyConnector {
-        async fn connect(&self, _config: &rustok_iggy_connector::ConnectorConfig) -> std::result::Result<(), rustok_iggy_connector::ConnectorError> {
+        async fn connect(
+            &self,
+            _config: &rustok_iggy_connector::ConnectorConfig,
+        ) -> std::result::Result<(), rustok_iggy_connector::ConnectorError> {
             Ok(())
         }
         fn is_connected(&self) -> bool {
             true
         }
-        async fn publish(&self, _request: PublishRequest) -> std::result::Result<(), rustok_iggy_connector::ConnectorError> {
+        async fn publish(
+            &self,
+            _request: PublishRequest,
+        ) -> std::result::Result<(), rustok_iggy_connector::ConnectorError> {
             Ok(())
         }
-        async fn subscribe(&self, _s: &str, _t: &str, _p: u32) -> std::result::Result<Box<dyn rustok_iggy_connector::MessageSubscriber>, rustok_iggy_connector::ConnectorError> {
+        async fn subscribe(
+            &self,
+            _s: &str,
+            _t: &str,
+            _p: u32,
+        ) -> std::result::Result<
+            Box<dyn rustok_iggy_connector::MessageSubscriber>,
+            rustok_iggy_connector::ConnectorError,
+        > {
             Err(rustok_iggy_connector::ConnectorError::NotConnected)
         }
         async fn shutdown(&self) -> std::result::Result<(), rustok_iggy_connector::ConnectorError> {
@@ -257,7 +271,9 @@ mod tests {
         let result = manager.move_to_dlq(&connector, entry.clone()).await;
         assert!(matches!(result, Err(rustok_core::Error::Validation(_))));
 
-        let result = manager.retry_entry(&connector, entry, "domain".to_string()).await;
+        let result = manager
+            .retry_entry(&connector, entry, "domain".to_string())
+            .await;
         assert!(matches!(result, Err(rustok_core::Error::Validation(_))));
     }
 }

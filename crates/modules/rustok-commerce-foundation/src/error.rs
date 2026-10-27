@@ -159,12 +159,18 @@ impl From<CommerceError> for CoreError {
     fn from(err: CommerceError) -> Self {
         match err {
             CommerceError::Database(db_err) => CoreError::Database(db_err),
-            CommerceError::ProductNotFound(id) => CoreError::NotFound(format!("Product {id} not found")),
-            CommerceError::VariantNotFound(id) => CoreError::NotFound(format!("Variant {id} not found")),
-            CommerceError::DuplicateHandle { handle, locale } => {
-                CoreError::Validation(format!("Handle '{handle}' already exists for locale '{locale}'"))
+            CommerceError::ProductNotFound(id) => {
+                CoreError::NotFound(format!("Product {id} not found"))
             }
-            CommerceError::DuplicateSku(sku) => CoreError::Validation(format!("SKU '{sku}' already exists")),
+            CommerceError::VariantNotFound(id) => {
+                CoreError::NotFound(format!("Variant {id} not found"))
+            }
+            CommerceError::DuplicateHandle { handle, locale } => CoreError::Validation(format!(
+                "Handle '{handle}' already exists for locale '{locale}'"
+            )),
+            CommerceError::DuplicateSku(sku) => {
+                CoreError::Validation(format!("SKU '{sku}' already exists"))
+            }
             CommerceError::InvalidPrice(msg) => CoreError::Validation(msg),
             CommerceError::InsufficientInventory {
                 requested,
