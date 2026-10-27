@@ -1,1 +1,1 @@
-diag2 run 1: replicate failing PR checks (lock fix + backfill contracts)
+diag2 run 2: cargo-made lock diff, fmt patch, repaired base, head unlocked for PG/API info
