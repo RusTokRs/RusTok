@@ -281,7 +281,14 @@ generation before retrying.
 validation (scheme `redis`/`rediss`, host presence, database range, mode ↔ target agreement),
 client redaction (both the password field and the password inside the URL) and merge-back of a
 redacted document (`merge_with_existing` / `preserve_url_password`, which restores a password only
-when the incoming document still points at the same target).
+when the incoming document still points at the same target, `same_redis_target`).
+
+A password belongs to a **target**, not to a document: scheme, host, port, database and username
+decide whether a stored secret may be restored, and the password itself never does. A document that
+moved to another target is merged with no secret at all, and `REDACTED_SECRET` is never treated as a
+credential — `has_password()` ignores the mask inside the URL as well as in the field, and merge-back
+strips a mask it cannot replace with a real secret. The host settings service merges the raw JSON row
+through the same rule (`rustok_cache::same_redis_target`), so the two merge paths cannot disagree.
 
 The **Redis target is deployment configuration**: the runtime resolves it once at startup
 (`settings` file → `RUSTOK_REDIS_URL` → `REDIS_URL`, resolved by `resolve_redis_url`). The host

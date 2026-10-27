@@ -72,7 +72,9 @@ capacity. Fixed-size counters may use entry-count capacity.
   (`settings` file → `RUSTOK_REDIS_URL` → `REDIS_URL`) by `rustok_cache::resolve_redis_url`. The
   host settings service reports that resolved document for the `cache` category and rejects a
   write that would redirect the process; the stored row is a redacted audit mirror that the
-  runtime never reads.
+  runtime never reads. Secret merge-back uses the crate's target identity
+  (`rustok_cache::same_redis_target`), so a password is restored only for the same target and a
+  redaction mask is never stored.
 - The cache admin server functions consume two host-published handles: the runtime `CacheService`
   (health) and `SharedCacheSettingsAdmin` (a `CacheSettingsAdminPort` implementation backed by the
   host settings service). Reads require `settings:read` (or host read authority) and the write

@@ -178,6 +178,32 @@ pub fn preserve_url_password(incoming_url: &str, existing_url: &str) -> Option<S
     Some(restored.to_string())
 }
 
+/// Whether two Redis URLs describe the same target (scheme, host, port, database, username).
+///
+/// The password is excluded on purpose: the target identity is exactly what decides whether a
+/// stored secret may be restored into a document. Two documents that point at different targets
+/// must never share a password.
+pub fn same_redis_target(left: &str, right: &str) -> bool {
+    match (identity_of_url(left), identity_of_url(right)) {
+        (Some(left), Some(right)) => left == right,
+        _ => false,
+    }
+}
+
+/// Remove a redaction mask from a URL password.
+///
+/// [`REDACTED_SECRET`] is a placeholder, not a secret: a document that was never merged back must
+/// not persist it, because the next reader would treat it as a real credential.
+fn strip_masked_url_password(url: &str) -> String {
+    match parse_redis_url(url) {
+        Ok(mut parsed) if parsed.password() == Some(REDACTED_SECRET) => {
+            let _ = parsed.set_password(None);
+            parsed.to_string()
+        }
+        _ => url.to_string(),
+    }
+}
+
 /// Strip the password from a Redis URL and report whether one was present.
 fn redact_url_password(url: &str) -> (String, bool) {
     match parse_redis_url(url) {
@@ -249,14 +275,21 @@ impl CacheSettings {
         settings
     }
 
-    /// Whether this document carries a Redis password (field or URL).
+    /// Whether this document carries a real Redis password (field or URL).
+    ///
+    /// [`REDACTED_SECRET`] is a mask, so a redacted document carries no password: reporting one
+    /// would make a read-modify-write cycle persist the mask as if it were the credential.
     pub fn has_password(&self) -> bool {
         if !self.redis_password.is_empty() && self.redis_password != REDACTED_SECRET {
             return true;
         }
         parse_redis_url(self.redis_url.trim())
             .ok()
-            .and_then(|parsed| parsed.password().map(|password| !password.is_empty()))
+            .and_then(|parsed| {
+                parsed
+                    .password()
+                    .map(|password| !password.is_empty() && password != REDACTED_SECRET)
+            })
             .unwrap_or(false)
     }
 
@@ -327,28 +360,45 @@ impl CacheSettings {
 
     /// Merge a (possibly redacted) incoming document with the stored one.
     ///
-    /// Secrets survive a read-modify-write cycle; everything else is taken from `self`.
+    /// Both password channels (the `redis_password` field and the password inside `redis_url`) are
+    /// restored only while the incoming document still points at the same target as the stored one
+    /// ([`same_redis_target`]). A document that moved to another target is merged without any
+    /// secret, and a [`REDACTED_SECRET`] mask is never left behind for storage.
     pub fn merge_with_existing(&mut self, existing: &Self) {
+        let same_target = match (self.resolved_url(), existing.resolved_url()) {
+            (Some(incoming), Some(previous)) => same_redis_target(&incoming, &previous),
+            _ => false,
+        };
+
+        if !same_target {
+            // A password must never follow a document to a different target, and a mask must never
+            // be persisted: dropping both channels is the only truthful result.
+            if self.redis_password == REDACTED_SECRET {
+                self.redis_password.clear();
+            }
+            self.redis_url = strip_masked_url_password(self.redis_url.trim());
+            return;
+        }
+
         if self.redis_password.is_empty() || self.redis_password == REDACTED_SECRET {
-            self.redis_password = existing.redis_password.clone();
+            self.redis_password = if existing.redis_password == REDACTED_SECRET {
+                String::new()
+            } else {
+                existing.redis_password.clone()
+            };
         }
 
         let incoming_url = self.redis_url.trim().to_string();
-        if incoming_url.is_empty() {
-            return;
-        }
         let existing_url = existing.redis_url.trim();
-        if existing_url.is_empty() {
+        if incoming_url.is_empty() || existing_url.is_empty() {
             return;
         }
         if let Some(restored) = preserve_url_password(&incoming_url, existing_url) {
             self.redis_url = restored;
-        } else if !self.has_password() {
-            // Same-target restoration failed; surface the mask instead of persisting it.
-            let (redacted, had_password) = redact_url_password(&incoming_url);
-            if had_password {
-                self.redis_url = redacted;
-            }
+        } else {
+            // Same target but nothing to restore (for example the stored document had no
+            // password): never keep the mask in place of a credential.
+            self.redis_url = strip_masked_url_password(&incoming_url);
         }
     }
 }
@@ -515,7 +565,11 @@ mod tests {
         assert_eq!(redacted.redis_password, REDACTED_SECRET);
         assert!(!redacted.redis_url.contains("url-secret"));
         assert!(redacted.redis_url.contains(REDACTED_SECRET));
-        assert!(redacted.has_password());
+        assert!(
+            !redacted.has_password(),
+            "a mask is not a credential; reporting one would persist the mask"
+        );
+        assert!(settings.has_password());
     }
 
     #[test]
@@ -541,9 +595,68 @@ mod tests {
         incoming.merge_with_existing(&stored);
         assert!(!incoming.redis_url.contains("url-secret"));
         assert!(
+            !incoming.redis_url.contains(REDACTED_SECRET),
+            "a mask must not be persisted when the target changed: {}",
+            incoming.redis_url
+        );
+        assert!(
             preserve_url_password(&incoming.redis_url, &stored.redis_url).is_none(),
             "a different host must not inherit the old password"
         );
+    }
+
+    #[test]
+    fn round_trip_does_not_move_a_field_password_to_another_host() {
+        let stored = CacheSettings {
+            mode: DEFAULT_REDIS_MODE.to_string(),
+            redis_password: "field-secret".to_string(),
+            redis_url: "redis://cache.internal:6379/0".to_string(),
+            ..CacheSettings::default()
+        };
+        let mut incoming = stored.redacted_for_client();
+        incoming.redis_url = "redis://other.internal:6379/0".to_string();
+        incoming.merge_with_existing(&stored);
+
+        assert!(
+            !incoming.has_password(),
+            "the stored field password must not follow the document to another target"
+        );
+        assert!(incoming.redis_password != REDACTED_SECRET);
+    }
+
+    #[test]
+    fn round_trip_restores_the_field_password_for_the_same_target() {
+        let stored = CacheSettings {
+            mode: DEFAULT_REDIS_MODE.to_string(),
+            redis_password: "field-secret".to_string(),
+            redis_url: "redis://cache.internal:6379/0".to_string(),
+            ..CacheSettings::default()
+        };
+        let mut incoming = stored.redacted_for_client();
+        // The client touched only an unrelated field.
+        incoming.redis_host = "cache.internal".to_string();
+        incoming.merge_with_existing(&stored);
+
+        assert_eq!(incoming.redis_password, "field-secret");
+        assert!(incoming.has_password());
+    }
+
+    #[test]
+    fn target_identity_ignores_the_password_but_not_the_scheme_or_database() {
+        // Same target, different passwords: a stored secret may be restored.
+        assert!(same_redis_target(
+            "redis://:one@cache.internal:6379/1",
+            "redis://:two@CACHE.internal:6379/1"
+        ));
+        assert!(!same_redis_target(
+            "redis://:one@cache.internal:6379/1",
+            "rediss://:two@cache.internal:6379/1"
+        ));
+        assert!(!same_redis_target(
+            "redis://:one@cache.internal:6379/1",
+            "redis://:one@cache.internal:6379/2"
+        ));
+        assert!(!same_redis_target("redis://:one@cache.internal:6379/1", ""));
     }
 
     #[test]

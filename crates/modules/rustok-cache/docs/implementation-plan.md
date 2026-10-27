@@ -299,6 +299,14 @@ None of these are claimed as compiled or live verified until the P0 evidence ste
 - [x] Cache settings have one owner: `CacheSettings` resolves/validates/redacts/merges, the host
   settings service reports the deployment-resolved document and rejects a write that would
   redirect the running process, and a redacted read preserves the password inside `redis_url`.
+- [x] A password is scoped to a target, not to a document: `same_redis_target` (scheme, host, port,
+  database, username; the password is excluded) gates every restore in both merge paths, a
+  read-modify-write that moves to another target is merged with no secret, and `REDACTED_SECRET` is
+  never treated as a credential (`has_password` ignores the mask in the URL too, and a mask that
+  cannot be replaced by a real secret is stripped instead of stored).
+- [x] The cache admin form builder mirrors the document contract: `in-memory` with a Redis target and
+  a Redis mode without any target are rejected with a field-level error instead of being submitted
+  for the server to refuse, and target fields are trimmed rather than stored with whitespace.
 - [x] The cache admin server functions are real adapters: runtime `CacheService` health and a
   host-provided `CacheSettingsAdminPort` for settings, and the form builder returns a validation
   error instead of substituting defaults.

@@ -20,6 +20,8 @@
   - `CacheInvalidationError` (`InvalidMessage`, `SharedTransport`), `DurableCacheInvalidationError::Transport`
 - **Settings & Admin Seam**:
   - `CacheSettings` (resolved target, validation, redaction, merge-back), `preserve_url_password`
+  - `same_redis_target` / `REDACTED_SECRET` (a password is scoped to a target; a mask is never a
+    credential), `resolve_redis_url`, `REDIS_URL_ENV_NAMES`
   - `CacheSettingsAdminPort`, `SharedCacheSettingsAdmin`
   - `resolve_redis_url` (deployment precedence: settings file → `RUSTOK_REDIS_URL` → `REDIS_URL`)
   - authority for the admin surface is not owned here: both transports evaluate

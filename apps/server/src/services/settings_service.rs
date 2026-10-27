@@ -483,6 +483,32 @@ fn preserve_cache_secret_fields(existing: Value, mut incoming: Value) -> Value {
         return incoming;
     };
 
+    // Secrets belong to a *target*, not to a document. `rustok_cache::same_redis_target` is the
+    // canonical identity (the password is excluded, scheme/host/port/database/username are not), so
+    // a save that redirects the cache to another target can never inherit the stored password and a
+    // redaction mask is never persisted as if it were the credential.
+    let existing_url = existing_object
+        .get("redis_url")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let incoming_url = incoming_object
+        .get("redis_url")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let same_target = !existing_url.is_empty()
+        && !incoming_url.is_empty()
+        && rustok_cache::same_redis_target(incoming_url, existing_url);
+
+    if !same_target {
+        let masked = Value::String(rustok_cache::REDACTED_SECRET.to_string());
+        for key in ["redis_password", "redisPassword"] {
+            if incoming_object.get(key) == Some(&masked) {
+                incoming_object.insert(key.to_string(), Value::String(String::new()));
+            }
+        }
+        return incoming;
+    }
+
     // Reads redact the password inside `redis_url` (see `redact_secrets`). Without this step a
     // save that only touches another field would persist the redacted URL and destroy the secret.
     let restored_url = existing_object
@@ -500,28 +526,36 @@ fn preserve_cache_secret_fields(existing: Value, mut incoming: Value) -> Value {
         incoming_object.insert("redis_url".to_string(), Value::String(restored_url));
     }
 
-    if incoming_object
+    let existing_password = existing_object
         .get("redis_password")
-        .and_then(Value::as_str)
-        .is_some_and(str::is_empty)
-        && let Some(existing_password) = existing_object
-            .get("redis_password")
-            .or_else(|| existing_object.get("redisPassword"))
-            .filter(|value| !value.as_str().unwrap_or_default().is_empty())
-    {
-        incoming_object.insert("redis_password".to_string(), existing_password.clone());
-    }
+        .or_else(|| existing_object.get("redisPassword"))
+        .filter(|value| !value.as_str().unwrap_or_default().is_empty())
+        .filter(|value| value.as_str() != Some(rustok_cache::REDACTED_SECRET))
+        .cloned();
 
-    if incoming_object
-        .get("redisPassword")
-        .and_then(Value::as_str)
-        .is_some_and(str::is_empty)
-        && let Some(existing_password) = existing_object
-            .get("redis_password")
-            .or_else(|| existing_object.get("redisPassword"))
-            .filter(|value| !value.as_str().unwrap_or_default().is_empty())
-    {
-        incoming_object.insert("redisPassword".to_string(), existing_password.clone());
+    if let Some(existing_password) = existing_password {
+        for key in ["redis_password", "redisPassword"] {
+            let is_unset = incoming_object
+                .get(key)
+                .and_then(Value::as_str)
+                .is_some_and(|value| {
+                    value.is_empty() || value == rustok_cache::REDACTED_SECRET
+                });
+            if is_unset {
+                incoming_object.insert(key.to_string(), existing_password.clone());
+            }
+        }
+    } else {
+        // Nothing to restore: clear a mask so it is not stored as a credential.
+        for key in ["redis_password", "redisPassword"] {
+            if incoming_object
+                .get(key)
+                .and_then(Value::as_str)
+                .is_some_and(|value| value == rustok_cache::REDACTED_SECRET)
+            {
+                incoming_object.insert(key.to_string(), Value::String(String::new()));
+            }
+        }
     }
 
     incoming
@@ -683,6 +717,68 @@ mod tests {
             ensure_supported_category("search"),
             Err(SettingsError::InvalidCategory(category)) if category == "search"
         ));
+    }
+
+    fn stored_cache_row(url: &str, password: &str) -> Value {
+        json!({
+            "mode": "redis",
+            "redis_host": "cache.internal",
+            "redis_port": 6379,
+            "redis_db": 0,
+            "redis_password": password,
+            "redis_url": url,
+        })
+    }
+
+    #[test]
+    fn cache_save_restores_the_password_for_the_same_target() {
+        let existing =
+            stored_cache_row("redis://:url-secret@cache.internal:6379/0", "field-secret");
+        // A read returns a redacted document: blank field, URL without the password.
+        let incoming = stored_cache_row("redis://cache.internal:6379/0", "");
+
+        let merged = preserve_cache_secret_fields(existing, incoming);
+
+        assert_eq!(merged["redis_password"], json!("field-secret"));
+        assert_eq!(
+            merged["redis_url"],
+            json!("redis://:url-secret@cache.internal:6379/0")
+        );
+    }
+
+    #[test]
+    fn cache_save_does_not_carry_a_password_to_another_target() {
+        let existing =
+            stored_cache_row("redis://:url-secret@cache.internal:6379/0", "field-secret");
+        // The client edited the target and left the (masked) secret fields untouched.
+        let incoming =
+            stored_cache_row("redis://other.internal:6379/0", rustok_cache::REDACTED_SECRET);
+
+        let merged = preserve_cache_secret_fields(existing, incoming);
+
+        assert_eq!(
+            merged["redis_password"],
+            json!(""),
+            "a password must not follow the document to another target"
+        );
+        assert_eq!(merged["redis_url"], json!("redis://other.internal:6379/0"));
+        assert!(
+            !merged.to_string().contains(rustok_cache::REDACTED_SECRET),
+            "a redaction mask must never be stored as a credential: {merged}"
+        );
+    }
+
+    #[test]
+    fn cache_save_clears_a_mask_when_there_is_nothing_to_restore() {
+        let existing = stored_cache_row("redis://cache.internal:6379/0", "");
+        let incoming = stored_cache_row(
+            "redis://cache.internal:6379/0",
+            rustok_cache::REDACTED_SECRET,
+        );
+
+        let merged = preserve_cache_secret_fields(existing, incoming);
+
+        assert_eq!(merged["redis_password"], json!(""));
     }
 
     #[test]
