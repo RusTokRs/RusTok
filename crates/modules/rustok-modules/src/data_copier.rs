@@ -169,7 +169,8 @@ impl<A: ArtifactDataCopyAuthorizer> ArtifactDataCopier<A> {
         request: ArtifactDataCopyRequest,
     ) -> Result<ArtifactDataCopyReservation, ArtifactDataCopyError> {
         validate_request(&request)?;
-        let request_digest = crate::idempotency::semantic_request_digest(&request).map_err(storage_error)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&request).map_err(storage_error)?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, request.tenant_id)
             .await
@@ -844,7 +845,9 @@ async fn load_operation<C: ConnectionTrait>(
         return Ok(None);
     };
     let saved_digest: String = row.try_get("", "request_digest").map_err(storage_error)?;
-    if saved_digest != crate::idempotency::semantic_request_digest(request).map_err(storage_error)? {
+    if saved_digest
+        != crate::idempotency::semantic_request_digest(request).map_err(storage_error)?
+    {
         return Err(ArtifactDataCopyError::IdempotencyConflict);
     }
     let operation = decode_operation(&row, backend)?;
@@ -868,7 +871,9 @@ fn decode_operation(
     .map_err(|_| ArtifactDataCopyError::Integrity)?;
     validate_request(&request).map_err(|_| ArtifactDataCopyError::Integrity)?;
     let request_digest: String = row.try_get("", "request_digest").map_err(storage_error)?;
-    if request_digest != crate::idempotency::semantic_request_digest(&request).map_err(storage_error)? {
+    if request_digest
+        != crate::idempotency::semantic_request_digest(&request).map_err(storage_error)?
+    {
         return Err(ArtifactDataCopyError::Integrity);
     }
     for (column, value) in [

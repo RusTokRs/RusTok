@@ -700,8 +700,7 @@ where
         // The authorizer is a host boundary; anything this owner persists
         // and returns must already be in storage precision so the created
         // record equals its replayed (loaded) form exactly.
-        retention.retain_until =
-            crate::backend::align_to_storage_precision(retention.retain_until);
+        retention.retain_until = crate::backend::align_to_storage_precision(retention.retain_until);
         validate_retention(&retention, self.infrastructure.now())?;
 
         if let Some(existing) = self.find_recovery_operation(&request).await? {
@@ -1221,8 +1220,7 @@ where
             .authorizer
             .authorize_retention_update(&request, &recovery.authorization_context())
             .await?;
-        retention.retain_until =
-            crate::backend::align_to_storage_precision(retention.retain_until);
+        retention.retain_until = crate::backend::align_to_storage_precision(retention.retain_until);
         validate_retention_update(&retention)?;
 
         let transaction = self.db.begin().await.map_err(storage_error)?;

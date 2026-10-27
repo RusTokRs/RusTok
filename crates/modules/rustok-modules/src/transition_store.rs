@@ -277,9 +277,7 @@ impl TransitionCheckpointStore {
     /// resolves, so it must block tenant lifecycle writes exactly like a
     /// tenant-scoped transition. Scoped to one slug so the fence never
     /// scans (or materializes) other tenants' checkpoints.
-    pub async fn list_active_checkpoints_for_slug_and_tenant_or_platform<
-        C: ConnectionTrait,
-    >(
+    pub async fn list_active_checkpoints_for_slug_and_tenant_or_platform<C: ConnectionTrait>(
         db: &C,
         module_slug: &str,
         tenant_id: Uuid,

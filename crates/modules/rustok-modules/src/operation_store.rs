@@ -780,10 +780,10 @@ impl ModuleOperationJournal {
                 }
                 _ => false,
             };
-            let matching_claim_live = matching_claim
-                && claim_state.as_ref().is_some_and(|claim| !claim.expired);
-            let matching_claim_expired = matching_claim
-                && claim_state.as_ref().is_some_and(|claim| claim.expired);
+            let matching_claim_live =
+                matching_claim && claim_state.as_ref().is_some_and(|claim| !claim.expired);
+            let matching_claim_expired =
+                matching_claim && claim_state.as_ref().is_some_and(|claim| claim.expired);
 
             match candidate.status {
                 ModuleOperationStatus::Validated | ModuleOperationStatus::Running => {
@@ -818,9 +818,8 @@ impl ModuleOperationJournal {
                             operation_key,
                         )
                         .await
-                        .map_err(|error| {
-                            ModuleOperationStoreError::Database(error.to_string())
-                        })? {
+                        .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?
+                        {
                             report.released_claims += 1;
                         }
                     }
@@ -857,9 +856,8 @@ impl ModuleOperationJournal {
                             operation_key,
                         )
                         .await
-                        .map_err(|error| {
-                            ModuleOperationStoreError::Database(error.to_string())
-                        })? {
+                        .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?
+                        {
                             report.released_claims += 1;
                         }
                     }
@@ -881,9 +879,8 @@ impl ModuleOperationJournal {
                             operation_key,
                         )
                         .await
-                        .map_err(|error| {
-                            ModuleOperationStoreError::Database(error.to_string())
-                        })? {
+                        .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?
+                        {
                             report.released_claims += 1;
                         }
                     }
@@ -1056,7 +1053,7 @@ impl StaticTenantLifecycleStore {
                     _ => {
                         return Err(StaticTenantLifecycleStoreError::InconsistentState(
                             module_slug.to_string(),
-                        ))
+                        ));
                     }
                 },
             })
@@ -1157,7 +1154,8 @@ impl StaticTenantLifecycleStore {
             let module_slug: String = row
                 .try_get("", "module_slug")
                 .map_err(static_lifecycle_database_error)?;
-            let snapshot = static_lifecycle_snapshot_from_row(backend, row, tenant_id, &module_slug)?;
+            let snapshot =
+                static_lifecycle_snapshot_from_row(backend, row, tenant_id, &module_slug)?;
             snapshots.insert(module_slug, snapshot);
         }
         Ok(snapshots)
@@ -2352,12 +2350,10 @@ mod tests {
         )
         .await;
 
-        let report = ModuleOperationJournal::reap_stale(
-            &database,
-            MAX_STALE_MODULE_OPERATIONS_PER_REAP,
-        )
-        .await
-        .expect("stale operation reap");
+        let report =
+            ModuleOperationJournal::reap_stale(&database, MAX_STALE_MODULE_OPERATIONS_PER_REAP)
+                .await
+                .expect("stale operation reap");
         assert_eq!(report.scanned, 8);
         assert_eq!(report.orphaned, 2);
         assert_eq!(report.committed_hook_unknown, 1);
@@ -2463,12 +2459,9 @@ mod tests {
         let idempotency_key = Uuid::new_v4();
         let request = operation_request(tenant_id, "journal", idempotency_key);
 
-        let recorded = match ModuleOperationJournal::record_idempotent(
-            &database,
-            request.clone(),
-        )
-        .await
-        .expect("initial journal record")
+        let recorded = match ModuleOperationJournal::record_idempotent(&database, request.clone())
+            .await
+            .expect("initial journal record")
         {
             ModuleOperationRecordOutcome::Recorded(record) => record,
             ModuleOperationRecordOutcome::Replayed(_) => {
@@ -2481,12 +2474,9 @@ mod tests {
             Err(ModuleOperationStoreError::UniqueViolation(_))
         ));
 
-        let replayed = match ModuleOperationJournal::record_idempotent(
-            &database,
-            request.clone(),
-        )
-        .await
-        .expect("journal replay")
+        let replayed = match ModuleOperationJournal::record_idempotent(&database, request.clone())
+            .await
+            .expect("journal replay")
         {
             ModuleOperationRecordOutcome::Replayed(record) => record,
             ModuleOperationRecordOutcome::Recorded(_) => {

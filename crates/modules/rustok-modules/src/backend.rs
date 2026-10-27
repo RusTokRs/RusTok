@@ -163,11 +163,7 @@ impl SupportedBackend {
     /// and canonical hyphenated text. Accept the native representation
     /// first and fall back to text so one decoder remains correct across
     /// those durable schemas.
-    pub(crate) fn uuid_from_row(
-        self,
-        row: &QueryResult,
-        column: &str,
-    ) -> Result<Uuid, DbErr> {
+    pub(crate) fn uuid_from_row(self, row: &QueryResult, column: &str) -> Result<Uuid, DbErr> {
         match self {
             Self::Postgres => row.try_get("", column),
             Self::Sqlite => match row.try_get::<Uuid>("", column) {
@@ -175,9 +171,7 @@ impl SupportedBackend {
                 Err(native_error) => {
                     let value: String = row.try_get("", column).map_err(|_| native_error)?;
                     Uuid::parse_str(&value).map_err(|error| {
-                        DbErr::Custom(format!(
-                            "invalid UUID in SQLite column `{column}`: {error}"
-                        ))
+                        DbErr::Custom(format!("invalid UUID in SQLite column `{column}`: {error}"))
                     })
                 }
             },
@@ -216,11 +210,7 @@ impl SupportedBackend {
 
     /// Decode a required boolean from either native PostgreSQL `BOOLEAN`
     /// or SQLite's integer/boolean storage.
-    pub(crate) fn bool_from_row(
-        self,
-        row: &QueryResult,
-        column: &str,
-    ) -> Result<bool, DbErr> {
+    pub(crate) fn bool_from_row(self, row: &QueryResult, column: &str) -> Result<bool, DbErr> {
         match self {
             Self::Postgres => row.try_get("", column),
             Self::Sqlite => match row.try_get::<i64>("", column) {
@@ -278,14 +268,10 @@ impl SupportedBackend {
 /// Decode a stored count or byte length. Signed storage must never be cast
 /// directly to `u64`: a corrupt negative value would wrap into a plausible
 /// enormous count instead of failing closed at the row boundary.
-pub(crate) fn nonnegative_count_from_row(
-    row: &QueryResult,
-    column: &str,
-) -> Result<u64, DbErr> {
+pub(crate) fn nonnegative_count_from_row(row: &QueryResult, column: &str) -> Result<u64, DbErr> {
     let value: i64 = row.try_get("", column)?;
-    u64::try_from(value).map_err(|_| {
-        DbErr::Custom(format!("stored count in column `{column}` is negative"))
-    })
+    u64::try_from(value)
+        .map_err(|_| DbErr::Custom(format!("stored count in column `{column}` is negative")))
 }
 
 /// Parse a SQLite text timestamp written by this crate. The canonical

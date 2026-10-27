@@ -148,8 +148,7 @@ async fn backfill_ui_resources(
 /// projection.
 fn projected_ui_resources(descriptor: &Value) -> Vec<(&'static str, String)> {
     let mut resources = Vec::new();
-    let Some(contributions) = descriptor.get("ui_contributions").and_then(Value::as_array)
-    else {
+    let Some(contributions) = descriptor.get("ui_contributions").and_then(Value::as_array) else {
         return resources;
     };
     for contribution in contributions {

@@ -28,9 +28,7 @@ pub(crate) fn optional_json_text(
         .transpose()
 }
 
-pub(crate) fn next_attempt_number(
-    current_maximum: i64,
-) -> Result<i32, ModuleGovernanceError> {
+pub(crate) fn next_attempt_number(current_maximum: i64) -> Result<i32, ModuleGovernanceError> {
     i32::try_from(current_maximum)
         .ok()
         .and_then(|attempt| attempt.checked_add(1))

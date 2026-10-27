@@ -617,8 +617,7 @@ impl SourceObjectStore {
             i64::try_from(byte_length)
                 .map_err(|_| {
                     SourceObjectError::Storage(
-                        "source object byte length exceeds the supported storage range"
-                            .to_string(),
+                        "source object byte length exceeds the supported storage range".to_string(),
                     )
                 })?
                 .into(),

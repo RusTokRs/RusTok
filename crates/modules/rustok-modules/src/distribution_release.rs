@@ -271,7 +271,8 @@ where
     {
         validate_admission_command(&command)?;
         self.authorizer.authorize_admission(&command).await?;
-        let request_digest = crate::idempotency::semantic_request_digest(&command).map_err(promotion_error)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&command).map_err(promotion_error)?;
         validate_release_idempotency_key(&self.db, "admit", &command.context, &request_digest)
             .await?;
         if let Some(receipt) =
@@ -430,7 +431,8 @@ where
     {
         validate_revocation_command(&command)?;
         self.authorizer.authorize_revocation(&command).await?;
-        let request_digest = crate::idempotency::semantic_request_digest(&command).map_err(promotion_error)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&command).map_err(promotion_error)?;
         validate_release_idempotency_key(&self.db, "revoke", &command.context, &request_digest)
             .await?;
         if let Some(receipt) =

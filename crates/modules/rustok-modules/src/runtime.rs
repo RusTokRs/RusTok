@@ -437,9 +437,7 @@ where
             .runtime
             .execute_binding(request.artifact, request.binding, context, input, policy)
             .await
-            .map_err(|error| {
-                ExecutorReadinessError::SmokeExecutionFailed(error.to_string())
-            })?;
+            .map_err(|error| ExecutorReadinessError::SmokeExecutionFailed(error.to_string()))?;
         let output_bytes = serde_json::to_vec(&outcome.output).map_err(|error| {
             ExecutorReadinessError::SmokeExecutionFailed(format!(
                 "smoke output could not be canonicalized for its receipt digest: {error}"
@@ -731,9 +729,7 @@ impl ArtifactRuntimeError {
             | Self::BindingSchemaNotAdmitted { .. }
             | Self::SchemaCompilation { .. }
             | Self::BindingSchemaViolation { .. } => true,
-            Self::SchemaValidatorCachePoisoned | Self::Installation(_) | Self::Sandbox(_) => {
-                false
-            }
+            Self::SchemaValidatorCachePoisoned | Self::Installation(_) | Self::Sandbox(_) => false,
         }
     }
 

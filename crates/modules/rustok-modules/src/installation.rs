@@ -30,13 +30,13 @@ use crate::backend::SupportedBackend;
 use crate::{
     AdmissionReverificationPolicyRevision, ArtifactDataError, ArtifactDataMigrationCheckpointStore,
     ArtifactInstallationResolveError, ArtifactModuleKind, ArtifactPayloadKind, ArtifactReleaseRef,
-    ArtifactSandboxPolicyResolveError, ArtifactSandboxPolicyResolver, ArtifactUiContributionContent,
-    ControlPlaneInfrastructure, ModuleArtifactDescriptor, ModuleArtifactError,
-    ModuleCommandContext, ModuleDependencyLockGraph, ModuleTransitionCoordinator,
-    ModuleTransitionState, RetentionHoldKind, RetentionHoldRecord, RetentionHoldStore,
-    RetentionTarget, SeaOrmSecurityEpochStore, TransitionCheckpointStore, TrustEvidenceReference,
-    TrustPolicyRevision,
-    TrustVerificationDecision, TrustVerificationError, TrustVerificationRequest, TrustVerifier,
+    ArtifactSandboxPolicyResolveError, ArtifactSandboxPolicyResolver,
+    ArtifactUiContributionContent, ControlPlaneInfrastructure, ModuleArtifactDescriptor,
+    ModuleArtifactError, ModuleCommandContext, ModuleDependencyLockGraph,
+    ModuleTransitionCoordinator, ModuleTransitionState, RetentionHoldKind, RetentionHoldRecord,
+    RetentionHoldStore, RetentionTarget, SeaOrmSecurityEpochStore, TransitionCheckpointStore,
+    TrustEvidenceReference, TrustPolicyRevision, TrustVerificationDecision, TrustVerificationError,
+    TrustVerificationRequest, TrustVerifier,
 };
 
 const MAX_ARTIFACT_MIGRATION_CHECKPOINT_BYTES: usize = 16 * 1024;
@@ -416,8 +416,8 @@ impl InstalledModuleArtifact {
                     node.slug
                 ))
             })?;
-            let requirement =
-                parse_module_version_requirement(&dependency.version_requirement).map_err(|error| {
+            let requirement = parse_module_version_requirement(&dependency.version_requirement)
+                .map_err(|error| {
                     ModuleInstallationError::DependencyLock(format!(
                         "declared dependency `{}` has invalid requirement: {error}",
                         dependency.slug
@@ -1320,9 +1320,7 @@ impl SeaOrmArtifactBlobRetentionPolicy {
     /// Loads the digest set protected by currently active retention holds.
     /// Callers reload per reconciliation pass so holds recorded between
     /// passes take effect before any further deletion.
-    pub async fn load_active<C: ConnectionTrait>(
-        db: &C,
-    ) -> Result<Self, ModuleInstallationError> {
+    pub async fn load_active<C: ConnectionTrait>(db: &C) -> Result<Self, ModuleInstallationError> {
         let records = RetentionHoldStore::list_active_holds(db)
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
@@ -1462,8 +1460,8 @@ where
             scanned: digests.len(),
             ..ArtifactBlobGcReport::default()
         };
-        let grace_ends_at =
-            now.checked_add_signed(chrono::Duration::seconds(
+        let grace_ends_at = now
+            .checked_add_signed(chrono::Duration::seconds(
                 ARTIFACT_BLOB_GC_GRACE_PERIOD_SECONDS,
             ))
             .ok_or_else(|| {
@@ -2468,17 +2466,15 @@ impl SeaOrmArtifactInstallationStore {
                         "governed activation requires a non-nil operation and a positive observation window".into(),
                     ));
                 }
-                let checkpoint = TransitionCheckpointStore::load_checkpoint(
-                    &transaction,
-                    governed.operation_id,
-                )
-                .await
-                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
-                .ok_or_else(|| {
-                    ModuleInstallationError::AdmissionRevisionConflict(
-                        "governed activation checkpoint was not found".into(),
-                    )
-                })?;
+                let checkpoint =
+                    TransitionCheckpointStore::load_checkpoint(&transaction, governed.operation_id)
+                        .await
+                        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+                        .ok_or_else(|| {
+                            ModuleInstallationError::AdmissionRevisionConflict(
+                                "governed activation checkpoint was not found".into(),
+                            )
+                        })?;
                 if checkpoint.module_slug != slug
                     || checkpoint.tenant_id != tenant_id
                     || checkpoint.candidate_digest != candidate_descriptor.artifact_digest
@@ -2496,15 +2492,13 @@ impl SeaOrmArtifactInstallationStore {
                         checkpoint.state.name()
                     )));
                 }
-                let security_registry =
-                    SeaOrmSecurityEpochStore::load_registry(&transaction)
-                        .await
-                        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+                let security_registry = SeaOrmSecurityEpochStore::load_registry(&transaction)
+                    .await
+                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
                 let mut coordinator = ModuleTransitionCoordinator::new(checkpoint);
-                if let (Some(payload_digest), Some(manifest_digest)) = (
-                    &predecessor_digest,
-                    &predecessor_manifest_digest,
-                ) {
+                if let (Some(payload_digest), Some(manifest_digest)) =
+                    (&predecessor_digest, &predecessor_manifest_digest)
+                {
                     let now = Utc::now();
                     let observation =
                         chrono::Duration::from_std(governed.observation_duration).map_err(|_| {
@@ -2559,12 +2553,9 @@ impl SeaOrmArtifactInstallationStore {
                     .map_err(|error| {
                         ModuleInstallationError::AdmissionRevisionConflict(error.to_string())
                     })?;
-                TransitionCheckpointStore::save_checkpoint(
-                    &transaction,
-                    coordinator.checkpoint(),
-                )
-                .await
-                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+                TransitionCheckpointStore::save_checkpoint(&transaction, coordinator.checkpoint())
+                    .await
+                    .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
             }
         }
         let (data_owner_id, settings_instance_id, namespace_instance_id, secret_instance_id) =
@@ -3947,8 +3938,7 @@ impl SeaOrmArtifactInstallationStore {
                             .into(),
                     ));
                 }
-                let mut transition =
-                    crate::ModuleTransitionCoordinator::new(transition_checkpoint);
+                let mut transition = crate::ModuleTransitionCoordinator::new(transition_checkpoint);
                 transition
                     .record_predecessor_recovery(request.reason.clone())
                     .map_err(|error| {
@@ -4561,8 +4551,7 @@ impl SeaOrmArtifactInstallationStore {
         while candidates.len() < usize::try_from(limit).unwrap_or(usize::MAX)
             && scanned < MAX_ADMISSION_REVERIFICATION_SCAN_ROWS
         {
-            let remaining_scan =
-                (MAX_ADMISSION_REVERIFICATION_SCAN_ROWS - scanned).min(512);
+            let remaining_scan = (MAX_ADMISSION_REVERIFICATION_SCAN_ROWS - scanned).min(512);
             let (sql, values) = match cursor {
                 None => (
                     format!(
@@ -4618,8 +4607,7 @@ impl SeaOrmArtifactInstallationStore {
             let page_len = u32::try_from(rows.len()).unwrap_or(u32::MAX);
             for row in rows {
                 scanned = scanned.saturating_add(1);
-                let installation_id =
-                    required_uuid_from_row(&row, "installation_id", backend)?;
+                let installation_id = required_uuid_from_row(&row, "installation_id", backend)?;
                 cursor = Some(installation_id);
                 let revision: i64 = row
                     .try_get("", "revision")
@@ -4646,8 +4634,7 @@ impl SeaOrmArtifactInstallationStore {
                 let is_stale =
                     match serde_json::from_str::<ArtifactVerificationEvidence>(&evidence_json) {
                         Ok(evidence) => {
-                            evidence.trust_policy_revision
-                                != trust_policy.trust_policy_revision
+                            evidence.trust_policy_revision != trust_policy.trust_policy_revision
                                 || evidence.capability_policy_revision
                                     != trust_policy.capability_policy_revision
                         }
@@ -4785,9 +4772,10 @@ impl SeaOrmArtifactInstallationStore {
                     row.try_get::<String>("", "version").map_err(|error| {
                         ArtifactInstallationResolveError::Invariant(error.to_string())
                     })?,
-                    row.try_get::<String>("", "payload_digest").map_err(|error| {
-                        ArtifactInstallationResolveError::Invariant(error.to_string())
-                    })?,
+                    row.try_get::<String>("", "payload_digest")
+                        .map_err(|error| {
+                            ArtifactInstallationResolveError::Invariant(error.to_string())
+                        })?,
                 ))
             })
             .collect::<Result<Vec<_>, ArtifactInstallationResolveError>>()?;
@@ -5143,156 +5131,154 @@ fn decode_installed_artifact_row(
     backend: SupportedBackend,
     release: &ArtifactReleaseRef,
 ) -> Result<InstalledModuleArtifact, ArtifactInstallationResolveError> {
-        let installation_id = required_uuid_from_row(row, "installation_id", backend)
-            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
-        let data_owner_id = required_uuid_from_row(row, "data_owner_id", backend)
-            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
-        let namespace_instance_id = optional_uuid_from_row(row, "namespace_instance_id", backend)
-            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
-        let secret_instance_id = optional_uuid_from_row(row, "secret_instance_id", backend)
-            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
-        let settings_instance_id = required_uuid_from_row(row, "settings_instance_id", backend)
-            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
-        let scope_kind: String = row
-            .try_get("", "scope_kind")
-            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
-        let scope = match scope_kind.as_str() {
-            "platform" => ModuleInstallationScope::Platform,
-            "tenant" => ModuleInstallationScope::Tenant {
-                tenant_id: required_uuid_from_row(row, "tenant_id", backend).map_err(|error| {
-                    ArtifactInstallationResolveError::Invariant(error.to_string())
-                })?,
-            },
-            _ => {
-                return Err(ArtifactInstallationResolveError::Invariant(
-                    "artifact installation has an invalid scope".to_string(),
-                ));
-            }
-        };
-        let reference = OciArtifactReference {
-            registry: row
-                .try_get("", "registry")
+    let installation_id = required_uuid_from_row(row, "installation_id", backend)
+        .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
+    let data_owner_id = required_uuid_from_row(row, "data_owner_id", backend)
+        .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
+    let namespace_instance_id = optional_uuid_from_row(row, "namespace_instance_id", backend)
+        .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
+    let secret_instance_id = optional_uuid_from_row(row, "secret_instance_id", backend)
+        .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
+    let settings_instance_id = required_uuid_from_row(row, "settings_instance_id", backend)
+        .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
+    let scope_kind: String = row
+        .try_get("", "scope_kind")
+        .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
+    let scope = match scope_kind.as_str() {
+        "platform" => ModuleInstallationScope::Platform,
+        "tenant" => ModuleInstallationScope::Tenant {
+            tenant_id: required_uuid_from_row(row, "tenant_id", backend)
                 .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
-            repository: row
-                .try_get("", "repository")
-                .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
-            digest: row
-                .try_get("", "manifest_digest")
-                .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
-        };
-        reference
-            .validate()
-            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
-        let descriptor: ModuleArtifactDescriptor = serde_json::from_str(
-            &row.try_get::<String>("", "descriptor")
-                .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
-        )
-        .map_err(|_| {
-            ArtifactInstallationResolveError::Invariant(
-                "artifact installation descriptor is invalid".to_string(),
-            )
-        })?;
-        descriptor.validate().map_err(|_| {
-            ArtifactInstallationResolveError::Invariant(
-                "artifact installation descriptor is invalid".to_string(),
-            )
-        })?;
-        let payload_media_type: String = row
-            .try_get("", "payload_media_type")
-            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
-        if !valid_media_type_for(descriptor.payload_kind, &payload_media_type) {
+        },
+        _ => {
             return Err(ArtifactInstallationResolveError::Invariant(
-                "artifact installation payload media type is invalid".to_string(),
+                "artifact installation has an invalid scope".to_string(),
             ));
         }
-        let dependency_lock: ModuleDependencyLockGraph = serde_json::from_str(
-            &row.try_get::<String>("", "dependency_lock")
-                .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
+    };
+    let reference = OciArtifactReference {
+        registry: row
+            .try_get("", "registry")
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
+        repository: row
+            .try_get("", "repository")
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
+        digest: row
+            .try_get("", "manifest_digest")
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
+    };
+    reference
+        .validate()
+        .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
+    let descriptor: ModuleArtifactDescriptor = serde_json::from_str(
+        &row.try_get::<String>("", "descriptor")
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
+    )
+    .map_err(|_| {
+        ArtifactInstallationResolveError::Invariant(
+            "artifact installation descriptor is invalid".to_string(),
         )
-        .map_err(|_| {
-            ArtifactInstallationResolveError::Invariant(
-                "artifact installation dependency lock is invalid".to_string(),
-            )
-        })?;
-        dependency_lock.validate().map_err(|_| {
-            ArtifactInstallationResolveError::Invariant(
-                "artifact installation dependency lock is invalid".to_string(),
-            )
-        })?;
-        let persisted_graph_revision: i64 = row
-            .try_get("", "dependency_graph_revision")
-            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
-        let persisted_graph_digest: String = row
-            .try_get("", "dependency_graph_digest")
-            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
-        let capability_grant_revision: i64 = row
-            .try_get("", "capability_grant_revision")
-            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
-        let installed_at = match backend {
-            SupportedBackend::Postgres => row
-                .try_get::<DateTime<Utc>>("", "installed_at")
-                .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
-            SupportedBackend::Sqlite => {
-                let installed_at_text: String =
-                    row.try_get("", "installed_at").map_err(|error| {
-                        ArtifactInstallationResolveError::Invariant(error.to_string())
-                    })?;
-                crate::backend::parse_sqlite_datetime(&installed_at_text).map_err(|_| {
-                    ArtifactInstallationResolveError::Invariant(
-                        "artifact installation timestamp is invalid".to_string(),
-                    )
-                })?
-            }
-        };
-        let persisted_slug: String = row
-            .try_get("", "slug")
-            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
-        let persisted_version: String = row
-            .try_get("", "version")
-            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
-        let persisted_payload_digest: String = row
-            .try_get("", "payload_digest")
-            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
-        let persisted_graph_revision = u64::try_from(persisted_graph_revision).map_err(|_| {
-            ArtifactInstallationResolveError::Invariant(
-                "artifact installation dependency graph revision is invalid".to_string(),
-            )
-        })?;
-        if descriptor.slug != persisted_slug
-            || descriptor.version != persisted_version
-            || descriptor.artifact_digest != persisted_payload_digest
-            || descriptor.release_ref() != *release
-            || dependency_lock.graph_revision != persisted_graph_revision
-            || dependency_lock.graph_digest != persisted_graph_digest
-        {
-            return Err(ArtifactInstallationResolveError::Invariant(
-                "artifact installation immutable state does not match its persisted identity"
-                    .to_string(),
-            ));
-        }
-        let capability_grant_revision = u64::try_from(capability_grant_revision)
-            .ok()
-            .filter(|revision| *revision > 0)
-            .ok_or_else(|| {
+    })?;
+    descriptor.validate().map_err(|_| {
+        ArtifactInstallationResolveError::Invariant(
+            "artifact installation descriptor is invalid".to_string(),
+        )
+    })?;
+    let payload_media_type: String = row
+        .try_get("", "payload_media_type")
+        .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
+    if !valid_media_type_for(descriptor.payload_kind, &payload_media_type) {
+        return Err(ArtifactInstallationResolveError::Invariant(
+            "artifact installation payload media type is invalid".to_string(),
+        ));
+    }
+    let dependency_lock: ModuleDependencyLockGraph = serde_json::from_str(
+        &row.try_get::<String>("", "dependency_lock")
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
+    )
+    .map_err(|_| {
+        ArtifactInstallationResolveError::Invariant(
+            "artifact installation dependency lock is invalid".to_string(),
+        )
+    })?;
+    dependency_lock.validate().map_err(|_| {
+        ArtifactInstallationResolveError::Invariant(
+            "artifact installation dependency lock is invalid".to_string(),
+        )
+    })?;
+    let persisted_graph_revision: i64 = row
+        .try_get("", "dependency_graph_revision")
+        .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
+    let persisted_graph_digest: String = row
+        .try_get("", "dependency_graph_digest")
+        .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
+    let capability_grant_revision: i64 = row
+        .try_get("", "capability_grant_revision")
+        .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
+    let installed_at = match backend {
+        SupportedBackend::Postgres => row
+            .try_get::<DateTime<Utc>>("", "installed_at")
+            .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?,
+        SupportedBackend::Sqlite => {
+            let installed_at_text: String = row
+                .try_get("", "installed_at")
+                .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
+            crate::backend::parse_sqlite_datetime(&installed_at_text).map_err(|_| {
                 ArtifactInstallationResolveError::Invariant(
-                    "artifact installation capability revision is invalid".to_string(),
+                    "artifact installation timestamp is invalid".to_string(),
                 )
-            })?;
-        Ok(InstalledModuleArtifact {
-            installation_id,
-            data_owner_id,
-            namespace_instance_id,
-            secret_instance_id,
-            settings_instance_id,
-            scope,
-            reference,
-            release: release.clone(),
-            descriptor,
-            payload_media_type,
-            dependency_lock,
-            capability_grant_revision,
-            installed_at,
-        })
+            })?
+        }
+    };
+    let persisted_slug: String = row
+        .try_get("", "slug")
+        .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
+    let persisted_version: String = row
+        .try_get("", "version")
+        .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
+    let persisted_payload_digest: String = row
+        .try_get("", "payload_digest")
+        .map_err(|error| ArtifactInstallationResolveError::Invariant(error.to_string()))?;
+    let persisted_graph_revision = u64::try_from(persisted_graph_revision).map_err(|_| {
+        ArtifactInstallationResolveError::Invariant(
+            "artifact installation dependency graph revision is invalid".to_string(),
+        )
+    })?;
+    if descriptor.slug != persisted_slug
+        || descriptor.version != persisted_version
+        || descriptor.artifact_digest != persisted_payload_digest
+        || descriptor.release_ref() != *release
+        || dependency_lock.graph_revision != persisted_graph_revision
+        || dependency_lock.graph_digest != persisted_graph_digest
+    {
+        return Err(ArtifactInstallationResolveError::Invariant(
+            "artifact installation immutable state does not match its persisted identity"
+                .to_string(),
+        ));
+    }
+    let capability_grant_revision = u64::try_from(capability_grant_revision)
+        .ok()
+        .filter(|revision| *revision > 0)
+        .ok_or_else(|| {
+            ArtifactInstallationResolveError::Invariant(
+                "artifact installation capability revision is invalid".to_string(),
+            )
+        })?;
+    Ok(InstalledModuleArtifact {
+        installation_id,
+        data_owner_id,
+        namespace_instance_id,
+        secret_instance_id,
+        settings_instance_id,
+        scope,
+        reference,
+        release: release.clone(),
+        descriptor,
+        payload_media_type,
+        dependency_lock,
+        capability_grant_revision,
+        installed_at,
+    })
 }
 
 #[async_trait]
@@ -5641,18 +5627,15 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
         configure_rls_scope(&transaction, scope).await?;
         let backend = SupportedBackend::new(transaction.get_database_backend())
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-        let facts = stored_admission_permission_facts(
-            &transaction,
-            backend,
-            installation_id,
-            scope,
-        )
-        .await?
-        .ok_or_else(|| {
-            ModuleInstallationError::Store(
-                "permission registration completion is missing its scoped installation".into(),
-            )
-        })?;
+        let facts =
+            stored_admission_permission_facts(&transaction, backend, installation_id, scope)
+                .await?
+                .ok_or_else(|| {
+                    ModuleInstallationError::Store(
+                        "permission registration completion is missing its scoped installation"
+                            .into(),
+                    )
+                })?;
         match facts.permission_registration {
             ArtifactPermissionRegistrationStatus::Registered => {}
             ArtifactPermissionRegistrationStatus::NotRequired => {
@@ -5685,15 +5668,16 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
                                 .as_str()
                                 .into(),
                             backend.uuid_value(installation_id),
-                            ArtifactPermissionRegistrationStatus::Pending.as_str().into(),
+                            ArtifactPermissionRegistrationStatus::Pending
+                                .as_str()
+                                .into(),
                         ],
                     ))
                     .await
                     .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
                 if updated.rows_affected() != 1 {
                     return Err(ModuleInstallationError::Store(
-                        "artifact permission registration state changed before completion"
-                            .into(),
+                        "artifact permission registration state changed before completion".into(),
                     ));
                 }
             }
@@ -5888,13 +5872,8 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
                     "committed admission command is missing its scoped installation".into(),
                 )
             })?;
-            fence_blob_gc_candidate_for_admission(
-                &transaction,
-                backend,
-                staged,
-                committed_at,
-            )
-            .await?;
+            fence_blob_gc_candidate_for_admission(&transaction, backend, staged, committed_at)
+                .await?;
             transaction
                 .commit()
                 .await
@@ -5905,8 +5884,7 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
                 permission_registration: facts.permission_registration,
             });
         }
-        fence_blob_gc_candidate_for_admission(&transaction, backend, staged, committed_at)
-            .await?;
+        fence_blob_gc_candidate_for_admission(&transaction, backend, staged, committed_at).await?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -5993,9 +5971,7 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
         Ok(ArtifactAdmissionResult {
             installation_id: artifact.installation_id,
             created: true,
-            permission_registration: initial_permission_registration_status(
-                &artifact.descriptor,
-            ),
+            permission_registration: initial_permission_registration_status(&artifact.descriptor),
         })
     }
 
@@ -6093,8 +6069,7 @@ impl ArtifactBlobGcCandidateStore for SeaOrmArtifactInstallationStore {
             .await?
             .ok_or_else(|| {
                 ModuleInstallationError::Store(
-                    "artifact blob GC candidate disappeared inside its marking transaction"
-                        .into(),
+                    "artifact blob GC candidate disappeared inside its marking transaction".into(),
                 )
             })?;
         let outcome = match inserted.rows_affected() {
@@ -6136,8 +6111,7 @@ impl ArtifactBlobGcCandidateStore for SeaOrmArtifactInstallationStore {
             return Ok(ArtifactBlobGcClaimOutcome::Missing);
         };
 
-        delete_expired_blob_publication_reservations(&transaction, backend, digest, now)
-            .await?;
+        delete_expired_blob_publication_reservations(&transaction, backend, digest, now).await?;
         if live_blob_publication_reservation_exists(&transaction, backend, digest, now).await? {
             transaction
                 .commit()
@@ -6231,8 +6205,7 @@ impl ArtifactBlobGcCandidateStore for SeaOrmArtifactInstallationStore {
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         if updated.rows_affected() != 1 {
             return Err(ModuleInstallationError::Store(
-                "artifact blob GC candidate changed while its collection claim was recorded"
-                    .into(),
+                "artifact blob GC candidate changed while its collection claim was recorded".into(),
             ));
         }
         let claimed = ArtifactBlobGcCandidate {
@@ -6607,19 +6580,13 @@ async fn fence_blob_gc_candidate_for_admission<C: ConnectionTrait>(
     staged: &StagedArtifactBlob,
     committed_at: DateTime<Utc>,
 ) -> Result<(), ModuleInstallationError> {
-    let candidate =
-        load_blob_gc_candidate(connection, backend, &staged.digest, true).await?;
+    let candidate = load_blob_gc_candidate(connection, backend, &staged.digest, true).await?;
     // The exact reservation proves that no GC claim could be authorized
     // between this attempt's CAS publish and this commit transaction. It is
     // consumed here so the committed admission reference replaces the
     // pending reference atomically.
-    consume_blob_publication_reservation_for_admission(
-        connection,
-        backend,
-        staged,
-        committed_at,
-    )
-    .await?;
+    consume_blob_publication_reservation_for_admission(connection, backend, staged, committed_at)
+        .await?;
     let Some(candidate) = candidate else {
         return Ok(());
     };
@@ -7632,8 +7599,7 @@ impl ArtifactAdmissionReverificationService {
                 "resulting revision exceeds database integer range".into(),
             ));
         }
-        let request_digest =
-            admission_reverification_request_digest(&request, &self.trust_policy)?;
+        let request_digest = admission_reverification_request_digest(&request, &self.trust_policy)?;
         if let Some(revision) = self
             .store
             .find_admission_reverification_replay(&request, &request_digest, resulting_revision)
@@ -7663,8 +7629,7 @@ impl ArtifactAdmissionReverificationService {
                 != verification_request.capability_policy_revision
         {
             return Err(ModuleInstallationError::VerificationMismatch(
-                "verification decision was not produced under the current policy revisions"
-                    .into(),
+                "verification decision was not produced under the current policy revisions".into(),
             ));
         }
         if decision.signer_identity.trim().is_empty() {
@@ -7740,11 +7705,7 @@ where
             .await?
         {
             return Ok(self
-                .complete_permission_registration(
-                    replay.result,
-                    &command.scope,
-                    &replay.descriptor,
-                )
+                .complete_permission_registration(replay.result, &command.scope, &replay.descriptor)
                 .await);
         }
         let reference = command.reference.clone();
@@ -8359,10 +8320,7 @@ mod tests {
 
     #[test]
     fn positive_revision_rejects_zero_and_negative_stored_values() {
-        assert_eq!(
-            positive_revision(1, "test").expect("positive revision"),
-            1
-        );
+        assert_eq!(positive_revision(1, "test").expect("positive revision"), 1);
         assert!(matches!(
             positive_revision(0, "test"),
             Err(ModuleInstallationError::Store(message))
@@ -8398,7 +8356,9 @@ mod tests {
         empty_package.payload = ArtifactPayloadSource::Bytes(Vec::new());
         empty_package.descriptor.artifact_digest = sha256_digest(&[]);
         assert!(matches!(
-            empty_package.verify(ArtifactAdmissionLimits::default()).await,
+            empty_package
+                .verify(ArtifactAdmissionLimits::default())
+                .await,
             Err(ModuleInstallationError::EmptyPayload)
         ));
     }
@@ -8757,11 +8717,11 @@ mod tests {
             request: TrustVerificationRequest,
         ) -> Result<TrustVerificationDecision, TrustVerificationError> {
             match self.mode {
-                ReverificationVerifierMode::Unavailable => Err(
-                    TrustVerificationError::Unavailable(
+                ReverificationVerifierMode::Unavailable => {
+                    Err(TrustVerificationError::Unavailable(
                         "reverification verifier must not be called".to_string(),
-                    ),
-                ),
+                    ))
+                }
                 ReverificationVerifierMode::Reject => Ok(TrustVerificationDecision {
                     signer_identity: "test.signer.example".to_string(),
                     trust_policy_revision: request.trust_policy_revision,
@@ -8935,7 +8895,8 @@ mod tests {
         async fn evaluate_permission_continuity(
             &self,
             _request: rustok_api::PermissionContinuityEvaluationRequest,
-        ) -> Result<rustok_api::ArtifactPermissionContinuityReceipt, rustok_api::PortError> {
+        ) -> Result<rustok_api::ArtifactPermissionContinuityReceipt, rustok_api::PortError>
+        {
             Err(rustok_api::PortError::unavailable(
                 "test.permission_registrar_unavailable",
                 "permission registrar is unavailable",
@@ -9096,9 +9057,7 @@ mod tests {
             if state
                 .candidates
                 .get(&staged.digest)
-                .is_some_and(|candidate| {
-                    candidate.state == ArtifactBlobGcCandidateState::Deleting
-                })
+                .is_some_and(|candidate| candidate.state == ArtifactBlobGcCandidateState::Deleting)
             {
                 return Err(ModuleInstallationError::AdmissionRevisionConflict(
                     "blob collection is in progress".into(),
@@ -9151,7 +9110,11 @@ mod tests {
                 ));
             }
             state.publication_reservations.remove(&staged.stage_id);
-            match state.candidates.get(&staged.digest).map(|candidate| candidate.state) {
+            match state
+                .candidates
+                .get(&staged.digest)
+                .map(|candidate| candidate.state)
+            {
                 Some(ArtifactBlobGcCandidateState::Marked) => {
                     state.candidates.remove(&staged.digest);
                 }
@@ -9274,9 +9237,7 @@ mod tests {
                 delete_started_at: Some(now),
                 ..candidate
             };
-            state
-                .candidates
-                .insert(digest.to_string(), claimed.clone());
+            state.candidates.insert(digest.to_string(), claimed.clone());
             Ok(ArtifactBlobGcClaimOutcome::Claimed(claimed))
         }
 
@@ -9490,8 +9451,8 @@ mod tests {
         let first_seen = DateTime::parse_from_rfc3339("2026-10-25T12:00:00Z")
             .expect("fixed time")
             .with_timezone(&Utc);
-        let grace_ends = first_seen
-            + chrono::Duration::seconds(ARTIFACT_BLOB_GC_GRACE_PERIOD_SECONDS);
+        let grace_ends =
+            first_seen + chrono::Duration::seconds(ARTIFACT_BLOB_GC_GRACE_PERIOD_SECONDS);
 
         let report = reconciler
             .reconcile_published_blobs_at(&AllowBlobDeletion, first_seen)
@@ -9578,8 +9539,8 @@ mod tests {
         let first_seen = DateTime::parse_from_rfc3339("2026-10-25T12:00:00Z")
             .expect("fixed time")
             .with_timezone(&Utc);
-        let grace_ends = first_seen
-            + chrono::Duration::seconds(ARTIFACT_BLOB_GC_GRACE_PERIOD_SECONDS);
+        let grace_ends =
+            first_seen + chrono::Duration::seconds(ARTIFACT_BLOB_GC_GRACE_PERIOD_SECONDS);
 
         let report = reconciler
             .reconcile_published_blobs_at(&AllowBlobDeletion, first_seen)
@@ -9766,10 +9727,8 @@ mod tests {
         let ArtifactPayloadSource::Bytes(payload) = package.payload.clone() else {
             panic!("fixture uses an in-memory payload");
         };
-        let path = std::env::temp_dir().join(format!(
-            "rustok-admission-payload-{}.tmp",
-            Uuid::new_v4()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("rustok-admission-payload-{}.tmp", Uuid::new_v4()));
         std::fs::write(&path, payload).expect("temporary payload fixture");
         package.payload = ArtifactPayloadSource::TemporaryFile(path.clone());
         let reference = package.reference.clone();
@@ -9791,7 +9750,10 @@ mod tests {
                 .await,
             Err(ModuleInstallationError::StaticPromotionRequired)
         ));
-        assert!(!path.exists(), "temporary payload must be removed on every exit");
+        assert!(
+            !path.exists(),
+            "temporary payload must be removed on every exit"
+        );
     }
 
     #[tokio::test]
@@ -9915,10 +9877,7 @@ mod tests {
         }];
         let reference = package.reference.clone();
         let tenant_id = Uuid::new_v4();
-        let command = admission_command(
-            reference,
-            ModuleInstallationScope::Tenant { tenant_id },
-        );
+        let command = admission_command(reference, ModuleInstallationScope::Tenant { tenant_id });
         let store = SeaOrmArtifactInstallationStore::new(database);
 
         let first = ModuleInstaller::new(
@@ -9956,7 +9915,10 @@ mod tests {
             replayed.permission_registration,
             ArtifactPermissionRegistrationStatus::Registered
         );
-        assert_eq!(registrar.admissions.lock().expect("registrar lock").len(), 1);
+        assert_eq!(
+            registrar.admissions.lock().expect("registrar lock").len(),
+            1
+        );
         assert_eq!(
             registrar.projections.lock().expect("registrar lock").len(),
             1

@@ -510,7 +510,8 @@ impl SeaOrmModuleGovernanceService {
                 backend.db_backend(),
                 format!("SELECT COALESCE(MAX(attempt_number), 0) AS attempt_number FROM registry_validation_stages WHERE request_id = {} AND stage_key = {}", mark(1), mark(2)),
                 vec![request_id.clone().into(), stage_key.clone().into()],
-            )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?.ok_or_else(|| ModuleGovernanceError::Store("missing validation attempt aggregate".to_string()))?.try_get::<i64>("", "attempt_number").map_err(|e| ModuleGovernanceError::Store(e.to_string()))?; let next_attempt = next_attempt_number(next_attempt)?;
+            )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?.ok_or_else(|| ModuleGovernanceError::Store("missing validation attempt aggregate".to_string()))?.try_get::<i64>("", "attempt_number").map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+            let next_attempt = next_attempt_number(next_attempt)?;
             let queued_id = self.infrastructure.prefixed_id("rvs");
             let queued_detail = format!(
                 "Remote validation lease expired; retry attempt {} is queued for stage '{}'.",

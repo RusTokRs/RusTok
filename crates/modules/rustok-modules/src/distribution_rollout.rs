@@ -386,7 +386,8 @@ where
     ) -> Result<ModuleStaticDistributionRolloutReceipt, ModuleStaticDistributionRolloutError> {
         validate_request(&command)?;
         self.authorizer.authorize_request(&command).await?;
-        let request_digest = crate::idempotency::semantic_request_digest(&command).map_err(promotion_error)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&command).map_err(promotion_error)?;
         let principal_id = command.context.actor_id.to_string();
         if let Some(operation) = load_operation(
             &self.db,
@@ -562,7 +563,8 @@ where
     ) -> Result<ModuleStaticDistributionRolloutReceipt, ModuleStaticDistributionRolloutError> {
         validate_recovery_request(&command)?;
         self.authorizer.authorize_recovery(&command).await?;
-        let request_digest = crate::idempotency::semantic_request_digest(&command).map_err(promotion_error)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&command).map_err(promotion_error)?;
         let principal_id = command.context.actor_id.to_string();
         if let Some(operation) = load_operation(
             &self.db,
@@ -861,7 +863,8 @@ where
     {
         validate_report(&command)?;
         self.authorizer.authorize_report(&command).await?;
-        let request_digest = crate::idempotency::semantic_request_digest(&command).map_err(promotion_error)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&command).map_err(promotion_error)?;
         if let Some(operation) = load_operation(
             &self.db,
             command.idempotency_key,
@@ -3038,10 +3041,8 @@ mod tests {
     #[test]
     fn rollout_release_identity_uses_frozen_snapshot_before_convergence_and_active_head_after() {
         let release_id = Uuid::new_v4();
-        let preparing = rollout_fixture(
-            ModuleStaticDistributionRolloutStatus::Preparing,
-            release_id,
-        );
+        let preparing =
+            rollout_fixture(ModuleStaticDistributionRolloutStatus::Preparing, release_id);
         let pre_convergence_state = ModuleStaticDistributionReleaseState {
             revision: 3,
             active_release_id: Some(Uuid::new_v4()),
@@ -3049,10 +3050,7 @@ mod tests {
         assert!(rollout_release_identity_valid(
             &preparing,
             &pre_convergence_state,
-            &release_record_fixture(
-                release_id,
-                ModuleStaticDistributionReleaseStatus::Admitted,
-            ),
+            &release_record_fixture(release_id, ModuleStaticDistributionReleaseStatus::Admitted,),
             None,
         ));
         // After the head moved, pre-convergence work is stale.
@@ -3062,17 +3060,12 @@ mod tests {
                 revision: 4,
                 active_release_id: Some(release_id),
             },
-            &release_record_fixture(
-                release_id,
-                ModuleStaticDistributionReleaseStatus::Active,
-            ),
+            &release_record_fixture(release_id, ModuleStaticDistributionReleaseStatus::Active,),
             None,
         ));
 
-        let converged = rollout_fixture(
-            ModuleStaticDistributionRolloutStatus::Converged,
-            release_id,
-        );
+        let converged =
+            rollout_fixture(ModuleStaticDistributionRolloutStatus::Converged, release_id);
         let post_convergence_state = ModuleStaticDistributionReleaseState {
             revision: 4,
             active_release_id: Some(release_id),
@@ -3080,10 +3073,7 @@ mod tests {
         assert!(rollout_release_identity_valid(
             &converged,
             &post_convergence_state,
-            &release_record_fixture(
-                release_id,
-                ModuleStaticDistributionReleaseStatus::Active,
-            ),
+            &release_record_fixture(release_id, ModuleStaticDistributionReleaseStatus::Active,),
             None,
         ));
         // A later release taking the head retires drift observation.
@@ -3093,10 +3083,7 @@ mod tests {
                 revision: 5,
                 active_release_id: Some(Uuid::new_v4()),
             },
-            &release_record_fixture(
-                release_id,
-                ModuleStaticDistributionReleaseStatus::Active,
-            ),
+            &release_record_fixture(release_id, ModuleStaticDistributionReleaseStatus::Active,),
             None,
         ));
 

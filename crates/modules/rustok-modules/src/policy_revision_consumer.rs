@@ -348,9 +348,7 @@ async fn load_cursor_state<C: ConnectionTrait>(
         .ok_or(ModulePolicyRevisionConsumerError::CursorLost)?;
     let current_revision: Option<String> =
         row.try_get("", "current_revision").map_err(storage_error)?;
-    let current_sequence: i64 = row
-        .try_get("", "current_sequence")
-        .map_err(storage_error)?;
+    let current_sequence: i64 = row.try_get("", "current_sequence").map_err(storage_error)?;
     let current_sequence = u64::try_from(current_sequence).map_err(|_| {
         ModulePolicyRevisionConsumerError::Storage(format!(
             "policy revision cursor sequence is negative: {current_sequence}"

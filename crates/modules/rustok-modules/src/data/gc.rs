@@ -253,7 +253,8 @@ impl SeaOrmArtifactDataObjectGcService {
 
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, tenant_id).await?;
-        let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        let backend =
+            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let rows = transaction
             .query_all_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -272,10 +273,7 @@ impl SeaOrmArtifactDataObjectGcService {
                     backend.placeholder(1),
                     backend.placeholder(2),
                 ),
-                vec![
-                    backend.uuid_value(tenant_id),
-                    i64::from(limit).into(),
-                ],
+                vec![backend.uuid_value(tenant_id), i64::from(limit).into()],
             ))
             .await
             .map_err(storage_error)?;
@@ -283,8 +281,7 @@ impl SeaOrmArtifactDataObjectGcService {
 
         let mut rules: HashMap<String, ArtifactDataObjectRetentionRule> = HashMap::new();
         for row in rows {
-            let namespace_instance_id =
-                uuid_from_row(&row, "namespace_instance_id", backend)?;
+            let namespace_instance_id = uuid_from_row(&row, "namespace_instance_id", backend)?;
             if held_namespace_instances.contains(&namespace_instance_id) {
                 continue;
             }
@@ -366,9 +363,7 @@ impl SeaOrmArtifactDataObjectGcService {
             return Ok(None);
         };
 
-        let state: String = candidate_row
-            .try_get("", "state")
-            .map_err(storage_error)?;
+        let state: String = candidate_row.try_get("", "state").map_err(storage_error)?;
         let revision: i64 = candidate_row
             .try_get("", "revision")
             .map_err(storage_error)?;
@@ -447,9 +442,7 @@ impl SeaOrmArtifactDataObjectGcService {
             .await
             .map_err(storage_error)?
             .ok_or_else(|| {
-                ArtifactDataError::Storage(
-                    "snapshot reference query returned no row".to_string(),
-                )
+                ArtifactDataError::Storage("snapshot reference query returned no row".to_string())
             })?;
         let reference_count: i64 = snapshot_reference
             .try_get("", "reference_count")

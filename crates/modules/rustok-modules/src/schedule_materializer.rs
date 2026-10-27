@@ -124,8 +124,8 @@ impl ArtifactScheduleMaterializer {
             configure_tenant_scope(&transaction, tenant_id)
                 .await
                 .map_err(storage_error)?;
-            let backend = SupportedBackend::new(transaction.get_database_backend())
-                .map_err(storage_error)?;
+            let backend =
+                SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
             let Some(through) =
                 Self::cursor_through_in_transaction(&transaction, backend, tenant_id, &binding)
                     .await?

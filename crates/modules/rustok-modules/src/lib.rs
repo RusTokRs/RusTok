@@ -43,8 +43,8 @@ mod distribution_rollout;
 mod event_delivery;
 mod execution_audit;
 mod executor;
-pub mod executor_readiness;
 mod executor_pool_registry;
+pub mod executor_readiness;
 pub mod external_prebuilt_ingress;
 #[cfg(any(test, feature = "test-support"))]
 pub mod gc;
@@ -152,16 +152,16 @@ pub use data_snapshot_readiness::{
 pub use data_upgrade::{
     DataUpgradeDecision, DataUpgradeEvidence, DataUpgradePhase, evaluate_data_upgrade_decision,
 };
+pub use executor_pool_registry::{
+    ExecutorPoolRegistration, ExecutorPoolRegistryError, SeaOrmExecutorPoolRegistry,
+};
 pub use executor_readiness::{
     CachedPreparedPayload, DEFAULT_EXECUTOR_READINESS_RECEIPT_TTL_SECONDS,
     DEFAULT_VERIFIED_PAYLOAD_CACHE_MAX_BYTES, DEFAULT_VERIFIED_PAYLOAD_CACHE_MAX_ENTRIES,
-    EvaluateReadinessCommand, ExecutorPoolIdentity, ExecutorReadinessError,
-    ExecutorReadinessProbe, ExecutorReadinessService, ExecutorSmokeProbeOutcome,
-    ExecutorSmokeProbeRequest, ExecutorSmokeReceipt, MAX_EXECUTOR_READINESS_RECEIPT_TTL_SECONDS,
-    OwnerPlacementPolicy, ReleaseReadinessTarget, RuntimeFingerprint, VerifiedPayloadCache,
-};
-pub use executor_pool_registry::{
-    ExecutorPoolRegistration, ExecutorPoolRegistryError, SeaOrmExecutorPoolRegistry,
+    EvaluateReadinessCommand, ExecutorPoolIdentity, ExecutorReadinessError, ExecutorReadinessProbe,
+    ExecutorReadinessService, ExecutorSmokeProbeOutcome, ExecutorSmokeProbeRequest,
+    ExecutorSmokeReceipt, MAX_EXECUTOR_READINESS_RECEIPT_TTL_SECONDS, OwnerPlacementPolicy,
+    ReleaseReadinessTarget, RuntimeFingerprint, VerifiedPayloadCache,
 };
 #[cfg(any(test, feature = "test-support"))]
 pub use gc::{
@@ -388,11 +388,10 @@ pub use dispatcher::{
     ArtifactBindingDispatchEnvelope, ArtifactBindingDispatchEnvelopeError,
     ArtifactBindingDispatchError, ArtifactBindingExecutionContext, ArtifactBindingExecutor,
     ArtifactCommandBindingRequest, ArtifactEventBindingOutcome, ArtifactExecutionAdmission,
-    ArtifactHttpBindingRequest,
-    ArtifactInstallationTarget, ArtifactLifecycleExecutor, ModuleDispatchError,
-    ModuleExecutionDispatcher, ModuleLifecycleHookPhase, dispatch_artifact_command_binding,
-    dispatch_artifact_http_binding, find_artifact_command_binding, find_artifact_http_binding,
-    find_artifact_ui_action_binding,
+    ArtifactHttpBindingRequest, ArtifactInstallationTarget, ArtifactLifecycleExecutor,
+    ModuleDispatchError, ModuleExecutionDispatcher, ModuleLifecycleHookPhase,
+    dispatch_artifact_command_binding, dispatch_artifact_http_binding,
+    find_artifact_command_binding, find_artifact_http_binding, find_artifact_ui_action_binding,
 };
 pub use distribution::{
     ModuleStaticDistributionAuthorizer, ModuleStaticDistributionBuild,
@@ -502,17 +501,18 @@ pub use governance::{
     REGISTRY_OWNER_TRANSFER_REASON_CODES, REGISTRY_REJECT_REASON_CODES,
     REGISTRY_REQUEST_CHANGES_REASON_CODES, REGISTRY_RESUME_REASON_CODES,
     REGISTRY_UNYANK_REASON_CODES, REGISTRY_VALIDATION_STAGE_REASON_CODES,
-    REGISTRY_YANK_REASON_CODES,
-    SeaOrmModuleGovernanceService, alloy_publication_smoke_scenario_digest,
+    REGISTRY_YANK_REASON_CODES, SeaOrmModuleGovernanceService,
+    alloy_publication_smoke_scenario_digest,
 };
 pub use infrastructure::{ControlPlaneClock, ControlPlaneIdGenerator, ControlPlaneInfrastructure};
+#[cfg(any(test, feature = "test-support"))]
+pub use installation::InMemoryArtifactBlobStore;
 pub use installation::{
     ARTIFACT_BLOB_GC_CLAIM_LEASE_SECONDS, ARTIFACT_BLOB_GC_GRACE_PERIOD_SECONDS,
-    ARTIFACT_BLOB_PUBLICATION_RESERVATION_LEASE_SECONDS,
-    ArtifactActivationRequest, ArtifactActivationResult, ArtifactAdmissionCommand,
-    ArtifactAdmissionLimits, ArtifactAdmissionReconciler, ArtifactAdmissionReplay,
-    ArtifactAdmissionResult, ArtifactAdmissionReverificationCandidate,
-    ArtifactAdmissionReverificationCommand,
+    ARTIFACT_BLOB_PUBLICATION_RESERVATION_LEASE_SECONDS, ArtifactActivationRequest,
+    ArtifactActivationResult, ArtifactAdmissionCommand, ArtifactAdmissionLimits,
+    ArtifactAdmissionReconciler, ArtifactAdmissionReplay, ArtifactAdmissionResult,
+    ArtifactAdmissionReverificationCandidate, ArtifactAdmissionReverificationCommand,
     ArtifactAdmissionReverificationService, ArtifactAdmissionService, ArtifactAdmissionStage,
     ArtifactAdmissionStatus, ArtifactAdmissionStore, ArtifactBlobGcCandidate,
     ArtifactBlobGcCandidateState, ArtifactBlobGcCandidateStore, ArtifactBlobGcClaimOutcome,
@@ -520,18 +520,15 @@ pub use installation::{
     ArtifactBlobRetentionRule, ArtifactBlobStore, ArtifactDeactivationRequest,
     ArtifactDeactivationResult, ArtifactMigrationCheckpointRequest, ArtifactMigrationRollbackMode,
     ArtifactPayloadSource, ArtifactPermissionRegistrationStatus, ArtifactRegistry,
-    ArtifactRollbackRequest, ArtifactRollbackResult,
-    ArtifactTenantDisableRequest, ArtifactTenantDisableResult, ArtifactTenantEnableRequest,
-    ArtifactTenantEnableResult, ArtifactTenantLifecycleSnapshot, ArtifactUninstallRequest,
-    ArtifactUninstallResult, ArtifactVerificationEvidence, DurableArtifactBlobStore,
-    InstalledModuleArtifact, ModuleArtifactPackage,
-    ModuleInstallationError, ModuleInstallationScope, ModuleInstaller, OciArtifactReference,
-    SeaOrmArtifactBlobRetentionPolicy, SeaOrmArtifactInstallationStore,
-    SeaOrmArtifactSandboxPolicyResolver,
-    SnapshotArtifactBlobRetentionPolicy, StagedArtifactBlob, TransitionRollbackRequest,
+    ArtifactRollbackRequest, ArtifactRollbackResult, ArtifactTenantDisableRequest,
+    ArtifactTenantDisableResult, ArtifactTenantEnableRequest, ArtifactTenantEnableResult,
+    ArtifactTenantLifecycleSnapshot, ArtifactUninstallRequest, ArtifactUninstallResult,
+    ArtifactVerificationEvidence, DurableArtifactBlobStore, InstalledModuleArtifact,
+    ModuleArtifactPackage, ModuleInstallationError, ModuleInstallationScope, ModuleInstaller,
+    OciArtifactReference, SeaOrmArtifactBlobRetentionPolicy, SeaOrmArtifactInstallationStore,
+    SeaOrmArtifactSandboxPolicyResolver, SnapshotArtifactBlobRetentionPolicy, StagedArtifactBlob,
+    TransitionRollbackRequest,
 };
-#[cfg(any(test, feature = "test-support"))]
-pub use installation::InMemoryArtifactBlobStore;
 pub use lifecycle::{ModuleOperationIssue, ModuleOperationRecoveryAction, ModuleOperationStatus};
 pub use lifecycle_writer::{
     ModuleLifecycleDbWriter, ModuleLifecycleDbWriterError, ModuleLifecycleRecoveryCommand,
@@ -641,8 +638,7 @@ pub use runtime::{
     ArtifactEffectivePolicyResolveError, ArtifactEffectivePolicyResolver,
     ArtifactInstallationResolveError, ArtifactInstallationResolver, ArtifactRuntime,
     ArtifactRuntimeError, ArtifactRuntimeLifecycleExecutor, ArtifactRuntimeReadinessProbe,
-    ArtifactSandboxPolicyResolveError,
-    ArtifactSandboxPolicyResolver, VerifiedArtifactNodeCache,
+    ArtifactSandboxPolicyResolveError, ArtifactSandboxPolicyResolver, VerifiedArtifactNodeCache,
 };
 pub use runtime_handles::{
     ArtifactDeliveryTenantSource, ArtifactDeliveryTenantSourceError, SharedArtifactBindingExecutor,
@@ -708,8 +704,8 @@ pub use trust::{
     ALLOY_WORKSPACE_PUBLICATION_BUILD_TYPE, ALLOY_WORKSPACE_PUBLICATION_BUILDER_ID,
     ALLOY_WORKSPACE_PUBLICATION_SOURCE_REF, ALLOY_WORKSPACE_PUBLICATION_SOURCE_URI,
     AdmissionReverificationPolicyRevision, TrustAlloyWorkspaceProvenance, TrustEvidenceKind,
-    TrustEvidenceReference, TrustPolicyRevision, TrustVerificationDecision,
-    TrustVerificationError, TrustVerificationRequest, TrustVerifier,
+    TrustEvidenceReference, TrustPolicyRevision, TrustVerificationDecision, TrustVerificationError,
+    TrustVerificationRequest, TrustVerifier,
 };
 
 pub use module::ModulesModule;

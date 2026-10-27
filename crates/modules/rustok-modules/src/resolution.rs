@@ -219,9 +219,7 @@ fn candidate_diagnostic(
     error: &ModuleResolutionError,
 ) -> ModuleResolutionConflict {
     let code = match error {
-        ModuleResolutionError::InvalidPlatformCompatibility(_) => {
-            "INVALID_PLATFORM_COMPATIBILITY"
-        }
+        ModuleResolutionError::InvalidPlatformCompatibility(_) => "INVALID_PLATFORM_COMPATIBILITY",
         ModuleResolutionError::UnsupportedPrerelease(_) => "UNSUPPORTED_PRERELEASE",
         ModuleResolutionError::UnsupportedRequirement(_) => "UNSUPPORTED_REQUIREMENT",
         _ => "INVALID_CANDIDATE",
@@ -919,9 +917,11 @@ mod tests {
             version_requirement_range(""),
             Err(ModuleResolutionError::UnsupportedRequirement(requirement)) if requirement.is_empty()
         ));
-        assert!(version_requirement_range("*")
-            .unwrap()
-            .contains(&Version::new(99, 0, 0)));
+        assert!(
+            version_requirement_range("*")
+                .unwrap()
+                .contains(&Version::new(99, 0, 0))
+        );
     }
 
     #[test]

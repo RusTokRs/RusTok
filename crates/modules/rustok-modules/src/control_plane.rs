@@ -6,9 +6,8 @@ use rustok_sandbox::SandboxResult;
 use rustok_secrets::SecretResolverRegistry;
 
 use crate::{
-    AdmissionReverificationPolicyRevision, ArtifactAdmissionReverificationService, ArtifactBlobStore,
-    ArtifactDataCopier,
-    ArtifactDataCopyAuthorizer,
+    AdmissionReverificationPolicyRevision, ArtifactAdmissionReverificationService,
+    ArtifactBlobStore, ArtifactDataCopier, ArtifactDataCopyAuthorizer,
     ArtifactDataExportAuthorizer, ArtifactDataObjectMigrationAuthorizer,
     ArtifactDataObjectMigrationService, ArtifactDataPostPurgeRecoveryService,
     ArtifactDataPurgeAuthorizer, ArtifactDataPurgePreviewService, ArtifactDataQuotaPolicy,
@@ -42,14 +41,14 @@ use crate::{
     SeaOrmArtifactSecretCapabilityBrokerResolver, SeaOrmArtifactSecretHandlePolicy,
     SeaOrmArtifactSecretService, SeaOrmArtifactSecretUseService,
     SeaOrmArtifactSettingsRecoveryService, SeaOrmExecutorPoolRegistry,
-    SeaOrmModuleArtifactNodeAgentService,
-    SeaOrmModuleArtifactNodeReconciliationService, SeaOrmModuleArtifactSecurityResolver,
-    SeaOrmModuleArtifactSecurityService, SeaOrmModuleBuildService, SeaOrmModuleCompositionService,
-    SeaOrmModuleGovernanceService, SeaOrmModulePolicyRevisionConsumer,
-    SeaOrmModulePromotionService, SeaOrmModuleStaticDistributionBootstrapService,
-    SeaOrmModuleStaticDistributionReleaseService, SeaOrmModuleStaticDistributionRolloutService,
-    SeaOrmModuleStaticDistributionService, SeaOrmModuleStaticDistributionWorkerService,
-    SeaOrmModuleTransitionService, StorageArtifactBlobStore, TrustVerifier,
+    SeaOrmModuleArtifactNodeAgentService, SeaOrmModuleArtifactNodeReconciliationService,
+    SeaOrmModuleArtifactSecurityResolver, SeaOrmModuleArtifactSecurityService,
+    SeaOrmModuleBuildService, SeaOrmModuleCompositionService, SeaOrmModuleGovernanceService,
+    SeaOrmModulePolicyRevisionConsumer, SeaOrmModulePromotionService,
+    SeaOrmModuleStaticDistributionBootstrapService, SeaOrmModuleStaticDistributionReleaseService,
+    SeaOrmModuleStaticDistributionRolloutService, SeaOrmModuleStaticDistributionService,
+    SeaOrmModuleStaticDistributionWorkerService, SeaOrmModuleTransitionService,
+    StorageArtifactBlobStore, TrustVerifier,
 };
 use rustok_storage::StorageRuntime;
 
@@ -506,10 +505,8 @@ impl ModuleControlPlane {
     pub fn artifact_blob_reconciler(
         &self,
         storage: StorageRuntime,
-    ) -> crate::ArtifactAdmissionReconciler<
-        StorageArtifactBlobStore,
-        SeaOrmArtifactInstallationStore,
-    > {
+    ) -> crate::ArtifactAdmissionReconciler<StorageArtifactBlobStore, SeaOrmArtifactInstallationStore>
+    {
         crate::ArtifactAdmissionReconciler::new(
             self.artifact_blob_store(storage),
             self.installation(),

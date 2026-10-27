@@ -470,8 +470,7 @@ async fn publication_persists_release_binding_request_and_audit_facts_together()
         .await
         .expect("published request replay");
     let mut changed_observability_replay = command;
-    changed_observability_replay.context.trace_id =
-        "test:publication:changed-trace".to_string();
+    changed_observability_replay.context.trace_id = "test:publication:changed-trace".to_string();
     changed_observability_replay.context.correlation_id = Uuid::new_v4();
     service
         .publish_request(changed_observability_replay)

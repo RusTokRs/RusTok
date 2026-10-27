@@ -696,8 +696,7 @@ impl ArtifactBindingDispatchError {
     /// remain governed by [`Self::is_terminal`].
     pub fn is_terminal_for(&self, idempotency: crate::ModuleBindingIdempotency) -> bool {
         self.is_terminal()
-            || (idempotency == crate::ModuleBindingIdempotency::None
-                && self.may_have_executed())
+            || (idempotency == crate::ModuleBindingIdempotency::None && self.may_have_executed())
     }
 
     /// Whether the failure is an effective-policy denial raised before any
@@ -779,9 +778,9 @@ pub(crate) const DELIVERY_CODE_DENIED_BY_POLICY: &str = "denied_by_policy";
 pub(crate) fn delivery_error_code(message: &str, fallback: &'static str) -> String {
     let looks_like_code = !message.is_empty()
         && message.len() <= 64
-        && message.bytes().all(|byte| {
-            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_'
-        });
+        && message
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_');
     if looks_like_code {
         message.to_string()
     } else {
@@ -1181,17 +1180,22 @@ mod tests {
             delivery_error_code("guest input with spaces", "execution_failed"),
             "execution_failed"
         );
-        assert_eq!(delivery_error_code("", "execution_rejected"), "execution_rejected");
+        assert_eq!(
+            delivery_error_code("", "execution_rejected"),
+            "execution_rejected"
+        );
         assert_eq!(
             delivery_error_code(&"x".repeat(65), "execution_failed"),
             "execution_failed"
         );
 
-        let terminal = ArtifactBindingDispatchError::Runtime(crate::ArtifactRuntimeError::BindingSchemaViolation {
-            binding: "apply".to_string(),
-            stage: "input",
-            schema_digest: format!("sha256:{}", "a".repeat(64)),
-        });
+        let terminal = ArtifactBindingDispatchError::Runtime(
+            crate::ArtifactRuntimeError::BindingSchemaViolation {
+                binding: "apply".to_string(),
+                stage: "input",
+                schema_digest: format!("sha256:{}", "a".repeat(64)),
+            },
+        );
         assert!(terminal.is_terminal());
         assert_eq!(terminal.code(), "binding_schema_violation");
 

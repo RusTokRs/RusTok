@@ -19,16 +19,15 @@ use crate::recovery::{
     module_operation_recovery_plan, retry_failed_post_hook_operation,
 };
 use crate::{
-    ArtifactInstallationResolveError, ArtifactLifecycleExecutor,
-    ArtifactSandboxPolicyResolveError, ArtifactSandboxPolicyResolver,
-    ControlPlaneInfrastructure, ModuleArtifactSecurityError, ModuleCommandContext,
-    ModuleDefinitionCatalog, ModuleDefinitionError, ModuleDefinitionKind, ModuleDefinitionSource,
-    ModuleEffectivePolicy, ModuleEffectivePolicyError, ModuleEffectivePolicyTransitionCoordinator,
-    ModuleExecutionDispatcher, ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest,
-    ModuleOperationIssue, ModuleOperationJournal, ModuleOperationRecoveryError,
-    ModuleOperationRecoveryPlan, ModuleOperationRequest, ModuleOperationStoreError,
-    ModulePolicyRevisionConsumerError, ModulePolicyRevisionTransition,
-    SeaOrmArtifactInstallationStore,
+    ArtifactInstallationResolveError, ArtifactLifecycleExecutor, ArtifactSandboxPolicyResolveError,
+    ArtifactSandboxPolicyResolver, ControlPlaneInfrastructure, ModuleArtifactSecurityError,
+    ModuleCommandContext, ModuleDefinitionCatalog, ModuleDefinitionError, ModuleDefinitionKind,
+    ModuleDefinitionSource, ModuleEffectivePolicy, ModuleEffectivePolicyError,
+    ModuleEffectivePolicyTransitionCoordinator, ModuleExecutionDispatcher,
+    ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, ModuleOperationIssue,
+    ModuleOperationJournal, ModuleOperationRecoveryError, ModuleOperationRecoveryPlan,
+    ModuleOperationRequest, ModuleOperationStoreError, ModulePolicyRevisionConsumerError,
+    ModulePolicyRevisionTransition, SeaOrmArtifactInstallationStore,
     SeaOrmArtifactSandboxPolicyResolver, SeaOrmModuleArtifactSecurityResolver,
     SeaOrmModulePolicyRevisionConsumer, StaticTenantLifecycleSnapshot, StaticTenantLifecycleStore,
     StaticTenantLifecycleStoreError, TenantModuleOverride, TenantModuleSettingsRecord,
@@ -1187,20 +1186,16 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             // grant revision matches the installation's, so `Ok` implies the
             // effective revision is the artifact's. Absence/mismatch are
             // policy states; storage and invariant failures propagate.
-            let capability_policy_revision = match ArtifactSandboxPolicyResolver::resolve(
-                &policies,
-                &artifact,
-                tenant_id,
-            )
-            .await
-            {
-                Ok(_) => Some(artifact.capability_grant_revision),
-                Err(
-                    ArtifactSandboxPolicyResolveError::Unavailable
-                    | ArtifactSandboxPolicyResolveError::RevisionMismatch,
-                ) => None,
-                Err(error) => return Err(database_error(error)),
-            };
+            let capability_policy_revision =
+                match ArtifactSandboxPolicyResolver::resolve(&policies, &artifact, tenant_id).await
+                {
+                    Ok(_) => Some(artifact.capability_grant_revision),
+                    Err(
+                        ArtifactSandboxPolicyResolveError::Unavailable
+                        | ArtifactSandboxPolicyResolveError::RevisionMismatch,
+                    ) => None,
+                    Err(error) => return Err(database_error(error)),
+                };
             let executor_available = self.artifact_executor.is_some_and(|executor| {
                 executor.supports_payload_kind(artifact.descriptor.payload_kind)
             });
@@ -1322,45 +1317,44 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             let next_policy = self
                 .effective_policy_from_overrides(&catalog, next_overrides, &runtime_inputs)
                 .await?;
-            let policy_transition =
-                if current_policy.policy_revision() != next_policy.policy_revision() {
-                    let observed_cursor = observed_cursor.map_err(|error| {
-                        ModuleLifecycleDbWriterError::PolicyTransition(error.to_string())
-                    })?;
-                    let current_revision = current_policy.policy_revision().to_string();
-                    // The current policy is a full owner snapshot. Repair a
-                    // bootstrapped-or-drifted cursor through the explicit
-                    // expected-state resync before deriving a transition.
-                    // The resync runs even when the observed revision already
-                    // matches the snapshot: with an unchanged revision it is
-                    // a no-op that still proves the durable cursor is exactly
-                    // the state observed before derivation.
-                    let cursor_state = match policy_consumer
-                        .resync_if_current(
-                            tenant_id,
-                            "module.lifecycle",
-                            &observed_cursor,
-                            &current_revision,
-                        )
-                        .await
-                    {
-                        Ok(cursor_state) => cursor_state,
-                        Err(
-                            ModulePolicyRevisionConsumerError::CursorStateConflict { .. },
-                        ) => continue,
-                        Err(error) => {
-                            return Err(ModuleLifecycleDbWriterError::PolicyTransition(
-                                error.to_string(),
-                            ));
-                        }
-                    };
-                    Some(ModulePolicyRevisionTransition {
-                        previous_revision: cursor_state.current_revision,
-                        next_revision: next_policy.policy_revision().to_string(),
-                    })
-                } else {
-                    None
+            let policy_transition = if current_policy.policy_revision()
+                != next_policy.policy_revision()
+            {
+                let observed_cursor = observed_cursor.map_err(|error| {
+                    ModuleLifecycleDbWriterError::PolicyTransition(error.to_string())
+                })?;
+                let current_revision = current_policy.policy_revision().to_string();
+                // The current policy is a full owner snapshot. Repair a
+                // bootstrapped-or-drifted cursor through the explicit
+                // expected-state resync before deriving a transition.
+                // The resync runs even when the observed revision already
+                // matches the snapshot: with an unchanged revision it is
+                // a no-op that still proves the durable cursor is exactly
+                // the state observed before derivation.
+                let cursor_state = match policy_consumer
+                    .resync_if_current(
+                        tenant_id,
+                        "module.lifecycle",
+                        &observed_cursor,
+                        &current_revision,
+                    )
+                    .await
+                {
+                    Ok(cursor_state) => cursor_state,
+                    Err(ModulePolicyRevisionConsumerError::CursorStateConflict { .. }) => continue,
+                    Err(error) => {
+                        return Err(ModuleLifecycleDbWriterError::PolicyTransition(
+                            error.to_string(),
+                        ));
+                    }
                 };
+                Some(ModulePolicyRevisionTransition {
+                    previous_revision: cursor_state.current_revision,
+                    next_revision: next_policy.policy_revision().to_string(),
+                })
+            } else {
+                None
+            };
             let current_settings = self.settings(tenant_id, module_slug).await?;
             return Ok((
                 catalog,
@@ -1536,9 +1530,9 @@ fn validate_recovery_command(
         ));
     }
     command.context.validate().map_err(|error| {
-        ModuleLifecycleDbWriterError::Recovery(
-            ModuleOperationRecoveryError::InvalidCommandContext(error),
-        )
+        ModuleLifecycleDbWriterError::Recovery(ModuleOperationRecoveryError::InvalidCommandContext(
+            error,
+        ))
     })?;
     Ok(())
 }

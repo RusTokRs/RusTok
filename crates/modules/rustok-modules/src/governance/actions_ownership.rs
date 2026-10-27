@@ -176,8 +176,7 @@ impl SeaOrmModuleGovernanceService {
         let request_id: Option<String> = optional_column(&release, "request_id")?;
         let status: String = required_column(&release, "status")?;
         let publisher = required_json_text(&release, "publisher_principal")?;
-        let previous_yanked_reason: Option<String> =
-            optional_column(&release, "yanked_reason")?;
+        let previous_yanked_reason: Option<String> = optional_column(&release, "yanked_reason")?;
         let previous_yanked_by = optional_json_text(&release, "yanked_by_principal")?;
         let previous_yanked_at: Option<String> = optional_column(&release, "yanked_at")?;
         let receipt = ReleaseUnyankReceipt {

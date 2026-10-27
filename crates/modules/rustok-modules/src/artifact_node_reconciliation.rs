@@ -654,7 +654,8 @@ where
     {
         validate_request(&command)?;
         self.authorizer.authorize_request(&command).await?;
-        let request_digest = crate::idempotency::semantic_request_digest(&command).map_err(digest_error)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&command).map_err(digest_error)?;
         let principal_id = command.context.actor_id.to_string();
         if let Some(operation) = load_operation(
             &self.db,
@@ -920,7 +921,8 @@ where
     {
         validate_report(&command)?;
         self.authorizer.authorize_report(&command).await?;
-        let request_digest = crate::idempotency::semantic_request_digest(&command).map_err(digest_error)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&command).map_err(digest_error)?;
         if let Some(operation) = load_operation(
             &self.db,
             command.idempotency_key,

@@ -86,14 +86,20 @@ pub struct ArtifactEventDeliveryWorkItem {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ArtifactEventDeliveryOutcome {
     Succeeded,
-    Retryable { error_code: String },
+    Retryable {
+        error_code: String,
+    },
     /// The binding was denied by effective policy before any guest
     /// execution. The delivery is parked (returned to `pending` with its
     /// claim's attempt increment reverted) so a later re-enable can still
     /// deliver it; only genuine execution failures spend the
     /// `max_attempts` dead-letter budget.
-    Held { error_code: String },
-    DeadLetter { error_code: String },
+    Held {
+        error_code: String,
+    },
+    DeadLetter {
+        error_code: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -556,22 +562,12 @@ impl ModuleWorkSource for ArtifactEventDeliveryWorkAdapter {
                     crate::dispatcher::DELIVERY_CODE_DENIED_BY_POLICY,
                 ),
             },
-            ModuleWorkOutcome::Retryable { message } => {
-                ArtifactEventDeliveryOutcome::Retryable {
-                    error_code: crate::dispatcher::delivery_error_code(
-                        &message,
-                        "execution_failed",
-                    ),
-                }
-            }
-            ModuleWorkOutcome::Rejected { message } => {
-                ArtifactEventDeliveryOutcome::DeadLetter {
-                    error_code: crate::dispatcher::delivery_error_code(
-                        &message,
-                        "execution_rejected",
-                    ),
-                }
-            }
+            ModuleWorkOutcome::Retryable { message } => ArtifactEventDeliveryOutcome::Retryable {
+                error_code: crate::dispatcher::delivery_error_code(&message, "execution_failed"),
+            },
+            ModuleWorkOutcome::Rejected { message } => ArtifactEventDeliveryOutcome::DeadLetter {
+                error_code: crate::dispatcher::delivery_error_code(&message, "execution_rejected"),
+            },
             ModuleWorkOutcome::Cancelled => ArtifactEventDeliveryOutcome::DeadLetter {
                 error_code: "execution_cancelled".to_string(),
             },

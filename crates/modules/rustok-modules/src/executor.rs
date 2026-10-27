@@ -5,8 +5,8 @@ use sea_orm::{DatabaseConnection, TransactionTrait};
 use thiserror::Error;
 
 use crate::recovery::{
-    apply_tenant_override_enabled, load_current_lifecycle_settings,
-    read_tenant_override_enabled, record_operation_override_state,
+    apply_tenant_override_enabled, load_current_lifecycle_settings, read_tenant_override_enabled,
+    record_operation_override_state,
 };
 
 /// Claim leases last 300 seconds; renewing every minute leaves several
@@ -15,12 +15,11 @@ use crate::recovery::{
 const LIFECYCLE_CLAIM_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(60);
 use crate::{
     ModuleCommandContext, ModuleControlPlaneError, ModuleEffectivePolicyTransitionCoordinator,
-    ModuleExecutionDispatcher,
-    ModuleLifecycleHookPhase, ModuleOperationJournal, ModuleOperationRecordOutcome,
-    ModuleOperationRequest, ModuleOperationSnapshot, ModuleOperationStatus,
-    ModulePolicyRevisionTransition, ModuleToggleValidationError, StaticTenantLifecycleStore,
-    StaticTenantLifecycleStoreError, TenantModuleStateRecord, TenantModuleStateStore,
-    validate_module_toggle,
+    ModuleExecutionDispatcher, ModuleLifecycleHookPhase, ModuleOperationJournal,
+    ModuleOperationRecordOutcome, ModuleOperationRequest, ModuleOperationSnapshot,
+    ModuleOperationStatus, ModulePolicyRevisionTransition, ModuleToggleValidationError,
+    StaticTenantLifecycleStore, StaticTenantLifecycleStoreError, TenantModuleStateRecord,
+    TenantModuleStateStore, validate_module_toggle,
 };
 
 #[derive(Clone, Debug)]
@@ -294,13 +293,12 @@ pub async fn execute_module_toggle(
                             revision: committed_revision,
                             settings: result_settings,
                         };
-                        let result_snapshot =
-                            serde_json::to_string(&result).map_err(|error| {
-                                ModuleLifecycleExecutionError::Persistence(format!(
-                                    "serializing the lifecycle operation result \
+                        let result_snapshot = serde_json::to_string(&result).map_err(|error| {
+                            ModuleLifecycleExecutionError::Persistence(format!(
+                                "serializing the lifecycle operation result \
                                      snapshot failed: {error}"
-                                ))
-                            })?;
+                            ))
+                        })?;
                         ModuleOperationJournal::mark_committed_with_result(
                             transaction,
                             operation.id,
@@ -338,19 +336,16 @@ pub async fn execute_module_toggle(
             Err(error) => {
                 let error = transaction_error(error);
                 let journal_message = format!("state-commit: {error}");
-                let error = match ModuleOperationJournal::mark_failed(
-                    db,
-                    operation.id,
-                    &journal_message,
-                )
-                .await
-                {
-                    Ok(()) => error,
-                    Err(journal_error) => ModuleLifecycleExecutionError::Persistence(format!(
-                        "{error}; additionally, marking the lifecycle operation \
+                let error =
+                    match ModuleOperationJournal::mark_failed(db, operation.id, &journal_message)
+                        .await
+                    {
+                        Ok(()) => error,
+                        Err(journal_error) => ModuleLifecycleExecutionError::Persistence(format!(
+                            "{error}; additionally, marking the lifecycle operation \
                          failed did not persist: {journal_error}"
-                    )),
-                };
+                        )),
+                    };
                 let error = release_claim_after_error(
                     db,
                     request.tenant_id,
@@ -457,14 +452,11 @@ pub async fn execute_module_toggle(
                     .map_err(|error| {
                         ModuleLifecycleExecutionError::Persistence(error.to_string())
                     })?;
-                    ModuleOperationJournal::mark_committed_hook_pending(
-                        transaction,
-                        operation.id,
-                    )
-                    .await
-                    .map_err(|error| {
-                        ModuleLifecycleExecutionError::Persistence(error.to_string())
-                    })?;
+                    ModuleOperationJournal::mark_committed_hook_pending(transaction, operation.id)
+                        .await
+                        .map_err(|error| {
+                            ModuleLifecycleExecutionError::Persistence(error.to_string())
+                        })?;
                     if let (Some(coordinator), Some(transition)) = (coordinator, policy_transition)
                     {
                         coordinator
@@ -499,8 +491,7 @@ pub async fn execute_module_toggle(
             let error = transaction_error(error);
             let journal_message = format!("state-commit: {error}");
             let error =
-                match ModuleOperationJournal::mark_failed(db, operation.id, &journal_message)
-                    .await
+                match ModuleOperationJournal::mark_failed(db, operation.id, &journal_message).await
                 {
                     Ok(()) => error,
                     Err(journal_error) => ModuleLifecycleExecutionError::Persistence(format!(
@@ -521,9 +512,7 @@ pub async fn execute_module_toggle(
     };
 
     let committed_revision = expected_revision.checked_add(1).ok_or_else(|| {
-        ModuleLifecycleExecutionError::Persistence(
-            "module lifecycle revision overflow".to_string(),
-        )
+        ModuleLifecycleExecutionError::Persistence("module lifecycle revision overflow".to_string())
     })?;
     let post_phase = if request.enabled {
         ModuleLifecycleHookPhase::PostEnable
@@ -624,9 +613,7 @@ pub async fn execute_module_toggle(
                 &result_snapshot,
             )
             .await
-            .map_err(|error| {
-                ModuleLifecycleExecutionError::Persistence(error.to_string())
-            })?;
+            .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
             StaticTenantLifecycleStore::release(
                 transaction,
                 completion_tenant_id,
@@ -847,12 +834,10 @@ async fn replay_lifecycle_operation(
             // corrupt evidence and fails closed instead of falling back.
             if let Some(serialized) = ModuleOperationJournal::result_snapshot(db, operation.id)
                 .await
-                .map_err(|error| {
-                    ModuleLifecycleExecutionError::Persistence(error.to_string())
-                })?
+                .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?
             {
-                let result: ModuleLifecycleToggleResult =
-                    serde_json::from_str(&serialized).map_err(|error| {
+                let result: ModuleLifecycleToggleResult = serde_json::from_str(&serialized)
+                    .map_err(|error| {
                         ModuleLifecycleExecutionError::Persistence(format!(
                             "stored lifecycle result snapshot is invalid: {error}"
                         ))
@@ -934,12 +919,10 @@ async fn replay_lifecycle_operation(
                 module_slug: request.module_slug.clone(),
             })
         }
-        ModuleOperationStatus::Orphaned => {
-            Err(ModuleLifecycleExecutionError::OperationOrphaned {
-                module_slug: request.module_slug.clone(),
-                operation_id: operation.id,
-            })
-        }
+        ModuleOperationStatus::Orphaned => Err(ModuleLifecycleExecutionError::OperationOrphaned {
+            module_slug: request.module_slug.clone(),
+            operation_id: operation.id,
+        }),
     }
 }
 
@@ -1237,15 +1220,9 @@ mod tests {
         let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
         let tenant_id = uuid::Uuid::new_v4();
         let holder_key = uuid::Uuid::new_v4();
-        StaticTenantLifecycleStore::claim(
-            &database,
-            tenant_id,
-            "optional_test",
-            0,
-            holder_key,
-        )
-        .await
-        .expect("holder claim");
+        StaticTenantLifecycleStore::claim(&database, tenant_id, "optional_test", 0, holder_key)
+            .await
+            .expect("holder claim");
 
         let contender_key = uuid::Uuid::new_v4();
         let contended = execute_module_toggle(
@@ -1271,16 +1248,14 @@ mod tests {
             contended,
             Err(ModuleLifecycleExecutionError::OperationInProgress { .. })
         ));
-        assert_eq!(operation_count(&database, tenant_id, contender_key).await, 0);
+        assert_eq!(
+            operation_count(&database, tenant_id, contender_key).await,
+            0
+        );
 
-        StaticTenantLifecycleStore::release(
-            &database,
-            tenant_id,
-            "optional_test",
-            holder_key,
-        )
-        .await
-        .expect("holder claim release");
+        StaticTenantLifecycleStore::release(&database, tenant_id, "optional_test", holder_key)
+            .await
+            .expect("holder claim release");
 
         let stale_key = uuid::Uuid::new_v4();
         let stale_revision = execute_module_toggle(
@@ -1453,15 +1428,9 @@ mod tests {
         let dispatcher = ModuleExecutionDispatcher::artifact_only(&catalog, &artifact_executor);
         let tenant_id = uuid::Uuid::new_v4();
         let holder_key = uuid::Uuid::new_v4();
-        StaticTenantLifecycleStore::claim(
-            &database,
-            tenant_id,
-            "artifact_test",
-            0,
-            holder_key,
-        )
-        .await
-        .expect("artifact aggregate holder claim");
+        StaticTenantLifecycleStore::claim(&database, tenant_id, "artifact_test", 0, holder_key)
+            .await
+            .expect("artifact aggregate holder claim");
 
         let contender_key = uuid::Uuid::new_v4();
         let contended = execute_module_toggle(
@@ -1488,16 +1457,14 @@ mod tests {
             Err(ModuleLifecycleExecutionError::OperationInProgress { .. })
         ));
         assert_eq!(artifact_executor.0.load(Ordering::SeqCst), 0);
-        assert_eq!(operation_count(&database, tenant_id, contender_key).await, 0);
+        assert_eq!(
+            operation_count(&database, tenant_id, contender_key).await,
+            0
+        );
 
-        StaticTenantLifecycleStore::release(
-            &database,
-            tenant_id,
-            "artifact_test",
-            holder_key,
-        )
-        .await
-        .expect("artifact aggregate holder release");
+        StaticTenantLifecycleStore::release(&database, tenant_id, "artifact_test", holder_key)
+            .await
+            .expect("artifact aggregate holder release");
 
         let stale_key = uuid::Uuid::new_v4();
         let stale_revision = execute_module_toggle(

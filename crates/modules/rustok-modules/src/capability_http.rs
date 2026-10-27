@@ -190,9 +190,7 @@ async fn resolve_public_target(
             // can disclose internal addressing learned through DNS.
             return Err(SandboxError::HostCapability {
                 capability: capability.clone(),
-                message: format!(
-                    "HTTP destination host `{host}` resolves to a disallowed address"
-                ),
+                message: format!("HTTP destination host `{host}` resolves to a disallowed address"),
             });
         }
     }

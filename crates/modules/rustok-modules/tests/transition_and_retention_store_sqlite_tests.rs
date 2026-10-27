@@ -1,11 +1,10 @@
 use chrono::{Duration, Utc};
 use rustok_modules::{
     ConflictFenceSet, GlobalSecurityEpoch, MAX_EXPIRED_RETENTION_HOLDS_PER_REAP,
-    ModuleCommandContext, ModuleInstallationScope, ModuleOperationJournal,
-    ModuleOperationRequest, ModuleOperationStatus, ModuleTransitionCheckpoint,
-    ModuleTransitionState, ReleaseAdmissionIntentJournal, ReleaseAdmissionJournalError,
-    RetentionHoldKind, RetentionHoldRecord, RetentionHoldStore, RetentionTarget,
-    TransitionCheckpointStore,
+    ModuleCommandContext, ModuleInstallationScope, ModuleOperationJournal, ModuleOperationRequest,
+    ModuleOperationStatus, ModuleTransitionCheckpoint, ModuleTransitionState,
+    ReleaseAdmissionIntentJournal, ReleaseAdmissionJournalError, RetentionHoldKind,
+    RetentionHoldRecord, RetentionHoldStore, RetentionTarget, TransitionCheckpointStore,
 };
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
@@ -139,8 +138,8 @@ async fn active_checkpoint_listing_discovers_intervention_required() {
     let db = setup_db().await;
     let tenant_id = Some(Uuid::new_v4());
     let now = Utc::now();
-    let checkpoint = |operation_id: Uuid, state: ModuleTransitionState| {
-        ModuleTransitionCheckpoint {
+    let checkpoint =
+        |operation_id: Uuid, state: ModuleTransitionState| ModuleTransitionCheckpoint {
             operation_id,
             revision: 1,
             module_slug: "orders".to_string(),
@@ -153,8 +152,7 @@ async fn active_checkpoint_listing_discovers_intervention_required() {
             recovery_attempt_count: 0,
             created_at: now,
             updated_at: now,
-        }
-    };
+        };
 
     let observing_operation_id = Uuid::new_v4();
     let intervention_operation_id = Uuid::new_v4();
@@ -190,10 +188,9 @@ async fn active_checkpoint_listing_discovers_intervention_required() {
             .expect("seed checkpoint");
     }
 
-    let unresolved =
-        TransitionCheckpointStore::list_active_checkpoints_for_tenant(&db, tenant_id)
-            .await
-            .expect("list unresolved checkpoints");
+    let unresolved = TransitionCheckpointStore::list_active_checkpoints_for_tenant(&db, tenant_id)
+        .await
+        .expect("list unresolved checkpoints");
     let unresolved_ids = unresolved
         .iter()
         .map(|checkpoint| checkpoint.operation_id)
@@ -323,13 +320,10 @@ async fn expired_rollout_holds_are_inactive_and_bounded_reaping_preserves_other_
     assert!(active.iter().any(|hold| hold.hold_id == audit_id));
     assert!(!active.iter().any(|hold| hold.hold_id == expired_id));
 
-    let report = RetentionHoldStore::reap_expired_holds(
-        &db,
-        now,
-        MAX_EXPIRED_RETENTION_HOLDS_PER_REAP,
-    )
-    .await
-    .expect("expired retention hold reap");
+    let report =
+        RetentionHoldStore::reap_expired_holds(&db, now, MAX_EXPIRED_RETENTION_HOLDS_PER_REAP)
+            .await
+            .expect("expired retention hold reap");
     assert_eq!(report.scanned, 3);
     assert_eq!(report.expired, 1);
     assert_eq!(report.deleted, 1);
@@ -339,11 +333,7 @@ async fn expired_rollout_holds_are_inactive_and_bounded_reaping_preserves_other_
         .expect("active retention ledger");
     let active_records = ledger.get_active_holds_at(&target, now);
     assert_eq!(active_records.len(), 2);
-    assert!(
-        active_records
-            .iter()
-            .any(|hold| hold.hold_id == active_id)
-    );
+    assert!(active_records.iter().any(|hold| hold.hold_id == active_id));
     assert!(active_records.iter().any(|hold| hold.hold_id == audit_id));
 }
 
@@ -544,13 +534,9 @@ async fn committed_result_snapshot_roundtrips_and_legacy_rows_have_none() {
     ModuleOperationJournal::mark_running(&db, with_result.id)
         .await
         .expect("running");
-    ModuleOperationJournal::mark_committed_with_result(
-        &db,
-        with_result.id,
-        "{\"revision\":2}",
-    )
-    .await
-    .expect("commit with result");
+    ModuleOperationJournal::mark_committed_with_result(&db, with_result.id, "{\"revision\":2}")
+        .await
+        .expect("commit with result");
     assert_eq!(
         ModuleOperationJournal::find(&db, with_result.id)
             .await

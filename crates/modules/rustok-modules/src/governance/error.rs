@@ -97,7 +97,9 @@ pub enum ModuleGovernanceError {
         "author-signature evidence requires a platform command context and bounded signature facts"
     )]
     InvalidAuthorSignatureEvidenceCommand,
-    #[error("marketplace-approval evidence requires a platform command context and actor principal")]
+    #[error(
+        "marketplace-approval evidence requires a platform command context and actor principal"
+    )]
     InvalidMarketplaceApprovalEvidenceCommand,
     #[error("build-service attestation requires one valid build-worker publication receipt")]
     InvalidBuildServiceAttestationCommand,

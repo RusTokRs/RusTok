@@ -379,7 +379,8 @@ where
         request: ArtifactSecretBindingRequest,
     ) -> Result<ArtifactSecretHandle, ArtifactSecretError> {
         validate_request(&request)?;
-        let request_digest = crate::idempotency::semantic_request_digest(&request).map_err(storage_error)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&request).map_err(storage_error)?;
         self.authorizer.authorize_secret_binding(&request).await?;
 
         let transaction = self.db.begin().await.map_err(storage_error)?;
@@ -1573,8 +1574,7 @@ mod tests {
         assert_eq!(replay, first);
         assert_eq!(first.secret_instance_id, binding.scope.secret_instance_id);
         let mut changed_observability = binding.clone();
-        changed_observability.context.trace_id =
-            "test:artifact-secret-binding:retry".to_string();
+        changed_observability.context.trace_id = "test:artifact-secret-binding:retry".to_string();
         changed_observability.context.correlation_id = Uuid::new_v4();
         changed_observability.reason = "retry after an uncertain response".to_string();
         let changed_observability_replay = service

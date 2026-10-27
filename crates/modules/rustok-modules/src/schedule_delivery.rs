@@ -73,15 +73,23 @@ pub struct ArtifactScheduleDeliveryWorkItem {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ArtifactScheduleDeliveryOutcome {
     Succeeded,
-    Retryable { error_code: String },
+    Retryable {
+        error_code: String,
+    },
     /// The binding was denied by effective policy before any guest
     /// execution. The delivery is parked (returned to `pending` with its
     /// claim's attempt increment reverted) so a later re-enable can still
     /// deliver it; only genuine execution failures spend the
     /// `max_attempts` dead-letter budget.
-    Held { error_code: String },
-    DeadLetter { error_code: String },
-    Cancelled { error_code: String },
+    Held {
+        error_code: String,
+    },
+    DeadLetter {
+        error_code: String,
+    },
+    Cancelled {
+        error_code: String,
+    },
 }
 
 /// Queue-owned execution limits.

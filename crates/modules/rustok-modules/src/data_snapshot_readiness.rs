@@ -145,12 +145,14 @@ impl ArtifactDataRecoveryReadinessService {
         let manifest_digest: Option<String> = row
             .try_get("", "manifest_digest")
             .map_err(|e| SnapshotReadinessError::Storage(e.to_string()))?;
-        let structured_record_count = crate::backend::nonnegative_count_from_row(&row, "structured_record_count")
-            .map_err(|e| SnapshotReadinessError::Storage(e.to_string()))?;
+        let structured_record_count =
+            crate::backend::nonnegative_count_from_row(&row, "structured_record_count")
+                .map_err(|e| SnapshotReadinessError::Storage(e.to_string()))?;
         let object_count = crate::backend::nonnegative_count_from_row(&row, "object_count")
             .map_err(|e| SnapshotReadinessError::Storage(e.to_string()))?;
-        let total_object_bytes = crate::backend::nonnegative_count_from_row(&row, "total_object_bytes")
-            .map_err(|e| SnapshotReadinessError::Storage(e.to_string()))?;
+        let total_object_bytes =
+            crate::backend::nonnegative_count_from_row(&row, "total_object_bytes")
+                .map_err(|e| SnapshotReadinessError::Storage(e.to_string()))?;
 
         let created_at = backend
             .datetime_from_row(&row, "created_at")
@@ -163,9 +165,7 @@ impl ArtifactDataRecoveryReadinessService {
         let age = now.signed_duration_since(created_at);
         let age_seconds = age.num_seconds().max(0) as u64;
 
-        let is_within_sla = age
-            .to_std()
-            .is_ok_and(|age| age <= max_age);
+        let is_within_sla = age.to_std().is_ok_and(|age| age <= max_age);
         let not_expired = retain_until > now;
         let has_valid_manifest = manifest_digest
             .as_deref()

@@ -23,8 +23,8 @@ use crate::{
     ControlPlaneInfrastructure, DurableArtifactBlobStore,
     MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor, ModuleArtifactPackage,
     ModuleCommandContext, ModuleInstallationScope, OciArtifactReference,
-    ReleaseAdmissionIntentJournal,
-    ReleaseAdmissionJournalError, TrustVerificationRequest, TrustVerifier, promotion::digest_json,
+    ReleaseAdmissionIntentJournal, ReleaseAdmissionJournalError, TrustVerificationRequest,
+    TrustVerifier, promotion::digest_json,
 };
 
 /// Verified publisher/ownership evidence for an external prebuilt artifact.
@@ -643,13 +643,12 @@ impl ExternalPrebuiltIngressService {
                 || descriptor.artifact_digest != stored_payload_digest
             {
                 return Err(ExternalPrebuiltIngressError::InvalidDescriptor(
-                    "stored descriptor does not match the admitted release identity"
-                        .to_string(),
+                    "stored descriptor does not match the admitted release identity".to_string(),
                 ));
             }
             let payload_size_bytes =
                 crate::backend::nonnegative_count_from_row(&row, "payload_size_bytes")
-                .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
+                    .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
             let artifact_origin: String = row
                 .try_get("", "artifact_origin")
                 .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
@@ -1023,7 +1022,7 @@ impl ExternalPrebuiltIngressService {
             .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
         let payload_size_bytes =
             crate::backend::nonnegative_count_from_row(&row, "payload_size_bytes")
-            .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
+                .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
         let descriptor_json: String = row
             .try_get("", "descriptor_json")
             .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;

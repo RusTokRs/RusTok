@@ -21,8 +21,7 @@ impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let backend = SupportedBackend::new(manager.get_database_backend())?;
         let statements: &[&str] = match backend {
-            SupportedBackend::Postgres => &[
-                "CREATE TABLE module_executor_pools (\
+            SupportedBackend::Postgres => &["CREATE TABLE module_executor_pools (\
                     pool_id TEXT PRIMARY KEY \
                         CHECK (length(trim(pool_id)) BETWEEN 1 AND 128),\
                     placement TEXT NOT NULL \
@@ -39,10 +38,8 @@ impl MigrationTrait for Migration {
                     CHECK (placement <> 'isolated_worker' \
                         OR placement_attestation IS NOT NULL),\
                     CHECK (updated_at >= created_at)\
-                )",
-            ],
-            SupportedBackend::Sqlite => &[
-                "CREATE TABLE module_executor_pools (\
+                )"],
+            SupportedBackend::Sqlite => &["CREATE TABLE module_executor_pools (\
                     pool_id TEXT PRIMARY KEY \
                         CHECK (length(trim(pool_id)) BETWEEN 1 AND 128),\
                     placement TEXT NOT NULL \
@@ -61,8 +58,7 @@ impl MigrationTrait for Migration {
                     CHECK (placement <> 'isolated_worker' \
                         OR placement_attestation IS NOT NULL),\
                     CHECK (updated_at >= created_at)\
-                )",
-            ],
+                )"],
         };
         for statement in statements {
             manager

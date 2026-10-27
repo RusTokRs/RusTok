@@ -1156,7 +1156,10 @@ impl OperationsToolService {
         let operation = self.parse_operation_row(row, backend)?;
         if stored_request_digest != request_digest
             || operation.operation_id != command.operation_id
-            || operation.recovery_context.as_ref().map(|context| context.actor_id)
+            || operation
+                .recovery_context
+                .as_ref()
+                .map(|context| context.actor_id)
                 != Some(command.context.actor_id)
         {
             return Err(OperationsToolError::IdempotencyConflict);

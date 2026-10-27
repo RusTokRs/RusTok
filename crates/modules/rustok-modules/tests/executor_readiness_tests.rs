@@ -19,10 +19,9 @@ use rustok_modules::{
     ExecutorReadinessProbe, ExecutorReadinessService, ExecutorSmokeProbeOutcome,
     ExecutorSmokeProbeRequest, InMemoryArtifactBlobStore, InstalledModuleArtifact,
     MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor, ModuleBindingIdempotency,
-    ModuleCommandContext, ModuleDependencyLockGraph, ModuleInstallationScope,
-    ModuleRuntimeBinding, ModuleRuntimeBindingKind, ModulesModule, OciArtifactReference,
-    OwnerPlacementPolicy, ReleaseReadinessTarget, RuntimeFingerprint, VerifiedPayloadCache,
-    canonical_schema_digest,
+    ModuleCommandContext, ModuleDependencyLockGraph, ModuleInstallationScope, ModuleRuntimeBinding,
+    ModuleRuntimeBindingKind, ModulesModule, OciArtifactReference, OwnerPlacementPolicy,
+    ReleaseReadinessTarget, RuntimeFingerprint, VerifiedPayloadCache, canonical_schema_digest,
 };
 use rustok_sandbox::{CapabilityName, RHAI_SANDBOX_RUNTIME_ABI, SandboxExecutorPlacement};
 use sea_orm::Database;
@@ -303,8 +302,7 @@ async fn test_verified_payload_caching_and_cas_rehash() {
     let mut routes = HashSet::new();
     routes.insert("platform.http".to_string());
 
-    let (service, _probe) =
-        readiness_service(db.clone(), blobs.clone(), default_pool(), routes);
+    let (service, _probe) = readiness_service(db.clone(), blobs.clone(), default_pool(), routes);
     let service = service.with_cache(cache.clone());
 
     let fp = sample_runtime_fingerprint();
@@ -456,12 +454,8 @@ async fn test_monotonic_pool_generation_gating() {
         allow_in_process_fallback: false,
     };
 
-    let (service, _probe) = readiness_service(
-        db.clone(),
-        blobs.clone(),
-        pool_gen1.clone(),
-        HashSet::new(),
-    );
+    let (service, _probe) =
+        readiness_service(db.clone(), blobs.clone(), pool_gen1.clone(), HashSet::new());
 
     // Evaluate readiness on generation 1
     let receipt_gen1 = service
@@ -496,12 +490,8 @@ async fn test_monotonic_pool_generation_gating() {
     ));
 
     // Re-evaluate readiness on generation 2
-    let (service, _probe_gen2) = readiness_service(
-        db.clone(),
-        blobs.clone(),
-        pool_gen2.clone(),
-        HashSet::new(),
-    );
+    let (service, _probe_gen2) =
+        readiness_service(db.clone(), blobs.clone(), pool_gen2.clone(), HashSet::new());
     let receipt_gen2 = service
         .evaluate_readiness(readiness_command(target.clone(), policy.clone()))
         .await
@@ -723,8 +713,7 @@ async fn test_dual_candidate_and_predecessor_smoke_readiness_for_automatic_mode(
     ));
 
     // 2. Candidate evaluated with FAILED smoke test -> AUTOMATIC MODE DENIED
-    let failing_service =
-        failing_readiness_service(db.clone(), blobs.clone(), pool.clone());
+    let failing_service = failing_readiness_service(db.clone(), blobs.clone(), pool.clone());
     let err_smoke = failing_service
         .evaluate_readiness(readiness_command(candidate.clone(), policy.clone()))
         .await

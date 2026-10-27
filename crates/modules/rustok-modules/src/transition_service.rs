@@ -23,14 +23,14 @@ use crate::{
     ArtifactActivationRequest, ArtifactActivationResult, ControlPlaneInfrastructure,
     EvaluateReadinessCommand, ExecutorPoolIdentity, ExecutorReadinessError,
     ExecutorReadinessService, ExecutorSmokeReceipt, InstalledModuleArtifact,
-    MAX_EXPIRED_RETENTION_HOLDS_PER_REAP,
-    MigrationPreflightInput, MigrationPreflightReceipt, ModuleBindingIdempotency,
-    ModuleCommandContext, ModuleInstallationScope, ModuleRuntimeBindingKind,
-    ModuleTransitionCheckpoint, ModuleTransitionCoordinator, ModuleTransitionFinalizeCommand,
-    ModuleTransitionState, OwnerPlacementPolicy, ReleaseReadinessTarget, RetentionHoldReapReport,
-    RetentionHoldStore, SeaOrmArtifactInstallationStore, SeaOrmSecurityEpochStore,
-    StartTransitionInput, TransitionCheckpointStore, TransitionCoordinatorError,
-    TransitionStoreError, UpdateMode, data::uuid_from_row, evaluate_migration_preflight,
+    MAX_EXPIRED_RETENTION_HOLDS_PER_REAP, MigrationPreflightInput, MigrationPreflightReceipt,
+    ModuleBindingIdempotency, ModuleCommandContext, ModuleInstallationScope,
+    ModuleRuntimeBindingKind, ModuleTransitionCheckpoint, ModuleTransitionCoordinator,
+    ModuleTransitionFinalizeCommand, ModuleTransitionState, OwnerPlacementPolicy,
+    ReleaseReadinessTarget, RetentionHoldReapReport, RetentionHoldStore,
+    SeaOrmArtifactInstallationStore, SeaOrmSecurityEpochStore, StartTransitionInput,
+    TransitionCheckpointStore, TransitionCoordinatorError, TransitionStoreError, UpdateMode,
+    data::uuid_from_row, evaluate_migration_preflight,
 };
 
 const OPERATION_KIND: &str = "finalize";
@@ -427,8 +427,7 @@ impl SeaOrmModuleTransitionService {
             .as_ref()
             .map(|checkpoint| checkpoint.operation_id)
             .unwrap_or_else(|| self.infrastructure.new_id());
-        let preflight =
-            derive_governed_preflight(operation_id, &candidate, predecessor.as_ref())?;
+        let preflight = derive_governed_preflight(operation_id, &candidate, predecessor.as_ref())?;
         if preflight.mode != UpdateMode::Automatic {
             return Err(GovernedArtifactTransitionError::PreflightFailed {
                 reasons: preflight.denial_reasons.clone(),
@@ -875,19 +874,16 @@ pub async fn evaluate_transition_watchdog(
 pub async fn reap_expired_retention_holds(
     db: &DatabaseConnection,
 ) -> Result<RetentionHoldReapReport, ModuleTransitionServiceError> {
-    RetentionHoldStore::reap_expired_holds(
-        db,
-        Utc::now(),
-        MAX_EXPIRED_RETENTION_HOLDS_PER_REAP,
-    )
-    .await
-    .map_err(store_error)
+    RetentionHoldStore::reap_expired_holds(db, Utc::now(), MAX_EXPIRED_RETENTION_HOLDS_PER_REAP)
+        .await
+        .map_err(store_error)
 }
 
 fn validate_governed_command(
     command: &GovernedArtifactTransitionCommand,
 ) -> Result<(), GovernedArtifactTransitionError> {
-    let invalid = |message: &str| GovernedArtifactTransitionError::InvalidCommand(message.to_string());
+    let invalid =
+        |message: &str| GovernedArtifactTransitionError::InvalidCommand(message.to_string());
     if command.candidate_installation_id.is_nil()
         || command.expected_candidate_revision == 0
         || command.expected_candidate_revision > i64::MAX as u64
@@ -1065,17 +1061,16 @@ fn derive_governed_preflight(
             "Artifact persistence contract or data schema changed across revisions".to_string(),
         );
     }
-    let has_irreversible_external_effects =
-        candidate.descriptor.bindings.iter().any(|binding| {
-            matches!(
-                binding.kind,
-                ModuleRuntimeBindingKind::PreEnable
-                    | ModuleRuntimeBindingKind::PostEnable
-                    | ModuleRuntimeBindingKind::PreDisable
-                    | ModuleRuntimeBindingKind::PostDisable
-                    | ModuleRuntimeBindingKind::DataUpgrade
-            ) && binding.idempotency != ModuleBindingIdempotency::Required
-        });
+    let has_irreversible_external_effects = candidate.descriptor.bindings.iter().any(|binding| {
+        matches!(
+            binding.kind,
+            ModuleRuntimeBindingKind::PreEnable
+                | ModuleRuntimeBindingKind::PostEnable
+                | ModuleRuntimeBindingKind::PreDisable
+                | ModuleRuntimeBindingKind::PostDisable
+                | ModuleRuntimeBindingKind::DataUpgrade
+        ) && binding.idempotency != ModuleBindingIdempotency::Required
+    });
     let plan = serde_json::json!({
         "contract": "rustok.governed_artifact_migration_plan.v1",
         "module_slug": candidate.release.slug,

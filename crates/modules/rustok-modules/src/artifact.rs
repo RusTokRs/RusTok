@@ -651,7 +651,9 @@ impl ModuleArtifactDescriptor {
             return Err(ModuleArtifactError::MissingEntrypoint);
         }
         if !valid_entrypoint_name(&self.entrypoint) {
-            return Err(ModuleArtifactError::InvalidEntrypoint(self.entrypoint.clone()));
+            return Err(ModuleArtifactError::InvalidEntrypoint(
+                self.entrypoint.clone(),
+            ));
         }
         for (index, capability) in self.capabilities.iter().enumerate() {
             if self.capabilities[..index]
@@ -1507,9 +1509,7 @@ fn valid_permission_key_suffix(value: &str) -> bool {
         && value.split('.').all(|segment| {
             !segment.is_empty()
                 && segment.chars().all(|character| {
-                    character.is_ascii_lowercase()
-                        || character.is_ascii_digit()
-                        || character == '_'
+                    character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
                 })
         })
 }

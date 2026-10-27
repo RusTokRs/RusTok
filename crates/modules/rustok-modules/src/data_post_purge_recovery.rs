@@ -171,7 +171,8 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
         request: PrepareRecoveryRequest,
     ) -> Result<StagedRecoveryReceipt, PostPurgeRecoveryError> {
         let tenant_id = validate_prepare(&request)?;
-        let request_digest = crate::idempotency::semantic_request_digest(&request).map_err(storage_error)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&request).map_err(storage_error)?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, tenant_id)
             .await
@@ -403,7 +404,8 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
         request: PostPurgeRecoveryCutoverRequest,
     ) -> Result<PostPurgeRecoveryCutoverReceipt, PostPurgeRecoveryError> {
         let tenant_id = validate_cutover(&request)?;
-        let request_digest = crate::idempotency::semantic_request_digest(&request).map_err(storage_error)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&request).map_err(storage_error)?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, tenant_id)
             .await

@@ -3,18 +3,15 @@ use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use thiserror::Error;
 
 use crate::backend::SupportedBackend;
-use crate::executor::{
-    ClaimHeartbeatDispatchError, dispatch_lifecycle_with_claim_heartbeat,
-};
+use crate::executor::{ClaimHeartbeatDispatchError, dispatch_lifecycle_with_claim_heartbeat};
 use crate::{
     DatabaseStaticModuleSettingsReader, ModuleCommandContext, ModuleControlPlaneError,
-    ModuleDefinitionSource,
-    ModuleExecutionDispatcher, ModuleLifecycleHookPhase, ModuleOperationIssue,
-    ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRecordOutcome,
-    ModuleOperationRecoveryAction, ModuleOperationRequest, ModuleOperationSnapshot,
-    ModuleOperationStatus, ModuleOperationStoreError, StaticTenantLifecycleStore,
-    StaticTenantLifecycleStoreError, TenantModuleStateRecord, TenantModuleStateRequest,
-    TenantModuleStateStore, artifact_settings,
+    ModuleDefinitionSource, ModuleExecutionDispatcher, ModuleLifecycleHookPhase,
+    ModuleOperationIssue, ModuleOperationJournal, ModuleOperationRecord,
+    ModuleOperationRecordOutcome, ModuleOperationRecoveryAction, ModuleOperationRequest,
+    ModuleOperationSnapshot, ModuleOperationStatus, ModuleOperationStoreError,
+    StaticTenantLifecycleStore, StaticTenantLifecycleStoreError, TenantModuleStateRecord,
+    TenantModuleStateRequest, TenantModuleStateStore, artifact_settings,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -444,24 +441,20 @@ async fn retry_failed_post_hook_operation_claimed(
         )
         .await);
     }
-    let current_settings = match load_current_lifecycle_settings(
-        db,
-        dispatcher,
-        plan.tenant_id,
-        &plan.module_slug,
-    )
-    .await
-    {
-        Ok(current_settings) => current_settings,
-        Err(error) => {
-            return Err(mark_recovery_operation_failed(
-                db,
-                operation.id,
-                ModuleOperationRecoveryError::Persistence(error.to_string()),
-            )
-            .await);
-        }
-    };
+    let current_settings =
+        match load_current_lifecycle_settings(db, dispatcher, plan.tenant_id, &plan.module_slug)
+            .await
+        {
+            Ok(current_settings) => current_settings,
+            Err(error) => {
+                return Err(mark_recovery_operation_failed(
+                    db,
+                    operation.id,
+                    ModuleOperationRecoveryError::Persistence(error.to_string()),
+                )
+                .await);
+            }
+        };
 
     if let Err(error) = record_operation_override_state(
         db,
@@ -510,12 +503,8 @@ async fn retry_failed_post_hook_operation_claimed(
                 // message prefix. Legacy prefix parsing in
                 // `ModuleOperationRecoveryPlan::from_snapshot` remains
                 // read-only compatibility for pre-split rows.
-                match ModuleOperationJournal::mark_committed_hook_failed(
-                    db,
-                    operation.id,
-                    &message,
-                )
-                .await
+                match ModuleOperationJournal::mark_committed_hook_failed(db, operation.id, &message)
+                    .await
                 {
                     Ok(()) => ModuleOperationRecoveryError::PostHookFailed(message),
                     Err(journal_error) => ModuleOperationRecoveryError::Persistence(format!(
@@ -581,8 +570,7 @@ async fn mark_recovery_operation_failed(
     operation_id: uuid::Uuid,
     primary_error: ModuleOperationRecoveryError,
 ) -> ModuleOperationRecoveryError {
-    match ModuleOperationJournal::mark_failed(db, operation_id, &primary_error.to_string()).await
-    {
+    match ModuleOperationJournal::mark_failed(db, operation_id, &primary_error.to_string()).await {
         Ok(()) => primary_error,
         Err(journal_error) => ModuleOperationRecoveryError::Persistence(format!(
             "{primary_error}; additionally, marking the recovery operation failed \
@@ -821,10 +809,8 @@ mod tests {
 
         let mut orphaned_snapshot = snapshot(Some("owner did not finish within the claim lease"));
         orphaned_snapshot.status = ModuleOperationStatus::Orphaned;
-        let orphaned = ModuleOperationRecoveryPlan::from_snapshot(
-            orphaned_snapshot,
-            Some(override_state()),
-        );
+        let orphaned =
+            ModuleOperationRecoveryPlan::from_snapshot(orphaned_snapshot, Some(override_state()));
         assert_eq!(orphaned.issue, ModuleOperationIssue::Orphaned);
         assert!(!orphaned.retryable);
         assert_eq!(

@@ -82,12 +82,11 @@ pub fn build_module_publish_bundle(
                     .map(|crate_name| BundleUiPackage {
                         crate_name: crate_name.clone(),
                     }),
-                storefront_support: contract
-                    .storefront_support_crate_name
-                    .as_ref()
-                    .map(|crate_name| BundleUiPackage {
+                storefront_support: contract.storefront_support_crate_name.as_ref().map(
+                    |crate_name| BundleUiPackage {
                         crate_name: crate_name.clone(),
-                    }),
+                    },
+                ),
             },
         },
         files: BundleFiles {

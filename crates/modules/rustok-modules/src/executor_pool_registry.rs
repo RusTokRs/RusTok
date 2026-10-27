@@ -97,7 +97,9 @@ pub mod executor_pool_entity {
     impl ActiveModelBehavior for ActiveModel {}
 }
 
-fn placement_from_stored(value: &str) -> Result<SandboxExecutorPlacement, ExecutorPoolRegistryError> {
+fn placement_from_stored(
+    value: &str,
+) -> Result<SandboxExecutorPlacement, ExecutorPoolRegistryError> {
     match value {
         "in_process" => Ok(SandboxExecutorPlacement::InProcess),
         "isolated_worker" => Ok(SandboxExecutorPlacement::IsolatedWorker),
@@ -110,13 +112,12 @@ fn placement_from_stored(value: &str) -> Result<SandboxExecutorPlacement, Execut
 fn identity_from_model(
     model: executor_pool_entity::Model,
 ) -> Result<ExecutorPoolIdentity, ExecutorPoolRegistryError> {
-    let fingerprint: RuntimeFingerprint = serde_json::from_value(model.fingerprint).map_err(
-        |error| {
+    let fingerprint: RuntimeFingerprint =
+        serde_json::from_value(model.fingerprint).map_err(|error| {
             ExecutorPoolRegistryError::CorruptData(format!(
                 "stored runtime fingerprint is invalid: {error}"
             ))
-        },
-    )?;
+        })?;
     if fingerprint.compute_digest() != model.fingerprint_digest {
         return Err(ExecutorPoolRegistryError::CorruptData(format!(
             "stored fingerprint digest for pool `{}` does not match its components",
@@ -169,11 +170,12 @@ impl SeaOrmExecutorPoolRegistry {
     ) -> Result<ExecutorPoolIdentity, ExecutorPoolRegistryError> {
         registration.validate()?;
         let fingerprint_digest = registration.fingerprint.compute_digest();
-        let fingerprint_json = serde_json::to_value(&registration.fingerprint).map_err(|error| {
-            ExecutorPoolRegistryError::InvalidRegistration(format!(
-                "runtime fingerprint cannot be encoded: {error}"
-            ))
-        })?;
+        let fingerprint_json =
+            serde_json::to_value(&registration.fingerprint).map_err(|error| {
+                ExecutorPoolRegistryError::InvalidRegistration(format!(
+                    "runtime fingerprint cannot be encoded: {error}"
+                ))
+            })?;
         let placement = registration.placement.to_string();
 
         let transaction = self.db.begin().await?;
@@ -219,10 +221,8 @@ impl SeaOrmExecutorPoolRegistry {
                 {
                     current
                 } else {
-                    let next_generation = current
-                        .pool_generation
-                        .checked_add(1)
-                        .ok_or_else(|| {
+                    let next_generation =
+                        current.pool_generation.checked_add(1).ok_or_else(|| {
                             ExecutorPoolRegistryError::GenerationOverflow(
                                 registration.pool_id.clone(),
                             )
@@ -234,8 +234,7 @@ impl SeaOrmExecutorPoolRegistry {
                     active.placement = Set(placement);
                     active.fingerprint = Set(fingerprint_json);
                     active.fingerprint_digest = Set(fingerprint_digest);
-                    active.placement_attestation =
-                        Set(registration.placement_attestation.clone());
+                    active.placement_attestation = Set(registration.placement_attestation.clone());
                     active.pool_generation = Set(next_generation_stored);
                     active.updated_at = Set(now);
                     active.update(&transaction).await?;
@@ -252,9 +251,7 @@ impl SeaOrmExecutorPoolRegistry {
     /// The governed transition host uses this as its required-pool set: a
     /// module may execute on any registered pool, so every one of them owes
     /// current smoke evidence before an automatic transition may proceed.
-    pub async fn list_pools(
-        &self,
-    ) -> Result<Vec<ExecutorPoolIdentity>, ExecutorPoolRegistryError> {
+    pub async fn list_pools(&self) -> Result<Vec<ExecutorPoolIdentity>, ExecutorPoolRegistryError> {
         let models = executor_pool_entity::Entity::find()
             .order_by_asc(executor_pool_entity::Column::PoolId)
             .all(&self.db)

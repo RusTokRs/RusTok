@@ -317,13 +317,12 @@ impl OciReleaseAdmissionService {
                 || descriptor.artifact_digest != stored_payload_digest
             {
                 return Err(OciReleaseAdmissionError::InvalidDescriptor(
-                    "stored descriptor does not match the admitted release identity"
-                        .to_string(),
+                    "stored descriptor does not match the admitted release identity".to_string(),
                 ));
             }
             let payload_size_bytes =
                 crate::backend::nonnegative_count_from_row(&row, "payload_size_bytes")
-                .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
+                    .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
             let admitted_at: DateTime<Utc> = match backend {
                 SupportedBackend::Postgres => row
                     .try_get("", "admitted_at")
@@ -601,7 +600,7 @@ impl OciReleaseAdmissionService {
             .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
         let payload_size_bytes =
             crate::backend::nonnegative_count_from_row(&row, "payload_size_bytes")
-            .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
+                .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
         let descriptor_json: String = row
             .try_get("", "descriptor_json")
             .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;

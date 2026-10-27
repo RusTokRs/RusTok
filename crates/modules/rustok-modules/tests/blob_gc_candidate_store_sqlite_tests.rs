@@ -141,8 +141,7 @@ async fn blob_gc_candidate_requires_grace_and_final_unreferenced_claim() {
     .await
     .expect("remove admission reference");
 
-    let second_grace_ends =
-        grace_ends + Duration::seconds(ARTIFACT_BLOB_GC_GRACE_PERIOD_SECONDS);
+    let second_grace_ends = grace_ends + Duration::seconds(ARTIFACT_BLOB_GC_GRACE_PERIOD_SECONDS);
     assert!(matches!(
         store
             .mark_unreferenced_blob(&digest, grace_ends, second_grace_ends)

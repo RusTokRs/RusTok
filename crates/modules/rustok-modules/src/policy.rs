@@ -442,10 +442,7 @@ impl ModulePolicyRevisionGate {
         Ok(true)
     }
 
-    fn advance_to(
-        &mut self,
-        next_revision: String,
-    ) -> Result<(), ModulePolicyRevisionGateError> {
+    fn advance_to(&mut self, next_revision: String) -> Result<(), ModulePolicyRevisionGateError> {
         let next_sequence = match self.current_sequence {
             Some(current_sequence) => Some(
                 current_sequence
@@ -1149,8 +1146,7 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
                             // Normalization proved the provider exists; a
                             // missing provider omits the explanatory fact
                             // while compatibility still fails closed.
-                            let provider =
-                                self.catalog.get(&co_requisite.required_module_slug)?;
+                            let provider = self.catalog.get(&co_requisite.required_module_slug)?;
                             Some(ModuleEffectivePolicyFact::CoRequisite {
                                 module_slug: co_requisite.required_module_slug.clone(),
                                 version_requirement: co_requisite.version_requirement.clone(),
@@ -1202,9 +1198,8 @@ impl ModuleEffectivePolicy {
     }
 
     pub fn validate_invariants(&self) -> Result<(), ModuleEffectivePolicyError> {
-        let invalid = |message: &str| {
-            ModuleEffectivePolicyError::InvalidPolicySnapshot(message.to_string())
-        };
+        let invalid =
+            |message: &str| ModuleEffectivePolicyError::InvalidPolicySnapshot(message.to_string());
         if !valid_digest(&self.policy_revision) {
             return Err(invalid("policy_revision must be a sha256 digest"));
         }
@@ -1473,7 +1468,10 @@ fn effective_policy_revision(
         canonical.extend_from_slice(segment);
     }
     canonical.push(b'}');
-    Ok(format!("sha256:{}", hex::encode(Sha256::digest(&canonical))))
+    Ok(format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(&canonical))
+    ))
 }
 
 fn normalize_corequisites(
@@ -1652,8 +1650,7 @@ fn validate_maintenance_input(
         for module_slug in affected_modules {
             if !is_valid_module_slug(module_slug) {
                 return Err(ModuleEffectivePolicyError::InvalidMaintenanceInput(
-                    "affected module slugs must use the canonical module slug grammar"
-                        .to_string(),
+                    "affected module slugs must use the canonical module slug grammar".to_string(),
                 ));
             }
             if !seen.insert(module_slug.as_str()) {

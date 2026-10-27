@@ -26,8 +26,8 @@ use crate::backend::SupportedBackend;
 use crate::installation::{sha256_digest, valid_digest};
 use crate::{
     ArtifactBlobStore, ArtifactPayloadKind, ControlPlaneInfrastructure, InstalledModuleArtifact,
-    ModuleArtifactDescriptor, ModuleCommandContext, ModuleInstallationError,
-    ModuleRuntimeBinding, ModuleRuntimeBindingKind,
+    ModuleArtifactDescriptor, ModuleCommandContext, ModuleInstallationError, ModuleRuntimeBinding,
+    ModuleRuntimeBindingKind,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -391,11 +391,7 @@ impl ExecutorSmokeReceipt {
             && now < self.valid_until
     }
 
-    pub fn is_valid_for(
-        &self,
-        pool: &ExecutorPoolIdentity,
-        policy: &OwnerPlacementPolicy,
-    ) -> bool {
+    pub fn is_valid_for(&self, pool: &ExecutorPoolIdentity, policy: &OwnerPlacementPolicy) -> bool {
         self.is_valid_for_at(pool, policy, Utc::now())
     }
 }
@@ -642,9 +638,7 @@ impl ExecutorReadinessService {
         &self,
         command: EvaluateReadinessCommand,
     ) -> Result<ExecutorSmokeReceipt, ExecutorReadinessError> {
-        if !(1..=MAX_EXECUTOR_READINESS_RECEIPT_TTL_SECONDS)
-            .contains(&self.receipt_ttl_seconds)
-        {
+        if !(1..=MAX_EXECUTOR_READINESS_RECEIPT_TTL_SECONDS).contains(&self.receipt_ttl_seconds) {
             return Err(ExecutorReadinessError::InvalidConfiguration(format!(
                 "receipt TTL must be between 1 and {MAX_EXECUTOR_READINESS_RECEIPT_TTL_SECONDS} seconds"
             )));
@@ -654,9 +648,10 @@ impl ExecutorReadinessService {
                 "operation identity must not be nil".to_string(),
             ));
         }
-        command.context.validate().map_err(|error| {
-            ExecutorReadinessError::InvalidCommand(error.to_string())
-        })?;
+        command
+            .context
+            .validate()
+            .map_err(|error| ExecutorReadinessError::InvalidCommand(error.to_string()))?;
         if !command.actor_can_manage_modules {
             return Err(ExecutorReadinessError::AuthorizationDenied);
         }
@@ -707,9 +702,7 @@ impl ExecutorReadinessService {
 
         let evaluated_at = self.infrastructure.now();
         let valid_until = evaluated_at
-            .checked_add_signed(Duration::seconds(i64::from(
-                self.receipt_ttl_seconds,
-            )))
+            .checked_add_signed(Duration::seconds(i64::from(self.receipt_ttl_seconds)))
             .ok_or_else(|| {
                 ExecutorReadinessError::InvalidConfiguration(
                     "receipt validity window exceeds the supported timestamp range".to_string(),
@@ -897,8 +890,7 @@ impl ExecutorReadinessService {
                 .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
             pool_generation: u64::try_from(pool_gen).map_err(|_| {
                 ExecutorReadinessError::Store(
-                    "readiness receipt pool generation is outside the supported range"
-                        .to_string(),
+                    "readiness receipt pool generation is outside the supported range".to_string(),
                 )
             })?,
             placement,
@@ -910,7 +902,9 @@ impl ExecutorReadinessService {
             })?,
             capability_routes_verified: backend
                 .bool_from_row(&row, "capability_routes_verified")
-                .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
+                .map_err(|e| {
+                ExecutorReadinessError::Store(e.to_string())
+            })?,
             smoke_passed: backend
                 .bool_from_row(&row, "smoke_passed")
                 .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
