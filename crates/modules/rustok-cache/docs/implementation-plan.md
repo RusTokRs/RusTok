@@ -303,6 +303,10 @@ None of these are claimed as compiled or live verified until the P0 evidence ste
   (`GENERATION_CATCH_UP_SCRIPT`) and served as `SharedRedis`; the catch-up outcome is exported as
   `rustok_cache_generation_shared_catch_up_{writes,failures}_total`, and a divergence that could
   not be healed still degrades to `LocalFallback` with an explicit warning.
+- [x] `CacheRefreshSchedule` no longer overloads one variant: `Fresh` (fresh hit) and `Filled`
+  (synchronous load) are separate from the scheduled outcomes, so hosts can measure refresh hits.
+- [x] `LocalCacheInvalidationSubscription::recv` documents the `Lagged` recovery contract
+  (clear/rebuild the owned namespace before resuming fast-path processing).
 - [x] A bump whose `INCR` succeeded but whose local snapshot could not be updated returns
   `CacheGenerationError::SharedBumpAppliedLocalLag { generation, detail }` instead of a generic
   error, so callers re-read the generation instead of retrying and rotating twice.

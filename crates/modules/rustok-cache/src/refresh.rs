@@ -266,13 +266,26 @@ impl Drop for CacheRefreshTaskCompletionGuard {
     }
 }
 
+/// What the caller should do about freshness, and why.
+///
+/// `Fresh` and `Filled` are distinct on purpose: a caller building metrics has to be able to tell
+/// "the cached value was fresh, so no refresh was needed" from "the value was missing and was
+/// loaded synchronously". They used to share `NotNeeded`, which made refresh-hit rate unmeasurable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CacheRefreshSchedule {
-    NotNeeded,
+    /// The observed envelope is fresh; nothing was refreshed and nothing needs to be.
+    Fresh,
+    /// The value had to be loaded synchronously (miss, hard expiry or incompatible entry).
+    Filled,
+    /// A background refresh was started.
     Spawned,
+    /// An equivalent refresh is already in flight; this call is deduplicated.
     AlreadyRunning,
+    /// The coordinator had no free slot.
     AtCapacity,
+    /// The key or request configuration was rejected before any backend work.
     InvalidKey,
+    /// No refresh runtime is available (for example after shutdown).
     RuntimeUnavailable,
 }
 
@@ -425,7 +438,7 @@ impl CacheService {
                             .await
                         })
                     } else {
-                        CacheRefreshSchedule::NotNeeded
+                        CacheRefreshSchedule::Fresh
                     };
                     return Ok(StaleWhileRevalidateResult { cache, refresh });
                 }
@@ -457,7 +470,7 @@ impl CacheService {
 
         Ok(StaleWhileRevalidateResult {
             cache,
-            refresh: CacheRefreshSchedule::NotNeeded,
+            refresh: CacheRefreshSchedule::Filled,
         })
     }
 }
@@ -915,6 +928,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fresh_hit_is_reported_as_fresh_not_as_a_synchronous_fill() {
+        let service = CacheService::from_url(None);
+        let backend = service
+            .backend_shared_client("refresh-fresh-hit", Duration::from_secs(60), 16)
+            .await;
+        let coordinator = CacheRefreshCoordinator::new(1).unwrap();
+        backend
+            .set(
+                "document".to_string(),
+                CacheEnvelope::new(1, 1_000, "fresh".to_string())
+                    .unwrap()
+                    .with_expirations(Some(5_000), Some(10_000))
+                    .unwrap()
+                    .encode()
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let loader_calls = Arc::clone(&calls);
+        let result = service
+            .load_enveloped_stale_while_revalidate_with_limit_at(
+                &coordinator,
+                backend,
+                "document",
+                CacheRefreshLoadOptions {
+                    expected_schema_version: 1,
+                    policy: CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                    max_encoded_bytes: 1024,
+                    now_unix_ms: 2_000,
+                    clock: CacheRefreshClock::Fixed(2_000),
+                },
+                move || async move {
+                    loader_calls.fetch_add(1, Ordering::SeqCst);
+                    CacheEnvelope::new(1, 2_000, "loaded".to_string())
+                        .map_err(|error| rustok_core::Error::Cache(error.to_string()))
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.cache.value, "fresh");
+        assert_eq!(result.cache.source, CacheLoadSource::Hit);
+        assert_eq!(
+            result.refresh,
+            CacheRefreshSchedule::Fresh,
+            "a fresh hit must be distinguishable from a synchronous fill for refresh-hit metrics"
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
     async fn injected_clock_is_used_for_background_refresh_validation() {
         let service = CacheService::from_url(None);
         let backend = service
@@ -1205,7 +1271,7 @@ mod tests {
 
         assert_eq!(result.cache.source, CacheLoadSource::Filled);
         assert_eq!(result.cache.freshness, CacheEnvelopeFreshness::Stale);
-        assert_eq!(result.refresh, CacheRefreshSchedule::NotNeeded);
+        assert_eq!(result.refresh, CacheRefreshSchedule::Filled);
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         assert_eq!(coordinator.stats().started, 0);
     }

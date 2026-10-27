@@ -172,6 +172,9 @@ large namespaces avoid synchronized expiration.
 - the exact stale envelope bytes become the CAS expectation;
 - a concurrent replacement or invalidation produces `Mismatch` and wins;
 - failed refreshes leave the stale value untouched;
+- `CacheRefreshSchedule` distinguishes `Fresh` (fresh hit), `Filled` (synchronous load) and the
+  scheduled outcomes (`Spawned`, `AlreadyRunning`, `AtCapacity`, `InvalidKey`,
+  `RuntimeUnavailable`), so refresh-hit rate is measurable;
 - metrics expose started, completed, failed, deduplicated, saturated and rejected work;
 - the refreshed envelope is validated against the clock read *after* the loader returns, and the
   stored TTL is clamped to the envelope's own hard expiry (`CacheRefreshClock::System` in
