@@ -49,8 +49,7 @@ jobs:
           python3 - <<'PY'
           import json, os, subprocess, urllib.request
           STEPS = [
-            ("cargo metadata (unlocked) + cargo-made lock diff",
-             "cargo metadata --format-version 1 > /tmp/meta.json && git diff --stat Cargo.lock && git diff Cargo.lock > lock.patch && wc -l lock.patch && head -250 lock.patch", None, {}),
+            ("cargo metadata --locked", "cargo metadata --locked --format-version 1 > /tmp/meta.json && echo LOCK_OK", None, {}),
             ("cargo fmt -p rustok-modules (apply) + patch",
              "cargo fmt -p rustok-modules && git diff --stat -- ':!Cargo.lock' && git diff -- ':!Cargo.lock' > fmt.patch && wc -l fmt.patch && cargo fmt -p rustok-modules -- --check && echo FMT_CLEAN", None, {}),
             ("cargo xtask validate-manifest", "cargo xtask validate-manifest", None, {}),
@@ -86,6 +85,32 @@ jobs:
                   print("posted", resp.status)
           except Exception as e:
               print("FAILED to post digest:", e)
+          import base64
+          try:
+              patch_bytes = open("fmt.patch", "rb").read()
+          except FileNotFoundError:
+              patch_bytes = b""
+          if patch_bytes:
+              b64 = base64.b64encode(patch_bytes).decode()
+              chunks = [b64[i:i+50000] for i in range(0, len(b64), 50000)]
+              for i, chunk in enumerate(chunks):
+                  p2 = {"name": f"Arena diagnostics2: fmt-patch {i+1}/{len(chunks)}",
+                        "head_sha": os.environ["HEADSHA"], "status": "completed",
+                        "conclusion": "neutral",
+                        "output": {"title": f"fmt.patch base64 chunk {i+1} of {len(chunks)}",
+                                   "summary": f"fmt.patch {len(patch_bytes)} bytes, chunk {i+1}/{len(chunks)}",
+                                   "text": chunk}}
+                  req2 = urllib.request.Request(
+                      f"https://api.github.com/repos/{os.environ['REPO']}/check-runs",
+                      data=json.dumps(p2).encode(),
+                      headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                               "Accept": "application/vnd.github+json",
+                               "Content-Type": "application/json"}, method="POST")
+                  try:
+                      with urllib.request.urlopen(req2) as resp:
+                          print("posted chunk", i + 1, resp.status)
+                  except Exception as e:
+                      print("FAILED chunk", i + 1, e)
           print(summary)
           PY
       - name: Upload lock and fmt patches
@@ -198,8 +223,8 @@ jobs:
             ("export base plan",
              f"mkdir -p {ws}/migration-plans && cargo run --manifest-path {ws}/base/Cargo.toml -p rustok-migrations --bin export_migration_plan -- --output {ws}/migration-plans/base.json",
              None, {"CARGO_TARGET_DIR": f"{ws}/target/plan-base"}),
-            ("export head plan (run2-unlocked)",
-             f"cargo run --manifest-path {ws}/head/Cargo.toml -p rustok-migrations --bin export_migration_plan -- --output {ws}/migration-plans/head.json",
+            ("export head plan (--locked)",
+             f"cargo run --locked --manifest-path {ws}/head/Cargo.toml -p rustok-migrations --bin export_migration_plan -- --output {ws}/migration-plans/head.json",
              None, {"CARGO_TARGET_DIR": f"{ws}/target/plan-head"}),
             ("verify plans non-empty",
              f"test -s {ws}/migration-plans/base.json && test -s {ws}/migration-plans/head.json && python3 -c \"import json; b=json.load(open('{ws}/migration-plans/base.json')); h=json.load(open('{ws}/migration-plans/head.json')); print('base', len(b['migrations']), 'head', len(h['migrations'])); print('appended:', h['migrations'][len(b['migrations']):])\"",
@@ -314,7 +339,7 @@ jobs:
                      "RUSTOK_MIGRATION_SMOKE_REUSE_DB": reuse}
               if fixtures:
                   env["RUSTOK_MIGRATION_SMOKE_BACKFILL_FIXTURES"] = fixtures
-              cmd = (f"cargo test --manifest-path {ws}/head/Cargo.toml -p rustok-migrations "
+              cmd = (f"cargo test --locked --manifest-path {ws}/head/Cargo.toml -p rustok-migrations "
                      f"--test postgres_zero_migration_smoke {TEST} -- --ignored --nocapture")
               return cmd, env
           def step(name, cmd_env):
@@ -325,8 +350,8 @@ jobs:
           STEPS.append(step("fresh incremental (head)", headtest("rustok_diag2_incr", "1", "0", "0", "0")))
           STEPS.append(step("fresh rollback-latest (head)", headtest("rustok_diag2_roll", "0", "1", "0", "0")))
           STEPS.append(("export plans for fixtures",
-              f"mkdir -p {ws}/migration-plans && cargo run --manifest-path {ws}/base/Cargo.toml -p rustok-migrations --bin export_migration_plan -- --output {ws}/migration-plans/base.json && cargo run --manifest-path {ws}/head/Cargo.toml -p rustok-migrations --bin export_migration_plan -- --output {ws}/migration-plans/head.json && node {ws}/base/scripts/verify/verify-migration-backfill-contracts.mjs --base-plan {ws}/migration-plans/base.json --head-plan {ws}/migration-plans/head.json --contracts {ws}/head/docs/migrations/backfill-contracts.json --output {ws}/migration-plans/backfill-fixtures.json",
-              None, {"CARGO_TARGET_DIR": f"{ws}/target/plan-mixed"}))
+              f"mkdir -p {ws}/migration-plans && CARGO_TARGET_DIR={ws}/target/plan-base cargo run --manifest-path {ws}/base/Cargo.toml -p rustok-migrations --bin export_migration_plan -- --output {ws}/migration-plans/base.json && CARGO_TARGET_DIR={ws}/target/plan-head cargo run --locked --manifest-path {ws}/head/Cargo.toml -p rustok-migrations --bin export_migration_plan -- --output {ws}/migration-plans/head.json && node {ws}/base/scripts/verify/verify-migration-backfill-contracts.mjs --base-plan {ws}/migration-plans/base.json --head-plan {ws}/migration-plans/head.json --contracts {ws}/head/docs/migrations/backfill-contracts.json --output {ws}/migration-plans/backfill-fixtures.json",
+              None, {}))
           STEPS.append(("N-1 apply base migrations (keep db)",
               f"cargo test --manifest-path {ws}/base/Cargo.toml -p rustok-migrations --test postgres_zero_migration_smoke {TEST} -- --ignored --nocapture",
               None, {"CARGO_TARGET_DIR": f"{ws}/target/smoke-base",
@@ -373,7 +398,7 @@ jobs:
   api-contracts:
     name: API contracts compatibility
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 150
     steps:
       - name: Checkout base contract source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -419,8 +444,8 @@ jobs:
             ("export base contracts",
              f"cargo run --all-features --manifest-path {ws}/base/Cargo.toml -p rustok-server --bin export_api_contracts -- --output-dir {ws}/contracts/base",
              None, {"CARGO_TARGET_DIR": f"{ws}/target/contracts-base"}),
-            ("export head contracts (run2-unlocked)",
-             f"cargo run --all-features --manifest-path {ws}/head/Cargo.toml -p rustok-server --bin export_api_contracts -- --output-dir {ws}/contracts/head",
+            ("export head contracts (--locked)",
+             f"cargo run --locked --all-features --manifest-path {ws}/head/Cargo.toml -p rustok-server --bin export_api_contracts -- --output-dir {ws}/contracts/head",
              None, {"CARGO_TARGET_DIR": f"{ws}/target/contracts-head"}),
             ("verify exported set",
              f"test -s {ws}/contracts/base/openapi.json && test -s {ws}/contracts/base/schema.graphql && test -s {ws}/contracts/head/openapi.json && test -s {ws}/contracts/head/schema.graphql && echo SET_OK", None, {}),

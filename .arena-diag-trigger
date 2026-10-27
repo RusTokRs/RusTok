@@ -1,1 +1,1 @@
-diag2 run 2: cargo-made lock diff, fmt patch, repaired base, head unlocked for PG/API info
+diag2 run 3: locked everywhere, redated migrations, fmt patch chunks
