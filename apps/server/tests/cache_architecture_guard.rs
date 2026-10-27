@@ -641,3 +641,42 @@ fn cache_ttl_policy_cannot_be_built_without_its_constructor() {
         );
     }
 }
+
+#[test]
+fn every_cache_backend_wrapper_forwards_state_reconciliation() {
+    // The fail-closed fallback state can only be lifted through `reconcile_local_state`; a wrapper
+    // that forgets to forward it leaves every caller behind that wrapper permanently suspended.
+    for (file, wrapper) in [
+        (
+            "crates/modules/rustok-cache/src/backend_generation.rs",
+            "GenerationAwareCacheBackend",
+        ),
+        (
+            "crates/modules/rustok-cache/src/backend_generation_recovery.rs",
+            "GenerationRecoveryHealthBackend",
+        ),
+        (
+            "crates/modules/rustok-cache/src/cas_observability.rs",
+            "ObservedCacheBackend",
+        ),
+        (
+            "crates/modules/rustok-cache/src/fallback.rs",
+            "DegradationAwareFallbackBackend",
+        ),
+        (
+            "crates/modules/rustok-cache/src/instrumentation.rs",
+            "InstrumentedCacheBackend",
+        ),
+    ] {
+        let text = source(file);
+        let impl_block = text
+            .split(&format!("impl CacheBackend for {wrapper} {{"))
+            .nth(1)
+            .unwrap_or_else(|| panic!("{wrapper} must implement CacheBackend"));
+        let body = impl_block.split("\n}\n").next().unwrap_or(impl_block);
+        assert!(
+            body.contains("reconcile_local_state"),
+            "{wrapper} must forward reconcile_local_state instead of ignoring the recovery contract"
+        );
+    }
+}

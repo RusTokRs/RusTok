@@ -203,6 +203,19 @@ fn strip_masked_url_password(url: &str) -> String {
     }
 }
 
+/// Whether a Redis URL carries a password.
+///
+/// The predicate that decides whether redaction has to rewrite the URL at all, so a URL without one
+/// is returned byte-for-byte instead of being canonicalised. An empty password is not a secret and
+/// reports `false`; a [`REDACTED_SECRET`] mask reports `true`, because the placeholder still has to
+/// be removed from the document.
+pub fn redis_url_has_password(url: &str) -> bool {
+    parse_redis_url(url)
+        .ok()
+        .and_then(|parsed| parsed.password().map(|password| !password.is_empty()))
+        .unwrap_or(false)
+}
+
 /// Remove the password from a Redis URL, keeping any ACL username.
 ///
 /// This is the redaction policy for documents a client may see: a username is not a secret, the
@@ -248,7 +261,7 @@ pub fn redis_url_without_credentials(url: &str) -> String {
 fn redact_url_password(url: &str) -> (String, bool) {
     match parse_redis_url(url) {
         Ok(mut parsed) => {
-            let had_password = parsed.password().is_some_and(|password| !password.is_empty());
+            let had_password = redis_url_has_password(url);
             if !had_password {
                 return (parsed.to_string(), false);
             }
@@ -695,6 +708,21 @@ mod tests {
             "redis://cache.internal:6380/2",
             "stored documents and target signatures must contain no credential at all"
         );
+    }
+
+    #[test]
+    fn password_presence_is_the_redaction_trigger() {
+        assert!(redis_url_has_password("redis://app:s3cret@cache.internal:6379/0"));
+        assert!(redis_url_has_password("redis://:s3cret@cache.internal:6379/0"));
+        assert!(
+            !redis_url_has_password("redis://cache.internal:6379/0"),
+            "a credential-free URL needs no rewriting"
+        );
+        assert!(
+            !redis_url_has_password("redis://app:@cache.internal:6379/0"),
+            "an empty password is not a secret"
+        );
+        assert!(!redis_url_has_password("not a url"));
     }
 
     #[test]

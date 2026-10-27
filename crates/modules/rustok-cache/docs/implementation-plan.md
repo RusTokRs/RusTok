@@ -262,9 +262,13 @@ Source-complete; every item is covered by a regression test in this crate or `ap
 None of these are claimed as compiled or live verified until the P0 evidence steps pass.
 
 - [x] Fail-closed fallback state has an owner-provided exit: `CacheBackend::reconcile_local_state`
-  (defaulted on the trait), forwarded by all six wrappers, aggregated by
+  (defaulted on the trait), forwarded by every wrapper (`GenerationAwareCacheBackend`,
+  `GenerationRecoveryHealthBackend`, `ObservedCacheBackend`, `DegradationAwareFallbackBackend`,
+  `InstrumentedCacheBackend`), aggregated by
   `CacheService::reconcile_local_state()` and executed on the same successful `PING` that drives
   `redis_status()`. Saturation now fails closed on the write path as well as the read path.
+  `cache_architecture_guard::every_cache_backend_wrapper_forwards_state_reconciliation` fails if a
+  wrapper stops forwarding it.
 - [x] Degraded reads serve only locally confirmed degraded writes; a primary miss discards local
   bytes so a later outage cannot resurrect them.
 - [x] Same-key operations are serialized end to end by a per-key lease (`fallback.rs`
@@ -292,10 +296,11 @@ None of these are claimed as compiled or live verified until the P0 evidence ste
 - [x] The structured Redis target (`redis_host`/`redis_port`/`redis_db`) is validated as a target:
   an unusable host is rejected by `validate()` and leaves `resolved_url()` empty, instead of falling
   back to the `redis://localhost` composition base and pointing the runtime at a different Redis.
-- [x] Removing credentials from a Redis URL has one owner with two entry points
-  (`redis_url_without_password`, `redis_url_without_credentials`), both fail closed. The host
-  settings service no longer manipulates URLs itself with ignored `set_password`/`set_username`
-  results, which could have returned the password while claiming to have redacted it.
+- [x] Removing credentials from a Redis URL has one owner: `redis_url_has_password` decides whether
+  a document needs rewriting, `redis_url_without_password` / `redis_url_without_credentials` do the
+  removal, and both removals fail closed. The host settings service no longer manipulates URLs
+  itself with ignored `set_password`/`set_username` results, which could have returned the password
+  while claiming to have redacted it.
 - [x] `CacheTtlPolicy` is opaque (`CacheTtlPolicyKind` is private), so the rejecting constructors are
   the only entry point and the invariant cannot be bypassed by building `Fixed(Duration::ZERO)`.
   The use-time checks stay as fail-closed defense for values built inside the crate.
@@ -314,8 +319,9 @@ None of these are claimed as compiled or live verified until the P0 evidence ste
   (regression test covers appended junk and a truncated record).
 - [x] Deployment Redis-URL precedence has one owner: `rustok_cache::resolve_redis_url`
   (`explicit url` → `RUSTOK_REDIS_URL` → `REDIS_URL`, blank values treated as absent) with a pure,
-  testable helper; the host re-exports it instead of keeping a second copy, which had left the
-  crate's own export undefined.
+  testable helper. Before, the rules existed twice — a private copy in the crate's `service.rs` and
+  an independent copy in the host's `redis_runtime.rs` — so the two could drift; the host now
+  re-exports the crate's function.
 - [x] Cache settings have one owner: `CacheSettings` resolves/validates/redacts/merges, the host
   settings service reports the deployment-resolved document and rejects a write that would
   redirect the running process, and a redacted read preserves the password inside `redis_url`.

@@ -301,7 +301,9 @@ Removing credentials is a single crate decision with two entry points:
 `redis_url_without_password` (client-facing redaction — an ACL username is not a secret, the
 password always is) and `redis_url_without_credentials` (stored mirrors and target signatures).
 Both fail closed: when the setter refuses, they return an empty URL rather than a URL that still
-carries the secret. The host settings service uses them instead of its own `url` manipulation.
+carries the secret. `redis_url_has_password` is the predicate that decides whether a document needs
+rewriting at all, so a password-free URL is returned byte-for-byte as stored instead of being
+canonicalised. The host settings service uses them instead of its own `url` manipulation.
 
 A password belongs to a **target**, not to a document: scheme, host, port, database and username
 decide whether a stored secret may be restored, and the password itself never does. A document that

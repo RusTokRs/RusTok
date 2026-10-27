@@ -352,7 +352,8 @@ mod tests {
         draft.redis_port = "6379".to_string();
         draft.redis_db = "900".to_string();
         let db_error =
-            build_cache_settings_payload(&draft).expect_err("invalid database must not be defaulted");
+            build_cache_settings_payload(&draft)
+                .expect_err("invalid database must not be defaulted");
         assert!(db_error.contains("redis_db"));
 
         draft.redis_db = "0".to_string();

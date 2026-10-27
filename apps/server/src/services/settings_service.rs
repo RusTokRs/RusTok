@@ -440,13 +440,14 @@ fn redact_secrets(cat: &str, mut settings: Value) -> Value {
                 if object.contains_key("redisPassword") {
                     object.insert("redisPassword".to_string(), Value::String(String::new()));
                 }
-                if let Some(redis_url) = object.get("redis_url").and_then(Value::as_str) {
-                    // The crate owns how a Redis URL is stripped: its helpers fail closed (they
-                    // return an empty URL rather than a URL that still carries the password).
+                if let Some(redis_url) = object.get("redis_url").and_then(Value::as_str)
+                    && rustok_cache::redis_url_has_password(redis_url)
+                {
+                    // The crate owns both the decision and the stripping: a URL that still carries
+                    // the password is rewritten, and a failed rewrite yields an empty URL rather
+                    // than the original secret.
                     let redacted = rustok_cache::redis_url_without_password(redis_url);
-                    if redacted != redis_url {
-                        object.insert("redis_url".to_string(), Value::String(redacted));
-                    }
+                    object.insert("redis_url".to_string(), Value::String(redacted));
                 }
             }
         }

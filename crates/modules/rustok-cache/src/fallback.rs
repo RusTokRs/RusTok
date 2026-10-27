@@ -236,7 +236,6 @@ impl DegradationAwareFallbackBackend {
         }
     }
 
-
     async fn mark_degraded_write(&self, key: &str, expected: &[u8]) -> rustok_core::Result<()> {
         self.degraded_writes
             .insert(key, expected, &self.fallback)

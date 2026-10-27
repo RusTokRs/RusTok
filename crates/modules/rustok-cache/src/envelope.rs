@@ -489,7 +489,10 @@ mod tests {
             let error = CacheEnvelope::<String>::decode(&corrupted, 1)
                 .expect_err("a record with trailing bytes must not decode as a valid envelope");
             assert!(
-                matches!(&error, CacheEnvelopeError::Decode(message) if message.contains("trailing bytes")),
+                matches!(
+                    &error,
+                    CacheEnvelopeError::Decode(message) if message.contains("trailing bytes")
+                ),
                 "expected a trailing-bytes decode error, got {error:?}"
             );
         }
