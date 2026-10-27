@@ -15,7 +15,12 @@ pub(crate) fn register_module(
     register_in_workspace_cargo_toml(root, &crate_name, opts.ui)?;
     register_in_modules_toml(root, slug, &crate_name)?;
     register_in_registry_md(root, slug, &crate_name, &opts.description, opts.ui)?;
-    register_in_docs_index_md(root, &crate_name, opts.ui.has_admin(), opts.ui.has_storefront())?;
+    register_in_docs_index_md(
+        root,
+        &crate_name,
+        opts.ui.has_admin(),
+        opts.ui.has_storefront(),
+    )?;
 
     if opts.ui.has_admin() || opts.ui.has_storefront() {
         register_in_ui_packages_index_md(
@@ -41,11 +46,7 @@ pub(crate) fn register_module(
     Ok(())
 }
 
-fn register_in_workspace_cargo_toml(
-    root: &Path,
-    crate_name: &str,
-    ui: ScaffoldUi,
-) -> Result<()> {
+fn register_in_workspace_cargo_toml(root: &Path, crate_name: &str, ui: ScaffoldUi) -> Result<()> {
     let cargo_path = root.join("Cargo.toml");
     let content = fs::read_to_string(&cargo_path)
         .with_context(|| format!("Failed to read {}", cargo_path.display()))?;
@@ -191,7 +192,9 @@ fn register_in_registry_md(
             in_optional = true;
             continue;
         }
-        if in_optional && (line.starts_with("## ") || line.starts_with("The dependency column above")) {
+        if in_optional
+            && (line.starts_with("## ") || line.starts_with("The dependency column above"))
+        {
             optional_insert_pos = Some(i);
             break;
         }
@@ -249,7 +252,9 @@ fn register_in_docs_index_md(
     }
 
     if has_admin {
-        let admin_needle = format!("- `{crate_name}`: [README](../../crates/modules/{crate_name}/admin/README.md)");
+        let admin_needle = format!(
+            "- `{crate_name}`: [README](../../crates/modules/{crate_name}/admin/README.md)"
+        );
         if !content.contains(&admin_needle) {
             let mut insert_pos = None;
             let mut in_admin = false;
@@ -271,7 +276,9 @@ fn register_in_docs_index_md(
     }
 
     if has_storefront {
-        let sf_needle = format!("- `{crate_name}`: [README](../../crates/modules/{crate_name}/storefront/README.md)");
+        let sf_needle = format!(
+            "- `{crate_name}`: [README](../../crates/modules/{crate_name}/storefront/README.md)"
+        );
         if !content.contains(&sf_needle) {
             let mut insert_pos = None;
             let mut in_sf = false;
@@ -307,7 +314,10 @@ fn register_in_ui_packages_index_md(
     has_admin: bool,
     has_storefront: bool,
 ) -> Result<()> {
-    let path = root.join("docs").join("modules").join("UI_PACKAGES_INDEX.md");
+    let path = root
+        .join("docs")
+        .join("modules")
+        .join("UI_PACKAGES_INDEX.md");
     let content =
         fs::read_to_string(&path).with_context(|| format!("Failed to read {}", path.display()))?;
 
@@ -342,11 +352,15 @@ fn register_in_ui_packages_index_md(
             let mut insert_pos = None;
             let mut in_sf = false;
             for (i, line) in lines.iter().enumerate() {
-                if line.starts_with("### Optional/Storefront Surfaces") || line.starts_with("### Module UI Examples") {
+                if line.starts_with("### Optional/Storefront Surfaces")
+                    || line.starts_with("### Module UI Examples")
+                {
                     in_sf = true;
                     continue;
                 }
-                if in_sf && (line.starts_with("### Large Capability") || line.starts_with("## What Not")) {
+                if in_sf
+                    && (line.starts_with("### Large Capability") || line.starts_with("## What Not"))
+                {
                     insert_pos = Some(i);
                     break;
                 }
@@ -378,7 +392,8 @@ fn register_in_server_cargo_toml(root: &Path, slug: &str, crate_name: &str) -> R
     let feature_needle = format!("mod-{slug} ");
     let feature_needle_eq = format!("mod-{slug} =");
     if !content.contains(&feature_needle) && !content.contains(&feature_needle_eq) {
-        let feature_entry = format!("mod-{slug} = [\"dep:{crate_name}\", \"rustok-distribution/mod-{slug}\"]");
+        let feature_entry =
+            format!("mod-{slug} = [\"dep:{crate_name}\", \"rustok-distribution/mod-{slug}\"]");
         if let Some(pos) = lines.iter().position(|l| {
             l.trim().starts_with("mod-workflow =")
                 || l.trim().starts_with("mod-messenger =")
@@ -404,7 +419,10 @@ fn register_in_server_cargo_toml(root: &Path, slug: &str, crate_name: &str) -> R
     }
 
     if !content.contains(&format!("\"{crate_name}\"")) {
-        if let Some(pos) = lines.iter().position(|l| l.contains("normal = [\"rustok-rbac\"")) {
+        if let Some(pos) = lines
+            .iter()
+            .position(|l| l.contains("normal = [\"rustok-rbac\""))
+        {
             lines[pos] = lines[pos].replace("]", &format!(", \"{crate_name}\"]"));
             modified = true;
         }
@@ -420,7 +438,11 @@ fn register_in_server_cargo_toml(root: &Path, slug: &str, crate_name: &str) -> R
 }
 
 fn register_in_distribution_cargo_toml(root: &Path, slug: &str, crate_name: &str) -> Result<()> {
-    let path = root.join("crates").join("modules").join("rustok-distribution").join("Cargo.toml");
+    let path = root
+        .join("crates")
+        .join("modules")
+        .join("rustok-distribution")
+        .join("Cargo.toml");
     if !path.exists() {
         return Ok(());
     }
@@ -548,7 +570,10 @@ pub(crate) fn register_in_admin_cargo_toml(root: &Path, crate_name: &str) -> Res
     let dep_entry = format!("{admin_crate} = {{ path = \"../../crates/modules/{crate_name}/admin\", default-features = false }}");
     let dep_needle = format!("{admin_crate} =");
     if !content.contains(&dep_needle) {
-        if let Some(pos) = lines.iter().position(|l| l.trim().starts_with("rustok-blog-admin =")) {
+        if let Some(pos) = lines
+            .iter()
+            .position(|l| l.trim().starts_with("rustok-blog-admin ="))
+        {
             lines.insert(pos + 1, dep_entry);
             modified = true;
         } else if let Some(pos) = lines.iter().position(|l| l.trim() == "[dependencies]") {
@@ -612,7 +637,10 @@ pub(crate) fn register_in_storefront_cargo_toml(root: &Path, crate_name: &str) -
     let dep_entry = format!("{sf_crate} = {{ path = \"../../crates/modules/{crate_name}/storefront\", default-features = false, optional = true }}");
     let dep_needle = format!("{sf_crate} =");
     if !content.contains(&dep_needle) {
-        if let Some(pos) = lines.iter().position(|l| l.trim().starts_with("rustok-seo-storefront =")) {
+        if let Some(pos) = lines
+            .iter()
+            .position(|l| l.trim().starts_with("rustok-seo-storefront ="))
+        {
             lines.insert(pos + 1, dep_entry);
             modified = true;
         } else if let Some(pos) = lines.iter().position(|l| l.trim() == "[dependencies]") {
@@ -642,7 +670,9 @@ pub(crate) fn register_in_storefront_cargo_toml(root: &Path, crate_name: &str) -
     if modified {
         fs::write(&path, lines.join("\n") + "\n")
             .with_context(|| format!("Failed to write {}", path.display()))?;
-        println!("  Updated apps/storefront/Cargo.toml with storefront UI dependencies and features");
+        println!(
+            "  Updated apps/storefront/Cargo.toml with storefront UI dependencies and features"
+        );
     }
 
     Ok(())
@@ -661,4 +691,3 @@ pub(crate) fn find_closing_bracket_after(lines: &[String], section_prefix: &str)
     }
     None
 }
-
