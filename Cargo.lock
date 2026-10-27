@@ -8743,11 +8743,13 @@ dependencies = [
 name = "leptos-auth"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "futures-util",
  "gloo-storage",
  "js-sys",
  "leptos",
  "leptos-use",
+ "leptos_axum",
  "leptos_router",
  "reqwest 0.13.5",
  "rustok-graphql",
@@ -15026,6 +15028,7 @@ dependencies = [
  "rustok-region",
  "rustok-runtime",
  "rustok-search",
+ "rustok-security",
  "rustok-seo",
  "rustok-social-graph",
  "rustok-tasks",
@@ -17600,6 +17603,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-security"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "moka",
+ "reqwest 0.13.5",
+ "rustok-api",
+ "rustok-core",
+ "rustok-outbox",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-seo"
 version = "0.1.0"
 dependencies = [
@@ -17729,6 +17753,7 @@ dependencies = [
  "futures-util",
  "hex",
  "ipnet",
+ "jsonwebtoken 11.1.0",
  "leptos",
  "leptos_axum",
  "mime_guess",
