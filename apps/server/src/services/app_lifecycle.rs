@@ -65,6 +65,7 @@ impl StopHandle {
 
 static OUTBOX_RELAY_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 static OUTBOX_RETENTION_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
+static AUTH_RETENTION_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 static REMOTE_EXECUTOR_REAPER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 #[cfg(feature = "mod-seo")]
 static SEO_BULK_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
@@ -150,6 +151,25 @@ pub struct OutboxRetentionWorkerHandle {
 }
 
 impl OutboxRetentionWorkerHandle {
+    pub fn instance_id(&self) -> u64 {
+        self.instance_id
+    }
+
+    pub fn is_finished(&self) -> bool {
+        self._handle.is_finished()
+    }
+
+    pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
+        self._handle.await
+    }
+}
+
+pub struct AuthRetentionWorkerHandle {
+    instance_id: u64,
+    _handle: JoinHandle<()>,
+}
+
+impl AuthRetentionWorkerHandle {
     pub fn instance_id(&self) -> u64 {
         self.instance_id
     }
@@ -316,6 +336,15 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
         }
     }
 
+    if settings.runtime.background_workers.auth_retention_enabled
+        && !runtime_ctx.shared_contains::<AuthRetentionWorkerHandle>()
+    {
+        runtime_ctx.shared_insert(spawn_auth_retention_handle(
+            runtime_ctx.db_clone(),
+            stop_rx.clone(),
+        ));
+    }
+
     if settings.registry.remote_executor.enabled
         && !runtime_ctx.shared_contains::<RemoteExecutorReaperHandle>()
     {
@@ -394,12 +423,30 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         }
     };
 
+    let auth_retention_drain = async {
+        if let Some(worker) = runtime_ctx.shared_take::<AuthRetentionWorkerHandle>() {
+            match tokio::time::timeout(timeout_duration, worker.join()).await {
+                Ok(Ok(())) => tracing::info!("Auth retention worker stopped gracefully"),
+                Ok(Err(err)) => {
+                    tracing::warn!(?err, "Auth retention worker joined with error")
+                }
+                Err(_) => {
+                    tracing::warn!("Auth retention worker shutdown timed out after 5s")
+                }
+            }
+        }
+    };
+
     let reaper_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<RemoteExecutorReaperHandle>() {
             match tokio::time::timeout(timeout_duration, worker.join()).await {
                 Ok(Ok(())) => tracing::info!("Remote executor reaper worker stopped gracefully"),
-                Ok(Err(err)) => tracing::warn!(?err, "Remote executor reaper worker joined with error"),
-                Err(_) => tracing::warn!("Remote executor reaper worker shutdown timed out after 5s"),
+                Ok(Err(err)) => {
+                    tracing::warn!(?err, "Remote executor reaper worker joined with error")
+                }
+                Err(_) => {
+                    tracing::warn!("Remote executor reaper worker shutdown timed out after 5s")
+                }
             }
         }
     };
@@ -453,6 +500,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     tokio::join!(
         relay_drain,
         retention_drain,
+        auth_retention_drain,
         reaper_drain,
         seo_drain,
         module_work_drain,
@@ -490,6 +538,65 @@ fn spawn_outbox_retention_handle(
     OutboxRetentionWorkerHandle {
         instance_id,
         _handle: spawn_outbox_retention_worker(retention_config, stop_rx),
+    }
+}
+
+fn spawn_auth_retention_handle(
+    db: sea_orm::DatabaseConnection,
+    stop_rx: tokio::sync::watch::Receiver<bool>,
+) -> AuthRetentionWorkerHandle {
+    let instance_id = AUTH_RETENTION_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
+    tracing::info!(
+        worker = "auth_retention",
+        instance_id,
+        "Starting runtime worker"
+    );
+    AuthRetentionWorkerHandle {
+        instance_id,
+        _handle: tokio::spawn(auth_retention_loop(db, stop_rx)),
+    }
+}
+
+async fn auth_retention_loop(
+    db: sea_orm::DatabaseConnection,
+    mut stop_rx: tokio::sync::watch::Receiver<bool>,
+) {
+    // Daily cadence is enough for a 30-day retention window.
+    let poll_interval = Duration::from_secs(24 * 60 * 60);
+
+    loop {
+        if *stop_rx.borrow() {
+            tracing::info!("Auth retention worker received shutdown signal, exiting");
+            return;
+        }
+
+        match crate::services::auth_retention::purge_expired_auth_artifacts(&db).await {
+            Ok(purge)
+                if purge.sessions > 0 || purge.invite_consumptions > 0 || purge.invites > 0 =>
+            {
+                tracing::info!(
+                    sessions = purge.sessions,
+                    invite_consumptions = purge.invite_consumptions,
+                    invites = purge.invites,
+                    "Purged expired auth artifacts past retention"
+                );
+            }
+            Ok(_) => {}
+            Err(error) => tracing::error!(
+                error = %error,
+                "Auth retention worker failed to purge expired artifacts"
+            ),
+        }
+
+        tokio::select! {
+            _ = tokio::time::sleep(poll_interval) => {}
+            changed = stop_rx.changed() => {
+                if changed.is_err() || *stop_rx.borrow() {
+                    tracing::info!("Auth retention worker received shutdown signal, exiting");
+                    return;
+                }
+            }
+        }
     }
 }
 

@@ -27,6 +27,10 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
         crate::controllers::auth::register,
         crate::controllers::auth::refresh,
         crate::controllers::auth::logout,
+        crate::controllers::auth::session_login,
+        crate::controllers::auth::session_register,
+        crate::controllers::auth::session_refresh,
+        crate::controllers::auth::session_logout,
         crate::controllers::auth::me,
         crate::controllers::auth::accept_invite,
         crate::controllers::auth::request_reset,
@@ -106,6 +110,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
     ),
     components(
         schemas(
+            crate::controllers::auth::CookieSessionResponse,
             crate::controllers::auth::LoginParams,
             crate::controllers::auth::RegisterParams,
             crate::controllers::auth::RefreshRequest,
@@ -508,6 +513,10 @@ mod tests {
             "/api/auth/login",
             "/api/auth/refresh",
             "/api/auth/logout",
+            "/api/auth/session/login",
+            "/api/auth/session/register",
+            "/api/auth/session/refresh",
+            "/api/auth/session/logout",
             "/api/auth/me",
             "/api/auth/invite/accept",
             "/api/auth/reset/request",
@@ -744,7 +753,11 @@ mod tests {
             ("/api/v1/flex/schemas", HttpMethod::Get, "GET"),
             ("/api/v1/flex/schemas", HttpMethod::Post, "POST"),
             ("/api/v1/flex/schemas/{schema_id}", HttpMethod::Get, "GET"),
-            ("/api/v1/flex/schemas/{schema_id}", HttpMethod::Patch, "PATCH"),
+            (
+                "/api/v1/flex/schemas/{schema_id}",
+                HttpMethod::Patch,
+                "PATCH",
+            ),
             (
                 "/api/v1/flex/schemas/{schema_id}",
                 HttpMethod::Delete,

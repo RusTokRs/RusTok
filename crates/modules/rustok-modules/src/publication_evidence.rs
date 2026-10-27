@@ -287,7 +287,7 @@ async fn verify_published_artifact(
     let result =
         verify_fetched_published_artifact(verifier, limits, infrastructure, input, package).await;
     if let Some(path) = temporary_payload {
-        crate::oci::remove_staged_file_best_effort(&path).await;
+        crate::remove_staged_file_best_effort(&path).await;
     }
     result
 }
@@ -328,8 +328,7 @@ async fn verify_fetched_published_artifact(
         .verify(verification_request.clone())
         .await
         .map_err(PublishedArtifactVerificationError::Verification)?;
-    if decision.signer_identity.trim().is_empty() || !decision.admitted_for(&verification_request)
-    {
+    if decision.signer_identity.trim().is_empty() || !decision.admitted_for(&verification_request) {
         return Err(PublishedArtifactVerificationError::Rejected);
     }
     Ok(VerifiedPublishedArtifact {

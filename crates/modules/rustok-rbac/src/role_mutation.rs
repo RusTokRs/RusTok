@@ -614,7 +614,6 @@ async fn load_role_row_on<C: sea_orm::ConnectionTrait>(
     tenant_id: Uuid,
     slug: &str,
 ) -> Result<Option<Uuid>, RbacRolePersistenceError> {
-    use sea_orm::ConnectionTrait;
     let row = db
         .query_one_raw(role_statement(
             db,
@@ -633,7 +632,6 @@ async fn load_tenant_role_memberships_on<C: sea_orm::ConnectionTrait>(
     tenant_id: Uuid,
     user_id: Uuid,
 ) -> Result<Vec<(Uuid, String)>, RbacRolePersistenceError> {
-    use sea_orm::ConnectionTrait;
     let rows = db
         .query_all_raw(role_statement(
             db,
@@ -653,7 +651,6 @@ async fn load_role_permissions_on<C: sea_orm::ConnectionTrait>(
     tenant_id: Uuid,
     role_id: Uuid,
 ) -> Result<Vec<rustok_api::Permission>, RbacRolePersistenceError> {
-    use sea_orm::ConnectionTrait;
     let rows = db
         .query_all_raw(role_statement(
             db,
@@ -673,6 +670,44 @@ async fn load_role_permissions_on<C: sea_orm::ConnectionTrait>(
     Ok(permissions)
 }
 
+/// Validate that an actor may grant a custom role in the future (invite
+/// issuance, where no target user exists yet): the role must exist in
+/// the tenant and every permission it carries must be inside the
+/// actor's effective set — the same authority ceiling
+/// `plan_persisted_custom_role_assignment_on` enforces at assignment
+/// time. Returns the normalized slug.
+pub async fn validate_custom_role_grant_on(
+    db: &sea_orm::DatabaseTransaction,
+    tenant_id: Uuid,
+    actor_role: &UserRole,
+    actor_permissions: &[rustok_api::Permission],
+    requested_role_slug: &str,
+) -> Result<String, RbacRolePersistenceError> {
+    let slug = normalize_role_slug(requested_role_slug);
+    if slug.parse::<UserRole>().is_ok() {
+        return Err(RbacRoleMutationPolicyError::BuiltInRoleRequiresCanonicalPath(slug).into());
+    }
+    if *actor_role == UserRole::Customer {
+        return Err(RbacRoleMutationPolicyError::CannotAssignPeerOrHigherRole.into());
+    }
+
+    let role_id = load_role_row_on(db, tenant_id, &slug)
+        .await?
+        .ok_or_else(|| RbacRolePersistenceError::RoleNotFound(slug.clone()))?;
+
+    for permission in load_role_permissions_on(db, tenant_id, role_id).await? {
+        if !crate::has_effective_permission_in_set(actor_permissions, &permission) {
+            return Err(RbacRoleMutationPolicyError::CustomRequestAuthorityCeiling {
+                role_slug: slug.clone(),
+                permission,
+            }
+            .into());
+        }
+    }
+
+    Ok(slug)
+}
+
 /// Build the custom-role assignment plan from owner-read facts under the
 /// host's transaction. Returns `Ok(None)` when the target already holds
 /// exactly the requested role (no-op: no event, no generation advance).
@@ -690,9 +725,7 @@ pub async fn plan_persisted_custom_role_assignment_on(
 
     let slug = normalize_role_slug(&request.requested_role_slug);
     if slug.parse::<UserRole>().is_ok() {
-        return Err(
-            RbacRoleMutationPolicyError::BuiltInRoleRequiresCanonicalPath(slug).into(),
-        );
+        return Err(RbacRoleMutationPolicyError::BuiltInRoleRequiresCanonicalPath(slug).into());
     }
     if request.actor_role == UserRole::Customer {
         return Err(RbacRoleMutationPolicyError::CannotAssignPeerOrHigherRole.into());
@@ -1230,8 +1263,8 @@ mod tests {
             .unwrap();
         }
 
-        let request = |actor_permissions: Vec<rustok_api::Permission>| {
-            RbacCustomRoleAssignmentRequest {
+        let request =
+            |actor_permissions: Vec<rustok_api::Permission>| RbacCustomRoleAssignmentRequest {
                 tenant_id: tenant,
                 actor_id: actor,
                 actor_tenant_id: tenant,
@@ -1240,8 +1273,7 @@ mod tests {
                 target_user_id: target,
                 requested_role_slug: "content_editor".to_string(),
                 resulting_status: None,
-            }
-        };
+            };
 
         // Ceiling: the role grants posts:delete, which this actor lacks.
         let tx = db.begin().await.unwrap();
@@ -1284,22 +1316,16 @@ mod tests {
         .unwrap()
         .expect("custom role assignment should plan");
         assert_eq!(plan.role_slug(), "content_editor");
-        assert!(replace_persisted_user_role_by_slug_on(
-            &tx,
-            tenant,
-            target,
-            "content_editor"
-        )
-        .await
-        .unwrap());
-        assert!(!replace_persisted_user_role_by_slug_on(
-            &tx,
-            tenant,
-            target,
-            "content_editor"
-        )
-        .await
-        .unwrap());
+        assert!(
+            replace_persisted_user_role_by_slug_on(&tx, tenant, target, "content_editor")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !replace_persisted_user_role_by_slug_on(&tx, tenant, target, "content_editor")
+                .await
+                .unwrap()
+        );
         assert!(
             plan_persisted_custom_role_assignment_on(
                 &tx,
@@ -1312,4 +1338,3 @@ mod tests {
         tx.commit().await.unwrap();
     }
 }
-

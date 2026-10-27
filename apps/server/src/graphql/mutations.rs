@@ -13,8 +13,8 @@ use crate::graphql::types::{
     ArtifactActivation, ArtifactDataPurgeReceipt, ArtifactDeactivation,
     ArtifactSettingsPurgeReceipt, ArtifactSettingsRecoveryPointReceipt,
     ArtifactSettingsRestoreReceipt, ArtifactTenantLifecycle, ArtifactUninstall, BuildJob,
-    CreateUserInput, DeleteUserPayload, ModuleOperationRecoveryPlan, TenantModule, UpdateUserInput,
-    User,
+    CreateUserInput, DeleteUserPayload, IssueUserInviteInput, IssuedUserInvite,
+    ModuleOperationRecoveryPlan, TenantModule, UpdateUserInput, User, UserInvite,
 };
 use crate::modules::ManifestError;
 use crate::services::artifact_purge_recovery_host::{
@@ -44,8 +44,8 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::graphql::GraphQLError;
 use rustok_api::{AuthPrincipalContext, Permission, PortError, PortErrorKind};
 use rustok_auth::{
-    AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UpdateUserCommand,
-    UserAdminMutationRuntime, UserMutationRecord,
+    AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, IssueUserInviteCommand,
+    UpdateUserCommand, UserAdminMutationRuntime, UserMutationRecord,
 };
 use rustok_build::{BuildEventPublicationContext, BuildEventScope, EventBusBuildEventPublisher};
 use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions, UserRole};
@@ -119,7 +119,7 @@ fn map_custom_field_error(error: rustok_core::field_schema::FlexError) -> FieldE
     }
 }
 
-fn effective_request_locale(ctx: &Context<'_>, tenant: &TenantContext) -> String {
+pub(crate) fn effective_request_locale(ctx: &Context<'_>, tenant: &TenantContext) -> String {
     ctx.data_opt::<RequestContext>()
         .map(|request| request.locale.clone())
         .unwrap_or_else(|| tenant.default_locale.clone())
@@ -180,14 +180,11 @@ fn map_create_user_error(err: AuthLifecycleError) -> FieldError {
         AuthLifecycleError::EmailAlreadyExists => {
             FieldError::new("User with this email already exists")
         }
-        AuthLifecycleError::Internal(inner) => {
-            <FieldError as GraphQLError>::internal_error(&inner.to_string())
-        }
         _ => <FieldError as GraphQLError>::internal_error("Failed to create user"),
     }
 }
 
-fn user_mutation_runtime(ctx: &Context<'_>) -> Result<UserAdminMutationRuntime> {
+pub(crate) fn user_mutation_runtime(ctx: &Context<'_>) -> Result<UserAdminMutationRuntime> {
     ctx.data::<Arc<ModuleRuntimeExtensions>>()?
         .get::<UserAdminMutationRuntime>()
         .cloned()
@@ -198,7 +195,7 @@ fn user_mutation_runtime(ctx: &Context<'_>) -> Result<UserAdminMutationRuntime> 
         })
 }
 
-fn map_user_mutation_error(error: AuthAdminMutationError) -> FieldError {
+pub(crate) fn map_user_mutation_error(error: AuthAdminMutationError) -> FieldError {
     match error {
         AuthAdminMutationError::Unauthorized => <FieldError as GraphQLError>::unauthenticated(),
         AuthAdminMutationError::Forbidden(message) => {
@@ -219,12 +216,12 @@ fn map_user_mutation_error(error: AuthAdminMutationError) -> FieldError {
             <FieldError as GraphQLError>::not_found(&message)
         }
         AuthAdminMutationError::Internal(message) => {
-            <FieldError as GraphQLError>::internal_error(&message)
+            graphql_mutation_internal_error("User mutation failed", message)
         }
     }
 }
 
-fn user_mutation_context(
+pub(crate) fn user_mutation_context(
     auth: &AuthContext,
     tenant: &TenantContext,
     locale: String,
@@ -234,6 +231,11 @@ fn user_mutation_context(
         tenant_id: tenant.id,
         request_id: None,
         locale: Some(locale),
+        principal_kind: rustok_api::AuthPrincipalKind::from_authenticated_facts(
+            &auth.grant_type,
+            auth.client_id,
+            auth.session_id,
+        ),
     }
 }
 
@@ -293,7 +295,9 @@ fn map_manifest_error(err: ManifestError) -> FieldError {
         | ManifestError::Write { .. }
         | ManifestError::ModulePackageRead { .. }
         | ManifestError::ModulePackageParse { .. } => {
-            <FieldError as GraphQLError>::internal_error(&err.to_string())
+            // Filesystem paths and parser details stay in server logs; the
+            // client only learns that the manifest operation failed.
+            graphql_mutation_internal_error("Module manifest operation failed", &err)
         }
     }
 }
@@ -341,7 +345,7 @@ async fn ensure_platform_composition_operator(ctx: &Context<'_>) -> Result<AuthC
     let can_manage_modules =
         RbacService::has_permission(db, &tenant.id, &auth.user_id, &Permission::MODULES_MANAGE)
             .await
-            .map_err(|error| <FieldError as GraphQLError>::internal_error(&error.to_string()))?;
+            .map_err(|error| graphql_mutation_internal_error("GraphQL mutation failed", error))?;
     require_platform_composition_operator(
         &auth,
         principal_context,
@@ -823,6 +827,47 @@ impl RootMutation {
             .map_err(map_user_mutation_error)
     }
 
+    async fn issue_user_invite(
+        &self,
+        ctx: &Context<'_>,
+        input: IssueUserInviteInput,
+    ) -> Result<IssuedUserInvite> {
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let locale = effective_request_locale(ctx, tenant);
+        let issued = user_mutation_runtime(ctx)?
+            .port()
+            .issue_user_invite(
+                &user_mutation_context(auth, tenant, locale),
+                IssueUserInviteCommand {
+                    email: input.email,
+                    role: input.role,
+                },
+            )
+            .await
+            .map_err(map_user_mutation_error)?;
+        Ok(IssuedUserInvite {
+            invite: issued.invite.into(),
+            token: issued.token,
+        })
+    }
+
+    async fn revoke_user_invite(&self, ctx: &Context<'_>, id: uuid::Uuid) -> Result<UserInvite> {
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let locale = effective_request_locale(ctx, tenant);
+        user_mutation_runtime(ctx)?
+            .port()
+            .revoke_user_invite(&user_mutation_context(auth, tenant, locale), id)
+            .await
+            .map(UserInvite::from)
+            .map_err(map_user_mutation_error)
+    }
+
     async fn update_user(
         &self,
         ctx: &Context<'_>,
@@ -882,6 +927,7 @@ impl RootMutation {
             .map_err(map_user_mutation_error)
     }
 
+    #[graphql(deprecation = "Accounts are deactivated, not erased; use disableUser")]
     async fn delete_user(&self, ctx: &Context<'_>, id: uuid::Uuid) -> Result<DeleteUserPayload> {
         let auth = ctx
             .data::<AuthContext>()
@@ -2163,7 +2209,7 @@ mod tests {
                 error: ToggleModuleError::Manifest(crate::modules::ManifestError::UnknownModule(
                     "custom".into(),
                 )),
-                expected_message: "Unknown module: custom".to_string(),
+                expected_message: "Unknown module 'custom'".to_string(),
                 expected_code: Some("BAD_USER_INPUT"),
                 case_name: "manifest",
             },
@@ -2470,6 +2516,7 @@ mod tests {
             error: PlatformCompositionError,
             expected_code: &'static str,
             message_fragment: &'static str,
+            forbidden_fragment: Option<&'static str>,
         }
 
         let cases = vec![
@@ -2481,18 +2528,21 @@ mod tests {
                 },
                 expected_code: "BAD_USER_INPUT",
                 message_fragment: "revision conflict",
+                forbidden_fragment: None,
             },
             Case {
                 name: "serialize failure",
                 error: PlatformCompositionError::Serialize("serde exploded".to_string()),
                 expected_code: "INTERNAL_ERROR",
-                message_fragment: "serde exploded",
+                message_fragment: "module composition is unavailable",
+                forbidden_fragment: Some("serde exploded"),
             },
             Case {
                 name: "deserialize failure",
                 error: PlatformCompositionError::Deserialize("bad snapshot".to_string()),
                 expected_code: "INTERNAL_ERROR",
-                message_fragment: "bad snapshot",
+                message_fragment: "module composition is unavailable",
+                forbidden_fragment: Some("bad snapshot"),
             },
             Case {
                 name: "database failure",
@@ -2500,7 +2550,8 @@ mod tests {
                     "db is unavailable".to_string(),
                 )),
                 expected_code: "INTERNAL_ERROR",
-                message_fragment: "db is unavailable",
+                message_fragment: "module composition is unavailable",
+                forbidden_fragment: Some("db is unavailable"),
             },
             Case {
                 name: "manifest validation direct mapping",
@@ -2509,6 +2560,7 @@ mod tests {
                 )),
                 expected_code: "BAD_USER_INPUT",
                 message_fragment: "required",
+                forbidden_fragment: None,
             },
         ];
 
@@ -2522,6 +2574,13 @@ mod tests {
                 "message contract drifted for case `{}`",
                 case.name
             );
+            if let Some(forbidden) = case.forbidden_fragment {
+                assert!(
+                    !mapped.message.to_lowercase().contains(forbidden),
+                    "internal error detail leaked into client message for case `{}`",
+                    case.name
+                );
+            }
             let gql = mapped.extend();
             assert_eq!(
                 error_code(&gql).as_deref(),
@@ -2544,6 +2603,7 @@ mod tests {
             error: PlatformCompositionBuildError,
             expected_code: &'static str,
             expected_message_fragment: &'static str,
+            forbidden_fragment: Option<&'static str>,
             exact_message: Option<&'static str>,
         }
 
@@ -2552,7 +2612,8 @@ mod tests {
                 name: "build enqueue failure",
                 error: PlatformCompositionBuildError::Build("enqueue failed".to_string()),
                 expected_code: "INTERNAL_ERROR",
-                expected_message_fragment: "enqueue failed",
+                expected_message_fragment: "Module composition build is unavailable",
+                forbidden_fragment: Some("enqueue failed"),
                 exact_message: None,
             },
             Case {
@@ -2564,6 +2625,7 @@ mod tests {
                 ),
                 expected_code: "BAD_USER_INPUT",
                 expected_message_fragment: "required",
+                forbidden_fragment: None,
                 exact_message: None,
             },
             Case {
@@ -2572,7 +2634,8 @@ mod tests {
                     PlatformCompositionError::Serialize("serde exploded".to_string()),
                 ),
                 expected_code: "INTERNAL_ERROR",
-                expected_message_fragment: "serde exploded",
+                expected_message_fragment: "Module composition is unavailable",
+                forbidden_fragment: Some("serde exploded"),
                 exact_message: None,
             },
             Case {
@@ -2581,7 +2644,8 @@ mod tests {
                     PlatformCompositionError::Deserialize("bad snapshot".to_string()),
                 ),
                 expected_code: "INTERNAL_ERROR",
-                expected_message_fragment: "bad snapshot",
+                expected_message_fragment: "Module composition is unavailable",
+                forbidden_fragment: Some("bad snapshot"),
                 exact_message: None,
             },
             Case {
@@ -2592,7 +2656,8 @@ mod tests {
                     )),
                 ),
                 expected_code: "INTERNAL_ERROR",
-                expected_message_fragment: "db is unavailable",
+                expected_message_fragment: "Module composition is unavailable",
+                forbidden_fragment: Some("db is unavailable"),
                 exact_message: None,
             },
             Case {
@@ -2605,6 +2670,7 @@ mod tests {
                 ),
                 expected_code: "BAD_USER_INPUT",
                 expected_message_fragment: "revision conflict",
+                forbidden_fragment: None,
                 exact_message: Some(
                     "Platform composition revision conflict: expected 11, current 13",
                 ),
@@ -2616,6 +2682,7 @@ mod tests {
                 )),
                 expected_code: "BAD_USER_INPUT",
                 expected_message_fragment: "positive expected revision",
+                forbidden_fragment: None,
                 exact_message: None,
             },
             Case {
@@ -2628,6 +2695,7 @@ mod tests {
                 )),
                 expected_code: "BAD_USER_INPUT",
                 expected_message_fragment: "module selection is invalid",
+                forbidden_fragment: None,
                 exact_message: None,
             },
         ];
@@ -2639,6 +2707,13 @@ mod tests {
                 "message fragment drifted for case `{}`",
                 case.name
             );
+            if let Some(forbidden) = case.forbidden_fragment {
+                assert!(
+                    !mapped.message.contains(forbidden),
+                    "internal error detail leaked into client message for case `{}`",
+                    case.name
+                );
+            }
             if let Some(exact) = case.exact_message {
                 assert_eq!(
                     mapped.message, exact,

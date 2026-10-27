@@ -85,6 +85,8 @@ pub enum AuthLifecycleMutationError {
     EmailAlreadyExists,
     InvalidCredentials,
     UserInactive,
+    AccountLocked,
+    EmailNotVerified,
     InvalidRefreshToken,
     SessionExpired,
     UserNotFound,
@@ -101,6 +103,8 @@ impl std::fmt::Display for AuthLifecycleMutationError {
             Self::EmailAlreadyExists => f.write_str("email already exists"),
             Self::InvalidCredentials => f.write_str("invalid credentials"),
             Self::UserInactive => f.write_str("user is inactive"),
+            Self::AccountLocked => f.write_str("account is temporarily locked"),
+            Self::EmailNotVerified => f.write_str("email address is not verified"),
             Self::InvalidRefreshToken => f.write_str("invalid refresh token"),
             Self::SessionExpired => f.write_str("session expired"),
             Self::UserNotFound => f.write_str("user not found"),
@@ -264,4 +268,3 @@ mod tests {
         assert!(formatted.contains("test@example.com"));
     }
 }
-

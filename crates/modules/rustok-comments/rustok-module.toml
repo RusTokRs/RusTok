@@ -5,7 +5,7 @@ version = "0.1.0"
 description = "Generic comments domain for blog and other opt-in non-forum discussion surfaces"
 ownership = "first_party"
 trust_level = "verified"
-ui_classification = "admin_only"
+ui_classification = "dual_surface"
 recommended_admin_surfaces = ["leptos-admin"]
 
 [crate]
@@ -20,6 +20,9 @@ nav_label = "Comments"
 default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "admin/locales"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-comments-storefront-support"
 
 [fba.provider]
 registry = "contracts/comments-fba-registry.json"

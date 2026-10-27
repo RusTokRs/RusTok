@@ -897,7 +897,13 @@ pub async fn resolve(
         );
     }
 
-    let context = match load_resolved_tenant_context(&ctx, &resolution, TenantResolutionTransport::Http).await {
+    let context = match load_resolved_tenant_context(
+        &ctx,
+        &resolution,
+        TenantResolutionTransport::Http,
+    )
+    .await
+    {
         Ok(context) => context,
         Err(error) => {
             tracing::warn!(

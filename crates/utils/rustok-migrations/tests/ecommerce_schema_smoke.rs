@@ -293,8 +293,17 @@ async fn fulfillment_service_supports_shipping_and_delivery_on_migrated_schema()
     let actor_id = Uuid::new_v4();
     seed_tenant(&db, tenant_id).await;
 
+    // The fulfillment integrity trigger requires customer_id to reference a
+    // real customer in the same tenant; a random UUID no longer passes.
+    let customer = CustomerService::new(db.clone())
+        .create_customer(tenant_id, create_customer_input())
+        .await
+        .expect("customer service should create customer for fulfillment smoke");
+    let mut order_input = create_order_input();
+    order_input.customer_id = Some(customer.id);
+
     let order = order_service
-        .create_order(tenant_id, actor_id, create_order_input())
+        .create_order(tenant_id, actor_id, order_input)
         .await
         .expect("order service should create order for fulfillment smoke");
 
@@ -308,7 +317,7 @@ async fn fulfillment_service_supports_shipping_and_delivery_on_migrated_schema()
             CreateFulfillmentInput {
                 order_id: order.id,
                 shipping_option_id: Some(option.id),
-                customer_id: Some(Uuid::new_v4()),
+                customer_id: Some(customer.id),
                 carrier: None,
                 tracking_number: None,
                 items: None,

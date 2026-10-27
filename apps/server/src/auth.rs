@@ -1,6 +1,8 @@
 // Re-export types from rustok-auth (these don't need error conversion).
 pub use rustok_auth::{
-    AuthConfig, AuthError, AuthSettingsOverrides, Claims, InviteClaims, JwtAlgorithm,
+    AuthConfig, AuthError, AuthSettingsOverrides, Claims, DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
+    InviteClaims, JwtAlgorithm, MIN_PASSWORD_LENGTH_FLOOR_CHARS, normalize_display_name,
+    normalize_email, validate_password_policy,
 };
 
 use crate::error::{Error, Result};
@@ -194,9 +196,18 @@ pub fn encode_invite_token(
     tenant_id: uuid::Uuid,
     email: &str,
     role: rustok_core::UserRole,
+    custom_role_slug: Option<String>,
     ttl_seconds: u64,
 ) -> Result<String> {
-    rustok_auth::encode_invite_token(config, tenant_id, email, role, ttl_seconds).map_err(auth_err)
+    rustok_auth::encode_invite_token(
+        config,
+        tenant_id,
+        email,
+        role,
+        custom_role_slug,
+        ttl_seconds,
+    )
+    .map_err(auth_err)
 }
 
 pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteClaims> {
@@ -233,6 +244,19 @@ pub fn hash_refresh_token(token: &str) -> String {
     rustok_auth::hash_refresh_token(token)
 }
 
+/// A valid Argon2id hash of a non-credential constant, generated once per
+/// process. Verifying a candidate password against it costs the same as
+/// verifying against a real stored hash, which keeps unknown-email logins
+/// indistinguishable by latency from wrong-password logins.
+pub fn dummy_password_hash() -> String {
+    static DUMMY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    DUMMY
+        .get_or_init(|| {
+            rustok_auth::hash_password("rustok-timing-equalization-dummy").unwrap_or_default()
+        })
+        .clone()
+}
+
 // ─── Error conversion ────────────────────────────────────────────────
 
 /// Convert `AuthError` to the server error bridge.
@@ -244,6 +268,7 @@ pub fn auth_err(err: AuthError) -> Error {
         AuthError::InvalidResetToken
         | AuthError::InvalidVerificationToken
         | AuthError::InvalidInviteToken => Error::Unauthorized(err.to_string()),
+        AuthError::Validation(message) => Error::Validation(message),
         AuthError::TokenEncodingFailed
         | AuthError::PasswordHashFailed
         | AuthError::RefreshTokenGenerationFailed => Error::Message(format!("auth error: {err}")),

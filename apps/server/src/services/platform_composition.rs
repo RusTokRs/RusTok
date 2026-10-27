@@ -12,10 +12,9 @@ use rustok_build::{BuildEventPublisher, BuildRequest, BuildService};
 use rustok_modules::{
     ModuleCommandContext, ModuleCompositionBuildAdmission, ModuleCompositionBuildEnqueueError,
     ModuleCompositionBuildEnqueueResult, ModuleCompositionBuildEnqueuer,
-    ModuleCompositionBuildLease, ModuleCompositionError,
-    ModuleCompositionOperation, ModuleCompositionSnapshot, ModuleCompositionUpdate,
-    ModuleControlPlane, ModuleDefinitionError, SeaOrmModuleCompositionService,
-    SharedStaticInstalledModuleReader, StaticInstalledModuleReader,
+    ModuleCompositionBuildLease, ModuleCompositionError, ModuleCompositionOperation,
+    ModuleCompositionSnapshot, ModuleCompositionUpdate, ModuleControlPlane, ModuleDefinitionError,
+    SeaOrmModuleCompositionService, SharedStaticInstalledModuleReader, StaticInstalledModuleReader,
     StaticInstalledModuleReaderError,
 };
 use std::sync::Arc;

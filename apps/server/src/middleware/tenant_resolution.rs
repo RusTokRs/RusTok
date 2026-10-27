@@ -384,7 +384,12 @@ fn effective_host(
 
     let peer_ip = peer_ip_from_extensions(req.extensions());
     if forwarded_headers_trusted(peer_ip, &settings.runtime.request_trust)
-        && req.headers().get_all("x-forwarded-host").iter().nth(1).is_some()
+        && req
+            .headers()
+            .get_all("x-forwarded-host")
+            .iter()
+            .nth(1)
+            .is_some()
     {
         return Err(TenantResolutionError::ConflictingHeaderValues {
             header_name: "x-forwarded-host".to_string(),

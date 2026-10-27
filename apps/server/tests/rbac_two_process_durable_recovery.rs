@@ -430,6 +430,8 @@ async fn insert_tenant(db: &DatabaseConnection) -> TestResult<Uuid> {
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<Uuid> {
     let user_id = Uuid::new_v4();
     users::Entity::insert(users::ActiveModel {
+        failed_login_count: Set(0),
+        locked_until: Set(None),
         id: Set(user_id),
         tenant_id: Set(tenant_id),
         email: Set(format!("rbac-two-process-{user_id}@example.com")),

@@ -753,7 +753,10 @@ mod tests {
     #[test]
     fn ensure_supported_category_trims_whitespace() {
         assert_eq!(ensure_supported_category("  email  ").unwrap(), "email");
-        assert_eq!(ensure_supported_category("\trate_limit\n").unwrap(), "rate_limit");
+        assert_eq!(
+            ensure_supported_category("\trate_limit\n").unwrap(),
+            "rate_limit"
+        );
         assert!(ensure_supported_category("   ").is_err());
     }
 
@@ -778,10 +781,18 @@ mod tests {
     fn email_validator_rejects_non_string_types() {
         let v = EmailSettingsValidator;
         let errs_from = v.validate(&json!({ "from": 12345 })).unwrap_err();
-        assert!(errs_from.iter().any(|e| e.contains("email.from must be a string")));
+        assert!(
+            errs_from
+                .iter()
+                .any(|e| e.contains("email.from must be a string"))
+        );
 
         let errs_prov = v.validate(&json!({ "provider": true })).unwrap_err();
-        assert!(errs_prov.iter().any(|e| e.contains("email.provider must be a string")));
+        assert!(
+            errs_prov
+                .iter()
+                .any(|e| e.contains("email.provider must be a string"))
+        );
     }
 
     #[test]

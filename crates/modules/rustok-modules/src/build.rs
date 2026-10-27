@@ -1388,7 +1388,9 @@ fn build_claim_expiry_expression(backend: SupportedBackend) -> String {
             format!("NOW() + INTERVAL '{BUILD_CLAIM_LEASE_SECONDS} seconds'")
         }
         SupportedBackend::Sqlite => {
-            format!("strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now', '+{BUILD_CLAIM_LEASE_SECONDS} seconds')")
+            format!(
+                "strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now', '+{BUILD_CLAIM_LEASE_SECONDS} seconds')"
+            )
         }
     }
 }

@@ -301,20 +301,23 @@ mod tests {
 
     #[test]
     fn server_auth_runtime_without_auth() {
-        use sea_orm::DatabaseConnection;
-        use crate::common::settings::RustokSettings;
         use super::{ServerAuthRuntime, ServerRuntimeContext};
+        use crate::common::settings::RustokSettings;
         use axum::extract::FromRef;
+        use sea_orm::DatabaseConnection;
 
-        let ctx = ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
+        let ctx =
+            ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
         let auth_rt = ServerAuthRuntime::without_auth(ctx.clone());
         assert!(auth_rt.auth_config().is_none());
 
         let extracted_ctx: ServerRuntimeContext = FromRef::from_ref(&auth_rt);
-        assert_eq!(extracted_ctx.settings().runtime.host_mode, ctx.settings().runtime.host_mode);
+        assert_eq!(
+            extracted_ctx.settings().runtime.host_mode,
+            ctx.settings().runtime.host_mode
+        );
 
         let _: DatabaseConnection = FromRef::from_ref(&auth_rt);
         let _: DatabaseConnection = FromRef::from_ref(&ctx);
     }
 }
-

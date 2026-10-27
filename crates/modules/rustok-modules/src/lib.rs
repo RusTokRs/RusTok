@@ -59,6 +59,15 @@ pub mod migrations;
 #[cfg(feature = "oci-distribution")]
 mod oci;
 pub mod oci_admission;
+
+/// Best-effort removal of a staged artifact file.
+///
+/// Lives at the crate root (not in the feature-gated `oci` module)
+/// because non-OCI ingestion paths stage files too and must clean
+/// them up whether or not the `oci-distribution` feature is enabled.
+pub(crate) async fn remove_staged_file_best_effort(path: &std::path::Path) {
+    let _ = tokio::fs::remove_file(path).await;
+}
 #[cfg(feature = "oci-distribution")]
 mod oci_transport;
 mod operation_store;
@@ -669,4 +678,3 @@ pub use trust::{
 };
 
 pub use module::ModulesModule;
-

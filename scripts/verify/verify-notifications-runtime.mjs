@@ -120,10 +120,16 @@ requireText(forumLib, "register_notification_source_provider_factory", `${forumL
 for (const marker of [
   "forum.topic.created",
   "forum_domain_event::Entity::find()",
-  "SequenceNo.eq(sequence_no)",
+  // Durability invariants, pinned as the code that enforces them rather than as the prose comment the
+  // provider used to carry: the journal row is matched on the exact sequence number (with the semantic
+  // revision fallback for mention events), and visibility is decided by the audience owner instead of
+  // this provider reading channel-access or audience-policy tables itself.
+  "if requested_revision != persisted.sequence_no",
+  "requested_revision != semantic_revision",
   "TenantId.eq(event.tenant_id())",
   "TopicStatus::Open",
-  "forum_topic_channel_access::Entity::find()",
+  ".visibility_service()",
+  ".is_topic_visible(tenant_id, topic_id, None, viewer)",
   "NotifyNewTopics.eq(true)",
   "ForumSubscriptionLevel::Muted",
   "request.bounded_limit()",

@@ -10,7 +10,8 @@ impl IdempotencyKey {
     pub fn new(key: &str) -> TranslationResult<Self> {
         if key.is_empty() || key.len() > 191 || key.trim() != key {
             return Err(TranslationError::InvalidRequest(
-                "translation idempotency key must contain 1..=191 trimmed non-empty bytes".to_string(),
+                "translation idempotency key must contain 1..=191 trimmed non-empty bytes"
+                    .to_string(),
             ));
         }
         Ok(Self(key.to_string()))
@@ -19,10 +20,6 @@ impl IdempotencyKey {
     pub fn require(context: &PortContext) -> TranslationResult<Self> {
         let key = context.idempotency_key.as_deref().unwrap_or_default();
         Self::new(key)
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
     }
 
     pub fn into_string(self) -> String {

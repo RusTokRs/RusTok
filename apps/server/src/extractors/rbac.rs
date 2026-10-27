@@ -401,7 +401,6 @@ define_permission_extractor!(
     rustok_api::Permission::TRANSLATIONS_MANAGE
 );
 
-
 /// Helper to check permission inline without extractor
 ///
 /// # Example
@@ -489,6 +488,8 @@ mod tests {
             status: rustok_core::UserStatus::Active,
             email_verified_at: None,
             last_login_at: None,
+            failed_login_count: 0,
+            locked_until: None,
             metadata: serde_json::json!({}),
             created_at: chrono::Utc::now().into(),
             updated_at: chrono::Utc::now().into(),

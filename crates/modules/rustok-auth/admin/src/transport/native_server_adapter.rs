@@ -489,6 +489,18 @@ fn user_from_mutation_record(record: rustok_auth::UserMutationRecord) -> Graphql
     }
 }
 
+fn invite_from_record(record: rustok_auth::UserInviteRecord) -> crate::model::UserInvite {
+    crate::model::UserInvite {
+        id: record.id.to_string(),
+        email: record.email,
+        role: record.role,
+        issued_by: record.issued_by.map(|id| id.to_string()),
+        expires_at: record.expires_at.to_rfc3339(),
+        revoked_at: record.revoked_at.map(|at| at.to_rfc3339()),
+        created_at: record.created_at.to_rfc3339(),
+    }
+}
+
 #[cfg(feature = "ssr")]
 async fn user_mutation_context() -> Result<
     (
@@ -528,6 +540,11 @@ async fn user_mutation_context() -> Result<
             tenant_id: auth.tenant_id,
             request_id: None,
             locale,
+            principal_kind: rustok_api::AuthPrincipalKind::from_authenticated_facts(
+                &auth.grant_type,
+                auth.client_id,
+                auth.session_id,
+            ),
         },
         runtime,
     ))
@@ -629,6 +646,85 @@ pub async fn delete_user_native(id: String) -> Result<bool, ServerFnError> {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SuccessPayload {
     pub success: bool,
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/issue-user-invite")]
+pub async fn issue_user_invite_native(
+    input: crate::model::IssueUserInviteInput,
+) -> Result<crate::model::IssuedUserInvite, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let (context, runtime) = user_mutation_context().await?;
+        runtime
+            .port()
+            .issue_user_invite(
+                &context,
+                rustok_auth::IssueUserInviteCommand {
+                    email: input.email,
+                    role: input.role,
+                },
+            )
+            .await
+            .map(|issued| crate::model::IssuedUserInvite {
+                invite: invite_from_record(issued.invite),
+                token: issued.token,
+            })
+            .map_err(|error| server_error(error.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = input;
+        Err(ServerFnError::new(
+            "admin/issue-user-invite requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/revoke-user-invite")]
+pub async fn revoke_user_invite_native(
+    id: String,
+) -> Result<crate::model::UserInvite, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let id = Uuid::parse_str(&id).map_err(|error| server_error(error.to_string()))?;
+        let (context, runtime) = user_mutation_context().await?;
+        runtime
+            .port()
+            .revoke_user_invite(&context, id)
+            .await
+            .map(invite_from_record)
+            .map_err(|error| server_error(error.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = id;
+        Err(ServerFnError::new(
+            "admin/revoke-user-invite requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/list-user-invites")]
+pub async fn list_user_invites_native(
+    limit: i64,
+) -> Result<Vec<crate::model::UserInvite>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let (context, runtime) = user_mutation_context().await?;
+        runtime
+            .port()
+            .list_user_invites(&context, limit.clamp(1, 100) as u64)
+            .await
+            .map(|records| records.into_iter().map(invite_from_record).collect())
+            .map_err(|error| server_error(error.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = limit;
+        Err(ServerFnError::new(
+            "admin/list-user-invites requires the `ssr` feature",
+        ))
+    }
 }
 
 #[server(prefix = "/api/fn", endpoint = "admin/change-password")]
@@ -849,6 +945,11 @@ async fn oauth_mutation_context() -> Result<
             tenant_id: auth.tenant_id,
             request_id: None,
             locale: Some(request_context.locale),
+            principal_kind: rustok_api::AuthPrincipalKind::from_authenticated_facts(
+                &auth.grant_type,
+                auth.client_id,
+                auth.session_id,
+            ),
         },
         runtime,
     ))

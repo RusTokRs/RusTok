@@ -86,14 +86,26 @@ impl NotificationOutboxEnvelopeDecoder for ServerNotificationOutboxEnvelopeDecod
             DomainEvent::ForumTopicCreated { topic_id, .. }
                 if record.event_type == FORUM_TOPIC_CREATED =>
             {
-                source_event_ref(envelope.tenant_id, topic_id, FORUM_SOURCE, FORUM_TOPIC_CREATED, 1)
+                source_event_ref(
+                    envelope.tenant_id,
+                    topic_id,
+                    FORUM_SOURCE,
+                    FORUM_TOPIC_CREATED,
+                    1,
+                )
             }
             // The reply id is the source event identity: one fan-out per reply, and the
             // provider resolves the topic and the reply's audience from it.
             DomainEvent::ForumTopicReplied { reply_id, .. }
                 if record.event_type == FORUM_TOPIC_REPLIED =>
             {
-                source_event_ref(envelope.tenant_id, reply_id, FORUM_SOURCE, FORUM_TOPIC_REPLIED, 1)
+                source_event_ref(
+                    envelope.tenant_id,
+                    reply_id,
+                    FORUM_SOURCE,
+                    FORUM_TOPIC_REPLIED,
+                    1,
+                )
             }
             DomainEvent::MessengerMessageDispatched {
                 conversation_id,

@@ -1,251 +1,128 @@
 use axum::{
-    extract::Request,
-    http::{HeaderMap, request::Parts},
+    body::Body,
+    http::{HeaderMap, HeaderValue, Request, header},
     middleware::Next,
     response::Response,
 };
-use base64::Engine as _;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use leptos::prelude::*;
 use leptos_auth::ServerAuthSnapshot;
-use rustok_ui_auth::{AuthSession, AuthUser};
-use rustok_web::CspNonce;
 
-pub const ADMIN_SESSION_COOKIE: &str = "rustok-admin-session-v1";
-pub const ADMIN_USER_COOKIE: &str = "rustok-admin-user-v1";
-
-/// Transitional compatibility bootstrap for the existing browser LocalStorage authentication.
-///
-/// Classic SSR ultimately should use a server-issued HttpOnly session cookie. Until that migration
-/// is complete this tiny script mirrors the already-existing serialized session and user into
-/// same-origin cookies, reloads once, and lets the Rust server build a request-scoped auth snapshot.
-/// It does not implement authentication or token refresh.
-pub const AUTH_COOKIE_BOOTSTRAP_JS: &str = r#"
-(() => {
-  const sessionKey = "rustok-admin-session";
-  const userKey = "rustok-admin-user";
-  const sessionCookie = "rustok-admin-session-v1";
-  const userCookie = "rustok-admin-user-v1";
-  const textEncoder = new TextEncoder();
-  const base64url = (value) => {
-    const bytes = textEncoder.encode(value);
-    let binary = "";
-    for (const byte of bytes) binary += String.fromCharCode(byte);
-    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-  };
-  const cookies = Object.fromEntries(document.cookie.split(";").map((part) => {
-    const index = part.indexOf("=");
-    return index < 0 ? [part.trim(), ""] : [part.slice(0, index).trim(), part.slice(index + 1)];
-  }));
-  const secure = location.protocol === "https:" ? "; Secure" : "";
-  const setCookie = (name, value) => {
-    document.cookie = `${name}=${value}; Path=/; SameSite=Lax${secure}`;
-  };
-  const clearCookie = (name) => {
-    document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
-  };
-  let changed = false;
-  try {
-    const session = localStorage.getItem(sessionKey);
-    const user = localStorage.getItem(userKey);
-    if (session && user) {
-      const encodedSession = base64url(session);
-      const encodedUser = base64url(user);
-      if (cookies[sessionCookie] !== encodedSession) {
-        setCookie(sessionCookie, encodedSession);
-        changed = true;
-      }
-      if (cookies[userCookie] !== encodedUser) {
-        setCookie(userCookie, encodedUser);
-        changed = true;
-      }
-    } else if (cookies[sessionCookie] || cookies[userCookie]) {
-      clearCookie(sessionCookie);
-      clearCookie(userCookie);
-      changed = true;
-    }
-  } catch (_) {
-    return;
-  }
-  if (changed) location.reload();
-})();
-"#;
-
-#[component]
-pub fn AuthCookieBootstrap() -> impl IntoView {
-    let nonce = use_context::<CspNonce>()
-        .or_else(crate::app::security::request_csp_nonce)
-        .map(|nonce| nonce.as_str().to_string());
-    view! {
-        <script
-            nonce=nonce
-            data-rustok-auth-bootstrap="local-storage-cookie-v1"
-            inner_html=AUTH_COOKIE_BOOTSTRAP_JS
-        ></script>
-    }
+fn cookie_request_is_secure(headers: &HeaderMap) -> bool {
+    let forwarded_https = headers
+        .get("x-forwarded-proto")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.eq_ignore_ascii_case("https"));
+    let origin_https = headers
+        .get(header::ORIGIN)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("https://"));
+    forwarded_https || origin_https
 }
 
-pub fn request_auth_snapshot() -> ServerAuthSnapshot {
-    use_context::<Parts>()
-        .and_then(|parts| parts.extensions.get::<ServerAuthSnapshot>().cloned())
-        .unwrap_or_default()
-}
-
-/// Verifies the browser-provided admin session before it becomes SSR auth context.
+/// Exchange the HttpOnly BFF refresh cookie (set by the native auth
+/// server functions at sign-in) for a verified auth snapshot.
 ///
-/// The cookie is only a transport envelope. Its identity/role fields are never trusted; the
-/// contained bearer token is revalidated by the canonical auth transport and the returned user
-/// becomes the request-scoped snapshot consumed by AuthProvider.
-pub async fn verify_auth_snapshot(mut request: Request, next: Next) -> Response {
-    let candidate = auth_snapshot_from_headers(request.headers());
-    let snapshot = match candidate.session {
-        Some(session) => match leptos_auth::transport::fetch_current_user(
-            session.token.clone(),
-            session.tenant.clone(),
-        )
-        .await
-        {
-            Ok(Some(user)) => ServerAuthSnapshot {
+/// The refresh token is never readable by page JavaScript and never
+/// rendered into HTML: this host validates it server-to-server and
+/// exposes only the resulting short-lived access token and user
+/// profile to SSR rendering. The returned `Set-Cookie` value carries
+/// the rotated refresh token (or clears a dead cookie) and must be
+/// attached to the response — dropping it would make the browser
+/// replay the previous token and trip reuse detection.
+pub async fn verified_snapshot_from_headers(
+    headers: &HeaderMap,
+) -> (ServerAuthSnapshot, Option<String>) {
+    let Some((tenant, refresh_token)) = headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(leptos_auth::extract_refresh_cookie)
+    else {
+        return (ServerAuthSnapshot::default(), None);
+    };
+
+    let secure = cookie_request_is_secure(headers);
+    match leptos_auth::transport::exchange_refresh_token_ssr(refresh_token, tenant.clone()).await {
+        Ok((user, session, rotated)) => (
+            ServerAuthSnapshot {
                 session: Some(session),
                 user: Some(user),
             },
-            _ => ServerAuthSnapshot::default(),
-        },
-        None => ServerAuthSnapshot::default(),
-    };
+            Some(leptos_auth::refresh_cookie_header(
+                &tenant, &rotated, secure,
+            )),
+        ),
+        Err(_) => (
+            ServerAuthSnapshot::default(),
+            Some(leptos_auth::clear_refresh_cookie_header(secure)),
+        ),
+    }
+}
 
+/// Authenticate the request before SSR and update the BFF cookie.
+///
+/// The snapshot is placed in request extensions (same trust boundary
+/// as `request_auth_snapshot`) so both Leptos rendering and plain
+/// axum handlers (e.g. the page-builder intent endpoint) consume the
+/// single verified exchange performed here — no handler ever
+/// re-exchanges the cookie, and rotation is always propagated on the
+/// response that consumed the previous token.
+pub async fn verify_auth_snapshot(mut request: Request<Body>, next: Next) -> Response {
+    let (snapshot, set_cookie) = verified_snapshot_from_headers(request.headers()).await;
     request.extensions_mut().insert(snapshot);
-    next.run(request).await
+
+    let mut response = next.run(request).await;
+    if let Some(cookie) = set_cookie
+        && let Ok(value) = HeaderValue::from_str(&cookie)
+    {
+        response.headers_mut().append(header::SET_COOKIE, value);
+    }
+    response
 }
 
-pub fn auth_snapshot_from_headers(headers: &HeaderMap) -> ServerAuthSnapshot {
-    let cookies = headers
-        .get(axum::http::header::COOKIE)
-        .and_then(|value| value.to_str().ok())
-        .map(parse_cookie_header)
-        .unwrap_or_default();
-    let session = cookies
-        .get(ADMIN_SESSION_COOKIE)
-        .and_then(|value| decode_cookie_json::<AuthSession>(value));
-    let user = cookies
-        .get(ADMIN_USER_COOKIE)
-        .and_then(|value| decode_cookie_json::<AuthUser>(value));
-    ServerAuthSnapshot { session, user }
-}
-
-fn parse_cookie_header(header: &str) -> std::collections::HashMap<String, String> {
-    header
-        .split(';')
-        .filter_map(|part| {
-            let (name, value) = part.trim().split_once('=')?;
-            Some((name.trim().to_string(), value.trim().to_string()))
-        })
-        .collect()
-}
-
-fn decode_cookie_json<T>(value: &str) -> Option<T>
-where
-    T: serde::de::DeserializeOwned,
-{
-    let bytes = URL_SAFE_NO_PAD.decode(value.trim()).ok()?;
-    serde_json::from_slice(&bytes).ok()
+/// Extract an auth snapshot previously inserted by trusted host middleware.
+///
+/// The request type and extension bag are crate-private inputs from the SSR host. Do not expose
+/// this conversion for untrusted serialized input without re-verifying authority at that boundary.
+pub fn request_auth_snapshot(parts: &axum::http::request::Parts) -> ServerAuthSnapshot {
+    parts
+        .extensions
+        .get::<ServerAuthSnapshot>()
+        .cloned()
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn encoded<T: serde::Serialize>(value: &T) -> String {
-        URL_SAFE_NO_PAD.encode(serde_json::to_vec(value).unwrap())
-    }
+    use axum::http::Request;
+    use rustok_ui_auth::{AuthSession, AuthUser};
 
     #[test]
-    fn auth_bootstrap_renders_the_request_nonce() {
-        let nonce = CspNonce::generate();
-        let owner = Owner::new();
-        let html = owner.with(|| {
-            provide_context(nonce.clone());
-            view! { <AuthCookieBootstrap/> }.to_html()
+    fn request_snapshot_uses_trusted_host_extension() {
+        let mut request = Request::new(());
+        request.extensions_mut().insert(ServerAuthSnapshot {
+            session: Some(AuthSession {
+                token: "verified-access".to_string(),
+                expires_at: 123,
+                tenant: "demo".to_string(),
+            }),
+            user: Some(AuthUser {
+                id: "user-1".to_string(),
+                email: "verified@example.test".to_string(),
+                name: Some("Verified".to_string()),
+                role: "admin".to_string(),
+            }),
         });
-
-        assert!(html.contains(format!(r#"nonce="{}""#, nonce.as_str()).as_str()));
-        assert!(html.contains("data-rustok-auth-bootstrap=\"local-storage-cookie-v1\""));
+        let (parts, ()) = request.into_parts();
+        let snapshot = request_auth_snapshot(&parts);
+        assert_eq!(snapshot.user.unwrap().id, "user-1");
+        assert_eq!(snapshot.session.unwrap().tenant, "demo");
     }
 
-    #[test]
-    fn request_cookie_snapshot_round_trips_auth_models() {
-        let session = AuthSession {
-            token: "token".to_string(),
-            refresh_token: "refresh".to_string(),
-            expires_at: 42,
-            tenant: "demo".to_string(),
-        };
-        let user = AuthUser {
-            id: "user".to_string(),
-            email: "user@example.test".to_string(),
-            name: Some("User".to_string()),
-            role: "admin".to_string(),
-        };
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            axum::http::header::COOKIE,
-            format!(
-                "{ADMIN_SESSION_COOKIE}={}; {ADMIN_USER_COOKIE}={}",
-                encoded(&session),
-                encoded(&user),
-            )
-            .parse()
-            .unwrap(),
-        );
-        let snapshot = auth_snapshot_from_headers(&headers);
-        assert_eq!(snapshot.session, Some(session));
-        assert_eq!(snapshot.user, Some(user));
-    }
-
-    #[test]
-    fn request_auth_snapshot_uses_only_trusted_request_extension() {
-        let forged_session = AuthSession {
-            token: "attacker-token".to_string(),
-            refresh_token: "attacker-refresh".to_string(),
-            expires_at: i64::MAX,
-            tenant: "attacker-tenant".to_string(),
-        };
-        let forged_user = AuthUser {
-            id: "attacker".to_string(),
-            email: "attacker@example.test".to_string(),
-            name: Some("Attacker".to_string()),
-            role: "admin".to_string(),
-        };
-        let cookie = format!(
-            "{ADMIN_SESSION_COOKIE}={}; {ADMIN_USER_COOKIE}={}",
-            encoded(&forged_session),
-            encoded(&forged_user),
-        );
-        let (_, parts) = axum::http::Request::builder()
-            .header(axum::http::header::COOKIE, cookie)
-            .body(())
-            .expect("request")
-            .into_parts();
-
-        let owner = Owner::new();
-        let snapshot = owner.with(|| {
-            provide_context(parts);
-            request_auth_snapshot()
-        });
-
+    #[tokio::test]
+    async fn missing_refresh_cookie_yields_anonymous_snapshot() {
+        let headers = HeaderMap::new();
+        let (snapshot, set_cookie) = verified_snapshot_from_headers(&headers).await;
         assert_eq!(snapshot, ServerAuthSnapshot::default());
-    }
-
-    #[test]
-    fn malformed_cookie_is_ignored_without_panicking() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            axum::http::header::COOKIE,
-            format!("{ADMIN_SESSION_COOKIE}=invalid").parse().unwrap(),
-        );
-        assert_eq!(
-            auth_snapshot_from_headers(&headers),
-            ServerAuthSnapshot::default()
-        );
+        assert!(set_cookie.is_none());
     }
 }

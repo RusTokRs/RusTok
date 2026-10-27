@@ -393,6 +393,13 @@ pub struct FeatureSettings {
     pub search_indexing: bool,
     #[serde(default)]
     pub oauth_enabled: bool,
+    /// Master switch for invitation issuance and acceptance.
+    #[serde(default = "default_true")]
+    pub invites_enabled: bool,
+    /// When true, public registration is closed and accounts can only
+    /// be created by accepting an administrator-issued invitation.
+    #[serde(default)]
+    pub invite_only_registration: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -431,7 +438,10 @@ pub struct BuildRuntimeSettings {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RateLimitSettings {
-    #[serde(default)]
+    // Fail closed: rate limiting is on unless an operator explicitly
+    // disables it. Login/registration endpoints are internet-facing
+    // credential surfaces and must never ship unthrottled by default.
+    #[serde(default = "default_true")]
     pub enabled: bool,
     #[serde(default)]
     pub backend: RateLimitBackendKind,
@@ -475,6 +485,8 @@ pub struct RuntimeBackgroundWorkerSettings {
     pub seo_sitemap_enabled: bool,
     #[serde(default = "default_true")]
     pub seo_index_repair_enabled: bool,
+    #[serde(default = "default_true")]
+    pub auth_retention_enabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, Eq, PartialEq)]
@@ -651,6 +663,8 @@ impl Default for FeatureSettings {
             multi_tenant: true,
             search_indexing: true,
             oauth_enabled: false,
+            invites_enabled: true,
+            invite_only_registration: false,
         }
     }
 }
@@ -699,7 +713,7 @@ impl Default for SearchReindexSettings {
 impl Default for RateLimitSettings {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,
             backend: RateLimitBackendKind::Memory,
             redis_key_prefix: default_rate_limit_redis_key_prefix(),
             requests_per_minute: default_requests_per_minute(),
@@ -731,6 +745,7 @@ impl Default for RuntimeBackgroundWorkerSettings {
             seo_bulk_enabled: true,
             seo_sitemap_enabled: true,
             seo_index_repair_enabled: true,
+            auth_retention_enabled: true,
         }
     }
 }
@@ -1298,13 +1313,6 @@ pub(crate) fn is_production_environment() -> bool {
             )
         })
         .unwrap_or(!cfg!(debug_assertions))
-}
-
-pub(crate) fn demo_mode_token_exposure_enabled() -> bool {
-    !is_production_environment()
-        && std::env::var("RUSTOK_DEMO_MODE")
-            .map(|value| value == "1")
-            .unwrap_or(false)
 }
 
 fn email_disabled_production_override_enabled() -> bool {
@@ -2017,12 +2025,10 @@ mod tests {
         );
     }
     #[test]
-    fn demo_mode_must_not_enable_token_exposure_in_production() {
+    fn production_environment_is_detected_from_rust_env() {
         let _guard = env_lock().lock().expect("env lock");
-        let _demo = EnvVarGuard::set("RUSTOK_DEMO_MODE", "1");
         let _prod = EnvVarGuard::set("RUST_ENV", "production");
 
         assert!(super::is_production_environment());
-        assert!(!super::demo_mode_token_exposure_enabled());
     }
 }

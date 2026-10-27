@@ -21,6 +21,16 @@ pub enum McpManagementAuthorityError {
     Internal(String),
 }
 
+/// Seal an internal failure: the detail is logged server-side and the
+/// client only receives a generic internal-error payload.
+fn internal_error<E: std::fmt::Display>(
+    context: &'static str,
+    error: E,
+) -> McpManagementAuthorityError {
+    tracing::error!(%error, context, "MCP management authority check failed");
+    McpManagementAuthorityError::Internal("Internal error".to_string())
+}
+
 pub struct McpManagementAuthorityService;
 
 impl McpManagementAuthorityService {
@@ -70,7 +80,7 @@ impl McpManagementAuthorityService {
                 .await?;
         let policy = mcp_policies::Entity::find_by_client(db, client.id)
             .await
-            .map_err(|error| McpManagementAuthorityError::Internal(error.to_string()))?;
+            .map_err(|error| internal_error("load MCP policy", error))?;
 
         if let Some(policy) = policy {
             if policy.tenant_id != tenant_id {
@@ -97,7 +107,7 @@ async fn require_client(
         .filter(mcp_clients::Column::TenantId.eq(tenant_id))
         .one(db)
         .await
-        .map_err(|error| McpManagementAuthorityError::Internal(error.to_string()))?
+        .map_err(|error| internal_error("load MCP client", error))?
         .ok_or_else(|| McpManagementAuthorityError::NotFound("MCP client".to_string()))
 }
 
@@ -120,7 +130,7 @@ async fn delegated_permissions(
         .filter(users::Column::TenantId.eq(tenant_id))
         .one(db)
         .await
-        .map_err(|error| McpManagementAuthorityError::Internal(error.to_string()))?
+        .map_err(|error| internal_error("load delegated MCP user", error))?
         .ok_or_else(|| {
             McpManagementAuthorityError::Invalid(
                 "delegated MCP user does not exist in the current tenant".to_string(),
@@ -135,7 +145,7 @@ async fn delegated_permissions(
     RbacService::get_user_permissions_authoritative(db, &tenant_id, &user_id)
         .await
         .map(Some)
-        .map_err(|error| McpManagementAuthorityError::Internal(error.to_string()))
+        .map_err(|error| internal_error("resolve delegated MCP permissions", error))
 }
 
 fn validate_all_authorities(

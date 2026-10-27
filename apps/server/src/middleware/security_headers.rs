@@ -124,12 +124,18 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
         ),
     );
     if let Some(cache_control) = richtext_cache_control(&path) {
-        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static(cache_control));
+        headers.insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static(cache_control),
+        );
     }
 
     // Strict-Transport-Security — only for an explicitly declared HTTPS deployment.
     if hsts_enabled() {
-        headers.insert(header::STRICT_TRANSPORT_SECURITY, HeaderValue::from_static(HSTS));
+        headers.insert(
+            header::STRICT_TRANSPORT_SECURITY,
+            HeaderValue::from_static(HSTS),
+        );
     }
 
     response

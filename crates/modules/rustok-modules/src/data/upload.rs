@@ -542,14 +542,14 @@ mod tests {
     #[test]
     fn upload_chunk_sequence_has_a_finite_per_session_bound() {
         assert!(validate_upload_chunk_request(&chunk(0)).is_ok());
-        assert!(validate_upload_chunk_request(&chunk(
-            MAX_ARTIFACT_OBJECT_UPLOAD_CHUNKS_PER_SESSION - 1
-        ))
-        .is_ok());
-        assert_eq!(
+        assert!(
             validate_upload_chunk_request(&chunk(
-                MAX_ARTIFACT_OBJECT_UPLOAD_CHUNKS_PER_SESSION
-            )),
+                MAX_ARTIFACT_OBJECT_UPLOAD_CHUNKS_PER_SESSION - 1
+            ))
+            .is_ok()
+        );
+        assert_eq!(
+            validate_upload_chunk_request(&chunk(MAX_ARTIFACT_OBJECT_UPLOAD_CHUNKS_PER_SESSION)),
             Err(ArtifactDataError::InvalidObject),
         );
     }

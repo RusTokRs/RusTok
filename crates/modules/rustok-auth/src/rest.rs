@@ -67,36 +67,19 @@ pub struct UpdateProfileParams {
     pub name: Option<String>,
 }
 
-#[derive(Serialize, ToSchema)]
+/// Password-reset request acknowledgement. Deliberately carries no
+/// token in any mode: reset links are delivered only through the
+/// mailbox, so the response cannot be used to take over an account.
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ResetRequestResponse {
     pub status: &'static str,
-    pub reset_token: Option<String>,
 }
 
-impl std::fmt::Debug for ResetRequestResponse {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("ResetRequestResponse")
-            .field("status", &self.status)
-            .field("reset_token", &self.reset_token.as_ref().map(|_| "<redacted>"))
-            .finish()
-    }
-}
-
-#[derive(Serialize, ToSchema)]
+/// Email-verification request acknowledgement; same no-token contract
+/// as [`ResetRequestResponse`].
+#[derive(Debug, Serialize, ToSchema)]
 pub struct VerificationRequestResponse {
     pub status: &'static str,
-    pub verification_token: Option<String>,
-}
-
-impl std::fmt::Debug for VerificationRequestResponse {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("VerificationRequestResponse")
-            .field("status", &self.status)
-            .field("verification_token", &self.verification_token.as_ref().map(|_| "<redacted>"))
-            .finish()
-    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -213,12 +196,21 @@ impl std::fmt::Debug for TokenRequest {
             .debug_struct("TokenRequest")
             .field("grant_type", &self.grant_type)
             .field("client_id", &self.client_id)
-            .field("client_secret", &self.client_secret.as_ref().map(|_| "<redacted>"))
+            .field(
+                "client_secret",
+                &self.client_secret.as_ref().map(|_| "<redacted>"),
+            )
             .field("scope", &self.scope)
             .field("code", &self.code.as_ref().map(|_| "<redacted>"))
             .field("redirect_uri", &self.redirect_uri)
-            .field("code_verifier", &self.code_verifier.as_ref().map(|_| "<redacted>"))
-            .field("refresh_token", &self.refresh_token.as_ref().map(|_| "<redacted>"))
+            .field(
+                "code_verifier",
+                &self.code_verifier.as_ref().map(|_| "<redacted>"),
+            )
+            .field(
+                "refresh_token",
+                &self.refresh_token.as_ref().map(|_| "<redacted>"),
+            )
             .finish()
     }
 }
@@ -257,6 +249,10 @@ pub struct ConsentRequest {
     pub state: Option<String>,
     pub code_challenge: String,
     pub code_challenge_method: Option<String>,
+    /// Server-issued CSRF token binding the rendered consent form to
+    /// the signed-in user and the exact authorization parameters.
+    /// Submissions without a valid token are rejected.
+    pub consent_csrf: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -282,7 +278,10 @@ impl std::fmt::Debug for TokenResponse {
             .field("access_token", &"<redacted>")
             .field("token_type", &self.token_type)
             .field("expires_in", &self.expires_in)
-            .field("refresh_token", &self.refresh_token.as_ref().map(|_| "<redacted>"))
+            .field(
+                "refresh_token",
+                &self.refresh_token.as_ref().map(|_| "<redacted>"),
+            )
             .field("scope", &self.scope)
             .finish()
     }
@@ -311,7 +310,10 @@ impl std::fmt::Debug for RevokeRequest {
             .field("token", &"<redacted>")
             .field("token_type_hint", &self.token_type_hint)
             .field("client_id", &self.client_id)
-            .field("client_secret", &self.client_secret.as_ref().map(|_| "<redacted>"))
+            .field(
+                "client_secret",
+                &self.client_secret.as_ref().map(|_| "<redacted>"),
+            )
             .finish()
     }
 }
@@ -321,22 +323,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reset_and_verification_responses_debug_redact_tokens() {
-        let reset = ResetRequestResponse {
-            status: "ok",
-            reset_token: Some("secret-reset-token-123".to_string()),
-        };
-        let reset_dbg = format!("{reset:?}");
-        assert!(!reset_dbg.contains("secret-reset-token-123"));
-        assert!(reset_dbg.contains("<redacted>"));
+    fn reset_and_verification_responses_never_carry_tokens() {
+        let reset = serde_json::to_value(ResetRequestResponse { status: "ok" })
+            .expect("serialize reset response");
+        assert_eq!(reset, serde_json::json!({ "status": "ok" }));
 
-        let verification = VerificationRequestResponse {
-            status: "ok",
-            verification_token: Some("secret-verification-token-456".to_string()),
-        };
-        let verification_dbg = format!("{verification:?}");
-        assert!(!verification_dbg.contains("secret-verification-token-456"));
-        assert!(verification_dbg.contains("<redacted>"));
+        let verification = serde_json::to_value(VerificationRequestResponse { status: "ok" })
+            .expect("serialize verification response");
+        assert_eq!(verification, serde_json::json!({ "status": "ok" }));
     }
 
     #[test]

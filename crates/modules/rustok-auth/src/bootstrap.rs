@@ -1,7 +1,17 @@
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use uuid::Uuid;
 
-use crate::{AuthLifecycleMutationError, hash_password};
+use crate::{
+    AuthError, AuthLifecycleMutationError, DEFAULT_MIN_PASSWORD_LENGTH_CHARS, hash_password,
+    normalize_display_name, normalize_email, validate_password_policy,
+};
+
+fn bootstrap_validation_error(error: AuthError) -> AuthLifecycleMutationError {
+    match error {
+        AuthError::Validation(message) => AuthLifecycleMutationError::Validation(message),
+        other => internal_bootstrap_error(other),
+    }
+}
 
 fn internal_bootstrap_error<E>(error: E) -> AuthLifecycleMutationError
 where
@@ -71,27 +81,23 @@ impl AuthUserBootstrapDbWriter {
         let backend = db.get_database_backend();
         ensure_supported_backend(backend)?;
         if request.tenant_id.is_nil() {
-            return Err(AuthLifecycleMutationError::Internal(
+            return Err(AuthLifecycleMutationError::Validation(
                 "tenant_id must not be nil for user bootstrap".to_string(),
             ));
         }
-        let email = normalize_bootstrap_email(&request.email);
-        if email.is_empty() {
-            return Err(AuthLifecycleMutationError::Internal(
-                "email must not be empty for user bootstrap".to_string(),
-            ));
-        }
-        if request.password.is_empty() {
-            return Err(AuthLifecycleMutationError::Internal(
-                "password must not be empty for user bootstrap".to_string(),
-            ));
-        }
-        let name = request.name.trim();
-        if name.is_empty() {
-            return Err(AuthLifecycleMutationError::Internal(
-                "name must not be empty for user bootstrap".to_string(),
-            ));
-        }
+        let email = normalize_email(&request.email).map_err(bootstrap_validation_error)?;
+        let name = normalize_display_name(Some(&request.name))
+            .map_err(bootstrap_validation_error)?
+            .ok_or_else(|| {
+                AuthLifecycleMutationError::Validation(
+                    "name must not be empty for user bootstrap".to_string(),
+                )
+            })?;
+        // Bootstrap identities (installer/superadmin seeds) are the most
+        // privileged accounts in the system; they must satisfy the same
+        // password policy as any other new credential.
+        validate_password_policy(&request.password, DEFAULT_MIN_PASSWORD_LENGTH_CHARS)
+            .map_err(bootstrap_validation_error)?;
         tracing::debug!(tenant_id = %request.tenant_id, "Ensuring auth user bootstrap identity");
         if let Some(existing) = Self::find_user_on(db, request.tenant_id, &email).await? {
             return Ok(existing);
@@ -282,7 +288,11 @@ mod tests {
             name: "Admin".to_string(),
             password: "password123".to_string(),
         };
-        assert!(AuthUserBootstrapDbWriter::ensure_user_on(&db, req_nil_tenant).await.is_err());
+        assert!(
+            AuthUserBootstrapDbWriter::ensure_user_on(&db, req_nil_tenant)
+                .await
+                .is_err()
+        );
 
         let req_empty_email = AuthUserBootstrapRequest {
             tenant_id: Uuid::new_v4(),
@@ -290,7 +300,11 @@ mod tests {
             name: "Admin".to_string(),
             password: "password123".to_string(),
         };
-        assert!(AuthUserBootstrapDbWriter::ensure_user_on(&db, req_empty_email).await.is_err());
+        assert!(
+            AuthUserBootstrapDbWriter::ensure_user_on(&db, req_empty_email)
+                .await
+                .is_err()
+        );
 
         let req_empty_password = AuthUserBootstrapRequest {
             tenant_id: Uuid::new_v4(),
@@ -298,7 +312,11 @@ mod tests {
             name: "Admin".to_string(),
             password: "".to_string(),
         };
-        assert!(AuthUserBootstrapDbWriter::ensure_user_on(&db, req_empty_password).await.is_err());
+        assert!(
+            AuthUserBootstrapDbWriter::ensure_user_on(&db, req_empty_password)
+                .await
+                .is_err()
+        );
 
         let req_empty_name = AuthUserBootstrapRequest {
             tenant_id: Uuid::new_v4(),
@@ -306,15 +324,45 @@ mod tests {
             name: "   ".to_string(),
             password: "password123".to_string(),
         };
-        assert!(AuthUserBootstrapDbWriter::ensure_user_on(&db, req_empty_name).await.is_err());
+        assert!(
+            AuthUserBootstrapDbWriter::ensure_user_on(&db, req_empty_name)
+                .await
+                .is_err()
+        );
+
+        let req_invalid_email = AuthUserBootstrapRequest {
+            tenant_id: Uuid::new_v4(),
+            email: "not-an-email".to_string(),
+            name: "Admin".to_string(),
+            password: "long-enough-password".to_string(),
+        };
+        assert!(matches!(
+            AuthUserBootstrapDbWriter::ensure_user_on(&db, req_invalid_email).await,
+            Err(AuthLifecycleMutationError::Validation(_))
+        ));
+
+        let req_weak_password = AuthUserBootstrapRequest {
+            tenant_id: Uuid::new_v4(),
+            email: "admin@example.com".to_string(),
+            name: "Admin".to_string(),
+            password: "short".to_string(),
+        };
+        assert!(matches!(
+            AuthUserBootstrapDbWriter::ensure_user_on(&db, req_weak_password).await,
+            Err(AuthLifecycleMutationError::Validation(_))
+        ));
 
         // find_user_on with nil tenant or empty email returns Ok(None)
         assert_eq!(
-            AuthUserBootstrapDbWriter::find_user_on(&db, Uuid::nil(), "admin@example.com").await.unwrap(),
+            AuthUserBootstrapDbWriter::find_user_on(&db, Uuid::nil(), "admin@example.com")
+                .await
+                .unwrap(),
             None
         );
         assert_eq!(
-            AuthUserBootstrapDbWriter::find_user_on(&db, Uuid::new_v4(), "   ").await.unwrap(),
+            AuthUserBootstrapDbWriter::find_user_on(&db, Uuid::new_v4(), "   ")
+                .await
+                .unwrap(),
             None
         );
     }

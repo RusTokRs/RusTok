@@ -741,7 +741,7 @@ impl ExternalPrebuiltIngressService {
 
                 let size = staged.size_bytes;
                 let publish_result = self.blobs.publish(&staged).await;
-                crate::oci::remove_staged_file_best_effort(&path).await;
+                crate::remove_staged_file_best_effort(&path).await;
 
                 if let Err(error) = publish_result {
                     self.blobs.discard_best_effort(&staged).await;
