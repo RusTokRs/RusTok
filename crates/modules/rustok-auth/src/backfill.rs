@@ -144,6 +144,9 @@ mod tests {
             tenant_id: uuid::Uuid::new_v4(),
             limit: 50,
         };
-        assert_eq!(super::validate_backfill_request(&valid_request).unwrap(), 50);
+        assert_eq!(
+            super::validate_backfill_request(&valid_request).unwrap(),
+            50
+        );
     }
 }

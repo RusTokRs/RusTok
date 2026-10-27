@@ -702,6 +702,154 @@ pub async fn delete_user_details(
     }
 }
 
+pub const ISSUE_USER_INVITE_MUTATION: &str = r#"
+mutation IssueUserInvite($input: IssueUserInviteInput!) {
+    issueUserInvite(input: $input) {
+        token
+        invite { id email role issuedBy expiresAt revokedAt createdAt }
+    }
+}
+"#;
+
+pub const REVOKE_USER_INVITE_MUTATION: &str = r#"
+mutation RevokeUserInvite($id: UUID!) {
+    revokeUserInvite(id: $id) {
+        id email role issuedBy expiresAt revokedAt createdAt
+    }
+}
+"#;
+
+pub const USER_INVITES_QUERY: &str = r#"
+query UserInvites($limit: Int) {
+    userInvites(limit: $limit) {
+        id email role issuedBy expiresAt revokedAt createdAt
+    }
+}
+"#;
+
+#[derive(serde::Serialize)]
+struct IssueUserInviteVariables {
+    input: crate::model::IssueUserInviteInput,
+}
+
+#[derive(serde::Deserialize)]
+struct IssueUserInviteResponse {
+    #[serde(rename = "issueUserInvite")]
+    issue_user_invite: crate::model::IssuedUserInvite,
+}
+
+#[derive(serde::Serialize)]
+struct RevokeUserInviteVariables {
+    id: String,
+}
+
+#[derive(serde::Deserialize)]
+struct RevokeUserInviteResponse {
+    #[serde(rename = "revokeUserInvite")]
+    revoke_user_invite: crate::model::UserInvite,
+}
+
+#[derive(serde::Serialize)]
+struct UserInvitesVariables {
+    limit: Option<i64>,
+}
+
+#[derive(serde::Deserialize)]
+struct UserInvitesResponse {
+    #[serde(rename = "userInvites")]
+    user_invites: Vec<crate::model::UserInvite>,
+}
+
+async fn issue_user_invite_graphql(
+    token: Option<String>,
+    tenant: Option<String>,
+    input: crate::model::IssueUserInviteInput,
+) -> Result<crate::model::IssuedUserInvite, ApiError> {
+    let response = request::<IssueUserInviteVariables, IssueUserInviteResponse>(
+        ISSUE_USER_INVITE_MUTATION,
+        IssueUserInviteVariables { input },
+        token,
+        tenant,
+    )
+    .await
+    .map_err(|err| ApiError::Graphql(err.to_string()))?;
+
+    Ok(response.issue_user_invite)
+}
+
+pub async fn issue_user_invite(
+    token: Option<String>,
+    tenant: Option<String>,
+    input: crate::model::IssueUserInviteInput,
+) -> Result<crate::model::IssuedUserInvite, ApiError> {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => native_server_adapter::issue_user_invite_native(input)
+            .await
+            .map_err(ApiError::from),
+        UiTransportPath::Graphql => issue_user_invite_graphql(token, tenant, input).await,
+    }
+}
+
+async fn revoke_user_invite_graphql(
+    token: Option<String>,
+    tenant: Option<String>,
+    id: String,
+) -> Result<crate::model::UserInvite, ApiError> {
+    let response = request::<RevokeUserInviteVariables, RevokeUserInviteResponse>(
+        REVOKE_USER_INVITE_MUTATION,
+        RevokeUserInviteVariables { id },
+        token,
+        tenant,
+    )
+    .await
+    .map_err(|err| ApiError::Graphql(err.to_string()))?;
+
+    Ok(response.revoke_user_invite)
+}
+
+pub async fn revoke_user_invite(
+    token: Option<String>,
+    tenant: Option<String>,
+    id: String,
+) -> Result<crate::model::UserInvite, ApiError> {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => native_server_adapter::revoke_user_invite_native(id)
+            .await
+            .map_err(ApiError::from),
+        UiTransportPath::Graphql => revoke_user_invite_graphql(token, tenant, id).await,
+    }
+}
+
+async fn fetch_user_invites_graphql(
+    token: Option<String>,
+    tenant: Option<String>,
+) -> Result<Vec<crate::model::UserInvite>, ApiError> {
+    let response = request::<UserInvitesVariables, UserInvitesResponse>(
+        USER_INVITES_QUERY,
+        UserInvitesVariables { limit: Some(100) },
+        token,
+        tenant,
+    )
+    .await
+    .map_err(|err| ApiError::Graphql(err.to_string()))?;
+
+    Ok(response.user_invites)
+}
+
+pub async fn fetch_user_invites(
+    token: Option<String>,
+    tenant: Option<String>,
+) -> Result<Vec<crate::model::UserInvite>, String> {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => native_server_adapter::list_user_invites_native(100)
+            .await
+            .map_err(|err| err.to_string()),
+        UiTransportPath::Graphql => fetch_user_invites_graphql(token, tenant)
+            .await
+            .map_err(|err| err.to_string()),
+    }
+}
+
 pub const CREATE_OAUTH_APP_MUTATION: &str = r#"
 mutation CreateOAuthApp($input: CreateOAuthAppInput!) {
   createOAuthApp(input: $input) {

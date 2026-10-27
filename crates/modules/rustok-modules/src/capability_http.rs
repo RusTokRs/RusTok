@@ -334,12 +334,15 @@ impl CapabilityBroker for ArtifactHttpCapabilityBroker {
         // a chunked response without Content-Length must not be buffered
         // in full before the limit is checked.
         let mut bytes = Vec::new();
-        while let Some(chunk) = response.chunk().await.map_err(|err| {
-            SandboxError::HostCapability {
-                capability: call.capability.clone(),
-                message: format!("reading HTTP response body failed: {err}"),
-            }
-        })? {
+        while let Some(chunk) =
+            response
+                .chunk()
+                .await
+                .map_err(|err| SandboxError::HostCapability {
+                    capability: call.capability.clone(),
+                    message: format!("reading HTTP response body failed: {err}"),
+                })?
+        {
             if bytes.len() + chunk.len() > self.max_response_bytes {
                 return Err(SandboxError::HostCapability {
                     capability: call.capability.clone(),

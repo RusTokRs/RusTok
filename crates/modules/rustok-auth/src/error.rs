@@ -26,6 +26,9 @@ pub enum AuthError {
     #[error("Refresh token generation failed")]
     RefreshTokenGenerationFailed,
 
+    #[error("Validation failed: {0}")]
+    Validation(String),
+
     #[error("Internal error: {0}")]
     Internal(String),
 }

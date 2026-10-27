@@ -272,14 +272,24 @@ mod tests {
 
     #[test]
     fn supplied_token_handles_duplicate_and_conflicting_headers() {
-        let mut req = Request::builder().uri("/metrics").body(Body::empty()).unwrap();
-        req.headers_mut().append(header::AUTHORIZATION, "Bearer tok1".parse().unwrap());
-        req.headers_mut().append(header::AUTHORIZATION, "Bearer tok1".parse().unwrap());
+        let mut req = Request::builder()
+            .uri("/metrics")
+            .body(Body::empty())
+            .unwrap();
+        req.headers_mut()
+            .append(header::AUTHORIZATION, "Bearer tok1".parse().unwrap());
+        req.headers_mut()
+            .append(header::AUTHORIZATION, "Bearer tok1".parse().unwrap());
         assert_eq!(supplied_token(&req), Some("tok1"));
 
-        let mut req2 = Request::builder().uri("/metrics").body(Body::empty()).unwrap();
-        req2.headers_mut().append(header::AUTHORIZATION, "Bearer tok1".parse().unwrap());
-        req2.headers_mut().append(header::AUTHORIZATION, "Bearer tok2".parse().unwrap());
+        let mut req2 = Request::builder()
+            .uri("/metrics")
+            .body(Body::empty())
+            .unwrap();
+        req2.headers_mut()
+            .append(header::AUTHORIZATION, "Bearer tok1".parse().unwrap());
+        req2.headers_mut()
+            .append(header::AUTHORIZATION, "Bearer tok2".parse().unwrap());
         assert_eq!(supplied_token(&req2), None);
     }
 }

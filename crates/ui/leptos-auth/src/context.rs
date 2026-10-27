@@ -105,13 +105,16 @@ impl AuthContext {
     pub async fn sign_out(&self) -> Result<(), AuthError> {
         self.is_loading.set(true);
 
-        if let Some(session) = self.session.get_untracked() {
-            let _ = transport::sign_out(
-                session.token.clone(),
-                session.refresh_token.clone(),
-                session.tenant.clone(),
-            )
-            .await;
+        // The refresh token lives in the server-held cookie, so logout
+        // only needs the tenant; it runs even without in-memory state
+        // (e.g. right after a reload) to clear that cookie.
+        let tenant = self
+            .session
+            .get_untracked()
+            .map(|session| session.tenant)
+            .or_else(storage::get_tenant);
+        if let Some(tenant) = tenant {
+            let _ = transport::sign_out(tenant).await;
         }
 
         storage::clear_session();
@@ -145,17 +148,28 @@ impl AuthContext {
     }
 
     pub async fn refresh_session(&self) -> Result<(), AuthError> {
-        if let Some(session) = self.session.get_untracked() {
-            let (new_session, new_user) =
-                transport::refresh_token(session.refresh_token.clone(), session.tenant.clone())
-                    .await?;
-            let _ = storage::save_session(&new_session);
-            let _ = storage::save_user(&new_user);
-            self.session.set(Some(new_session));
-            self.user.set(Some(new_user));
-            Ok(())
+        let tenant = self
+            .session
+            .get_untracked()
+            .map(|session| session.tenant)
+            .or_else(storage::get_tenant)
+            .ok_or(AuthError::Unauthorized)?;
+        let (new_session, new_user) = transport::refresh_session(tenant).await?;
+        let _ = storage::save_session(&new_session);
+        let _ = storage::save_user(&new_user);
+        self.session.set(Some(new_session));
+        self.user.set(Some(new_user));
+        Ok(())
+    }
+
+    /// Restore session state after a page load: revalidate the
+    /// in-memory/SSR-provided session when present, otherwise attempt
+    /// a silent cookie refresh for the persisted tenant.
+    pub async fn restore_session(&self) -> Result<(), AuthError> {
+        if self.session.get_untracked().is_some() {
+            self.fetch_current_user().await
         } else {
-            Err(AuthError::Unauthorized)
+            self.refresh_session().await
         }
     }
 
@@ -200,13 +214,18 @@ pub fn AuthProvider(children: Children) -> impl IntoView {
 
     #[cfg(target_arch = "wasm32")]
     {
-        // Browser compatibility mode initializes from LocalStorage and refreshes the bearer token.
+        // Credentials are never read from browser storage: restore the
+        // session from the server-held HttpOnly cookie (silent
+        // refresh), keeping the loading flag up so protected routes
+        // do not flash the login form first.
         let auth_for_init = auth_context.clone();
-        Effect::new(move |_| {
-            if auth_for_init.session.get().is_some() {
+        Effect::new(move |previous: Option<()>| {
+            if previous.is_none() {
                 let auth = auth_for_init.clone();
                 spawn_local(async move {
-                    let _ = auth.fetch_current_user().await;
+                    auth.is_loading.set(true);
+                    let _ = auth.restore_session().await;
+                    auth.is_loading.set(false);
                 });
             }
         });

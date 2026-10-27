@@ -305,7 +305,12 @@ fn validate_runner_token(headers: &axum::http::HeaderMap, expected: &str) -> boo
             return false;
         }
     }
-    let Some(provided) = first.to_str().ok().map(str::trim).filter(|value| !value.is_empty()) else {
+    let Some(provided) = first
+        .to_str()
+        .ok()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
         return false;
     };
     bool::from(provided.as_bytes().ct_eq(expected_trimmed.as_bytes()))

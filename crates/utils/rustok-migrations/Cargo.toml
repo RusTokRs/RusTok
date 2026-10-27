@@ -50,7 +50,7 @@ rustok-marketplace-allocation.workspace = true
 rustok-marketplace-commission.workspace = true
 rustok-marketplace-balance.workspace = true
 rustok-marketplace-payout.workspace = true
-rustok-moderation.workspace = true
+rustok-moderation = { workspace = true, features = ["server"] }
 rustok-content.workspace = true
 rustok-blog.workspace = true
 rustok-comments = { workspace = true, features = ["server"] }

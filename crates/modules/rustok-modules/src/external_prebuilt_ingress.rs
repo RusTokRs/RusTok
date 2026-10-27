@@ -726,7 +726,7 @@ impl ExternalPrebuiltIngressService {
             )
             .await;
         if let Some(path) = temporary_payload_path {
-            crate::installation::remove_staged_file_best_effort(&path).await;
+            crate::remove_staged_file_best_effort(&path).await;
         }
         result
     }
@@ -817,6 +817,7 @@ impl ExternalPrebuiltIngressService {
 
                 let size = staged.size_bytes;
                 let publish_result = self.blobs.publish(&staged).await;
+                crate::remove_staged_file_best_effort(&path).await;
 
                 if let Err(error) = publish_result {
                     self.blobs.discard_best_effort(&staged).await;

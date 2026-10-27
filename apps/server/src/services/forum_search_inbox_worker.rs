@@ -57,7 +57,9 @@ pub fn start_forum_search_inbox_worker_if_ready(ctx: &ServerRuntimeContext) -> R
                     .to_string(),
             )
         })?;
-    let Some(forum_source) = source_registry.build_with_extensions("forum", ctx.db_clone(), extensions.as_ref()) else {
+    let Some(forum_source) =
+        source_registry.build_with_extensions("forum", ctx.db_clone(), extensions.as_ref())
+    else {
         tracing::warn!(
             "Forum Search inbox worker not started: Forum projection source is unavailable"
         );

@@ -78,7 +78,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
 
     verify_translation_journal_backfill(&seed_connection, backfill_tenant_id).await?;
 
-    let owner = ServerAuthAdminMutationProvider::new(seed_connection.clone());
+    let owner = ServerAuthAdminMutationProvider::new(
+        seed_connection.clone(),
+        AuthConfig::new("oauth-translation-target-test-secret-32b".to_string()),
+    );
     let created = create_app(
         &owner,
         tenant_id,
@@ -792,6 +795,7 @@ fn owner_context(
         tenant_id,
         request_id: Some(format!("oauth-owner-postgres-{suffix}")),
         locale: Some(locale.to_string()),
+        principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
     }
 }
 

@@ -56,11 +56,16 @@ fn auth_runtime(ctx: &Context<'_>) -> Result<AuthLifecycleRuntime> {
 
 fn mutation_context(ctx: &Context<'_>, auth: &AuthContext) -> AuthAdminMutationContext {
     let locale = ctx.data::<Locale>().copied().unwrap_or_default();
+    let principal_kind = ctx
+        .data::<AuthPrincipalContext>()
+        .ok()
+        .map(|context| context.kind);
     AuthAdminMutationContext {
         actor_id: auth.user_id,
         tenant_id: auth.tenant_id,
         request_id: None,
         locale: Some(locale.as_str().to_string()),
+        principal_kind,
     }
 }
 
@@ -103,7 +108,10 @@ fn map_error(error: AuthAdminMutationError) -> FieldError {
             <FieldError as GraphQLError>::not_found(&message)
         }
         AuthAdminMutationError::Internal(message) => {
-            <FieldError as GraphQLError>::internal_error(&message)
+            // Internal detail (database/driver text) is logged, never
+            // returned to the client.
+            tracing::error!(error = %message, "auth admin mutation failed internally");
+            <FieldError as GraphQLError>::internal_error("Internal error")
         }
     }
 }
@@ -130,6 +138,12 @@ fn map_auth_lifecycle_error(ctx: &Context<'_>, error: AuthLifecycleMutationError
         AuthLifecycleMutationError::UserInactive => {
             unauthenticated_auth_error(&t("auth.user_inactive"))
         }
+        AuthLifecycleMutationError::AccountLocked => {
+            unauthenticated_auth_error(&t("auth.account_locked"))
+        }
+        AuthLifecycleMutationError::EmailNotVerified => {
+            unauthenticated_auth_error(&t("auth.email_not_verified"))
+        }
         AuthLifecycleMutationError::InvalidRefreshToken => {
             unauthenticated_auth_error(&t("auth.invalid_refresh_token"))
         }
@@ -149,7 +163,8 @@ fn map_auth_lifecycle_error(ctx: &Context<'_>, error: AuthLifecycleMutationError
             <FieldError as GraphQLError>::bad_user_input(&message)
         }
         AuthLifecycleMutationError::Internal(message) => {
-            <FieldError as GraphQLError>::internal_error(&message)
+            tracing::error!(error = %message, "auth lifecycle mutation failed internally");
+            <FieldError as GraphQLError>::internal_error("Internal error")
         }
     }
 }

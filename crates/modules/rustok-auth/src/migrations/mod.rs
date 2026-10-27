@@ -11,6 +11,8 @@ mod m20260716_000001_create_flex_field_definition_cache_generation;
 mod m20260720_000002_enforce_oauth_tenant_integrity;
 mod m20260721_000009_move_oauth_app_copy_to_translations;
 mod m20260913_000010_add_oauth_app_translation_target;
+mod m20261025_000002_oauth_consent_partial_unique;
+mod m20261025_000004_create_auth_invites;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -28,6 +30,8 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260720_000002_enforce_oauth_tenant_integrity::Migration),
         Box::new(m20260721_000009_move_oauth_app_copy_to_translations::Migration),
         Box::new(m20260913_000010_add_oauth_app_translation_target::Migration),
+        Box::new(m20261025_000002_oauth_consent_partial_unique::Migration),
+        Box::new(m20261025_000004_create_auth_invites::Migration),
     ]
 }
 

@@ -293,16 +293,14 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, default_locale: String) -> 
         let channels_value = channel_slugs.get_untracked();
         let starter_id_value = selected_starter_id.get_untracked();
         let template_value = selected_template.get_untracked();
-        let draft = core::build_create_page_draft_with_starter(
-            core::PageDraftFormInput {
-                locale: &locale_value,
-                title: &title_value,
-                slug: &slug_value,
-                channel_slugs: &channels_value,
-                starter_id: Some(&starter_id_value),
-                template: Some(&template_value),
-            },
-        );
+        let draft = core::build_create_page_draft_with_starter(core::PageDraftFormInput {
+            locale: &locale_value,
+            title: &title_value,
+            slug: &slug_value,
+            channel_slugs: &channels_value,
+            starter_id: Some(&starter_id_value),
+            template: Some(&template_value),
+        });
         if let Some(field) = core::missing_required_page_field(&draft) {
             error.set(Some(format!("Required page field is missing: {field:?}")));
             return;
@@ -1205,7 +1203,11 @@ fn PagesFlyBuilder(
                 .get_untracked()
                 .as_deref()
                 .filter(|s| !s.trim().is_empty())
-                .map(fly_browser::derive_csrf_token)
+                // Derive from the session id, not the access token:
+                // the id is stable across refresh rotation, so the
+                // embedded CSRF token stays valid for the session.
+                .and_then(leptos_auth::session_id_from_access_token)
+                .map(|session_id| fly_browser::derive_csrf_token(&session_id))
             {
                 host = host.with_browser_csrf_token(csrf);
             }

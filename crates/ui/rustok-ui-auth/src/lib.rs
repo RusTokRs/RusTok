@@ -11,10 +11,15 @@ pub struct AuthUser {
     pub role: String,
 }
 
+/// In-memory browser session: the short-lived access token only.
+///
+/// The refresh token is deliberately NOT part of this value — it
+/// lives in an HttpOnly cookie (direct cookie endpoints for CSR, the
+/// SSR host's BFF cookie for native transport) so that no JavaScript
+/// in the page can ever read or exfiltrate it.
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AuthSession {
     pub token: String,
-    pub refresh_token: String,
     pub expires_at: i64,
     pub tenant: String,
 }
@@ -36,7 +41,6 @@ impl std::fmt::Debug for AuthSession {
         formatter
             .debug_struct("AuthSession")
             .field("token", &"<redacted>")
-            .field("refresh_token", &"<redacted>")
             .field("expires_at", &self.expires_at)
             .field("tenant", &self.tenant)
             .finish()

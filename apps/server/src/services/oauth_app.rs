@@ -15,12 +15,33 @@ use rustok_api::Permission;
 use rustok_api::context::scope_matches;
 use rustok_core::{Rbac, UserRole};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
-    TransactionTrait,
+    ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
+    TransactionTrait, sea_query::Expr,
 };
 use std::str::FromStr;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
+
+/// Outcome classification for one consent-grant attempt: a unique-index
+/// race against a concurrent first grant is retryable, everything else
+/// is a plain internal failure.
+enum GrantConsentAttempt {
+    UniqueRace,
+    Fatal(Error),
+}
+
+impl GrantConsentAttempt {
+    fn classify(error: sea_orm::DbErr) -> Self {
+        if matches!(
+            error.sql_err(),
+            Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+        ) {
+            Self::UniqueRace
+        } else {
+            Self::Fatal(Error::InternalServerError)
+        }
+    }
+}
 
 /// Input for creating a new OAuth app
 #[derive(Debug, Clone)]
@@ -155,7 +176,15 @@ impl OAuthAppService {
             &granted_permissions,
         )?;
 
+        // Go through the ActiveModel wrapper: name/description are
+        // translation-owned (`#[sea_orm(ignore)]` here) and its update
+        // path syncs them into oauth_app_translations. The stored
+        // client secret is explicitly excluded via NotSet so this
+        // (possibly stale) read can never revert a concurrent secret
+        // rotation.
+        let existing_secret_hash = app.client_secret_hash.clone();
         let mut active: OAuthAppActiveModel = app.into();
+        active.client_secret_hash = ActiveValue::NotSet;
         active.name = Set(input.name);
         active.description = Set(input.description);
         active.icon_url = Set(input.icon_url);
@@ -169,10 +198,17 @@ impl OAuthAppService {
         active.granted_permissions = Set(to_json_array(&granted_permissions)?);
         active.updated_at = Set(Utc::now().into());
 
-        active
+        let mut updated = active
             .update(db)
             .await
-            .map_err(|_| Error::InternalServerError)
+            .map_err(|_| Error::InternalServerError)?;
+        // The update above deliberately leaves the stored secret
+        // untouched (NotSet); reflect the pre-existing hash in the
+        // returned model instead of reporting "no secret".
+        if updated.client_secret_hash.is_none() {
+            updated.client_secret_hash = existing_secret_hash;
+        }
+        Ok(updated)
     }
 
     /// Find an active app by its public client_id
@@ -215,14 +251,24 @@ impl OAuthAppService {
         let new_secret = generate_client_secret()?;
         let new_hash = auth::hash_password_async(new_secret.clone()).await?;
 
-        let mut active: OAuthAppActiveModel = app.into();
-        active.client_secret_hash = Set(Some(new_hash));
-        active.updated_at = Set(Utc::now().into());
-
-        let updated = active
-            .update(db)
+        // Column-scoped write for the same reason as in update_app:
+        // never rewrite unrelated fields from a stale read.
+        oauth_apps::Entity::update_many()
+            .col_expr(
+                oauth_apps::Column::ClientSecretHash,
+                Expr::value(Some(new_hash)),
+            )
+            .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(Utc::now()))
+            .filter(oauth_apps::Column::Id.eq(app_id))
+            .exec(db)
             .await
             .map_err(|_| Error::InternalServerError)?;
+
+        let updated = OAuthApps::find_by_id(app_id)
+            .one(db)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .ok_or_else(|| Error::NotFound)?;
 
         Ok(RotateSecretResult {
             app: updated,
@@ -248,16 +294,21 @@ impl OAuthAppService {
 
         let now = Utc::now();
 
-        // Deactivate the app
-        let mut active: OAuthAppActiveModel = app.into();
-        active.is_active = Set(false);
-        active.revoked_at = Set(Some(now.into()));
-        active.updated_at = Set(now.into());
-
-        let updated = active
-            .update(&tx)
+        // Deactivate the app (column-scoped; see update_app)
+        oauth_apps::Entity::update_many()
+            .col_expr(oauth_apps::Column::IsActive, Expr::value(false))
+            .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Some(now)))
+            .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now))
+            .filter(oauth_apps::Column::Id.eq(app_id))
+            .exec(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?;
+
+        let updated = OAuthApps::find_by_id(app_id)
+            .one(&tx)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .ok_or_else(|| Error::NotFound)?;
 
         // Revoke all active tokens for this app
         use sea_orm::sea_query::Expr;
@@ -287,20 +338,20 @@ impl OAuthAppService {
         auth::verify_password(secret, hash)
     }
 
-    /// Update last_used_at for an app
+    /// Update last_used_at for an app (column-scoped; see update_app)
     pub async fn touch_last_used(db: &DatabaseConnection, app_id: Uuid) -> Result<()> {
-        let app = OAuthApps::find_by_id(app_id)
-            .one(db)
-            .await
-            .map_err(|_| Error::InternalServerError)?
-            .ok_or_else(|| Error::NotFound)?;
-
-        let mut active: OAuthAppActiveModel = app.into();
-        active.last_used_at = Set(Some(Utc::now().into()));
-        active
-            .update(db)
+        let updated = oauth_apps::Entity::update_many()
+            .col_expr(
+                oauth_apps::Column::LastUsedAt,
+                Expr::value(Some(Utc::now())),
+            )
+            .filter(oauth_apps::Column::Id.eq(app_id))
+            .exec(db)
             .await
             .map_err(|_| Error::InternalServerError)?;
+        if updated.rows_affected == 0 {
+            return Err(Error::NotFound);
+        }
 
         Ok(())
     }
@@ -419,7 +470,16 @@ impl OAuthAppService {
         }
     }
 
-    /// Grant or update user consent for an application
+    /// Grant user consent for an application, replacing any previously
+    /// consented scope set with exactly the approved one.
+    ///
+    /// Re-granting after a revoke revives the soft-deleted consent row in
+    /// place instead of inserting a second row: with the historical full
+    /// unique index that insert failed forever (the index is now partial
+    /// over active rows, and revive-in-place keeps a single row per
+    /// (app, user, tenant) regardless). Scope narrowing is possible by
+    /// re-granting a narrower set; the previous merge-only behavior made
+    /// consent monotonically grow.
     pub async fn grant_consent(
         db: &DatabaseConnection,
         app_id: Uuid,
@@ -427,45 +487,94 @@ impl OAuthAppService {
         tenant_id: Uuid,
         scopes: Vec<String>,
     ) -> Result<()> {
-        let existing = OAuthConsents::find_active_consent(db, app_id, user_id, tenant_id)
+        let app = OAuthApps::find_by_id(app_id)
+            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+            .one(db)
             .await
-            .map_err(|_| Error::InternalServerError)?;
+            .map_err(|_| Error::InternalServerError)?
+            .filter(|app| app.is_active())
+            .ok_or(Error::NotFound)?;
 
-        if let Some(consent) = existing {
-            // Merge scopes
-            let mut current_scopes = consent.scopes_list();
-            for new_scope in scopes {
-                if !current_scopes.contains(&new_scope) {
-                    // simplified array merge
-                    current_scopes.push(new_scope);
-                }
-            }
-
-            let mut active: OAuthConsentActiveModel = consent.into();
-            active.scopes =
-                Set(serde_json::to_value(&current_scopes)
-                    .map_err(|_| Error::InternalServerError)?);
-            active.granted_at = Set(Utc::now().into());
-            active
-                .update(db)
-                .await
-                .map_err(|_| Error::InternalServerError)?;
-        } else {
-            // Create new consent
-            OAuthConsentActiveModel {
-                id: Set(Uuid::new_v4()),
-                app_id: Set(app_id),
-                user_id: Set(user_id),
-                tenant_id: Set(tenant_id),
-                scopes: Set(serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?),
-                granted_at: Set(Utc::now().into()),
-                revoked_at: Set(None),
-            }
-            .insert(db)
-            .await
-            .map_err(|_| Error::InternalServerError)?;
+        let app_scopes = app.scopes_list();
+        if scopes
+            .iter()
+            .any(|scope| !scope_matches(&app_scopes, scope))
+        {
+            return Err(Error::BadRequest(
+                "Requested scopes exceed the application's registered scopes".to_string(),
+            ));
         }
 
+        let scopes_json = serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?;
+
+        // Two concurrent first-time grants can both observe "no consent
+        // row" and race to insert; the partial unique index lets exactly
+        // one win. The loser retries and lands on the update path
+        // instead of surfacing a 500 for a legitimate double-submit.
+        const MAX_ATTEMPTS: usize = 3;
+        for attempt in 0..MAX_ATTEMPTS {
+            match Self::grant_consent_once(db, app_id, user_id, tenant_id, &scopes_json).await {
+                Ok(()) => return Ok(()),
+                Err(GrantConsentAttempt::UniqueRace) if attempt + 1 < MAX_ATTEMPTS => continue,
+                Err(GrantConsentAttempt::UniqueRace) => {
+                    return Err(Error::InternalServerError);
+                }
+                Err(GrantConsentAttempt::Fatal(error)) => return Err(error),
+            }
+        }
+
+        Err(Error::InternalServerError)
+    }
+
+    async fn grant_consent_once(
+        db: &DatabaseConnection,
+        app_id: Uuid,
+        user_id: Uuid,
+        tenant_id: Uuid,
+        scopes_json: &serde_json::Value,
+    ) -> std::result::Result<(), GrantConsentAttempt> {
+        let tx = db
+            .begin()
+            .await
+            .map_err(|_| GrantConsentAttempt::Fatal(Error::InternalServerError))?;
+        let existing = OAuthConsents::find()
+            .filter(crate::models::oauth_consents::Column::AppId.eq(app_id))
+            .filter(crate::models::oauth_consents::Column::UserId.eq(user_id))
+            .filter(crate::models::oauth_consents::Column::TenantId.eq(tenant_id))
+            .one(&tx)
+            .await
+            .map_err(|_| GrantConsentAttempt::Fatal(Error::InternalServerError))?;
+
+        match existing {
+            Some(consent) => {
+                let mut active: OAuthConsentActiveModel = consent.into();
+                active.scopes = Set(scopes_json.clone());
+                active.granted_at = Set(Utc::now().into());
+                active.revoked_at = Set(None);
+                active
+                    .update(&tx)
+                    .await
+                    .map_err(|error| GrantConsentAttempt::classify(error))?;
+            }
+            None => {
+                OAuthConsentActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    app_id: Set(app_id),
+                    user_id: Set(user_id),
+                    tenant_id: Set(tenant_id),
+                    scopes: Set(scopes_json.clone()),
+                    granted_at: Set(Utc::now().into()),
+                    revoked_at: Set(None),
+                }
+                .insert(&tx)
+                .await
+                .map_err(|error| GrantConsentAttempt::classify(error))?;
+            }
+        }
+
+        tx.commit()
+            .await
+            .map_err(|error| GrantConsentAttempt::classify(error))?;
         Ok(())
     }
 
@@ -941,9 +1050,56 @@ fn validate_app_configuration(
     }
 
     for redirect_uri in redirect_uris {
-        Url::parse(redirect_uri).map_err(|error| {
-            Error::BadRequest(format!("Invalid redirect URI '{redirect_uri}': {error}"))
-        })?;
+        validate_redirect_uri(app_type, redirect_uri)?;
+    }
+
+    Ok(())
+}
+
+/// Redirect URIs are compared byte-for-byte at authorize time, so the
+/// registered value itself must be a safe absolute URI: no fragment
+/// (RFC 6749 section 3.1.2), no user info, TLS everywhere except
+/// loopback (RFC 8252 section 7.3), and private-use schemes only for
+/// native/mobile apps (RFC 8252 section 7.1).
+fn validate_redirect_uri(app_type: &str, redirect_uri: &str) -> Result<()> {
+    let invalid = |reason: &str| {
+        Error::BadRequest(format!("Invalid redirect URI '{redirect_uri}': {reason}"))
+    };
+    let url = Url::parse(redirect_uri).map_err(|error| invalid(&error.to_string()))?;
+
+    if url.fragment().is_some() {
+        return Err(invalid("fragment component is not allowed"));
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(invalid("user info is not allowed"));
+    }
+
+    match url.scheme() {
+        "https" => {
+            if url.host_str().is_none_or(str::is_empty) {
+                return Err(invalid("host is required"));
+            }
+        }
+        "http" => {
+            let host = url.host_str().unwrap_or_default();
+            let loopback = host == "localhost"
+                || host
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|ip| ip.is_loopback());
+            if !loopback {
+                return Err(invalid(
+                    "http is only allowed for loopback hosts; use https",
+                ));
+            }
+        }
+        scheme => {
+            if matches!(scheme, "data" | "javascript" | "file" | "about" | "blob") {
+                return Err(invalid("scheme is not allowed"));
+            }
+            if app_type != "mobile" {
+                return Err(invalid("custom schemes are only allowed for mobile apps"));
+            }
+        }
     }
 
     Ok(())
@@ -1698,23 +1854,26 @@ mod tests {
     async fn manual_app_crud_and_token_revocation_round_trip() {
         let (db, tenant) = test_db_with_tenant().await;
 
-        let created = OAuthAppService::create_app(
-            &db,
-            tenant.id,
-            CreateOAuthAppInput {
-                name: "Partner app".to_string(),
-                slug: "partner-app".to_string(),
-                description: Some("Third-party integration".to_string()),
-                app_type: "third_party".to_string(),
-                icon_url: Some("https://example.com/icon.png".to_string()),
-                redirect_uris: vec!["https://partner.example.com/callback".to_string()],
-                scopes: vec!["catalog:read".to_string()],
-                grant_types: vec![
-                    "authorization_code".to_string(),
-                    "refresh_token".to_string(),
-                ],
-                granted_permissions: vec![],
-            },
+        let created = oauth_apps::scope_runtime_copy_locale(
+            "en".to_string(),
+            OAuthAppService::create_app(
+                &db,
+                tenant.id,
+                CreateOAuthAppInput {
+                    name: "Partner app".to_string(),
+                    slug: "partner-app".to_string(),
+                    description: Some("Third-party integration".to_string()),
+                    app_type: "third_party".to_string(),
+                    icon_url: Some("https://example.com/icon.png".to_string()),
+                    redirect_uris: vec!["https://partner.example.com/callback".to_string()],
+                    scopes: vec!["catalog:read".to_string()],
+                    grant_types: vec![
+                        "authorization_code".to_string(),
+                        "refresh_token".to_string(),
+                    ],
+                    granted_permissions: vec![],
+                },
+            ),
         )
         .await
         .expect("create app");
@@ -1728,22 +1887,25 @@ mod tests {
             vec!["https://partner.example.com/callback".to_string()]
         );
 
-        let updated = OAuthAppService::update_app(
-            &db,
-            tenant.id,
-            created.app.id,
-            UpdateOAuthAppInput {
-                name: "Partner app v2".to_string(),
-                description: Some("Updated description".to_string()),
-                icon_url: None,
-                redirect_uris: vec!["https://partner.example.com/oauth/callback".to_string()],
-                scopes: vec!["catalog:*".to_string()],
-                grant_types: vec![
-                    "authorization_code".to_string(),
-                    "refresh_token".to_string(),
-                ],
-                granted_permissions: vec![],
-            },
+        let updated = oauth_apps::scope_runtime_copy_locale(
+            "en".to_string(),
+            OAuthAppService::update_app(
+                &db,
+                tenant.id,
+                created.app.id,
+                UpdateOAuthAppInput {
+                    name: "Partner app v2".to_string(),
+                    description: Some("Updated description".to_string()),
+                    icon_url: None,
+                    redirect_uris: vec!["https://partner.example.com/oauth/callback".to_string()],
+                    scopes: vec!["catalog:*".to_string()],
+                    grant_types: vec![
+                        "authorization_code".to_string(),
+                        "refresh_token".to_string(),
+                    ],
+                    granted_permissions: vec![],
+                },
+            ),
         )
         .await
         .expect("update app");
@@ -1768,12 +1930,22 @@ mod tests {
                 .expect("verify rotated secret")
         );
 
+        let token_user = crate::models::users::ActiveModel::new(
+            tenant.id,
+            "oauth-app-token-user@example.com",
+            "unused-password-hash",
+        )
+        .insert(&db)
+        .await
+        .expect("insert token user");
+
         oauth_tokens::ActiveModel {
             id: Set(Uuid::new_v4()),
             app_id: Set(created.app.id),
-            user_id: Set(Some(Uuid::new_v4())),
+            user_id: Set(Some(token_user.id)),
             tenant_id: Set(tenant.id),
             token_hash: Set("refresh-token-hash".to_string()),
+            family_id: Set(None),
             grant_type: Set("authorization_code".to_string()),
             scopes: Set(serde_json::json!(["catalog:*"])),
             expires_at: Set((Utc::now() + chrono::Duration::days(1)).into()),

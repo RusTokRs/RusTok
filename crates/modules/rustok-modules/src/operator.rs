@@ -648,8 +648,7 @@ impl ModuleOperatorService {
                         CanonicalPresentationState::RecoveryRequired,
                         Some(ContainmentOutcome::Fenced),
                         vec![
-                            "Installation was rolled back with no serving predecessor"
-                                .to_string(),
+                            "Installation was rolled back with no serving predecessor".to_string(),
                         ],
                         Some("Investigate diagnostics and trigger recovery".to_string()),
                         None,
@@ -671,8 +670,7 @@ impl ModuleOperatorService {
         // pending candidate even while an older release keeps serving.
         let candidate_index = match candidate_index {
             Some(0) if serving_index.is_some() => {
-                let (_, latest_retired) =
-                    self.work_generation(latest.installation_id).await?;
+                let (_, latest_retired) = self.work_generation(latest.installation_id).await?;
                 if latest_retired { None } else { Some(0) }
             }
             other => other,

@@ -2,8 +2,9 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::Permission;
 use rustok_auth::{
-    AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UpdateUserCommand,
-    UserAdminMutationPort, UserMutationRecord,
+    AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, IssueUserInviteCommand,
+    IssuedUserInviteResult, UpdateUserCommand, UserAdminMutationPort, UserInviteRecord,
+    UserMutationRecord,
 };
 use rustok_core::events::EventTransport;
 use rustok_core::{UserRole, UserStatus, infer_user_role_from_permissions};
@@ -13,17 +14,19 @@ use rustok_rbac::{
     RbacCustomRoleAssignmentPlan, RbacCustomRoleAssignmentRequest, RbacRoleMutationOutcome,
     RbacRoleMutationPlan, RbacRoleMutationPolicyError, RbacUserRoleMutationRequest,
     plan_persisted_custom_role_assignment_on, plan_persisted_user_role_mutation_on,
-    replace_persisted_user_role_by_slug_on,
+    replace_persisted_user_role_by_slug_on, validate_custom_role_grant_on,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter,
-    QuerySelect, Set, TransactionTrait, sea_query::Expr,
+    QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use std::{str::FromStr, sync::Arc};
 use uuid::Uuid;
 
 use crate::auth::hash_password_async;
-use crate::models::{sessions, users};
+use sha2::{Digest, Sha256};
+
+use crate::models::{auth_invites, sessions, users};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
 use crate::services::rbac_cache_invalidation::publish_user_rbac_invalidation;
@@ -34,6 +37,22 @@ use crate::services::rbac_service::RbacService;
 use super::{
     ServerAuthAdminMutationProvider, super_admin_guard::ensure_active_super_admin_continuity,
 };
+
+/// Invite tokens stay valid for a week: long enough for out-of-band
+/// delivery by an administrator, short enough to bound exposure.
+const INVITE_TOKEN_TTL_SECS: u64 = 7 * 24 * 60 * 60;
+
+fn invite_record(invite: auth_invites::Model) -> UserInviteRecord {
+    UserInviteRecord {
+        id: invite.id,
+        email: invite.email,
+        role: invite.role,
+        issued_by: invite.issued_by,
+        expires_at: invite.expires_at.with_timezone(&Utc),
+        revoked_at: invite.revoked_at.map(|value| value.with_timezone(&Utc)),
+        created_at: invite.created_at.with_timezone(&Utc),
+    }
+}
 
 fn parse_user_status(value: &str) -> Result<UserStatus, AuthAdminMutationError> {
     let normalized = value.trim().to_ascii_lowercase();
@@ -115,7 +134,15 @@ fn map_lifecycle_error(error: AuthLifecycleError) -> AuthAdminMutationError {
         AuthLifecycleError::EmailAlreadyExists => {
             AuthAdminMutationError::Conflict("user email already exists".to_string())
         }
+        AuthLifecycleError::Validation(message) => AuthAdminMutationError::Validation(message),
         other => super::internal_admin_error(crate::error::Error::from(other)),
+    }
+}
+
+fn map_auth_input_error(error: rustok_auth::AuthError) -> AuthAdminMutationError {
+    match error {
+        rustok_auth::AuthError::Validation(message) => AuthAdminMutationError::Validation(message),
+        other => super::internal_admin_error(other),
     }
 }
 
@@ -127,6 +154,31 @@ fn map_custom_field_error(error: rustok_core::field_schema::FlexError) -> AuthAd
             )
         }
         other => super::internal_admin_error(other),
+    }
+}
+
+/// Resolve an admin-supplied role string to a built-in role or a
+/// tenant-defined custom role slug layered over the baseline customer
+/// membership. A malformed slug is a validation error rather than a
+/// silent downgrade to customer.
+fn parse_requested_role(
+    raw_role: &str,
+) -> Result<(UserRole, Option<String>), AuthAdminMutationError> {
+    match parse_user_role(raw_role) {
+        Ok(role) => Ok((role, None)),
+        Err(_) => {
+            let slug = raw_role.trim().to_lowercase();
+            let valid = (2..=64).contains(&slug.len())
+                && slug
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+            if !valid {
+                return Err(AuthAdminMutationError::Validation(format!(
+                    "unsupported user role: {raw_role}"
+                )));
+            }
+            Ok((UserRole::Customer, Some(slug)))
+        }
     }
 }
 
@@ -154,6 +206,25 @@ pub(super) fn map_role_mutation_policy_error(
 }
 
 impl ServerAuthAdminMutationProvider {
+    /// Publish an admin audit event inside the caller's transaction
+    /// (transactional outbox: the event commits exactly with the
+    /// mutation it describes; a publish failure drops the transaction
+    /// and rolls the mutation back).
+    async fn publish_admin_event_in_tx(
+        &self,
+        tx: &sea_orm::DatabaseTransaction,
+        context: &AuthAdminMutationContext,
+        event: DomainEvent,
+    ) -> Result<(), AuthAdminMutationError> {
+        let event_bus = TransactionalEventBus::new(
+            Arc::new(OutboxTransport::new(self.db.clone())) as Arc<dyn EventTransport>
+        );
+        event_bus
+            .publish_in_tx(tx, context.tenant_id, Some(context.actor_id), event)
+            .await
+            .map_err(super::internal_admin_error)
+    }
+
     async fn actor_role(
         &self,
         context: &AuthAdminMutationContext,
@@ -316,27 +387,10 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         )
         .await?;
 
-        let raw_role = command.role.as_deref().unwrap_or("customer");
-        let parsed_role = parse_user_role(raw_role).ok();
-        let custom_slug = match parsed_role.as_ref() {
-            Some(_) => None,
-            None => {
-                let slug = raw_role.trim().to_lowercase();
-                let valid = (2..=64).contains(&slug.len())
-                    && slug
-                        .chars()
-                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
-                if !valid {
-                    return Err(AuthAdminMutationError::Validation(format!(
-                        "unsupported user role: {raw_role}"
-                    )));
-                }
-                Some(slug)
-            }
-        };
         // Custom roles are layered onto the baseline customer membership
         // inside the creation transaction below.
-        let role = parsed_role.unwrap_or(UserRole::Customer);
+        let (role, custom_slug) =
+            parse_requested_role(command.role.as_deref().unwrap_or("customer"))?;
         let status = command
             .status
             .as_deref()
@@ -373,13 +427,21 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         )
         .await
         .map_err(map_custom_field_error)?;
+        // Authorization is fully decided above; only now spend Argon2
+        // work, still before opening the transaction.
+        let prepared_user = AuthLifecycleService::prepare_new_user(
+            &command.email,
+            &command.password,
+            command.name,
+            rustok_auth::DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
+        )
+        .await
+        .map_err(map_lifecycle_error)?;
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
         let mut user = AuthLifecycleService::create_user_in_tx(
             &tx,
             context.tenant_id,
-            &command.email,
-            &command.password,
-            command.name,
+            prepared_user,
             role.clone(),
             status.clone(),
         )
@@ -411,8 +473,8 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         }
         let final_role = if let Some(slug) = custom_slug.as_ref() {
             let actor_role = self.actor_role(context).await?;
-            let actor_permissions =
-                permissions_for(&context.tenant_id, &context.actor_id).ok_or_else(|| {
+            let actor_permissions = permissions_for(&context.tenant_id, &context.actor_id)
+                .ok_or_else(|| {
                     AuthAdminMutationError::Forbidden(
                         "user administration requires a request-bound permission snapshot"
                             .to_string(),
@@ -434,14 +496,9 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(super::super_admin_guard::persistence_error)?;
             if plan.is_some() {
-                replace_persisted_user_role_by_slug_on(
-                    &tx,
-                    context.tenant_id,
-                    user.id,
-                    slug,
-                )
-                .await
-                .map_err(super::super_admin_guard::persistence_error)?;
+                replace_persisted_user_role_by_slug_on(&tx, context.tenant_id, user.id, slug)
+                    .await
+                    .map_err(super::super_admin_guard::persistence_error)?;
             }
             self.user_role(&tx, context.tenant_id, user.id).await?
         } else {
@@ -483,7 +540,18 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await?;
         }
 
-        if let Some(email) = command.email.as_deref() {
+        let normalized_email = match command.email.as_deref() {
+            Some(email) => Some(rustok_auth::normalize_email(email).map_err(map_auth_input_error)?),
+            None => None,
+        };
+        let normalized_name = match command.name.as_deref() {
+            Some(name) => Some(
+                rustok_auth::normalize_display_name(Some(name)).map_err(map_auth_input_error)?,
+            ),
+            None => None,
+        };
+
+        if let Some(email) = normalized_email.as_deref() {
             let existing = users::Entity::find_by_email(&self.db, context.tenant_id, email)
                 .await
                 .map_err(super::internal_admin_error)?;
@@ -543,6 +611,24 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         .await
         .map_err(map_custom_field_error)?;
         let password_changed = command.password.is_some();
+        // Validate and hash a replacement password before locking the user
+        // row: Argon2 is deliberately expensive and must not run while the
+        // transaction holds the row lock.
+        let new_password_hash = match command.password.as_deref() {
+            Some(password) => {
+                rustok_auth::validate_password_policy(
+                    password,
+                    rustok_auth::DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
+                )
+                .map_err(map_auth_input_error)?;
+                Some(
+                    hash_password_async(password.to_string())
+                        .await
+                        .map_err(super::internal_admin_error)?,
+                )
+            }
+            None => None,
+        };
 
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
         let locked_user = lock_user_for_mutation(&tx, context.tenant_id, command.id).await?;
@@ -581,8 +667,8 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
                 }
             } else if let Some(slug) = requested_custom_slug.as_ref() {
                 let actor_role = self.actor_role(context).await?;
-                let actor_permissions =
-                    permissions_for(&context.tenant_id, &context.actor_id).ok_or_else(|| {
+                let actor_permissions = permissions_for(&context.tenant_id, &context.actor_id)
+                    .ok_or_else(|| {
                         AuthAdminMutationError::Forbidden(
                             "user administration requires a request-bound permission snapshot"
                                 .to_string(),
@@ -616,19 +702,22 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             || command.password.is_some()
             || prepared.metadata.is_some();
         let mut active: users::ActiveModel = locked_user.clone().into();
-        if let Some(email) = command.email {
-            active.email = Set(email.to_lowercase());
+        if let Some(email) = normalized_email {
+            if email != locked_user.email {
+                // A different address has not proven mailbox control; never
+                // carry the previous address's verification over.
+                active.email_verified_at = Set(None);
+            }
+            active.email = Set(email);
         }
-        if let Some(name) = command.name {
-            active.name = Set(Some(name));
+        if let Some(name) = normalized_name {
+            active.name = Set(name);
         }
         if status_changed && let Some(status) = requested_status.as_ref() {
             active.status = Set(status.clone());
         }
-        if let Some(password) = command.password {
-            active.password_hash = Set(hash_password_async(password)
-                .await
-                .map_err(super::internal_admin_error)?);
+        if let Some(password_hash) = new_password_hash {
+            active.password_hash = Set(password_hash);
         }
         if let Some(metadata) = prepared.metadata {
             active.metadata = Set(metadata);
@@ -651,10 +740,19 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await?;
         }
         let user = if user_row_update_requested {
-            active
-                .update(&tx)
-                .await
-                .map_err(super::internal_admin_error)?
+            active.update(&tx).await.map_err(|error| {
+                // The uniqueness pre-check above runs outside this
+                // transaction; a concurrent claim of the same email loses
+                // here and must surface as Conflict, not Internal.
+                if matches!(
+                    error.sql_err(),
+                    Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+                ) {
+                    AuthAdminMutationError::Conflict("user email already exists".to_string())
+                } else {
+                    super::internal_admin_error(error)
+                }
+            })?
         } else {
             locked_user
         };
@@ -771,9 +869,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         let tenant_name = self.tenant_name(&tx, context.tenant_id).await?;
         let final_role = match role_mutation_plan.as_ref() {
             Some(RolePlan::Builtin(plan)) => plan.new_role().clone(),
-            Some(RolePlan::Custom(_)) => {
-                self.user_role(&tx, context.tenant_id, user.id).await?
-            }
+            Some(RolePlan::Custom(_)) => self.user_role(&tx, context.tenant_id, user.id).await?,
             None => current_role.clone(),
         };
         tx.commit().await.map_err(super::internal_admin_error)?;
@@ -849,6 +945,177 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         tx.commit().await.map_err(super::internal_admin_error)?;
         publish_committed_user_invalidation(context.tenant_id, user.id, durable_generation).await;
         Ok(())
+    }
+
+    async fn issue_user_invite(
+        &self,
+        context: &AuthAdminMutationContext,
+        command: IssueUserInviteCommand,
+    ) -> Result<IssuedUserInviteResult, AuthAdminMutationError> {
+        self.authorize_user(
+            context,
+            &[Permission::USERS_CREATE, Permission::USERS_MANAGE],
+            "users:create or users:manage required",
+        )
+        .await?;
+
+        // Built-in roles ride in the token directly; a tenant-defined
+        // custom role is carried as a slug layered over the baseline
+        // customer membership at acceptance (same model as create).
+        let (role, custom_slug) =
+            parse_requested_role(command.role.as_deref().unwrap_or("customer"))?;
+        if custom_slug.is_some() || role != UserRole::Customer {
+            self.authorize_user(
+                context,
+                &[Permission::USERS_MANAGE],
+                "users:manage required to invite privileged users",
+            )
+            .await?;
+        }
+        if role != UserRole::Customer {
+            self.ensure_role_assignment_allowed(context, &role).await?;
+        }
+
+        let email = rustok_auth::normalize_email(&command.email)
+            .map_err(|error| AuthAdminMutationError::Validation(error.to_string()))?;
+
+        let token = crate::auth::encode_invite_token(
+            &self.auth_config,
+            context.tenant_id,
+            &email,
+            role.clone(),
+            custom_slug.clone(),
+            INVITE_TOKEN_TTL_SECS,
+        )
+        .map_err(super::internal_admin_error)?;
+
+        let now = Utc::now();
+        let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
+
+        // The custom-role ceiling is validated at issuance under the
+        // issuer's current authority: the role must exist in this
+        // tenant and the issuer must effectively hold every permission
+        // it would hand out when the invite is accepted.
+        let ledger_role = if let Some(slug) = custom_slug.as_deref() {
+            let actor_role = self.actor_role(context).await?;
+            let actor_permissions = permissions_for(&context.tenant_id, &context.actor_id)
+                .ok_or_else(|| {
+                    AuthAdminMutationError::Forbidden(
+                        "user administration requires a request-bound permission snapshot"
+                            .to_string(),
+                    )
+                })?;
+            validate_custom_role_grant_on(
+                &tx,
+                context.tenant_id,
+                &actor_role,
+                &actor_permissions,
+                slug,
+            )
+            .await
+            .map_err(super::super_admin_guard::persistence_error)?
+        } else {
+            role.to_string()
+        };
+
+        let invite = auth_invites::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(context.tenant_id),
+            token_hash: Set(hex::encode(Sha256::digest(token.as_bytes()))),
+            email: Set(email),
+            role: Set(ledger_role),
+            issued_by: Set(Some(context.actor_id)),
+            expires_at: Set((now + chrono::Duration::seconds(INVITE_TOKEN_TTL_SECS as i64)).into()),
+            revoked_at: Set(None),
+            created_at: Set(now.into()),
+        }
+        .insert(&tx)
+        .await
+        .map_err(super::internal_admin_error)?;
+
+        self.publish_admin_event_in_tx(
+            &tx,
+            context,
+            DomainEvent::UserInviteIssued {
+                invite_id: invite.id,
+                issued_by: Some(context.actor_id),
+            },
+        )
+        .await?;
+        tx.commit().await.map_err(super::internal_admin_error)?;
+
+        Ok(IssuedUserInviteResult {
+            invite: invite_record(invite),
+            token,
+        })
+    }
+
+    async fn list_user_invites(
+        &self,
+        context: &AuthAdminMutationContext,
+        limit: u64,
+    ) -> Result<Vec<UserInviteRecord>, AuthAdminMutationError> {
+        self.authorize_user(
+            context,
+            &[Permission::USERS_LIST, Permission::USERS_MANAGE],
+            "users:list or users:manage required",
+        )
+        .await?;
+
+        let invites = auth_invites::Entity::find()
+            .filter(auth_invites::Column::TenantId.eq(context.tenant_id))
+            .order_by_desc(auth_invites::Column::CreatedAt)
+            .limit(super::clamp_auth_admin_list_limit(limit))
+            .all(&self.db)
+            .await
+            .map_err(super::internal_admin_error)?;
+
+        Ok(invites.into_iter().map(invite_record).collect())
+    }
+
+    async fn revoke_user_invite(
+        &self,
+        context: &AuthAdminMutationContext,
+        invite_id: Uuid,
+    ) -> Result<UserInviteRecord, AuthAdminMutationError> {
+        self.authorize_user(
+            context,
+            &[Permission::USERS_MANAGE],
+            "users:manage required",
+        )
+        .await?;
+
+        let invite = auth_invites::Entity::find_by_id(invite_id)
+            .filter(auth_invites::Column::TenantId.eq(context.tenant_id))
+            .one(&self.db)
+            .await
+            .map_err(super::internal_admin_error)?
+            .ok_or_else(|| AuthAdminMutationError::NotFound("user invite".to_string()))?;
+
+        if invite.revoked_at.is_some() {
+            return Ok(invite_record(invite));
+        }
+
+        let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
+        let mut active: auth_invites::ActiveModel = invite.into();
+        active.revoked_at = Set(Some(Utc::now().into()));
+        let updated = active
+            .update(&tx)
+            .await
+            .map_err(super::internal_admin_error)?;
+
+        self.publish_admin_event_in_tx(
+            &tx,
+            context,
+            DomainEvent::UserInviteRevoked {
+                invite_id: updated.id,
+                revoked_by: Some(context.actor_id),
+            },
+        )
+        .await?;
+        tx.commit().await.map_err(super::internal_admin_error)?;
+
+        Ok(invite_record(updated))
     }
 }
 

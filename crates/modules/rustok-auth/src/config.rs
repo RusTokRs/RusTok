@@ -1,6 +1,10 @@
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 
+use crate::credentials::{
+    DEFAULT_MIN_PASSWORD_LENGTH_CHARS, MAX_MIN_PASSWORD_LENGTH_CHARS,
+    MIN_PASSWORD_LENGTH_FLOOR_CHARS,
+};
 use crate::error::{AuthError, Result};
 
 const DEFAULT_ACCESS_EXPIRATION_SECS: u64 = 900; // 15 minutes
@@ -46,6 +50,10 @@ pub struct AuthConfig {
     pub rsa_private_key_pem: Option<String>,
     /// RSA public key in PEM format. Required when `algorithm = RS256` for token decoding.
     pub rsa_public_key_pem: Option<String>,
+    /// Minimum password length (in chars) enforced for new credentials.
+    /// Hosts may raise it via settings; bounded by
+    /// `MIN_PASSWORD_LENGTH_FLOOR_CHARS..=MAX_MIN_PASSWORD_LENGTH_CHARS`.
+    pub min_password_length: usize,
 }
 
 impl std::fmt::Debug for AuthConfig {
@@ -66,6 +74,7 @@ impl std::fmt::Debug for AuthConfig {
                 "rsa_public_key_pem",
                 &self.rsa_public_key_pem.as_ref().map(|_| "<redacted>"),
             )
+            .field("min_password_length", &self.min_password_length)
             .finish()
     }
 }
@@ -81,6 +90,7 @@ impl AuthConfig {
             algorithm: JwtAlgorithm::HS256,
             rsa_private_key_pem: None,
             rsa_public_key_pem: None,
+            min_password_length: DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
         }
     }
 
@@ -110,6 +120,11 @@ impl AuthConfig {
         self.rsa_public_key_pem = Some(public_key_pem.into());
         self
     }
+
+    pub fn with_min_password_length(mut self, min_password_length: usize) -> Self {
+        self.min_password_length = min_password_length;
+        self
+    }
 }
 
 /// Helper for loading auth settings from nested YAML `settings.rustok.auth`.
@@ -123,6 +138,7 @@ pub struct AuthSettingsOverrides {
     pub rsa_public_key_pem: Option<String>,
     pub rsa_private_key_env: Option<String>,
     pub rsa_public_key_env: Option<String>,
+    pub min_password_length: Option<usize>,
 }
 
 impl std::fmt::Debug for AuthSettingsOverrides {
@@ -143,6 +159,7 @@ impl std::fmt::Debug for AuthSettingsOverrides {
             )
             .field("rsa_private_key_env", &self.rsa_private_key_env)
             .field("rsa_public_key_env", &self.rsa_public_key_env)
+            .field("min_password_length", &self.min_password_length)
             .finish()
     }
 }
@@ -167,6 +184,9 @@ impl AuthSettingsOverrides {
         }
         if let Some(v) = self.rsa_public_key_pem {
             config.rsa_public_key_pem = Some(v);
+        }
+        if let Some(v) = self.min_password_length {
+            config.min_password_length = v;
         }
     }
 }
@@ -212,6 +232,9 @@ where
     }
     if let Some(algorithm) = auth_settings.algorithm {
         config.algorithm = algorithm;
+    }
+    if let Some(min_password_length) = auth_settings.min_password_length {
+        config = config.with_min_password_length(min_password_length);
     }
 
     config.rsa_private_key_pem = resolve_key_material(
@@ -286,6 +309,13 @@ pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
         return Err(AuthError::Internal(
             "JWT refresh_expiration must be greater than or equal to access_expiration".to_string(),
         ));
+    }
+    if !(MIN_PASSWORD_LENGTH_FLOOR_CHARS..=MAX_MIN_PASSWORD_LENGTH_CHARS)
+        .contains(&config.min_password_length)
+    {
+        return Err(AuthError::Internal(format!(
+            "min_password_length must be between {MIN_PASSWORD_LENGTH_FLOOR_CHARS} and {MAX_MIN_PASSWORD_LENGTH_CHARS} chars"
+        )));
     }
 
     match config.algorithm {
@@ -395,6 +425,48 @@ mod tests {
         assert_eq!(config.algorithm, JwtAlgorithm::HS256);
         assert_eq!(config.access_expiration, 900);
         assert_eq!(config.refresh_expiration, DEFAULT_REFRESH_EXPIRATION_SECS);
+        assert_eq!(
+            config.min_password_length,
+            DEFAULT_MIN_PASSWORD_LENGTH_CHARS
+        );
+    }
+
+    #[test]
+    fn build_auth_config_applies_min_password_length_override() {
+        let config = build_auth_config_with_env(
+            secret(),
+            900,
+            AuthSettingsOverrides {
+                min_password_length: Some(16),
+                ..AuthSettingsOverrides::default()
+            },
+            |_| panic!("env resolver should not be called"),
+        )
+        .expect("auth config");
+
+        assert_eq!(config.min_password_length, 16);
+    }
+
+    #[test]
+    fn build_auth_config_rejects_min_password_length_outside_bounds() {
+        for invalid in [
+            MIN_PASSWORD_LENGTH_FLOOR_CHARS - 1,
+            MAX_MIN_PASSWORD_LENGTH_CHARS + 1,
+        ] {
+            assert!(
+                build_auth_config_with_env(
+                    secret(),
+                    900,
+                    AuthSettingsOverrides {
+                        min_password_length: Some(invalid),
+                        ..AuthSettingsOverrides::default()
+                    },
+                    |_| panic!("env resolver should not be called"),
+                )
+                .is_err(),
+                "min_password_length {invalid} must be rejected"
+            );
+        }
     }
 
     #[test]

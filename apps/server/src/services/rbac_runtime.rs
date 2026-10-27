@@ -464,6 +464,8 @@ mod tests {
         .expect("failed to insert tenant");
 
         user_models::Entity::insert(user_models::ActiveModel {
+            failed_login_count: Set(0),
+            locked_until: Set(None),
             id: Set(user_id),
             tenant_id: Set(tenant_id),
             email: Set(email.to_string()),

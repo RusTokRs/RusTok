@@ -21,7 +21,8 @@ use crate::graphql::types::{
     ArtifactTenantLifecycle, ArtifactUiActionAudit, ArtifactUiContribution, BuildJob,
     DashboardStats, InstalledModule, MarketplaceModule, MarketplaceRegistryFreshness,
     ModuleCompositionSnapshot, ModuleEffectivePolicyGql, ModuleOperationRecoveryPlan,
-    ModuleRegistryItem, Tenant, TenantModule, User, UserConnection, UserEdge, UsersFilter,
+    ModuleRegistryItem, Tenant, TenantModule, User, UserConnection, UserEdge, UserInvite,
+    UsersFilter,
 };
 use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::users;
@@ -869,6 +870,27 @@ impl RootQuery {
             .map_err(|err| graphql_internal_error("GraphQL query failed", err))?;
 
         Ok(user.as_ref().map(User::from))
+    }
+
+    async fn user_invites(
+        &self,
+        ctx: &Context<'_>,
+        #[graphql(default = 50)] limit: i32,
+    ) -> Result<Vec<UserInvite>> {
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let locale = crate::graphql::mutations::effective_request_locale(ctx, tenant);
+        crate::graphql::mutations::user_mutation_runtime(ctx)?
+            .port()
+            .list_user_invites(
+                &crate::graphql::mutations::user_mutation_context(auth, tenant, locale),
+                limit.clamp(1, 100) as u64,
+            )
+            .await
+            .map(|records| records.into_iter().map(UserInvite::from).collect())
+            .map_err(crate::graphql::mutations::map_user_mutation_error)
     }
 
     async fn users(

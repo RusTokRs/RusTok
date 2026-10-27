@@ -1,0 +1,15 @@
+security-title = Security
+security-description = Manage Security configuration and operational workflows
+security-empty = No records found
+security-save = Save
+security-cancel = Cancel
+security-success = Operation completed successfully
+security-error = An error occurred
+security-search-placeholder = Search Security records...
+security-col-title = Title
+security-col-status = Status
+security-col-created = Created At
+security-col-actions = Actions
+security-action-create = Create New
+security-action-edit = Edit
+security-action-delete = Delete

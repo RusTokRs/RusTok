@@ -4,8 +4,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use rustok_api::{Permission, has_effective_permission};
 use rustok_auth::{
-    AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UpdateUserCommand,
-    UserAdminMutationPort, UserMutationRecord,
+    AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, IssueUserInviteCommand,
+    IssuedUserInviteResult, UpdateUserCommand, UserAdminMutationPort, UserInviteRecord,
+    UserMutationRecord,
 };
 use rustok_core::UserRole;
 use uuid::Uuid;
@@ -107,7 +108,21 @@ impl UserAdminMutationPort for GuardedUserAdminMutationProvider {
             &[Permission::USERS_CREATE, Permission::USERS_MANAGE],
             "users:create or users:manage required",
         )?;
-        let role = Self::parse_role(command.role.as_deref().unwrap_or("customer"))?;
+        // A role string that is not a built-in role is a tenant-defined
+        // custom role slug: the provider validates its shape, existence
+        // and the actor's authority ceiling; the guard only requires
+        // the manage permission up front.
+        let role = match Self::parse_role(command.role.as_deref().unwrap_or("customer")) {
+            Ok(role) => role,
+            Err(_) => {
+                if !has_effective_permission(&authority, &Permission::USERS_MANAGE) {
+                    return Err(AuthAdminMutationError::Forbidden(
+                        "users:manage required to create users with custom roles".to_string(),
+                    ));
+                }
+                UserRole::Customer
+            }
+        };
         let creates_non_active_user = command
             .status
             .as_deref()
@@ -151,9 +166,13 @@ impl UserAdminMutationPort for GuardedUserAdminMutationProvider {
             ));
         }
         if let Some(role) = command.role.as_deref() {
-            let role = Self::parse_role(role)?;
-            if role != UserRole::Customer {
-                Self::validate_role_grant(context, &authority, &role)?;
+            // Custom role slugs fall through to the provider (the
+            // USERS_MANAGE requirement above already covers them);
+            // built-in role grants keep the hierarchy check here.
+            if let Ok(role) = Self::parse_role(role) {
+                if role != UserRole::Customer {
+                    Self::validate_role_grant(context, &authority, &role)?;
+                }
             }
         }
 
@@ -178,6 +197,69 @@ impl UserAdminMutationPort for GuardedUserAdminMutationProvider {
 
         self.inner.delete_user(context, user_id).await
     }
+
+    async fn issue_user_invite(
+        &self,
+        context: &AuthAdminMutationContext,
+        command: IssueUserInviteCommand,
+    ) -> Result<IssuedUserInviteResult, AuthAdminMutationError> {
+        let authority = Self::require_any(
+            context,
+            &[Permission::USERS_CREATE, Permission::USERS_MANAGE],
+            "users:create or users:manage required",
+        )?;
+        match Self::parse_role(command.role.as_deref().unwrap_or("customer")) {
+            Ok(role) => {
+                if role != UserRole::Customer {
+                    if !has_effective_permission(&authority, &Permission::USERS_MANAGE) {
+                        return Err(AuthAdminMutationError::Forbidden(
+                            "users:manage required to invite privileged users".to_string(),
+                        ));
+                    }
+                    Self::validate_role_grant(context, &authority, &role)?;
+                }
+            }
+            Err(_) => {
+                // Tenant-defined custom role slug: the provider
+                // validates shape, existence and the issuer ceiling.
+                if !has_effective_permission(&authority, &Permission::USERS_MANAGE) {
+                    return Err(AuthAdminMutationError::Forbidden(
+                        "users:manage required to invite users with custom roles".to_string(),
+                    ));
+                }
+            }
+        }
+
+        self.inner.issue_user_invite(context, command).await
+    }
+
+    async fn list_user_invites(
+        &self,
+        context: &AuthAdminMutationContext,
+        limit: u64,
+    ) -> Result<Vec<UserInviteRecord>, AuthAdminMutationError> {
+        Self::require_any(
+            context,
+            &[Permission::USERS_LIST, Permission::USERS_MANAGE],
+            "users:list or users:manage required",
+        )?;
+
+        self.inner.list_user_invites(context, limit).await
+    }
+
+    async fn revoke_user_invite(
+        &self,
+        context: &AuthAdminMutationContext,
+        invite_id: Uuid,
+    ) -> Result<UserInviteRecord, AuthAdminMutationError> {
+        Self::require_any(
+            context,
+            &[Permission::USERS_MANAGE],
+            "users:manage required",
+        )?;
+
+        self.inner.revoke_user_invite(context, invite_id).await
+    }
 }
 
 #[cfg(test)]
@@ -192,6 +274,7 @@ mod tests {
             tenant_id: Uuid::new_v4(),
             request_id: None,
             locale: None,
+            principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
         }
     }
 

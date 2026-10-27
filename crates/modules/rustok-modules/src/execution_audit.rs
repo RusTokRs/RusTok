@@ -138,7 +138,9 @@ impl SeaOrmArtifactExecutionObserver {
                 .as_ref()
                 .is_some_and(|code| code.len() > 96)
         {
-            return Err(audit_error("execution record identity or labels are invalid"));
+            return Err(audit_error(
+                "execution record identity or labels are invalid",
+            ));
         }
 
         let transaction = self.db.begin().await.map_err(audit_error)?;
@@ -300,9 +302,8 @@ fn audit_entry_from_row(
     Ok(ArtifactBindingExecutionAuditEntry {
         execution_id,
         status: row.try_get("", "status").map_err(storage_error)?,
-        started_at: audit_timestamp(&row, backend, "started_at")?.ok_or_else(|| {
-            storage_error("execution audit row is missing its start timestamp")
-        })?,
+        started_at: audit_timestamp(&row, backend, "started_at")?
+            .ok_or_else(|| storage_error("execution audit row is missing its start timestamp"))?,
         finished_at: audit_timestamp(&row, backend, "finished_at")?,
         duration_ms,
         error_code: row.try_get("", "error_code").map_err(storage_error)?,
@@ -352,7 +353,9 @@ fn optional_string_value(value: Option<String>) -> SqlValue {
 
 fn optional_metric_value(value: Option<u64>) -> SandboxResult<SqlValue> {
     match value {
-        Some(value) => i64::try_from(value).map(SqlValue::from).map_err(audit_error),
+        Some(value) => i64::try_from(value)
+            .map(SqlValue::from)
+            .map_err(audit_error),
         None => Ok(SqlValue::BigInt(None)),
     }
 }

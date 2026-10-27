@@ -556,15 +556,7 @@ pub trait DurableArtifactBlobStore: ArtifactBlobStore {
     async fn delete(&self, digest: &str) -> Result<(), ModuleInstallationError>;
 }
 
-/// Best-effort removal of a persisted staging temp file on a path whose
-/// primary result is already determined: a leftover file under the system
-/// temp dir is janitorial, and a removal failure must not mask that
-/// result. Same policy as [`DurableArtifactBlobStore::discard_best_effort`].
-pub(crate) async fn remove_staged_file_best_effort(path: &std::path::Path) {
-    let _ = tokio::fs::remove_file(path).await;
-}
-
-#[async_trait]
+{}#[async_trait]
 impl<B: ArtifactBlobStore + ?Sized> ArtifactBlobStore for Arc<B> {
     async fn put_verified(
         &self,
@@ -1954,7 +1946,9 @@ impl SeaOrmArtifactInstallationStore {
         let operation_id = self.infrastructure.new_id();
         let operation_placeholders = match backend {
             SupportedBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW()",
-            SupportedBackend::Sqlite => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')",
+            SupportedBackend::Sqlite => {
+                "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')"
+            }
         };
         let claimed = transaction
             .execute_raw(Statement::from_sql_and_values(
@@ -2680,7 +2674,9 @@ impl SeaOrmArtifactInstallationStore {
             .unwrap_or_else(|| self.infrastructure.new_id());
         let values = match backend {
             SupportedBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW()",
-            SupportedBackend::Sqlite => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')",
+            SupportedBackend::Sqlite => {
+                "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')"
+            }
         };
         transaction
             .execute_raw(Statement::from_sql_and_values(
@@ -2897,7 +2893,9 @@ impl SeaOrmArtifactInstallationStore {
         let operation_id = self.infrastructure.new_id();
         let placeholders = match backend {
             SupportedBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,NOW()",
-            SupportedBackend::Sqlite => "?1,?2,?3,?4,?5,?6,?7,?8,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')",
+            SupportedBackend::Sqlite => {
+                "?1,?2,?3,?4,?5,?6,?7,?8,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')"
+            }
         };
         transaction
             .execute_raw(Statement::from_sql_and_values(
@@ -6834,7 +6832,9 @@ async fn record_artifact_tenant_lifecycle_operation<C: ConnectionTrait>(
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     let values = match backend {
         SupportedBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW()",
-        SupportedBackend::Sqlite => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')",
+        SupportedBackend::Sqlite => {
+            "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')"
+        }
     };
     let recorded = connection
         .execute_raw(Statement::from_sql_and_values(
@@ -7757,7 +7757,7 @@ where
             .admit_fetched_package(command, request_digest, package)
             .await;
         if let Some(path) = temporary_payload_path {
-            remove_staged_file_best_effort(&path).await;
+            crate::remove_staged_file_best_effort(&path).await;
         }
         result
     }
@@ -7842,7 +7842,8 @@ where
                     .await?
             }
             ArtifactPayloadSource::TemporaryFile(path) => {
-                self.admission
+                let result = self
+                    .admission
                     .admit_file(
                         &artifact,
                         &package.media_type,
@@ -7851,7 +7852,9 @@ where
                         &command,
                         &request_digest,
                     )
-                    .await?
+                    .await;
+                crate::remove_staged_file_best_effort(&path).await;
+                result?
             }
         };
         Ok(self

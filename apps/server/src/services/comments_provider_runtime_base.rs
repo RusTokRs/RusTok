@@ -9,6 +9,7 @@ use std::{
 };
 
 use rustok_api::PortActor;
+use rustok_comments::CommentsThreadPort;
 use rustok_comments::{
     CommentsTcpAuthorityResolver, CommentsTcpBearerAuthorityResolver, CommentsTcpBearerToken,
     CommentsTcpChannelProtection, CommentsTcpClientChannelConnector,
@@ -19,7 +20,6 @@ use rustok_comments::{
     TcpJsonCommentsServerAdapter, TcpJsonCommentsTransport, in_process_comments_thread_port,
     remote_comments_thread_port,
 };
-use rustok_comments::CommentsThreadPort;
 use rustok_core::ModuleRuntimeExtensions;
 use tokio::{
     net::TcpListener,

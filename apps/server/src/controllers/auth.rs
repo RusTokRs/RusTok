@@ -8,28 +8,22 @@ use axum::{
     http::header::USER_AGENT,
     routing::{delete, get, post},
 };
-use chrono::Utc;
 use rustok_telemetry::metrics;
 use rustok_web::json_response;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
-};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use std::net::SocketAddr;
 
-use crate::auth::{
-    decode_email_verification_token, encode_email_verification_token, encode_password_reset_token,
-};
-use crate::common::{
-    RequestContext, RustokSettings, demo_mode_token_exposure_enabled, is_production_environment,
-};
+use crate::auth::{encode_email_verification_token, encode_password_reset_token};
+use crate::common::{RequestContext, RustokSettings};
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
 use crate::models::{
     sessions,
     users::{self, Entity as Users},
 };
-use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
+use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService, AuthTokens};
 use crate::services::email::{
-    EmailVerificationEmail, PasswordResetEmail, email_service_from_ctx, password_reset_url,
+    EMAIL_VERIFICATION_TOKEN_TTL_SECS, EmailVerificationEmail, PASSWORD_RESET_TOKEN_TTL_SECS,
+    PasswordResetEmail, email_service_from_ctx, password_reset_url, spawn_email_verification,
 };
 use crate::services::server_runtime_context::ServerAuthRuntime;
 pub use rustok_auth::{
@@ -39,9 +33,6 @@ pub use rustok_auth::{
     ResetRequestResponse, SessionItem, SessionListParams, SessionsResponse, UpdateProfileParams,
     UserInfo, UserResponse, VerificationRequestResponse,
 };
-
-const DEFAULT_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
-const DEFAULT_VERIFY_TOKEN_TTL_SECS: u64 = 24 * 60 * 60;
 
 fn user_info_from_model(user: users::Model, role: rustok_core::UserRole) -> UserInfo {
     UserInfo {
@@ -63,11 +54,15 @@ fn user_response_from_model(user: users::Model, role: rustok_core::UserRole) -> 
 }
 
 fn ensure_registration_enabled(settings: &RustokSettings) -> Result<()> {
-    if settings.features.registration_enabled {
-        Ok(())
-    } else {
-        Err(Error::Forbidden("Registration is disabled".into()))
+    if !settings.features.registration_enabled {
+        return Err(Error::Forbidden("Registration is disabled".into()));
     }
+    if settings.features.invite_only_registration {
+        return Err(Error::Forbidden(
+            "Registration is available by invitation only".into(),
+        ));
+    }
+    Ok(())
 }
 
 #[utoipa::path(post, path = "/api/auth/register", tag = "auth", request_body = RegisterParams,
@@ -75,6 +70,7 @@ fn ensure_registration_enabled(settings: &RustokSettings) -> Result<()> {
 async fn register(
     State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,
+    request_context: RequestContext,
     Json(params): Json<RegisterParams>,
 ) -> Result<Response> {
     let email = params.email.trim();
@@ -96,6 +92,17 @@ async fn register(
     )
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
+
+    if runtime_ctx.settings().features.email_verification {
+        spawn_email_verification(
+            runtime_ctx,
+            &config,
+            tenant.id,
+            user.id,
+            &user.email,
+            request_context.locale.as_str(),
+        );
+    }
 
     let user_role = tokens.effective_role.clone();
     Ok(json_response(AuthResponse {
@@ -136,6 +143,7 @@ async fn login(
         &params.password,
         Some(addr.ip().to_string()),
         user_agent,
+        runtime_ctx.settings().features.email_verification,
     )
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
@@ -168,6 +176,7 @@ async fn refresh(
         &config,
         tenant.id,
         &params.refresh_token,
+        runtime_ctx.settings().features.email_verification,
     )
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
@@ -200,6 +209,272 @@ async fn logout(
 
     Ok(json_response(LogoutResponse { status: "ok" }))
 }
+
+// ─── HttpOnly cookie sessions for first-party browsers ─────────────────────
+//
+// Browser clients (admin/storefront) must never hold the refresh token
+// in JavaScript-readable storage: any XSS would become full session
+// theft with a long-lived lineage. These endpoints keep the refresh
+// token in an HttpOnly, path-scoped, SameSite=Lax cookie and return
+// only the short-lived access token in the JSON body, which the
+// client holds in memory. The cookie-authenticated state changers
+// (refresh/logout) additionally require a custom request header as a
+// CSRF barrier: cross-site forms cannot set it, and SameSite=Lax
+// already withholds the cookie on cross-site POSTs.
+
+const SESSION_COOKIE_NAME: &str = "rustok-session";
+const SESSION_COOKIE_PATH: &str = "/api/auth/session";
+const SESSION_REQUEST_HEADER: &str = "x-rustok-session-request";
+
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub(crate) struct CookieSessionResponse {
+    access_token: String,
+    token_type: &'static str,
+    expires_in: u64,
+    user: UserInfo,
+}
+
+impl std::fmt::Debug for CookieSessionResponse {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CookieSessionResponse")
+            .field("access_token", &"<redacted>")
+            .field("token_type", &self.token_type)
+            .field("expires_in", &self.expires_in)
+            .field("user", &self.user)
+            .finish()
+    }
+}
+
+fn session_cookie_is_secure(
+    headers: &axum::http::HeaderMap,
+    peer_ip: std::net::IpAddr,
+    settings: &RustokSettings,
+) -> bool {
+    crate::common::extract_effective_proto(headers, Some(peer_ip), &settings.runtime.request_trust)
+        .is_some_and(|value| value.eq_ignore_ascii_case("https"))
+}
+
+fn build_session_cookie(refresh_token: &str, max_age_secs: u64, secure: bool) -> String {
+    let mut cookie = format!(
+        "{SESSION_COOKIE_NAME}={refresh_token}; Path={SESSION_COOKIE_PATH}; HttpOnly; SameSite=Lax; Max-Age={max_age_secs}"
+    );
+    if secure {
+        cookie.push_str("; Secure");
+    }
+    cookie
+}
+
+fn parse_session_cookie(headers: &axum::http::HeaderMap) -> Option<String> {
+    headers
+        .get(axum::http::header::COOKIE)?
+        .to_str()
+        .ok()?
+        .split(';')
+        .find_map(|part| {
+            let (name, value) = part.trim().split_once('=')?;
+            (name == SESSION_COOKIE_NAME && !value.trim().is_empty())
+                .then(|| value.trim().to_string())
+        })
+}
+
+fn require_session_request_header(headers: &axum::http::HeaderMap) -> Result<()> {
+    match headers
+        .get(SESSION_REQUEST_HEADER)
+        .and_then(|value| value.to_str().ok())
+    {
+        Some("1") => Ok(()),
+        _ => Err(Error::BadRequest("Missing session request header".into())),
+    }
+}
+
+fn cookie_session_response(user: users::Model, tokens: AuthTokens, cookie: String) -> Response {
+    let user_info = user_info_from_model(user, tokens.effective_role.clone());
+    let mut response = json_response(CookieSessionResponse {
+        access_token: tokens.access_token,
+        token_type: "Bearer",
+        expires_in: tokens.expires_in,
+        user: user_info,
+    });
+    match axum::http::HeaderValue::from_str(&cookie) {
+        Ok(value) => {
+            response
+                .headers_mut()
+                .append(axum::http::header::SET_COOKIE, value);
+        }
+        Err(error) => {
+            tracing::error!(%error, "session cookie header could not be encoded");
+        }
+    }
+    response
+}
+
+#[utoipa::path(post, path = "/api/auth/session/login", tag = "auth", request_body = LoginParams,
+    responses((status = 200, description = "Login successful; refresh token set as HttpOnly cookie", body = CookieSessionResponse),(status = 401, description = "Unauthorized")))]
+async fn session_login(
+    State(ctx): State<ServerAuthRuntime>,
+    CurrentTenant(tenant): CurrentTenant,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
+    Json(params): Json<LoginParams>,
+) -> Result<Response> {
+    let email = params.email.trim();
+    tracing::debug!(email, "auth::session_login entry");
+    let user_agent = headers
+        .get(USER_AGENT)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.to_string());
+
+    let runtime_ctx = ctx.runtime_ctx();
+    let config = ctx
+        .auth_config()
+        .cloned()
+        .ok_or(Error::InternalServerError)?;
+    let (user, tokens) = AuthLifecycleService::login_runtime(
+        runtime_ctx,
+        &config,
+        tenant.id,
+        email,
+        &params.password,
+        Some(addr.ip().to_string()),
+        user_agent,
+        runtime_ctx.settings().features.email_verification,
+    )
+    .await
+    .map_err(|e: AuthLifecycleError| Error::from(e))?;
+
+    let cookie = build_session_cookie(
+        &tokens.refresh_token,
+        config.refresh_expiration,
+        session_cookie_is_secure(&headers, addr.ip(), runtime_ctx.settings()),
+    );
+    Ok(cookie_session_response(user, tokens, cookie))
+}
+
+#[utoipa::path(post, path = "/api/auth/session/register", tag = "auth", request_body = RegisterParams,
+    responses((status = 200, description = "Registration successful; refresh token set as HttpOnly cookie", body = CookieSessionResponse),(status = 400, description = "Email already exists")))]
+async fn session_register(
+    State(ctx): State<ServerAuthRuntime>,
+    CurrentTenant(tenant): CurrentTenant,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
+    request_context: RequestContext,
+    Json(params): Json<RegisterParams>,
+) -> Result<Response> {
+    let email = params.email.trim();
+    tracing::debug!(email, "auth::session_register entry");
+    ensure_registration_enabled(ctx.runtime_ctx().settings())?;
+
+    let runtime_ctx = ctx.runtime_ctx();
+    let config = ctx
+        .auth_config()
+        .cloned()
+        .ok_or(Error::InternalServerError)?;
+    let (user, tokens) = AuthLifecycleService::register_runtime(
+        runtime_ctx,
+        &config,
+        tenant.id,
+        email,
+        &params.password,
+        params.name,
+    )
+    .await
+    .map_err(|e: AuthLifecycleError| Error::from(e))?;
+
+    if runtime_ctx.settings().features.email_verification {
+        spawn_email_verification(
+            runtime_ctx,
+            &config,
+            tenant.id,
+            user.id,
+            &user.email,
+            request_context.locale.as_str(),
+        );
+    }
+
+    let cookie = build_session_cookie(
+        &tokens.refresh_token,
+        config.refresh_expiration,
+        session_cookie_is_secure(&headers, addr.ip(), runtime_ctx.settings()),
+    );
+    Ok(cookie_session_response(user, tokens, cookie))
+}
+
+#[utoipa::path(post, path = "/api/auth/session/refresh", tag = "auth",
+    responses((status = 200, description = "Session refreshed; cookie rotated", body = CookieSessionResponse),(status = 401, description = "Invalid or expired session cookie")))]
+async fn session_refresh(
+    State(ctx): State<ServerAuthRuntime>,
+    CurrentTenant(tenant): CurrentTenant,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
+) -> Result<Response> {
+    tracing::debug!("auth::session_refresh entry");
+    require_session_request_header(&headers)?;
+    let refresh_token = parse_session_cookie(&headers)
+        .ok_or_else(|| Error::Unauthorized("Invalid refresh token".into()))?;
+
+    let runtime_ctx = ctx.runtime_ctx();
+    let config = ctx
+        .auth_config()
+        .cloned()
+        .ok_or(Error::InternalServerError)?;
+    let (user, tokens) = AuthLifecycleService::refresh_runtime(
+        runtime_ctx,
+        &config,
+        tenant.id,
+        &refresh_token,
+        runtime_ctx.settings().features.email_verification,
+    )
+    .await
+    .map_err(|e: AuthLifecycleError| Error::from(e))?;
+
+    let cookie = build_session_cookie(
+        &tokens.refresh_token,
+        config.refresh_expiration,
+        session_cookie_is_secure(&headers, addr.ip(), runtime_ctx.settings()),
+    );
+    Ok(cookie_session_response(user, tokens, cookie))
+}
+
+#[utoipa::path(post, path = "/api/auth/session/logout", tag = "auth",
+    responses((status = 200, description = "Logout successful; session cookie cleared", body = LogoutResponse)))]
+async fn session_logout(
+    State(ctx): State<ServerAuthRuntime>,
+    CurrentTenant(tenant): CurrentTenant,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
+) -> Result<Response> {
+    tracing::debug!("auth::session_logout entry");
+    require_session_request_header(&headers)?;
+
+    // Idempotent: an absent or already-dead cookie still results in a
+    // cleared cookie and a successful logout response.
+    if let Some(refresh_token) = parse_session_cookie(&headers) {
+        if let Err(error) = AuthLifecycleService::logout_by_refresh_token_runtime(
+            ctx.runtime_ctx(),
+            tenant.id,
+            &refresh_token,
+        )
+        .await
+        {
+            tracing::warn!(%error, "cookie session logout revocation failed; clearing cookie anyway");
+        }
+    }
+
+    let cookie = build_session_cookie(
+        "",
+        0,
+        session_cookie_is_secure(&headers, addr.ip(), ctx.runtime_ctx().settings()),
+    );
+    let mut response = json_response(LogoutResponse { status: "ok" });
+    if let Ok(value) = axum::http::HeaderValue::from_str(&cookie) {
+        response
+            .headers_mut()
+            .append(axum::http::header::SET_COOKIE, value);
+    }
+    Ok(response)
+}
+
 #[utoipa::path(get, path = "/api/auth/me", tag = "auth", security(("bearer_auth" = [])),
     responses((status = 200, description = "Current user info", body = UserResponse),(status = 401, description = "Unauthorized")))]
 async fn me(
@@ -221,6 +496,12 @@ async fn accept_invite(
     Json(params): Json<AcceptInviteParams>,
 ) -> Result<Response> {
     tracing::debug!("auth::accept_invite entry");
+    if !ctx.runtime_ctx().settings().features.invites_enabled {
+        // Deliberately indistinguishable from an invalid token.
+        return Err(Error::Unauthorized(
+            "Invalid or already consumed invite token".into(),
+        ));
+    }
     let config = ctx
         .auth_config()
         .cloned()
@@ -265,8 +546,6 @@ async fn request_reset(
 
     let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, email).await?;
 
-    let expose_token = demo_mode_token_exposure_enabled();
-
     let reset_token = user
         .as_ref()
         .map(|record| {
@@ -275,7 +554,7 @@ async fn request_reset(
                 tenant.id,
                 &record.email,
                 &record.password_hash,
-                DEFAULT_RESET_TOKEN_TTL_SECS,
+                PASSWORD_RESET_TOKEN_TTL_SECS,
             )
         })
         .transpose()?;
@@ -291,10 +570,7 @@ async fn request_reset(
                 tracing::warn!(
                     "Password reset email could not be prepared; keeping the public response generic"
                 );
-                return Ok(json_response(ResetRequestResponse {
-                    status: "ok",
-                    reset_token: if expose_token { reset_token } else { None },
-                }));
+                return Ok(json_response(ResetRequestResponse { status: "ok" }));
             }
         };
         let reset_url = match password_reset_url(runtime_ctx, reset_token_value) {
@@ -303,10 +579,7 @@ async fn request_reset(
                 tracing::warn!(
                     "Password reset URL could not be prepared; keeping the public response generic"
                 );
-                return Ok(json_response(ResetRequestResponse {
-                    status: "ok",
-                    reset_token: if expose_token { reset_token } else { None },
-                }));
+                return Ok(json_response(ResetRequestResponse { status: "ok" }));
             }
         };
         let recipient = user
@@ -327,10 +600,7 @@ async fn request_reset(
         });
     }
 
-    Ok(json_response(ResetRequestResponse {
-        status: "ok",
-        reset_token: if expose_token { reset_token } else { None },
-    }))
+    Ok(json_response(ResetRequestResponse { status: "ok" }))
 }
 
 #[utoipa::path(post, path = "/api/auth/reset/confirm", tag = "auth", request_body = ConfirmResetParams,
@@ -377,11 +647,6 @@ async fn request_verification(
 
     let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, email).await?;
 
-    let expose_token = !is_production_environment()
-        && std::env::var("RUSTOK_DEMO_MODE")
-            .map(|value| value == "1")
-            .unwrap_or(false);
-
     let verification_token = if settings.features.email_verification {
         user.filter(|record| record.email_verified_at.is_none())
             .map(|record| {
@@ -390,7 +655,7 @@ async fn request_verification(
                     tenant.id,
                     record.id,
                     &record.email,
-                    DEFAULT_VERIFY_TOKEN_TTL_SECS,
+                    EMAIL_VERIFICATION_TOKEN_TTL_SECS,
                 )
             })
             .transpose()?
@@ -409,14 +674,7 @@ async fn request_verification(
                 tracing::warn!(
                     "Email verification could not be prepared; keeping the public response generic"
                 );
-                return Ok(json_response(VerificationRequestResponse {
-                    status: "ok",
-                    verification_token: if expose_token {
-                        verification_token
-                    } else {
-                        None
-                    },
-                }));
+                return Ok(json_response(VerificationRequestResponse { status: "ok" }));
             }
         };
         let recipient = params.email.clone();
@@ -435,14 +693,7 @@ async fn request_verification(
         });
     }
 
-    Ok(json_response(VerificationRequestResponse {
-        status: "ok",
-        verification_token: if expose_token {
-            verification_token
-        } else {
-            None
-        },
-    }))
+    Ok(json_response(VerificationRequestResponse { status: "ok" }))
 }
 
 #[utoipa::path(post, path = "/api/auth/verify/confirm", tag = "auth", request_body = ConfirmVerificationParams,
@@ -457,24 +708,14 @@ async fn confirm_verification(
         .auth_config()
         .cloned()
         .ok_or(Error::InternalServerError)?;
-    let claims = decode_email_verification_token(&config, &params.token)?;
-
-    if claims.tenant_id != tenant.id {
-        return Err(Error::Unauthorized("Invalid verification token".into()));
-    }
-
-    let user = Users::find_by_id(claims.user_id)
-        .filter(users::Column::TenantId.eq(tenant.id))
-        .one(ctx.runtime_ctx().db())
-        .await?
-        .filter(|record| record.email.eq_ignore_ascii_case(&claims.sub))
-        .ok_or_else(|| Error::Unauthorized("Invalid verification token".into()))?;
-
-    if user.email_verified_at.is_none() {
-        let mut user_active: users::ActiveModel = user.into();
-        user_active.email_verified_at = Set(Some(Utc::now().into()));
-        user_active.update(ctx.runtime_ctx().db()).await?;
-    }
+    AuthLifecycleService::confirm_email_verification_runtime(
+        ctx.runtime_ctx(),
+        &config,
+        tenant.id,
+        &params.token,
+    )
+    .await
+    .map_err(|error: AuthLifecycleError| Error::from(error))?;
 
     Ok(json_response(GenericStatusResponse { status: "ok" }))
 }
@@ -555,6 +796,10 @@ async fn change_password(
 ) -> Result<Response> {
     tracing::debug!(user_id = %current.user.id, "auth::change_password entry");
     let runtime_ctx = ctx.runtime_ctx();
+    let config = ctx
+        .auth_config()
+        .cloned()
+        .ok_or(Error::InternalServerError)?;
     AuthLifecycleService::change_password_runtime(
         runtime_ctx,
         tenant.id,
@@ -562,6 +807,7 @@ async fn change_password(
         current.session_id,
         &params.current_password,
         &params.new_password,
+        config.min_password_length,
     )
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
@@ -677,6 +923,10 @@ pub fn router() -> crate::routes::ServerRouter {
         .route("/api/auth/login", post(login))
         .route("/api/auth/refresh", post(refresh))
         .route("/api/auth/logout", post(logout))
+        .route("/api/auth/session/login", post(session_login))
+        .route("/api/auth/session/register", post(session_register))
+        .route("/api/auth/session/refresh", post(session_refresh))
+        .route("/api/auth/session/logout", post(session_logout))
         .route("/api/auth/me", get(me))
         .route("/api/auth/invite/accept", post(accept_invite))
         .route("/api/auth/reset/request", post(request_reset))

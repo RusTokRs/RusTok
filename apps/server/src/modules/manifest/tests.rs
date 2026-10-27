@@ -308,7 +308,7 @@ fn install_builtin_module_restores_catalog_defaults() {
 fn catalog_modules_overlay_metadata_from_rustok_module_manifest() {
     let temp = tempdir().unwrap();
     let manifest_path = temp.path().join("modules.toml");
-    let crate_dir = temp.path().join("crates").join("rustok-blog");
+    let crate_dir = temp.path().join("crates").join("modules").join("rustok-blog");
     std::fs::create_dir_all(&crate_dir).unwrap();
     std::fs::write(
         crate_dir.join("rustok-module.toml"),
@@ -386,7 +386,7 @@ screenshots = [
 fn catalog_modules_error_for_blog_manifest(contents: &str) -> ManifestError {
     let temp = tempdir().unwrap();
     let manifest_path = temp.path().join("modules.toml");
-    let crate_dir = temp.path().join("crates").join("rustok-blog");
+    let crate_dir = temp.path().join("crates").join("modules").join("rustok-blog");
     write_module_manifest(&crate_dir, contents);
 
     let mut manifest = manifest_with_modules(&[
@@ -493,8 +493,8 @@ screenshots = ["not-a-url"]
 #[serial]
 fn validate_overlays_server_entrypoints_from_rustok_module_manifest() {
     let temp = tempdir().unwrap();
-    let blog_dir = temp.path().join("crates").join("rustok-blog");
-    let content_dir = temp.path().join("crates").join("rustok-content");
+    let blog_dir = temp.path().join("crates").join("modules").join("rustok-blog");
+    let content_dir = temp.path().join("crates").join("modules").join("rustok-content");
     let manifest_path = temp.path().join("modules.toml");
     write_module_manifest(
         &blog_dir,
@@ -584,7 +584,7 @@ trust_level = "verified"
 fn catalog_modules_require_rustok_module_manifest_for_path_modules() {
     let temp = tempdir().unwrap();
     let manifest_path = temp.path().join("modules.toml");
-    let crate_dir = temp.path().join("crates").join("rustok-blog");
+    let crate_dir = temp.path().join("crates").join("modules").join("rustok-blog");
     std::fs::create_dir_all(&crate_dir).unwrap();
 
     let mut manifest = manifest_with_modules(&[
@@ -620,7 +620,7 @@ fn catalog_modules_require_rustok_module_manifest_for_path_modules() {
 fn catalog_modules_reject_conflicting_admin_surface_metadata() {
     let temp = tempdir().unwrap();
     let manifest_path = temp.path().join("modules.toml");
-    let crate_dir = temp.path().join("crates").join("rustok-blog");
+    let crate_dir = temp.path().join("crates").join("modules").join("rustok-blog");
     std::fs::create_dir_all(&crate_dir).unwrap();
     std::fs::write(
         crate_dir.join("rustok-module.toml"),
@@ -666,7 +666,7 @@ showcase_admin_surfaces = ["next-admin"]
 #[serial]
 fn validate_module_settings_applies_defaults_from_module_manifest() {
     let temp = tempdir().unwrap();
-    let blog_dir = temp.path().join("crates").join("rustok-blog");
+    let blog_dir = temp.path().join("crates").join("modules").join("rustok-blog");
     let manifest_path = temp.path().join("modules.toml");
     write_module_manifest(
         &blog_dir,
@@ -714,7 +714,7 @@ show_author = { type = "boolean", default = true }
 #[serial]
 fn validate_module_settings_rejects_unknown_keys() {
     let temp = tempdir().unwrap();
-    let blog_dir = temp.path().join("crates").join("rustok-blog");
+    let blog_dir = temp.path().join("crates").join("modules").join("rustok-blog");
     let manifest_path = temp.path().join("modules.toml");
     write_module_manifest(
         &blog_dir,
@@ -764,7 +764,7 @@ posts_per_page = { type = "integer", default = 20, min = 1, max = 100 }
 #[serial]
 fn validate_module_settings_rejects_out_of_range_values() {
     let temp = tempdir().unwrap();
-    let blog_dir = temp.path().join("crates").join("rustok-blog");
+    let blog_dir = temp.path().join("crates").join("modules").join("rustok-blog");
     let manifest_path = temp.path().join("modules.toml");
     write_module_manifest(
         &blog_dir,
@@ -816,7 +816,7 @@ posts_per_page = { type = "integer", default = 20, min = 1, max = 100 }
 #[serial]
 fn validate_module_settings_rejects_values_outside_declared_options() {
     let temp = tempdir().unwrap();
-    let blog_dir = temp.path().join("crates").join("rustok-blog");
+    let blog_dir = temp.path().join("crates").join("modules").join("rustok-blog");
     let manifest_path = temp.path().join("modules.toml");
     write_module_manifest(
         &blog_dir,
@@ -868,7 +868,7 @@ layout = { type = "string", default = "grid", options = ["grid", "list"] }
 #[serial]
 fn validate_rejects_setting_schema_with_default_outside_declared_options() {
     let temp = tempdir().unwrap();
-    let blog_dir = temp.path().join("crates").join("rustok-blog");
+    let blog_dir = temp.path().join("crates").join("modules").join("rustok-blog");
     let manifest_path = temp.path().join("modules.toml");
     write_module_manifest(
         &blog_dir,
@@ -919,7 +919,7 @@ layout = { type = "string", default = "hero", options = ["grid", "list"] }
 #[serial]
 fn validate_module_settings_rejects_unknown_object_keys_outside_declared_shape() {
     let temp = tempdir().unwrap();
-    let blog_dir = temp.path().join("crates").join("rustok-blog");
+    let blog_dir = temp.path().join("crates").join("modules").join("rustok-blog");
     let manifest_path = temp.path().join("modules.toml");
     write_module_manifest(
         &blog_dir,
@@ -978,7 +978,7 @@ seo = { type = "object", object_keys = ["meta_title", "meta_description", "index
 #[serial]
 fn validate_module_settings_rejects_array_items_that_do_not_match_declared_item_type() {
     let temp = tempdir().unwrap();
-    let blog_dir = temp.path().join("crates").join("rustok-blog");
+    let blog_dir = temp.path().join("crates").join("modules").join("rustok-blog");
     let manifest_path = temp.path().join("modules.toml");
     write_module_manifest(
         &blog_dir,
@@ -1032,7 +1032,7 @@ featured_post_ids = { type = "array", item_type = "string", default = [] }
 #[serial]
 fn validate_rejects_setting_schema_with_item_type_on_non_array_setting() {
     let temp = tempdir().unwrap();
-    let blog_dir = temp.path().join("crates").join("rustok-blog");
+    let blog_dir = temp.path().join("crates").join("modules").join("rustok-blog");
     let manifest_path = temp.path().join("modules.toml");
     write_module_manifest(
         &blog_dir,
@@ -1083,7 +1083,7 @@ seo = { type = "object", item_type = "string" }
 #[serial]
 fn validate_module_settings_rejects_nested_object_property_type_mismatch() {
     let temp = tempdir().unwrap();
-    let blog_dir = temp.path().join("crates").join("rustok-blog");
+    let blog_dir = temp.path().join("crates").join("modules").join("rustok-blog");
     let manifest_path = temp.path().join("modules.toml");
     write_module_manifest(
         &blog_dir,
@@ -1141,7 +1141,7 @@ seo = { type = "object", properties = { meta_title = { type = "string" }, indexa
 #[serial]
 fn validate_module_settings_rejects_nested_array_item_schema_mismatch() {
     let temp = tempdir().unwrap();
-    let blog_dir = temp.path().join("crates").join("rustok-blog");
+    let blog_dir = temp.path().join("crates").join("modules").join("rustok-blog");
     let manifest_path = temp.path().join("modules.toml");
     write_module_manifest(
         &blog_dir,
@@ -1200,7 +1200,7 @@ content_blocks = { type = "array", items = { type = "object", properties = { kin
 #[serial]
 fn validate_rejects_non_snake_case_setting_keys_in_manifest() {
     let temp = tempdir().unwrap();
-    let blog_dir = temp.path().join("crates").join("rustok-blog");
+    let blog_dir = temp.path().join("crates").join("modules").join("rustok-blog");
     let manifest_path = temp.path().join("modules.toml");
     write_module_manifest(
         &blog_dir,
@@ -1249,7 +1249,7 @@ postsPerPage = { type = "integer", default = 20, min = 1, max = 100 }
 #[serial]
 fn validate_rejects_unknown_schema_keyword_in_manifest() {
     let temp = tempdir().unwrap();
-    let blog_dir = temp.path().join("crates").join("rustok-blog");
+    let blog_dir = temp.path().join("crates").join("modules").join("rustok-blog");
     write_module_manifest(
         &blog_dir,
         r#"[module]
@@ -1276,8 +1276,8 @@ template_defaults = { type = "object", shape = { title = { type = "string" } } }
 #[serial]
 fn validate_rejects_dependency_version_mismatch_from_module_package_manifest() {
     let temp = tempdir().unwrap();
-    let blog_dir = temp.path().join("crates").join("rustok-blog");
-    let content_dir = temp.path().join("crates").join("rustok-content");
+    let blog_dir = temp.path().join("crates").join("modules").join("rustok-blog");
+    let content_dir = temp.path().join("crates").join("modules").join("rustok-content");
     write_module_manifest(
         &blog_dir,
         r#"[module]
@@ -1339,8 +1339,8 @@ trust_level = "verified"
 #[serial]
 fn validate_rejects_conflicting_module_from_module_package_manifest() {
     let temp = tempdir().unwrap();
-    let blog_dir = temp.path().join("crates").join("rustok-blog");
-    let forum_dir = temp.path().join("crates").join("rustok-forum");
+    let blog_dir = temp.path().join("crates").join("modules").join("rustok-blog");
+    let forum_dir = temp.path().join("crates").join("modules").join("rustok-forum");
     write_module_manifest(
         &blog_dir,
         r#"[module]
@@ -1401,8 +1401,8 @@ trust_level = "verified"
 #[serial]
 fn validate_uses_module_package_version_for_dependency_checks() {
     let temp = tempdir().unwrap();
-    let blog_dir = temp.path().join("crates").join("rustok-blog");
-    let content_dir = temp.path().join("crates").join("rustok-content");
+    let blog_dir = temp.path().join("crates").join("modules").join("rustok-blog");
+    let content_dir = temp.path().join("crates").join("modules").join("rustok-content");
     write_module_manifest(
         &blog_dir,
         r#"[module]
@@ -1460,7 +1460,7 @@ trust_level = "verified"
 #[serial]
 fn validate_rejects_admin_subcrate_without_manifest_wiring() {
     let temp = tempdir().unwrap();
-    let blog_dir = temp.path().join("crates").join("rustok-blog");
+    let blog_dir = temp.path().join("crates").join("modules").join("rustok-blog");
     write_module_manifest(
         &blog_dir,
         r#"[module]
@@ -1507,7 +1507,7 @@ trust_level = "verified"
 #[serial]
 fn validate_rejects_storefront_wiring_without_subcrate() {
     let temp = tempdir().unwrap();
-    let pages_dir = temp.path().join("crates").join("rustok-pages");
+    let pages_dir = temp.path().join("crates").join("modules").join("rustok-pages");
     write_module_manifest(
         &pages_dir,
         r#"[module]
@@ -1556,7 +1556,7 @@ leptos_crate = "rustok-pages-storefront"
 #[serial]
 fn validate_accepts_manifest_declared_admin_i18n_bundles() {
     let temp = tempdir().unwrap();
-    let blog_dir = temp.path().join("crates").join("rustok-blog");
+    let blog_dir = temp.path().join("crates").join("modules").join("rustok-blog");
     let next_messages_dir = temp
         .path()
         .join("apps")
@@ -1619,7 +1619,7 @@ next_messages_path = "../../apps/next-admin/packages/blog/messages"
 #[serial]
 fn validate_rejects_ui_i18n_default_locale_outside_supported_locales() {
     let temp = tempdir().unwrap();
-    let blog_dir = temp.path().join("crates").join("rustok-blog");
+    let blog_dir = temp.path().join("crates").join("modules").join("rustok-blog");
 
     write_module_manifest(
         &blog_dir,
@@ -1676,7 +1676,7 @@ leptos_locales_path = "admin/locales"
 #[serial]
 fn validate_accepts_manifest_declared_i18n_with_script_and_numeric_region_locales() {
     let temp = tempdir().unwrap();
-    let pages_dir = temp.path().join("crates").join("rustok-pages");
+    let pages_dir = temp.path().join("crates").join("modules").join("rustok-pages");
 
     write_module_manifest(
         &pages_dir,
@@ -1739,7 +1739,7 @@ leptos_locales_path = "storefront/locales"
 #[serial]
 fn validate_rejects_manifest_declared_i18n_bundle_missing_locale_file() {
     let temp = tempdir().unwrap();
-    let forum_dir = temp.path().join("crates").join("rustok-forum");
+    let forum_dir = temp.path().join("crates").join("modules").join("rustok-forum");
 
     write_module_manifest(
         &forum_dir,

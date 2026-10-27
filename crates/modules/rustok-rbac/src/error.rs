@@ -61,4 +61,3 @@ mod tests {
         assert!(matches!(rbac_err_nil, RbacError::Validation(_)));
     }
 }
-

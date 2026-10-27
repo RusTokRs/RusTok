@@ -1134,6 +1134,17 @@ pub fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             ),
         ),
         (
+            "taxonomy",
+            first_party_module(
+                "rustok-taxonomy",
+                "crates/modules/rustok-taxonomy",
+                false,
+                &["content", "outbox"],
+                &["leptos-admin"],
+                &[],
+            ),
+        ),
+        (
             "forum",
             first_party_module(
                 "rustok-forum",

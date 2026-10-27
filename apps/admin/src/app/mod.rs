@@ -10,7 +10,7 @@ pub mod security;
 pub mod shell;
 
 #[cfg(feature = "ssr")]
-pub use auth_ssr::{AuthCookieBootstrap, request_auth_snapshot};
+pub use auth_ssr::request_auth_snapshot;
 pub use router::App;
 #[cfg(feature = "ssr")]
 pub use security::{admin_security_headers, request_csp_nonce, validate_admin_security_profile};

@@ -1,0 +1,11 @@
+# ast-grep configuration — custom structural rules for RusToK architecture conventions.
+#
+# These rules enforce:
+#   - Fluid Frontend Architecture (FFA): core is framework-agnostic, zero UI coupling
+#   - Fluid Backend Architecture (FBA): pure domain, dependencies point inward, no transport in domain
+#   - Anti-Slop guardrails: no file-stitching include! macros, no raw infra leakage
+#   - Design System Tokens: no raw hardcoded hex colors in UI adapters
+#
+# Run locally: npx @ast-grep/cli scan
+ruleDirs:
+  - rules/ast-grep

@@ -7,12 +7,14 @@ use chrono::{Duration, Utc};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
     DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
-    TransactionTrait, sea_query::Expr,
+    TransactionTrait,
+    sea_query::{Expr, ExprTrait},
 };
 
 use crate::auth::{
     AuthConfig, encode_access_token, generate_refresh_token, hash_password_async,
-    hash_refresh_token, verify_password_async,
+    hash_refresh_token, normalize_display_name, normalize_email, validate_password_policy,
+    verify_password_async,
 };
 use crate::models::{sessions, users};
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -35,11 +37,40 @@ pub enum AuthLifecycleError {
     EmailAlreadyExists,
     InvalidCredentials,
     UserInactive,
+    AccountLocked,
+    EmailNotVerified,
     InvalidRefreshToken,
     SessionExpired,
     UserNotFound,
     InvalidResetToken,
+    InvalidVerificationToken,
+    Validation(String),
     Internal(Error),
+}
+
+impl std::fmt::Display for AuthLifecycleError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AuthLifecycleError::EmailAlreadyExists => formatter.write_str("email already exists"),
+            AuthLifecycleError::InvalidCredentials => formatter.write_str("invalid credentials"),
+            AuthLifecycleError::UserInactive => formatter.write_str("user is inactive"),
+            AuthLifecycleError::AccountLocked => {
+                formatter.write_str("account is temporarily locked")
+            }
+            AuthLifecycleError::EmailNotVerified => {
+                formatter.write_str("email address is not verified")
+            }
+            AuthLifecycleError::InvalidRefreshToken => formatter.write_str("invalid refresh token"),
+            AuthLifecycleError::SessionExpired => formatter.write_str("session expired"),
+            AuthLifecycleError::UserNotFound => formatter.write_str("user not found"),
+            AuthLifecycleError::InvalidResetToken => formatter.write_str("invalid reset token"),
+            AuthLifecycleError::InvalidVerificationToken => {
+                formatter.write_str("invalid verification token")
+            }
+            AuthLifecycleError::Validation(message) => formatter.write_str(message),
+            AuthLifecycleError::Internal(err) => write!(formatter, "{err}"),
+        }
+    }
 }
 
 impl From<Error> for AuthLifecycleError {
@@ -56,7 +87,10 @@ impl From<sea_orm::DbErr> for AuthLifecycleError {
 
 impl From<rustok_auth::AuthError> for AuthLifecycleError {
     fn from(value: rustok_auth::AuthError) -> Self {
-        Self::Internal(crate::auth::auth_err(value))
+        match value {
+            rustok_auth::AuthError::Validation(message) => Self::Validation(message),
+            other => Self::Internal(crate::auth::auth_err(other)),
+        }
     }
 }
 
@@ -70,6 +104,12 @@ impl From<AuthLifecycleError> for Error {
                 Error::Unauthorized("Invalid credentials".into())
             }
             AuthLifecycleError::UserInactive => Error::Unauthorized("User is inactive".into()),
+            AuthLifecycleError::AccountLocked => {
+                Error::Unauthorized("Account is temporarily locked".into())
+            }
+            AuthLifecycleError::EmailNotVerified => {
+                Error::Unauthorized("Email address is not verified".into())
+            }
             AuthLifecycleError::InvalidRefreshToken => {
                 Error::Unauthorized("Invalid refresh token".into())
             }
@@ -78,8 +118,33 @@ impl From<AuthLifecycleError> for Error {
             AuthLifecycleError::InvalidResetToken => {
                 Error::Unauthorized("Invalid reset token".into())
             }
+            AuthLifecycleError::InvalidVerificationToken => {
+                Error::Unauthorized("Invalid verification token".into())
+            }
+            AuthLifecycleError::Validation(message) => Error::BadRequest(message),
             AuthLifecycleError::Internal(err) => err,
         }
+    }
+}
+
+/// New-account credentials after canonical validation and Argon2
+/// hashing (see `AuthLifecycleService::prepare_new_user`). Fields are
+/// crate-private so the only way to obtain one is through that
+/// validation point.
+pub(crate) struct PreparedNewUser {
+    email: String,
+    name: Option<String>,
+    password_hash: String,
+}
+
+impl std::fmt::Debug for PreparedNewUser {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PreparedNewUser")
+            .field("email", &self.email)
+            .field("name", &self.name)
+            .field("password_hash", &"<redacted>")
+            .finish()
     }
 }
 
@@ -100,6 +165,20 @@ static AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL: AtomicU64 = AtomicU64::new(0);
 
 const MAX_SESSION_LIST_LIMIT: u64 = 100;
 
+/// Consecutive failed credential checks after which an account locks.
+/// Combined with Argon2 cost and IP rate limiting, this bounds online
+/// guessing per account across every transport and source address.
+const MAX_FAILED_LOGIN_ATTEMPTS: i32 = 10;
+
+/// How long an account stays locked once the failure threshold is hit.
+/// A successful password reset or password change clears the lock early.
+const LOGIN_LOCKOUT_MINUTES: i64 = 15;
+
+/// Replay of a rotated-away refresh token inside this window is treated
+/// as a lost-response retry; after it, reuse means the token was copied
+/// and the whole session lineage is revoked.
+const REFRESH_REUSE_GRACE_SECONDS: i64 = 30;
+
 impl AuthLifecycleService {
     pub fn metrics_snapshot() -> AuthLifecycleMetricsSnapshot {
         AuthLifecycleMetricsSnapshot {
@@ -115,6 +194,29 @@ impl AuthLifecycleService {
 
     pub fn record_flow_inconsistency() {
         AUTH_FLOW_INCONSISTENCY_TOTAL.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn record_password_reset_sessions_revoked(count: u64) {
+        AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL.fetch_add(count, Ordering::Relaxed);
+    }
+
+    /// Publish a user audit event inside the caller's transaction so
+    /// the event is durably recorded exactly when the state change it
+    /// describes commits (transactional outbox).
+    pub(crate) async fn publish_user_event_in_tx(
+        db: DatabaseConnection,
+        tx: &DatabaseTransaction,
+        tenant_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+        event: DomainEvent,
+    ) -> std::result::Result<(), AuthLifecycleError> {
+        let event_bus = TransactionalEventBus::new(
+            Arc::new(OutboxTransport::new(db)) as Arc<dyn EventTransport>
+        );
+        event_bus
+            .publish_in_tx(tx, tenant_id, Some(user_id), event)
+            .await
+            .map_err(|error| AuthLifecycleError::Internal(error.into()))
     }
 
     #[cfg(test)]
@@ -133,8 +235,19 @@ impl AuthLifecycleService {
         name: Option<String>,
         role: rustok_core::UserRole,
         status: Option<rustok_core::UserStatus>,
+        min_password_length: usize,
     ) -> std::result::Result<users::Model, AuthLifecycleError> {
-        Self::create_user_db(ctx.db(), tenant_id, email, password, name, role, status).await
+        Self::create_user_db(
+            ctx.db(),
+            tenant_id,
+            email,
+            password,
+            name,
+            role,
+            status,
+            min_password_length,
+        )
+        .await
     }
 
     pub(crate) async fn create_user_db(
@@ -145,23 +258,56 @@ impl AuthLifecycleService {
         name: Option<String>,
         role: rustok_core::UserRole,
         status: Option<rustok_core::UserStatus>,
+        min_password_length: usize,
     ) -> std::result::Result<users::Model, AuthLifecycleError> {
+        let prepared = Self::prepare_new_user(email, password, name, min_password_length).await?;
         let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
 
-        let user =
-            Self::create_user_in_tx(&tx, tenant_id, email, password, name, role, status).await?;
+        let user = Self::create_user_in_tx(&tx, tenant_id, prepared, role, status).await?;
 
         tx.commit().await.map_err(AuthLifecycleError::from)?;
 
         Ok(user)
     }
 
-    pub(crate) async fn create_user_in_tx<C>(
-        db: &C,
-        tenant_id: uuid::Uuid,
+    /// Validate and hash new-account credentials *before* any database
+    /// transaction begins.
+    ///
+    /// This is the single canonical validation point for every
+    /// account-creation path (registration, admin provisioning, invite
+    /// acceptance, bootstrap seeds): no caller can persist an
+    /// unnormalized email, an over-long display name, or a password
+    /// below policy, because `create_user_in_tx` only accepts the
+    /// prepared result. Keeping Argon2 (tens of milliseconds on a
+    /// blocking thread) outside the transaction also means account
+    /// creation no longer holds a pooled connection and an open
+    /// transaction — with its locks — for the duration of the hash.
+    pub(crate) async fn prepare_new_user(
         email: &str,
         password: &str,
         name: Option<String>,
+        min_password_length: usize,
+    ) -> std::result::Result<PreparedNewUser, AuthLifecycleError> {
+        let email = normalize_email(email).map_err(AuthLifecycleError::from)?;
+        let name = normalize_display_name(name.as_deref()).map_err(AuthLifecycleError::from)?;
+        validate_password_policy(password, min_password_length)
+            .map_err(AuthLifecycleError::from)?;
+
+        let password_hash = hash_password_async(password.to_string())
+            .await
+            .map_err(AuthLifecycleError::from)?;
+
+        Ok(PreparedNewUser {
+            email,
+            name,
+            password_hash,
+        })
+    }
+
+    pub(crate) async fn create_user_in_tx<C>(
+        db: &C,
+        tenant_id: uuid::Uuid,
+        prepared: PreparedNewUser,
         role: rustok_core::UserRole,
         status: Option<rustok_core::UserStatus>,
     ) -> std::result::Result<users::Model, AuthLifecycleError>
@@ -170,7 +316,7 @@ impl AuthLifecycleService {
     {
         if users::Entity::find()
             .filter(users::Column::TenantId.eq(tenant_id))
-            .filter(users::Column::Email.eq(email.to_lowercase()))
+            .filter(users::Column::Email.eq(prepared.email.as_str()))
             .one(db)
             .await
             .map_err(AuthLifecycleError::from)?
@@ -179,12 +325,8 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::EmailAlreadyExists);
         }
 
-        let password_hash = hash_password_async(password.to_string())
-            .await
-            .map_err(AuthLifecycleError::from)?;
-
-        let mut user = users::ActiveModel::new(tenant_id, email, &password_hash);
-        user.name = Set(name);
+        let mut user = users::ActiveModel::new(tenant_id, &prepared.email, &prepared.password_hash);
+        user.name = Set(prepared.name);
         if let Some(status) = status {
             user.status = Set(status);
         }
@@ -192,14 +334,14 @@ impl AuthLifecycleService {
         let user = match user.insert(db).await {
             Ok(user) => user,
             Err(err) => {
-                if users::Entity::find()
-                    .filter(users::Column::TenantId.eq(tenant_id))
-                    .filter(users::Column::Email.eq(email.to_lowercase()))
-                    .one(db)
-                    .await
-                    .map_err(AuthLifecycleError::from)?
-                    .is_some()
-                {
+                // Do not re-SELECT here: on PostgreSQL the failed INSERT
+                // aborts the transaction, so a follow-up query errors out
+                // and the duplicate-email race degrades into a 500. The
+                // unique (tenant_id, email) constraint is the authority.
+                if matches!(
+                    err.sql_err(),
+                    Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+                ) {
                     return Err(AuthLifecycleError::EmailAlreadyExists);
                 }
 
@@ -262,14 +404,12 @@ impl AuthLifecycleService {
             .map_err(AuthLifecycleError::from)?
             .ok_or(AuthLifecycleError::UserNotFound)?;
 
-        let next_name = name.map(|value| {
-            let normalized = value.trim().to_string();
-            if normalized.is_empty() {
-                None
-            } else {
-                Some(normalized)
+        let next_name = match name {
+            Some(value) => {
+                Some(normalize_display_name(Some(&value)).map_err(AuthLifecycleError::from)?)
             }
-        });
+            None => None,
+        };
         let name_changed = next_name.as_ref().is_some_and(|next| user.name != *next);
 
         let mut user_active: users::ActiveModel = user.into();
@@ -283,18 +423,14 @@ impl AuthLifecycleService {
             .map_err(AuthLifecycleError::from)?;
 
         if name_changed {
-            let event_bus = TransactionalEventBus::new(
-                Arc::new(OutboxTransport::new(db.clone())) as Arc<dyn EventTransport>
-            );
-            event_bus
-                .publish_in_tx(
-                    &tx,
-                    tenant_id,
-                    Some(user_id),
-                    DomainEvent::UserUpdated { user_id },
-                )
-                .await
-                .map_err(|error| AuthLifecycleError::Internal(error.into()))?;
+            Self::publish_user_event_in_tx(
+                db.clone(),
+                &tx,
+                tenant_id,
+                user_id,
+                DomainEvent::UserUpdated { user_id },
+            )
+            .await?;
         }
 
         tx.commit().await.map_err(AuthLifecycleError::from)?;
@@ -309,13 +445,13 @@ impl AuthLifecycleService {
         password: &str,
         name: Option<String>,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
+        let prepared =
+            Self::prepare_new_user(email, password, name, config.min_password_length).await?;
         let tx = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
         let user = Self::create_user_in_tx(
             &tx,
             tenant_id,
-            email,
-            password,
-            name,
+            prepared,
             rustok_core::UserRole::Customer,
             None,
         )
@@ -323,6 +459,16 @@ impl AuthLifecycleService {
         let tokens =
             Self::create_session_and_tokens_in_tx(&tx, config, tenant_id, &user, None, None)
                 .await?;
+
+        Self::publish_user_event_in_tx(
+            ctx.db_clone(),
+            &tx,
+            tenant_id,
+            user.id,
+            DomainEvent::UserAccountRegistered { user_id: user.id },
+        )
+        .await?;
+
         tx.commit().await.map_err(AuthLifecycleError::from)?;
 
         Ok((user, tokens))
@@ -336,6 +482,7 @@ impl AuthLifecycleService {
         password: &str,
         ip_address: Option<String>,
         user_agent: Option<String>,
+        require_email_verification: bool,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
         Self::login_with_config(
             ctx.db(),
@@ -345,6 +492,7 @@ impl AuthLifecycleService {
             password,
             ip_address,
             user_agent,
+            require_email_verification,
         )
         .await
     }
@@ -357,17 +505,39 @@ impl AuthLifecycleService {
         password: &str,
         ip_address: Option<String>,
         user_agent: Option<String>,
+        require_email_verification: bool,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
-        let user = users::Entity::find_by_email(db, tenant_id, email)
+        // Lookup-only canonicalization: login must not reject malformed
+        // input with a distinct validation error (that would be an account
+        // enumeration oracle), it simply finds no user and fails as
+        // InvalidCredentials below.
+        let email = email.trim().to_lowercase();
+        let user = match users::Entity::find_by_email(db, tenant_id, &email)
             .await
             .map_err(AuthLifecycleError::from)?
-            .ok_or(AuthLifecycleError::InvalidCredentials)?;
+        {
+            Some(user) => user,
+            None => {
+                // Run a full Argon2 verification against a dummy hash so
+                // an unknown email takes as long as a wrong password:
+                // without this, login latency enumerates accounts.
+                let _ =
+                    verify_password_async(password.to_string(), crate::auth::dummy_password_hash())
+                        .await;
+                return Err(AuthLifecycleError::InvalidCredentials);
+            }
+        };
 
         if !verify_password_async(password.to_string(), user.password_hash.clone())
             .await
             .map_err(AuthLifecycleError::from)?
         {
+            Self::register_failed_login_attempt(db, tenant_id, user.id).await;
             return Err(AuthLifecycleError::InvalidCredentials);
+        }
+
+        if Self::is_login_locked(&user) {
+            return Err(AuthLifecycleError::AccountLocked);
         }
 
         if !user.is_active() {
@@ -375,22 +545,34 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::UserInactive);
         }
 
+        if require_email_verification && !user.is_email_verified() {
+            return Err(AuthLifecycleError::EmailNotVerified);
+        }
+
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
-        let locked_user = Self::find_user_for_login_in_tx(&txn, tenant_id, email)
+        let locked_user = Self::find_user_for_login_in_tx(&txn, tenant_id, &email)
             .await?
             .ok_or(AuthLifecycleError::InvalidCredentials)?;
 
         if locked_user.password_hash != user.password_hash {
             return Err(AuthLifecycleError::InvalidCredentials);
         }
+        if Self::is_login_locked(&locked_user) {
+            return Err(AuthLifecycleError::AccountLocked);
+        }
         if !locked_user.is_active() {
             AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL.fetch_add(1, Ordering::Relaxed);
             return Err(AuthLifecycleError::UserInactive);
+        }
+        if require_email_verification && !locked_user.is_email_verified() {
+            return Err(AuthLifecycleError::EmailNotVerified);
         }
 
         let now = Utc::now();
         let mut user_active: users::ActiveModel = locked_user.into();
         user_active.last_login_at = Set(Some(now.into()));
+        user_active.failed_login_count = Set(0);
+        user_active.locked_until = Set(None);
         let user = user_active
             .update(&txn)
             .await
@@ -400,9 +582,61 @@ impl AuthLifecycleService {
             &txn, config, tenant_id, &user, ip_address, user_agent,
         )
         .await?;
+        Self::publish_user_event_in_tx(
+            db.clone(),
+            &txn,
+            tenant_id,
+            user.id,
+            DomainEvent::UserLoggedIn { user_id: user.id },
+        )
+        .await?;
         txn.commit().await.map_err(AuthLifecycleError::from)?;
 
         Ok((user, tokens))
+    }
+
+    fn is_login_locked(user: &users::Model) -> bool {
+        user.locked_until
+            .is_some_and(|locked_until| locked_until.timestamp() > Utc::now().timestamp())
+    }
+
+    /// Persist one failed credential check and lock the account once the
+    /// consecutive-failure threshold is reached. Best-effort by design:
+    /// the caller still returns InvalidCredentials either way, and a
+    /// persistence failure is logged rather than leaked to the client.
+    async fn register_failed_login_attempt(
+        db: &DatabaseConnection,
+        tenant_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+    ) {
+        let increment = users::Entity::update_many()
+            .col_expr(
+                users::Column::FailedLoginCount,
+                Expr::col(users::Column::FailedLoginCount).add(1),
+            )
+            .filter(users::Column::TenantId.eq(tenant_id))
+            .filter(users::Column::Id.eq(user_id))
+            .exec(db)
+            .await;
+        if let Err(error) = increment {
+            tracing::error!(%error, %user_id, "failed to persist failed-login counter");
+            return;
+        }
+
+        let lock = users::Entity::update_many()
+            .col_expr(users::Column::FailedLoginCount, Expr::value(0))
+            .col_expr(
+                users::Column::LockedUntil,
+                Expr::value(Utc::now() + Duration::minutes(LOGIN_LOCKOUT_MINUTES)),
+            )
+            .filter(users::Column::TenantId.eq(tenant_id))
+            .filter(users::Column::Id.eq(user_id))
+            .filter(users::Column::FailedLoginCount.gte(MAX_FAILED_LOGIN_ATTEMPTS))
+            .exec(db)
+            .await;
+        if let Err(error) = lock {
+            tracing::error!(%error, %user_id, "failed to persist login lockout");
+        }
     }
 
     pub async fn refresh_runtime(
@@ -410,8 +644,16 @@ impl AuthLifecycleService {
         config: &AuthConfig,
         tenant_id: uuid::Uuid,
         refresh_token: &str,
+        require_email_verification: bool,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
-        Self::refresh_with_config_db(ctx.db(), config, tenant_id, refresh_token).await
+        Self::refresh_with_config_db(
+            ctx.db(),
+            config,
+            tenant_id,
+            refresh_token,
+            require_email_verification,
+        )
+        .await
     }
 
     async fn find_user_for_login_in_tx(
@@ -517,13 +759,29 @@ impl AuthLifecycleService {
         config: &AuthConfig,
         tenant_id: uuid::Uuid,
         refresh_token: &str,
+        require_email_verification: bool,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
         let token_hash = hash_refresh_token(refresh_token);
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
 
-        let session = Self::find_refresh_session_for_update_in_tx(&txn, tenant_id, &token_hash)
-            .await?
-            .ok_or(AuthLifecycleError::InvalidRefreshToken)?;
+        let session = match Self::find_refresh_session_for_update_in_tx(
+            &txn,
+            tenant_id,
+            &token_hash,
+        )
+        .await?
+        {
+            Some(session) => session,
+            None => {
+                // No live session holds this hash. If it is the token
+                // rotated away at the previous refresh, its replay after
+                // the grace window means theft: revoke the lineage and
+                // commit that revocation before failing closed.
+                Self::detect_refresh_reuse_in_tx(&txn, tenant_id, &token_hash).await?;
+                txn.commit().await.map_err(AuthLifecycleError::from)?;
+                return Err(AuthLifecycleError::InvalidRefreshToken);
+            }
+        };
 
         if !session.is_active() {
             return Err(AuthLifecycleError::SessionExpired);
@@ -539,14 +797,40 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::UserInactive);
         }
 
+        // Also enforced on refresh, so the one-time session issued at
+        // registration cannot be extended indefinitely while unverified.
+        if require_email_verification && !user.is_email_verified() {
+            return Err(AuthLifecycleError::EmailNotVerified);
+        }
+
         let now = Utc::now();
+        let absolute_deadline = session
+            .absolute_expires_at
+            .map(|deadline| deadline.with_timezone(&Utc))
+            .unwrap_or_else(|| {
+                // Pre-migration rows carry no cap; derive it from the
+                // original login time and persist it on this rotation.
+                session.created_at.with_timezone(&Utc)
+                    + Duration::days(sessions::SESSION_ABSOLUTE_LIFETIME_DAYS)
+            });
+        if now >= absolute_deadline {
+            return Err(AuthLifecycleError::SessionExpired);
+        }
+
         let new_refresh_token = generate_refresh_token().map_err(AuthLifecycleError::from)?;
         let new_token_hash = hash_refresh_token(&new_refresh_token);
-        let expires_at = Self::session_expiration(now, config.refresh_expiration)?;
+        let expires_at = Ord::min(
+            Self::session_expiration(now, config.refresh_expiration)?,
+            absolute_deadline,
+        );
 
         let session_id = session.id;
+        let replaced_token_hash = session.token_hash.clone();
         let mut session_model: sessions::ActiveModel = session.into();
         session_model.token_hash = Set(new_token_hash);
+        session_model.previous_token_hash = Set(Some(replaced_token_hash));
+        session_model.previous_token_revoked_at = Set(Some(now.into()));
+        session_model.absolute_expires_at = Set(Some(absolute_deadline.into()));
         session_model.expires_at = Set(expires_at.into());
         session_model.last_used_at = Set(Some(now.into()));
         session_model
@@ -577,6 +861,46 @@ impl AuthLifecycleService {
         ))
     }
 
+    /// OAuth BCP refresh-token reuse detection for the in-place rotation
+    /// model: the session row remembers the hash rotated away at the
+    /// previous refresh. Presenting that hash after the grace window can
+    /// only happen if the token was copied, so the lineage is revoked.
+    /// Older generations are not remembered and read as unknown tokens.
+    async fn detect_refresh_reuse_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: uuid::Uuid,
+        token_hash: &str,
+    ) -> std::result::Result<(), AuthLifecycleError> {
+        let previous = sessions::Entity::find()
+            .filter(sessions::Column::TenantId.eq(tenant_id))
+            .filter(sessions::Column::PreviousTokenHash.eq(token_hash.to_string()))
+            .filter(sessions::Column::RevokedAt.is_null())
+            .one(txn)
+            .await
+            .map_err(AuthLifecycleError::from)?;
+
+        if let Some(previous) = previous {
+            let within_grace = previous
+                .previous_token_revoked_at
+                .is_some_and(|rotated_at| {
+                    Utc::now().timestamp() - rotated_at.timestamp() < REFRESH_REUSE_GRACE_SECONDS
+                });
+            if !within_grace {
+                tracing::warn!(
+                    session_id = %previous.id,
+                    user_id = %previous.user_id,
+                    "refresh token reuse detected; revoking session lineage"
+                );
+                let mut active: sessions::ActiveModel = previous.into();
+                active.revoked_at = Set(Some(Utc::now().into()));
+                active.previous_token_hash = Set(None);
+                active.update(txn).await.map_err(AuthLifecycleError::from)?;
+            }
+        }
+
+        Ok(())
+    }
+
     pub async fn change_password_runtime(
         ctx: &ServerRuntimeContext,
         tenant_id: uuid::Uuid,
@@ -584,6 +908,7 @@ impl AuthLifecycleService {
         current_session_id: uuid::Uuid,
         current_password: &str,
         new_password: &str,
+        min_password_length: usize,
     ) -> std::result::Result<(), AuthLifecycleError> {
         Self::change_password_db(
             ctx.db(),
@@ -592,6 +917,7 @@ impl AuthLifecycleService {
             current_session_id,
             current_password,
             new_password,
+            min_password_length,
         )
         .await
     }
@@ -690,7 +1016,11 @@ impl AuthLifecycleService {
         current_session_id: uuid::Uuid,
         current_password: &str,
         new_password: &str,
+        min_password_length: usize,
     ) -> std::result::Result<(), AuthLifecycleError> {
+        validate_password_policy(new_password, min_password_length)
+            .map_err(AuthLifecycleError::from)?;
+
         let initial_user = users::Entity::find_by_id(user_id)
             .filter(users::Column::TenantId.eq(tenant_id))
             .one(db)
@@ -735,6 +1065,8 @@ impl AuthLifecycleService {
 
         let mut user_active: users::ActiveModel = user.into();
         user_active.password_hash = Set(new_password_hash);
+        user_active.failed_login_count = Set(0);
+        user_active.locked_until = Set(None);
         user_active
             .update(&txn)
             .await
@@ -745,6 +1077,14 @@ impl AuthLifecycleService {
             tenant_id,
             user_id,
             Some(current_session_id),
+        )
+        .await?;
+        Self::publish_user_event_in_tx(
+            db.clone(),
+            &txn,
+            tenant_id,
+            user_id,
+            DomainEvent::UserPasswordChanged { user_id },
         )
         .await?;
         txn.commit().await.map_err(AuthLifecycleError::from)?;
@@ -773,6 +1113,7 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::InvalidRefreshToken);
         }
 
+        let user_id = session.user_id;
         let now = Utc::now();
         let mut session_model: sessions::ActiveModel = session.into();
         session_model.revoked_at = Set(Some(now.into()));
@@ -781,6 +1122,14 @@ impl AuthLifecycleService {
             .await
             .map_err(AuthLifecycleError::from)?;
 
+        Self::publish_user_event_in_tx(
+            ctx.db_clone(),
+            &txn,
+            tenant_id,
+            user_id,
+            DomainEvent::UserLoggedOut { user_id },
+        )
+        .await?;
         txn.commit().await.map_err(AuthLifecycleError::from)?;
         Ok(())
     }
@@ -799,15 +1148,36 @@ impl AuthLifecycleService {
         tenant_id: uuid::Uuid,
         session_id: uuid::Uuid,
     ) -> std::result::Result<(), AuthLifecycleError> {
-        let now = Utc::now();
-        sessions::Entity::update_many()
-            .col_expr(sessions::Column::RevokedAt, Expr::value(now))
+        let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
+        let session = sessions::Entity::find_by_id(session_id)
             .filter(sessions::Column::TenantId.eq(tenant_id))
-            .filter(sessions::Column::Id.eq(session_id))
             .filter(sessions::Column::RevokedAt.is_null())
-            .exec(db)
+            .one(&tx)
             .await
             .map_err(AuthLifecycleError::from)?;
+
+        // Logout stays idempotent: an unknown or already-revoked
+        // session is a successful no-op and emits no event.
+        if let Some(session) = session {
+            let user_id = session.user_id;
+            let now = Utc::now();
+            let mut session_model: sessions::ActiveModel = session.into();
+            session_model.revoked_at = Set(Some(now.into()));
+            session_model
+                .update(&tx)
+                .await
+                .map_err(AuthLifecycleError::from)?;
+            Self::publish_user_event_in_tx(
+                db.clone(),
+                &tx,
+                tenant_id,
+                user_id,
+                DomainEvent::UserLoggedOut { user_id },
+            )
+            .await?;
+        }
+
+        tx.commit().await.map_err(AuthLifecycleError::from)?;
         Ok(())
     }
 
@@ -881,32 +1251,6 @@ impl AuthLifecycleService {
     }
 
     #[cfg(test)]
-    async fn reset_password_and_revoke_sessions(
-        db: &DatabaseConnection,
-        tenant_id: uuid::Uuid,
-        user: users::Model,
-        new_password: &str,
-        except_session_id: Option<uuid::Uuid>,
-    ) -> std::result::Result<(), AuthLifecycleError> {
-        let user_id = user.id;
-        let mut user_active: users::ActiveModel = user.into();
-        let new_hash = hash_password_async(new_password.to_string())
-            .await
-            .map_err(AuthLifecycleError::from)?;
-        user_active.password_hash = Set(new_hash);
-        user_active
-            .update(db)
-            .await
-            .map_err(AuthLifecycleError::from)?;
-
-        let revoked_sessions =
-            Self::revoke_user_sessions_db(db, tenant_id, user_id, except_session_id).await?;
-        AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL.fetch_add(revoked_sessions, Ordering::Relaxed);
-
-        Ok(())
-    }
-
-    #[cfg(test)]
     async fn create_session_and_tokens_db(
         db: &DatabaseConnection,
         config: &AuthConfig,
@@ -971,7 +1315,9 @@ impl AuthLifecycleService {
     ) -> std::result::Result<chrono::DateTime<Utc>, AuthLifecycleError> {
         let ttl_seconds = i64::try_from(ttl_seconds)
             .map_err(|_| AuthLifecycleError::Internal(Error::InternalServerError))?;
-        now.checked_add_signed(Duration::seconds(ttl_seconds))
+        let ttl = Duration::try_seconds(ttl_seconds)
+            .ok_or(AuthLifecycleError::Internal(Error::InternalServerError))?;
+        now.checked_add_signed(ttl)
             .ok_or(AuthLifecycleError::Internal(Error::InternalServerError))
     }
 
@@ -1041,9 +1387,7 @@ mod tests {
         AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL, AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL,
         AuthLifecycleError, AuthLifecycleMetricsSnapshot, AuthLifecycleService, Error,
     };
-    use crate::auth::{
-        AuthConfig, decode_access_token, hash_password, hash_refresh_token, verify_password,
-    };
+    use crate::auth::{AuthConfig, decode_access_token, hash_password, hash_refresh_token};
     use crate::models::_entities::user_roles;
     use crate::models::{sessions, tenants, users};
     use crate::services::rbac_service::RbacService;
@@ -1203,74 +1547,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[serial]
-    async fn reset_password_revoke_sessions_marks_all_sessions_revoked() {
-        AuthLifecycleService::reset_metrics_for_tests();
-        let db = setup_test_db_with_migrations::<Migrator>().await;
-        let tenant = tenants::ActiveModel::new("Test tenant", "test-tenant")
-            .insert(&db)
-            .await
-            .expect("failed to create tenant");
-
-        let user = users::ActiveModel::new(tenant.id, "user@example.com", "old-hash")
-            .insert(&db)
-            .await
-            .expect("failed to create user");
-
-        let now = Utc::now();
-        sessions::ActiveModel::new(
-            tenant.id,
-            user.id,
-            "token-1".to_string(),
-            now + Duration::hours(1),
-            None,
-            None,
-        )
-        .insert(&db)
-        .await
-        .expect("failed to create session 1");
-        sessions::ActiveModel::new(
-            tenant.id,
-            user.id,
-            "token-2".to_string(),
-            now + Duration::hours(2),
-            None,
-            None,
-        )
-        .insert(&db)
-        .await
-        .expect("failed to create session 2");
-
-        let metrics_before = AuthLifecycleService::metrics_snapshot();
-
-        AuthLifecycleService::reset_password_and_revoke_sessions(
-            &db,
-            tenant.id,
-            user.clone(),
-            "new-password",
-            None,
-        )
-        .await
-        .expect("password reset should succeed");
-
-        let active_sessions = sessions::Entity::find()
-            .filter(sessions::Column::TenantId.eq(tenant.id))
-            .filter(sessions::Column::UserId.eq(user.id))
-            .filter(sessions::Column::RevokedAt.is_null())
-            .all(&db)
-            .await
-            .expect("failed to query active sessions");
-
-        assert!(active_sessions.is_empty());
-
-        let metrics_after = AuthLifecycleService::metrics_snapshot();
-        assert!(
-            metrics_after.password_reset_sessions_revoked_total
-                >= metrics_before.password_reset_sessions_revoked_total + 2
-        );
-    }
-
-    #[tokio::test]
     async fn create_user_assigns_requested_role_relations() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let tenant = tenants::ActiveModel::new("Test tenant", "test-tenant")
@@ -1286,6 +1562,7 @@ mod tests {
             Some("Manager".to_string()),
             rustok_core::UserRole::Manager,
             Some(rustok_core::UserStatus::Active),
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await
         .expect("failed to create user via auth lifecycle");
@@ -1330,6 +1607,7 @@ mod tests {
             None,
             rustok_core::UserRole::Customer,
             None,
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await
         .expect("failed to create user");
@@ -1364,6 +1642,7 @@ mod tests {
             Some("Original Name".to_string()),
             rustok_core::UserRole::Customer,
             None,
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await
         .expect("failed to create user");
@@ -1411,6 +1690,7 @@ mod tests {
             Some("Tenant A User".to_string()),
             rustok_core::UserRole::Customer,
             None,
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await
         .expect("failed to create user in tenant A");
@@ -1442,6 +1722,7 @@ mod tests {
             Some("Lifecycle User".to_string()),
             rustok_core::UserRole::Manager,
             None,
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await
         .expect("create_user via lifecycle path should succeed");
@@ -1528,6 +1809,7 @@ mod tests {
             Some("Default Status".to_string()),
             rustok_core::UserRole::Customer,
             None,
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await
         .expect("create_user with default status should succeed");
@@ -1542,6 +1824,7 @@ mod tests {
             Some("Explicit Inactive".to_string()),
             rustok_core::UserRole::Customer,
             Some(rustok_core::UserStatus::Inactive),
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await
         .expect("create_user with explicit inactive status should succeed");
@@ -1569,6 +1852,7 @@ mod tests {
             Some("First User".to_string()),
             rustok_core::UserRole::Customer,
             None,
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await
         .expect("first create_user should succeed");
@@ -1581,6 +1865,7 @@ mod tests {
             Some("Second User".to_string()),
             rustok_core::UserRole::Customer,
             None,
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await;
 
@@ -1618,6 +1903,7 @@ mod tests {
             "Password123!",
             None,
             None,
+            false,
         )
         .await;
         assert!(matches!(result, Err(AuthLifecycleError::UserInactive)));
@@ -1695,6 +1981,7 @@ mod tests {
             "Password123!",
             None,
             None,
+            false,
         )
         .await;
 
@@ -1764,6 +2051,7 @@ mod tests {
             session.id,
             "OldPassword123!",
             "NewPassword123!",
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await;
 
@@ -1802,9 +2090,14 @@ mod tests {
 
         let config = test_auth_config("refresh-secret", 600, 3600);
 
-        let result =
-            AuthLifecycleService::refresh_with_config_db(&db, &config, tenant.id, expired_token)
-                .await;
+        let result = AuthLifecycleService::refresh_with_config_db(
+            &db,
+            &config,
+            tenant.id,
+            expired_token,
+            false,
+        )
+        .await;
 
         assert!(matches!(result, Err(AuthLifecycleError::SessionExpired)));
     }
@@ -1824,6 +2117,7 @@ mod tests {
             &config,
             tenant.id,
             "unknown-refresh-token",
+            false,
         )
         .await;
 
@@ -1866,9 +2160,14 @@ mod tests {
 
         let config = test_auth_config("refresh-secret", 600, 3600);
 
-        let result =
-            AuthLifecycleService::refresh_with_config_db(&db, &config, tenant.id, refresh_token)
-                .await;
+        let result = AuthLifecycleService::refresh_with_config_db(
+            &db,
+            &config,
+            tenant.id,
+            refresh_token,
+            false,
+        )
+        .await;
 
         assert!(matches!(result, Err(AuthLifecycleError::UserInactive)));
     }
@@ -1881,90 +2180,6 @@ mod tests {
             .expect_err("invalid token payload must be rejected");
 
         assert!(matches!(err, crate::error::Error::Unauthorized(_)));
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn reset_password_and_revoke_sessions_updates_password_and_revokes_all_sessions() {
-        AuthLifecycleService::reset_metrics_for_tests();
-        let db = setup_test_db_with_migrations::<Migrator>().await;
-        let tenant = tenants::ActiveModel::new("Tenant reset", "tenant-reset-positive")
-            .insert(&db)
-            .await
-            .expect("failed to create tenant");
-
-        let old_password = "OldPassword123!";
-        let new_password = "NewPassword123!";
-        let old_hash = hash_password(old_password).expect("failed to hash old password");
-        let user = users::ActiveModel::new(tenant.id, "reset-positive@example.com", &old_hash)
-            .insert(&db)
-            .await
-            .expect("failed to create user");
-
-        let now = Utc::now();
-        sessions::ActiveModel::new(
-            tenant.id,
-            user.id,
-            "reset-positive-token-1".to_string(),
-            now + Duration::hours(1),
-            None,
-            None,
-        )
-        .insert(&db)
-        .await
-        .expect("failed to create first session");
-        sessions::ActiveModel::new(
-            tenant.id,
-            user.id,
-            "reset-positive-token-2".to_string(),
-            now + Duration::hours(2),
-            None,
-            None,
-        )
-        .insert(&db)
-        .await
-        .expect("failed to create second session");
-
-        let metrics_before = AuthLifecycleService::metrics_snapshot();
-
-        AuthLifecycleService::reset_password_and_revoke_sessions(
-            &db,
-            tenant.id,
-            user.clone(),
-            new_password,
-            None,
-        )
-        .await
-        .expect("reset with revoke should succeed");
-
-        let updated_user = users::Entity::find_by_id(user.id)
-            .one(&db)
-            .await
-            .expect("failed to query updated user")
-            .expect("updated user should exist");
-        assert!(
-            verify_password(new_password, &updated_user.password_hash)
-                .expect("new password should verify")
-        );
-        assert!(
-            !verify_password(old_password, &updated_user.password_hash)
-                .expect("old password must not verify")
-        );
-
-        let active_sessions = sessions::Entity::find()
-            .filter(sessions::Column::TenantId.eq(tenant.id))
-            .filter(sessions::Column::UserId.eq(user.id))
-            .filter(sessions::Column::RevokedAt.is_null())
-            .count(&db)
-            .await
-            .expect("failed to query active sessions");
-        assert_eq!(active_sessions, 0);
-
-        let metrics_after = AuthLifecycleService::metrics_snapshot();
-        assert!(
-            metrics_after.password_reset_sessions_revoked_total
-                >= metrics_before.password_reset_sessions_revoked_total + 2
-        );
     }
 
     #[tokio::test]
@@ -2149,167 +2364,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[serial]
-    async fn reset_password_revoke_sessions_can_keep_current_session() {
-        AuthLifecycleService::reset_metrics_for_tests();
-        let db = setup_test_db_with_migrations::<Migrator>().await;
-        let tenant = tenants::ActiveModel::new("Test tenant", "test-tenant-2")
-            .insert(&db)
-            .await
-            .expect("failed to create tenant");
-
-        let user = users::ActiveModel::new(tenant.id, "user2@example.com", "old-hash")
-            .insert(&db)
-            .await
-            .expect("failed to create user");
-
-        let now = Utc::now();
-        let current_session = sessions::ActiveModel::new(
-            tenant.id,
-            user.id,
-            "current-token".to_string(),
-            now + Duration::hours(1),
-            None,
-            None,
-        )
-        .insert(&db)
-        .await
-        .expect("failed to create current session");
-        sessions::ActiveModel::new(
-            tenant.id,
-            user.id,
-            "other-token".to_string(),
-            now + Duration::hours(2),
-            None,
-            None,
-        )
-        .insert(&db)
-        .await
-        .expect("failed to create secondary session");
-
-        let metrics_before = AuthLifecycleService::metrics_snapshot();
-
-        AuthLifecycleService::reset_password_and_revoke_sessions(
-            &db,
-            tenant.id,
-            user.clone(),
-            "new-password",
-            Some(current_session.id),
-        )
-        .await
-        .expect("password reset should succeed");
-
-        let still_active = sessions::Entity::find_by_id(current_session.id)
-            .one(&db)
-            .await
-            .expect("failed to fetch current session")
-            .expect("current session should exist");
-        assert!(still_active.revoked_at.is_none());
-
-        let revoked_count = sessions::Entity::find()
-            .filter(sessions::Column::TenantId.eq(tenant.id))
-            .filter(sessions::Column::UserId.eq(user.id))
-            .filter(sessions::Column::RevokedAt.is_not_null())
-            .count(&db)
-            .await
-            .expect("failed to query revoked sessions");
-
-        assert_eq!(revoked_count, 1);
-
-        let metrics_after = AuthLifecycleService::metrics_snapshot();
-        assert!(
-            metrics_after.password_reset_sessions_revoked_total
-                > metrics_before.password_reset_sessions_revoked_total
-        );
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn reset_password_revoke_sessions_repeat_call_on_already_revoked_sessions_is_idempotent()
-    {
-        AuthLifecycleService::reset_metrics_for_tests();
-        let db = setup_test_db_with_migrations::<Migrator>().await;
-        let tenant = tenants::ActiveModel::new("Test tenant", "test-tenant-3")
-            .insert(&db)
-            .await
-            .expect("failed to create tenant");
-
-        let user = users::ActiveModel::new(tenant.id, "user3@example.com", "old-hash")
-            .insert(&db)
-            .await
-            .expect("failed to create user");
-        let user_id = user.id;
-
-        let now = Utc::now();
-        sessions::ActiveModel::new(
-            tenant.id,
-            user.id,
-            "token-a".to_string(),
-            now + Duration::hours(1),
-            None,
-            None,
-        )
-        .insert(&db)
-        .await
-        .expect("failed to create session a");
-        sessions::ActiveModel::new(
-            tenant.id,
-            user.id,
-            "token-b".to_string(),
-            now + Duration::hours(2),
-            None,
-            None,
-        )
-        .insert(&db)
-        .await
-        .expect("failed to create session b");
-
-        AuthLifecycleService::reset_password_and_revoke_sessions(
-            &db,
-            tenant.id,
-            user.clone(),
-            "new-password",
-            None,
-        )
-        .await
-        .expect("first password reset should succeed");
-
-        let revoked_after_first_call = sessions::Entity::find()
-            .filter(sessions::Column::TenantId.eq(tenant.id))
-            .filter(sessions::Column::UserId.eq(user_id))
-            .filter(sessions::Column::RevokedAt.is_not_null())
-            .count(&db)
-            .await
-            .expect("failed to query revoked sessions after first call");
-        assert_eq!(
-            revoked_after_first_call, 2,
-            "first call should revoke all active sessions"
-        );
-
-        AuthLifecycleService::reset_password_and_revoke_sessions(
-            &db,
-            tenant.id,
-            user,
-            "new-password-2",
-            None,
-        )
-        .await
-        .expect("second password reset should succeed");
-
-        let revoked_after_second_call = sessions::Entity::find()
-            .filter(sessions::Column::TenantId.eq(tenant.id))
-            .filter(sessions::Column::UserId.eq(user_id))
-            .filter(sessions::Column::RevokedAt.is_not_null())
-            .count(&db)
-            .await
-            .expect("failed to query revoked sessions after second call");
-        assert_eq!(
-            revoked_after_second_call, revoked_after_first_call,
-            "second call should revoke zero additional sessions"
-        );
-    }
-
-    #[tokio::test]
     async fn create_user_scopes_duplicate_email_check_per_tenant() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let tenant_a = tenants::ActiveModel::new("Tenant A", "tenant-a-scope")
@@ -2329,6 +2383,7 @@ mod tests {
             Some("Tenant A User".to_string()),
             rustok_core::UserRole::Customer,
             None,
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await
         .expect("create_user in tenant A should succeed");
@@ -2341,6 +2396,7 @@ mod tests {
             Some("Tenant B User".to_string()),
             rustok_core::UserRole::Manager,
             None,
+            rustok_auth::MIN_PASSWORD_LENGTH_FLOOR_CHARS,
         )
         .await
         .expect("same email in another tenant should be allowed");

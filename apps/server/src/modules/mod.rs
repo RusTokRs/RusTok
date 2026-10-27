@@ -11,6 +11,7 @@ pub use rustok_distribution::build_registry;
 #[cfg(test)]
 mod contract_tests {
     use super::{ManifestManager, build_registry};
+    use serial_test::serial;
     use rustok_api::Permission;
     use rustok_api::{Action, Resource};
     use rustok_auth::AUTH_USER_PERMISSIONS;
@@ -216,6 +217,7 @@ mod contract_tests {
         assert_eq!(
             commerce.dependencies(),
             &[
+                "tenant",
                 "cart",
                 "customer",
                 "product",
@@ -241,6 +243,7 @@ mod contract_tests {
     }
 
     #[test]
+    #[serial]
     fn runtime_registry_dependencies_match_modules_manifest() {
         let manifest = ManifestManager::load().expect("modules.toml must load");
         let registry = build_registry();

@@ -13,7 +13,10 @@ use crate::common::RustokSettings;
 use crate::models::users;
 use crate::services::auth_invite::InviteAcceptanceError;
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService, AuthTokens};
-use crate::services::email::{PasswordResetEmail, email_service_from_ctx, password_reset_url};
+use crate::services::email::{
+    PASSWORD_RESET_TOKEN_TTL_SECS, PasswordResetEmail, email_service_from_ctx, password_reset_url,
+    spawn_email_verification,
+};
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
@@ -37,10 +40,16 @@ fn map_lifecycle_error(error: AuthLifecycleError) -> AuthLifecycleMutationError 
         AuthLifecycleError::EmailAlreadyExists => AuthLifecycleMutationError::EmailAlreadyExists,
         AuthLifecycleError::InvalidCredentials => AuthLifecycleMutationError::InvalidCredentials,
         AuthLifecycleError::UserInactive => AuthLifecycleMutationError::UserInactive,
+        AuthLifecycleError::AccountLocked => AuthLifecycleMutationError::AccountLocked,
+        AuthLifecycleError::EmailNotVerified => AuthLifecycleMutationError::EmailNotVerified,
         AuthLifecycleError::InvalidRefreshToken => AuthLifecycleMutationError::InvalidRefreshToken,
         AuthLifecycleError::SessionExpired => AuthLifecycleMutationError::SessionExpired,
         AuthLifecycleError::UserNotFound => AuthLifecycleMutationError::UserNotFound,
         AuthLifecycleError::InvalidResetToken => AuthLifecycleMutationError::InvalidResetToken,
+        AuthLifecycleError::InvalidVerificationToken => {
+            AuthLifecycleMutationError::Validation("Invalid verification token".to_string())
+        }
+        AuthLifecycleError::Validation(message) => AuthLifecycleMutationError::Validation(message),
         AuthLifecycleError::Internal(err) => AuthLifecycleMutationError::Internal(err.to_string()),
     }
 }
@@ -49,13 +58,14 @@ fn map_invite_error(error: InviteAcceptanceError) -> AuthLifecycleMutationError 
     match error {
         InviteAcceptanceError::InvalidToken => AuthLifecycleMutationError::InvalidInviteToken,
         InviteAcceptanceError::EmailAlreadyExists => AuthLifecycleMutationError::EmailAlreadyExists,
+        InviteAcceptanceError::Validation(message) => {
+            AuthLifecycleMutationError::Validation(message)
+        }
         InviteAcceptanceError::Internal(err) => {
             AuthLifecycleMutationError::Internal(err.to_string())
         }
     }
 }
-
-const DEFAULT_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
 
 pub struct ServerAuthLifecycleProvider {
     runtime_ctx: ServerRuntimeContext,
@@ -73,13 +83,17 @@ impl ServerAuthLifecycleProvider {
     fn ensure_registration_enabled(
         settings: &RustokSettings,
     ) -> Result<(), AuthLifecycleMutationError> {
-        if settings.features.registration_enabled {
-            Ok(())
-        } else {
-            Err(AuthLifecycleMutationError::Validation(
+        if !settings.features.registration_enabled {
+            return Err(AuthLifecycleMutationError::Validation(
                 "Registration is disabled".to_string(),
-            ))
+            ));
         }
+        if settings.features.invite_only_registration {
+            return Err(AuthLifecycleMutationError::Validation(
+                "Registration is available by invitation only".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     async fn permission_strings(
@@ -275,6 +289,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
             &password,
             None,
             None,
+            self.runtime_ctx.settings().features.email_verification,
         )
         .await
         .map_err(map_lifecycle_error)?;
@@ -299,6 +314,16 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         )
         .await
         .map_err(map_lifecycle_error)?;
+        if self.runtime_ctx.settings().features.email_verification {
+            spawn_email_verification(
+                &self.runtime_ctx,
+                &self.auth_config,
+                context.tenant_id,
+                user.id,
+                &user.email,
+                context.locale.as_str(),
+            );
+        }
         self.token_record(context.tenant_id, user, tokens).await
     }
 
@@ -312,6 +337,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
             &self.auth_config,
             context.tenant_id,
             &refresh_token,
+            self.runtime_ctx.settings().features.email_verification,
         )
         .await
         .map_err(map_lifecycle_error)?;
@@ -336,7 +362,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
             context.tenant_id,
             &user.email,
             &user.password_hash,
-            DEFAULT_RESET_TOKEN_TTL_SECS,
+            PASSWORD_RESET_TOKEN_TTL_SECS,
         ) {
             Ok(token) => token,
             Err(_) => {
@@ -428,6 +454,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
             Self::require_direct_session_id(context)?,
             &current_password,
             &new_password,
+            self.auth_config.min_password_length,
         )
         .await
         .map_err(map_lifecycle_error)
@@ -499,6 +526,9 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         password: String,
         name: Option<String>,
     ) -> Result<AcceptInviteRecord, AuthLifecycleMutationError> {
+        if !self.runtime_ctx.settings().features.invites_enabled {
+            return Err(AuthLifecycleMutationError::InvalidInviteToken);
+        }
         let accepted = AuthLifecycleService::accept_invite_once_runtime(
             &self.runtime_ctx,
             &self.auth_config,

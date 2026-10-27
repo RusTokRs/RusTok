@@ -37,7 +37,10 @@ pub trait RbacGraphqlRoleWriter: Send + Sync {
         role_slug: &str,
     ) -> Result<(), RbacGraphqlRoleWriteError> {
         match role_slug.trim().to_lowercase().parse::<UserRole>() {
-            Ok(role) => self.replace_user_role(tenant_id, actor_id, user_id, role).await,
+            Ok(role) => {
+                self.replace_user_role(tenant_id, actor_id, user_id, role)
+                    .await
+            }
             Err(_) => Err(RbacGraphqlRoleWriteError::Forbidden(format!(
                 "custom role '{role_slug}' cannot be assigned by this host"
             ))),

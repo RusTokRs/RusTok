@@ -1,0 +1,16 @@
+id: rust-no-include-macro
+language: rust
+severity: warning
+message: "Prohibit include!(\"...\") macro. Use canonical Rust modules (`mod foo; use foo::*;`)."
+note: |-
+  Anti-Slop rule in AGENTS.md and CONTINUOUS_CODE_REVIEW.md:
+  File-stitching macros bypass crate and module boundaries and make
+  auditing impossible.
+files:
+  - "crates/**/src/**"
+  - "apps/**/src/**"
+ignores:
+  - "**/test.rs"
+  - "**/tests/**"
+rule:
+  pattern: 'include!($$$ARGS)'

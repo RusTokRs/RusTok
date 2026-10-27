@@ -709,7 +709,9 @@ mod tests {
             UserRole::Admin,
         )
         .await;
-        assert!(matches!(err, Err(RbacRoleAssignmentError::Database(msg)) if msg.contains("tenant_id must not be nil")));
+        assert!(
+            matches!(err, Err(RbacRoleAssignmentError::Database(msg)) if msg.contains("tenant_id must not be nil"))
+        );
 
         let err = RbacRoleAssignmentDbWriter::assign_role_permissions_on(
             &db,
@@ -718,6 +720,8 @@ mod tests {
             UserRole::Admin,
         )
         .await;
-        assert!(matches!(err, Err(RbacRoleAssignmentError::Database(msg)) if msg.contains("user_id must not be nil")));
+        assert!(
+            matches!(err, Err(RbacRoleAssignmentError::Database(msg)) if msg.contains("user_id must not be nil"))
+        );
     }
 }

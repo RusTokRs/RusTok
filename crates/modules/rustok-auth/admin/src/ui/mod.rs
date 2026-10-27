@@ -1,5 +1,7 @@
+mod accept_invite;
 mod auth_admin;
 pub mod components;
+mod invites;
 pub mod leptos;
 mod login;
 mod oauth_apps;
@@ -11,5 +13,6 @@ mod user_details;
 mod users;
 
 pub use leptos::{
-    AuthAdmin, Login, OAuthAppsPage, Profile, Register, ResetPassword, Security, UserDetails, Users,
+    AcceptInvite, AuthAdmin, Login, OAuthAppsPage, Profile, Register, ResetPassword, Security,
+    UserDetails, Users,
 };
