@@ -501,10 +501,6 @@ impl CacheBackend for GenerationAwareCacheBackend {
         Err(Self::generation_changed_error())
     }
 
-    async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
-        for _ in 0..MAX_GENERATION_OPERATION_ATTEMPTS {
-            let (snapshot, physical_key) = self.key_snapshot(key)?;
-            let result = self.inner.invalidate(&physical_key).await;
     async fn reconcile_local_state(&self) -> rustok_core::Result<()> {
         // Generation-scoped keys do not affect whether degraded local state is trustworthy.
         self.ensure_available()?;

@@ -314,9 +314,7 @@ impl CacheSettings {
         url.set_path(&format!("/{}", self.redis_db));
         if !self.redis_password.is_empty() {
             url.set_password(Some(self.redis_password.as_str()))
-                .map_err(|error| {
-                    format!("redis_password cannot be used in a Redis URL: {error}")
-                })?;
+                .map_err(|()| "redis_password cannot be used in a Redis URL".to_string())?;
         }
         Ok(Some(url.to_string()))
     }
