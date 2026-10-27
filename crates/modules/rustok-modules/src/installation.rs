@@ -556,7 +556,7 @@ pub trait DurableArtifactBlobStore: ArtifactBlobStore {
     async fn delete(&self, digest: &str) -> Result<(), ModuleInstallationError>;
 }
 
-{}#[async_trait]
+#[async_trait]
 impl<B: ArtifactBlobStore + ?Sized> ArtifactBlobStore for Arc<B> {
     async fn put_verified(
         &self,
