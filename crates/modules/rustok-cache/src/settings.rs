@@ -216,8 +216,10 @@ pub fn redis_url_without_password(url: &str) -> String {
     if parsed.password().is_none() {
         return parsed.to_string();
     }
-    if let Err(error) = parsed.set_password(None) {
-        tracing::error!(%error, "could not remove the password from a Redis URL");
+    if parsed.set_password(None).is_err() {
+        // `Url::set_password` only fails for a URL that cannot carry credentials at all; the
+        // message is fixed because its error type has no detail.
+        tracing::error!("could not remove the password from a Redis URL");
         return String::new();
     }
     parsed.to_string()
@@ -250,11 +252,11 @@ fn redact_url_password(url: &str) -> (String, bool) {
             if !had_password {
                 return (parsed.to_string(), false);
             }
-            if let Err(error) = parsed.set_password(Some(REDACTED_SECRET)) {
+            if parsed.set_password(Some(REDACTED_SECRET)).is_err() {
                 // Fail closed: a redacted document must never carry the credential. Returning the
                 // unmodified URL here would hand the real password to the client while claiming it
                 // was masked, so the whole password channel is dropped instead.
-                tracing::error!(%error, "could not mask the redis_url password; dropping the URL");
+                tracing::error!("could not mask the redis_url password; dropping the URL");
                 return (String::new(), true);
             }
             (parsed.to_string(), true)
@@ -306,11 +308,8 @@ impl CacheSettings {
         url.set_host(Some(host)).map_err(|error| {
             format!("redis_host '{host}' cannot be used in a Redis URL: {error}")
         })?;
-        url.set_port(Some(self.redis_port)).map_err(|error| {
-            format!(
-                "redis_port {} cannot be used in a Redis URL: {error}",
-                self.redis_port
-            )
+        url.set_port(Some(self.redis_port)).map_err(|()| {
+            format!("redis_port {} cannot be used in a Redis URL", self.redis_port)
         })?;
         url.set_path(&format!("/{}", self.redis_db));
         if !self.redis_password.is_empty() {
