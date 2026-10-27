@@ -650,7 +650,7 @@ mod tests {
     fn validate_rejects_a_structured_host_that_cannot_be_used_in_a_url() {
         let settings = CacheSettings {
             mode: DEFAULT_REDIS_MODE.to_string(),
-            redis_host: "not a host".to_string(),
+            redis_host: "bad/host".to_string(),
             redis_port: 6379,
             ..CacheSettings::default()
         };
@@ -667,7 +667,7 @@ mod tests {
     fn unusable_structured_host_never_falls_back_to_localhost() {
         let settings = CacheSettings {
             mode: DEFAULT_REDIS_MODE.to_string(),
-            redis_host: "not a host".to_string(),
+            redis_host: "bad/host".to_string(),
             redis_port: 6379,
             redis_db: 0,
             ..CacheSettings::default()
