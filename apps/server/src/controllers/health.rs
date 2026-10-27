@@ -556,6 +556,18 @@ async fn check_cache_backend(ctx: &ServerRuntimeContext) -> std::result::Result<
     let report = cache.health().await;
     if report.is_healthy() {
         Ok(())
+    } else if report.is_connected() {
+        // Redis answered but recovery is incomplete. The two causes lead to different operator
+        // actions, so the readiness payload must not report a transport outage.
+        Err(format!(
+            "cache recovery is incomplete ({} generations pending{})",
+            report.redis_recovery_pending,
+            report
+                .redis_recovery_error
+                .as_deref()
+                .map(|error| format!(": {error}"))
+                .unwrap_or_default()
+        ))
     } else {
         Err("cache backend is unhealthy".to_string())
     }

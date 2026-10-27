@@ -23,6 +23,8 @@
   - `same_redis_target` / `REDACTED_SECRET` (a password is scoped to a target; a mask is never a
     credential), `resolve_redis_url`, `REDIS_URL_ENV_NAMES`
   - `CacheSettingsAdminPort`, `SharedCacheSettingsAdmin`
+  - `CacheHealthReport` (`is_connected()` = transport, `is_healthy()` = reachable **and** fully
+    recovered, plus `redis_recovery_pending` / `redis_recovery_error`)
   - `resolve_redis_url` (deployment precedence: settings file → `RUSTOK_REDIS_URL` → `REDIS_URL`)
   - authority for the admin surface is not owned here: both transports evaluate
     `rustok_api::authorizes_host_or_permission` (`settings:read` for diagnostics and the settings

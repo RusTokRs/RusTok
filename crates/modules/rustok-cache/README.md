@@ -241,6 +241,15 @@ connectivity separately, and keeps recovery outcomes in dedicated fields:
 `rustok_cache_redis_generation_recovery_pending` and `..._failed` expose the difference, so
 "Redis is down" never gets confused with "Redis is up but recovery is incomplete".
 
+`CacheHealthReport` — the `health()` snapshot consumed by host readiness, GraphQL `cacheHealth`
+and the admin panel — carries the same two views: `is_connected()` is transport reachability and
+`is_healthy()` is the readiness predicate above (`redis_recovery_pending == 0` and
+`redis_recovery_error.is_none()`). Both readiness paths therefore answer the same question for the
+same process; previously `CacheHealthReport::is_healthy()` reported connectivity only, so a
+recovery backlog read as healthy at the HTTP readiness probe and unhealthy in `CacheModule`'s
+health. The `rustok_cache_redis_healthy` gauge stays a connectivity signal on purpose — readiness is
+already exported by `rustok_cache_redis_degraded`.
+
 Redis pub/sub remains an at-most-once, best-effort transport: messages published while a
 subscriber is disconnected are not replayed. Domain listeners must retain retry/health
 telemetry and use fail-safe recovery when they detect a gap. For example, the field-definition

@@ -568,3 +568,36 @@ fn cache_admin_authority_has_one_rule_for_both_transports() {
         );
     }
 }
+
+#[test]
+fn cache_readiness_has_one_predicate_for_every_consumer() {
+    let service = source("crates/modules/rustok-cache/src/service.rs");
+    let redis_status = source("crates/modules/rustok-cache/src/redis_status.rs");
+    let health = source("apps/server/src/controllers/health.rs");
+
+    // Both readiness surfaces must consult recovery, not just connectivity.
+    assert!(
+        redis_status.contains("&& self.generation_recovery_pending == 0"),
+        "RedisCacheStatus::is_healthy must require completed recovery"
+    );
+    let report = service
+        .split("impl CacheHealthReport {")
+        .nth(1)
+        .expect("CacheHealthReport must expose its readiness views");
+    assert!(
+        report.contains("pub fn is_connected(") && report.contains("pub fn is_healthy("),
+        "CacheHealthReport must keep the transport and readiness views separate"
+    );
+    assert!(
+        report.contains("self.redis_recovery_pending == 0")
+            && report.contains("self.redis_recovery_error.is_none()"),
+        "CacheHealthReport::is_healthy must require completed recovery, like RedisCacheStatus"
+    );
+
+    // The host readiness probe must not collapse the two causes into one message.
+    assert!(
+        health.contains("report.is_connected()")
+            && health.contains("cache recovery is incomplete"),
+        "readiness must report incomplete recovery instead of a transport outage"
+    );
+}

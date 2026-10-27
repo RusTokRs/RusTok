@@ -588,6 +588,8 @@ impl CacheService {
             redis_configured: status.url_present,
             redis_healthy: status.connectivity_healthy,
             redis_error: status.last_error,
+            redis_recovery_pending: status.generation_recovery_pending,
+            redis_recovery_error: status.recovery_error,
             metrics_enabled: self.default_backend_options.metrics_enabled,
             #[cfg(feature = "redis-cache")]
             redis_circuit_breaker_failure_threshold: self
@@ -1193,16 +1195,35 @@ rustok_cache_invalidation_rejected_total {rejected_total}\n",
 #[derive(Debug, Clone)]
 pub struct CacheHealthReport {
     pub redis_configured: bool,
+    /// Pure transport reachability: Redis answered `PONG` (always `false` when none is configured).
     pub redis_healthy: bool,
+    /// Why this report is not healthy: transport, lifecycle or recovery.
     pub redis_error: Option<String>,
     pub metrics_enabled: bool,
     #[cfg(feature = "redis-cache")]
     pub redis_circuit_breaker_failure_threshold: u32,
+    /// Backend generations that still need a trusted shared snapshot.
+    pub redis_recovery_pending: usize,
+    /// Why generation/local-state recovery failed even though Redis answered.
+    pub redis_recovery_error: Option<String>,
 }
 
 impl CacheHealthReport {
-    pub fn is_healthy(&self) -> bool {
+    /// Transport view: is the configured cache backend reachable at all?
+    pub fn is_connected(&self) -> bool {
         !self.redis_configured || self.redis_healthy
+    }
+
+    /// Readiness view.
+    ///
+    /// The same predicate as [`crate::RedisCacheStatus::is_healthy`]: a configured Redis must be
+    /// reachable **and** fully recovered. Reporting connectivity alone made the HTTP readiness
+    /// probe disagree with `CacheModule::health()` about the same process — a recovery backlog read
+    /// as "healthy" here and "unhealthy" there.
+    pub fn is_healthy(&self) -> bool {
+        self.is_connected()
+            && self.redis_recovery_error.is_none()
+            && self.redis_recovery_pending == 0
     }
 }
 
@@ -1212,6 +1233,50 @@ mod tests {
     use rustok_core::{CacheCompareAndSetOutcome, CacheStats};
     use std::sync::atomic::AtomicUsize;
     use tokio::sync::{Barrier, oneshot};
+
+    #[test]
+    fn readiness_requires_recovery_while_connectivity_does_not() {
+        let connectivity_only = CacheHealthReport {
+            redis_configured: true,
+            redis_healthy: true,
+            redis_error: Some("local fallback reconciliation failed".to_string()),
+            metrics_enabled: true,
+            #[cfg(feature = "redis-cache")]
+            redis_circuit_breaker_failure_threshold: 5,
+            redis_recovery_pending: 2,
+            redis_recovery_error: Some("generation snapshot pending".to_string()),
+        };
+
+        assert!(
+            connectivity_only.is_connected(),
+            "Redis answered, so the transport view must stay healthy"
+        );
+        assert!(
+            !connectivity_only.is_healthy(),
+            "a recovery backlog must not read as healthy while CacheModule::health() says otherwise"
+        );
+
+        let recovered = CacheHealthReport {
+            redis_recovery_pending: 0,
+            redis_recovery_error: None,
+            redis_error: None,
+            ..connectivity_only.clone()
+        };
+        assert!(recovered.is_healthy());
+
+        let memory_only = CacheHealthReport {
+            redis_configured: false,
+            redis_healthy: false,
+            redis_error: None,
+            metrics_enabled: false,
+            #[cfg(feature = "redis-cache")]
+            redis_circuit_breaker_failure_threshold: 5,
+            redis_recovery_pending: 0,
+            redis_recovery_error: None,
+        };
+        assert!(memory_only.is_connected());
+        assert!(memory_only.is_healthy());
+    }
 
     struct FailingInvalidationBackend;
 

@@ -83,7 +83,10 @@ capacity. Fixed-size counters may use entry-count capacity.
   `platformSettings` resolvers evaluate, so the two transports cannot grant different access.
 - Recovery reconciliation (`CacheBackend::reconcile_local_state`) runs on the same successful Redis
   `PING` that drives `redis_status()`; readiness therefore reports "reachable **and** recovered",
-  while `connectivity_healthy` stays a pure transport signal.
+  while `connectivity_healthy` stays a pure transport signal. `CacheHealthReport` (the snapshot the
+  host readiness probe and `cacheHealth` use) exposes the same pair: `is_connected()` is transport,
+  `is_healthy()` additionally requires `redis_recovery_pending == 0` and no `redis_recovery_error`,
+  so readiness cannot be healthy in one place and degraded in another.
 
 ## Maintenance rule
 

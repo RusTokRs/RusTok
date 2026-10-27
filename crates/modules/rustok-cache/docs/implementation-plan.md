@@ -288,6 +288,12 @@ None of these are claimed as compiled or live verified until the P0 evidence ste
 - [x] Redis readiness distinguishes transport from recovery: `connectivity_healthy`,
   `generation_recovery_pending`, `recovery_error`, `is_connectivity_healthy()`, and the
   `rustok_cache_redis_generation_recovery_{pending,failed}` gauges.
+- [x] One readiness answer for one process: `CacheHealthReport` now carries
+  `redis_recovery_pending`/`redis_recovery_error`, `is_connected()` is the transport view and
+  `is_healthy()` the same predicate as `RedisCacheStatus::is_healthy`. Previously the report
+  answered connectivity only, so a recovery backlog was healthy at the HTTP readiness probe and
+  unhealthy in `CacheModule::health()`; the probe now names the recovery cause instead of claiming
+  a transport outage.
 - [x] Refresh validates the envelope against a clock read after the loader returns
   (`CacheRefreshClock::{System, Fixed}`) and clamps the stored TTL to the envelope hard expiry.
 - [x] `CacheEnvelope::decode` rejects trailing bytes instead of accepting a plausible prefix
