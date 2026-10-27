@@ -312,35 +312,35 @@
     },
     {
       "id": "module-executor-readiness-receipts-bootstrap",
-      "migration": "m20261025_000077_executor_readiness_validity",
+      "migration": "m20261027_000077_executor_readiness_validity",
       "mode": "none",
       "owner": "rustok-modules",
       "reason": "Creates the executor readiness receipts table as new owner storage for readiness evidence recorded by governed transitions after upgrade; no prior readiness receipts exist anywhere in the base schema to backfill"
     },
     {
       "id": "registry-release-unyank-ledger-bootstrap",
-      "migration": "m20261025_000078_registry_release_unyank_operations",
+      "migration": "m20261027_000078_registry_release_unyank_operations",
       "mode": "none",
       "owner": "rustok-modules",
       "reason": "Creates the release un-yank idempotency ledger as new owner storage; un-yank operations can only be recorded by the separately authorized transition introduced with this migration, so no historical rows exist to backfill"
     },
     {
       "id": "module-operation-idempotency-indexes",
-      "migration": "m20261025_000079_module_operation_idempotency_indexes",
+      "migration": "m20261027_000079_module_operation_idempotency_indexes",
       "mode": "none",
       "owner": "rustok-modules",
       "reason": "Adds lookup and uniqueness indexes for module operation idempotency only; no table data is created, changed, or removed"
     },
     {
       "id": "policy-revision-cursor-sequence-epoch",
-      "migration": "m20261025_000080_policy_revision_cursor_sequences",
+      "migration": "m20261027_000080_policy_revision_cursor_sequences",
       "mode": "none",
       "owner": "rustok-modules",
       "reason": "Adds current_sequence to policy revision cursors with the constant default 0, deliberately starting a new sequence epoch; the value does not claim to reconstruct pre-migration advance history, so nothing can be truthfully backfilled"
     },
     {
       "id": "transition-checkpoint-state-rename",
-      "migration": "m20261025_000081_transition_intervention_required_state",
+      "migration": "m20261027_000081_transition_intervention_required_state",
       "mode": "fixture",
       "owner": "rustok-modules",
       "reason": "Renames the stored transition checkpoint state FailedClosed to InterventionRequired in every existing checkpoint JSON document; checkpoints in any other state are preserved unchanged",
@@ -349,14 +349,14 @@
     },
     {
       "id": "artifact-gc-candidate-claims-bootstrap",
-      "migration": "m20261025_000082_gc_candidate_claims",
+      "migration": "m20261027_000082_gc_candidate_claims",
       "mode": "none",
       "owner": "rustok-modules",
       "reason": "Creates the blob GC candidate and publication reservation tables as new owner storage and adds claim columns with constant initial defaults ('queued', revision 1, no delete start) to existing data-object GC candidates; no value is derived from existing row data"
     },
     {
       "id": "artifact-permission-registration-status-backfill",
-      "migration": "m20261025_000083_artifact_permission_registration_status",
+      "migration": "m20261027_000083_artifact_permission_registration_status",
       "mode": "fixture",
       "owner": "rustok-modules",
       "reason": "Adds permission_registration_status to existing admissions: admissions whose installation descriptor declares no permissions become not_required, while admissions with declared permissions conservatively start as pending because the prior schema did not record whether projection completed",
@@ -365,14 +365,14 @@
     },
     {
       "id": "module-operation-result-snapshot-column",
-      "migration": "m20261025_000084_module_operation_result_snapshot",
+      "migration": "m20261027_000084_module_operation_result_snapshot",
       "mode": "none",
       "owner": "rustok-modules",
       "reason": "Adds the nullable result_snapshot column to module_operations; operations committed before the migration keep NULL and idempotent replay falls back to the documented legacy reconstruction, so no snapshot can be truthfully backfilled"
     },
     {
       "id": "artifact-ui-resources-projection-backfill",
-      "migration": "m20261025_000085_artifact_ui_resources",
+      "migration": "m20261027_000085_artifact_ui_resources",
       "mode": "fixture",
       "owner": "rustok-modules",
       "reason": "Creates the artifact UI resources projection and backfills it from the immutable descriptors of installations admitted before upgrade, projecting navigation routes and storefront slots exactly as admission-time projection does for new installations",
@@ -381,14 +381,14 @@
     },
     {
       "id": "gc-candidate-platform-discovery-policy",
-      "migration": "m20261025_000086_gc_candidate_platform_discovery_policy",
+      "migration": "m20261027_000086_gc_candidate_platform_discovery_policy",
       "mode": "none",
       "owner": "rustok-modules",
       "reason": "Recreates the row-level security scope policy on data-object GC candidates to admit the transaction-local platform control-plane owner for tenant discovery; policy-only change with no row data created, changed, or removed"
     },
     {
       "id": "module-executor-pools-bootstrap",
-      "migration": "m20261025_000087_executor_pools",
+      "migration": "m20261027_000087_executor_pools",
       "mode": "none",
       "owner": "rustok-modules",
       "reason": "Creates the executor pools table as new owner storage for durable pool generations; pools are deployment facts registered by the host after upgrade, so no historical rows exist to backfill"
