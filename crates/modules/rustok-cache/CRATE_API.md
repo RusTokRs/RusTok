@@ -23,6 +23,9 @@
   - `CacheInvalidationError` (`InvalidMessage`, `SharedTransport`), `DurableCacheInvalidationError::Transport`
 - **Settings & Admin Seam**:
   - `CacheSettings` (resolved target, validation, redaction, merge-back), `preserve_url_password`
+  - `redis_url_without_password` / `redis_url_without_credentials` — the only credential removal
+    policy for a Redis URL; both fail closed (empty URL) instead of returning a URL that still
+    carries the password
   - `same_redis_target` / `REDACTED_SECRET` (a password is scoped to a target; a mask is never a
     credential), `resolve_redis_url`, `REDIS_URL_ENV_NAMES`
   - `CacheSettingsAdminPort`, `SharedCacheSettingsAdmin`

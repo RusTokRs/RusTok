@@ -292,6 +292,17 @@ client redaction (both the password field and the password inside the URL) and m
 redacted document (`merge_with_existing` / `preserve_url_password`, which restores a password only
 when the incoming document still points at the same target, `same_redis_target`).
 
+The structured fields are validated as a *target*, not as loose values: `redis_host` must compose
+into a usable URL, and a host that cannot be written leaves `resolved_url()` empty instead of
+falling back to the `redis://localhost` composition base, so a document can never describe one Redis
+while the runtime connects to another. `validate()` reports that document as invalid.
+
+Removing credentials is a single crate decision with two entry points:
+`redis_url_without_password` (client-facing redaction — an ACL username is not a secret, the
+password always is) and `redis_url_without_credentials` (stored mirrors and target signatures).
+Both fail closed: when the setter refuses, they return an empty URL rather than a URL that still
+carries the secret. The host settings service uses them instead of its own `url` manipulation.
+
 A password belongs to a **target**, not to a document: scheme, host, port, database and username
 decide whether a stored secret may be restored, and the password itself never does. A document that
 moved to another target is merged with no secret at all, and `REDACTED_SECRET` is never treated as a

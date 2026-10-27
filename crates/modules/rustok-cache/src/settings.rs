@@ -196,12 +196,50 @@ pub fn same_redis_target(left: &str, right: &str) -> bool {
 /// not persist it, because the next reader would treat it as a real credential.
 fn strip_masked_url_password(url: &str) -> String {
     match parse_redis_url(url) {
-        Ok(mut parsed) if parsed.password() == Some(REDACTED_SECRET) => {
-            let _ = parsed.set_password(None);
-            parsed.to_string()
+        Ok(parsed) if parsed.password() == Some(REDACTED_SECRET) => {
+            redis_url_without_password(url)
         }
         _ => url.to_string(),
     }
+}
+
+/// Remove the password from a Redis URL, keeping any ACL username.
+///
+/// This is the redaction policy for documents a client may see: a username is not a secret, the
+/// password always is. A URL that does not parse is returned unchanged (validation reports it), and
+/// a URL whose password cannot be removed yields an empty string — a document that is presented as
+/// credential-free must never carry a credential.
+pub fn redis_url_without_password(url: &str) -> String {
+    let Ok(mut parsed) = parse_redis_url(url) else {
+        return url.to_string();
+    };
+    if parsed.password().is_none() {
+        return parsed.to_string();
+    }
+    if let Err(error) = parsed.set_password(None) {
+        tracing::error!(%error, "could not remove the password from a Redis URL");
+        return String::new();
+    }
+    parsed.to_string()
+}
+
+/// Remove every credential (`user:password@`) from a Redis URL.
+///
+/// Used where a document or an identity value must contain no credential at all: the stored settings
+/// mirror and the Redis target signature. Same fail-closed rule as
+/// [`redis_url_without_password`].
+pub fn redis_url_without_credentials(url: &str) -> String {
+    let Ok(mut parsed) = parse_redis_url(url) else {
+        return url.to_string();
+    };
+    if parsed.password().is_none() && parsed.username().is_empty() {
+        return parsed.to_string();
+    }
+    if parsed.set_password(None).is_err() || parsed.set_username("").is_err() {
+        tracing::error!("could not remove the credentials from a Redis URL");
+        return String::new();
+    }
+    parsed.to_string()
 }
 
 /// Strip the password from a Redis URL and report whether one was present.
@@ -209,10 +247,17 @@ fn redact_url_password(url: &str) -> (String, bool) {
     match parse_redis_url(url) {
         Ok(mut parsed) => {
             let had_password = parsed.password().is_some_and(|password| !password.is_empty());
-            if had_password {
-                let _ = parsed.set_password(Some(REDACTED_SECRET));
+            if !had_password {
+                return (parsed.to_string(), false);
             }
-            (parsed.to_string(), had_password)
+            if let Err(error) = parsed.set_password(Some(REDACTED_SECRET)) {
+                // Fail closed: a redacted document must never carry the credential. Returning the
+                // unmodified URL here would hand the real password to the client while claiming it
+                // was masked, so the whole password channel is dropped instead.
+                tracing::error!(%error, "could not mask the redis_url password; dropping the URL");
+                return (String::new(), true);
+            }
+            (parsed.to_string(), true)
         }
         Err(_) => (url.to_string(), false),
     }
@@ -231,18 +276,50 @@ impl CacheSettings {
         if self.mode == DEFAULT_CACHE_MODE {
             return None;
         }
+        match self.url_from_fields() {
+            Ok(url) => url,
+            Err(error) => {
+                // Fail closed instead of emitting a URL that points somewhere else: the composed
+                // host could not be written, and the base URL is `localhost`, which is a different
+                // Redis than the document names. `validate` rejects such documents, so this only
+                // guards stored or hand-edited rows.
+                tracing::error!(
+                    %error,
+                    "cache settings name an unusable Redis target; no explicit target is used"
+                );
+                None
+            }
+        }
+    }
+
+    /// Compose the Redis URL described by `redis_host`/`redis_port`/`redis_db`/`redis_password`.
+    ///
+    /// `Ok(None)` means the document names no structured target at all (no host or no port).
+    /// `Err` means the document names one that cannot be expressed, which must never be replaced by
+    /// the composition base URL.
+    fn url_from_fields(&self) -> Result<Option<String>, String> {
         let host = self.redis_host.trim();
         if host.is_empty() || self.redis_port == 0 {
-            return None;
+            return Ok(None);
         }
         let mut url = url::Url::parse("redis://localhost").expect("static Redis URL parses");
-        let _ = url.set_host(Some(host));
-        let _ = url.set_port(Some(self.redis_port));
+        url.set_host(Some(host)).map_err(|error| {
+            format!("redis_host '{host}' cannot be used in a Redis URL: {error}")
+        })?;
+        url.set_port(Some(self.redis_port)).map_err(|error| {
+            format!(
+                "redis_port {} cannot be used in a Redis URL: {error}",
+                self.redis_port
+            )
+        })?;
         url.set_path(&format!("/{}", self.redis_db));
         if !self.redis_password.is_empty() {
-            let _ = url.set_password(Some(self.redis_password.as_str()));
+            url.set_password(Some(self.redis_password.as_str()))
+                .map_err(|error| {
+                    format!("redis_password cannot be used in a Redis URL: {error}")
+                })?;
         }
-        Some(url.to_string())
+        Ok(Some(url.to_string()))
     }
 
     /// Settings document describing the deployment-provided Redis target.
@@ -335,6 +412,20 @@ impl CacheSettings {
                 "mode '{}' requires redis_url or a non-empty redis_host",
                 self.mode
             ));
+        } else if explicit_url.is_empty() && self.mode != DEFAULT_CACHE_MODE {
+            // The structured fields *are* the target here, so they must compose into a URL the
+            // runtime can actually connect to. Accepting an unusable host would leave the runtime
+            // to fall back to `localhost` or to deployment resolution while the document claims a
+            // different Redis.
+            match self.url_from_fields() {
+                Ok(Some(url)) => {
+                    if let Err(error) = parse_redis_url(&url) {
+                        errors.push(error);
+                    }
+                }
+                Ok(None) => {}
+                Err(error) => errors.push(error),
+            }
         }
 
         errors.sort();
@@ -546,10 +637,79 @@ mod tests {
     }
 
     #[test]
+    fn validate_rejects_a_structured_host_that_cannot_be_used_in_a_url() {
+        let settings = CacheSettings {
+            mode: DEFAULT_REDIS_MODE.to_string(),
+            redis_host: "not a host".to_string(),
+            redis_port: 6379,
+            ..CacheSettings::default()
+        };
+        let errors = settings.validate().expect_err("unusable structured host");
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("redis_host") || error.contains("redis_url")),
+            "the error must name the unusable field, got {errors:?}"
+        );
+    }
+
+    #[test]
+    fn unusable_structured_host_never_falls_back_to_localhost() {
+        let settings = CacheSettings {
+            mode: DEFAULT_REDIS_MODE.to_string(),
+            redis_host: "not a host".to_string(),
+            redis_port: 6379,
+            redis_db: 0,
+            ..CacheSettings::default()
+        };
+
+        // Composing through the `redis://localhost` base used to ignore the failed host write and
+        // hand back `redis://localhost:6379/0` — a different Redis than the document named.
+        assert_eq!(
+            settings.resolved_url(),
+            None,
+            "an unusable host must resolve to no target, never to the composition base"
+        );
+    }
+
+    #[test]
     fn validate_rejects_url_without_host() {
         let settings = redis_settings("redis://");
         let errors = settings.validate().expect_err("missing host");
         assert!(errors.iter().any(|error| error.contains("host")));
+    }
+
+    #[test]
+    fn url_credential_helpers_remove_only_what_they_name() {
+        let url = "redis://app:s3cret@cache.internal:6380/2";
+
+        let without_password = redis_url_without_password(url);
+        assert!(
+            !without_password.contains("s3cret"),
+            "the password must never survive redaction: {without_password}"
+        );
+        assert!(
+            without_password.contains("app"),
+            "an ACL username is not a secret and must be kept: {without_password}"
+        );
+
+        assert_eq!(
+            redis_url_without_credentials(url),
+            "redis://cache.internal:6380/2",
+            "stored documents and target signatures must contain no credential at all"
+        );
+    }
+
+    #[test]
+    fn url_credential_helpers_leave_credential_free_urls_alone() {
+        let url = "redis://cache.internal:6380/2";
+
+        assert_eq!(redis_url_without_password(url), url);
+        assert_eq!(redis_url_without_credentials(url), url);
+        // Unparsable input is returned unchanged: `validate` is the owner of parse errors, and
+        // silently rewriting an unknown document would hide them.
+        assert_eq!(redis_url_without_password("not a url"), "not a url");
+        assert_eq!(redis_url_without_credentials("not a url"), "not a url");
     }
 
     #[test]

@@ -440,12 +440,13 @@ fn redact_secrets(cat: &str, mut settings: Value) -> Value {
                 if object.contains_key("redisPassword") {
                     object.insert("redisPassword".to_string(), Value::String(String::new()));
                 }
-                if let Some(redis_url) = object.get("redis_url").and_then(Value::as_str)
-                    && let Ok(mut parsed) = url::Url::parse(redis_url)
-                    && parsed.password().is_some()
-                {
-                    let _ = parsed.set_password(Some(""));
-                    object.insert("redis_url".to_string(), Value::String(parsed.to_string()));
+                if let Some(redis_url) = object.get("redis_url").and_then(Value::as_str) {
+                    // The crate owns how a Redis URL is stripped: its helpers fail closed (they
+                    // return an empty URL rather than a URL that still carries the password).
+                    let redacted = rustok_cache::redis_url_without_password(redis_url);
+                    if redacted != redis_url {
+                        object.insert("redis_url".to_string(), Value::String(redacted));
+                    }
                 }
             }
         }
@@ -572,14 +573,9 @@ fn deployment_cache_settings(ctx: &ServerRuntimeContext) -> rustok_cache::CacheS
 /// carry a rotated password, but anything that changes scheme/host/port/database/mode is a
 /// different target and must be rejected for the deployment-owned cache category.
 fn cache_target_signature(settings: &rustok_cache::CacheSettings) -> (String, Option<String>) {
-    let target = settings.resolved_url().map(|url| match url::Url::parse(&url) {
-        Ok(mut parsed) => {
-            let _ = parsed.set_password(None);
-            let _ = parsed.set_username("");
-            parsed.to_string()
-        }
-        Err(_) => url,
-    });
+    let target = settings
+        .resolved_url()
+        .map(|url| rustok_cache::redis_url_without_credentials(&url));
     (settings.mode.clone(), target)
 }
 
@@ -634,11 +630,8 @@ fn prepare_cache_settings_for_write(
     // this keeps the *stored* document free of credentials.
     let mut storable = parsed;
     storable.redis_password.clear();
-    if let Ok(mut url) = url::Url::parse(storable.redis_url.trim()) {
-        let _ = url.set_password(None);
-        let _ = url.set_username("");
-        storable.redis_url = url.to_string();
-    }
+    let storable_url = rustok_cache::redis_url_without_credentials(storable.redis_url.trim());
+    storable.redis_url = storable_url;
     serde_json::to_value(&storable).map_err(|error| {
         SettingsError::ValidationFailed(vec![format!(
             "Invalid cache settings schema: {error}"

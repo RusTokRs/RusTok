@@ -49,7 +49,7 @@ pub use module::CacheModule;
 pub use settings::{
     CacheSettings, DEFAULT_CACHE_MODE, DEFAULT_REDIS_DB, DEFAULT_REDIS_HOST, DEFAULT_REDIS_MODE,
     DEFAULT_REDIS_PORT, REDACTED_SECRET, REDIS_URL_ENV_NAMES, preserve_url_password,
-    resolve_redis_url, same_redis_target,
+    redis_url_without_credentials, redis_url_without_password, resolve_redis_url, same_redis_target,
 };
 pub use settings_admin::{CacheSettingsAdminPort, SharedCacheSettingsAdmin};
 

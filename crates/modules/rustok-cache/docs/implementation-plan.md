@@ -289,6 +289,13 @@ None of these are claimed as compiled or live verified until the P0 evidence ste
   already did. Previously a zero-TTL policy was constructible and then rejected in three separate
   places at use time (load, policy load, refresh), so the invariant had three owners instead of
   one.
+- [x] The structured Redis target (`redis_host`/`redis_port`/`redis_db`) is validated as a target:
+  an unusable host is rejected by `validate()` and leaves `resolved_url()` empty, instead of falling
+  back to the `redis://localhost` composition base and pointing the runtime at a different Redis.
+- [x] Removing credentials from a Redis URL has one owner with two entry points
+  (`redis_url_without_password`, `redis_url_without_credentials`), both fail closed. The host
+  settings service no longer manipulates URLs itself with ignored `set_password`/`set_username`
+  results, which could have returned the password while claiming to have redacted it.
 - [x] `CacheTtlPolicy` is opaque (`CacheTtlPolicyKind` is private), so the rejecting constructors are
   the only entry point and the invariant cannot be bypassed by building `Fixed(Duration::ZERO)`.
   The use-time checks stay as fail-closed defense for values built inside the crate.
