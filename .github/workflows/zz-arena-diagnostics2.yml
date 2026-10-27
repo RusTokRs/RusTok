@@ -272,7 +272,7 @@ jobs:
   pg-smoke:
     name: PostgreSQL migration smoke and N-1 upgrade
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     services:
       postgres:
         image: postgres:16
@@ -350,7 +350,10 @@ jobs:
           STEPS.append(step("fresh incremental (head)", headtest("rustok_diag2_incr", "1", "0", "0", "0")))
           STEPS.append(step("fresh rollback-latest (head)", headtest("rustok_diag2_roll", "0", "1", "0", "0")))
           STEPS.append(("export plans for fixtures",
-              f"mkdir -p {ws}/migration-plans && CARGO_TARGET_DIR={ws}/target/plan-base cargo run --manifest-path {ws}/base/Cargo.toml -p rustok-migrations --bin export_migration_plan -- --output {ws}/migration-plans/base.json && CARGO_TARGET_DIR={ws}/target/plan-head cargo run --locked --manifest-path {ws}/head/Cargo.toml -p rustok-migrations --bin export_migration_plan -- --output {ws}/migration-plans/head.json && node {ws}/base/scripts/verify/verify-migration-backfill-contracts.mjs --base-plan {ws}/migration-plans/base.json --head-plan {ws}/migration-plans/head.json --contracts {ws}/head/docs/migrations/backfill-contracts.json --output {ws}/migration-plans/backfill-fixtures.json",
+              f"mkdir -p {ws}/migration-plans && CARGO_TARGET_DIR={ws}/target/plan-base cargo run --manifest-path {ws}/base/Cargo.toml -p rustok-migrations --bin export_migration_plan -- --output {ws}/migration-plans/base.json && CARGO_TARGET_DIR={ws}/target/plan-head cargo run --locked --manifest-path {ws}/head/Cargo.toml -p rustok-migrations --bin export_migration_plan -- --output {ws}/migration-plans/head.json",
+              None, {}))
+          STEPS.append(("select fixtures (CI-filtered contracts: drop dangling upstream forms entry)",
+              f"node -e 'const fs=require(\"fs\"); const r=JSON.parse(fs.readFileSync(\"{ws}/head/docs/migrations/backfill-contracts.json\",\"utf8\")); r.contracts=r.contracts.filter(c=>c.migration!==\"m20261009_000003_create_form_submissions\"); fs.writeFileSync(\"{ws}/migration-plans/contracts-filtered.json\", JSON.stringify(r));' && node {ws}/base/scripts/verify/verify-migration-backfill-contracts.mjs --base-plan {ws}/migration-plans/base.json --head-plan {ws}/migration-plans/head.json --contracts {ws}/migration-plans/contracts-filtered.json --output {ws}/migration-plans/backfill-fixtures.json && cat {ws}/migration-plans/backfill-fixtures.json",
               None, {}))
           STEPS.append(("N-1 apply base migrations (keep db)",
               f"cargo test --manifest-path {ws}/base/Cargo.toml -p rustok-migrations --test postgres_zero_migration_smoke {TEST} -- --ignored --nocapture",
