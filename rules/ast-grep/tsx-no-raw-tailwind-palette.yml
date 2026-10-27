@@ -1,0 +1,17 @@
+id: tsx-no-raw-tailwind-palette
+language: tsx
+severity: warning
+message: "Use semantic design tokens (bg-background, text-muted-foreground, border-border, etc.) instead of raw palette classes."
+note: |-
+  Rule in AGENTS.md (Fluid Frontend Architecture):
+  Styling uses Tailwind CSS with shadcn/ui-compatible design tokens and CSS variables.
+  Do not use hardcoded colors outside the design token contract.
+files:
+  - "apps/next-admin/**"
+  - "apps/next-frontend/**"
+ignores:
+  - "**/node_modules/**"
+  - "**/.next/**"
+rule:
+  kind: string_fragment
+  regex: (^|[^-\w])(bg|text|border|ring|fill|stroke|from|to|via|outline|decoration|divide|caret|accent|shadow)-((red|blue|green|gray|grey|zinc|slate|neutral|stone|amber|yellow|lime|emerald|teal|cyan|sky|indigo|violet|purple|fuchsia|pink|rose)-[0-9]{2,3}|black|white)([^-\w]|$)

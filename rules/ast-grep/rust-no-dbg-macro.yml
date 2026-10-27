@@ -1,0 +1,17 @@
+id: rust-no-dbg-macro
+language: rust
+severity: error
+message: "Remove dbg!(...) macro before committing. Use tracing::debug! or tracing::trace! instead."
+note: |-
+  Rule in AGENTS.md:
+  Production code must not contain dbg! macros.
+files:
+  - "crates/**/src/**"
+  - "apps/**/src/**"
+ignores:
+  - "**/test.rs"
+  - "**/tests.rs"
+  - "**/tests/**"
+  - "**/benches/**"
+rule:
+  pattern: 'dbg!($$$ARGS)'

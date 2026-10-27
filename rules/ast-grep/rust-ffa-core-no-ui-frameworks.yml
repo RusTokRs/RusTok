@@ -1,0 +1,30 @@
+id: rust-ffa-core-no-ui-frameworks
+language: rust
+severity: error
+message: "FFA Core must be 100% framework-agnostic: do not import UI framework types (leptos, dioxus, yew, etc.) in core/."
+note: |-
+  Rule in AGENTS.md (Fluid Frontend Architecture):
+  core/ MUST contain zero imports of UI framework types (leptos::*, dioxus::*).
+  All domain logic, input validation rules, command/DTO construction,
+  computable view-models, status/badge resolution, and state transitions
+  MUST live in core/ and be tested with pure Rust unit tests (#[test]).
+files:
+  - "crates/**/core/src/**"
+  - "crates/**/core/**"
+  - "crates/modules/*/admin/core/**"
+  - "crates/modules/*/storefront/core/**"
+ignores:
+  - "**/test.rs"
+  - "**/tests.rs"
+  - "**/tests/**"
+rule:
+  any:
+    - kind: scoped_identifier
+      regex: ^(leptos|dioxus|yew|sycamore)\b
+      not:
+        inside:
+          kind: scoped_identifier
+    - kind: scoped_type_identifier
+      regex: ^(leptos|dioxus|yew|sycamore)\b
+    - kind: use_declaration
+      regex: ^use (leptos|dioxus|yew|sycamore)\b
