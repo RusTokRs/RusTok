@@ -290,7 +290,12 @@ None of these are claimed as compiled or live verified until the P0 evidence ste
   `rustok_cache_redis_generation_recovery_{pending,failed}` gauges.
 - [x] Refresh validates the envelope against a clock read after the loader returns
   (`CacheRefreshClock::{System, Fixed}`) and clamps the stored TTL to the envelope hard expiry.
-- [x] `CacheEnvelope::decode` rejects trailing bytes instead of accepting a plausible prefix.
+- [x] `CacheEnvelope::decode` rejects trailing bytes instead of accepting a plausible prefix
+  (regression test covers appended junk and a truncated record).
+- [x] Deployment Redis-URL precedence has one owner: `rustok_cache::resolve_redis_url`
+  (`explicit url` → `RUSTOK_REDIS_URL` → `REDIS_URL`, blank values treated as absent) with a pure,
+  testable helper; the host re-exports it instead of keeping a second copy, which had left the
+  crate's own export undefined.
 - [x] Cache settings have one owner: `CacheSettings` resolves/validates/redacts/merges, the host
   settings service reports the deployment-resolved document and rejects a write that would
   redirect the running process, and a redacted read preserves the password inside `redis_url`.
