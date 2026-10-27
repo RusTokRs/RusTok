@@ -2,6 +2,8 @@
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+
+import { ledgerRowProblems } from "./lib/forum-source-verification.mjs";
 import { resolve } from "node:path";
 
 const root = process.cwd();
@@ -304,24 +306,18 @@ requireIncludes(
     "Semantic event and projection invalidation",
     "Persistence guards",
     "Regression coverage",
-    "canonical FORUM-21 ledger entry deliberately remains `planned`",
+    "canonical FORUM-21 ledger entry is `in_progress`",
     "No command above was run by the implementation agent",
   ],
   "handoff",
 );
-requireIncludes(
-  plan,
-  [
-    "| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |",
-    "## `FORUM-21` — move, merge, split and fork topics",
-    "Each operation has an operation ID, reason, transactional state change and",
-    "semantic event; retry produces the same result; partial moves are impossible;",
-  ],
-  "canonical pending plan",
-);
-assert.ok(
-  !plan.includes("### Delivered in `FORUM-21A`") &&
-    !plan.includes("| `FORUM-21` | `in_progress` | FORUM-21A"),
+// The plan carries one ledger row per task now; the per-slice prose it used to hold moved into the
+// slice documents, so the invariant that survives is the row itself.
+assert.deepEqual(
+  ledgerRowProblems(plan, "FORUM-21", {
+    mentions: ["move/merge/split/fork/range owners"],
+  }),
+  [],
 );
 
 for (const forbidden of [

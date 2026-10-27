@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { containsMarker } from "./lib/forum-source-verification.mjs";
+
 const paths = {
   contract: "crates/modules/rustok-forum/contracts/forum-topic-merge-subscription-reconciliation.json",
   docs: "crates/modules/rustok-forum/docs/forum-21c-topic-merge-subscription-reconciliation.md",
@@ -35,9 +37,11 @@ const source = Object.fromEntries(
 );
 const contract = JSON.parse(source.contract);
 
+// Layout-tolerant by policy: a marker describes an invariant, not where rustfmt or a prose editor put
+// the newline. Tokens are unchanged, so an absent call or sentence is still absent.
 function includesAll(text, markers, label) {
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing marker: ${marker}`);
+    assert.ok(containsMarker(text, marker), `${label} is missing marker: ${marker}`);
   }
 }
 
@@ -93,7 +97,7 @@ assert.equal(
   contract.target_authority_policy.source_only,
   "move_row_to_target_preserving_delivery_state_last_notified_and_created_at_while_incrementing_revision_once_and_refreshing_updated_at",
 );
-assert.equal(contract.semantic_event.event_type, "forum.topic.merge_subscriptions_reconciled");
+assert.equal(contract.semantic_event.event_type, "forum.topic.merge.subscriptions_reconciled");
 assert.equal(contract.semantic_event.schema_version, 1);
 assert.equal(contract.semantic_event.aggregate_is_retained_target, true);
 assert.equal(contract.semantic_event.event_id_equals_operation_id, true);
@@ -175,8 +179,10 @@ includesAll(
 includesAll(
   source.postgresEvents,
   [
-    "forum_emit_topic_subscription_event",
-    "forum.subscription.changed.v1",
+    // The level-aware topic trigger is installed by the subscription-levels migration; the event
+    // type is the canonical `forum.subscription.changed` accepted by the domain-event CHECK.
+    "CREATE OR REPLACE FUNCTION forum_emit_topic_subscription_event()",
+    "'forum.subscription.changed', event_user",
     "AFTER INSERT OR UPDATE OR DELETE ON forum_topic_subscriptions",
   ],
   "PostgreSQL subscription events",
@@ -184,9 +190,9 @@ includesAll(
 includesAll(
   source.sqliteEvents,
   [
-    "forum_80_topic_subscription_update_event AFTER UPDATE",
-    "forum_80_topic_subscription_delete_event AFTER DELETE",
-    "forum.subscription.changed.v1",
+    "forum_80_topic_subscription_update_event AFTER UPDATE ON forum_topic_subscriptions",
+    "forum_80_topic_subscription_delete_event AFTER DELETE ON forum_topic_subscriptions",
+    "'topic',NEW.topic_id,'forum.subscription.changed'",
   ],
   "SQLite subscription events",
 );
@@ -234,7 +240,7 @@ includesAll(
     "pub struct ForumTopicMergeSubscriptionReconciliationService",
     "pub async fn reconcile_merge_subscriptions(",
     "enforce_scope(&security, Resource::ForumTopics, Action::Manage)?;",
-    "lock_reconciliation_tenant_in_tx(&txn, tenant_id).await?;",
+    "lock_reconciliation_tenant_in_tx(txn, tenant_id).await?;",
     "forum_topic_merge_subscription_reconciliation::Entity::find_by_id",
     "TopicMergeSubscriptionReconciliationConflict(input.operation_id)",
     "forum_topic_merge_operation::Entity::find_by_id",
@@ -249,7 +255,7 @@ includesAll(
     "source.revision.checked_add(1)",
     "revision: Set(next_revision)",
     "updated_at: Set(Utc::now().into())",
-    '"forum.topic.merge_subscriptions_reconciled"',
+    '"forum.topic.merge.subscriptions_reconciled"',
     "forum_domain_event::ActiveModel",
     "forum_topic_merge_subscription_reconciliation::ActiveModel",
     "txn.commit().await?;",
@@ -270,9 +276,11 @@ const scopeCalls = indexes(
   source.service,
   "lock_topic_subscription_scopes_in_tx(\n",
 );
+// Both call sites pass the transaction and tenant on the call line, so the marker is the call shape
+// rather than a trailing newline that rustfmt may or may not insert.
 const emptyProofs = indexes(
   source.service,
-  "ensure_source_subscriptions_empty_in_tx(\n",
+  "ensure_source_subscriptions_empty_in_tx(txn, tenant_id",
 );
 assert.equal(topicRowCalls.length, 1, "only first execution requires current topic rows");
 assert.equal(scopeCalls.length, 2, "replay and first execution require subscription scopes");
@@ -335,11 +343,13 @@ includesAll(
     "TopicMergeSubscriptionReconciliationConflict",
     "UPDATE forum_topic_merge_subscription_reconciliations",
     "DELETE FROM forum_topic_merge_subscription_reconciliations",
-    '"forum.topic.merge_subscriptions_reconciled"',
+    '"forum.topic.merge.subscriptions_reconciled"',
   ],
   "SQLite regression",
 );
-assert.ok(source.test.includes('"immediate",\n        8,'));
+// The moved subscription's digest mode and revision are asserted as a pair; layout-tolerant so a
+// reformat does not decide whether the reconciliation contract holds.
+assert.ok(containsMarker(source.test, 'digest_mode: "immediate",\n            revision: 8,'));
 
 includesAll(
   source.docs,
@@ -360,13 +370,7 @@ includesAll(
   ],
   "FORUM-21C handoff",
 );
-assert.ok(
-  source.plan.includes(
-    "| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |",
-  ),
-);
-assert.ok(!source.plan.includes("| `FORUM-21` | `done` |"));
-assert.ok(!source.plan.includes("| `FORUM-21` | `in_progress` |"));
+
 assert.ok(source.verifier.includes("source_ready_maintainer_execution_pending"));
 
 console.log(

@@ -3,6 +3,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import {
+  containsMarker,
+  ledgerRowProblems,
+  taskSuffixNumber,
+} from "./lib/forum-source-verification.mjs";
+
 const paths = {
   contract: "crates/modules/rustok-forum/contracts/forum-topic-canonical-resolution.json",
   cumulativeContract: "crates/modules/rustok-forum/contracts/forum-topic-merge-owner.json",
@@ -31,9 +37,11 @@ const paths = {
 };
 
 const read = (path) => readFileSync(path, "utf8");
+// Layout-tolerant by policy: a marker describes an invariant, not where rustfmt or a prose editor put
+// the newline. Tokens are unchanged, so an absent call or sentence is still absent.
 function includesAll(text, markers, label) {
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing marker: ${marker}`);
+    assert.ok(containsMarker(text, marker), `${label} is missing marker: ${marker}`);
   }
 }
 
@@ -92,7 +100,13 @@ assert.equal(contract.compatibility.topic_response_shape_changed, false);
 assert.equal(contract.compatibility.rest_route_shape_changed, false);
 assert.equal(contract.compatibility.rest_direct_target_status_changed, false);
 assert.equal(contract.compatibility.rest_merged_source_status_changed, true);
-assert.equal(cumulativeContract.latest_policy_slice, "FORUM-21J");
+// The cumulative FORUM-21 contract advances as later slices land, so the pin is a floor: the
+// canonical-resolution slice must be recorded, not permanent.
+assert.ok(
+  taskSuffixNumber(cumulativeContract.latest_policy_slice.split("-").at(-1)) >=
+    taskSuffixNumber("J"),
+  `cumulative FORUM-21 contract regressed to ${cumulativeContract.latest_policy_slice}`,
+);
 assert.equal(cumulativeContract.canonical_resolution.parallel_alias_store, false);
 assert.equal(cumulativeContract.canonical_resolution.rest_merged_source_returns_308, true);
 assert.equal(cumulativeContract.bounds.canonical_resolution_hops_max, 32);
@@ -214,7 +228,9 @@ includesAll(
     "StatusCode::PERMANENT_REDIRECT",
     '(CACHE_CONTROL, "private, no-store".to_string())',
     "has_any_effective_permission(&auth.permissions, &[Permission::FORUM_TOPICS_READ])",
-    ".get_with_locale_fallback(",
+    // The redirect resolves the merged alias through the canonical-resolution owner instead of
+    // hydrating whichever topic the caller asked for.
+    ".resolve_canonical_topic(tenant.id, security.clone(), topic_id)",
     "url::form_urlencoded::Serializer::new",
   ],
   "HTTP redirect owner",
@@ -222,9 +238,15 @@ includesAll(
 assert.ok(!redirect.includes("forum_topic_alias"));
 assert.ok(!redirect.includes("forum_topic_redirects"));
 
+// The REST selected-topic read is the audience-aware owner read (FORUM-20A): the redirect, not the
+// read path, owns alias resolution.
 includesAll(
   restTopics,
-  ["pub async fn get_topic(", ".get_with_locale_fallback(", "Ok(Json(topic))"],
+  [
+    "pub async fn get_topic(",
+    "topic_audience_read_service(&runtime).get_authenticated_owner_visible_with_audience_context(",
+    "Ok(Json(topic))",
+  ],
   "REST target hydration path",
 );
 assert.ok(!restTopics.includes("PERMANENT_REDIRECT"));
@@ -238,9 +260,8 @@ includesAll(
   graphql,
   [
     "async fn forum_topic(",
-    "let service = TopicService::new(db.clone(), event_bus.clone());",
-    ".get_with_locale_fallback(",
-    "Ok(Some(map_topic_response(topic, author_profile)))",
+    "topic_audience_read_service(db.clone(), event_bus.clone())",
+    ".get_authenticated_owner_visible_with_audience_context(",
   ],
   "GraphQL selected-topic path",
 );
@@ -248,9 +269,9 @@ includesAll(
   seo,
   [
     "impl SeoTargetProvider for ForumTopicSeoTargetProvider",
+    // Public SEO metadata follows the storefront audience contract; authoring keeps the owner read.
+    "get_public_storefront_visible_with_locale_fallback(",
     "let service = TopicService::new(runtime.db.clone(), runtime.event_bus.clone());",
-    ".get_with_locale_fallback(",
-    "target_id: record.target_id",
   ],
   "Forum SEO topic path",
 );
@@ -273,7 +294,10 @@ includesAll(
 includesAll(
   redirect,
   [
-    "merged_source_redirects_privately_while_target_uses_existing_handler",
+    // The redirect's HTTP regression moved next to the controller it exercises; the status matrix it
+    // asserts is unchanged, so the guard follows the test rather than the file it used to live in.
+    "async fn merged_source_redirects_privately_target_uses_existing_handler(",
+    "assert_eq!(source_response.status(), StatusCode::PERMANENT_REDIRECT)",
     "assert_eq!(target_response.status(), StatusCode::OK)",
     "assert_eq!(missing_response.status(), StatusCode::NOT_FOUND)",
     "assert_eq!(forbidden_response.status(), StatusCode::FORBIDDEN)",
@@ -292,7 +316,7 @@ includesAll(
     "FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT",
     "308 Permanent Redirect",
     "Cache-Control: private, no-store",
-    "FORUM-21A through FORUM-21J",
+    "FORUM-21A through FORUM-21X",
     "No command above was run by the implementation agent",
   ],
   "FORUM-21I/J handoff",
@@ -303,7 +327,7 @@ includesAll(
     "FORUM-21J",
     "the only source-to-target canonical edge",
     "FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT",
-    "FORUM-21A through FORUM-21J",
+    "FORUM-21A through FORUM-21X",
   ],
   "cumulative merge handoff",
 );
@@ -319,8 +343,8 @@ includesAll(
 includesAll(
   docsIndex,
   [
-    "authorization-safe permanent redirect",
-    "FORUM-21I/J canonical resolution and HTTP redirect",
+    // The docs index links the handoff page; the redirect policy statement lives in the slice document.
+    "[FORUM-21I/J canonical resolution and HTTP redirect]",
   ],
   "forum docs index",
 );
@@ -330,9 +354,12 @@ includesAll(
   "routing contract",
 );
 
-assert.ok(plan.includes("| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |"));
-assert.ok(plan.includes("| `FORUM-24` | `planned` | Localized routes, canonical URLs and aliases. |"));
-assert.ok(!plan.includes("| `FORUM-21` | `done` |"));
+assert.deepEqual(
+  ledgerRowProblems(plan, "FORUM-21", {
+    mentions: ["move/merge/split/fork/range owners"],
+  }),
+  [],
+);
 assert.ok(!plan.includes("| `FORUM-24` | `done` |"));
 assert.ok(verifier.includes("source_ready_maintainer_execution_pending"));
 

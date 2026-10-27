@@ -15,7 +15,7 @@
   "source_merge_receipt_table": "forum_topic_merge_operations",
   "semantic_event": {
     "journal": "forum_domain_events",
-    "event_type": "forum.topic.merge_subscriptions_reconciled",
+    "event_type": "forum.topic.merge.subscriptions_reconciled",
     "schema_version": 1,
     "aggregate_is_retained_target": true,
     "event_id_equals_operation_id": true,

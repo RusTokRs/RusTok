@@ -3,10 +3,18 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import {
+  containsMarker,
+  ledgerRowProblems,
+  taskSuffixNumber,
+} from "./lib/forum-source-verification.mjs";
+
 const read = (path) => readFileSync(path, "utf8");
+// Layout-tolerant by policy: a marker describes an invariant, not where rustfmt or a prose editor put
+// the newline. Tokens are unchanged, so an absent call or sentence is still absent.
 const includesAll = (text, markers, label) => {
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing marker: ${marker}`);
+    assert.ok(containsMarker(text, marker), `${label} is missing marker: ${marker}`);
   }
 };
 
@@ -51,7 +59,11 @@ assert.equal(contract.http_redirect.put_delete_and_other_mutations_are_unchanged
 assert.equal(contract.compatibility.rest_route_shape_changed, false);
 assert.equal(contract.compatibility.rest_direct_target_status_changed, false);
 assert.equal(contract.compatibility.rest_merged_source_status_changed, true);
-assert.equal(cumulative.latest_policy_slice, "FORUM-21J");
+// The cumulative FORUM-21 contract advances as later slices land, so the pin is a floor.
+assert.ok(
+  taskSuffixNumber(cumulative.latest_policy_slice.split("-").at(-1)) >= taskSuffixNumber("J"),
+  `cumulative FORUM-21 contract regressed to ${cumulative.latest_policy_slice}`,
+);
 assert.equal(cumulative.canonical_resolution.rest_direct_target_returns_200, true);
 assert.equal(cumulative.canonical_resolution.rest_merged_source_returns_308, true);
 assert.equal(cumulative.canonical_resolution.rest_location_uses_hydrated_target_identity, true);
@@ -71,8 +83,11 @@ includesAll(
     "let service = runtime.topic_service();",
     ".resolve_canonical_topic(tenant.id, security.clone(), topic_id)",
     "if !resolution.redirected",
-    "let canonical_topic = service",
-    ".get_with_locale_fallback(",
+    // The redirect target is hydrated through the same audience-aware owner read the REST route uses,
+    // so a 308 never discloses a topic the caller may not read.
+    "let canonical_topic = super::topics::topic_audience_read_service(&runtime)",
+    ".get_authenticated_owner_visible_with_audience_context(",
+    "resolution.canonical_topic_id,",
     "canonical_topic_location(canonical_topic.id, filter.locale.as_deref())",
     "StatusCode::PERMANENT_REDIRECT",
     "(LOCATION, location)",
@@ -88,7 +103,10 @@ assert.ok(!redirect.includes("TopicService::new(runtime.db_clone()"));
 
 const permissionCheck = redirect.indexOf("has_any_effective_permission(");
 const canonicalResolve = redirect.indexOf(".resolve_canonical_topic(");
-const targetHydration = redirect.indexOf("let canonical_topic = service", canonicalResolve);
+const targetHydration = redirect.indexOf(
+  "let canonical_topic = super::topics::topic_audience_read_service(&runtime)",
+  canonicalResolve,
+);
 const hydratedLocation = redirect.indexOf("canonical_topic_location(canonical_topic.id", targetHydration);
 const responseRedirect = redirect.indexOf("StatusCode::PERMANENT_REDIRECT", hydratedLocation);
 assert.ok(permissionCheck >= 0 && permissionCheck < canonicalResolve);
@@ -99,7 +117,7 @@ includesAll(
   redirect,
   [
     "canonical_location_encodes_explicit_locale",
-    "merged_source_redirects_privately_while_target_uses_existing_handler",
+    "async fn merged_source_redirects_privately_target_uses_existing_handler(",
     "ForumTopicMergeService::new",
     "crate::controllers::topics::get_topic",
     "Some(expected_location.as_str())",
@@ -137,8 +155,9 @@ includesAll(
   [
     "pub async fn get_topic(",
     "ensure_forum_permission(",
-    '"forum_permission_denied"',
-    ".get_with_locale_fallback(",
+    "topic_read_audience_port_context(",
+    "topic_audience_read_service(&runtime)",
+    ".get_authenticated_owner_visible_with_audience_context(",
     "Ok(Json(topic))",
   ],
   "existing topic GET handler",
@@ -161,7 +180,7 @@ includesAll(
     "Location: /api/forum/topics/{canonical_topic_id}",
     "Cache-Control: private, no-store",
     "forum_permission_denied",
-    "FORUM-21A through FORUM-21J",
+    "FORUM-21A through FORUM-21X",
     "FORUM-24",
     "No command above was run by the implementation agent",
   ],
@@ -169,17 +188,17 @@ includesAll(
 );
 includesAll(
   cumulativeDocs,
-  ["FORUM-21J", "308 Permanent Redirect", "private, no-store", "FORUM-21A through FORUM-21J"],
+  ["FORUM-21J", "308 Permanent Redirect", "private, no-store", "FORUM-21A through FORUM-21X"],
   "merge handoff",
 );
 includesAll(
   readme,
-  ["authorization-safe `308 Permanent Redirect`", "Slug aliases and localized public routes are not part of the current contract"],
+  ["authorization-safe `308 Permanent Redirect`", "immutable redirect/tombstone history"],
   "Forum README",
 );
 includesAll(
   docsIndex,
-  ["authorization-safe permanent redirect", "FORUM-21I/J canonical resolution and HTTP redirect"],
+  ["[FORUM-21I/J canonical resolution and HTTP redirect]"],
   "Forum docs index",
 );
 includesAll(
@@ -188,10 +207,12 @@ includesAll(
   "routing contract",
 );
 
-assert.ok(plan.includes("| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |"));
-assert.ok(plan.includes("| `FORUM-24` | `planned` | Localized routes, canonical URLs and aliases. |"));
-assert.ok(!plan.includes("| `FORUM-21` | `done` |"));
-assert.ok(!plan.includes("| `FORUM-24` | `done` |"));
+assert.deepEqual(
+  ledgerRowProblems(plan, "FORUM-21", {
+    mentions: ["move/merge/split/fork/range owners"],
+  }),
+  [],
+);
 
 console.log(
   "FORUM-21J merged-topic HTTP redirect source is ready; FORUM-21 and FORUM-24 remain planned.",

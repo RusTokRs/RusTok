@@ -139,7 +139,7 @@ One owner transaction performs:
 8. source-only primary-key movement with one revision advance or source-row
    deletion under target authority;
 9. proof that no source subscriptions remain;
-10. one `forum.topic.merge_subscriptions_reconciled` journal record;
+10. one `forum.topic.merge.subscriptions_reconciled` journal record;
 11. one immutable reconciliation receipt;
 12. commit.
 

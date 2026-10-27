@@ -386,13 +386,13 @@ admin typecheck and mounted browser execution remain maintainer evidence.
 
 ## Remaining FORUM-21 work
 
-The canonical `FORUM-21` entry remains `planned`. FORUM-21A through FORUM-21N
-are bounded partial slices. Remaining work includes:
+The canonical `FORUM-21` entry is `in_progress`. FORUM-21A through FORUM-21X
+provide the move, merge, split, fork and reply-range owners, their transports and
+the admin composition. What remains is evidence and one transport cutover:
 
 - maintainer execution and retained SQLite/PostgreSQL and browser evidence;
-- direct authenticated Leptos native owner composition while retaining GraphQL
-  parity;
-- split, fork and reply-range workflows.
+- direct authenticated Leptos native owner composition for the split, fork and
+  reply-range workflows while retaining GraphQL parity.
 
 Localized routes, canonical storefront URLs, slug aliases and route tombstones
 remain the planned FORUM-24 task.

@@ -345,3 +345,47 @@ export function requirePublicReexport(failures, source, moduleName, label) {
     failures.push(`${label}: crate root does not re-export ${moduleName}`);
   }
 }
+
+/**
+ * Ledger row contract for a module `implementation-plan.md`.
+ *
+ * The plan is a status table: one row per task, one lifecycle token, one description. Guards used
+ * to pin a whole sentence of that description plus a per-slice "Delivered through `FORUM-21X`"
+ * heading, so rewriting the ledger — including moving a row from `planned` to `in_progress` — turned
+ * into a red check even though the delivered surface had not moved. The contract that survives
+ * rewording is: the row exists, its lifecycle token is one of the ledger's own values, it does not
+ * claim completion while retained evidence is outstanding, and the description still names the
+ * delivered surface.
+ *
+ * Returns the problems found so callers can report all of them at once instead of throwing on the
+ * first one.
+ */
+export function ledgerRowProblems(plan, taskId, options = {}) {
+  const {
+    label = `implementation-plan ${taskId}`,
+    statuses = ["planned", "in_progress"],
+    mentions = [],
+  } = options;
+  const problems = [];
+  const escaped = taskId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const row = new RegExp(
+    `^\\|\\s*\`${escaped}\`\\s*\\|\\s*\`([a-z_]+)\`\\s*\\|([^\\n]*)\\|\\s*$`,
+    "m",
+  ).exec(plan ?? "");
+  if (!row) {
+    problems.push(`${label}: ledger has no row for ${taskId}`);
+    return problems;
+  }
+  const [, status, description] = row;
+  if (!statuses.includes(status)) {
+    problems.push(
+      `${label}: ${taskId} is \`${status}\`, expected one of ${statuses.map((s) => `\`${s}\``).join(" / ")}`,
+    );
+  }
+  for (const phrase of mentions) {
+    if (!description.includes(phrase)) {
+      problems.push(`${label}: ${taskId} row no longer mentions ${phrase}`);
+    }
+  }
+  return problems;
+}

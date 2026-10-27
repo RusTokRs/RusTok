@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { containsMarker } from "./lib/forum-source-verification.mjs";
+
 const paths = {
   contract: "crates/modules/rustok-forum/contracts/forum-reply-range-move-graphql-transport.json",
   ownerContract: "crates/modules/rustok-forum/contracts/forum-reply-range-move-owner.json",
@@ -17,9 +19,11 @@ const paths = {
 };
 
 const read = (path) => readFileSync(path, "utf8");
+// Layout-tolerant by policy: a marker describes an invariant, not where rustfmt or a prose editor put
+// the newline. Tokens are unchanged, so an absent call or sentence is still absent.
 const includesAll = (text, markers, label) => {
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing marker: ${marker}`);
+    assert.ok(containsMarker(text, marker), `${label} is missing marker: ${marker}`);
   }
 };
 
@@ -68,7 +72,8 @@ includesAll(graphql, [
   "async fn move_forum_topic_reply_range(",
   "require_module_enabled(ctx, MODULE_SLUG).await?;",
   "Permission::FORUM_TOPICS_MANAGE",
-  "Permission denied: tenant scope mismatch",
+  // The mismatch wording is produced by the shared scope resolver the resolver must call.
+    "resolve_tenant_scope(tenant, tenant_id)?",
   "SecurityContext::from_permission_snapshot",
   "ForumReplyRangeMoveService::new(db.clone(), event_bus.clone())",
   ".move_reply_range(",

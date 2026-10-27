@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { containsMarker } from "./lib/forum-source-verification.mjs";
+
 const paths = {
   contract:
     "crates/modules/rustok-forum/contracts/forum-topic-slug-rename-graphql-transport.json",
@@ -19,9 +21,11 @@ const paths = {
 };
 
 const read = (path) => readFileSync(path, "utf8");
+// Layout-tolerant by policy: a marker describes an invariant, not where rustfmt or a prose editor put
+// the newline. Tokens are unchanged, so an absent call or sentence is still absent.
 const includesAll = (text, markers, label) => {
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing marker: ${marker}`);
+    assert.ok(containsMarker(text, marker), `${label} is missing marker: ${marker}`);
   }
 };
 
@@ -73,11 +77,13 @@ includesAll(
     "require_module_enabled(ctx, MODULE_SLUG).await?;",
     "ctx.data::<DatabaseConnection>()?",
     "ctx.data::<TransactionalEventBus>()?",
-    "ctx.data::<AuthContext>()",
+    // Auth is obtained only through the shared forum guard.
+    "super::require_forum_permission(",
     "ctx.data::<TenantContext>()?",
     "Permission::FORUM_TOPICS_UPDATE",
     "Permission denied: forum_topics:update required",
-    "Permission denied: tenant scope mismatch",
+    // The mismatch wording is produced by the shared scope resolver the resolver must call.
+    "resolve_tenant_scope(tenant, tenant_id)?",
     "SecurityContext::from_permission_snapshot",
     "TopicService::new(db.clone(), event_bus.clone())",
     ".rename_slug(",

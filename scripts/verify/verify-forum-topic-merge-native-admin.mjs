@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { containsMarker } from "./lib/forum-source-verification.mjs";
+
 const paths = {
   contract: "crates/modules/rustok-forum/contracts/forum-topic-merge-native-admin.json",
   docs: "crates/modules/rustok-forum/docs/forum-21o-topic-merge-native-admin.md",
@@ -15,12 +17,15 @@ const paths = {
   graphql:
     "crates/modules/rustok-forum/admin/src/transport/topic_merge_graphql_adapter.rs",
   ui: "crates/modules/rustok-forum/admin/src/ui/topic_merge.rs",
+  support: "crates/modules/rustok-forum/admin/src/transport/native_server_support.rs",
 };
 
 const read = (path) => readFileSync(path, "utf8");
+// Layout-tolerant by policy: a marker describes an invariant, not where rustfmt or a prose editor put
+// the newline. Tokens are unchanged, so an absent call or sentence is still absent.
 const includesAll = (text, markers, label) => {
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing marker: ${marker}`);
+    assert.ok(containsMarker(text, marker), `${label} is missing marker: ${marker}`);
   }
 };
 
@@ -33,6 +38,7 @@ const facade = read(paths.facade);
 const native = read(paths.native);
 const graphql = read(paths.graphql);
 const ui = read(paths.ui);
+const support = read(paths.support);
 
 assert.equal(contract.contract, "forum_topic_merge_native_admin_v1");
 assert.equal(contract.task, "FORUM-21O");
@@ -96,7 +102,7 @@ includesAll(
   facade,
   [
     "mod topic_merge_native_server_adapter;",
-    "selected_topic_merge_transport_path",
+    "selected_admin_transport_path",
     'cfg(any(feature = "ssr", feature = "hydrate"))',
     "UiTransportPath::NativeServer",
     "UiTransportPath::Graphql",
@@ -108,8 +114,11 @@ includesAll(
   ],
   "Forum merge transport facade",
 );
-assert.ok(!facade.includes("or_else"));
-assert.ok(!facade.includes("fallback_failed"));
+// The ban is on silent transport fallback, not on the word itself: the crate's own unit test walks the
+// facade source with `unwrap_or_else` when it slices each transport function.
+const facadeProduction = facade.slice(0, facade.indexOf("#[cfg(test)]"));
+assert.ok(!facadeProduction.includes("or_else"));
+assert.ok(!facadeProduction.includes("fallback_failed"));
 
 includesAll(
   native,
@@ -120,12 +129,16 @@ includesAll(
     "merge_topic_native(\n    command: ForumTopicMergeCommand,",
     "leptos_axum::extract::<rustok_api::AuthContext>()",
     "leptos_axum::extract::<rustok_api::TenantContext>()",
-    "auth.tenant_id == tenant.id",
+    // Tenant scope is enforced by the shared native-server guard, which compares the routed tenant
+    // with the authenticated one and refuses a mismatch with "Forum admin tenant scope mismatch".
+    "require_tenant_scope(&auth, &tenant)?",
     "require_forum_module_enabled",
-    "rustok_api::is_tenant_module_enabled(host.db(), tenant_id, \"forum\")",
+    // Module enablement lives once in the shared native-server guard the adapter calls.
+    "require_forum_module_enabled(&host, tenant.id).await?",
     "Permission::FORUM_TOPICS_LIST",
     "Permission::FORUM_TOPICS_MANAGE",
-    "shared_get::<rustok_outbox::TransactionalEventBus>()",
+    // The host runtime lookup moved into the shared support module; the adapter asks for `runtime()`.
+    "runtime()?",
     "TopicService::new",
     "list_with_locale_fallback",
     "per_page: 100",
@@ -136,6 +149,21 @@ includesAll(
     "map_receipt",
   ],
   "Forum native merge adapter",
+);
+// The shared native-server support module is the single place that resolves the host runtime, the
+// module toggle, the routed tenant scope and the permission set for every forum admin server fn.
+includesAll(
+  support,
+  [
+    "pub(super) fn runtime()",
+    ".shared_get::<rustok_outbox::TransactionalEventBus>()",
+    "pub(super) fn require_tenant_scope(",
+    "auth.tenant_id == tenant.id",
+    "Forum admin tenant scope mismatch",
+    "pub(super) async fn require_forum_module_enabled(",
+    'rustok_api::is_tenant_module_enabled(host.db(), tenant_id, "forum")',
+  ],
+  "Forum native server-fn support",
 );
 assert.ok(!native.includes("token: Option<String>"));
 assert.ok(!native.includes("tenant_id: String"));
@@ -150,7 +178,8 @@ includesAll(
     "MERGE_TOPIC_RESOLVING_SOLUTION_MUTATION",
     "mergeForumTopic(",
     "mergeForumTopicResolvingSolution(",
-    "limit: 100",
+    // The candidate read is bounded at the transport, in the request DTO rather than a literal query arg.
+    "per_page: 100",
     "execute_graphql",
   ],
   "retained Forum GraphQL parity adapter",
@@ -176,7 +205,8 @@ includesAll(
     "ssr` and `hydrate` use native server functions",
     "csr` and headless/default builds use GraphQL",
     "never triggers cross-path fallback",
-    paths.native,
+    // The README links the transport handoff instead of repeating the file path it used to inline.
+    "[FORUM-21O native admin merge transport]",
   ],
   "Forum admin README",
 );

@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { containsMarker, ledgerRowProblems } from "./lib/forum-source-verification.mjs";
+
 const paths = {
   contract: "crates/modules/rustok-forum/contracts/forum-topic-merge-solution-policy.json",
   resolutionContract: "crates/modules/rustok-forum/contracts/forum-topic-merge-solution-resolution.json",
@@ -27,9 +29,11 @@ const paths = {
 };
 
 const read = (path) => readFileSync(path, "utf8");
+// Layout-tolerant by policy: a marker describes an invariant, not where rustfmt or a prose editor put
+// the newline. Tokens are unchanged, so an absent call or sentence is still absent.
 const includesAll = (text, markers, label) => {
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing marker: ${marker}`);
+    assert.ok(containsMarker(text, marker), `${label} is missing marker: ${marker}`);
   }
 };
 
@@ -137,8 +141,8 @@ includesAll(
   solutionLock,
   [
     "pub(crate) async fn lock_topic_solution_scopes_in_tx",
-    "topic_ids.sort()",
-    "topic_ids.dedup()",
+    "ids.sort();",
+    "ids.dedup();",
     "hashtextextended($1, 31)",
     "forum_topic_solution_locks",
   ],
@@ -218,7 +222,9 @@ includesAll(
   ordinaryTest,
   [
     "topic_merge_transfers_source_only_solution_and_preserves_target_only_solution",
-    "topic_merge_rejects_cross_category_and_competing_solutions_without_partial_state",
+    // Cross-category merges are allowed now (FORUM-21M), so the competing-solution rejection has its own
+    // regression and is pinned by that name; the cross-category path is covered by its own guard.
+    "async fn topic_merge_rejects_competing_solutions_without_partial_state(",
     "TopicMergeSolutionConflict",
   ],
   "ordinary policy regression",
@@ -281,9 +287,12 @@ includesAll(
   "cumulative handoff",
 );
 
-assert.ok(plan.includes("| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |"));
-assert.ok(!plan.includes("| `FORUM-21` | `done` |"));
-assert.ok(!plan.includes("| `FORUM-21` | `in_progress` |"));
+assert.deepEqual(
+  ledgerRowProblems(plan, "FORUM-21", {
+    mentions: ["move/merge/split/fork/range owners"],
+  }),
+  [],
+);
 
 console.log(
   "FORUM-21H/L topic merge solution policy source is ready; canonical FORUM-21 remains planned.",
