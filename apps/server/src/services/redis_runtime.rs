@@ -1,19 +1,11 @@
 //! Runtime helpers for Redis-dependent features.
 
-/// Resolve the Redis URL from environment variables.
+/// Resolve the deployment Redis URL.
 ///
-/// Priority:
-/// 1. `RUSTOK_REDIS_URL`
-/// 2. `REDIS_URL`
-///
-/// Returns `None` when both values are absent or blank.
-pub fn resolve_redis_url() -> Option<String> {
-    std::env::var("RUSTOK_REDIS_URL")
-        .ok()
-        .or_else(|| std::env::var("REDIS_URL").ok())
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
+/// The resolver lives in the cache crate (`rustok_cache::resolve_redis_url`) so the runtime target
+/// and the target the settings API reports come from the same place; this re-export keeps the host
+/// call sites unchanged without maintaining a second copy of the precedence rules.
+pub use rustok_cache::resolve_redis_url;
 
 #[cfg(test)]
 mod tests {

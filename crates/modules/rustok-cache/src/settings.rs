@@ -28,6 +28,33 @@ pub const DEFAULT_REDIS_DB: u32 = 0;
 pub const REDACTED_SECRET: &str = "********";
 
 const VALID_MODES: [&str; 3] = ["in-memory", "redis", "hybrid"];
+
+/// Environment variables that may carry the deployment Redis target, in precedence order.
+pub const REDIS_URL_ENV_NAMES: [&str; 2] = ["RUSTOK_REDIS_URL", "REDIS_URL"];
+
+/// Deployment-provided Redis target.
+///
+/// Precedence is `RUSTOK_REDIS_URL` → `REDIS_URL`; a blank value is treated as absent so an
+/// exported-but-empty variable cannot shadow a real one. This is the only environment-based
+/// resolver in the workspace: the host calls it instead of keeping a second copy, so the runtime
+/// target and the target reported by the settings API cannot diverge.
+pub fn resolve_redis_url() -> Option<String> {
+    resolve_redis_url_from(None, |name| std::env::var(name).ok())
+}
+
+/// Pure form of [`resolve_redis_url`], so precedence and blank handling are testable without
+/// mutating process-wide environment state.
+fn resolve_redis_url_from(
+    explicit_url: Option<&str>,
+    lookup: impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    explicit_url
+        .into_iter()
+        .map(str::to_string)
+        .chain(REDIS_URL_ENV_NAMES.into_iter().filter_map(lookup))
+        .map(|value| value.trim().to_string())
+        .find(|value| !value.is_empty())
+}
 const VALID_URL_SCHEMES: [&str; 2] = ["redis", "rediss"];
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -329,6 +356,60 @@ impl CacheSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn redis_url_resolution_prefers_explicit_then_rustok_then_generic_env() {
+        let env = |name: &str| match name {
+            "RUSTOK_REDIS_URL" => Some("redis://rustok:6379/0".to_string()),
+            "REDIS_URL" => Some("redis://generic:6379/0".to_string()),
+            _ => None,
+        };
+
+        assert_eq!(
+            resolve_redis_url_from(Some("redis://explicit:6379/0"), env).as_deref(),
+            Some("redis://explicit:6379/0")
+        );
+        assert_eq!(
+            resolve_redis_url_from(None, env).as_deref(),
+            Some("redis://rustok:6379/0")
+        );
+        assert_eq!(
+            resolve_redis_url_from(None, |name| match name {
+                "RUSTOK_REDIS_URL" => None,
+                "REDIS_URL" => Some("redis://generic:6379/0".to_string()),
+                _ => None,
+            })
+            .as_deref(),
+            Some("redis://generic:6379/0")
+        );
+    }
+
+    #[test]
+    fn redis_url_resolution_treats_blank_values_as_absent() {
+        // An exported-but-empty variable must not shadow a real target.
+        assert_eq!(
+            resolve_redis_url_from(None, |name| match name {
+                "RUSTOK_REDIS_URL" => Some("   ".to_string()),
+                "REDIS_URL" => Some("redis://generic:6379/0".to_string()),
+                _ => None,
+            })
+            .as_deref(),
+            Some("redis://generic:6379/0")
+        );
+        assert_eq!(
+            resolve_redis_url_from(Some("  "), |name| match name {
+                "RUSTOK_REDIS_URL" => Some("  redis://rustok:6379/0  ".to_string()),
+                _ => None,
+            })
+            .as_deref(),
+            Some("redis://rustok:6379/0"),
+            "resolved URLs are trimmed"
+        );
+        assert_eq!(
+            resolve_redis_url_from(None, |_| Some(String::new())),
+            None
+        );
+    }
 
     fn redis_settings(url: &str) -> CacheSettings {
         CacheSettings {

@@ -10,6 +10,7 @@ use rustok_core::CircuitBreakerConfig;
 use rustok_core::{CacheBackend, InMemoryCacheBackend};
 
 use crate::instrumentation::InstrumentedCacheBackend;
+use crate::settings::resolve_redis_url;
 
 pub const MAX_CACHE_INVALIDATION_CHANNEL_BYTES: usize = 256;
 pub const MAX_CACHE_INVALIDATION_KEY_BYTES: usize = 4 * 1024;
