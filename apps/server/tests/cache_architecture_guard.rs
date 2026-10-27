@@ -601,3 +601,43 @@ fn cache_readiness_has_one_predicate_for_every_consumer() {
         "readiness must report incomplete recovery instead of a transport outage"
     );
 }
+
+#[test]
+fn cache_ttl_policy_cannot_be_built_without_its_constructor() {
+    let policy = source("crates/modules/rustok-cache/src/policy.rs");
+
+    // An exposed enum let a caller build `Fixed(Duration::ZERO)`, which every backend reads as a
+    // deletion. The policy must stay opaque so the constructors are the only entry point.
+    assert!(
+        policy.contains("pub struct CacheTtlPolicy"),
+        "CacheTtlPolicy must stay an opaque struct"
+    );
+    assert!(
+        !policy.contains("pub enum CacheTtlPolicy"),
+        "an exposed CacheTtlPolicy enum re-opens zero-TTL construction"
+    );
+    assert!(
+        policy.contains("enum CacheTtlPolicyKind"),
+        "the private representation must be named CacheTtlPolicyKind"
+    );
+    let kind = policy
+        .split("enum CacheTtlPolicyKind {")
+        .nth(1)
+        .expect("private policy representation must exist");
+    assert!(
+        !kind.split("}\n").next().unwrap_or_default().contains("pub "),
+        "the policy representation must not expose its variants"
+    );
+
+    // Both TTL constructors own the zero-TTL rule.
+    for constructor in ["pub fn fixed(", "pub fn deterministic_jitter("] {
+        let body = policy
+            .split(constructor)
+            .nth(1)
+            .unwrap_or_else(|| panic!("{constructor} must exist"));
+        assert!(
+            body.split("pub fn ").next().unwrap_or_default().contains("CachePolicyError::ZeroTtl"),
+            "{constructor} must reject a zero TTL"
+        );
+    }
+}

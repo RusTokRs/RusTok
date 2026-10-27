@@ -14,8 +14,9 @@
   - Leases: `DistributedCacheLease`, `CacheLeaseOptions`, `CacheLeaseOutcome`
 - **Invalidation & Anti-Stampede**:
   - `CacheRefreshCoordinator`, `StaleWhileRevalidateResult`
-  - `CacheTtlPolicy::{none, fixed, deterministic_jitter}` — both TTL constructors reject a zero
-    TTL with `CachePolicyError::ZeroTtl`, so no policy can be built that only fails at use time
+  - `CacheTtlPolicy::{none, fixed, deterministic_jitter}` — an opaque policy: the representation is
+    private, so these constructors are the only entry point, and both TTL constructors reject a zero
+    TTL with `CachePolicyError::ZeroTtl`. No policy that only fails at use time can be built.
   - `CacheNamespaceGenerationStore`, `CacheInvalidationService`
   - `DurableCacheInvalidationConsumer`, `DurableInvalidationProcessOutcome`
   - `BoundedCacheInvalidationGapTracker` (canonical; no unbounded variant), `BoundedCacheEventDedupe`

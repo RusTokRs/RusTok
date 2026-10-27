@@ -288,8 +288,10 @@ None of these are claimed as compiled or live verified until the P0 evidence ste
 - [x] `CacheTtlPolicy::fixed` rejects a zero TTL at construction, like `deterministic_jitter`
   already did. Previously a zero-TTL policy was constructible and then rejected in three separate
   places at use time (load, policy load, refresh), so the invariant had three owners instead of
-  one; the runtime checks remain as fail-closed defense for hand-built `CacheTtlPolicy::Fixed`
-  values.
+  one.
+- [x] `CacheTtlPolicy` is opaque (`CacheTtlPolicyKind` is private), so the rejecting constructors are
+  the only entry point and the invariant cannot be bypassed by building `Fixed(Duration::ZERO)`.
+  The use-time checks stay as fail-closed defense for values built inside the crate.
 - [x] Redis readiness distinguishes transport from recovery: `connectivity_healthy`,
   `generation_recovery_pending`, `recovery_error`, `is_connectivity_healthy()`, and the
   `rustok_cache_redis_generation_recovery_{pending,failed}` gauges.

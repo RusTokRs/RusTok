@@ -15,8 +15,19 @@ pub const MAX_CACHE_POLICY_KEY_BYTES: usize = crate::service::MAX_CACHE_LOAD_KEY
 /// Jitter is deterministic for a `(namespace, key)` pair. It only shortens the configured TTL,
 /// spreading expiration without allowing cached data to outlive the caller's freshness bound.
 /// Stable inputs keep retries reproducible and make unit tests deterministic.
+///
+/// The policy is opaque: it can only be built through [`CacheTtlPolicy::none`],
+/// [`CacheTtlPolicy::fixed`] or [`CacheTtlPolicy::deterministic_jitter`]. That is what makes the
+/// "no policy carries a zero TTL" invariant enforceable at all — an exposed enum let a caller build
+/// `Fixed(Duration::ZERO)`, which every backend interprets as a deletion, and then fail only after
+/// cache I/O had already been attempted.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CacheTtlPolicy {
+pub struct CacheTtlPolicy {
+    kind: CacheTtlPolicyKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CacheTtlPolicyKind {
     None,
     Fixed(Duration),
     DeterministicJitter {
@@ -28,22 +39,29 @@ pub enum CacheTtlPolicy {
 
 impl CacheTtlPolicy {
     pub fn none() -> Self {
-        Self::None
+        Self {
+            kind: CacheTtlPolicyKind::None,
+        }
     }
 
     /// Fixed TTL policy.
     ///
     /// A zero TTL is rejected here for the same reason [`Self::deterministic_jitter`] rejects it:
     /// backend caches interpret a zero TTL as deletion, so a policy carrying one can only fail at
-    /// use time — after cache I/O has already been attempted. Constructing the policy is the only
-    /// place where that invariant can be enforced once, so every construction path agrees.
+    /// use time — after cache I/O has already been attempted.
     pub fn fixed(ttl: Duration) -> Result<Self, CachePolicyError> {
         if ttl.is_zero() {
             return Err(CachePolicyError::ZeroTtl);
         }
-        Ok(Self::Fixed(ttl))
+        Ok(Self {
+            kind: CacheTtlPolicyKind::Fixed(ttl),
+        })
     }
 
+    /// Deterministic, bounded TTL jitter.
+    ///
+    /// `max_jitter_percent` is capped so jitter can never become the dominant lifetime, and the
+    /// namespace must be non-empty because it seeds the deterministic hash together with the key.
     pub fn deterministic_jitter(
         ttl: Duration,
         max_jitter_percent: u8,
@@ -64,18 +82,21 @@ impl CacheTtlPolicy {
             return Err(CachePolicyError::EmptyNamespace);
         }
 
-        Ok(Self::DeterministicJitter {
-            ttl,
-            max_jitter_percent,
-            namespace,
+        Ok(Self {
+            kind: CacheTtlPolicyKind::DeterministicJitter {
+                ttl,
+                max_jitter_percent,
+                namespace,
+            },
         })
     }
 
+    /// TTL to store for `key`, or `None` when the entry should not expire on its own.
     pub fn ttl_for(&self, key: &str) -> Option<Duration> {
-        match self {
-            Self::None => None,
-            Self::Fixed(ttl) => Some(*ttl),
-            Self::DeterministicJitter {
+        match &self.kind {
+            CacheTtlPolicyKind::None => None,
+            CacheTtlPolicyKind::Fixed(ttl) => Some(*ttl),
+            CacheTtlPolicyKind::DeterministicJitter {
                 ttl,
                 max_jitter_percent,
                 namespace,
@@ -115,7 +136,7 @@ impl CacheLoadPolicy {
 
 impl Default for CacheLoadPolicy {
     fn default() -> Self {
-        Self::new(CacheTtlPolicy::None)
+        Self::new(CacheTtlPolicy::none())
     }
 }
 
@@ -364,9 +385,11 @@ mod tests {
             .load_or_fill_with_policy(
                 backend.clone(),
                 "present",
-                // The constructor rejects a zero TTL, so this test builds the policy by hand to
-                // keep the runtime guard covered.
-                CacheLoadPolicy::new(CacheTtlPolicy::Fixed(Duration::ZERO)),
+                // The public constructors reject a zero TTL, so this test builds the policy from
+                // the crate-private representation to keep the runtime guard covered.
+                CacheLoadPolicy::new(CacheTtlPolicy {
+                    kind: CacheTtlPolicyKind::Fixed(Duration::ZERO),
+                }),
                 || async {
                     calls.fetch_add(1, Ordering::SeqCst);
                     Ok(b"unexpected".to_vec())
@@ -391,8 +414,11 @@ mod tests {
             "a policy that can only fail at use time must not be constructible"
         );
         assert_eq!(
-            CacheTtlPolicy::fixed(Duration::from_millis(1)).unwrap(),
-            CacheTtlPolicy::Fixed(Duration::from_millis(1))
+            CacheTtlPolicy::fixed(Duration::from_millis(1))
+                .unwrap()
+                .ttl_for("any-key"),
+            Some(Duration::from_millis(1)),
+            "a one-millisecond TTL is the smallest accepted fixed policy"
         );
         assert_eq!(
             CacheTtlPolicy::deterministic_jitter(Duration::ZERO, 10, "ns").unwrap_err(),
