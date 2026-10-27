@@ -20,6 +20,7 @@ pub use rustok_modules::REGISTRY_OWNER_TRANSFER_REASON_CODES;
 pub use rustok_modules::REGISTRY_REJECT_REASON_CODES;
 pub use rustok_modules::REGISTRY_REQUEST_CHANGES_REASON_CODES;
 pub use rustok_modules::REGISTRY_RESUME_REASON_CODES;
+pub use rustok_modules::REGISTRY_UNYANK_REASON_CODES;
 pub use rustok_modules::REGISTRY_VALIDATION_STAGE_REASON_CODES;
 pub use rustok_modules::REGISTRY_YANK_REASON_CODES;
 
@@ -189,7 +190,7 @@ impl RegistryGovernanceService {
     }
 
     pub(crate) fn release_service(&self) -> SeaOrmModuleGovernanceService {
-        ModuleControlPlane::new(self.db.clone()).release()
+        ModuleControlPlane::new(self.db.clone()).publication()
     }
 
     pub(crate) fn publication_service(&self) -> SeaOrmModuleGovernanceService {

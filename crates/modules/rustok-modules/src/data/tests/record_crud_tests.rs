@@ -372,30 +372,20 @@ async fn record_delete_is_revisioned_idempotent_and_removes_indexes() {
             .expect("replay purge"),
         purged
     );
-    assert!(matches!(
+    assert_eq!(
         purge
             .purge(ArtifactDataPurgeRequest {
                 context: ModuleCommandContext {
-                    trace_id: "test:conflicting-artifact-data-purge".to_string(),
-                    ..purge_request.context.clone()
-                },
-                ..purge_request.clone()
-            })
-            .await,
-        Err(ArtifactDataError::IdempotencyConflict)
-    ));
-    assert!(matches!(
-        purge
-            .purge(ArtifactDataPurgeRequest {
-                context: ModuleCommandContext {
+                    trace_id: "test:changed-artifact-data-purge-trace".to_string(),
                     correlation_id: Uuid::new_v4(),
                     ..purge_request.context.clone()
                 },
                 ..purge_request.clone()
             })
-            .await,
-        Err(ArtifactDataError::IdempotencyConflict)
-    ));
+            .await
+            .expect("changed observability context replays purge"),
+        purged
+    );
     let purge_receipt = database
         .query_one_raw(Statement::from_string(
             DbBackend::Sqlite,

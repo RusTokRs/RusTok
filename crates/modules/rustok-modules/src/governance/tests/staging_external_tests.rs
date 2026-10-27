@@ -164,10 +164,13 @@ async fn external_prebuilt_stage_receipt_rejects_changed_context_or_privilege() 
 
     let mut changed_trace = command.clone();
     changed_trace.context.trace_id = "test:changed-trace".to_string();
-    assert_eq!(
-        service.stage_external_prebuilt(changed_trace).await,
-        Err(ModuleGovernanceError::ExternalPrebuiltStageIdempotencyConflict)
-    );
+    changed_trace.context.correlation_id = Uuid::new_v4();
+    let changed_observability_replay = service
+        .stage_external_prebuilt(changed_trace)
+        .await
+        .expect("changed observability context replays external staging");
+    assert!(!changed_observability_replay.created);
+    assert_eq!(changed_observability_replay.staging_id, first.staging_id);
 
     database
         .execute_raw(Statement::from_string(
@@ -468,10 +471,13 @@ async fn alloy_authored_stage_receipt_is_authority_scoped_and_idempotent() {
 
     let mut changed_trace = command.clone();
     changed_trace.context.trace_id = "test:changed-trace".to_string();
-    assert_eq!(
-        service.stage_alloy_authored(changed_trace).await,
-        Err(ModuleGovernanceError::AlloyAuthoredStageIdempotencyConflict)
-    );
+    changed_trace.context.correlation_id = Uuid::new_v4();
+    let changed_observability_replay = service
+        .stage_alloy_authored(changed_trace)
+        .await
+        .expect("changed observability context replays Alloy staging");
+    assert!(!changed_observability_replay.created);
+    assert_eq!(changed_observability_replay.staging_id, first.staging_id);
 
     database
         .execute_raw(Statement::from_string(

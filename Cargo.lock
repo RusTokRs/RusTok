@@ -8743,11 +8743,13 @@ dependencies = [
 name = "leptos-auth"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "futures-util",
  "gloo-storage",
  "js-sys",
  "leptos",
  "leptos-use",
+ "leptos_axum",
  "leptos_router",
  "reqwest 0.13.5",
  "rustok-graphql",
@@ -15026,6 +15028,7 @@ dependencies = [
  "rustok-region",
  "rustok-runtime",
  "rustok-search",
+ "rustok-security",
  "rustok-seo",
  "rustok-social-graph",
  "rustok-tasks",
@@ -16350,6 +16353,7 @@ dependencies = [
  "rustok-build-source",
  "rustok-core",
  "rustok-events",
+ "rustok-modules",
  "rustok-outbox",
  "rustok-runtime",
  "rustok-sandbox",
@@ -16375,6 +16379,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "hex",
+ "libc",
  "rustok-build-source",
  "rustok-cli-core",
  "rustok-module-sdk",
@@ -17494,11 +17499,13 @@ name = "rustok-sandbox-worker"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "hex",
  "rustok-sandbox",
  "rustok-sandbox-transport",
  "rustok-worker-transport",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "tokio",
  "tonic",
  "uuid",
@@ -17593,6 +17600,27 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-security"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "moka",
+ "reqwest 0.13.5",
+ "rustok-api",
+ "rustok-core",
+ "rustok-outbox",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -17726,6 +17754,7 @@ dependencies = [
  "futures-util",
  "hex",
  "ipnet",
+ "jsonwebtoken 11.1.0",
  "leptos",
  "leptos_axum",
  "mime_guess",
@@ -17825,6 +17854,7 @@ dependencies = [
  "rustok-translation",
  "rustok-translation-admin",
  "rustok-translation-targets",
+ "rustok-verification-transport",
  "rustok-web",
  "rustok-worker-transport",
  "rustok-workflow",

@@ -136,6 +136,7 @@ rustok-core = { workspace = true, features = ["redis-cache", "server"] }
 rustok-modules.workspace = true
 rustok-sandbox = { workspace = true, features = ["rhai", "wasm-component"] }
 rustok-sandbox-transport.workspace = true
+rustok-verification-transport = { path = "../../crates/workers/rustok-verification-transport" }
 rustok-worker-transport.workspace = true
 rustok-distribution = { workspace = true, default-features = false }
 rustok-api = { workspace = true, features = ["server"] }

@@ -54,6 +54,7 @@ const REGISTRY_RUNNER_COMPLETE_PATH: &str = "/v2/catalog/runner/{claim_id}/compl
 const REGISTRY_RUNNER_FAIL_PATH: &str = "/v2/catalog/runner/{claim_id}/fail";
 const REGISTRY_OWNER_TRANSFER_PATH: &str = "/v2/catalog/owner-transfer";
 const REGISTRY_YANK_PATH: &str = "/v2/catalog/yank";
+const REGISTRY_UNYANK_PATH: &str = "/v2/catalog/unyank";
 
 #[derive(Debug, Clone, Default)]
 pub struct MarketplaceCatalogQuery {
@@ -1022,6 +1023,18 @@ pub struct RegistryYankRequest {
     pub reason_code: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryUnyankRequest {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub dry_run: bool,
+    pub slug: String,
+    pub version: String,
+    pub reason: Option<String>,
+    pub reason_code: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct SharedMarketplaceCatalogService(pub Arc<MarketplaceCatalogService>);
 
@@ -1218,6 +1231,10 @@ pub fn registry_owner_transfer_path() -> &'static str {
 
 pub fn registry_yank_path() -> &'static str {
     REGISTRY_YANK_PATH
+}
+
+pub fn registry_unyank_path() -> &'static str {
+    REGISTRY_UNYANK_PATH
 }
 
 pub fn registry_catalog_from_modules(

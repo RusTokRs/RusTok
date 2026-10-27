@@ -79,7 +79,7 @@ pub(crate) async fn project_marketplace_catalog_entries(
         .map(|module| map_catalog_entry(module, registry, &installed))
         .collect::<Result<Vec<_>, _>>()?;
     rustok_modules::ModuleControlPlane::new(runtime.db_clone())
-        .release()
+        .publication()
         .apply_marketplace_projection(entries, preferred_locale, fallback_locale)
         .await
         .map_err(|_| ModuleMarketplaceError::Unavailable)
@@ -139,7 +139,7 @@ impl ModuleMarketplaceCatalog for ServerMarketplaceCatalog {
         };
         let entry = map_catalog_entry(module, &self.registry, &installed)?;
         let mut entry = rustok_modules::ModuleControlPlane::new(self.runtime.db_clone())
-            .release()
+            .publication()
             .apply_marketplace_projection(
                 vec![entry],
                 preferred_locale.as_deref(),
@@ -153,7 +153,7 @@ impl ModuleMarketplaceCatalog for ServerMarketplaceCatalog {
             return Ok(None);
         }
         entry.registry_lifecycle = rustok_modules::ModuleControlPlane::new(self.runtime.db_clone())
-            .release()
+            .publication()
             .lifecycle_snapshot(&entry.slug)
             .await
             .map_err(|_| ModuleMarketplaceError::Unavailable)?;

@@ -5,7 +5,7 @@ version = "0.1.0"
 description = "Shared bounded reactions with source-owned subject authorization"
 ownership = "first_party"
 trust_level = "verified"
-ui_classification = "storefront_only"
+ui_classification = "future_ui"
 
 [dependencies]
 outbox = { version_req = ">=0.1.0" }
@@ -18,11 +18,16 @@ query = "graphql::ReactionsQuery"
 mutation = "graphql::ReactionsMutation"
 runtime_data_factory = "graphql::attach_schema_data"
 
-# Support crate only: embeddable controls (ReactionBar) consumed by other
-# modules' storefront compositions. No slot/route is declared, so the
-# storefront codegen mounts no page of its own for this module.
-[provides.storefront_ui]
+# The storefront/ sub-crate is a support crate: it publishes the embeddable
+# ReactionBar component that host compositions and other module surfaces
+# render for a concrete subject. It owns no storefront route or slot.
+[provides.storefront_support]
 leptos_crate = "rustok-reactions-storefront"
+
+[provides.storefront_support.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"
 
 [marketplace]
 category = "content"

@@ -158,14 +158,6 @@ impl SeaOrmModuleGovernanceService {
                     .try_get::<String>("", "actor_id")
                     .map_err(store_error)?
                     != command.context.actor_id.to_string()
-                || existing
-                    .try_get::<String>("", "trace_id")
-                    .map_err(store_error)?
-                    != command.context.trace_id
-                || existing
-                    .try_get::<String>("", "correlation_id")
-                    .map_err(store_error)?
-                    != command.context.correlation_id.to_string()
                 || actor != command.actor_principal
                 || existing
                     .try_get::<bool>("", "actor_can_manage_modules")
@@ -191,18 +183,18 @@ impl SeaOrmModuleGovernanceService {
         if already_created.is_some() {
             return Err(ModuleGovernanceError::PublishRequestCreationConflict);
         }
-        let active_release = tx
+        let existing_release = tx
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
-                    "SELECT id FROM registry_module_releases WHERE slug = {} AND version = {} AND status = 'active' LIMIT 1",
+                    "SELECT id FROM registry_module_releases WHERE slug = {} AND version = {} LIMIT 1",
                     mark(1), mark(2)
                 ),
                 vec![command.slug.clone().into(), command.version.clone().into()],
             ))
             .await
             .map_err(store_error)?;
-        if active_release.is_some() {
+        if existing_release.is_some() {
             return Err(ModuleGovernanceError::PublishRequestReleaseAlreadyActive {
                 slug: command.slug,
                 version: command.version,

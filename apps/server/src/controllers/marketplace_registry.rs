@@ -38,7 +38,8 @@ use crate::services::marketplace_catalog::{
     RegistryPublishStatusResponse, RegistryPublishValidationRequest, RegistryRunnerClaimPayload,
     RegistryRunnerClaimRequest, RegistryRunnerClaimResponse, RegistryRunnerCompletionRequest,
     RegistryRunnerHeartbeatRequest, RegistryRunnerMutationResponse,
-    RegistryValidationStageReportRequest, RegistryYankRequest, registry_catalog_from_modules,
+    RegistryUnyankRequest, RegistryValidationStageReportRequest, RegistryYankRequest,
+    registry_catalog_from_modules,
     registry_catalog_module_path, registry_catalog_path, registry_owner_transfer_path,
     registry_publish_approve_path, registry_publish_artifact_path,
     registry_publish_author_signature_path, registry_publish_external_stage_path,
@@ -46,7 +47,8 @@ use crate::services::marketplace_catalog::{
     registry_publish_reject_path, registry_publish_request_changes_path,
     registry_publish_resume_path, registry_publish_stage_report_path, registry_publish_status_path,
     registry_publish_validate_path, registry_runner_claim_path, registry_runner_complete_path,
-    registry_runner_fail_path, registry_runner_heartbeat_path, registry_yank_path,
+    registry_runner_fail_path, registry_runner_heartbeat_path, registry_unyank_path,
+    registry_yank_path,
     validate_registry_mutation_schema_version,
 };
 use crate::services::marketplace_catalog_adapter::{
@@ -57,7 +59,8 @@ use crate::services::registry_governance::{
     REGISTRY_APPROVE_OVERRIDE_REASON_CODES, REGISTRY_HOLD_REASON_CODES,
     REGISTRY_OWNER_TRANSFER_REASON_CODES, REGISTRY_REJECT_REASON_CODES,
     REGISTRY_REQUEST_CHANGES_REASON_CODES, REGISTRY_RESUME_REASON_CODES,
-    REGISTRY_VALIDATION_STAGE_REASON_CODES, REGISTRY_YANK_REASON_CODES, RegistryArtifactUpload,
+    REGISTRY_UNYANK_REASON_CODES, REGISTRY_VALIDATION_STAGE_REASON_CODES,
+    REGISTRY_YANK_REASON_CODES, RegistryArtifactUpload,
     RegistryAuthorSignatureEvidenceInput, RegistryExternalPrebuiltStageInput,
     RegistryGovernanceError, RegistryGovernanceService, RegistryPlatformBuildStageInput,
     RegistryPublishRequestPermission,
@@ -2292,6 +2295,132 @@ async fn yank(
     ))
 }
 
+/// POST /v2/catalog/unyank - Registry release lifecycle un-yank contract
+#[utoipa::path(
+    post,
+    path = "/v2/catalog/unyank",
+    tag = "marketplace",
+    security(("bearer_auth" = [])),
+    request_body = RegistryUnyankRequest,
+    responses(
+        (
+            status = 401,
+            description = "Authentication is required for this registry operation"
+        ),
+        (
+            status = 403,
+            description = "Authenticated principal is not authorized for this registry operation"
+        ),
+        (
+            status = 409,
+            description = "Registry operation conflicts with current lifecycle, revision, or idempotency state"
+        ),
+        (
+            status = 200,
+            description = "Registry un-yank request accepted and normalized",
+            body = RegistryMutationResponse
+        ),
+        (
+            status = 400,
+            description = "Un-yank request failed local contract validation"
+        ),
+        (
+            status = 404,
+            description = "Published release was not found"
+        )
+    )
+)]
+async fn unyank(
+    State(ctx): State<ServerRuntimeContext>,
+    headers: HeaderMap,
+    auth_ext: Option<axum::Extension<AuthContextExtension>>,
+    Json(request): Json<RegistryUnyankRequest>,
+) -> Result<impl IntoResponse, Error> {
+    tracing::debug!(slug = %request.slug, version = %request.version, "Handling marketplace registry un-yank request");
+    validate_registry_mutation_schema_version(request.schema_version)
+        .map_err(|error| Error::BadRequest(error.to_string()))?;
+    let warnings = validate_unyank_request(&request)?;
+
+    if !request.dry_run {
+        let reason = request
+            .reason
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                Error::BadRequest(
+                    "Live registry un-yank requires a non-empty reason for the audit trail"
+                        .to_string(),
+                )
+            })?;
+        let reason_code = request
+            .reason_code
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                Error::BadRequest(
+                    "Live registry un-yank requires a non-empty reason_code for the policy audit trail"
+                        .to_string(),
+                )
+            })?;
+        let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
+        let idempotency_key = required_non_nil_idempotency_key(&headers)?;
+        let command_context = auth
+            .map(|auth| registry_platform_command_context(auth, idempotency_key))
+            .ok_or_else(|| {
+                Error::Unauthorized("Registry un-yank operations require authentication".into())
+            })?;
+        let authority = authority_from_auth(&headers, auth, "Registry un-yank operations")?;
+        let release = RegistryGovernanceService::new(ctx.db_clone())
+            .unyank_release(
+                &request.slug,
+                &request.version,
+                reason,
+                reason_code,
+                &authority,
+                command_context,
+            )
+            .await
+            .map_err(map_registry_governance_error)?;
+
+        return Ok((
+            StatusCode::OK,
+            Json(RegistryMutationResponse {
+                action: "unyank".to_string(),
+                dry_run: false,
+                accepted: true,
+                request_id: release.request_id,
+                status: Some(release.status),
+                slug: request.slug,
+                version: request.version,
+                warnings,
+                errors: Vec::new(),
+                next_step: None,
+            }),
+        ));
+    }
+
+    Ok((
+        StatusCode::OK,
+        Json(RegistryMutationResponse {
+            action: "unyank".to_string(),
+            dry_run: true,
+            accepted: true,
+            request_id: None,
+            status: Some("dry_run".to_string()),
+            slug: request.slug.clone(),
+            version: request.version.clone(),
+            warnings,
+            errors: Vec::new(),
+            next_step: Some(
+                "Dry-run preview only. Re-run with dry_run=false, a non-empty reason, and a supported reason_code to restore the yanked release."
+                    .to_string(),
+            ),
+        }),
+    ))
+}
+
 /// POST /v2/catalog/owner-transfer - Registry owner transfer governance contract
 #[utoipa::path(
     post,
@@ -2481,6 +2610,7 @@ pub fn router() -> crate::routes::ServerRouter {
         )
         .route(registry_owner_transfer_path(), post(transfer_owner))
         .route(registry_yank_path(), post(yank))
+        .route(registry_unyank_path(), post(unyank))
 }
 
 fn registry_publish_artifact_download_path() -> &'static str {
@@ -2710,6 +2840,47 @@ fn request_matches_etag(headers: &HeaderMap, etag: &str) -> bool {
             })
         })
         .unwrap_or(false)
+}
+
+fn validate_unyank_request(request: &RegistryUnyankRequest) -> Result<Vec<String>, Error> {
+    validate_registry_slug(&request.slug)?;
+    validate_registry_version(&request.version)?;
+
+    let mut warnings = Vec::new();
+    if request
+        .reason
+        .as_deref()
+        .map(str::trim)
+        .is_none_or(|reason| reason.is_empty())
+    {
+        warnings.push(
+            "No un-yank reason supplied; live un-yank requires a non-empty reason for the governance audit trail."
+                .to_string(),
+        );
+    }
+    if request
+        .reason_code
+        .as_deref()
+        .map(str::trim)
+        .is_none_or(|value| value.is_empty())
+    {
+        warnings.push(format!(
+            "No un-yank reason_code supplied; live un-yank requires one of {} for the policy audit trail.",
+            REGISTRY_UNYANK_REASON_CODES.join(", ")
+        ));
+    } else if let Some(reason_code) = request.reason_code.as_deref().map(str::trim)
+        && !REGISTRY_UNYANK_REASON_CODES
+            .iter()
+            .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
+    {
+        return Err(Error::BadRequest(format!(
+            "Registry un-yank reason_code '{}' is not supported; expected one of {}",
+            reason_code,
+            REGISTRY_UNYANK_REASON_CODES.join(", ")
+        )));
+    }
+
+    Ok(warnings)
 }
 
 fn validate_yank_request(request: &RegistryYankRequest) -> Result<Vec<String>, Error> {

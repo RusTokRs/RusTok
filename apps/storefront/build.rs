@@ -34,6 +34,14 @@ struct ModuleMetadata {
 struct ModuleProvides {
     #[serde(default)]
     storefront_ui: Option<LeptosUiContract>,
+    #[serde(default)]
+    storefront_support: Option<LeptosUiSupportContract>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct LeptosUiSupportContract {
+    #[serde(default)]
+    leptos_crate: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -67,8 +75,8 @@ struct StorefrontUiEntry {
     slug: String,
     crate_ident: String,
     component_name: String,
-    slot: Option<StorefrontSlot>,
-    route_segment: Option<String>,
+    slot: StorefrontSlot,
+    route_segment: String,
     page_title: String,
     components: Vec<StorefrontUiComponentEntry>,
 }
@@ -199,23 +207,8 @@ fn generate_storefront_module_codegen() -> Result<(), Box<dyn Error>> {
             slug: slug.clone(),
             crate_ident: leptos_crate.replace('-', "_"),
             component_name: format!("{}View", pascal_case(&slug)),
-            // A storefront_ui declaration without a slot and/or route is a
-            // support-crate-only module (embeddable controls consumed by
-            // other modules' compositions): it mounts no slot or page of
-            // its own, so no `{Slug}View` entry component is required.
-            slot: match storefront_ui
-                .slot
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                Some(raw) => Some(storefront_slot_from_manifest(Some(raw))?),
-                None => None,
-            },
-            route_segment: storefront_ui
-                .route_segment
-                .map(|value| value.trim().to_string())
-                .filter(|value| !value.is_empty()),
+            slot: storefront_slot_from_manifest(storefront_ui.slot.as_deref())?,
+            route_segment: storefront_ui.route_segment.unwrap_or_else(|| slug.clone()),
             page_title: storefront_ui.page_title.unwrap_or(name),
             components,
         });
@@ -239,17 +232,28 @@ fn validate_storefront_ui_wiring(
     package_manifest: &ModulePackageManifest,
 ) -> Result<(), Box<dyn Error>> {
     let ui_manifest_path = module_root.join("storefront").join("Cargo.toml");
+    // The storefront/ sub-crate is declared either as a UI surface
+    // ([provides.storefront_ui]) or as a support crate
+    // ([provides.storefront_support]) whose components are composed into
+    // other surfaces; support crates are not registered by codegen.
     let declared_crate = package_manifest
         .provides
         .storefront_ui
         .as_ref()
         .and_then(|ui| ui.leptos_crate.as_deref())
+        .or_else(|| {
+            package_manifest
+                .provides
+                .storefront_support
+                .as_ref()
+                .and_then(|ui| ui.leptos_crate.as_deref())
+        })
         .map(str::trim)
         .filter(|value| !value.is_empty());
 
     if ui_manifest_path.exists() && declared_crate.is_none() {
         return Err(format!(
-            "module '{}' contains {}, but rustok-module.toml is missing [provides.storefront_ui].leptos_crate",
+            "module '{}' contains {}, but rustok-module.toml is missing [provides.storefront_ui].leptos_crate or [provides.storefront_support].leptos_crate",
             package_manifest.module.slug,
             ui_manifest_path.display()
         )
@@ -258,7 +262,7 @@ fn validate_storefront_ui_wiring(
 
     if !ui_manifest_path.exists() && declared_crate.is_some() {
         return Err(format!(
-            "module '{}' declares [provides.storefront_ui].leptos_crate, but {} is missing",
+            "module '{}' declares [provides.storefront_ui].leptos_crate or [provides.storefront_support].leptos_crate, but {} is missing",
             package_manifest.module.slug,
             ui_manifest_path.display()
         )
@@ -274,24 +278,20 @@ fn render_storefront_codegen(entries: &[StorefrontUiEntry]) -> String {
     out.push_str("use crate::modules::{register_component, register_page, StorefrontComponentRegistration, StorefrontPageRegistration, StorefrontSlot};\n\n");
     out.push_str("pub fn register_generated_components() {\n");
     for (index, entry) in entries.iter().enumerate() {
-        if let Some(slot) = entry.slot {
-            out.push_str(&format!(
-                "    register_component(StorefrontComponentRegistration {{ id: \"{slug}-slot\", module_slug: Some(\"{slug}\"), slot: {slot_expr}, order: {order}, render: {fn_name} }});\n",
-                slug = entry.slug,
-                slot_expr = storefront_slot_expr(slot),
-                order = 100 + index,
-                fn_name = storefront_render_fn_name(&entry.slug),
-            ));
-        }
-        if let Some(route_segment) = entry.route_segment.as_deref() {
-            out.push_str(&format!(
-                "    register_page(StorefrontPageRegistration {{ module_slug: \"{slug}\", route_segment: \"{route_segment}\", title: \"{title}\", render: {fn_name} }});\n",
-                slug = entry.slug,
-                route_segment = route_segment,
-                title = entry.page_title,
-                fn_name = storefront_render_fn_name(&entry.slug),
-            ));
-        }
+        out.push_str(&format!(
+            "    register_component(StorefrontComponentRegistration {{ id: \"{slug}-slot\", module_slug: Some(\"{slug}\"), slot: {slot_expr}, order: {order}, render: {fn_name} }});\n",
+            slug = entry.slug,
+            slot_expr = storefront_slot_expr(entry.slot),
+            order = 100 + index,
+            fn_name = storefront_render_fn_name(&entry.slug),
+        ));
+        out.push_str(&format!(
+            "    register_page(StorefrontPageRegistration {{ module_slug: \"{slug}\", route_segment: \"{route_segment}\", title: \"{title}\", render: {fn_name} }});\n",
+            slug = entry.slug,
+            route_segment = entry.route_segment,
+            title = entry.page_title,
+            fn_name = storefront_render_fn_name(&entry.slug),
+        ));
         for component in &entry.components {
             out.push_str(&format!(
                 "    register_component(StorefrontComponentRegistration {{ id: \"{id}\", module_slug: Some(\"{slug}\"), slot: {slot_expr}, order: {order}, render: {fn_name} }});\n",
@@ -306,28 +306,26 @@ fn render_storefront_codegen(entries: &[StorefrontUiEntry]) -> String {
     out.push_str("}\n\n");
 
     for entry in entries {
-        if entry.slot.is_some() || entry.route_segment.is_some() {
-            let fn_name = storefront_render_fn_name(&entry.slug);
-            let component_path = if entry.slug == "search" {
-                "crate::modules::SearchStorefrontComposition".to_string()
-            } else if entry.slug == "forum" {
-                "crate::modules::ForumStorefrontComposition".to_string()
-            } else {
-                format!("{}::{}", entry.crate_ident, entry.component_name)
-            };
-            out.push_str(&format!(
-                "fn {fn_name}() -> AnyView {{\n",
-                fn_name = fn_name
-            ));
-            out.push_str("    view! {\n");
-            out.push_str(&format!(
-                "        <{component_path} />\n",
-                component_path = component_path,
-            ));
-            out.push_str("    }\n");
-            out.push_str("    .into_any()\n");
-            out.push_str("}\n\n");
-        }
+        let fn_name = storefront_render_fn_name(&entry.slug);
+        let component_path = if entry.slug == "search" {
+            "crate::modules::SearchStorefrontComposition".to_string()
+        } else if entry.slug == "forum" {
+            "crate::modules::ForumStorefrontComposition".to_string()
+        } else {
+            format!("{}::{}", entry.crate_ident, entry.component_name)
+        };
+        out.push_str(&format!(
+            "fn {fn_name}() -> AnyView {{\n",
+            fn_name = fn_name
+        ));
+        out.push_str("    view! {\n");
+        out.push_str(&format!(
+            "        <{component_path} />\n",
+            component_path = component_path,
+        ));
+        out.push_str("    }\n");
+        out.push_str("    .into_any()\n");
+        out.push_str("}\n\n");
         for component in &entry.components {
             let fn_name = storefront_component_render_fn_name(&entry.slug, &component.id);
             let component_path = format!("{}::{}", entry.crate_ident, component.component_name);

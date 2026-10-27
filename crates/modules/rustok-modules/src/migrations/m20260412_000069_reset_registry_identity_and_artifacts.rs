@@ -800,9 +800,13 @@ fn safe_registry_storage_suffix(value: &str) -> Option<String> {
             return None;
         };
         let segment = segment.to_str()?.trim();
+        // Reject backslashes explicitly: `Path::components` only treats
+        // them as separators on Windows, but a stored suffix must be safe
+        // on every platform that later materializes it as a path.
         if segment.is_empty()
             || segment == "."
             || segment == ".."
+            || segment.contains('\\')
             || segment.chars().any(char::is_control)
         {
             return None;

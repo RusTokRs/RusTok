@@ -19,13 +19,14 @@ use crate::recovery::{
     module_operation_recovery_plan, retry_failed_post_hook_operation,
 };
 use crate::{
-    ArtifactInstallationResolver, ArtifactLifecycleExecutor, ArtifactSandboxPolicyResolver,
-    ControlPlaneInfrastructure, ModuleArtifactSecurityError, ModuleCommandContext,
-    ModuleDefinitionCatalog, ModuleDefinitionError, ModuleDefinitionKind, ModuleDefinitionSource,
-    ModuleEffectivePolicy, ModuleEffectivePolicyError, ModuleEffectivePolicyTransitionCoordinator,
-    ModuleExecutionDispatcher, ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest,
-    ModuleOperationIssue, ModuleOperationJournal, ModuleOperationRecoveryError,
-    ModuleOperationRecoveryPlan, ModuleOperationRequest, ModuleOperationStoreError,
+    ArtifactInstallationResolveError, ArtifactLifecycleExecutor, ArtifactSandboxPolicyResolveError,
+    ArtifactSandboxPolicyResolver, ControlPlaneInfrastructure, ModuleArtifactSecurityError,
+    ModuleCommandContext, ModuleDefinitionCatalog, ModuleDefinitionError, ModuleDefinitionKind,
+    ModuleDefinitionSource, ModuleEffectivePolicy, ModuleEffectivePolicyError,
+    ModuleEffectivePolicyTransitionCoordinator, ModuleExecutionDispatcher,
+    ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, ModuleOperationIssue,
+    ModuleOperationJournal, ModuleOperationRecoveryError, ModuleOperationRecoveryPlan,
+    ModuleOperationRequest, ModuleOperationStoreError, ModulePolicyRevisionConsumerError,
     ModulePolicyRevisionTransition, SeaOrmArtifactInstallationStore,
     SeaOrmArtifactSandboxPolicyResolver, SeaOrmModuleArtifactSecurityResolver,
     SeaOrmModulePolicyRevisionConsumer, StaticTenantLifecycleSnapshot, StaticTenantLifecycleStore,
@@ -35,7 +36,7 @@ use crate::{
     artifact_settings::{self, ArtifactSettingsStoreError},
     execute_module_toggle,
 };
-use rustok_api::{PortError, StaticTenantModuleView};
+use rustok_api::{PortError, StaticTenantModuleView, is_valid_module_slug};
 use rustok_core::ModuleRegistry;
 use rustok_outbox::idempotency::{self, Admission};
 
@@ -43,6 +44,13 @@ use rustok_outbox::idempotency::{self, Admission};
 /// far smaller; more persisted rows than this indicate corrupted state and
 /// fail closed instead of loading unbounded input into policy resolution.
 const MAX_TENANT_MODULE_OVERRIDES: u32 = 1_000;
+
+/// Bounded retries for deriving one lifecycle policy transition. A retry is
+/// required only when another tenant lifecycle command advances the shared
+/// policy cursor while this command is deriving its full snapshot; the bound
+/// turns pathological contention into a typed conflict instead of an
+/// unbounded derivation loop.
+const MAX_POLICY_EXECUTION_CONTEXT_ATTEMPTS: usize = 3;
 
 /// Database-backed adapter for module lifecycle execution in a host composition.
 ///
@@ -139,7 +147,10 @@ pub struct ModuleLifecycleSettingsCommand {
     pub settings: serde_json::Value,
     pub context: ModuleCommandContext,
     pub expected_revision: u64,
-    /// Reviewed automation supplies the exact prior snapshot. The ordinary
+    /// Reviewed automation supplies the exact prior snapshot: the prior
+    /// *effective* enablement (recorded intent, else platform default —
+    /// the same value tenant-module views project) and the prior settings
+    /// object. Both must be supplied together or not at all. The ordinary
     /// editor leaves both values absent and relies on the aggregate revision.
     pub expected_enabled: Option<bool>,
     pub expected_settings: Option<serde_json::Value>,
@@ -156,7 +167,8 @@ pub struct ModuleLifecycleSettingsResult {
 
 #[derive(Serialize)]
 struct ModuleLifecycleSettingsReceiptRequest<'a> {
-    context: &'a ModuleCommandContext,
+    // Actor is the replay-principal boundary; trace/correlation are not.
+    actor_id: Uuid,
     expected_revision: u64,
     module_slug: &'a str,
     settings: &'a serde_json::Value,
@@ -173,7 +185,7 @@ struct OverrideOperationRequest<'a> {
     enabled: bool,
     requested_override_enabled: Option<bool>,
     context: &'a ModuleCommandContext,
-    expected_revision: Option<u64>,
+    expected_revision: u64,
 }
 
 impl<'a> ModuleLifecycleDbWriter<'a> {
@@ -299,23 +311,26 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         &self,
         command: ModuleLifecycleToggleCommand,
     ) -> Result<crate::ModuleLifecycleToggleResult, ModuleLifecycleDbWriterError> {
-        if command.tenant_id.is_nil() || command.context.tenant_id != Some(command.tenant_id) {
+        if command.tenant_id.is_nil()
+            || command.context.tenant_id != Some(command.tenant_id)
+            || !is_valid_module_slug(&command.module_slug)
+        {
             return Err(ModuleLifecycleDbWriterError::Lifecycle(
                 ModuleLifecycleExecutionError::InvalidCommandIdentity,
             ));
         }
-        if command.context.validate().is_err() {
-            return Err(ModuleLifecycleDbWriterError::Lifecycle(
-                ModuleLifecycleExecutionError::InvalidIdempotencyKey,
-            ));
-        }
+        command.context.validate().map_err(|error| {
+            ModuleLifecycleDbWriterError::Lifecycle(
+                ModuleLifecycleExecutionError::InvalidCommandContext(error),
+            )
+        })?;
         self.apply_override_with_operation_context(OverrideOperationRequest {
             tenant_id: command.tenant_id,
             module_slug: &command.module_slug,
             enabled: command.enabled,
             requested_override_enabled: Some(command.enabled),
             context: &command.context,
-            expected_revision: Some(command.expected_revision),
+            expected_revision: command.expected_revision,
         })
         .await
     }
@@ -350,13 +365,6 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 ));
             }
         };
-        let static_lifecycle = catalog.get(request.module_slug).is_some_and(|definition| {
-            matches!(
-                &definition.source,
-                ModuleDefinitionSource::PlatformNative { .. }
-                    | ModuleDefinitionSource::PromotedNative { .. }
-            )
-        });
         execute_module_toggle(
             &self.db,
             &dispatcher,
@@ -370,7 +378,6 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 enabled: request.enabled,
                 context: request.context.clone(),
                 expected_revision: request.expected_revision,
-                static_lifecycle,
                 effective_enabled_modules,
                 ordering_enabled_modules,
                 previous_override_enabled,
@@ -425,16 +432,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         let plan = self
             .recovery_plan(command.tenant_id, command.operation_id)
             .await?;
-        let (catalog, current_override_enabled, current_settings) = self
-            .recovery_execution_context(plan.tenant_id, &plan.module_slug)
-            .await?;
-        let static_lifecycle = catalog.get(&plan.module_slug).is_some_and(|definition| {
-            matches!(
-                &definition.source,
-                ModuleDefinitionSource::PlatformNative { .. }
-                    | ModuleDefinitionSource::PromotedNative { .. }
-            )
-        });
+        let catalog = self.definition_catalog()?;
         let replay_request = ModuleOperationRequest {
             tenant_id: plan.tenant_id,
             module_slug: plan.module_slug.clone(),
@@ -444,7 +442,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             trace_id: Some(command.context.trace_id.clone()),
             correlation_id: command.context.correlation_id.to_string(),
             idempotency_key: Some(command.context.idempotency_key),
-            expected_revision: static_lifecycle.then_some(command.expected_revision),
+            expected_revision: Some(command.expected_revision),
         };
         if let Some(operation) =
             ModuleOperationJournal::replay_idempotent(&self.db, &replay_request)
@@ -467,43 +465,17 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 ));
             }
         };
-        if static_lifecycle {
-            StaticTenantLifecycleStore::claim(
-                &self.db,
-                command.tenant_id,
-                &plan.module_slug,
-                command.expected_revision,
-                command.context.idempotency_key,
-            )
-            .await
-            .map_err(map_static_lifecycle_recovery_error)?;
-        }
-        let retry_result = retry_failed_post_hook_operation(
+        let operation = retry_failed_post_hook_operation(
             &self.db,
             &dispatcher,
             ModulePostHookRetryRequest {
                 operation_id: command.operation_id,
                 context: command.context.clone(),
-                expected_revision: static_lifecycle.then_some(command.expected_revision),
-                current_override_enabled,
-                current_settings,
+                expected_revision: command.expected_revision,
             },
         )
-        .await;
-        let release_result = if static_lifecycle {
-            StaticTenantLifecycleStore::release(
-                &self.db,
-                command.tenant_id,
-                &plan.module_slug,
-                command.context.idempotency_key,
-            )
-            .await
-            .map_err(map_static_lifecycle_recovery_error)
-        } else {
-            Ok(())
-        };
-        release_result?;
-        let operation = retry_result.map_err(ModuleLifecycleDbWriterError::Recovery)?;
+        .await
+        .map_err(ModuleLifecycleDbWriterError::Recovery)?;
         module_operation_recovery_plan(&self.db, operation.id)
             .await
             .map_err(ModuleLifecycleDbWriterError::Recovery)
@@ -562,7 +534,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                     enabled: reverse_enabled,
                     requested_override_enabled: plan.previous_override_enabled,
                     context: &command.context,
-                    expected_revision: Some(command.expected_revision),
+                    expected_revision: command.expected_revision,
                 })
                 .await;
         }
@@ -580,7 +552,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             enabled: reverse_enabled,
             requested_override_enabled: plan.previous_override_enabled,
             context: &command.context,
-            expected_revision: Some(command.expected_revision),
+            expected_revision: command.expected_revision,
         })
         .await
     }
@@ -609,7 +581,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             });
         }
         let receipt_request = ModuleLifecycleSettingsReceiptRequest {
-            context: &command.context,
+            actor_id: command.context.actor_id,
             expected_revision: command.expected_revision,
             module_slug: &command.module_slug,
             settings: &command.settings,
@@ -687,9 +659,20 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 return Err(error);
             }
         };
+        // `expected_enabled` is the reviewer's *effective* enablement (the
+        // same value the tenant-module views and this command's result
+        // project), not the raw stored intent: recorded intent wins, and
+        // without intent the platform default applies. Comparing against
+        // the tri-state intent would spuriously conflict every
+        // default-enabled module that has no override row.
+        let current_effective_enabled = current_enabled.unwrap_or_else(|| {
+            definition.kind == ModuleDefinitionKind::Core
+                || self.default_enabled_modules.contains(&definition.slug)
+        });
         if let (Some(expected_enabled), Some(expected_settings)) =
             (command.expected_enabled, command.expected_settings.as_ref())
-            && (current_enabled != Some(expected_enabled) || current_settings != *expected_settings)
+            && (current_effective_enabled != expected_enabled
+                || current_settings != *expected_settings)
         {
             let error = ModuleLifecycleDbWriterError::SettingsSnapshotConflict;
             self.abandon_static_settings_operation(
@@ -1154,39 +1137,65 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         );
         let policies = SeaOrmArtifactSandboxPolicyResolver::new(self.db.clone());
         let security = SeaOrmModuleArtifactSecurityResolver::new(self.db.clone());
+        // Resolve every artifact definition's active installation in one
+        // batched owner query (one transaction/RLS scope per policy
+        // resolve) instead of one transaction per module.
+        let artifact_definitions = catalog
+            .definitions()
+            .filter_map(|definition| match &definition.source {
+                ModuleDefinitionSource::Artifact { release } => Some((definition, release)),
+                ModuleDefinitionSource::PlatformNative { .. }
+                | ModuleDefinitionSource::PromotedNative { .. } => None,
+            })
+            .collect::<Vec<_>>();
+        let releases = artifact_definitions
+            .iter()
+            .map(|(_, release)| (*release).clone())
+            .collect::<Vec<_>>();
+        let resolved_installations = installations
+            .resolve_active_many(&releases, tenant_id)
+            .await
+            .map_err(database_error)?;
         let mut inputs = Vec::new();
-        for definition in catalog.definitions() {
-            let ModuleDefinitionSource::Artifact { release } = &definition.source else {
-                continue;
-            };
-            let artifact =
-                ArtifactInstallationResolver::resolve(&installations, release, tenant_id).await;
-            // The installation port reports failures as opaque strings, so a
-            // missing installation cannot yet be distinguished from a storage
-            // failure. Both fail closed here: the module resolves as
-            // not-installed. Typing this port (so genuine storage failures
-            // propagate like the security resolution below) is tracked with
-            // the runtime port hardening in remediation Phase H.
-            let Ok(artifact) = artifact else {
-                inputs.push(ModuleEffectivePolicyRuntimeInput {
-                    module_slug: definition.slug.clone(),
-                    installation: None,
-                    capability_policy_revision: None,
-                    executor_available: false,
-                    security: None,
-                });
-                continue;
+        for ((definition, release), resolved) in
+            artifact_definitions.into_iter().zip(resolved_installations)
+        {
+            // Only genuine absence is a policy fact. Storage failures and
+            // corrupt stored installations must fail the whole resolve:
+            // degrading them into "not installed" would publish (and cache)
+            // a plausible-looking disabled policy for an infrastructure
+            // problem.
+            let artifact = match resolved {
+                Ok(artifact) => artifact,
+                Err(
+                    ArtifactInstallationResolveError::Unavailable
+                    | ArtifactInstallationResolveError::NotActiveSelection,
+                ) => {
+                    inputs.push(ModuleEffectivePolicyRuntimeInput {
+                        module_slug: definition.slug.clone(),
+                        installation: None,
+                        capability_policy_revision: None,
+                        executor_available: false,
+                        security: None,
+                    });
+                    continue;
+                }
+                Err(error) => return Err(database_error(error)),
             };
             // The sandbox resolver itself enforces that the stored capability
             // grant revision matches the installation's, so `Ok` implies the
-            // effective revision is the artifact's. The port has the same
-            // opaque-string limitation as the installation port above; a
-            // failure fails closed as "no matching capability policy".
+            // effective revision is the artifact's. Absence/mismatch are
+            // policy states; storage and invariant failures propagate.
             let capability_policy_revision =
-                ArtifactSandboxPolicyResolver::resolve(&policies, &artifact, tenant_id)
-                    .await
-                    .ok()
-                    .map(|_| artifact.capability_grant_revision);
+                match ArtifactSandboxPolicyResolver::resolve(&policies, &artifact, tenant_id).await
+                {
+                    Ok(_) => Some(artifact.capability_grant_revision),
+                    Err(
+                        ArtifactSandboxPolicyResolveError::Unavailable
+                        | ArtifactSandboxPolicyResolveError::RevisionMismatch,
+                    ) => None,
+                    Err(error) => return Err(database_error(error)),
+                };
             let executor_available = self.artifact_executor.is_some_and(|executor| {
                 executor.supports_payload_kind(artifact.descriptor.payload_kind)
             });
@@ -1212,25 +1221,6 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             });
         }
         Ok(inputs)
-    }
-
-    async fn recovery_execution_context(
-        &self,
-        tenant_id: Uuid,
-        module_slug: &str,
-    ) -> Result<
-        (
-            Arc<ModuleDefinitionCatalog>,
-            Option<bool>,
-            serde_json::Value,
-        ),
-        ModuleLifecycleDbWriterError,
-    > {
-        let catalog = self.definition_catalog()?;
-        let overrides = self.overrides(tenant_id).await?;
-        let current_override_enabled = override_enabled(&overrides, module_slug);
-        let current_settings = self.settings(tenant_id, module_slug).await?;
-        Ok((catalog, current_override_enabled, current_settings))
     }
 
     async fn recovery_policy_context(
@@ -1278,63 +1268,107 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         ),
         ModuleLifecycleDbWriterError,
     > {
-        let catalog = self.definition_catalog()?;
-        let overrides = self.overrides(tenant_id).await?;
-        let previous_override_enabled = override_enabled(&overrides, module_slug);
-        // Runtime evidence is resolved once and shared by every policy
-        // projection in this context; resolving per projection would repeat
-        // the installation/sandbox/security queries and could observe
-        // different evidence within one command.
-        let runtime_inputs = self.runtime_policy_inputs(&catalog, tenant_id).await?;
-        let current_policy = self
-            .effective_policy_from_overrides(&catalog, overrides.clone(), &runtime_inputs)
-            .await?;
-        let ordering_policy = self
-            .ordering_policy_from_overrides(&catalog, overrides.clone(), &runtime_inputs)
-            .await?;
-        let mut next_overrides = overrides;
-        match requested_override_enabled {
-            Some(enabled) => {
-                if let Some(override_value) = next_overrides
-                    .iter_mut()
-                    .find(|value| value.module_slug == module_slug)
-                {
-                    override_value.enabled = enabled;
-                } else {
-                    next_overrides.push(TenantModuleOverride {
-                        module_slug: module_slug.to_string(),
-                        enabled,
-                    });
+        for _attempt in 0..MAX_POLICY_EXECUTION_CONTEXT_ATTEMPTS {
+            // Observe the exact durable cursor state before deriving the
+            // policy snapshot. The derivation below reads tenant overrides
+            // and runtime evidence without holding the cursor lock, so the
+            // pre-derivation state is the only safe expected state for a
+            // later resync: if another slug's command advances the shared
+            // tenant cursor in between, the resync conflicts and the whole
+            // derivation is retried instead of resyncing an older snapshot
+            // over the newer cursor. The observation error is deferred so a
+            // command that turns out to need no policy transition does not
+            // fail on cursor state it never uses.
+            let policy_consumer = SeaOrmModulePolicyRevisionConsumer::new(self.db.clone());
+            let observed_cursor = policy_consumer
+                .cursor_state(tenant_id, "module.lifecycle")
+                .await;
+            let catalog = self.definition_catalog()?;
+            let overrides = self.overrides(tenant_id).await?;
+            let previous_override_enabled = override_enabled(&overrides, module_slug);
+            // Runtime evidence is resolved once and shared by every policy
+            // projection in this context; resolving per projection would repeat
+            // the installation/sandbox/security queries and could observe
+            // different evidence within one command.
+            let runtime_inputs = self.runtime_policy_inputs(&catalog, tenant_id).await?;
+            let current_policy = self
+                .effective_policy_from_overrides(&catalog, overrides.clone(), &runtime_inputs)
+                .await?;
+            let ordering_policy = self
+                .ordering_policy_from_overrides(&catalog, overrides.clone(), &runtime_inputs)
+                .await?;
+            let mut next_overrides = overrides;
+            match requested_override_enabled {
+                Some(enabled) => {
+                    if let Some(override_value) = next_overrides
+                        .iter_mut()
+                        .find(|value| value.module_slug == module_slug)
+                    {
+                        override_value.enabled = enabled;
+                    } else {
+                        next_overrides.push(TenantModuleOverride {
+                            module_slug: module_slug.to_string(),
+                            enabled,
+                        });
+                    }
                 }
+                None => next_overrides.retain(|value| value.module_slug != module_slug),
             }
-            None => next_overrides.retain(|value| value.module_slug != module_slug),
-        }
-        let next_policy = self
-            .effective_policy_from_overrides(&catalog, next_overrides, &runtime_inputs)
-            .await?;
-        let policy_transition = if current_policy.policy_revision() != next_policy.policy_revision()
-        {
-            let consumer = SeaOrmModulePolicyRevisionConsumer::new(self.db.clone());
-            Some(ModulePolicyRevisionTransition {
-                previous_revision: consumer
-                    .current_revision(tenant_id, "module.lifecycle")
+            let next_policy = self
+                .effective_policy_from_overrides(&catalog, next_overrides, &runtime_inputs)
+                .await?;
+            let policy_transition = if current_policy.policy_revision()
+                != next_policy.policy_revision()
+            {
+                let observed_cursor = observed_cursor.map_err(|error| {
+                    ModuleLifecycleDbWriterError::PolicyTransition(error.to_string())
+                })?;
+                let current_revision = current_policy.policy_revision().to_string();
+                // The current policy is a full owner snapshot. Repair a
+                // bootstrapped-or-drifted cursor through the explicit
+                // expected-state resync before deriving a transition.
+                // The resync runs even when the observed revision already
+                // matches the snapshot: with an unchanged revision it is
+                // a no-op that still proves the durable cursor is exactly
+                // the state observed before derivation.
+                let cursor_state = match policy_consumer
+                    .resync_if_current(
+                        tenant_id,
+                        "module.lifecycle",
+                        &observed_cursor,
+                        &current_revision,
+                    )
                     .await
-                    .map_err(|error| {
-                        ModuleLifecycleDbWriterError::PolicyTransition(error.to_string())
-                    })?,
-                next_revision: next_policy.policy_revision().to_string(),
-            })
-        } else {
-            None
-        };
-        let current_settings = self.settings(tenant_id, module_slug).await?;
-        Ok((
-            catalog,
-            current_policy.into_enabled_modules(),
-            ordering_policy.into_enabled_modules(),
-            previous_override_enabled,
-            current_settings,
-            policy_transition,
+                {
+                    Ok(cursor_state) => cursor_state,
+                    Err(ModulePolicyRevisionConsumerError::CursorStateConflict { .. }) => continue,
+                    Err(error) => {
+                        return Err(ModuleLifecycleDbWriterError::PolicyTransition(
+                            error.to_string(),
+                        ));
+                    }
+                };
+                Some(ModulePolicyRevisionTransition {
+                    previous_revision: cursor_state.current_revision,
+                    next_revision: next_policy.policy_revision().to_string(),
+                })
+            } else {
+                None
+            };
+            let current_settings = self.settings(tenant_id, module_slug).await?;
+            return Ok((
+                catalog,
+                current_policy.into_enabled_modules(),
+                ordering_policy.into_enabled_modules(),
+                previous_override_enabled,
+                current_settings,
+                policy_transition,
+            ));
+        }
+        Err(ModuleLifecycleDbWriterError::PolicyTransition(
+            "module lifecycle policy cursor changed repeatedly while deriving the \
+             execution context; retry the command"
+                .to_string(),
         ))
     }
 
@@ -1495,11 +1529,11 @@ fn validate_recovery_command(
             ModuleOperationRecoveryError::InvalidCommandIdentity,
         ));
     }
-    if command.context.validate().is_err() {
-        return Err(ModuleLifecycleDbWriterError::Recovery(
-            ModuleOperationRecoveryError::InvalidIdempotencyKey,
-        ));
-    }
+    command.context.validate().map_err(|error| {
+        ModuleLifecycleDbWriterError::Recovery(ModuleOperationRecoveryError::InvalidCommandContext(
+            error,
+        ))
+    })?;
     Ok(())
 }
 
@@ -1526,6 +1560,8 @@ pub enum ModuleLifecycleDbWriterError {
     PolicyTransition(String),
     #[error("module settings changed since the reviewed snapshot")]
     SettingsSnapshotConflict,
+    #[error("module settings command is invalid: {0}")]
+    InvalidSettingsCommand(String),
     #[error("tenant module override query requires a tenant and a limit between 1 and 1000")]
     InvalidTenantOverrideQuery,
     #[error(transparent)]
@@ -1554,21 +1590,6 @@ fn map_idempotency_command_error(error: ModuleOperationStoreError) -> ModuleLife
             ModuleLifecycleExecutionError::Persistence(error.to_string()),
         ),
     }
-}
-
-fn map_static_lifecycle_recovery_error(
-    error: StaticTenantLifecycleStoreError,
-) -> ModuleLifecycleDbWriterError {
-    let error = match error {
-        StaticTenantLifecycleStoreError::RevisionConflict {
-            expected, current, ..
-        } => ModuleOperationRecoveryError::RevisionConflict { expected, current },
-        StaticTenantLifecycleStoreError::OperationInProgress { .. } => {
-            ModuleOperationRecoveryError::OperationInProgress
-        }
-        error => ModuleOperationRecoveryError::Persistence(error.to_string()),
-    };
-    ModuleLifecycleDbWriterError::Recovery(error)
 }
 
 fn map_static_lifecycle_settings_error(
@@ -1600,32 +1621,40 @@ fn validate_settings_command(
 ) -> Result<(), ModuleLifecycleDbWriterError> {
     if command.tenant_id.is_nil()
         || command.context.tenant_id != Some(command.tenant_id)
-        || command.module_slug.is_empty()
+        || !is_valid_module_slug(&command.module_slug)
     {
         return Err(ModuleLifecycleDbWriterError::Lifecycle(
             ModuleLifecycleExecutionError::InvalidCommandIdentity,
         ));
     }
-    if command.context.validate().is_err() {
-        return Err(ModuleLifecycleDbWriterError::Lifecycle(
-            ModuleLifecycleExecutionError::InvalidIdempotencyKey,
+    command.context.validate().map_err(|error| {
+        ModuleLifecycleDbWriterError::Lifecycle(
+            ModuleLifecycleExecutionError::InvalidCommandContext(error),
+        )
+    })?;
+    if !command.settings.is_object() {
+        return Err(ModuleLifecycleDbWriterError::InvalidSettingsCommand(
+            "settings must be a JSON object".to_string(),
         ));
     }
-    if command.settings.is_object()
-        && command
-            .expected_settings
-            .as_ref()
-            .is_none_or(serde_json::Value::is_object)
-        && command.expected_enabled.is_some() == command.expected_settings.is_some()
+    if command
+        .expected_settings
+        .as_ref()
+        .is_some_and(|expected| !expected.is_object())
     {
-        return Ok(());
+        return Err(ModuleLifecycleDbWriterError::InvalidSettingsCommand(
+            "expected settings must be a JSON object".to_string(),
+        ));
     }
-    Err(ModuleLifecycleDbWriterError::Settings(
-        ModuleOperationStoreError::Database(
-            "static lifecycle settings command requires object settings and a complete reviewed snapshot"
-                .to_string(),
-        ),
-    ))
+    // A one-sided snapshot expectation must never be silently dropped:
+    // either the caller fences on the complete reviewed snapshot
+    // (effective enabled + settings) or on the aggregate revision alone.
+    if command.expected_enabled.is_some() != command.expected_settings.is_some() {
+        return Err(ModuleLifecycleDbWriterError::InvalidSettingsCommand(
+            "expected_enabled and expected_settings must be supplied together".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn database_error(error: impl std::fmt::Display) -> ModuleLifecycleDbWriterError {

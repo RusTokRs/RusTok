@@ -434,12 +434,15 @@ async fn snapshot_restore_reuses_reserved_keys_and_preserves_tombstones_and_hold
             .expect("exact terminal replay"),
         restored
     );
-    let mut conflict = restore;
-    conflict.reason = "Changed replay evidence".into();
-    assert!(matches!(
-        service.restore(conflict).await,
-        Err(ArtifactDataError::IdempotencyConflict)
-    ));
+    let mut changed_reason = restore;
+    changed_reason.reason = "Changed replay evidence".into();
+    assert_eq!(
+        service
+            .restore(changed_reason)
+            .await
+            .expect("changed free-text reason replays restore"),
+        restored
+    );
     assert_eq!(
         storage
             .objects

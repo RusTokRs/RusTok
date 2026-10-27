@@ -174,9 +174,8 @@ impl SeaOrmModuleGovernanceService {
                 )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?.ok_or_else(|| ModuleGovernanceError::Store("missing validation stage attempt aggregate".to_string()))?;
                 let attempt_number = prior_attempt
                     .try_get::<i64>("", "attempt_number")
-                    .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?
-                    as i32
-                    + 1;
+                    .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+                let attempt_number = next_attempt_number(attempt_number)?;
                 let stage_id = self.infrastructure.prefixed_id("rvs");
                 let initially_passed = stage.runner_kind == "owner_evidence"
                     && (platform_build_staged

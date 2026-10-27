@@ -5,6 +5,7 @@ use std::collections::{BTreeSet, HashMap};
 use thiserror::Error;
 use url::Url;
 
+use crate::artifact::parse_module_version_requirement;
 use crate::{ModuleSettingSpec, ModuleSettingsValidationError, validate_module_settings_schema};
 
 /// Host-parsed static package metadata supplied to the module control plane.
@@ -318,14 +319,12 @@ pub fn validate_static_module_package_contract(
             });
         }
         let version_req = version_req.trim();
-        if !version_req.is_empty() {
-            VersionReq::parse(version_req).map_err(|_| {
-                StaticModulePackageValidationError::InvalidDependencyVersionReq {
-                    dependency: dependency.to_string(),
-                    value: version_req.to_string(),
-                }
-            })?;
-        }
+        parse_module_version_requirement(version_req).map_err(|_| {
+            StaticModulePackageValidationError::InvalidDependencyVersionReq {
+                dependency: dependency.to_string(),
+                value: version_req.to_string(),
+            }
+        })?;
     }
 
     for conflict in &contract.conflicts {
@@ -483,7 +482,7 @@ pub fn validate_static_module_topology_contract(
                     value: installed.to_string(),
                 }
             })?;
-            let requirement = VersionReq::parse(raw_requirement).map_err(|_| {
+            let requirement = parse_module_version_requirement(raw_requirement).map_err(|_| {
                 StaticModuleTopologyValidationError::InvalidDependencyVersionRequirement {
                     slug: slug.clone(),
                     dependency: dependency.clone(),

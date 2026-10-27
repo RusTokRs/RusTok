@@ -3,7 +3,7 @@ use rustok_core::MigrationSource;
 use rustok_modules::{
     ConflictFenceSet, ModuleTransitionCheckpoint, ModuleTransitionState, RetentionHoldKind,
     RetentionHoldRecord, RetentionHoldStore, RetentionTarget, SeaOrmSecurityEpochStore,
-    TransitionCheckpointStore, evaluate_transition_watchdog,
+    TransitionCheckpointStore, evaluate_transition_watchdog, reap_expired_retention_holds,
 };
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
@@ -41,7 +41,7 @@ async fn setup_test_db() -> DatabaseConnection {
 }
 
 #[tokio::test]
-async fn test_watchdog_expired_window_fails_closed_and_retains_holds() {
+async fn test_watchdog_expired_window_requires_intervention_and_expires_rollout_hold() {
     let db = setup_test_db().await;
     let current_epoch = SeaOrmSecurityEpochStore::current(&db)
         .await
@@ -70,9 +70,10 @@ async fn test_watchdog_expired_window_fails_closed_and_retains_holds() {
         .await
         .expect("save checkpoint");
 
-    // 2. Seed active rollout retention hold tied to this operation. It must
-    // be RETAINED: without an attested convergence the predecessor bytes
-    // stay protected from GC.
+    // 2. Seed a rollout retention hold tied to this operation whose window
+    // has elapsed. It must stop counting as active and be deleted by the
+    // bounded reaper; otherwise every unattended transition would pin the
+    // predecessor bytes forever.
     let rollout_hold_id = Uuid::new_v4();
     let rollout_hold = RetentionHoldRecord {
         hold_id: rollout_hold_id,
@@ -104,7 +105,8 @@ async fn test_watchdog_expired_window_fails_closed_and_retains_holds() {
         .expect("insert audit hold");
 
     // 4. Run transition watchdog evaluator. An elapsed window is not health
-    // evidence, so the checkpoint must fail closed instead of converging.
+    // evidence, so automatic action must stop for operator intervention
+    // instead of converging.
     let updated = evaluate_transition_watchdog(&db)
         .await
         .expect("evaluate watchdog");
@@ -112,40 +114,55 @@ async fn test_watchdog_expired_window_fails_closed_and_retains_holds() {
     assert_eq!(updated.len(), 1);
     assert_eq!(updated[0].operation_id, operation_id);
     match &updated[0].state {
-        ModuleTransitionState::FailedClosed { failure_reason } => {
+        ModuleTransitionState::InterventionRequired { failure_reason } => {
             assert!(
                 failure_reason.contains("explicit finalize attestation"),
                 "unexpected failure reason: {failure_reason}"
             );
+            assert!(
+                failure_reason.contains("serving selection was not changed"),
+                "unexpected failure reason: {failure_reason}"
+            );
         }
-        other => panic!("expected FailedClosed, got {other:?}"),
+        other => panic!("expected InterventionRequired, got {other:?}"),
     }
 
-    // 5. Verify the failed-closed state is persisted.
+    // 5. Verify the intervention-required state is persisted.
     let reloaded = TransitionCheckpointStore::load_checkpoint(&db, operation_id)
         .await
         .expect("load checkpoint")
         .expect("checkpoint exists");
     assert!(matches!(
         reloaded.state,
-        ModuleTransitionState::FailedClosed { .. }
+        ModuleTransitionState::InterventionRequired { .. }
     ));
 
-    // 6. Verify BOTH holds remain active (no convergence, no release).
+    // 6. The elapsed rollout hold is no longer active, while the indefinite
+    // audit hold remains active. The reaper then deletes only the elapsed
+    // rollout row.
     let active_holds = RetentionHoldStore::list_active_holds(&db)
         .await
         .expect("list holds");
-    assert_eq!(active_holds.len(), 2);
+    assert_eq!(active_holds.len(), 1);
+    assert_eq!(active_holds[0].hold_id, audit_hold_id);
     assert!(
-        active_holds
+        !active_holds
             .iter()
             .any(|hold| hold.hold_id == rollout_hold_id)
     );
-    assert!(
-        active_holds
-            .iter()
-            .any(|hold| hold.hold_id == audit_hold_id)
-    );
+
+    let report = reap_expired_retention_holds(&db)
+        .await
+        .expect("reap expired retention holds");
+    assert_eq!(report.scanned, 2);
+    assert_eq!(report.expired, 1);
+    assert_eq!(report.deleted, 1);
+    assert!(report.has_changes());
+    let active_holds = RetentionHoldStore::list_active_holds(&db)
+        .await
+        .expect("list holds after reap");
+    assert_eq!(active_holds.len(), 1);
+    assert_eq!(active_holds[0].hold_id, audit_hold_id);
 }
 
 #[tokio::test]
@@ -196,7 +213,7 @@ async fn test_watchdog_active_window_not_prematurely_converged() {
 }
 
 #[tokio::test]
-async fn test_watchdog_epoch_preemption_fails_closed_without_claiming_recovery() {
+async fn test_watchdog_epoch_preemption_requires_intervention_without_claiming_recovery() {
     let db = setup_test_db().await;
     // The checkpoint starts under the epoch durable at activation time...
     let stale_epoch = SeaOrmSecurityEpochStore::current(&db)
@@ -242,13 +259,17 @@ async fn test_watchdog_epoch_preemption_fails_closed_without_claiming_recovery()
     assert_eq!(updated.len(), 1);
     assert_eq!(updated[0].operation_id, operation_id);
     match &updated[0].state {
-        ModuleTransitionState::FailedClosed { failure_reason } => {
+        ModuleTransitionState::InterventionRequired { failure_reason } => {
             assert!(
                 failure_reason.contains("Security epoch preemption"),
                 "unexpected failure reason: {failure_reason}"
             );
+            assert!(
+                failure_reason.contains("serving selection was not changed"),
+                "unexpected failure reason: {failure_reason}"
+            );
         }
-        other => panic!("expected FailedClosed, got {other:?}"),
+        other => panic!("expected InterventionRequired, got {other:?}"),
     }
     assert_eq!(updated[0].recovery_attempt_count, 0);
 }

@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use rustok_core::{MigrationSource, ModuleRegistry, RusToKModule};
 use rustok_modules::{
-    ModulePolicyRevisionApplyOutcome, ModulePolicyRevisionTransition,
+    ModulePolicyRevisionApplyOutcome, ModulePolicyRevisionConsumerError,
+    ModulePolicyRevisionCursorState, ModulePolicyRevisionTransition,
     SeaOrmModulePolicyRevisionConsumer,
 };
 use sea_orm::{
@@ -111,19 +112,25 @@ async fn static_policy_resolves_tenant_override_under_lifecycle_cursor_lock() {
 }
 
 #[tokio::test]
-async fn lifecycle_cursor_initializes_empty_and_advances_the_exact_successor() {
+async fn lifecycle_cursor_sequences_exact_successors_and_requires_explicit_resync() {
     let db = setup().await;
     let tenant_id = Uuid::new_v4();
     let consumer = SeaOrmModulePolicyRevisionConsumer::new(db);
     let first_revision = format!("sha256:{}", "a".repeat(64));
     let second_revision = format!("sha256:{}", "b".repeat(64));
+    let third_revision = format!("sha256:{}", "c".repeat(64));
+    let fourth_revision = format!("sha256:{}", "d".repeat(64));
 
+    let initial_state = consumer
+        .cursor_state(tenant_id, "module.lifecycle")
+        .await
+        .expect("uninitialized cursor should resolve");
     assert_eq!(
-        consumer
-            .current_revision(tenant_id, "module.lifecycle")
-            .await
-            .expect("uninitialized cursor should resolve"),
-        None
+        initial_state,
+        ModulePolicyRevisionCursorState {
+            current_revision: None,
+            current_sequence: 0,
+        }
     );
 
     let first = ModulePolicyRevisionTransition {
@@ -139,14 +146,17 @@ async fn lifecycle_cursor_initializes_empty_and_advances_the_exact_successor() {
     );
     assert_eq!(
         consumer
-            .current_revision(tenant_id, "module.lifecycle")
+            .cursor_state(tenant_id, "module.lifecycle")
             .await
-            .expect("first cursor revision should resolve"),
-        Some(first_revision.clone())
+            .expect("first cursor state should resolve"),
+        ModulePolicyRevisionCursorState {
+            current_revision: Some(first_revision.clone()),
+            current_sequence: 1,
+        }
     );
 
     let second = ModulePolicyRevisionTransition {
-        previous_revision: Some(first_revision),
+        previous_revision: Some(first_revision.clone()),
         next_revision: second_revision.clone(),
     };
     assert_eq!(
@@ -156,12 +166,107 @@ async fn lifecycle_cursor_initializes_empty_and_advances_the_exact_successor() {
             .expect("matching successor should advance"),
         ModulePolicyRevisionApplyOutcome::Applied
     );
+    let second_state = consumer
+        .cursor_state(tenant_id, "module.lifecycle")
+        .await
+        .expect("second cursor state should resolve");
+    assert_eq!(
+        second_state,
+        ModulePolicyRevisionCursorState {
+            current_revision: Some(second_revision.clone()),
+            current_sequence: 2,
+        }
+    );
+
+    // Resyncing to the revision the cursor already holds validates the
+    // exact expected state without advancing the sequence. The lifecycle
+    // writer relies on this no-op form to prove that the cursor did not
+    // move while it derived a policy snapshot.
     assert_eq!(
         consumer
-            .current_revision(tenant_id, "module.lifecycle")
+            .resync_if_current(
+                tenant_id,
+                "module.lifecycle",
+                &second_state,
+                &second_revision,
+            )
             .await
-            .expect("second cursor revision should resolve"),
-        Some(second_revision)
+            .expect("same-revision resync should be a no-op"),
+        second_state
+    );
+
+    let gap = ModulePolicyRevisionTransition {
+        previous_revision: Some(first_revision),
+        next_revision: third_revision.clone(),
+    };
+    assert_eq!(
+        consumer
+            .apply(tenant_id, "module.lifecycle", &gap)
+            .await
+            .expect("gap should be reported without storage failure"),
+        ModulePolicyRevisionApplyOutcome::ResyncRequired
+    );
+    assert_eq!(
+        consumer
+            .cursor_state(tenant_id, "module.lifecycle")
+            .await
+            .expect("gap must leave cursor state unchanged"),
+        second_state
+    );
+
+    let stale_resync = consumer
+        .resync_if_current(
+            tenant_id,
+            "module.lifecycle",
+            &initial_state,
+            &third_revision,
+        )
+        .await;
+    assert!(matches!(
+        stale_resync,
+        Err(ModulePolicyRevisionConsumerError::CursorStateConflict {
+            expected_sequence: 0,
+            current_sequence: 2,
+        })
+    ));
+
+    let resynced_state = consumer
+        .resync_if_current(
+            tenant_id,
+            "module.lifecycle",
+            &second_state,
+            &third_revision,
+        )
+        .await
+        .expect("explicit full-snapshot resync should advance once");
+    assert_eq!(
+        resynced_state,
+        ModulePolicyRevisionCursorState {
+            current_revision: Some(third_revision.clone()),
+            current_sequence: 3,
+        }
+    );
+
+    let fourth = ModulePolicyRevisionTransition {
+        previous_revision: Some(third_revision),
+        next_revision: fourth_revision.clone(),
+    };
+    assert_eq!(
+        consumer
+            .apply(tenant_id, "module.lifecycle", &fourth)
+            .await
+            .expect("successor after explicit resync should advance"),
+        ModulePolicyRevisionApplyOutcome::Applied
+    );
+    assert_eq!(
+        consumer
+            .cursor_state(tenant_id, "module.lifecycle")
+            .await
+            .expect("fourth cursor state should resolve"),
+        ModulePolicyRevisionCursorState {
+            current_revision: Some(fourth_revision),
+            current_sequence: 4,
+        }
     );
 }
 
@@ -190,6 +295,7 @@ async fn setup() -> DatabaseConnection {
             tenant_id TEXT NOT NULL,
             consumer_key TEXT NOT NULL,
             current_revision TEXT NULL,
+            current_sequence INTEGER NOT NULL DEFAULT 0,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (tenant_id, consumer_key)
         );

@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     sync::Arc,
 };
 
@@ -9,15 +9,17 @@ use thiserror::Error;
 use tokio::sync::Mutex;
 
 use rustok_sandbox::{
-    ExecutionPhase, RhaiBindingOutput, SandboxContext, SandboxOutcome, SandboxPolicy,
-    SandboxRuntime,
+    ExecutionPhase, RhaiBindingOutput, SandboxContext, SandboxExecutorPlacement, SandboxLimits,
+    SandboxOutcome, SandboxPolicy, SandboxRuntime,
 };
 
 use crate::{
     ArtifactBindingDispatch, ArtifactBindingDispatchEnvelope, ArtifactBindingDispatchEnvelopeError,
-    ArtifactBindingDispatchError, ArtifactBindingExecutor, ArtifactBlobStore, ArtifactReleaseRef,
-    InstalledModuleArtifact, ModuleArtifactError, ModuleEffectivePolicy, ModuleInstallationError,
-    ModuleRuntimeBinding,
+    ArtifactBindingDispatchError, ArtifactBindingExecutor, ArtifactBlobStore, ArtifactPayloadKind,
+    ArtifactReleaseRef, ExecutorPoolIdentity, ExecutorReadinessError, ExecutorReadinessProbe,
+    ExecutorSmokeProbeOutcome, ExecutorSmokeProbeRequest, InstalledModuleArtifact,
+    ModuleArtifactError, ModuleEffectivePolicy, ModuleInstallationError, ModuleInstallationScope,
+    ModuleRuntimeBinding, ModuleRuntimeBindingKind,
     artifact_schema::{ArtifactSchemaValidationError, ArtifactSchemaValidatorCache},
 };
 
@@ -118,6 +120,61 @@ pub struct ArtifactRuntime<B> {
     blobs: B,
     sandbox: SandboxRuntime,
     schema_validators: ArtifactSchemaValidatorCache,
+    validated_descriptors: ValidatedDescriptorCache,
+}
+
+/// Bounded node-local record of descriptor digests that already passed
+/// full structural validation in this process. Descriptors are immutable
+/// per installation and validation is a pure function of descriptor
+/// content, so re-validating on every dispatch (which recomputes every
+/// schema digest) is repeated work; the canonical descriptor digest is
+/// the cache key. The cache never gates safety: a miss — or a poisoned
+/// cache lock — falls back to full validation, and a digest is recorded
+/// only after validation succeeded.
+#[derive(Default)]
+struct ValidatedDescriptorCache {
+    state: std::sync::Mutex<ValidatedDescriptorCacheState>,
+}
+
+#[derive(Default)]
+struct ValidatedDescriptorCacheState {
+    digests: HashSet<String>,
+    lru: VecDeque<String>,
+}
+
+const MAX_VALIDATED_DESCRIPTORS: usize = 128;
+
+impl ValidatedDescriptorCache {
+    fn contains(&self, digest: &str) -> bool {
+        let Ok(mut state) = self.state.lock() else {
+            return false;
+        };
+        if state.digests.contains(digest) {
+            state.lru.retain(|candidate| candidate != digest);
+            state.lru.push_back(digest.to_string());
+            true
+        } else {
+            false
+        }
+    }
+
+    fn insert(&self, digest: String) {
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        if !state.digests.insert(digest.clone()) {
+            state.lru.retain(|candidate| candidate != &digest);
+            state.lru.push_back(digest);
+            return;
+        }
+        state.lru.push_back(digest);
+        while state.digests.len() > MAX_VALIDATED_DESCRIPTORS {
+            let Some(oldest) = state.lru.pop_front() else {
+                break;
+            };
+            state.digests.remove(&oldest);
+        }
+    }
 }
 
 impl<B> ArtifactRuntime<B>
@@ -129,7 +186,23 @@ where
             blobs,
             sandbox,
             schema_validators: ArtifactSchemaValidatorCache::default(),
+            validated_descriptors: ValidatedDescriptorCache::default(),
         }
+    }
+
+    fn validate_descriptor(
+        &self,
+        descriptor: &crate::ModuleArtifactDescriptor,
+    ) -> Result<(), ArtifactRuntimeError> {
+        let digest = crate::canonical_artifact_descriptor_digest(descriptor);
+        if self.validated_descriptors.contains(&digest) {
+            return Ok(());
+        }
+        descriptor
+            .validate()
+            .map_err(ArtifactRuntimeError::Descriptor)?;
+        self.validated_descriptors.insert(digest);
+        Ok(())
     }
 
     pub fn supports_payload_kind(&self, payload_kind: crate::ArtifactPayloadKind) -> bool {
@@ -146,10 +219,7 @@ where
         input: ArtifactBindingDispatchEnvelope,
         policy: SandboxPolicy,
     ) -> Result<SandboxOutcome, ArtifactRuntimeError> {
-        artifact
-            .descriptor
-            .validate()
-            .map_err(ArtifactRuntimeError::Descriptor)?;
+        self.validate_descriptor(&artifact.descriptor)?;
         if !artifact
             .descriptor
             .bindings
@@ -229,6 +299,154 @@ where
                 .output;
         }
         Ok(outcome)
+    }
+}
+
+/// Production readiness probe backed by the shared artifact runtime.
+///
+/// The host composition supplies the exact pool identity and the capability
+/// names it actually registered with its broker. The pool's claimed placement
+/// is not trusted on its own: for every payload kind it is cross-checked
+/// against the placement under which that executor was registered with the
+/// sandbox runtime, so an in-process executor can never mint an
+/// isolated-worker readiness receipt. A smoke execution always
+/// uses an empty grant set, so probing a not-yet-active candidate cannot
+/// mutate tenant/platform state through a capability. The capability budget
+/// remains at the sandbox profile's positive minimum because zero-valued
+/// limits are invalid; the empty grant set, not the budget, is the deny
+/// boundary. The runtime still reads the exact installed descriptor's
+/// payload from CAS and validates binding input/output schemas.
+pub struct ArtifactRuntimeReadinessProbe<B> {
+    runtime: ArtifactRuntime<B>,
+    pool: ExecutorPoolIdentity,
+    capability_routes: HashSet<String>,
+}
+
+impl<B> ArtifactRuntimeReadinessProbe<B>
+where
+    B: ArtifactBlobStore,
+{
+    pub fn new(
+        runtime: ArtifactRuntime<B>,
+        pool: ExecutorPoolIdentity,
+        capability_routes: impl IntoIterator<Item = String>,
+    ) -> Result<Self, ExecutorReadinessError> {
+        pool.validate()?;
+        let capability_routes = capability_routes.into_iter().collect::<HashSet<_>>();
+        if capability_routes
+            .iter()
+            .any(|route| route.trim().is_empty() || route.trim() != route)
+        {
+            return Err(ExecutorReadinessError::InvalidConfiguration(
+                "capability route names must be non-empty canonical names".to_string(),
+            ));
+        }
+        Ok(Self {
+            runtime,
+            pool,
+            capability_routes,
+        })
+    }
+
+    fn actual_executor_placement(
+        &self,
+        payload_kind: ArtifactPayloadKind,
+    ) -> Result<SandboxExecutorPlacement, ExecutorReadinessError> {
+        let executor = payload_kind
+            .sandbox_executor()
+            .ok_or(ExecutorReadinessError::UnsupportedPayloadKind(payload_kind))?;
+        self.runtime
+            .sandbox
+            .executor_placement(executor)
+            .map_err(|error| ExecutorReadinessError::ProbeUnavailable(error.to_string()))
+    }
+
+    fn ensure_pool_placement_matches(
+        &self,
+        payload_kind: ArtifactPayloadKind,
+    ) -> Result<(), ExecutorReadinessError> {
+        let actual_placement = self.actual_executor_placement(payload_kind)?;
+        if actual_placement != self.pool.placement {
+            return Err(ExecutorReadinessError::InvalidConfiguration(format!(
+                "executor pool `{}` claims placement `{}` but the registered \
+                 {payload_kind:?} executor placement is `{actual_placement}`",
+                self.pool.pool_id, self.pool.placement,
+            )));
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl<B> ExecutorReadinessProbe for ArtifactRuntimeReadinessProbe<B>
+where
+    B: ArtifactBlobStore,
+{
+    fn pool_identity(&self) -> Result<ExecutorPoolIdentity, ExecutorReadinessError> {
+        self.pool.validate()?;
+        Ok(self.pool.clone())
+    }
+
+    fn supports_payload_kind(&self, payload_kind: ArtifactPayloadKind) -> bool {
+        self.runtime.supports_payload_kind(payload_kind)
+            && self.ensure_pool_placement_matches(payload_kind).is_ok()
+    }
+
+    fn has_capability_route(&self, capability: &str) -> bool {
+        self.capability_routes.contains(capability)
+    }
+
+    async fn execute_smoke(
+        &self,
+        request: ExecutorSmokeProbeRequest<'_>,
+    ) -> Result<ExecutorSmokeProbeOutcome, ExecutorReadinessError> {
+        self.ensure_pool_placement_matches(request.artifact.descriptor.payload_kind)?;
+        if !matches!(
+            &request.binding.kind,
+            ModuleRuntimeBindingKind::ActivationSmoke | ModuleRuntimeBindingKind::Readiness
+        ) || !request.binding.capabilities.is_empty()
+        {
+            return Err(ExecutorReadinessError::SmokeExecutionFailed(format!(
+                "binding `{}` is not a capability-free smoke/readiness binding",
+                request.binding.id
+            )));
+        }
+        let mut context = SandboxContext::new(ExecutionPhase::Lifecycle);
+        context.tenant_id = match request.artifact.scope {
+            ModuleInstallationScope::Platform => None,
+            ModuleInstallationScope::Tenant { tenant_id } => Some(tenant_id),
+        };
+        context.actor_id = Some(request.context.actor_id.to_string());
+        context.trace_id = Some(request.context.trace_id.clone());
+        context.audit_label = Some(request.binding.id.clone());
+        let input = ArtifactBindingDispatchEnvelope::new(
+            request.binding,
+            ExecutionPhase::Lifecycle,
+            serde_json::json!({}),
+        );
+        let policy = SandboxPolicy {
+            grants: Vec::new(),
+            limits: SandboxLimits {
+                wall_clock_ms: 5_000,
+                max_capability_calls: 1,
+                max_capability_calls_per_second: 1,
+                ..SandboxLimits::default()
+            },
+        };
+        let outcome = self
+            .runtime
+            .execute_binding(request.artifact, request.binding, context, input, policy)
+            .await
+            .map_err(|error| ExecutorReadinessError::SmokeExecutionFailed(error.to_string()))?;
+        let output_bytes = serde_json::to_vec(&outcome.output).map_err(|error| {
+            ExecutorReadinessError::SmokeExecutionFailed(format!(
+                "smoke output could not be canonicalized for its receipt digest: {error}"
+            ))
+        })?;
+        Ok(ExecutorSmokeProbeOutcome {
+            binding_id: request.binding.id.clone(),
+            output_digest: crate::installation::sha256_digest(&output_bytes),
+        })
     }
 }
 
@@ -417,6 +635,14 @@ where
                     .await?
             }
         };
+        dispatch.admission.authorize(
+            dispatch.release,
+            dispatch.binding,
+            dispatch.target,
+            dispatch.tenant_id,
+            dispatch.phase,
+            &artifact,
+        )?;
         if dispatch.phase != ExecutionPhase::Lifecycle {
             let policy = self
                 .effective_policy
@@ -486,6 +712,47 @@ pub enum ArtifactRuntimeError {
     Sandbox(#[from] rustok_sandbox::SandboxError),
 }
 
+impl ArtifactRuntimeError {
+    /// Whether retrying the same work item (same admitted descriptor, same
+    /// input) can never succeed. Descriptor/binding/schema defects are
+    /// properties of the admitted release and the recorded input, so they
+    /// are deterministic; sandbox and installation-store failures can be
+    /// transient resource/infrastructure conditions and stay retryable
+    /// within the queue's attempt budget.
+    pub fn is_terminal(&self) -> bool {
+        match self {
+            Self::BindingNotAdmitted(_)
+            | Self::RhaiBinding(_)
+            | Self::DispatchEnvelopeEncoding(_)
+            | Self::DispatchEnvelope(_)
+            | Self::Descriptor(_)
+            | Self::BindingSchemaNotAdmitted { .. }
+            | Self::SchemaCompilation { .. }
+            | Self::BindingSchemaViolation { .. } => true,
+            Self::SchemaValidatorCachePoisoned | Self::Installation(_) | Self::Sandbox(_) => false,
+        }
+    }
+
+    /// Stable, redacted failure code safe to persist in durable delivery
+    /// records. Free-form error text is never a stored code: it can carry
+    /// guest input and makes operator triage queries unreliable.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::BindingNotAdmitted(_) => "binding_not_admitted",
+            Self::RhaiBinding(_) => "binding_invalid",
+            Self::DispatchEnvelopeEncoding(_) => "dispatch_envelope_encoding",
+            Self::DispatchEnvelope(_) => "dispatch_envelope_mismatch",
+            Self::Descriptor(_) => "descriptor_invalid",
+            Self::BindingSchemaNotAdmitted { .. } => "binding_schema_not_admitted",
+            Self::SchemaCompilation { .. } => "schema_compilation_failed",
+            Self::BindingSchemaViolation { .. } => "binding_schema_violation",
+            Self::SchemaValidatorCachePoisoned => "schema_validator_unavailable",
+            Self::Installation(_) => "installation_store_failed",
+            Self::Sandbox(_) => "sandbox_execution_failed",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
@@ -499,8 +766,8 @@ mod tests {
     use rustok_sandbox::{
         CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityResponse, ExecutionMetrics,
         ExecutionPhase, ExecutorRegistry, RhaiBindingInput, SandboxContext, SandboxError,
-        SandboxExecutor, SandboxExecutorKind, SandboxHost, SandboxOutcome, SandboxRequest,
-        SandboxResult,
+        SandboxExecutor, SandboxExecutorKind, SandboxExecutorPlacement, SandboxHost,
+        SandboxOutcome, SandboxRequest, SandboxResult,
     };
 
     use super::*;
@@ -508,7 +775,7 @@ mod tests {
         ArtifactModuleKind, ArtifactPayloadKind, ArtifactPermissionDescriptor, ArtifactReleaseRef,
         ArtifactSchemaDocument, InMemoryArtifactBlobStore, ModuleArtifactDescriptor,
         ModuleArtifactPackage, ModuleDependencyLockGraph, ModuleInstallationScope,
-        ModuleRuntimeBinding, ModuleRuntimeBindingKind, OciArtifactReference,
+        ModuleRuntimeBinding, ModuleRuntimeBindingKind, OciArtifactReference, RuntimeFingerprint,
         canonical_schema_digest,
     };
 
@@ -770,12 +1037,18 @@ mod tests {
             RecordingEffectivePolicy(Arc::clone(&observed)),
         );
 
+        let tenant_id = Uuid::new_v4();
         let error = executor
             .dispatch_binding(ArtifactBindingDispatch {
                 release: &installed.release,
                 binding: &binding,
                 target: crate::ArtifactInstallationTarget::CurrentRelease,
-                tenant_id: Uuid::new_v4(),
+                tenant_id,
+                admission: crate::ArtifactExecutionAdmission::owner_revalidation(
+                    tenant_id,
+                    &installed.release,
+                    crate::ArtifactInstallationTarget::CurrentRelease,
+                ),
                 input: json!({ "id": 1 }),
                 phase: ExecutionPhase::Event,
                 context: crate::ArtifactBindingExecutionContext::default(),
@@ -1016,6 +1289,61 @@ mod tests {
             })
         ));
         assert!(observed.lock().expect("request lock").is_some());
+    }
+
+    #[test]
+    fn readiness_probe_rejects_pool_placement_that_differs_from_registered_executor() {
+        fn runtime() -> ArtifactRuntime<InMemoryArtifactBlobStore> {
+            let mut executors = ExecutorRegistry::new();
+            executors
+                .register_in_process(RecordingExecutor::new(
+                    Arc::new(Mutex::new(None)),
+                    json!({ "executed": true }),
+                ))
+                .expect("executor registration");
+            ArtifactRuntime::new(
+                InMemoryArtifactBlobStore::default(),
+                SandboxRuntime::new(executors, Arc::new(DenyBroker)),
+            )
+        }
+        fn pool(placement: SandboxExecutorPlacement) -> ExecutorPoolIdentity {
+            let isolated = placement == SandboxExecutorPlacement::IsolatedWorker;
+            ExecutorPoolIdentity {
+                pool_id: "placement-test".to_string(),
+                pool_generation: 1,
+                fingerprint: RuntimeFingerprint {
+                    executor_binary_digest: format!("sha256:{}", "a".repeat(64)),
+                    engine_build_digest: format!("sha256:{}", "b".repeat(64)),
+                    engine_config_revision: "placement-test".to_string(),
+                    isolated_worker_image_digest: isolated
+                        .then(|| format!("sha256:{}", "c".repeat(64))),
+                    target_cpu_contract: "placement-test".to_string(),
+                    runtime_abi: "placement-test".to_string(),
+                },
+                placement,
+                placement_attestation: isolated.then(|| "worker-attestation".to_string()),
+            }
+        }
+
+        let matching = ArtifactRuntimeReadinessProbe::new(
+            runtime(),
+            pool(SandboxExecutorPlacement::InProcess),
+            Vec::new(),
+        )
+        .expect("matching readiness probe");
+        assert!(matching.supports_payload_kind(ArtifactPayloadKind::Rhai));
+
+        let mismatched = ArtifactRuntimeReadinessProbe::new(
+            runtime(),
+            pool(SandboxExecutorPlacement::IsolatedWorker),
+            Vec::new(),
+        )
+        .expect("mismatched readiness probe");
+        assert!(!mismatched.supports_payload_kind(ArtifactPayloadKind::Rhai));
+        assert!(matches!(
+            mismatched.ensure_pool_placement_matches(ArtifactPayloadKind::Rhai),
+            Err(ExecutorReadinessError::InvalidConfiguration(_))
+        ));
     }
 
     #[tokio::test]

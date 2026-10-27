@@ -427,7 +427,14 @@ export function ModulesList({
         const activeList = await listActiveModuleTransitions(apiOpts);
         if (!cancelled) {
           if (activeList.length > 0) {
-            setActiveTransition(activeList[0]);
+            // The page renders one transition control card. Surface an
+            // operator-attention checkpoint ahead of ordinary in-flight
+            // transitions so it cannot be hidden by list order.
+            setActiveTransition(
+              activeList.find(
+                (checkpoint) => checkpoint.state === 'INTERVENTION_REQUIRED'
+              ) ?? activeList[0]
+            );
           } else if (!opIdFromUrl) {
             setActiveTransition(null);
           }

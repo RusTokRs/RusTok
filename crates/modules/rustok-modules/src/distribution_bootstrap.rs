@@ -516,12 +516,12 @@ fn bootstrap_import_request_digest(
     struct Request<'a> {
         receipt_digest: &'a str,
         public_key_base64: &'a str,
-        context: &'a ModuleCommandContext,
+        actor_id: Uuid,
     }
     rustok_api::manifest_hash::hash_manifest(&Request {
         receipt_digest,
         public_key_base64,
-        context,
+        actor_id: context.actor_id,
     })
     .map(|digest| format!("sha256:{digest}"))
     .map_err(store_error)
@@ -568,7 +568,7 @@ async fn load_bootstrap_import_operation<C: ConnectionTrait>(
         || stored_digest != request_digest
         || stored_context.tenant_id.is_some()
         || stored_context.validate().is_err()
-        || stored_context != *context
+        || stored_context.actor_id != context.actor_id
     {
         return Err(ModuleStaticDistributionReleaseError::IdempotencyConflict);
     }
@@ -673,7 +673,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bootstrap_import_digest_binds_the_entire_command_context() {
+    fn bootstrap_import_digest_ignores_observability_context() {
         let context = ModuleCommandContext {
             actor_id: Uuid::new_v4(),
             tenant_id: None,
@@ -687,9 +687,16 @@ mod tests {
             .expect("bootstrap request digest");
         let mut changed_context = context.clone();
         changed_context.trace_id = "test:static-distribution-bootstrap:other".to_string();
-        let changed =
+        changed_context.correlation_id = Uuid::new_v4();
+        let changed_observability =
             bootstrap_import_request_digest(&receipt_digest, &public_key, &changed_context)
                 .expect("changed bootstrap request digest");
-        assert_ne!(initial, changed);
+        assert_eq!(initial, changed_observability);
+
+        changed_context.actor_id = Uuid::new_v4();
+        let changed_actor =
+            bootstrap_import_request_digest(&receipt_digest, &public_key, &changed_context)
+                .expect("changed-actor bootstrap request digest");
+        assert_ne!(initial, changed_actor);
     }
 }

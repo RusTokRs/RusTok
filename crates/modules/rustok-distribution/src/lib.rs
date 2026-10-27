@@ -221,6 +221,8 @@ pub fn build_registry() -> ModuleRegistry {
     let registry = registry.register(rustok_seo::SeoModule);
     #[cfg(feature = "mod-workflow")]
     let registry = registry.register(rustok_workflow::WorkflowModule);
+    #[cfg(feature = "mod-security")]
+    let registry = registry.register(rustok_security::SecurityModule);
     #[cfg(feature = "mod-ai")]
     let registry = registry.register(rustok_ai::AiModule);
     #[cfg(feature = "mod-docs")]
@@ -382,6 +384,8 @@ mod tests {
         );
         #[cfg(feature = "mod-ai")]
         assert!(first.modules.iter().any(|module| module.slug == "ai"));
+        #[cfg(feature = "mod-security")]
+        assert!(first.modules.iter().any(|module| module.slug == "security"));
     }
 
     #[test]

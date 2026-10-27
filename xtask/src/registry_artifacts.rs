@@ -28,6 +28,7 @@ pub(crate) fn build_publish_artifact_bytes(
         .ui_packages
         .admin
         .as_ref()
+        .or(preview.ui_packages.admin_support.as_ref())
         .map(|ui| {
             let path = workspace_root().join(&ui.manifest_path);
             let content = fs::read_to_string(&path)
@@ -39,6 +40,7 @@ pub(crate) fn build_publish_artifact_bytes(
         .ui_packages
         .storefront
         .as_ref()
+        .or(preview.ui_packages.storefront_support.as_ref())
         .map(|ui| {
             let path = workspace_root().join(&ui.manifest_path);
             let content = fs::read_to_string(&path).with_context(|| {

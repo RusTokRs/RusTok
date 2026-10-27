@@ -11,9 +11,10 @@ use pubgrub::{
     Dependencies, DependencyConstraints, DependencyProvider, PackageResolutionStatistics, Ranges,
     resolve,
 };
-use semver::{Comparator, Op, Version, VersionReq};
+use semver::{Comparator, Op, Version};
 use serde::{Deserialize, Serialize};
 
+use crate::artifact::parse_module_version_requirement;
 use crate::{
     ArtifactModuleKind, ModuleDependencyConstraint, ModuleDependencyLockGraph,
     ModuleDependencyLockNode,
@@ -90,7 +91,12 @@ pub enum ModuleResolutionError {
     #[error("module resolution provider failed: {0}")]
     Provider(String),
     #[error("module dependency resolution conflict: {conflict:?}")]
-    Conflict { conflict: ModuleResolutionConflict },
+    Conflict {
+        conflict: ModuleResolutionConflict,
+        diagnostics: Vec<ModuleResolutionConflict>,
+    },
+    #[error("module resolution snapshot exceeds its bound: {0}")]
+    SnapshotTooLarge(String),
     #[error("module resolution received an invalid candidate: {0}")]
     InvalidCandidate(String),
     #[error("module resolution received an invalid platform version `{0}`")]
@@ -108,8 +114,18 @@ impl ModuleResolutionError {
     /// remain private implementation detail and must not become an API.
     pub fn conflict(&self) -> Option<&ModuleResolutionConflict> {
         match self {
-            Self::Conflict { conflict } => Some(conflict),
+            Self::Conflict { conflict, .. } => Some(conflict),
             _ => None,
+        }
+    }
+
+    /// Candidate-level diagnostics collected before an unsuccessful solve.
+    /// Successful solves expose the same records in
+    /// `ModuleResolutionResult::conflicts`.
+    pub fn diagnostics(&self) -> &[ModuleResolutionConflict] {
+        match self {
+            Self::Conflict { diagnostics, .. } => diagnostics,
+            _ => &[],
         }
     }
 }
@@ -119,10 +135,17 @@ impl ModuleResolutionError {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleResolutionResult {
     pub lock_graph: ModuleDependencyLockGraph,
+    /// Non-fatal diagnostics for provider candidates that were skipped
+    /// because their own release facts were malformed or duplicated an exact
+    /// `(slug, version)` with different content. Request, provider-I/O, and
+    /// snapshot-bound failures remain typed errors.
     #[serde(default)]
     pub conflicts: Vec<ModuleResolutionConflict>,
 }
 
+const MAX_RESOLUTION_CONSTRAINTS: usize = 4_096;
+const MAX_RESOLUTION_CANDIDATES_EXAMINED: usize = 16_384;
+const MAX_RESOLUTION_SNAPSHOT_CANDIDATES: usize = 4_096;
 const ROOT_PACKAGE: &str = "__rustok_module_root__";
 const ROOT_VERSION: Version = Version::new(0, 0, 0);
 
@@ -138,10 +161,17 @@ where
     let platform_version = Version::parse(&request.platform_version).map_err(|_| {
         ModuleResolutionError::InvalidPlatformVersion(request.platform_version.clone())
     })?;
+    if request.root_dependencies.len() > MAX_RESOLUTION_CONSTRAINTS {
+        return Err(ModuleResolutionError::SnapshotTooLarge(format!(
+            "root dependency count {} exceeds {MAX_RESOLUTION_CONSTRAINTS}",
+            request.root_dependencies.len()
+        )));
+    }
     let snapshot = ResolutionSnapshot::collect(provider, &request, &platform_version).await?;
     let selected = resolve(&snapshot, ROOT_PACKAGE.to_string(), ROOT_VERSION).map_err(|_| {
         ModuleResolutionError::Conflict {
-            conflict: conflict_for_request(&request),
+            conflict: conflict_for_request(&request, &snapshot.diagnostics),
+            diagnostics: snapshot.diagnostics.clone(),
         }
     })?;
     let mut nodes = Vec::new();
@@ -158,23 +188,53 @@ where
         .map_err(|error| ModuleResolutionError::InvalidCandidate(error.to_string()))?;
     Ok(ModuleResolutionResult {
         lock_graph,
-        conflicts: Vec::new(),
+        conflicts: snapshot.diagnostics,
     })
 }
 
-fn conflict_for_request(request: &ModuleResolutionRequest) -> ModuleResolutionConflict {
-    let involved_slugs = request
+fn conflict_for_request(
+    request: &ModuleResolutionRequest,
+    diagnostics: &[ModuleResolutionConflict],
+) -> ModuleResolutionConflict {
+    let mut involved = request
         .root_dependencies
         .iter()
         .map(|dependency| dependency.slug.clone())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
+        .collect::<BTreeSet<_>>();
+    involved.extend(
+        diagnostics
+            .iter()
+            .flat_map(|diagnostic| diagnostic.involved_slugs.iter().cloned()),
+    );
     ModuleResolutionConflict {
         code: "DEPENDENCY_CONFLICT".to_string(),
         message: "No compatible set of admitted module releases satisfies the requested dependency constraints."
             .to_string(),
-        involved_slugs,
+        involved_slugs: involved.into_iter().collect(),
+    }
+}
+
+fn candidate_diagnostic(
+    candidate: &ModuleResolutionCandidate,
+    error: &ModuleResolutionError,
+) -> ModuleResolutionConflict {
+    let code = match error {
+        ModuleResolutionError::InvalidPlatformCompatibility(_) => "INVALID_PLATFORM_COMPATIBILITY",
+        ModuleResolutionError::UnsupportedPrerelease(_) => "UNSUPPORTED_PRERELEASE",
+        ModuleResolutionError::UnsupportedRequirement(_) => "UNSUPPORTED_REQUIREMENT",
+        _ => "INVALID_CANDIDATE",
+    };
+    ModuleResolutionConflict {
+        code: code.to_string(),
+        message: format!(
+            "Skipped module release candidate {} {}: {error}",
+            candidate.node.slug, candidate.node.version
+        ),
+        involved_slugs: if candidate.node.slug.trim().is_empty() {
+            Vec::new()
+        } else {
+            vec![candidate.node.slug.clone()]
+        },
     }
 }
 
@@ -182,6 +242,7 @@ fn conflict_for_request(request: &ModuleResolutionRequest) -> ModuleResolutionCo
 struct ResolutionSnapshot {
     releases: BTreeMap<String, BTreeMap<Version, ModuleResolutionCandidate>>,
     root_dependencies: DependencyConstraints<String, Ranges<Version>>,
+    diagnostics: Vec<ModuleResolutionConflict>,
 }
 
 impl ResolutionSnapshot {
@@ -194,9 +255,17 @@ impl ResolutionSnapshot {
         P: ModuleResolutionProvider,
     {
         let mut releases = BTreeMap::<String, BTreeMap<Version, ModuleResolutionCandidate>>::new();
+        let mut diagnostics = Vec::new();
+        let mut rejected_releases = BTreeSet::<(String, Version)>::new();
         let mut queued = VecDeque::from(request.root_dependencies.clone());
         let mut requested = BTreeSet::new();
+        let mut candidates_examined = 0usize;
+        let mut candidates_accepted = 0usize;
         while let Some(constraint) = queued.pop_front() {
+            // Root and already-validated transitive constraints are request
+            // facts: malformed declarations by callers remain hard errors.
+            // Malformed facts inside one provider candidate are handled
+            // below as a skipped candidate with a diagnostic.
             validate_constraint(&constraint)?;
             let request_key = (
                 constraint.slug.clone(),
@@ -205,36 +274,97 @@ impl ResolutionSnapshot {
             if !requested.insert(request_key) {
                 continue;
             }
+            if requested.len() > MAX_RESOLUTION_CONSTRAINTS {
+                return Err(ModuleResolutionError::SnapshotTooLarge(format!(
+                    "requested constraint count exceeds {MAX_RESOLUTION_CONSTRAINTS}"
+                )));
+            }
             for candidate in provider.candidates(&constraint).await? {
-                let version = candidate_version(&candidate)?;
-                if !candidate_is_eligible(
+                candidates_examined = candidates_examined.saturating_add(1);
+                if candidates_examined > MAX_RESOLUTION_CANDIDATES_EXAMINED {
+                    return Err(ModuleResolutionError::SnapshotTooLarge(format!(
+                        "examined candidate count exceeds {MAX_RESOLUTION_CANDIDATES_EXAMINED}"
+                    )));
+                }
+                if candidate.node.slug != constraint.slug {
+                    diagnostics.push(ModuleResolutionConflict {
+                        code: "INVALID_CANDIDATE".to_string(),
+                        message: format!(
+                            "Skipped module release candidate {} {} returned for dependency {}",
+                            candidate.node.slug, candidate.node.version, constraint.slug
+                        ),
+                        involved_slugs: [constraint.slug.clone(), candidate.node.slug.clone()]
+                            .into_iter()
+                            .filter(|slug| !slug.trim().is_empty())
+                            .collect::<BTreeSet<_>>()
+                            .into_iter()
+                            .collect(),
+                    });
+                    continue;
+                }
+                let version = match candidate_version(&candidate) {
+                    Ok(version) => version,
+                    Err(error) => {
+                        diagnostics.push(candidate_diagnostic(&candidate, &error));
+                        continue;
+                    }
+                };
+                let eligible = match candidate_is_eligible(
                     &candidate,
                     &constraint,
                     request.scope,
                     &request.runtime_abi,
                     platform_version,
                     &version,
-                )? {
+                ) {
+                    Ok(eligible) => eligible,
+                    Err(error) => {
+                        diagnostics.push(candidate_diagnostic(&candidate, &error));
+                        continue;
+                    }
+                };
+                if !eligible {
                     continue;
                 }
-                validate_candidate(&candidate)?;
+                if let Err(error) = validate_candidate(&candidate) {
+                    diagnostics.push(candidate_diagnostic(&candidate, &error));
+                    continue;
+                }
+                let release_key = (candidate.node.slug.clone(), version.clone());
+                if rejected_releases.contains(&release_key) {
+                    continue;
+                }
                 let candidates = releases.entry(candidate.node.slug.clone()).or_default();
                 if let Some(existing) = candidates.get(&version) {
                     if existing != &candidate {
-                        return Err(ModuleResolutionError::InvalidCandidate(format!(
-                            "multiple admitted releases exist for {} {version}",
-                            candidate.node.slug
-                        )));
+                        candidates.remove(&version);
+                        candidates_accepted = candidates_accepted.saturating_sub(1);
+                        diagnostics.push(ModuleResolutionConflict {
+                            code: "DUPLICATE_RELEASE".to_string(),
+                            message: format!(
+                                "Skipped every release candidate for {} {version} because the provider returned conflicting content for one exact release",
+                                candidate.node.slug
+                            ),
+                            involved_slugs: vec![candidate.node.slug.clone()],
+                        });
+                        rejected_releases.insert(release_key);
                     }
                 } else {
+                    if candidates_accepted >= MAX_RESOLUTION_SNAPSHOT_CANDIDATES {
+                        return Err(ModuleResolutionError::SnapshotTooLarge(format!(
+                            "accepted candidate count exceeds {MAX_RESOLUTION_SNAPSHOT_CANDIDATES}"
+                        )));
+                    }
                     queued.extend(candidate.dependencies.clone());
                     candidates.insert(version, candidate);
+                    candidates_accepted = candidates_accepted.saturating_add(1);
                 }
             }
         }
         Ok(Self {
             releases,
             root_dependencies: constraints_for(&request.root_dependencies)?,
+            diagnostics,
         })
     }
 
@@ -327,11 +457,12 @@ fn candidate_is_eligible(
     platform_version: &Version,
     version: &Version,
 ) -> Result<bool, ModuleResolutionError> {
-    let requirement = VersionReq::parse(&constraint.version_requirement).map_err(|_| {
-        ModuleResolutionError::UnsupportedRequirement(constraint.version_requirement.clone())
-    })?;
+    let requirement =
+        parse_module_version_requirement(&constraint.version_requirement).map_err(|_| {
+            ModuleResolutionError::UnsupportedRequirement(constraint.version_requirement.clone())
+        })?;
     let platform_compatibility =
-        VersionReq::parse(&candidate.platform_compatibility).map_err(|_| {
+        parse_module_version_requirement(&candidate.platform_compatibility).map_err(|_| {
             ModuleResolutionError::InvalidPlatformCompatibility(
                 candidate.platform_compatibility.clone(),
             )
@@ -412,9 +543,10 @@ fn validate_constraint(
             "reserved or empty dependency slug".into(),
         ));
     }
-    let requirement = VersionReq::parse(&constraint.version_requirement).map_err(|_| {
-        ModuleResolutionError::UnsupportedRequirement(constraint.version_requirement.clone())
-    })?;
+    let requirement =
+        parse_module_version_requirement(&constraint.version_requirement).map_err(|_| {
+            ModuleResolutionError::UnsupportedRequirement(constraint.version_requirement.clone())
+        })?;
     if requirement
         .comparators
         .iter()
@@ -445,7 +577,7 @@ fn constraints_for(
 }
 
 fn version_requirement_range(requirement: &str) -> Result<Ranges<Version>, ModuleResolutionError> {
-    let requirement = VersionReq::parse(requirement)
+    let requirement = parse_module_version_requirement(requirement)
         .map_err(|_| ModuleResolutionError::UnsupportedRequirement(requirement.to_string()))?;
     requirement
         .comparators
@@ -734,11 +866,62 @@ mod tests {
             },
         )
         .await
-        .expect_err("invalid candidate compatibility range must fail closed");
+        .expect_err("a solve with only a malformed candidate must conflict");
+        assert_eq!(
+            error.conflict().map(|conflict| conflict.code.as_str()),
+            Some("DEPENDENCY_CONFLICT")
+        );
+        assert!(error.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == "INVALID_PLATFORM_COMPATIBILITY"
+                && diagnostic.involved_slugs == vec!["invalid_platform"]
+        }));
+    }
+
+    #[tokio::test]
+    async fn malformed_candidate_is_skipped_for_a_valid_release() {
+        let mut catalog = Catalog::default();
+        let mut malformed = candidate("app", "2.0.0", &[]);
+        malformed.platform_compatibility = "not-a-range".into();
+        catalog.0.insert(
+            "app".into(),
+            vec![malformed, candidate("app", "1.0.0", &[])],
+        );
+
+        let result = resolve_module_dependencies(
+            &catalog,
+            ModuleResolutionRequest {
+                graph_revision: 5,
+                runtime_abi: "v1".into(),
+                platform_version: "1.2.3".into(),
+                scope: ModuleResolutionScope::Platform,
+                root_dependencies: vec![ModuleDependencyConstraint {
+                    slug: "app".into(),
+                    version_requirement: ">=1".into(),
+                }],
+            },
+        )
+        .await
+        .expect("valid release remains resolvable");
+
+        assert_eq!(result.lock_graph.nodes.len(), 1);
+        assert_eq!(result.lock_graph.nodes[0].version, "1.0.0");
+        assert!(result.conflicts.iter().any(|diagnostic| {
+            diagnostic.code == "INVALID_PLATFORM_COMPATIBILITY"
+                && diagnostic.involved_slugs == vec!["app"]
+        }));
+    }
+
+    #[test]
+    fn empty_version_requirement_is_not_an_implicit_wildcard() {
         assert!(matches!(
-            error,
-            ModuleResolutionError::InvalidPlatformCompatibility(range) if range == "not-a-range"
+            version_requirement_range(""),
+            Err(ModuleResolutionError::UnsupportedRequirement(requirement)) if requirement.is_empty()
         ));
+        assert!(
+            version_requirement_range("*")
+                .unwrap()
+                .contains(&Version::new(99, 0, 0))
+        );
     }
 
     #[test]

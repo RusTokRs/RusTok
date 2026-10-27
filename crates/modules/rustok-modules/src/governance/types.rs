@@ -30,6 +30,28 @@ pub struct ModuleReleaseYankResult {
     pub status: String,
 }
 
+/// Authenticated host input for separately restoring one yanked release.
+/// Publication is insert-only and can never perform this transition.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ModuleReleaseUnyankCommand {
+    pub slug: String,
+    pub version: String,
+    pub reason: String,
+    pub reason_code: String,
+    /// Platform-scoped evidence for one immutable release un-yank operation.
+    pub context: ModuleCommandContext,
+    pub actor_principal: serde_json::Value,
+    /// An authenticated host fact which the owner combines with durable
+    /// publisher and owner identities.
+    pub actor_can_manage_modules: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleReleaseUnyankResult {
+    pub request_id: Option<String>,
+    pub status: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModuleOwnerTransferCommand {
     pub slug: String,
@@ -288,6 +310,8 @@ pub struct ModulePublishValidationContract {
     pub marketplace_tags: Vec<String>,
     pub admin_ui_crate_name: Option<String>,
     pub storefront_ui_crate_name: Option<String>,
+    pub admin_support_crate_name: Option<String>,
+    pub storefront_support_crate_name: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

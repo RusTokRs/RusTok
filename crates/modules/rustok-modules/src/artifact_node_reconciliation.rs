@@ -654,7 +654,8 @@ where
     {
         validate_request(&command)?;
         self.authorizer.authorize_request(&command).await?;
-        let request_digest = digest_json(&command).map_err(digest_error)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&command).map_err(digest_error)?;
         let principal_id = command.context.actor_id.to_string();
         if let Some(operation) = load_operation(
             &self.db,
@@ -920,7 +921,8 @@ where
     {
         validate_report(&command)?;
         self.authorizer.authorize_report(&command).await?;
-        let request_digest = digest_json(&command).map_err(digest_error)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&command).map_err(digest_error)?;
         if let Some(operation) = load_operation(
             &self.db,
             command.idempotency_key,
@@ -1262,8 +1264,6 @@ struct OperationRecord {
     operation_kind: String,
     request_digest: String,
     principal_id: String,
-    trace_id: Option<String>,
-    correlation_id: Option<Uuid>,
     reconciliation_id: Option<Uuid>,
     reconciliation_revision: Option<u64>,
     reconciliation_state_revision: Option<u64>,
@@ -2570,14 +2570,14 @@ async fn load_operation<C: ConnectionTrait>(
     operation_kind: &str,
     request_digest: &str,
     principal_id: &str,
-    context: Option<&ModuleCommandContext>,
+    _context: Option<&ModuleCommandContext>,
 ) -> Result<Option<OperationRecord>, ModuleArtifactNodeReconciliationError> {
     let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let Some(row) = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
-                "SELECT operation_kind, request_digest, principal_id, trace_id, correlation_id, reconciliation_id, \
+                "SELECT operation_kind, request_digest, principal_id, reconciliation_id, \
                         reconciliation_revision, reconciliation_state_revision, reconciliation_status, \
                         node_id, installation_id, observation_revision, assignment_phase, \
                         CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END AS completed \
@@ -2596,8 +2596,6 @@ async fn load_operation<C: ConnectionTrait>(
         operation_kind: row.try_get("", "operation_kind").map_err(store_error)?,
         request_digest: row.try_get("", "request_digest").map_err(store_error)?,
         principal_id: row.try_get("", "principal_id").map_err(store_error)?,
-        trace_id: row.try_get("", "trace_id").map_err(store_error)?,
-        correlation_id: optional_uuid_from_row(&row, "correlation_id", backend)?,
         reconciliation_id: optional_uuid_from_row(&row, "reconciliation_id", backend)?,
         reconciliation_revision: optional_revision_from_row(&row, "reconciliation_revision")?,
         reconciliation_state_revision: optional_revision_from_row(
@@ -2624,8 +2622,6 @@ async fn load_operation<C: ConnectionTrait>(
     if record.operation_kind != operation_kind
         || record.request_digest != request_digest
         || record.principal_id != principal_id
-        || record.trace_id.as_deref() != context.map(|value| value.trace_id.as_str())
-        || record.correlation_id != context.map(|value| value.correlation_id)
     {
         return Err(ModuleArtifactNodeReconciliationError::IdempotencyConflict);
     }
@@ -2802,14 +2798,9 @@ fn optional_uuid_from_row(
     column: &str,
     backend: SupportedBackend,
 ) -> Result<Option<Uuid>, ModuleArtifactNodeReconciliationError> {
-    match backend {
-        SupportedBackend::Postgres => row.try_get("", column).map_err(store_error),
-        SupportedBackend::Sqlite => row
-            .try_get::<Option<String>>("", column)
-            .map_err(store_error)?
-            .map(|value| Uuid::parse_str(&value).map_err(store_error))
-            .transpose(),
-    }
+    backend
+        .optional_uuid_from_row(row, column)
+        .map_err(store_error)
 }
 
 fn revision_value(value: u64) -> Result<sea_orm::Value, ModuleArtifactNodeReconciliationError> {
@@ -3039,10 +3030,13 @@ mod tests {
             service.request(substituted_replay).await,
             Err(ModuleArtifactNodeReconciliationError::IdempotencyConflict)
         ));
-        assert!(matches!(
-            service.request(tracing_replay).await,
-            Err(ModuleArtifactNodeReconciliationError::IdempotencyConflict)
-        ));
+        assert!(
+            !service
+                .request(tracing_replay)
+                .await
+                .expect("changed observability context replays reconciliation request")
+                .created
+        );
 
         let prepared = service
             .claim_assignment(ModuleArtifactNodeAssignmentClaimCommand {

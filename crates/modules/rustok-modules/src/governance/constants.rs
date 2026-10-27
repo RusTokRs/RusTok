@@ -9,6 +9,14 @@ pub const REGISTRY_YANK_REASON_CODES: &[&str] = &[
     "other",
 ];
 
+pub const REGISTRY_UNYANK_REASON_CODES: &[&str] = &[
+    "erroneous_yank",
+    "incident_resolved",
+    "legal_cleared",
+    "governance_override",
+    "other",
+];
+
 pub const REGISTRY_OWNER_TRANSFER_REASON_CODES: &[&str] = &[
     "maintenance_handoff",
     "team_restructure",

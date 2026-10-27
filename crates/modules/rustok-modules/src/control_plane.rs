@@ -6,6 +6,7 @@ use rustok_sandbox::SandboxResult;
 use rustok_secrets::SecretResolverRegistry;
 
 use crate::{
+    AdmissionReverificationPolicyRevision, ArtifactAdmissionReverificationService,
     ArtifactBlobStore, ArtifactDataCopier, ArtifactDataCopyAuthorizer,
     ArtifactDataExportAuthorizer, ArtifactDataObjectMigrationAuthorizer,
     ArtifactDataObjectMigrationService, ArtifactDataPostPurgeRecoveryService,
@@ -19,7 +20,7 @@ use crate::{
     ArtifactSecretHandleAuthorizer, ArtifactSecretUseAuthorizer, ArtifactSecretValueConsumer,
     ArtifactSettingsPurgePreviewService, ArtifactSettingsRecoveryAuthorizer,
     ArtifactSettingsRecoveryCipher, ControlPlaneInfrastructure, DurableArtifactBlobStore,
-    ExecutorReadinessService, ExternalPrebuiltIngressService,
+    ExecutorReadinessProbe, ExecutorReadinessService, ExternalPrebuiltIngressService,
     ModuleArtifactNodeReconciliationAuthorizer, ModuleArtifactNodeTopologyResolver,
     ModuleArtifactSecurityAuthorizer, ModuleDefinitionCatalog, ModuleDefinitionError,
     ModuleEffectivePolicy, ModuleEffectivePolicyChannelInput,
@@ -39,14 +40,15 @@ use crate::{
     SeaOrmArtifactSandboxPolicyResolver, SeaOrmArtifactScheduleDeliveryQueue,
     SeaOrmArtifactSecretCapabilityBrokerResolver, SeaOrmArtifactSecretHandlePolicy,
     SeaOrmArtifactSecretService, SeaOrmArtifactSecretUseService,
-    SeaOrmArtifactSettingsRecoveryService, SeaOrmModuleArtifactNodeAgentService,
-    SeaOrmModuleArtifactNodeReconciliationService, SeaOrmModuleArtifactSecurityResolver,
-    SeaOrmModuleArtifactSecurityService, SeaOrmModuleBuildService, SeaOrmModuleCompositionService,
-    SeaOrmModuleGovernanceService, SeaOrmModulePolicyRevisionConsumer,
-    SeaOrmModulePromotionService, SeaOrmModuleStaticDistributionBootstrapService,
-    SeaOrmModuleStaticDistributionReleaseService, SeaOrmModuleStaticDistributionRolloutService,
-    SeaOrmModuleStaticDistributionService, SeaOrmModuleStaticDistributionWorkerService,
-    SeaOrmModuleTransitionService, StorageArtifactBlobStore,
+    SeaOrmArtifactSettingsRecoveryService, SeaOrmExecutorPoolRegistry,
+    SeaOrmModuleArtifactNodeAgentService, SeaOrmModuleArtifactNodeReconciliationService,
+    SeaOrmModuleArtifactSecurityResolver, SeaOrmModuleArtifactSecurityService,
+    SeaOrmModuleBuildService, SeaOrmModuleCompositionService, SeaOrmModuleGovernanceService,
+    SeaOrmModulePolicyRevisionConsumer, SeaOrmModulePromotionService,
+    SeaOrmModuleStaticDistributionBootstrapService, SeaOrmModuleStaticDistributionReleaseService,
+    SeaOrmModuleStaticDistributionRolloutService, SeaOrmModuleStaticDistributionService,
+    SeaOrmModuleStaticDistributionWorkerService, SeaOrmModuleTransitionService,
+    StorageArtifactBlobStore, TrustVerifier,
 };
 use rustok_storage::StorageRuntime;
 
@@ -179,15 +181,6 @@ impl ModuleControlPlane {
 
     pub fn build(&self) -> SeaOrmModuleBuildService {
         SeaOrmModuleBuildService::with_infrastructure(self.db.clone(), self.infrastructure.clone())
-    }
-
-    /// Release and publication operations share the one transactional
-    /// governance aggregate service.
-    pub fn release(&self) -> SeaOrmModuleGovernanceService {
-        SeaOrmModuleGovernanceService::with_infrastructure(
-            self.db.clone(),
-            self.infrastructure.clone(),
-        )
     }
 
     /// Release and publication operations share the one transactional
@@ -344,6 +337,18 @@ impl ModuleControlPlane {
         )
     }
 
+    /// Returns the owner-run reverification boundary bound to the isolated
+    /// verifier and the policy revisions currently selected by the host.
+    /// Admission evidence is never accepted through this factory or its
+    /// command type.
+    pub fn admission_reverification(
+        &self,
+        verifier: Arc<dyn TrustVerifier>,
+        trust_policy: AdmissionReverificationPolicyRevision,
+    ) -> ArtifactAdmissionReverificationService {
+        ArtifactAdmissionReverificationService::new(self.installation(), verifier, trust_policy)
+    }
+
     /// Returns the durable owner for transition reads and convergence writes.
     pub fn transitions(&self) -> SeaOrmModuleTransitionService {
         SeaOrmModuleTransitionService::with_infrastructure(
@@ -445,9 +450,18 @@ impl ModuleControlPlane {
     pub fn executor_readiness(
         &self,
         blobs: Arc<dyn ArtifactBlobStore>,
+        probe: Arc<dyn ExecutorReadinessProbe>,
     ) -> ExecutorReadinessService {
-        ExecutorReadinessService::new(self.db.clone(), blobs)
+        ExecutorReadinessService::new(self.db.clone(), blobs, probe)
             .with_infrastructure(self.infrastructure.clone())
+    }
+
+    /// Returns the durable executor-pool identity registry. Hosts register
+    /// each pool they actually composed so the monotonic pool generation
+    /// survives restarts and advances whenever the fingerprint, placement,
+    /// or placement attestation changes.
+    pub fn executor_pool_registry(&self) -> SeaOrmExecutorPoolRegistry {
+        SeaOrmExecutorPoolRegistry::new(self.db.clone())
     }
 
     /// Returns the unified operator service for release projections, preview generation,
@@ -482,6 +496,31 @@ impl ModuleControlPlane {
     /// facade's identity source for private staging objects.
     pub fn artifact_blob_store(&self, storage: StorageRuntime) -> StorageArtifactBlobStore {
         StorageArtifactBlobStore::with_infrastructure(storage, self.infrastructure.clone())
+    }
+
+    /// Returns the two-phase published-blob garbage collector over the
+    /// platform CAS and the durable admission store. Each pass still needs
+    /// a retention decision from [`Self::artifact_blob_retention_policy`];
+    /// the reconciler itself never infers deletability from inventory alone.
+    pub fn artifact_blob_reconciler(
+        &self,
+        storage: StorageRuntime,
+    ) -> crate::ArtifactAdmissionReconciler<StorageArtifactBlobStore, SeaOrmArtifactInstallationStore>
+    {
+        crate::ArtifactAdmissionReconciler::new(
+            self.artifact_blob_store(storage),
+            self.installation(),
+        )
+    }
+
+    /// Loads the production blob-retention snapshot from the durable
+    /// retention-hold ledger. Reload per reconciliation pass; a load
+    /// failure must abort the pass rather than delete on partial hold
+    /// knowledge.
+    pub async fn artifact_blob_retention_policy(
+        &self,
+    ) -> Result<crate::SeaOrmArtifactBlobRetentionPolicy, crate::ModuleInstallationError> {
+        crate::SeaOrmArtifactBlobRetentionPolicy::load_active(&self.db).await
     }
 
     /// Returns the owner-scoped structured-data capability resolver for exact

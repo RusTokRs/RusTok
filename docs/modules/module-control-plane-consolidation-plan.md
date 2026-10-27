@@ -64,6 +64,73 @@ below wherever they differ.
   `rustok-admin --no-default-features --features ssr` all pass `cargo check`
   (warnings only). No workspace-wide compile or test claim is made.
 - Open architecture blockers: none.
+- Latest durable-replay contract (2026-10-25, R3-11): replay identity is the
+  explicit durable scope and idempotency key plus a semantic fingerprint.
+  Trace, correlation, and free-text reason are retained audit evidence, not
+  replay identity; actor remains identity only where an owner explicitly
+  defines a replay-principal or authorization partition. Older checkpoint and
+  dated-slice wording that treats changed observability evidence as a replay
+  conflict is superseded by this contract.
+- R3 remediation batch (2026-10-25, source-implemented, **not yet compiled or
+  test-verified** — no Rust toolchain was available; syntax-checked only):
+  R3-14 (validating `ModuleEffectivePolicy` deserialization), R3-15 local
+  catalog invariants, R3-16 (resolver skip-and-record + bounded snapshot),
+  R3-18 (storage failures no longer degrade into policy facts), R3-19
+  (settings CAS compares effective enablement; one-sided snapshots are a
+  typed validation error), R3-24 (targeted, lock-held tenant transition
+  fence incl. platform transitions), R3-27 (per-installation quarantine in
+  event/schedule projection), R3-35 (`gc`/`wave_rollout`/in-memory blob
+  store behind `test-support`), and bounded Low slices R3-38…R3-50 as
+  recorded in the crate docs. First verification step for the maintainer:
+  `cargo check -p rustok-modules`, then the crate test suite; treat every
+  item above as open until that passes.
+- R3 follow-up slices (2026-10-25, same uncompiled caveat): R3-17(b/c) —
+  executor/recovery classify post-hook outcomes by typed journal status
+  only (the `post-hook:` message prefix remains a read-only shape for
+  pre-split rows via `resolve_post_hook_failure`), and committed toggle
+  operations now persist their exact caller result (`result_snapshot`,
+  migration `000084`) so idempotent replay returns operation-time evidence
+  instead of reconstructing from current state; R3-26 — work-queue
+  terminality is idempotency-aware (`Idempotency::None` never auto-retries
+  a possibly-executed dispatch); R3-31 — platform-generated SBOM/provenance
+  carry an explicit evidence-origin marker and the workspace source is a
+  standard SLSA resolved dependency; R3-13 — the revision/executor-liveness
+  exclusion is formalized as an accepted trade in the crate docs.
+- Pre-production completion (2026-10-25, same uncompiled caveat): the
+  previously unwired owners now run in production composition — the server
+  `module_artifact_maintenance` worker drives published-blob GC (retention
+  decided per pass from the durable hold ledger via
+  `SeaOrmArtifactBlobRetentionPolicy`), tenant data-object GC
+  (one `ArtifactDataObjectLedgerRetentionSnapshot` per non-empty pass is
+  reused by `sweep_tenant_with_ledger_retention_snapshot` across tenants;
+  7-day post-queue grace, namespace holds retain wholesale), and, when the
+  `RUSTOK_MODULE_MAINTENANCE_VERIFICATION_*` environment contract is
+  configured in this snapshot, current-policy reverification of stale
+  admissions (`list_stale_candidates` + deterministic idempotency keys under
+  a configured maintenance actor). R3-26 closed: policy-denied event/schedule
+  deliveries park as *held* (attempt increment reverted) instead of
+  dead-lettering. R3-28 closed for the materializer: one transaction per
+  binding with the cursor row locked, so cursor read, Forbid-overlap probe,
+  slot creation (`enqueue_in_transaction`), and cursor advance commit
+  atomically; per-poll occurrence scan cap lowered to 10k with progressive
+  backlog drain. R3-23 closed: UI collision checks read the admission-time
+  `module_artifact_ui_resources` projection (migration `000085` with
+  backfill) instead of deserializing every active descriptor. R3-29 bounded
+  slice: descriptor validation is cached by canonical descriptor digest in
+  `ArtifactRuntime` (the policy-token threading remains open; production
+  dispatch is fenced by the lifecycle executor re-check). R3-46 closed: CLI
+  Cargo runs in its own Unix process group and timeout/overflow kills the
+  group. The R3-24 PostgreSQL caveat is resolved by inspection:
+  `module_transition_checkpoints` has no RLS by design (documented in the
+  crate operations docs), so the fence is sound on both backends. Deliberately
+  deferred with rationale: executor-readiness evaluation stays unwired
+  because no production consumer reads smoke receipts yet (wiring an operator
+  surface whose output nothing consumes would be fake completeness); governed
+  (static-distribution) rollout start stays worker-driven because no host
+  authorizer/topology resolver exists in the server; Phase D engine
+  de-duplication and the `installation.rs` split remain mechanical refactors
+  to do only with a compiler in hand; R3-12/R3-36 PostgreSQL test lane and all
+  test execution remain with the maintainer.
 - Latest platform-composition scope evidence: the global `platform_state`
   owner now rejects tenant-scoped commands, reserves exact retries in the
   shared platform receipt namespace, and retains full command evidence. Its

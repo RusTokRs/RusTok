@@ -21,10 +21,13 @@ use std::path::PathBuf;
 use uuid::Uuid;
 
 fn digest(value: &impl serde::Serialize) -> String {
+    // Production contract digests are computed over canonical JSON bytes
+    // (`promotion::digest_json`); the fixture must seed rows with the same
+    // digest or authority validation denies every copy as a mismatch.
     format!(
         "sha256:{}",
         hex::encode(Sha256::digest(
-            serde_json::to_vec(value).expect("canonical JSON")
+            rustok_api::manifest_hash::canonical_json_bytes(value).expect("canonical JSON")
         ))
     )
 }
@@ -523,10 +526,18 @@ async fn changed_request_identity_never_replays_or_mutates() {
         .copy_page(fixture.request.clone())
         .await
         .expect("first page");
+    let mut changed_observability = fixture.request.clone();
+    changed_observability.reason.push_str(" changed");
+    changed_observability.context.correlation_id = Uuid::new_v4();
+    changed_observability.context.trace_id.push_str(":changed");
+    assert_eq!(
+        copier
+            .copy_page(changed_observability)
+            .await
+            .expect("changed observability context replays page copy"),
+        original
+    );
     let mut variants = Vec::new();
-    let mut changed = fixture.request.clone();
-    changed.reason.push_str(" changed");
-    variants.push(changed);
     let mut changed = fixture.request.clone();
     changed.page_size = 3;
     variants.push(changed);
@@ -547,12 +558,6 @@ async fn changed_request_identity_never_replays_or_mutates() {
     variants.push(changed);
     let mut changed = fixture.request.clone();
     changed.context.actor_id = Uuid::new_v4();
-    variants.push(changed);
-    let mut changed = fixture.request.clone();
-    changed.context.correlation_id = Uuid::new_v4();
-    variants.push(changed);
-    let mut changed = fixture.request.clone();
-    changed.context.trace_id.push_str(":changed");
     variants.push(changed);
     for changed in variants {
         assert_eq!(
@@ -942,8 +947,11 @@ async fn pending_page_survives_reopen_and_reconciliation_rechecks_current_author
     let mut changed = fixture.request.clone();
     changed.reason.push_str(" changed");
     assert_eq!(
-        copier.reserve_page(changed).await,
-        Err(Error::IdempotencyConflict)
+        copier
+            .reserve_page(changed)
+            .await
+            .expect("changed free-text reason replays page reservation"),
+        reservation
     );
     let mut competing = fixture.request.clone();
     competing.context.idempotency_key = Uuid::new_v4();

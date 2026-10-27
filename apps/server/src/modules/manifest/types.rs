@@ -317,6 +317,21 @@ pub struct ModulePackageProvides {
     pub admin_ui: Option<ModulePackageUiProvides>,
     #[serde(default)]
     pub storefront_ui: Option<ModulePackageUiProvides>,
+    #[serde(default)]
+    pub admin_support: Option<ModulePackageUiSupportProvides>,
+    #[serde(default)]
+    pub storefront_support: Option<ModulePackageUiSupportProvides>,
+}
+
+/// A UI support sub-crate publishes reusable components for composition
+/// into other modules' surfaces or host compositions. It is not a UI
+/// surface: no route, slot, or navigation entry is derived from it.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ModulePackageUiSupportProvides {
+    #[serde(default)]
+    pub leptos_crate: Option<String>,
+    #[serde(default)]
+    pub i18n: Option<ModulePackageUiI18nContract>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

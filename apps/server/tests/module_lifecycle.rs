@@ -377,65 +377,10 @@ async fn setup_db() -> DatabaseConnection {
     for migration in rustok_modules::migrations::migrations() {
         migration.up(&manager).await.expect("module migration");
     }
-
-    db.execute_raw(Statement::from_string(
-        DbBackend::Sqlite,
-        r#"
-        CREATE TABLE module_operations (
-            id TEXT PRIMARY KEY,
-            tenant_id TEXT NOT NULL,
-            module_slug TEXT NOT NULL,
-            requested_enabled BOOLEAN NOT NULL,
-            previous_effective_enabled BOOLEAN NOT NULL,
-            status TEXT NOT NULL,
-            requested_by TEXT NULL,
-            trace_id TEXT NULL,
-            correlation_id TEXT NULL,
-            idempotency_key TEXT NULL,
-            expected_revision INTEGER NULL,
-            error_message TEXT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
-        );
-        "#,
-    ))
-    .await
-    .expect("create module_operations");
-
-    db.execute_raw(Statement::from_string(
-        DbBackend::Sqlite,
-        r#"
-        CREATE TABLE module_static_tenant_lifecycle (
-            tenant_id TEXT NOT NULL,
-            module_slug TEXT NOT NULL,
-            revision INTEGER NOT NULL DEFAULT 0,
-            active_idempotency_key TEXT NULL,
-            active_claimed_at TEXT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (tenant_id, module_slug),
-            FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
-        );
-        "#,
-    ))
-    .await
-    .expect("create module_static_tenant_lifecycle");
-
-    db.execute_raw(Statement::from_string(
-        DbBackend::Sqlite,
-        r#"
-        CREATE TABLE module_operation_override_states (
-            operation_id TEXT PRIMARY KEY,
-            previous_override_enabled BOOLEAN NULL,
-            requested_override_enabled BOOLEAN NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (operation_id) REFERENCES module_operations(id) ON DELETE CASCADE
-        );
-        "#,
-    ))
-    .await
-    .expect("create module_operation_override_states");
+    // `module_operations`, `module_static_tenant_lifecycle`, and
+    // `module_operation_override_states` are created by the canonical
+    // migrations above (000076/000084, 000060/000054, and 000075
+    // respectively); the fixture must not recreate them.
 
     db
 }

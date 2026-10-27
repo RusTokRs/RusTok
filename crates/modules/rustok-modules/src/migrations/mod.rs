@@ -71,6 +71,17 @@ mod m20261021_000056_drop_production_operations;
 pub(crate) mod m20261022_000057_admitted_oci_releases;
 pub(crate) mod m20261022_000058_module_source_objects;
 pub(crate) mod m20261022_000059_module_operations_tool;
+mod m20261027_000077_executor_readiness_validity;
+mod m20261027_000078_registry_release_unyank_operations;
+mod m20261027_000079_module_operation_idempotency_indexes;
+mod m20261027_000080_policy_revision_cursor_sequences;
+mod m20261027_000081_transition_intervention_required_state;
+mod m20261027_000082_gc_candidate_claims;
+mod m20261027_000083_artifact_permission_registration_status;
+mod m20261027_000084_module_operation_result_snapshot;
+mod m20261027_000085_artifact_ui_resources;
+mod m20261027_000086_gc_candidate_platform_discovery_policy;
+mod m20261027_000087_executor_pools;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -149,6 +160,17 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261022_000057_admitted_oci_releases::Migration),
         Box::new(m20261022_000058_module_source_objects::Migration),
         Box::new(m20261022_000059_module_operations_tool::Migration),
+        Box::new(m20261027_000077_executor_readiness_validity::Migration),
+        Box::new(m20261027_000078_registry_release_unyank_operations::Migration),
+        Box::new(m20261027_000079_module_operation_idempotency_indexes::Migration),
+        Box::new(m20261027_000080_policy_revision_cursor_sequences::Migration),
+        Box::new(m20261027_000081_transition_intervention_required_state::Migration),
+        Box::new(m20261027_000082_gc_candidate_claims::Migration),
+        Box::new(m20261027_000083_artifact_permission_registration_status::Migration),
+        Box::new(m20261027_000084_module_operation_result_snapshot::Migration),
+        Box::new(m20261027_000085_artifact_ui_resources::Migration),
+        Box::new(m20261027_000086_gc_candidate_platform_discovery_policy::Migration),
+        Box::new(m20261027_000087_executor_pools::Migration),
     ]
 }
 
@@ -236,6 +258,25 @@ pub(crate) async fn protect_artifact_data_namespace_writes(
     Ok(())
 }
 
+pub(crate) async fn drop_artifact_data_namespace_write_guard(
+    manager: &sea_orm_migration::SchemaManager<'_>,
+    table: &str,
+) -> Result<(), sea_orm::DbErr> {
+    use sea_orm::ConnectionTrait;
+
+    use crate::backend::SupportedBackend;
+    let table = artifact_data_storage_table(table)?;
+    // SQLite drops table-owned triggers with the table; PostgreSQL also needs
+    // the function removed after its table and trigger have been dropped.
+    if SupportedBackend::new(manager.get_database_backend())? == SupportedBackend::Postgres {
+        manager
+            .get_connection()
+            .execute_unprepared(&format!("DROP FUNCTION {table}_namespace_write_guard()"))
+            .await?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
@@ -272,23 +313,4 @@ mod tests {
             "migration ordinals must be unique: {ordinals:?}"
         );
     }
-}
-
-pub(crate) async fn drop_artifact_data_namespace_write_guard(
-    manager: &sea_orm_migration::SchemaManager<'_>,
-    table: &str,
-) -> Result<(), sea_orm::DbErr> {
-    use sea_orm::ConnectionTrait;
-
-    use crate::backend::SupportedBackend;
-    let table = artifact_data_storage_table(table)?;
-    // SQLite drops table-owned triggers with the table; PostgreSQL also needs
-    // the function removed after its table and trigger have been dropped.
-    if SupportedBackend::new(manager.get_database_backend())? == SupportedBackend::Postgres {
-        manager
-            .get_connection()
-            .execute_unprepared(&format!("DROP FUNCTION {table}_namespace_write_guard()"))
-            .await?;
-    }
-    Ok(())
 }

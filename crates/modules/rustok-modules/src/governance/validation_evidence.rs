@@ -51,7 +51,7 @@ pub(crate) async fn pass_owner_evidence_validation_stage(
             format!(
                 "SELECT id, status, attempt_number, queue_reason, runner_kind \
                  FROM registry_validation_stages WHERE request_id = {} AND stage_key = {} \
-                 ORDER BY attempt_number DESC, created_at DESC LIMIT 1",
+                 ORDER BY attempt_number DESC, created_at DESC, id DESC LIMIT 1",
                 mark(1),
                 mark(2),
             ),

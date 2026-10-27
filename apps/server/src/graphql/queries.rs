@@ -85,9 +85,9 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
                 "Module recovery command identity is invalid",
             )
         }
-        ModuleOperationRecoveryError::InvalidIdempotencyKey => {
+        ModuleOperationRecoveryError::InvalidCommandContext => {
             <FieldError as GraphQLError>::bad_user_input(
-                "Module operation idempotency key is invalid",
+                "Module operation command context is invalid",
             )
         }
         ModuleOperationRecoveryError::NotRetryable(reason) => {
@@ -125,7 +125,7 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
         }),
         ModuleOperationRecoveryError::RevisionConflict { expected, current } => FieldError::new(
             format!(
-                "Static module lifecycle changed since revision {expected}; current revision is {current}",
+                "Module lifecycle changed since revision {expected}; current revision is {current}",
             ),
         )
         .extend_with(|_, ext| {
@@ -135,9 +135,16 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
             ext.set("current_revision", current);
         }),
         ModuleOperationRecoveryError::OperationInProgress => {
-            FieldError::new("A static module lifecycle operation is already active")
+            FieldError::new("A module lifecycle operation is already active")
                 .extend_with(|_, ext| {
                     ext.set("code", "MODULE_LIFECYCLE_OPERATION_IN_PROGRESS");
+                    ext.set("retryable_issue", false);
+                })
+        }
+        ModuleOperationRecoveryError::ClaimLost => {
+            FieldError::new("Module lifecycle claim was lost; reload the current module state")
+                .extend_with(|_, ext| {
+                    ext.set("code", "MODULE_LIFECYCLE_CLAIM_LOST");
                     ext.set("retryable_issue", false);
                 })
         }
@@ -1179,7 +1186,8 @@ impl RootQuery {
             .map(Into::into))
     }
 
-    /// Query all active (non-terminal) governed module release transitions.
+    /// Query all unresolved governed module release transitions, including
+    /// transitions waiting for explicit operator intervention.
     async fn active_module_transitions(
         &self,
         ctx: &Context<'_>,

@@ -45,10 +45,8 @@ impl Model {
     pub fn supports_country(&self, country_code: &str) -> bool {
         let code = country_code.trim();
         if let Some(list) = self.countries.as_array() {
-            list.iter().any(|val| {
-                val.as_str()
-                    .is_some_and(|c| c.eq_ignore_ascii_case(code))
-            })
+            list.iter()
+                .any(|val| val.as_str().is_some_and(|c| c.eq_ignore_ascii_case(code)))
         } else {
             false
         }

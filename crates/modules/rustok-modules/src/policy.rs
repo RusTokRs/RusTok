@@ -6,15 +6,18 @@ use std::{
 use async_trait::async_trait;
 use rustok_api::{
     ModuleEffectivePolicyDecisionView, ModuleEffectivePolicyDenialReasonView,
-    ModuleEffectivePolicyView, manifest_hash::hash_manifest,
+    ModuleEffectivePolicyView, is_valid_module_slug, manifest_hash::canonical_json_bytes,
 };
-use semver::{Version, VersionReq};
+use semver::Version;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+use crate::artifact::parse_module_version_requirement;
 use crate::installation::valid_digest;
 use crate::{
-    ArtifactPayloadKind, ModuleArtifactRegistryReleaseStatus, ModuleArtifactSecuritySnapshot,
+    ArtifactExecutionAdmission, ArtifactInstallationTarget, ArtifactPayloadKind,
+    ArtifactReleaseRef, ModuleArtifactRegistryReleaseStatus, ModuleArtifactSecuritySnapshot,
     ModuleArtifactSecurityStatus, ModuleDefinitionCatalog, ModuleDefinitionKind,
     ModuleDefinitionSource, ModuleDependencyConstraint, ModuleInstallationScope,
 };
@@ -275,6 +278,8 @@ pub enum ModuleEffectivePolicyError {
     RevisionEncoding(String),
     #[error("effective module policy cache identity is invalid: {0}")]
     InvalidCacheIdentity(String),
+    #[error("effective module policy snapshot is invalid: {0}")]
+    InvalidPolicySnapshot(String),
     #[error("effective module policy tenant overrides contain a duplicate entry for module `{0}`")]
     DuplicateTenantOverride(String),
     #[error("effective module policy runtime inputs contain a duplicate entry for module `{0}`")]
@@ -291,9 +296,10 @@ pub enum ModuleEffectivePolicyError {
 
 /// One owner transition delivered to a revision-aware outbox consumer. Hashes
 /// are identities, not sortable clocks; consumers apply a transition
-/// incrementally only when the predecessor matches their durable cursor, and
-/// reload the full policy snapshot when the gate reports a gap
-/// (`ModulePolicyRevisionApplyOutcome::ResyncRequired`).
+/// incrementally only when the predecessor matches their durable cursor. A
+/// gap reports `ModulePolicyRevisionApplyOutcome::ResyncRequired` without
+/// moving the cursor: the consumer must explicitly resync from a full policy
+/// snapshot before any later incremental transition can be trusted.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModulePolicyRevisionTransition {
@@ -310,9 +316,9 @@ pub enum ModulePolicyRevisionApplyOutcome {
     /// The successor is already the cursor; nothing changed.
     Duplicate,
     /// The predecessor did not match the cursor (at least one transition was
-    /// missed). The cursor advanced to the successor, but the consumer must
-    /// reload the full policy snapshot at that revision instead of trusting
-    /// incremental state.
+    /// missed). The cursor did not move. The consumer must reload the full
+    /// policy snapshot and explicitly resync the cursor to that snapshot
+    /// instead of trusting incremental state.
     ResyncRequired,
 }
 
@@ -320,6 +326,10 @@ pub enum ModulePolicyRevisionApplyOutcome {
 #[serde(deny_unknown_fields)]
 pub struct ModulePolicyRevisionGate {
     current_revision: Option<String>,
+    /// Durable cursor generation when the caller loaded one. Revision-only
+    /// validation contexts do not invent a sequence for an existing digest.
+    #[serde(default)]
+    current_sequence: Option<u64>,
 }
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
@@ -330,6 +340,10 @@ pub enum ModulePolicyRevisionGateError {
     InvalidNextRevision,
     #[error("policy revision transition is a no-op")]
     NoopTransition,
+    #[error("policy revision cursor sequence does not match its revision state")]
+    InvalidSequenceState,
+    #[error("policy revision cursor sequence is exhausted")]
+    SequenceExhausted,
 }
 
 impl ModulePolicyRevisionGate {
@@ -340,11 +354,45 @@ impl ModulePolicyRevisionGate {
         {
             return Err(ModulePolicyRevisionGateError::InvalidPreviousRevision);
         }
-        Ok(Self { current_revision })
+        let current_sequence = if current_revision.is_none() {
+            Some(0)
+        } else {
+            None
+        };
+        Ok(Self {
+            current_revision,
+            current_sequence,
+        })
+    }
+
+    /// Builds a gate from one durable cursor state. An empty cursor is the
+    /// sequence-zero state; a populated pre-sequencing cursor may also carry
+    /// sequence zero and receives sequence one on its next durable advance.
+    pub fn with_sequence(
+        current_revision: Option<String>,
+        current_sequence: u64,
+    ) -> Result<Self, ModulePolicyRevisionGateError> {
+        if current_revision
+            .as_deref()
+            .is_some_and(|revision| !valid_digest(revision))
+        {
+            return Err(ModulePolicyRevisionGateError::InvalidPreviousRevision);
+        }
+        if current_revision.is_none() && current_sequence != 0 {
+            return Err(ModulePolicyRevisionGateError::InvalidSequenceState);
+        }
+        Ok(Self {
+            current_revision,
+            current_sequence: Some(current_sequence),
+        })
     }
 
     pub fn current_revision(&self) -> Option<&str> {
         self.current_revision.as_deref()
+    }
+
+    pub const fn current_sequence(&self) -> Option<u64> {
+        self.current_sequence
     }
 
     pub fn apply(
@@ -368,15 +416,44 @@ impl ModulePolicyRevisionGate {
             return Ok(ModulePolicyRevisionApplyOutcome::Duplicate);
         }
         if self.current_revision.as_deref() != transition.previous_revision.as_deref() {
-            // Gap: at least one transition was missed, so incremental state
-            // can no longer be trusted. Advance to the successor and tell the
-            // consumer to reload the full snapshot; rejecting the transition
-            // instead would wedge the cursor permanently.
-            self.current_revision = Some(transition.next_revision.clone());
+            // A gap proves this gate did not observe the owner's immediately
+            // preceding state. Do not fabricate continuity by jumping to the
+            // successor: leave both revision and sequence untouched until the
+            // caller explicitly resyncs from a full snapshot.
             return Ok(ModulePolicyRevisionApplyOutcome::ResyncRequired);
         }
-        self.current_revision = Some(transition.next_revision.clone());
+        self.advance_to(transition.next_revision.clone())?;
         Ok(ModulePolicyRevisionApplyOutcome::Applied)
+    }
+
+    /// Explicitly replaces incremental state with a full-snapshot revision.
+    /// Returns `true` only when the revision and known sequence advanced.
+    pub fn resync_to(
+        &mut self,
+        snapshot_revision: &str,
+    ) -> Result<bool, ModulePolicyRevisionGateError> {
+        if !valid_digest(snapshot_revision) {
+            return Err(ModulePolicyRevisionGateError::InvalidNextRevision);
+        }
+        if self.current_revision.as_deref() == Some(snapshot_revision) {
+            return Ok(false);
+        }
+        self.advance_to(snapshot_revision.to_string())?;
+        Ok(true)
+    }
+
+    fn advance_to(&mut self, next_revision: String) -> Result<(), ModulePolicyRevisionGateError> {
+        let next_sequence = match self.current_sequence {
+            Some(current_sequence) => Some(
+                current_sequence
+                    .checked_add(1)
+                    .ok_or(ModulePolicyRevisionGateError::SequenceExhausted)?,
+            ),
+            None => None,
+        };
+        self.current_revision = Some(next_revision);
+        self.current_sequence = next_sequence;
+        Ok(())
     }
 }
 
@@ -407,6 +484,8 @@ pub(crate) struct ModuleEffectivePolicyInstallationFact {
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum ModuleToggleValidationError {
+    #[error("invalid module slug `{0}`")]
+    InvalidModuleSlug(String),
     #[error("unknown module")]
     UnknownModule,
     #[error("module `{0}` is a core platform module and cannot be disabled")]
@@ -438,6 +517,11 @@ pub fn validate_module_toggle(
     module_slug: &str,
     enabled: bool,
 ) -> Result<(), ModuleToggleValidationError> {
+    if !is_valid_module_slug(module_slug) {
+        return Err(ModuleToggleValidationError::InvalidModuleSlug(
+            module_slug.to_string(),
+        ));
+    }
     let Some(module) = catalog.get(module_slug) else {
         return Err(ModuleToggleValidationError::UnknownModule);
     };
@@ -500,12 +584,44 @@ pub(crate) struct ModuleEffectivePolicyQuery<'a> {
 }
 
 /// The resolved module set used by lifecycle, routing, and installer adapters.
+///
+/// Deserialization re-establishes the aggregate's internal invariants: the
+/// revision is a digest, every decision is keyed by and bound to that same
+/// revision, enabled decisions carry no denial reasons, disabled decisions
+/// explain themselves, and `enabled_modules` is exactly the enabled
+/// decision set. Catalog membership and revision provenance remain owner
+/// concerns: consumers that need provenance must resolve through the policy
+/// owner or compare against its current revision identity.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, try_from = "ModuleEffectivePolicyWire")]
 pub struct ModuleEffectivePolicy {
     policy_revision: String,
     enabled_modules: BTreeSet<String>,
     decisions: BTreeMap<String, ModuleEffectivePolicyDecision>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ModuleEffectivePolicyWire {
+    policy_revision: String,
+    enabled_modules: BTreeSet<String>,
+    decisions: BTreeMap<String, ModuleEffectivePolicyDecision>,
+}
+
+impl TryFrom<ModuleEffectivePolicyWire> for ModuleEffectivePolicy {
+    type Error = String;
+
+    fn try_from(wire: ModuleEffectivePolicyWire) -> Result<Self, Self::Error> {
+        let policy = Self {
+            policy_revision: wire.policy_revision,
+            enabled_modules: wire.enabled_modules,
+            decisions: wire.decisions,
+        };
+        policy
+            .validate_invariants()
+            .map_err(|error| error.to_string())?;
+        Ok(policy)
+    }
 }
 
 impl<'a> ModuleEffectivePolicyQuery<'a> {
@@ -1026,12 +1142,12 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
                     co_requisites
                         .iter()
                         .filter(|co_requisite| co_requisite.module_slug == definition.slug)
-                        .map(|co_requisite| {
-                            let provider = self
-                                .catalog
-                                .get(&co_requisite.required_module_slug)
-                                .expect("co-requisite provider was normalized against the catalog");
-                            ModuleEffectivePolicyFact::CoRequisite {
+                        .filter_map(|co_requisite| {
+                            // Normalization proved the provider exists; a
+                            // missing provider omits the explanatory fact
+                            // while compatibility still fails closed.
+                            let provider = self.catalog.get(&co_requisite.required_module_slug)?;
+                            Some(ModuleEffectivePolicyFact::CoRequisite {
                                 module_slug: co_requisite.required_module_slug.clone(),
                                 version_requirement: co_requisite.version_requirement.clone(),
                                 version: provider.version.clone(),
@@ -1040,7 +1156,7 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
                                     self.catalog,
                                     co_requisite,
                                 ),
-                            }
+                            })
                         }),
                 );
                 let module_denial_reasons = denial_reasons
@@ -1066,11 +1182,13 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
             })
             .collect();
 
-        Ok(ModuleEffectivePolicy {
+        let policy = ModuleEffectivePolicy {
             policy_revision,
             enabled_modules: enabled,
             decisions,
-        })
+        };
+        policy.validate_invariants()?;
+        Ok(policy)
     }
 }
 
@@ -1079,10 +1197,66 @@ impl ModuleEffectivePolicy {
         &self.policy_revision
     }
 
+    pub fn validate_invariants(&self) -> Result<(), ModuleEffectivePolicyError> {
+        let invalid =
+            |message: &str| ModuleEffectivePolicyError::InvalidPolicySnapshot(message.to_string());
+        if !valid_digest(&self.policy_revision) {
+            return Err(invalid("policy_revision must be a sha256 digest"));
+        }
+
+        let mut enabled_decisions = BTreeSet::new();
+        for (slug, decision) in &self.decisions {
+            if !is_valid_module_slug(slug) || decision.module_slug != *slug {
+                return Err(invalid(
+                    "every decision key must be a valid module slug matching its decision",
+                ));
+            }
+            if decision.policy_revision != self.policy_revision {
+                return Err(invalid(
+                    "every decision must be bound to the aggregate policy revision",
+                ));
+            }
+            if decision.facts.is_empty() {
+                return Err(invalid("every decision must carry policy facts"));
+            }
+            if decision.enabled {
+                if !decision.denial_reasons.is_empty() {
+                    return Err(invalid("enabled decisions must not carry denial reasons"));
+                }
+                enabled_decisions.insert(slug.clone());
+            } else if decision.denial_reasons.is_empty() {
+                return Err(invalid("disabled decisions must carry a denial reason"));
+            }
+            for reason in &decision.denial_reasons {
+                let referenced_slug = match reason {
+                    ModuleEffectivePolicyDenialReason::DependencyUnavailable { module_slug }
+                    | ModuleEffectivePolicyDenialReason::DependencyVersionMismatch {
+                        module_slug,
+                    }
+                    | ModuleEffectivePolicyDenialReason::CoRequisiteUnavailable { module_slug }
+                    | ModuleEffectivePolicyDenialReason::CoRequisiteVersionMismatch {
+                        module_slug,
+                    } => Some(module_slug),
+                    _ => None,
+                };
+                if referenced_slug.is_some_and(|module_slug| !is_valid_module_slug(module_slug)) {
+                    return Err(invalid("denial reasons must reference valid module slugs"));
+                }
+            }
+        }
+        if enabled_decisions != self.enabled_modules {
+            return Err(invalid(
+                "enabled_modules must exactly match the enabled decision set",
+            ));
+        }
+        Ok(())
+    }
+
     pub fn cache_identity(
         &self,
         tenant_id: uuid::Uuid,
     ) -> Result<EffectivePolicyCacheIdentity, ModuleEffectivePolicyError> {
+        self.validate_invariants()?;
         EffectivePolicyCacheIdentity::new(tenant_id, self.policy_revision.clone())
     }
 
@@ -1090,6 +1264,81 @@ impl ModuleEffectivePolicy {
         self.enabled_modules.contains(module_slug)
     }
 
+    /// Mints the opaque execution admission required by artifact binding
+    /// dispatch, or returns `None` when this policy does not admit the
+    /// exact release/target for the tenant.
+    ///
+    /// When the decision carries artifact-installation facts (the
+    /// artifact-aware catalog path), the token is minted only for the
+    /// installation and release digest those facts selected. When the
+    /// decision came from a static-only catalog (no artifact facts), the
+    /// token binds the requested release/target to the enabled slug
+    /// decision; the production executor still resolves the exact or
+    /// current installation and re-checks the *current* policy before
+    /// executing, so this token never substitutes for installation
+    /// admission or a fresh policy decision.
+    pub fn admit_artifact_execution(
+        &self,
+        tenant_id: uuid::Uuid,
+        release: &ArtifactReleaseRef,
+        target: ArtifactInstallationTarget,
+    ) -> Option<ArtifactExecutionAdmission> {
+        if tenant_id.is_nil() {
+            return None;
+        }
+        let decision = self.decisions.get(&release.slug)?;
+        if !decision.enabled || !decision.denial_reasons.is_empty() {
+            return None;
+        }
+        let mut saw_installation_fact = false;
+        let mut installation_fact_matches = false;
+        for fact in &decision.facts {
+            if let ModuleEffectivePolicyFact::ArtifactInstallation {
+                installation_id,
+                scope,
+                release_digest,
+                ..
+            } = fact
+            {
+                saw_installation_fact = true;
+                let scope_matches = match scope {
+                    ModuleInstallationScope::Platform => true,
+                    ModuleInstallationScope::Tenant {
+                        tenant_id: scoped_tenant_id,
+                    } => *scoped_tenant_id == tenant_id,
+                };
+                let target_matches = match target {
+                    ArtifactInstallationTarget::CurrentRelease => true,
+                    ArtifactInstallationTarget::ExactInstallation {
+                        installation_id: requested_id,
+                    } => requested_id == *installation_id,
+                };
+                if scope_matches && target_matches && release_digest == &release.digest {
+                    installation_fact_matches = true;
+                }
+            }
+        }
+        if saw_installation_fact && !installation_fact_matches {
+            return None;
+        }
+        Some(ArtifactExecutionAdmission::effective_policy(
+            tenant_id,
+            release,
+            target,
+            self.policy_revision.clone(),
+        ))
+    }
+
+    /// Returns the stored decision for a catalog module, or `None` when the
+    /// slug was not part of the resolved catalog. Prefer this accessor when
+    /// "absent from catalog" must stay distinguishable from "denied".
+    pub fn get_decision(&self, module_slug: &str) -> Option<&ModuleEffectivePolicyDecision> {
+        self.decisions.get(module_slug)
+    }
+
+    /// Total decision lookup for view projection: slugs absent from the
+    /// resolved catalog yield a synthesized disabled decision whose only
+    /// denial reason is `UnknownModule` and whose facts are empty.
     pub fn decision(&self, module_slug: &str) -> ModuleEffectivePolicyDecision {
         self.decisions
             .get(module_slug)
@@ -1175,9 +1424,54 @@ struct EffectivePolicyRevisionInput<'a> {
 fn effective_policy_revision(
     input: &EffectivePolicyRevisionInput<'_>,
 ) -> Result<String, ModuleEffectivePolicyError> {
-    let digest = hash_manifest(input)
-        .map_err(|error| ModuleEffectivePolicyError::RevisionEncoding(error.to_string()))?;
-    Ok(format!("sha256:{digest}"))
+    // Byte-for-byte equivalent to `hash_manifest(input)`: the canonical
+    // JSON form is one compact object whose keys are sorted recursively.
+    // The catalog segment is spliced from the catalog's cached canonical
+    // bytes instead of re-serializing every admitted schema document on
+    // each resolve; a standalone canonical object spliced as a field
+    // value is identical to the same value canonicalized in place,
+    // because key sorting is purely structural. The remaining segments
+    // are small per-call values and are canonicalized here. Outer keys
+    // below are in the canonical (lexicographic) order; `None` segments
+    // canonicalize to `null`, exactly as inside the whole-input form.
+    let encode =
+        |error: serde_json::Error| ModuleEffectivePolicyError::RevisionEncoding(error.to_string());
+    let catalog_bytes = input
+        .catalog
+        .canonical_json_bytes_cached()
+        .map_err(encode)?;
+    let channel_bytes = canonical_json_bytes(&input.channel).map_err(encode)?;
+    let co_requisites_bytes = canonical_json_bytes(&input.co_requisites).map_err(encode)?;
+    let contract_bytes = canonical_json_bytes(&input.contract).map_err(encode)?;
+    let default_enabled_bytes = canonical_json_bytes(&input.default_enabled).map_err(encode)?;
+    let maintenance_bytes = canonical_json_bytes(&input.maintenance).map_err(encode)?;
+    let runtime_inputs_bytes = canonical_json_bytes(&input.runtime_inputs).map_err(encode)?;
+    let tenant_overrides_bytes = canonical_json_bytes(&input.tenant_overrides).map_err(encode)?;
+    let segments: [(&str, &[u8]); 8] = [
+        ("catalog", catalog_bytes.as_slice()),
+        ("channel", channel_bytes.as_slice()),
+        ("co_requisites", co_requisites_bytes.as_slice()),
+        ("contract", contract_bytes.as_slice()),
+        ("default_enabled", default_enabled_bytes.as_slice()),
+        ("maintenance", maintenance_bytes.as_slice()),
+        ("runtime_inputs", runtime_inputs_bytes.as_slice()),
+        ("tenant_overrides", tenant_overrides_bytes.as_slice()),
+    ];
+    let mut canonical = Vec::new();
+    canonical.push(b'{');
+    for (index, (key, segment)) in segments.iter().enumerate() {
+        if index > 0 {
+            canonical.push(b',');
+        }
+        canonical.extend(serde_json::to_vec(key).map_err(encode)?);
+        canonical.push(b':');
+        canonical.extend_from_slice(segment);
+    }
+    canonical.push(b'}');
+    Ok(format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(&canonical))
+    ))
 }
 
 fn normalize_corequisites(
@@ -1189,9 +1483,9 @@ fn normalize_corequisites(
         let module_slug = co_requisite.module_slug.trim().to_string();
         let required_module_slug = co_requisite.required_module_slug.trim().to_string();
         let version_requirement = co_requisite.version_requirement.trim().to_string();
-        if !valid_text(&module_slug, 128) || !valid_text(&required_module_slug, 128) {
+        if !is_valid_module_slug(&module_slug) || !is_valid_module_slug(&required_module_slug) {
             return Err(ModuleEffectivePolicyError::InvalidCoRequisiteInput(
-                "module slugs must be non-empty and at most 128 characters".to_string(),
+                "module slugs must use the canonical module slug grammar".to_string(),
             ));
         }
         if module_slug == required_module_slug {
@@ -1220,19 +1514,17 @@ fn normalize_corequisites(
                 ),
             ));
         }
-        if !version_requirement.is_empty() {
-            VersionReq::parse(&version_requirement).map_err(|_| {
-                ModuleEffectivePolicyError::InvalidCoRequisiteInput(format!(
-                    "module '{module_slug}' co-requisite '{required_module_slug}' has invalid version requirement '{version_requirement}'"
-                ))
-            })?;
-            Version::parse(&provider.version).map_err(|_| {
-                ModuleEffectivePolicyError::InvalidCoRequisiteInput(format!(
-                    "co-requisite provider '{required_module_slug}' has invalid module version '{}'",
-                    provider.version
-                ))
-            })?;
-        }
+        parse_module_version_requirement(&version_requirement).map_err(|_| {
+            ModuleEffectivePolicyError::InvalidCoRequisiteInput(format!(
+                "module '{module_slug}' co-requisite '{required_module_slug}' has invalid version requirement '{version_requirement}'"
+            ))
+        })?;
+        Version::parse(&provider.version).map_err(|_| {
+            ModuleEffectivePolicyError::InvalidCoRequisiteInput(format!(
+                "co-requisite provider '{required_module_slug}' has invalid module version '{}'",
+                provider.version
+            ))
+        })?;
         let key = (module_slug.clone(), required_module_slug.clone());
         if let Some(existing) = normalized.get(&key) {
             if existing != &version_requirement {
@@ -1264,35 +1556,35 @@ fn corequisite_version_compatible(
     catalog: &ModuleDefinitionCatalog,
     co_requisite: &ModuleEffectivePolicyCoRequisite,
 ) -> bool {
-    if co_requisite.version_requirement.is_empty() {
-        return true;
-    }
-    let provider = catalog
-        .get(&co_requisite.required_module_slug)
-        .expect("co-requisite provider was normalized against the catalog");
-    let requirement = VersionReq::parse(&co_requisite.version_requirement)
-        .expect("co-requisite version requirement was normalized");
-    let version =
-        Version::parse(&provider.version).expect("co-requisite provider version was normalized");
+    // `normalize_corequisites` proves provider presence and parseability
+    // before evaluation; anything else fails closed as incompatible
+    // instead of panicking on a non-local invariant.
+    let Some(provider) = catalog.get(&co_requisite.required_module_slug) else {
+        return false;
+    };
+    let Ok(requirement) = parse_module_version_requirement(&co_requisite.version_requirement)
+    else {
+        return false;
+    };
+    let Ok(version) = Version::parse(&provider.version) else {
+        return false;
+    };
     requirement.matches(&version)
 }
 
 /// Returns whether the catalog definition of an ordinary dependency satisfies
-/// the declared version requirement. An empty requirement accepts any
-/// version; unparsable requirements or versions fail closed (the catalog
-/// validates both at construction, so this is defense in depth).
+/// the declared version requirement. `*` accepts any version; empty or
+/// unparsable requirements and versions fail closed. The catalog validates
+/// requirements at construction, so the parse here is defense in depth.
 fn dependency_version_satisfied(
     catalog: &ModuleDefinitionCatalog,
     dependency: &ModuleDependencyConstraint,
 ) -> bool {
-    if dependency.version_requirement.is_empty() {
-        return true;
-    }
     let Some(provider) = catalog.get(&dependency.slug) else {
         return false;
     };
     let (Ok(requirement), Ok(version)) = (
-        VersionReq::parse(&dependency.version_requirement),
+        parse_module_version_requirement(&dependency.version_requirement),
         Version::parse(&provider.version),
     ) else {
         return false;
@@ -1323,9 +1615,9 @@ fn validate_channel_input(
     }
     let mut seen = BTreeSet::new();
     for binding in &channel.bindings {
-        if !valid_text(&binding.module_slug, 128) {
+        if !is_valid_module_slug(&binding.module_slug) {
             return Err(ModuleEffectivePolicyError::InvalidChannelInput(
-                "channel module slugs must be non-empty and at most 128 characters".to_string(),
+                "channel module slugs must use the canonical module slug grammar".to_string(),
             ));
         }
         if !seen.insert(binding.module_slug.as_str()) {
@@ -1356,10 +1648,9 @@ fn validate_maintenance_input(
     if let Some(affected_modules) = &maintenance.affected_modules {
         let mut seen = BTreeSet::new();
         for module_slug in affected_modules {
-            if !valid_text(module_slug, 128) {
+            if !is_valid_module_slug(module_slug) {
                 return Err(ModuleEffectivePolicyError::InvalidMaintenanceInput(
-                    "affected module slugs must be non-empty and at most 128 characters"
-                        .to_string(),
+                    "affected module slugs must use the canonical module slug grammar".to_string(),
                 ));
             }
             if !seen.insert(module_slug.as_str()) {
@@ -1599,6 +1890,7 @@ mod tests {
             Ok(ModulePolicyRevisionApplyOutcome::Applied)
         );
         assert_eq!(gate.current_revision(), Some(first.as_str()));
+        assert_eq!(gate.current_sequence(), Some(1));
         assert_eq!(
             gate.apply(&ModulePolicyRevisionTransition {
                 previous_revision: None,
@@ -1606,18 +1898,25 @@ mod tests {
             }),
             Ok(ModulePolicyRevisionApplyOutcome::Duplicate)
         );
-        // A transition whose predecessor was never seen is a gap: the cursor
-        // advances to the successor and the consumer must resync from a full
-        // snapshot instead of wedging at the last applied revision forever.
+        assert_eq!(gate.current_sequence(), Some(1));
+        // A transition whose predecessor was never seen is a gap. Neither the
+        // revision nor the sequence may move until a full snapshot is
+        // explicitly resynced.
         assert_eq!(
             gate.apply(&ModulePolicyRevisionTransition {
-                previous_revision: Some(third),
+                previous_revision: Some(third.clone()),
                 next_revision: second.clone(),
             }),
             Ok(ModulePolicyRevisionApplyOutcome::ResyncRequired)
         );
+        assert_eq!(gate.current_revision(), Some(first.as_str()));
+        assert_eq!(gate.current_sequence(), Some(1));
+        assert_eq!(gate.resync_to(&second), Ok(true));
         assert_eq!(gate.current_revision(), Some(second.as_str()));
-        // The skipped link now names an already-covered successor.
+        assert_eq!(gate.current_sequence(), Some(2));
+        assert_eq!(gate.resync_to(&second), Ok(false));
+        assert_eq!(gate.current_sequence(), Some(2));
+        // The skipped link now names the explicitly resynced successor.
         assert_eq!(
             gate.apply(&ModulePolicyRevisionTransition {
                 previous_revision: Some(first),
@@ -1626,6 +1925,15 @@ mod tests {
             Ok(ModulePolicyRevisionApplyOutcome::Duplicate)
         );
         assert_eq!(gate.current_revision(), Some(second.as_str()));
+        assert_eq!(gate.current_sequence(), Some(2));
+        assert_eq!(
+            gate.apply(&ModulePolicyRevisionTransition {
+                previous_revision: Some(second.clone()),
+                next_revision: third,
+            }),
+            Ok(ModulePolicyRevisionApplyOutcome::Applied)
+        );
+        assert_eq!(gate.current_sequence(), Some(3));
 
         let error = gate
             .apply(&ModulePolicyRevisionTransition {
@@ -1833,6 +2141,28 @@ mod tests {
             } if module_slug == "inventory"
         )));
         assert_eq!(view.enabled_module_slugs(), vec!["taxonomy"]);
+    }
+
+    #[test]
+    fn policy_deserialization_rejects_inconsistent_decisions() {
+        let catalog = ModuleDefinitionCatalog::from_static_registry(
+            &ModuleRegistry::new().register(ModulesModule),
+        )
+        .expect("catalog");
+        let policy = ModuleEffectivePolicyQuery::new(&catalog, ["modules".to_string()], [], [])
+            .execute()
+            .expect("policy");
+        let encoded = serde_json::to_value(&policy).expect("encode policy");
+        let decoded: crate::ModuleEffectivePolicy =
+            serde_json::from_value(encoded.clone()).expect("decode owner policy");
+        assert_eq!(decoded, policy);
+
+        let mut inconsistent = encoded;
+        inconsistent["enabled_modules"] = serde_json::json!([]);
+        assert!(
+            serde_json::from_value::<crate::ModuleEffectivePolicy>(inconsistent).is_err(),
+            "enabled_modules must match enabled decisions"
+        );
     }
 
     #[test]
@@ -2062,6 +2392,25 @@ mod tests {
                     module_slug: "provider".to_string()
                 }
             ]
+        );
+    }
+
+    #[test]
+    fn toggle_validation_rejects_malformed_slugs_before_catalog_lookup() {
+        let catalog = versioned_dependency_catalog();
+
+        for malformed in ["", " consumer", "Consumer", "bad slug", "bad/slug"] {
+            assert_eq!(
+                validate_module_toggle(&catalog, &HashSet::new(), malformed, true),
+                Err(ModuleToggleValidationError::InvalidModuleSlug(
+                    malformed.to_string()
+                )),
+                "slug {malformed:?} must be rejected as malformed, not unknown"
+            );
+        }
+        assert_eq!(
+            validate_module_toggle(&catalog, &HashSet::new(), "absent_module", true),
+            Err(ModuleToggleValidationError::UnknownModule)
         );
     }
 

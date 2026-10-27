@@ -153,7 +153,10 @@ pub enum ModuleCompositionBuildAdmission<T> {
 
 #[derive(Serialize)]
 struct ModuleCompositionOperationReceiptRequest<'a, R> {
-    context: &'a ModuleCommandContext,
+    // The authenticated actor is the replay-principal boundary. Trace and
+    // correlation values from the command context are observability evidence
+    // and must not turn an otherwise identical retry into a conflict.
+    actor_id: Uuid,
     expected_revision: i64,
     request: &'a R,
 }
@@ -227,7 +230,7 @@ impl SeaOrmModuleCompositionService {
     {
         validate_operation(operation)?;
         let receipt_request = ModuleCompositionOperationReceiptRequest {
-            context: &operation.context,
+            actor_id: operation.context.actor_id,
             expected_revision: operation.expected_revision,
             request: operation_request,
         };
@@ -840,12 +843,19 @@ mod tests {
 
         let mut changed_evidence = initial_operation.clone();
         changed_evidence.context.trace_id = "test:changed-composition-trace".to_string();
-        assert!(matches!(
-            service
-                .admit_build_operation::<i64, _>(&changed_evidence, &request)
-                .await,
-            Err(ModuleCompositionError::OperationReceipt(_))
-        ));
+        changed_evidence.context.correlation_id = Uuid::new_v4();
+        let changed_observability_replay = service
+            .admit_build_operation::<i64, _>(&changed_evidence, &request)
+            .await
+            .expect("changed observability context replays composition operation");
+        let ModuleCompositionBuildAdmission::Replay(changed_observability_replay) =
+            changed_observability_replay
+        else {
+            panic!("changed observability context must replay the completed operation");
+        };
+        assert_eq!(changed_observability_replay.snapshot, updated.snapshot);
+        assert_eq!(changed_observability_replay.output, updated.output);
+        assert!(changed_observability_replay.replayed);
 
         assert!(matches!(
             {

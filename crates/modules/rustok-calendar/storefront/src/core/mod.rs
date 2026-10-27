@@ -11,11 +11,11 @@
 //! Pure Rust view-models and input validation for Calendar & Appointment Scheduling storefront UI.
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CalendarStorefrontViewModel {
+pub struct CalendarViewModel {
     pub title: String,
 }
 
-impl CalendarStorefrontViewModel {
+impl CalendarViewModel {
     pub fn new(title: String) -> Self {
         Self { title }
     }
@@ -27,7 +27,7 @@ mod tests {
 
     #[test]
     fn test_storefront_view_model() {
-        let vm = CalendarStorefrontViewModel::new("Sample Title".to_string());
+        let vm = CalendarViewModel::new("Sample Title".to_string());
         assert_eq!(vm.title, "Sample Title");
     }
 }

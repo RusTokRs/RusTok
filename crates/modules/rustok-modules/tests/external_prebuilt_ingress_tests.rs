@@ -386,6 +386,27 @@ async fn test_external_prebuilt_admission_success() {
     assert_eq!(stored.artifact_origin, "external_prebuilt");
     assert!(stored.native_promotion_denied);
 
+    // A stored descriptor is revalidated and bound back to the admission
+    // row identity before it can be returned as an ingress receipt again.
+    let mut mismatched_descriptor = package.descriptor.clone();
+    mismatched_descriptor.slug = "different_module".to_string();
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "UPDATE module_admitted_oci_releases SET descriptor_json = ?1 WHERE release_digest = ?2",
+        vec![
+            serde_json::to_string(&mismatched_descriptor)
+                .expect("mismatched descriptor JSON")
+                .into(),
+            manifest_digest.clone().into(),
+        ],
+    ))
+    .await
+    .expect("corrupt stored descriptor fixture");
+    assert!(matches!(
+        service.get_ingress_record(&manifest_digest).await,
+        Err(ExternalPrebuiltIngressError::InvalidDescriptor(_))
+    ));
+
     // Verify database row in module_admitted_oci_releases has artifact_origin = 'external_prebuilt'
     let row = db
         .query_one_raw(Statement::from_sql_and_values(
@@ -681,14 +702,20 @@ async fn test_external_prebuilt_idempotent_replay_and_conflict() {
     );
     assert_eq!(receipt1.payload_digest, receipt2.payload_digest);
 
-    // Trace/correlation evidence is part of the command fingerprint, even if
-    // the same global release has already been admitted.
-    let mut changed_trace = command1.clone();
-    changed_trace.context.trace_id = "trace-idem-2".to_string();
-    assert!(matches!(
-        service.admit_external_prebuilt(changed_trace).await,
-        Err(ExternalPrebuiltIngressError::IdempotencyConflict(key, _)) if key == idempotency_key
-    ));
+    // Trace and correlation are observability evidence, not semantic
+    // identity: a retry carrying fresh values replays the admitted release.
+    let mut changed_observability = command1.clone();
+    changed_observability.context.trace_id = "trace-idem-2".to_string();
+    changed_observability.context.correlation_id = Uuid::new_v4();
+    let changed_observability_receipt = service
+        .admit_external_prebuilt(changed_observability)
+        .await
+        .expect("changed observability context should replay");
+    assert!(!changed_observability_receipt.cas_published);
+    assert_eq!(
+        changed_observability_receipt.payload_digest,
+        receipt1.payload_digest
+    );
 
     // Independently verified policy facts are part of the same immutable
     // replay identity.

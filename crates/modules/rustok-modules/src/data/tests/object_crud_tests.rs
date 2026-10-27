@@ -168,16 +168,80 @@ async fn object_delete_is_revisioned_idempotent_and_queues_private_bytes() {
     let row = database
         .query_one_raw(Statement::from_string(
             DbBackend::Sqlite,
-            "SELECT COUNT(*) AS candidate_count FROM module_artifact_data_object_gc_candidates"
+            "SELECT storage_key, state, revision, delete_started_at \
+             FROM module_artifact_data_object_gc_candidates"
                 .to_string(),
         ))
         .await
         .expect("query GC candidates")
+        .expect("GC candidate row");
+    let candidate_storage_key: String = row
+        .try_get("", "storage_key")
+        .expect("GC candidate storage key");
+    assert_eq!(
+        row.try_get::<String>("", "state")
+            .expect("GC candidate state"),
+        "queued"
+    );
+    assert_eq!(
+        row.try_get::<i64>("", "revision")
+            .expect("GC candidate revision"),
+        1
+    );
+    assert_eq!(
+        row.try_get::<Option<String>>("", "delete_started_at")
+            .expect("GC candidate delete start"),
+        None
+    );
+    assert!(
+        storage
+            .objects
+            .head(&Path::from(candidate_storage_key.as_str()))
+            .await
+            .is_ok(),
+        "queued object bytes remain until the GC claim commits"
+    );
+
+    let now = chrono::Utc::now();
+    let retention = SnapshotArtifactDataObjectRetentionPolicy::new(
+        now,
+        HashMap::from([(
+            candidate_storage_key.clone(),
+            ArtifactDataObjectRetentionRule {
+                delete_after: now,
+                legal_hold: false,
+                audit_hold: false,
+                rollback_hold: false,
+            },
+        )]),
+    );
+    let gc_result = SeaOrmArtifactDataObjectGcService::new(database.clone(), storage.clone())
+        .sweep_tenant(scope.tenant_id, 10, &retention)
+        .await
+        .expect("sweep queued object bytes");
+    assert_eq!(gc_result.deleted, 1);
+    assert_eq!(gc_result.retained, 0);
+    assert!(
+        storage
+            .objects
+            .head(&Path::from(candidate_storage_key.as_str()))
+            .await
+            .is_err(),
+        "claimed object bytes are deleted before candidate completion is recorded"
+    );
+    let row = database
+        .query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT COUNT(*) AS candidate_count FROM module_artifact_data_object_gc_candidates"
+                .to_string(),
+        ))
+        .await
+        .expect("query completed GC candidates")
         .expect("GC count row");
     assert_eq!(
         row.try_get::<i64>("", "candidate_count")
             .expect("GC candidate count"),
-        1
+        0
     );
     assert!(matches!(
         broker

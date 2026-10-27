@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use sea_orm::{ConnectionTrait, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 use uuid::Uuid;
@@ -9,6 +9,11 @@ use crate::backend::SupportedBackend;
 
 /// Maximum number of attention-needed operations returned per tenant query.
 pub const MAX_FAILED_OPERATIONS_FOR_TENANT: u32 = 200;
+
+/// Maximum number of stale lifecycle operations reconciled by one reaper
+/// invocation. The watchdog repeats bounded passes instead of holding one
+/// unbounded maintenance transaction.
+pub const MAX_STALE_MODULE_OPERATIONS_PER_REAP: usize = 100;
 
 /// Lease granted to a static lifecycle aggregate claim. A claim whose owner
 /// crashed (or never released) may be reclaimed by a later command only
@@ -26,9 +31,10 @@ pub struct ModuleOperationRequest {
     pub trace_id: Option<String>,
     pub correlation_id: String,
     pub idempotency_key: Option<Uuid>,
-    /// Static lifecycle commands bind this precondition into the durable
-    /// idempotency identity. Artifact paths retain no value here because they
-    /// use their own lifecycle aggregate.
+    /// Lifecycle commands bind this precondition into the durable
+    /// idempotency identity. New executor and recovery commands always carry
+    /// a revision; `None` exists only for legacy journal rows and direct
+    /// store callers that predate the unified claim/CAS pipeline.
     pub expected_revision: Option<u64>,
 }
 
@@ -62,12 +68,50 @@ pub struct ModuleOperationSnapshot {
     pub expected_revision: Option<u64>,
     pub error_message: Option<String>,
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Outcome of one bounded stale-operation reconciliation pass.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct StaleModuleOperationReapReport {
+    /// Candidate rows inspected in this pass.
+    pub scanned: usize,
+    /// `Validated`/`Running` rows proven abandoned and moved to
+    /// `orphaned`.
+    pub orphaned: usize,
+    /// `CommittedHookPending` rows whose post-commit hook outcome could not
+    /// be proven because the owning process disappeared; moved to
+    /// `committed_hook_failed` for the existing recovery path.
+    pub committed_hook_unknown: usize,
+    /// Aggregate claims released because their owning operation reached (or
+    /// is being moved to) a terminal status and the claim lease expired.
+    pub released_claims: usize,
+}
+
+impl StaleModuleOperationReapReport {
+    /// Whether this pass changed any operation or aggregate claim. A scan
+    /// that only observed live claims is intentionally not a change.
+    pub const fn has_changes(self) -> bool {
+        self.orphaned > 0 || self.committed_hook_unknown > 0 || self.released_claims > 0
+    }
 }
 
 #[derive(Debug, Error)]
 pub enum ModuleOperationStoreError {
     #[error("module operation store database error: {0}")]
     Database(String),
+    #[error("module operation store unique constraint violation: {0}")]
+    UniqueViolation(String),
+    #[error("module operation `{0}` was not found")]
+    OperationNotFound(Uuid),
+    #[error(
+        "module operation `{operation_id}` cannot transition from `{current}` to `{requested}`"
+    )]
+    InvalidStatusTransition {
+        operation_id: Uuid,
+        current: ModuleOperationStatus,
+        requested: ModuleOperationStatus,
+    },
     #[error("module `{0}` is not enabled for this tenant")]
     ModuleNotEnabled(String),
     #[error("module operation idempotency key was reused for a different command")]
@@ -88,7 +132,7 @@ pub struct TenantModuleStateRequest {
     pub enabled: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TenantModuleStateRecord {
     pub id: Uuid,
     /// Tenant enablement intent recorded after this operation, or `None`
@@ -140,6 +184,14 @@ pub enum StaticTenantLifecycleClaim {
     AlreadyHeld(StaticTenantLifecycleSnapshot),
 }
 
+/// Database-clock view of the aggregate claim used only by stale-operation
+/// reconciliation in this owner module.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct StaticTenantLifecycleClaimState {
+    active_idempotency_key: Option<Uuid>,
+    expired: bool,
+}
+
 #[derive(Debug, Error)]
 pub enum StaticTenantLifecycleStoreError {
     #[error("static module lifecycle store database error: {0}")]
@@ -183,7 +235,7 @@ impl ModuleOperationJournal {
         ))
         .await
         .map_err(database_error)?
-        .map(operation_snapshot)
+        .map(|row| operation_snapshot(backend, row))
         .transpose()
     }
 
@@ -198,14 +250,15 @@ impl ModuleOperationJournal {
     ) -> Result<Vec<ModuleOperationSnapshot>, ModuleOperationStoreError> {
         let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         let statuses = format!(
-            "status IN ('{}', '{}')",
+            "status IN ('{}', '{}', '{}')",
             ModuleOperationStatus::Failed.as_str(),
-            ModuleOperationStatus::CommittedHookFailed.as_str()
+            ModuleOperationStatus::CommittedHookFailed.as_str(),
+            ModuleOperationStatus::Orphaned.as_str()
         );
         let (sql, values) = match (backend, module_slug) {
             (SupportedBackend::Postgres, Some(module_slug)) => (
                 format!(
-                    "{} WHERE tenant_id = $1 AND {statuses} AND module_slug = $2 ORDER BY created_at DESC LIMIT {}",
+                    "{} WHERE tenant_id = $1 AND {statuses} AND module_slug = $2 ORDER BY created_at DESC, id DESC LIMIT {}",
                     operation_select_sql(),
                     MAX_FAILED_OPERATIONS_FOR_TENANT
                 ),
@@ -213,7 +266,7 @@ impl ModuleOperationJournal {
             ),
             (SupportedBackend::Postgres, None) => (
                 format!(
-                    "{} WHERE tenant_id = $1 AND {statuses} ORDER BY created_at DESC LIMIT {}",
+                    "{} WHERE tenant_id = $1 AND {statuses} ORDER BY created_at DESC, id DESC LIMIT {}",
                     operation_select_sql(),
                     MAX_FAILED_OPERATIONS_FOR_TENANT
                 ),
@@ -221,7 +274,7 @@ impl ModuleOperationJournal {
             ),
             (SupportedBackend::Sqlite, Some(module_slug)) => (
                 format!(
-                    "{} WHERE tenant_id = ?1 AND {statuses} AND module_slug = ?2 ORDER BY created_at DESC LIMIT {}",
+                    "{} WHERE tenant_id = ?1 AND {statuses} AND module_slug = ?2 ORDER BY created_at DESC, id DESC LIMIT {}",
                     operation_select_sql(),
                     MAX_FAILED_OPERATIONS_FOR_TENANT
                 ),
@@ -229,7 +282,7 @@ impl ModuleOperationJournal {
             ),
             (SupportedBackend::Sqlite, None) => (
                 format!(
-                    "{} WHERE tenant_id = ?1 AND {statuses} ORDER BY created_at DESC LIMIT {}",
+                    "{} WHERE tenant_id = ?1 AND {statuses} ORDER BY created_at DESC, id DESC LIMIT {}",
                     operation_select_sql(),
                     MAX_FAILED_OPERATIONS_FOR_TENANT
                 ),
@@ -244,7 +297,7 @@ impl ModuleOperationJournal {
         .await
         .map_err(database_error)?
         .into_iter()
-        .map(operation_snapshot)
+        .map(|row| operation_snapshot(backend, row))
         .collect()
     }
 
@@ -263,7 +316,7 @@ impl ModuleOperationJournal {
 
         match Self::record(db, request.clone()).await {
             Ok(record) => Ok(ModuleOperationRecordOutcome::Recorded(record)),
-            Err(error) => {
+            Err(error @ ModuleOperationStoreError::UniqueViolation(_)) => {
                 if let Some(existing) =
                     Self::find_by_idempotency_key(db, request.tenant_id, idempotency_key).await?
                 {
@@ -272,6 +325,7 @@ impl ModuleOperationJournal {
                     Err(error)
                 }
             }
+            Err(error) => Err(error),
         }
     }
 
@@ -313,9 +367,6 @@ impl ModuleOperationJournal {
         };
         if existing.module_slug != request.module_slug
             || existing.requested_enabled != request.requested_enabled
-            || existing.requested_by != request.requested_by
-            || existing.trace_id != request.trace_id
-            || existing.correlation_id.as_deref() != Some(request.correlation_id.as_str())
             || existing.expected_revision != request.expected_revision
         {
             return Err(ModuleOperationStoreError::IdempotencyConflict);
@@ -328,32 +379,79 @@ impl ModuleOperationJournal {
         request: ModuleOperationRequest,
     ) -> Result<ModuleOperationRecord, ModuleOperationStoreError> {
         let id = rustok_core::generate_id();
-        execute_one(
-            db,
-            "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, trace_id, correlation_id, idempotency_key, expected_revision, error_message) VALUES ({1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, NULL)",
-            vec![
-                id.into(),
-                request.tenant_id.into(),
-                request.module_slug.into(),
-                request.requested_enabled.into(),
-                request.previous_effective_enabled.into(),
-                ModuleOperationStatus::Validated.as_str().into(),
-                request.requested_by.into(),
-                request.trace_id.into(),
-                request.correlation_id.into(),
-                request.idempotency_key.into(),
-                request
-                    .expected_revision
-                    .map(i64::try_from)
-                    .transpose()
-                    .map_err(|_| ModuleOperationStoreError::Database(
-                        "static lifecycle expected revision exceeds storage range".to_string(),
-                    ))?
-                    .into(),
-            ],
-        )
-        .await?;
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
+        let expected_revision = request
+            .expected_revision
+            .map(i64::try_from)
+            .transpose()
+            .map_err(|_| {
+                ModuleOperationStoreError::Database(
+                    "module lifecycle expected revision exceeds storage range".to_string(),
+                )
+            })?;
+        let result = db
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                render_parameters(
+                    "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, trace_id, correlation_id, idempotency_key, expected_revision, error_message) VALUES ({1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, NULL)",
+                    backend,
+                ),
+                vec![
+                    id.into(),
+                    request.tenant_id.into(),
+                    request.module_slug.into(),
+                    request.requested_enabled.into(),
+                    request.previous_effective_enabled.into(),
+                    ModuleOperationStatus::Validated.as_str().into(),
+                    request.requested_by.into(),
+                    request.trace_id.into(),
+                    request.correlation_id.into(),
+                    request.idempotency_key.into(),
+                    expected_revision.into(),
+                ],
+            ))
+            .await
+            .map_err(|error| {
+                if backend.is_unique_violation(&error) {
+                    ModuleOperationStoreError::UniqueViolation(error.to_string())
+                } else {
+                    ModuleOperationStoreError::Database(error.to_string())
+                }
+            })?;
+        if result.rows_affected() != 1 {
+            return Err(ModuleOperationStoreError::Database(format!(
+                "expected module operation insert to affect exactly one row, affected {}",
+                result.rows_affected()
+            )));
+        }
         Ok(ModuleOperationRecord { id })
+    }
+
+    /// Removes a newly journaled operation that never acquired its
+    /// aggregate claim. Claim contention and revision conflicts are not
+    /// operation failures: retaining the row would poison the caller's
+    /// idempotency key with a terminal outcome for work that never ran.
+    /// The guarded delete can only remove the still-`Validated` row.
+    pub async fn discard_validated<C: ConnectionTrait>(
+        db: &C,
+        operation_id: Uuid,
+    ) -> Result<bool, ModuleOperationStoreError> {
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
+        let result = db
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                render_parameters(
+                    "DELETE FROM module_operations WHERE id = {1} AND status = {2}",
+                    backend,
+                ),
+                vec![
+                    operation_id.into(),
+                    ModuleOperationStatus::Validated.as_str().into(),
+                ],
+            ))
+            .await
+            .map_err(database_error)?;
+        Ok(result.rows_affected() == 1)
     }
 
     async fn find_by_idempotency_key<C: ConnectionTrait>(
@@ -379,7 +477,7 @@ impl ModuleOperationJournal {
         ))
         .await
         .map_err(database_error)?
-        .map(operation_snapshot)
+        .map(|row| operation_snapshot(backend, row))
         .transpose()
     }
 
@@ -397,6 +495,24 @@ impl ModuleOperationJournal {
         .await
     }
 
+    /// Records, inside the durable state-commit transaction, that the state
+    /// is in effect but the post-hook has not yet completed. Keeping this
+    /// state distinct from terminal `Committed` lets recovery distinguish a
+    /// crashed post-commit owner from a fully successful operation.
+    pub async fn mark_committed_hook_pending<C: ConnectionTrait>(
+        db: &C,
+        operation_id: Uuid,
+    ) -> Result<(), ModuleOperationStoreError> {
+        Self::mark_status(
+            db,
+            operation_id,
+            ModuleOperationStatus::CommittedHookPending,
+            &[ModuleOperationStatus::Running],
+            None,
+        )
+        .await
+    }
+
     pub async fn mark_committed<C: ConnectionTrait>(
         db: &C,
         operation_id: Uuid,
@@ -408,6 +524,9 @@ impl ModuleOperationJournal {
             &[
                 ModuleOperationStatus::Validated,
                 ModuleOperationStatus::Running,
+                // The normal executor reaches terminal success only after
+                // its post-hook succeeds.
+                ModuleOperationStatus::CommittedHookPending,
                 // Post-hook recovery resolves a committed-but-hook-failed
                 // operation once the hook finally succeeds.
                 ModuleOperationStatus::CommittedHookFailed,
@@ -417,9 +536,85 @@ impl ModuleOperationJournal {
         .await
     }
 
+    /// Terminal commit that also stores the exact serialized result the
+    /// original caller received, in the same update as the status
+    /// transition, so an idempotent replay can return operation-time
+    /// evidence instead of reconstructing a response from current state.
+    /// Accepts the same predecessor states as [`Self::mark_committed`].
+    pub async fn mark_committed_with_result<C: ConnectionTrait>(
+        db: &C,
+        operation_id: Uuid,
+        result_snapshot: &str,
+    ) -> Result<(), ModuleOperationStoreError> {
+        let allowed_from_sql = [
+            ModuleOperationStatus::Validated,
+            ModuleOperationStatus::Running,
+            ModuleOperationStatus::CommittedHookPending,
+            ModuleOperationStatus::CommittedHookFailed,
+        ]
+        .iter()
+        .map(|status| format!("'{}'", status.as_str()))
+        .collect::<Vec<_>>()
+        .join(", ");
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
+        let sql = format!(
+            "UPDATE module_operations SET status = {{1}}, result_snapshot = {{2}}, \
+             updated_at = {{now}} WHERE id = {{3}} AND status IN ({allowed_from_sql})"
+        );
+        let result = db
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                render_parameters(&sql, backend),
+                vec![
+                    ModuleOperationStatus::Committed.as_str().into(),
+                    result_snapshot.into(),
+                    operation_id.into(),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?;
+        if result.rows_affected() != 1 {
+            let current = Self::find(db, operation_id)
+                .await?
+                .ok_or(ModuleOperationStoreError::OperationNotFound(operation_id))?;
+            return Err(ModuleOperationStoreError::InvalidStatusTransition {
+                operation_id,
+                current: current.status,
+                requested: ModuleOperationStatus::Committed,
+            });
+        }
+        Ok(())
+    }
+
+    /// Returns the stored serialized result for an operation, or `None` for
+    /// rows committed before result snapshots existed (or through journal
+    /// paths that do not produce a caller result). The payload shape is
+    /// owned by the executor's result contract; the journal stores it
+    /// opaquely.
+    pub async fn result_snapshot<C: ConnectionTrait>(
+        db: &C,
+        operation_id: Uuid,
+    ) -> Result<Option<String>, ModuleOperationStoreError> {
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
+        let row = db
+            .query_one_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                render_parameters(
+                    "SELECT result_snapshot FROM module_operations WHERE id = {1}",
+                    backend,
+                ),
+                vec![operation_id.into()],
+            ))
+            .await
+            .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?
+            .ok_or(ModuleOperationStoreError::OperationNotFound(operation_id))?;
+        row.try_get("", "result_snapshot")
+            .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))
+    }
+
     /// Records that the operation's state commit is durable but its post-hook
-    /// failed. This is the only transition allowed out of `Committed`; the
-    /// operation must never be rewritten to `Failed` after its state applied.
+    /// failed. It is reachable only from `CommittedHookPending`; terminal
+    /// `Committed` operations are never rewritten after their state applied.
     pub async fn mark_committed_hook_failed<C: ConnectionTrait>(
         db: &C,
         operation_id: Uuid,
@@ -429,10 +624,46 @@ impl ModuleOperationJournal {
             db,
             operation_id,
             ModuleOperationStatus::CommittedHookFailed,
-            &[ModuleOperationStatus::Committed],
+            &[ModuleOperationStatus::CommittedHookPending],
             Some(error_message),
         )
         .await
+    }
+
+    /// Resolves an original operation whose post-hook has now succeeded via
+    /// recovery. Accepts the typed `CommittedHookFailed` state and the
+    /// legacy pre-split shape (`Failed` with a `post-hook:` message), which
+    /// `mark_committed` deliberately does not: a plain `Failed` operation
+    /// never committed its state and must never be rewritten to
+    /// `Committed`. Returns `false` when the row exists but is in neither
+    /// resolvable shape.
+    pub async fn resolve_post_hook_failure<C: ConnectionTrait>(
+        db: &C,
+        operation_id: Uuid,
+    ) -> Result<bool, ModuleOperationStoreError> {
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
+        let sql_template = "UPDATE module_operations SET status = {1}, updated_at = {now} \
+             WHERE id = {2} AND (status = {3} OR (status = {4} AND error_message LIKE 'post-hook:%'))";
+        let result = db
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                render_parameters(sql_template, backend),
+                vec![
+                    ModuleOperationStatus::Committed.as_str().into(),
+                    operation_id.into(),
+                    ModuleOperationStatus::CommittedHookFailed.as_str().into(),
+                    ModuleOperationStatus::Failed.as_str().into(),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?;
+        if result.rows_affected() == 1 {
+            return Ok(true);
+        }
+        Self::find(db, operation_id)
+            .await?
+            .ok_or(ModuleOperationStoreError::OperationNotFound(operation_id))?;
+        Ok(false)
     }
 
     pub async fn mark_failed<C: ConnectionTrait>(
@@ -451,6 +682,215 @@ impl ModuleOperationJournal {
             Some(error_message),
         )
         .await
+    }
+
+    async fn mark_orphaned<C: ConnectionTrait>(
+        db: &C,
+        operation_id: Uuid,
+        error_message: &str,
+    ) -> Result<(), ModuleOperationStoreError> {
+        Self::mark_status(
+            db,
+            operation_id,
+            ModuleOperationStatus::Orphaned,
+            &[
+                ModuleOperationStatus::Validated,
+                ModuleOperationStatus::Running,
+            ],
+            Some(error_message),
+        )
+        .await
+    }
+
+    /// Reconciles one bounded batch of lifecycle operations whose journal
+    /// has not advanced within the aggregate claim lease.
+    ///
+    /// Journal age alone never proves abandonment while a matching claim is
+    /// still live: long hooks heartbeat the claim without touching the
+    /// operation row. A stale pre-commit operation is orphaned only when its
+    /// claim is absent, belongs to another command, or has expired. A stale
+    /// `CommittedHookPending` operation without a live matching claim has an
+    /// unknown post-hook outcome, so it enters the existing committed-hook
+    /// recovery path instead of being reported as successfully completed.
+    /// Terminal `Committed` and `Failed` operations keep their status; only
+    /// an expired matching claim left behind by an interrupted owner is
+    /// released.
+    pub async fn reap_stale(
+        db: &DatabaseConnection,
+        limit: usize,
+    ) -> Result<StaleModuleOperationReapReport, ModuleOperationStoreError> {
+        if limit == 0 || limit > MAX_STALE_MODULE_OPERATIONS_PER_REAP {
+            return Err(ModuleOperationStoreError::Database(format!(
+                "stale module operation reap limit must be between 1 and {MAX_STALE_MODULE_OPERATIONS_PER_REAP}"
+            )));
+        }
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
+        let stale_predicate = match backend {
+            SupportedBackend::Postgres => format!(
+                "updated_at <= CURRENT_TIMESTAMP - INTERVAL '{STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS} seconds'"
+            ),
+            SupportedBackend::Sqlite => format!(
+                "datetime(updated_at) <= datetime('now', '-{STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS} seconds')"
+            ),
+        };
+        let transaction = db.begin().await.map_err(database_error)?;
+        // On Postgres, lock candidate operation rows before locking their
+        // lifecycle-claim rows below. This matches the executor's durable
+        // transaction order (operation status first, claim second), avoiding
+        // an opposite-order deadlock while making the two observations used
+        // for a reap decision atomic with respect to heartbeat/finalization.
+        // SQLite has no row-lock clause; guarded status transitions remain
+        // the final fence there.
+        let operation_lock_clause = match backend {
+            SupportedBackend::Postgres => " FOR UPDATE SKIP LOCKED",
+            SupportedBackend::Sqlite => "",
+        };
+        let rows = transaction
+            .query_all_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "{} WHERE status IN ('validated', 'running', 'committed_hook_pending', \
+                     'committed', 'committed_hook_failed', 'failed') AND {stale_predicate} \
+                     ORDER BY CASE WHEN status IN ('validated', 'running', 'committed_hook_pending') \
+                       THEN 0 ELSE 1 END ASC, updated_at ASC, id ASC LIMIT {limit}{operation_lock_clause}",
+                    operation_select_sql()
+                ),
+                Vec::new(),
+            ))
+            .await
+            .map_err(database_error)?;
+        let candidates = rows
+            .into_iter()
+            .map(|row| operation_snapshot(backend, row))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut report = StaleModuleOperationReapReport::default();
+        for candidate in candidates {
+            report.scanned += 1;
+            let claim_state = StaticTenantLifecycleStore::claim_state_for_update(
+                &transaction,
+                candidate.tenant_id,
+                &candidate.module_slug,
+            )
+            .await
+            .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?;
+            let matching_claim = match (candidate.idempotency_key, claim_state.as_ref()) {
+                (Some(operation_key), Some(claim_state)) => {
+                    claim_state.active_idempotency_key == Some(operation_key)
+                }
+                _ => false,
+            };
+            let matching_claim_live =
+                matching_claim && claim_state.as_ref().is_some_and(|claim| !claim.expired);
+            let matching_claim_expired =
+                matching_claim && claim_state.as_ref().is_some_and(|claim| claim.expired);
+
+            match candidate.status {
+                ModuleOperationStatus::Validated | ModuleOperationStatus::Running => {
+                    if matching_claim_live {
+                        continue;
+                    }
+                    match Self::mark_orphaned(
+                        &transaction,
+                        candidate.id,
+                        "module operation owner did not finish within the lifecycle claim lease; inspect current tenant enablement before repeating the command",
+                    )
+                    .await
+                    {
+                        Ok(()) => report.orphaned += 1,
+                        Err(
+                            ModuleOperationStoreError::InvalidStatusTransition { .. }
+                            | ModuleOperationStoreError::OperationNotFound(_),
+                        ) => continue,
+                        Err(error) => return Err(error),
+                    }
+                    if matching_claim_expired {
+                        let operation_key = candidate.idempotency_key.ok_or_else(|| {
+                            ModuleOperationStoreError::Database(
+                                "matching expired lifecycle claim has no operation idempotency key"
+                                    .to_string(),
+                            )
+                        })?;
+                        if StaticTenantLifecycleStore::release_expired_claim(
+                            &transaction,
+                            candidate.tenant_id,
+                            &candidate.module_slug,
+                            operation_key,
+                        )
+                        .await
+                        .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?
+                        {
+                            report.released_claims += 1;
+                        }
+                    }
+                }
+                ModuleOperationStatus::CommittedHookPending => {
+                    if matching_claim_live {
+                        continue;
+                    }
+                    match Self::mark_committed_hook_failed(
+                        &transaction,
+                        candidate.id,
+                        "module operation owner ended before the post-commit hook outcome was journaled; recovery must retry the hook",
+                    )
+                    .await
+                    {
+                        Ok(()) => report.committed_hook_unknown += 1,
+                        Err(
+                            ModuleOperationStoreError::InvalidStatusTransition { .. }
+                            | ModuleOperationStoreError::OperationNotFound(_),
+                        ) => continue,
+                        Err(error) => return Err(error),
+                    }
+                    if matching_claim_expired {
+                        let operation_key = candidate.idempotency_key.ok_or_else(|| {
+                            ModuleOperationStoreError::Database(
+                                "matching expired lifecycle claim has no operation idempotency key"
+                                    .to_string(),
+                            )
+                        })?;
+                        if StaticTenantLifecycleStore::release_expired_claim(
+                            &transaction,
+                            candidate.tenant_id,
+                            &candidate.module_slug,
+                            operation_key,
+                        )
+                        .await
+                        .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?
+                        {
+                            report.released_claims += 1;
+                        }
+                    }
+                }
+                ModuleOperationStatus::Committed
+                | ModuleOperationStatus::CommittedHookFailed
+                | ModuleOperationStatus::Failed => {
+                    if matching_claim_expired {
+                        let operation_key = candidate.idempotency_key.ok_or_else(|| {
+                            ModuleOperationStoreError::Database(
+                                "matching expired lifecycle claim has no operation idempotency key"
+                                    .to_string(),
+                            )
+                        })?;
+                        if StaticTenantLifecycleStore::release_expired_claim(
+                            &transaction,
+                            candidate.tenant_id,
+                            &candidate.module_slug,
+                            operation_key,
+                        )
+                        .await
+                        .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?
+                        {
+                            report.released_claims += 1;
+                        }
+                    }
+                }
+                ModuleOperationStatus::Orphaned => {}
+            }
+        }
+
+        transaction.commit().await.map_err(database_error)?;
+        Ok(report)
     }
 
     /// Guarded status transition: the update only applies from one of
@@ -498,10 +938,14 @@ impl ModuleOperationJournal {
             .await
             .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?;
         if result.rows_affected() != 1 {
-            return Err(ModuleOperationStoreError::Database(format!(
-                "module operation {operation_id} cannot transition to `{status}` \
-                 from its current status"
-            )));
+            let current = Self::find(db, operation_id)
+                .await?
+                .ok_or(ModuleOperationStoreError::OperationNotFound(operation_id))?;
+            return Err(ModuleOperationStoreError::InvalidStatusTransition {
+                operation_id,
+                current: current.status,
+                requested: status,
+            });
         }
         Ok(())
     }
@@ -552,8 +996,106 @@ impl StaticTenantLifecycleStore {
         ))
         .await
         .map_err(static_lifecycle_database_error)?
-        .map(|row| static_lifecycle_snapshot_from_row(row, tenant_id, module_slug))
+        .map(|row| static_lifecycle_snapshot_from_row(backend, row, tenant_id, module_slug))
         .transpose()
+    }
+
+    /// Reads one claim for a reap decision, locking the claim row on
+    /// Postgres until the caller's transaction commits. Callers must lock
+    /// the operation row first to preserve the executor's lock order.
+    async fn claim_state_for_update<C: ConnectionTrait>(
+        db: &C,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<Option<StaticTenantLifecycleClaimState>, StaticTenantLifecycleStoreError> {
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(static_lifecycle_database_error)?;
+        let lock_clause = match backend {
+            SupportedBackend::Postgres => " FOR UPDATE",
+            SupportedBackend::Sqlite => "",
+        };
+        let sql = match backend {
+            SupportedBackend::Postgres => format!(
+                "SELECT active_idempotency_key, \
+                 CASE WHEN active_idempotency_key IS NOT NULL AND \
+                 (active_claimed_at IS NULL OR active_claimed_at <= CURRENT_TIMESTAMP - INTERVAL '{STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS} seconds') \
+                 THEN 'expired' ELSE 'active' END AS claim_expiry \
+                 FROM module_static_tenant_lifecycle \
+                 WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1{lock_clause}"
+            ),
+            SupportedBackend::Sqlite => format!(
+                "SELECT active_idempotency_key, \
+                 CASE WHEN active_idempotency_key IS NOT NULL AND \
+                 (active_claimed_at IS NULL OR datetime(active_claimed_at) <= datetime('now', '-{STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS} seconds')) \
+                 THEN 'expired' ELSE 'active' END AS claim_expiry \
+                 FROM module_static_tenant_lifecycle \
+                 WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1{lock_clause}"
+            ),
+        };
+        db.query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            sql,
+            vec![backend.uuid_value(tenant_id), module_slug.into()],
+        ))
+        .await
+        .map_err(static_lifecycle_database_error)?
+        .map(|row| {
+            let claim_expiry: String = row
+                .try_get("", "claim_expiry")
+                .map_err(static_lifecycle_database_error)?;
+            Ok(StaticTenantLifecycleClaimState {
+                active_idempotency_key: backend
+                    .optional_uuid_from_row(&row, "active_idempotency_key")
+                    .map_err(static_lifecycle_database_error)?,
+                expired: match claim_expiry.as_str() {
+                    "expired" => true,
+                    "active" => false,
+                    _ => {
+                        return Err(StaticTenantLifecycleStoreError::InconsistentState(
+                            module_slug.to_string(),
+                        ));
+                    }
+                },
+            })
+        })
+        .transpose()
+    }
+
+    async fn release_expired_claim<C: ConnectionTrait>(
+        db: &C,
+        tenant_id: Uuid,
+        module_slug: &str,
+        idempotency_key: Uuid,
+    ) -> Result<bool, StaticTenantLifecycleStoreError> {
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(static_lifecycle_database_error)?;
+        let sql = match backend {
+            SupportedBackend::Postgres => format!(
+                "UPDATE module_static_tenant_lifecycle \
+                 SET active_idempotency_key = NULL, active_claimed_at = NULL, updated_at = NOW() \
+                 WHERE tenant_id = $1 AND module_slug = $2 AND active_idempotency_key = $3 \
+                   AND (active_claimed_at IS NULL OR active_claimed_at <= CURRENT_TIMESTAMP - INTERVAL '{STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS} seconds')"
+            ),
+            SupportedBackend::Sqlite => format!(
+                "UPDATE module_static_tenant_lifecycle \
+                 SET active_idempotency_key = NULL, active_claimed_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now') \
+                 WHERE tenant_id = ?1 AND module_slug = ?2 AND active_idempotency_key = ?3 \
+                   AND (active_claimed_at IS NULL OR datetime(active_claimed_at) <= datetime('now', '-{STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS} seconds'))"
+            ),
+        };
+        let result = db
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                sql,
+                vec![
+                    backend.uuid_value(tenant_id),
+                    module_slug.into(),
+                    backend.uuid_value(idempotency_key),
+                ],
+            ))
+            .await
+            .map_err(static_lifecycle_database_error)?;
+        Ok(result.rows_affected() == 1)
     }
 
     /// Returns a complete aggregate snapshot for every requested static slug
@@ -612,7 +1154,8 @@ impl StaticTenantLifecycleStore {
             let module_slug: String = row
                 .try_get("", "module_slug")
                 .map_err(static_lifecycle_database_error)?;
-            let snapshot = static_lifecycle_snapshot_from_row(row, tenant_id, &module_slug)?;
+            let snapshot =
+                static_lifecycle_snapshot_from_row(backend, row, tenant_id, &module_slug)?;
             snapshots.insert(module_slug, snapshot);
         }
         Ok(snapshots)
@@ -641,6 +1184,13 @@ impl StaticTenantLifecycleStore {
         });
         if let Some(active_idempotency_key) = current.active_idempotency_key {
             if active_idempotency_key == idempotency_key {
+                if current.revision != expected_revision {
+                    return Err(StaticTenantLifecycleStoreError::RevisionConflict {
+                        module_slug: module_slug.to_string(),
+                        expected: expected_revision,
+                        current: current.revision,
+                    });
+                }
                 return Ok(StaticTenantLifecycleClaim::AlreadyHeld(current));
             }
             // The holder may have crashed without releasing. Reclaim is only
@@ -721,12 +1271,20 @@ impl StaticTenantLifecycleStore {
                         },
                     ));
                 }
-                Err(_) => {
+                Err(error) if backend.is_unique_violation(&error) => {
                     // A concurrent first claim won the composite primary key.
                     // Reloading applies the same exact-key/revision decision as
                     // an already materialized aggregate.
                     let refreshed = Self::snapshot(db, tenant_id, module_slug).await?;
-                    return if refreshed.active_idempotency_key == Some(idempotency_key) {
+                    return if refreshed.active_idempotency_key == Some(idempotency_key)
+                        && refreshed.revision != expected_revision
+                    {
+                        Err(StaticTenantLifecycleStoreError::RevisionConflict {
+                            module_slug: module_slug.to_string(),
+                            expected: expected_revision,
+                            current: refreshed.revision,
+                        })
+                    } else if refreshed.active_idempotency_key == Some(idempotency_key) {
                         Ok(StaticTenantLifecycleClaim::AlreadyHeld(refreshed))
                     } else if refreshed.active_idempotency_key.is_some() {
                         Err(StaticTenantLifecycleStoreError::OperationInProgress {
@@ -744,6 +1302,7 @@ impl StaticTenantLifecycleStore {
                         ))
                     };
                 }
+                Err(error) => return Err(static_lifecycle_database_error(error)),
             }
         }
 
@@ -785,7 +1344,15 @@ impl StaticTenantLifecycleStore {
         }
 
         let refreshed = Self::snapshot(db, tenant_id, module_slug).await?;
-        if refreshed.active_idempotency_key == Some(idempotency_key) {
+        if refreshed.active_idempotency_key == Some(idempotency_key)
+            && refreshed.revision != expected_revision
+        {
+            Err(StaticTenantLifecycleStoreError::RevisionConflict {
+                module_slug: module_slug.to_string(),
+                expected: expected_revision,
+                current: refreshed.revision,
+            })
+        } else if refreshed.active_idempotency_key == Some(idempotency_key) {
             Ok(StaticTenantLifecycleClaim::AlreadyHeld(refreshed))
         } else if refreshed.active_idempotency_key.is_some() {
             Err(StaticTenantLifecycleStoreError::OperationInProgress {
@@ -798,6 +1365,48 @@ impl StaticTenantLifecycleStore {
                 current: refreshed.revision,
             })
         }
+    }
+
+    /// Renews the finite claim lease while long-running pre/post-commit
+    /// hooks execute. `false` means the exact key/revision no longer owns
+    /// the aggregate (the lease lapsed and another command reclaimed it, or
+    /// the revision advanced), so the caller must stop treating its claim
+    /// as valid before any further durable write.
+    pub async fn heartbeat<C: ConnectionTrait>(
+        db: &C,
+        tenant_id: Uuid,
+        module_slug: &str,
+        expected_revision: u64,
+        idempotency_key: Uuid,
+    ) -> Result<bool, StaticTenantLifecycleStoreError> {
+        let backend = SupportedBackend::new(db.get_database_backend())
+            .map_err(static_lifecycle_database_error)?;
+        let result = db
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                render_parameters(
+                    "UPDATE module_static_tenant_lifecycle \
+                     SET active_claimed_at = {now}, updated_at = {now} \
+                     WHERE tenant_id = {1} AND module_slug = {2} \
+                       AND revision = {3} AND active_idempotency_key = {4}",
+                    backend,
+                ),
+                vec![
+                    backend.uuid_value(tenant_id),
+                    module_slug.into(),
+                    i64::try_from(expected_revision)
+                        .map_err(|_| {
+                            StaticTenantLifecycleStoreError::RevisionOverflow(
+                                module_slug.to_string(),
+                            )
+                        })?
+                        .into(),
+                    backend.uuid_value(idempotency_key),
+                ],
+            ))
+            .await
+            .map_err(static_lifecycle_database_error)?;
+        Ok(result.rows_affected() == 1)
     }
 
     /// CAS-reclaims an aggregate whose recorded claim lease has expired.
@@ -949,6 +1558,7 @@ impl StaticTenantLifecycleStore {
 }
 
 fn static_lifecycle_snapshot_from_row(
+    backend: SupportedBackend,
     row: sea_orm::QueryResult,
     tenant_id: Uuid,
     module_slug: &str,
@@ -967,8 +1577,8 @@ fn static_lifecycle_snapshot_from_row(
         revision: u64::try_from(revision).map_err(|_| {
             StaticTenantLifecycleStoreError::InconsistentState(module_slug.to_string())
         })?,
-        active_idempotency_key: row
-            .try_get("", "active_idempotency_key")
+        active_idempotency_key: backend
+            .optional_uuid_from_row(&row, "active_idempotency_key")
             .map_err(static_lifecycle_database_error)?,
     })
 }
@@ -981,19 +1591,20 @@ fn static_lifecycle_database_error(
 
 fn operation_select_sql() -> &'static str {
     "SELECT id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, \
-     requested_by, trace_id, correlation_id, idempotency_key, expected_revision, error_message, created_at FROM module_operations"
+     requested_by, trace_id, correlation_id, idempotency_key, expected_revision, error_message, created_at, updated_at FROM module_operations"
 }
 
+/// Compares only the semantic lifecycle request under the already-matched
+/// `(tenant_id, idempotency_key)`. Requester, trace, correlation, and the
+/// previously observed effective state are audit/recovery evidence, not
+/// replay identity, so a legitimate retry may carry fresh observability
+/// context without turning into a conflict.
 fn replay_or_conflict(
     request: &ModuleOperationRequest,
     existing: ModuleOperationSnapshot,
 ) -> Result<ModuleOperationRecordOutcome, ModuleOperationStoreError> {
     if existing.module_slug != request.module_slug
         || existing.requested_enabled != request.requested_enabled
-        || existing.previous_effective_enabled != request.previous_effective_enabled
-        || existing.requested_by != request.requested_by
-        || existing.trace_id != request.trace_id
-        || existing.correlation_id.as_deref() != Some(request.correlation_id.as_str())
         || existing.expected_revision != request.expected_revision
     {
         return Err(ModuleOperationStoreError::IdempotencyConflict);
@@ -1004,12 +1615,15 @@ fn replay_or_conflict(
 }
 
 fn operation_snapshot(
+    backend: SupportedBackend,
     row: sea_orm::QueryResult,
 ) -> Result<ModuleOperationSnapshot, ModuleOperationStoreError> {
     let status: String = row.try_get("", "status").map_err(database_error)?;
     Ok(ModuleOperationSnapshot {
-        id: row.try_get("", "id").map_err(database_error)?,
-        tenant_id: row.try_get("", "tenant_id").map_err(database_error)?,
+        id: backend.uuid_from_row(&row, "id").map_err(database_error)?,
+        tenant_id: backend
+            .uuid_from_row(&row, "tenant_id")
+            .map_err(database_error)?,
         module_slug: row.try_get("", "module_slug").map_err(database_error)?,
         requested_enabled: row
             .try_get("", "requested_enabled")
@@ -1025,7 +1639,9 @@ fn operation_snapshot(
         requested_by: row.try_get("", "requested_by").map_err(database_error)?,
         trace_id: row.try_get("", "trace_id").map_err(database_error)?,
         correlation_id: row.try_get("", "correlation_id").map_err(database_error)?,
-        idempotency_key: row.try_get("", "idempotency_key").map_err(database_error)?,
+        idempotency_key: backend
+            .optional_uuid_from_row(&row, "idempotency_key")
+            .map_err(database_error)?,
         expected_revision: row
             .try_get::<Option<i64>>("", "expected_revision")
             .map_err(database_error)?
@@ -1039,6 +1655,7 @@ fn operation_snapshot(
             .transpose()?,
         error_message: row.try_get("", "error_message").map_err(database_error)?,
         created_at: row.try_get("", "created_at").map_err(database_error)?,
+        updated_at: row.try_get("", "updated_at").map_err(database_error)?,
     })
 }
 
@@ -1071,7 +1688,7 @@ impl TenantModuleStateStore {
         .map(|row| {
             let enabled: Option<bool> = row.try_get("", "enabled").map_err(database_error)?;
             Ok(TenantModuleStateRecord {
-                id: row.try_get("", "id").map_err(database_error)?,
+                id: backend.uuid_from_row(&row, "id").map_err(database_error)?,
                 enabled,
                 previous_enabled: enabled,
                 changed: false,
@@ -1105,8 +1722,8 @@ impl TenantModuleStateStore {
             .await
             .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?
         {
-            let id: Uuid = row
-                .try_get("", "id")
+            let id: Uuid = backend
+                .uuid_from_row(&row, "id")
                 .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?;
             let previous_enabled: Option<bool> = row
                 .try_get("", "enabled")
@@ -1185,7 +1802,7 @@ impl TenantModuleStateStore {
             .await
             .map_err(database_error)?;
         if let Some(row) = existing {
-            let id: Uuid = row.try_get("", "id").map_err(database_error)?;
+            let id: Uuid = backend.uuid_from_row(&row, "id").map_err(database_error)?;
             let enabled: Option<bool> = row.try_get("", "enabled").map_err(database_error)?;
             // A settings save never changes recorded enablement intent:
             // the column is not part of this UPDATE at all.
@@ -1422,5 +2039,500 @@ mod tests {
             .expect("re-enabled settings row");
         assert_eq!(reenabled.enabled, Some(true));
         assert_eq!(reenabled.settings, json!({ "use_reactions": true }));
+    }
+
+    async fn operation_database() -> sea_orm::DatabaseConnection {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("operation database");
+        database
+            .execute_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "CREATE TABLE module_operations (\
+                    id TEXT PRIMARY KEY NOT NULL, \
+                    tenant_id TEXT NOT NULL, \
+                    module_slug TEXT NOT NULL, \
+                    requested_enabled BOOLEAN NOT NULL, \
+                    previous_effective_enabled BOOLEAN NOT NULL, \
+                    status TEXT NOT NULL, \
+                    requested_by TEXT, \
+                    trace_id TEXT, \
+                    correlation_id TEXT, \
+                    idempotency_key TEXT, \
+                    expected_revision INTEGER, \
+                    error_message TEXT, \
+                    result_snapshot TEXT, \
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
+                 )"
+                .to_string(),
+            ))
+            .await
+            .expect("module operations table");
+        database
+            .execute_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "CREATE UNIQUE INDEX uq_module_operations_tenant_idempotency_key \
+                 ON module_operations (tenant_id, idempotency_key) \
+                 WHERE idempotency_key IS NOT NULL"
+                    .to_string(),
+            ))
+            .await
+            .expect("module operations idempotency index");
+        database
+            .execute_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "CREATE TABLE module_static_tenant_lifecycle (\
+                    tenant_id TEXT NOT NULL, \
+                    module_slug TEXT NOT NULL, \
+                    revision INTEGER NOT NULL, \
+                    active_idempotency_key TEXT, \
+                    active_claimed_at TEXT, \
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+                    PRIMARY KEY (tenant_id, module_slug)\
+                 )"
+                .to_string(),
+            ))
+            .await
+            .expect("module lifecycle aggregate table");
+        database
+    }
+
+    fn operation_request(
+        tenant_id: Uuid,
+        module_slug: &str,
+        idempotency_key: Uuid,
+    ) -> ModuleOperationRequest {
+        ModuleOperationRequest {
+            tenant_id,
+            module_slug: module_slug.to_string(),
+            requested_enabled: true,
+            previous_effective_enabled: false,
+            requested_by: Some("operator".to_string()),
+            trace_id: Some("test:operation-store".to_string()),
+            correlation_id: Uuid::new_v4().to_string(),
+            idempotency_key: Some(idempotency_key),
+            expected_revision: Some(0),
+        }
+    }
+
+    async fn insert_stale_operation(
+        database: &sea_orm::DatabaseConnection,
+        operation_id: Uuid,
+        tenant_id: Uuid,
+        module_slug: &str,
+        status: ModuleOperationStatus,
+        idempotency_key: Uuid,
+    ) {
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO module_operations (\
+                    id, tenant_id, module_slug, requested_enabled, \
+                    previous_effective_enabled, status, requested_by, trace_id, \
+                    correlation_id, idempotency_key, expected_revision, \
+                    error_message, created_at, updated_at\
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                vec![
+                    operation_id.into(),
+                    tenant_id.into(),
+                    module_slug.into(),
+                    true.into(),
+                    false.into(),
+                    status.as_str().into(),
+                    "operator".into(),
+                    "test:stale-operation".into(),
+                    Uuid::new_v4().to_string().into(),
+                    idempotency_key.into(),
+                    0_i64.into(),
+                    Option::<String>::None.into(),
+                    "2000-01-01T00:00:00.000+00:00".into(),
+                    "2000-01-01T00:00:00.000+00:00".into(),
+                ],
+            ))
+            .await
+            .expect("stale operation insert");
+    }
+
+    async fn insert_claim(
+        database: &sea_orm::DatabaseConnection,
+        tenant_id: Uuid,
+        module_slug: &str,
+        revision: i64,
+        idempotency_key: Option<Uuid>,
+        claimed_at: Option<String>,
+    ) {
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO module_static_tenant_lifecycle (\
+                    tenant_id, module_slug, revision, active_idempotency_key, \
+                    active_claimed_at\
+                 ) VALUES (?1, ?2, ?3, ?4, ?5)",
+                vec![
+                    tenant_id.to_string().into(),
+                    module_slug.into(),
+                    revision.into(),
+                    idempotency_key.map(|key| key.to_string()).into(),
+                    claimed_at.into(),
+                ],
+            ))
+            .await
+            .expect("lifecycle claim insert");
+    }
+
+    #[tokio::test]
+    async fn reaper_orphans_only_operations_without_a_live_matching_claim() {
+        let database = operation_database().await;
+        let tenant_id = Uuid::new_v4();
+        let stale_claimed_at = Some("2000-01-01T00:00:00.000+00:00".to_string());
+        let live_claimed_at = Some(Utc::now().to_rfc3339());
+
+        let orphan_expired_id = Uuid::new_v4();
+        let orphan_expired_key = Uuid::new_v4();
+        insert_stale_operation(
+            &database,
+            orphan_expired_id,
+            tenant_id,
+            "orphan-expired",
+            ModuleOperationStatus::Running,
+            orphan_expired_key,
+        )
+        .await;
+        insert_claim(
+            &database,
+            tenant_id,
+            "orphan-expired",
+            0,
+            Some(orphan_expired_key),
+            stale_claimed_at.clone(),
+        )
+        .await;
+
+        let orphan_mismatch_id = Uuid::new_v4();
+        let orphan_mismatch_key = Uuid::new_v4();
+        let other_claim_key = Uuid::new_v4();
+        insert_stale_operation(
+            &database,
+            orphan_mismatch_id,
+            tenant_id,
+            "orphan-mismatch",
+            ModuleOperationStatus::Validated,
+            orphan_mismatch_key,
+        )
+        .await;
+        insert_claim(
+            &database,
+            tenant_id,
+            "orphan-mismatch",
+            0,
+            Some(other_claim_key),
+            stale_claimed_at.clone(),
+        )
+        .await;
+
+        let committed_unknown_id = Uuid::new_v4();
+        let committed_unknown_key = Uuid::new_v4();
+        insert_stale_operation(
+            &database,
+            committed_unknown_id,
+            tenant_id,
+            "committed-unknown",
+            ModuleOperationStatus::CommittedHookPending,
+            committed_unknown_key,
+        )
+        .await;
+        insert_claim(
+            &database,
+            tenant_id,
+            "committed-unknown",
+            1,
+            Some(committed_unknown_key),
+            stale_claimed_at.clone(),
+        )
+        .await;
+
+        let failed_claim_id = Uuid::new_v4();
+        let failed_claim_key = Uuid::new_v4();
+        insert_stale_operation(
+            &database,
+            failed_claim_id,
+            tenant_id,
+            "failed-claim",
+            ModuleOperationStatus::Failed,
+            failed_claim_key,
+        )
+        .await;
+        insert_claim(
+            &database,
+            tenant_id,
+            "failed-claim",
+            0,
+            Some(failed_claim_key),
+            stale_claimed_at.clone(),
+        )
+        .await;
+
+        let live_running_id = Uuid::new_v4();
+        let live_running_key = Uuid::new_v4();
+        insert_stale_operation(
+            &database,
+            live_running_id,
+            tenant_id,
+            "live-running",
+            ModuleOperationStatus::Running,
+            live_running_key,
+        )
+        .await;
+        insert_claim(
+            &database,
+            tenant_id,
+            "live-running",
+            0,
+            Some(live_running_key),
+            live_claimed_at.clone(),
+        )
+        .await;
+
+        let live_committed_id = Uuid::new_v4();
+        let live_committed_key = Uuid::new_v4();
+        insert_stale_operation(
+            &database,
+            live_committed_id,
+            tenant_id,
+            "live-committed",
+            ModuleOperationStatus::CommittedHookPending,
+            live_committed_key,
+        )
+        .await;
+        insert_claim(
+            &database,
+            tenant_id,
+            "live-committed",
+            1,
+            Some(live_committed_key),
+            live_claimed_at,
+        )
+        .await;
+
+        let terminal_committed_id = Uuid::new_v4();
+        let terminal_committed_key = Uuid::new_v4();
+        insert_stale_operation(
+            &database,
+            terminal_committed_id,
+            tenant_id,
+            "terminal-committed",
+            ModuleOperationStatus::Committed,
+            terminal_committed_key,
+        )
+        .await;
+        insert_claim(&database, tenant_id, "terminal-committed", 1, None, None).await;
+
+        let terminal_committed_claim_id = Uuid::new_v4();
+        let terminal_committed_claim_key = Uuid::new_v4();
+        insert_stale_operation(
+            &database,
+            terminal_committed_claim_id,
+            tenant_id,
+            "terminal-committed-claim",
+            ModuleOperationStatus::Committed,
+            terminal_committed_claim_key,
+        )
+        .await;
+        insert_claim(
+            &database,
+            tenant_id,
+            "terminal-committed-claim",
+            1,
+            Some(terminal_committed_claim_key),
+            stale_claimed_at,
+        )
+        .await;
+
+        let report =
+            ModuleOperationJournal::reap_stale(&database, MAX_STALE_MODULE_OPERATIONS_PER_REAP)
+                .await
+                .expect("stale operation reap");
+        assert_eq!(report.scanned, 8);
+        assert_eq!(report.orphaned, 2);
+        assert_eq!(report.committed_hook_unknown, 1);
+        assert_eq!(report.released_claims, 4);
+        assert!(report.has_changes());
+
+        for (operation_id, expected_status) in [
+            (orphan_expired_id, ModuleOperationStatus::Orphaned),
+            (orphan_mismatch_id, ModuleOperationStatus::Orphaned),
+            (
+                committed_unknown_id,
+                ModuleOperationStatus::CommittedHookFailed,
+            ),
+            (failed_claim_id, ModuleOperationStatus::Failed),
+            (live_running_id, ModuleOperationStatus::Running),
+            (
+                live_committed_id,
+                ModuleOperationStatus::CommittedHookPending,
+            ),
+            (terminal_committed_id, ModuleOperationStatus::Committed),
+            (
+                terminal_committed_claim_id,
+                ModuleOperationStatus::Committed,
+            ),
+        ] {
+            let operation = ModuleOperationJournal::find(&database, operation_id)
+                .await
+                .expect("reaped operation lookup")
+                .expect("reaped operation exists");
+            assert_eq!(operation.status, expected_status);
+        }
+
+        for (module_slug, expected_key) in [
+            ("orphan-expired", None),
+            ("orphan-mismatch", Some(other_claim_key)),
+            ("committed-unknown", None),
+            ("failed-claim", None),
+            ("live-running", Some(live_running_key)),
+            ("live-committed", Some(live_committed_key)),
+            ("terminal-committed", None),
+            ("terminal-committed-claim", None),
+        ] {
+            let claim = StaticTenantLifecycleStore::snapshot(&database, tenant_id, module_slug)
+                .await
+                .expect("lifecycle claim snapshot");
+            assert_eq!(claim.active_idempotency_key, expected_key);
+        }
+    }
+
+    #[tokio::test]
+    async fn already_held_claim_still_requires_the_current_revision() {
+        let database = operation_database().await;
+        let tenant_id = Uuid::new_v4();
+        let idempotency_key = Uuid::new_v4();
+        insert_claim(
+            &database,
+            tenant_id,
+            "already-held",
+            3,
+            Some(idempotency_key),
+            Some(Utc::now().to_rfc3339()),
+        )
+        .await;
+
+        let stale = StaticTenantLifecycleStore::claim(
+            &database,
+            tenant_id,
+            "already-held",
+            2,
+            idempotency_key,
+        )
+        .await;
+        assert!(matches!(
+            stale,
+            Err(StaticTenantLifecycleStoreError::RevisionConflict {
+                expected: 2,
+                current: 3,
+                ..
+            })
+        ));
+
+        let current = StaticTenantLifecycleStore::claim(
+            &database,
+            tenant_id,
+            "already-held",
+            3,
+            idempotency_key,
+        )
+        .await
+        .expect("current already-held claim");
+        assert!(matches!(
+            current,
+            StaticTenantLifecycleClaim::AlreadyHeld(snapshot)
+                if snapshot.revision == 3
+                    && snapshot.active_idempotency_key == Some(idempotency_key)
+        ));
+    }
+
+    #[tokio::test]
+    async fn journal_insert_narrows_only_unique_violations_and_types_transitions() {
+        let database = operation_database().await;
+        let tenant_id = Uuid::new_v4();
+        let idempotency_key = Uuid::new_v4();
+        let request = operation_request(tenant_id, "journal", idempotency_key);
+
+        let recorded = match ModuleOperationJournal::record_idempotent(&database, request.clone())
+            .await
+            .expect("initial journal record")
+        {
+            ModuleOperationRecordOutcome::Recorded(record) => record,
+            ModuleOperationRecordOutcome::Replayed(_) => {
+                panic!("the first journal insert must be recorded")
+            }
+        };
+
+        assert!(matches!(
+            ModuleOperationJournal::record(&database, request.clone()).await,
+            Err(ModuleOperationStoreError::UniqueViolation(_))
+        ));
+
+        let replayed = match ModuleOperationJournal::record_idempotent(&database, request.clone())
+            .await
+            .expect("journal replay")
+        {
+            ModuleOperationRecordOutcome::Replayed(record) => record,
+            ModuleOperationRecordOutcome::Recorded(_) => {
+                panic!("an exact retry must replay the existing journal row")
+            }
+        };
+        assert_eq!(replayed.id, recorded.id);
+
+        ModuleOperationJournal::mark_failed(&database, recorded.id, "failed")
+            .await
+            .expect("mark journal failed");
+        assert!(matches!(
+            ModuleOperationJournal::mark_running(&database, recorded.id).await,
+            Err(ModuleOperationStoreError::InvalidStatusTransition {
+                current: ModuleOperationStatus::Failed,
+                requested: ModuleOperationStatus::Running,
+                ..
+            })
+        ));
+    }
+
+    #[tokio::test]
+    async fn discard_validated_only_removes_an_unstarted_operation() {
+        let database = operation_database().await;
+        let tenant_id = Uuid::new_v4();
+        let discarded = ModuleOperationJournal::record(
+            &database,
+            operation_request(tenant_id, "discarded", Uuid::new_v4()),
+        )
+        .await
+        .expect("discarded operation record");
+        assert!(
+            ModuleOperationJournal::discard_validated(&database, discarded.id)
+                .await
+                .expect("discard validated operation")
+        );
+        assert!(
+            ModuleOperationJournal::find(&database, discarded.id)
+                .await
+                .expect("discarded operation lookup")
+                .is_none()
+        );
+
+        let running = ModuleOperationJournal::record(
+            &database,
+            operation_request(tenant_id, "running", Uuid::new_v4()),
+        )
+        .await
+        .expect("running operation record");
+        ModuleOperationJournal::mark_running(&database, running.id)
+            .await
+            .expect("mark operation running");
+        assert!(
+            !ModuleOperationJournal::discard_validated(&database, running.id)
+                .await
+                .expect("running operation cannot be discarded")
+        );
     }
 }

@@ -84,6 +84,24 @@ fn is_disallowed_ipv4(ipv4: Ipv4Addr) -> bool {
         || octets[0] >= 240
 }
 
+/// Extracts the IPv4 address embedded in transition-mechanism prefixes
+/// whose traffic is ultimately delivered to that IPv4 destination:
+/// NAT64 well-known prefix `64:ff9b::/96` and 6to4 `2002::/16`.
+fn embedded_ipv4(ipv6: std::net::Ipv6Addr) -> Option<Ipv4Addr> {
+    let segments = ipv6.segments();
+    if segments[..6] == [0x0064, 0xff9b, 0, 0, 0, 0] {
+        return Some(Ipv4Addr::from(
+            u32::from(segments[6]) << 16 | u32::from(segments[7]),
+        ));
+    }
+    if segments[0] == 0x2002 {
+        return Some(Ipv4Addr::from(
+            u32::from(segments[1]) << 16 | u32::from(segments[2]),
+        ));
+    }
+    None
+}
+
 fn is_disallowed_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(ipv4) => is_disallowed_ipv4(ipv4),
@@ -91,6 +109,11 @@ fn is_disallowed_ip(ip: IpAddr) -> bool {
             // IPv4-mapped IPv6 literals connect to the embedded IPv4
             // address on dual-stack hosts, so they must pass the IPv4 rules.
             if let Some(ipv4) = ipv6.to_ipv4_mapped() {
+                return is_disallowed_ipv4(ipv4);
+            }
+            // NAT64/6to4 traffic is delivered to the embedded IPv4
+            // destination, so it must pass the same rules.
+            if let Some(ipv4) = embedded_ipv4(ipv6) {
                 return is_disallowed_ipv4(ipv4);
             }
             ipv6.is_loopback()
@@ -163,12 +186,11 @@ async fn resolve_public_target(
     })?;
     for addr in &addrs {
         if is_disallowed_ip(addr.ip()) {
+            // The resolved address itself is not echoed to the guest: it
+            // can disclose internal addressing learned through DNS.
             return Err(SandboxError::HostCapability {
                 capability: capability.clone(),
-                message: format!(
-                    "HTTP destination host `{host}` resolves to disallowed IP `{}`",
-                    addr.ip()
-                ),
+                message: format!("HTTP destination host `{host}` resolves to a disallowed address"),
             });
         }
     }
@@ -378,5 +400,33 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactHttpCapabilityBrokerReso
         }
         resolve_granted_artifact_capability(&self.db, execution, capability).await?;
         Ok(self.broker.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transition_prefixes_cannot_smuggle_private_ipv4() {
+        // NAT64 64:ff9b::a9fe:a9fe embeds 169.254.169.254 (metadata).
+        assert!(is_disallowed_ip(
+            "64:ff9b::a9fe:a9fe".parse().expect("nat64 address")
+        ));
+        // 6to4 2002:0a00:0001:: embeds 10.0.0.1.
+        assert!(is_disallowed_ip(
+            "2002:0a00:0001::".parse().expect("6to4 address")
+        ));
+        // Public embedded destinations remain allowed.
+        assert!(!is_disallowed_ip(
+            "64:ff9b::808:808".parse().expect("nat64 public address")
+        ));
+        assert!(!is_disallowed_ip(
+            "2002:0808:0808::".parse().expect("6to4 public address")
+        ));
+        // Ordinary public IPv6 is unaffected.
+        assert!(!is_disallowed_ip(
+            "2606:4700:4700::1111".parse().expect("public ipv6")
+        ));
     }
 }

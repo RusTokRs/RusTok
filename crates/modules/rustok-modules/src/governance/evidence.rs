@@ -8,6 +8,7 @@ use super::mapping::*;
 use super::receipts::*;
 use super::staging_alloy::*;
 use super::staging_external::*;
+use super::validation_evidence::*;
 use super::validation_work_items::*;
 use super::*;
 
@@ -34,6 +35,33 @@ impl SeaOrmModuleGovernanceService {
             },
             None,
             Some(&command),
+            None,
+        )
+        .await
+    }
+
+    /// Records an independent platform marketplace-approval decision for the
+    /// exact artifact currently attached to an approved publish request.
+    pub async fn record_marketplace_approval_evidence(
+        &self,
+        command: ModuleMarketplaceApprovalEvidenceCommand,
+    ) -> Result<ModulePublicationEvidenceResult, ModuleGovernanceError> {
+        command.validate()?;
+        self.record_publication_evidence_inner(
+            ModulePublicationEvidenceCommand {
+                request_id: command.request_id.clone(),
+                expected_revision: command.expected_revision,
+                authority: ModulePublicationEvidenceAuthority::MarketplaceApproval,
+                subject_digest_sha256: "0".repeat(64),
+                evidence_reference: String::new(),
+                issuer_identity: String::new(),
+                policy_revision: MARKETPLACE_APPROVAL_POLICY_REVISION.to_string(),
+                signature_digest_sha256: None,
+                actor_principal: command.actor_principal.clone(),
+            },
+            None,
+            None,
+            Some(&command),
         )
         .await
     }
@@ -45,7 +73,7 @@ impl SeaOrmModuleGovernanceService {
         command: ModuleBuildServiceAttestationCommand,
     ) -> Result<ModulePublicationEvidenceResult, ModuleGovernanceError> {
         command.validate()?;
-        self.record_publication_evidence_inner(command.publication_evidence()?, None, None)
+        self.record_publication_evidence_inner(command.publication_evidence()?, None, None, None)
             .await
     }
 
@@ -76,7 +104,7 @@ impl SeaOrmModuleGovernanceService {
         let artifact_origin = ModulePublicationArtifactOrigin::parse(&artifact_origin)
             .ok_or(ModuleGovernanceError::PublishRequestArtifactOriginUnclassified)?;
         let evidence = command.publication_evidence(artifact_origin)?;
-        self.record_publication_evidence_inner(evidence, Some(&command), None)
+        self.record_publication_evidence_inner(evidence, Some(&command), None, None)
             .await
     }
 
@@ -85,6 +113,7 @@ impl SeaOrmModuleGovernanceService {
         mut command: ModulePublicationEvidenceCommand,
         platform_admission: Option<&ModulePlatformAdmissionCommand>,
         author_signature: Option<&ModuleAuthorSignatureEvidenceCommand>,
+        marketplace_approval: Option<&ModuleMarketplaceApprovalEvidenceCommand>,
     ) -> Result<ModulePublicationEvidenceResult, ModuleGovernanceError> {
         let tx = self.db.begin().await.map_err(store_error)?;
         crate::backend::set_platform_scope(&tx)
@@ -137,6 +166,33 @@ impl SeaOrmModuleGovernanceService {
             ) {
                 return Err(ModuleGovernanceError::PublishRequestAuthorSignatureUnauthorized);
             }
+        }
+        if let Some(marketplace_approval) = marketplace_approval {
+            let requested_by_principal = required_json_text(&request, "requested_by_principal")?;
+            let publisher_principal = optional_json_text(&request, "publisher_principal")?;
+            if !marketplace_approval.actor_can_manage_modules
+                || marketplace_approval.actor_principal == requested_by_principal
+                || publisher_principal
+                    .as_ref()
+                    .is_some_and(|publisher| publisher == &marketplace_approval.actor_principal)
+            {
+                return Err(ModuleGovernanceError::PublishRequestMarketplaceApprovalUnauthorized);
+            }
+            if status != "approved" {
+                return Err(
+                    ModuleGovernanceError::PublishRequestCannotRecordPublicationEvidence(status),
+                );
+            }
+            let subject_digest_sha256: Option<String> = request
+                .try_get("", "artifact_checksum_sha256")
+                .map_err(store_error)?;
+            let subject_digest_sha256 = subject_digest_sha256
+                .filter(|digest| is_sha256_hex(digest))
+                .ok_or(ModuleGovernanceError::PublishRequestMissingArtifactChecksum)?;
+            command = marketplace_approval.publication_evidence(
+                subject_digest_sha256,
+                validation_stage_actor_label(&marketplace_approval.actor_principal)?,
+            );
         }
         let author_signature_receipt = if let Some(author_signature) = author_signature {
             let subject_digest_sha256: Option<String> = request
@@ -362,17 +418,24 @@ impl SeaOrmModuleGovernanceService {
                 "INSERT INTO registry_governance_events \
                  (id, slug, request_id, release_id, event_type, actor_principal, \
                   publisher_principal, details, created_at) \
-                 VALUES ({}, {}, {}, NULL, 'publication_evidence_recorded', {}, NULL, {}, {now})",
+                 VALUES ({}, {}, {}, NULL, {}, {}, NULL, {}, {now})",
                 mark(1),
                 mark(2),
                 mark(3),
                 mark(4),
                 mark(5),
+                mark(6),
             ),
             vec![
                 self.infrastructure.prefixed_id("rge").into(),
                 slug.into(),
                 command.request_id.clone().into(),
+                if marketplace_approval.is_some() {
+                    "marketplace_approval_recorded"
+                } else {
+                    "publication_evidence_recorded"
+                }
+                .into(),
                 Value::Json(Some(Box::new(command.actor_principal.clone()))),
                 Value::Json(Some(Box::new(serde_json::json!({
                     "evidence_id": evidence_id.clone(),

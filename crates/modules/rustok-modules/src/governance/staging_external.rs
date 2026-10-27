@@ -210,11 +210,6 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
             let existing_actor_id: String =
                 existing.try_get("", "actor_id").map_err(store_error)?;
-            let existing_trace_id: String =
-                existing.try_get("", "trace_id").map_err(store_error)?;
-            let existing_correlation_id: String = existing
-                .try_get("", "correlation_id")
-                .map_err(store_error)?;
             let existing_actor_can_manage_modules: bool = existing
                 .try_get("", "actor_can_manage_modules")
                 .map_err(store_error)?;
@@ -232,8 +227,6 @@ impl SeaOrmModuleGovernanceService {
                 || existing_quarantine_approver != command.quarantine_approved_by_principal
                 || existing_actor != command.actor_principal
                 || existing_actor_id != command.context.actor_id.to_string()
-                || existing_trace_id != command.context.trace_id
-                || existing_correlation_id != command.context.correlation_id.to_string()
                 || existing_actor_can_manage_modules != command.actor_can_manage_modules
             {
                 return Err(ModuleGovernanceError::ExternalPrebuiltStageIdempotencyConflict);

@@ -29,6 +29,25 @@ pub enum RetentionHoldKind {
     LegalHold { reference: String },
 }
 
+impl RetentionHoldKind {
+    /// The instant at which this hold stops protecting its target, when the
+    /// hold kind is time-bounded. Investigation, audit, legal, and standby
+    /// holds remain active until their owner explicitly releases them.
+    pub const fn expires_at(&self) -> Option<DateTime<Utc>> {
+        match self {
+            Self::ActiveRolloutWindow { expires_at, .. } => Some(*expires_at),
+            Self::DirectPredecessorStandby { .. }
+            | Self::IncidentInvestigation { .. }
+            | Self::AuditTrail { .. }
+            | Self::LegalHold { .. } => None,
+        }
+    }
+
+    pub fn is_active_at(&self, now: DateTime<Utc>) -> bool {
+        self.expires_at().is_none_or(|expires_at| now < expires_at)
+    }
+}
+
 /// State classification of an artifact-data object in tenant storage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -170,10 +189,39 @@ pub struct RetentionHoldRecord {
     pub created_at: DateTime<Utc>,
 }
 
+impl RetentionHoldRecord {
+    pub fn is_active_at(&self, now: DateTime<Utc>) -> bool {
+        self.kind.is_active_at(now)
+    }
+
+    pub fn is_expired_at(&self, now: DateTime<Utc>) -> bool {
+        !self.is_active_at(now)
+    }
+}
+
+/// Upper bound for one expired-retention-hold reap pass.
+pub const MAX_EXPIRED_RETENTION_HOLDS_PER_REAP: usize = 100;
+
+/// Bounded result of deleting retention holds whose rollout window elapsed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RetentionHoldReapReport {
+    pub scanned: usize,
+    pub expired: usize,
+    pub deleted: usize,
+}
+
+impl RetentionHoldReapReport {
+    pub const fn has_changes(self) -> bool {
+        self.deleted > 0
+    }
+}
+
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum RetentionError {
     #[error("Retention hold `{0}` not found")]
     HoldNotFound(Uuid),
+    #[error("Retention hold `{0}` already exists")]
+    DuplicateHold(Uuid),
     #[error(
         "Target `{target:?}` is currently protected by {active_holds} active retention hold(s)"
     )]
@@ -211,6 +259,24 @@ impl RetentionHoldLedger {
         hold_id
     }
 
+    /// Inserts one already-durable hold without rewriting its identity or
+    /// creation time. The store uses this when reconstructing the ledger;
+    /// generating replacement IDs would make release/reap decisions refer to
+    /// records that do not exist in storage.
+    pub(crate) fn insert_record(
+        &mut self,
+        record: RetentionHoldRecord,
+    ) -> Result<(), RetentionError> {
+        if self.holds.contains_key(&record.hold_id) {
+            return Err(RetentionError::DuplicateHold(record.hold_id));
+        }
+        let hold_id = record.hold_id;
+        let target = record.target.clone();
+        self.holds.insert(hold_id, record);
+        self.target_holds.entry(target).or_default().insert(hold_id);
+        Ok(())
+    }
+
     /// Releases an individual retention hold by its unique ID.
     pub fn release_hold(&mut self, hold_id: Uuid) -> Result<RetentionHoldRecord, RetentionError> {
         let record = self
@@ -228,27 +294,65 @@ impl RetentionHoldLedger {
         Ok(record)
     }
 
-    /// Returns the number of active holds currently protecting the given target.
+    /// Returns the number of unexpired holds protecting the given target at
+    /// the supplied instant.
+    pub fn active_holds_count_at(&self, target: &RetentionTarget, now: DateTime<Utc>) -> usize {
+        self.get_active_holds_at(target, now).len()
+    }
+
+    /// Returns the number of active holds currently protecting the given
+    /// target. Expired rollout-window rows may still be present until the
+    /// reaper runs, but they no longer protect the target.
     pub fn active_holds_count(&self, target: &RetentionTarget) -> usize {
-        self.target_holds.get(target).map_or(0, |set| set.len())
+        self.active_holds_count_at(target, Utc::now())
+    }
+
+    /// Determines whether garbage collection or pruning is strictly permitted
+    /// for this asset at the supplied instant.
+    pub fn is_collection_allowed_at(&self, target: &RetentionTarget, now: DateTime<Utc>) -> bool {
+        self.active_holds_count_at(target, now) == 0
     }
 
     /// Determines whether garbage collection or pruning is strictly permitted for this asset.
     ///
     /// Returns `true` if and only if there are **zero** active retention holds on the asset.
     pub fn is_collection_allowed(&self, target: &RetentionTarget) -> bool {
-        self.active_holds_count(target) == 0
+        self.is_collection_allowed_at(target, Utc::now())
     }
 
-    /// Retrieves all active hold records currently attached to a target.
-    pub fn get_active_holds(&self, target: &RetentionTarget) -> Vec<&RetentionHoldRecord> {
+    /// Retrieves all unexpired hold records attached to a target at the
+    /// supplied instant.
+    pub fn get_active_holds_at(
+        &self,
+        target: &RetentionTarget,
+        now: DateTime<Utc>,
+    ) -> Vec<&RetentionHoldRecord> {
         match self.target_holds.get(target) {
             Some(hold_ids) => hold_ids
                 .iter()
                 .filter_map(|id| self.holds.get(id))
+                .filter(|record| record.is_active_at(now))
                 .collect(),
             None => Vec::new(),
         }
+    }
+
+    /// Retrieves all active hold records currently attached to a target.
+    pub fn get_active_holds(&self, target: &RetentionTarget) -> Vec<&RetentionHoldRecord> {
+        self.get_active_holds_at(target, Utc::now())
+    }
+
+    /// Evaluates a batch of candidate assets for garbage collection at the
+    /// supplied instant.
+    pub fn garbage_collect_eligible_targets_at<'a>(
+        &self,
+        candidates: &'a [RetentionTarget],
+        now: DateTime<Utc>,
+    ) -> Vec<&'a RetentionTarget> {
+        candidates
+            .iter()
+            .filter(|target| self.is_collection_allowed_at(target, now))
+            .collect()
     }
 
     /// Evaluates a batch of candidate assets for garbage collection and returns only
@@ -257,10 +361,7 @@ impl RetentionHoldLedger {
         &self,
         candidates: &'a [RetentionTarget],
     ) -> Vec<&'a RetentionTarget> {
-        candidates
-            .iter()
-            .filter(|target| self.is_collection_allowed(target))
-            .collect()
+        self.garbage_collect_eligible_targets_at(candidates, Utc::now())
     }
 }
 
@@ -298,6 +399,38 @@ mod tests {
         // 5. Now collection is safe and allowed again
         assert!(ledger.is_collection_allowed(&payload_target));
         assert_eq!(ledger.active_holds_count(&payload_target), 0);
+    }
+
+    #[test]
+    fn expired_rollout_hold_no_longer_protects_but_indefinite_holds_do() {
+        let mut ledger = RetentionHoldLedger::new();
+        let target = RetentionTarget::AdmittedPayloadCas {
+            digest: "sha256:expired_rollout".to_string(),
+        };
+        let now = Utc::now();
+        ledger.place_hold(
+            target.clone(),
+            RetentionHoldKind::ActiveRolloutWindow {
+                operation_id: Uuid::new_v4(),
+                expires_at: now + chrono::Duration::seconds(60),
+            },
+        );
+
+        assert_eq!(ledger.active_holds_count_at(&target, now), 1);
+        assert!(!ledger.is_collection_allowed_at(&target, now));
+        let after_expiry = now + chrono::Duration::seconds(60);
+        assert_eq!(ledger.active_holds_count_at(&target, after_expiry), 0);
+        assert!(ledger.is_collection_allowed_at(&target, after_expiry));
+        assert!(ledger.get_active_holds_at(&target, after_expiry).is_empty());
+
+        ledger.place_hold(
+            target.clone(),
+            RetentionHoldKind::AuditTrail {
+                compliance_id: "COMPLIANCE-2026-A".to_string(),
+            },
+        );
+        assert_eq!(ledger.active_holds_count_at(&target, after_expiry), 1);
+        assert!(!ledger.is_collection_allowed_at(&target, after_expiry));
     }
 
     #[test]

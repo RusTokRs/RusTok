@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use crate::error::{ManifestError, Result};
-use crate::types::{ModulePackageManifest, ModulesManifest};
+use crate::types::{ModulePackageManifest, ModuleUiSupportProvides, ModulesManifest};
 
 /// Canonical module slug validator.
 ///
@@ -215,5 +215,49 @@ pub fn validate_module_package_manifest(manifest: &ModulePackageManifest) -> Res
         }
     }
 
+    // Support sub-crates publish reusable components for composition into
+    // other surfaces; they are not UI surfaces and must not be declared
+    // alongside the surface section for the same host (both sections would
+    // describe the same single sub-crate).
+    validate_ui_support_section(
+        slug,
+        "admin",
+        manifest.provides.admin_ui.is_some(),
+        manifest.provides.admin_support.as_ref(),
+    )?;
+    validate_ui_support_section(
+        slug,
+        "storefront",
+        manifest.provides.storefront_ui.is_some(),
+        manifest.provides.storefront_support.as_ref(),
+    )?;
+
+    Ok(())
+}
+
+fn validate_ui_support_section(
+    slug: &str,
+    surface: &str,
+    has_surface_section: bool,
+    support: Option<&ModuleUiSupportProvides>,
+) -> Result<()> {
+    let Some(support) = support else {
+        return Ok(());
+    };
+    if has_surface_section {
+        return Err(ManifestError::Validation(format!(
+            "Module '{slug}' declares both [provides.{surface}_ui] and [provides.{surface}_support]; the {surface}/ sub-crate is either a UI surface or a support crate, not both"
+        )));
+    }
+    let has_crate = support
+        .leptos_crate
+        .as_ref()
+        .map(|krate| !krate.trim().is_empty())
+        .unwrap_or(false);
+    if !has_crate {
+        return Err(ManifestError::Validation(format!(
+            "Module '{slug}' declares [provides.{surface}_support] without a non-empty leptos_crate"
+        )));
+    }
     Ok(())
 }

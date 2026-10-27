@@ -54,7 +54,11 @@ impl ControlPlaneInfrastructure {
     }
 
     pub fn now(&self) -> DateTime<Utc> {
-        self.clock.now()
+        // The owner clock mints storage-precision time (see
+        // `backend::align_to_storage_precision`): sub-millisecond digits
+        // can never round-trip through either backend's timestamp
+        // representation.
+        crate::backend::align_to_storage_precision(self.clock.now())
     }
 
     pub fn new_id(&self) -> Uuid {

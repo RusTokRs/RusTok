@@ -372,12 +372,11 @@ impl SourceObjectStore {
 
         let temp_path = self.temp_path(shard_dir);
         let write_result = async {
-            let mut file = tokio::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&temp_path)
-                .await
-                .map_err(io_error)?;
+            let mut options = tokio::fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            options.mode(0o600);
+            let mut file = options.open(&temp_path).await.map_err(io_error)?;
             let mut hasher = Sha256::new();
             for chunk in bytes.chunks(STREAM_CHUNK_BYTES) {
                 file.write_all(chunk).await.map_err(io_error)?;
@@ -440,12 +439,11 @@ impl SourceObjectStore {
         let temp_path = self.temp_path(shard_dir);
         let write_result = async {
             let mut source = tokio::fs::File::open(file_path).await.map_err(io_error)?;
-            let mut temp = tokio::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&temp_path)
-                .await
-                .map_err(io_error)?;
+            let mut options = tokio::fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            options.mode(0o600);
+            let mut temp = options.open(&temp_path).await.map_err(io_error)?;
             let mut hasher = Sha256::new();
             let mut total: u64 = 0;
             let mut buffer = vec![0u8; STREAM_CHUNK_BYTES];
@@ -616,7 +614,13 @@ impl SourceObjectStore {
             scope_tenant_key.into(),
             source_digest.into(),
             media_type.into(),
-            (byte_length as i64).into(),
+            i64::try_from(byte_length)
+                .map_err(|_| {
+                    SourceObjectError::Storage(
+                        "source object byte length exceeds the supported storage range".to_string(),
+                    )
+                })?
+                .into(),
             manifest_val,
             now.to_rfc3339().into(),
         ];
@@ -802,29 +806,12 @@ impl SourceObjectStore {
         row: sea_orm::QueryResult,
         backend: SupportedBackend,
     ) -> Result<SourceReceipt, SourceObjectError> {
-        let source_receipt_id: Uuid = match backend {
-            SupportedBackend::Sqlite => {
-                let s: String = row
-                    .try_get("", "source_receipt_id")
-                    .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
-                Uuid::parse_str(&s).map_err(|e| SourceObjectError::Storage(e.to_string()))?
-            }
-            SupportedBackend::Postgres => row
-                .try_get("", "source_receipt_id")
-                .map_err(|e| SourceObjectError::Storage(e.to_string()))?,
-        };
-
-        let preparation_id: Uuid = match backend {
-            SupportedBackend::Sqlite => {
-                let s: String = row
-                    .try_get("", "preparation_id")
-                    .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
-                Uuid::parse_str(&s).map_err(|e| SourceObjectError::Storage(e.to_string()))?
-            }
-            SupportedBackend::Postgres => row
-                .try_get("", "preparation_id")
-                .map_err(|e| SourceObjectError::Storage(e.to_string()))?,
-        };
+        let source_receipt_id = backend
+            .uuid_from_row(&row, "source_receipt_id")
+            .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
+        let preparation_id = backend
+            .uuid_from_row(&row, "preparation_id")
+            .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
 
         let scope_kind: String = row
             .try_get("", "scope_kind")
@@ -847,8 +834,7 @@ impl SourceObjectStore {
         let media_type: String = row
             .try_get("", "media_type")
             .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
-        let byte_length: i64 = row
-            .try_get("", "byte_length")
+        let byte_length = crate::backend::nonnegative_count_from_row(&row, "byte_length")
             .map_err(|e| SourceObjectError::Storage(e.to_string()))?;
         let manifest_digest: Option<String> = row
             .try_get("", "manifest_digest")
@@ -873,7 +859,7 @@ impl SourceObjectStore {
             scope,
             source_digest,
             media_type,
-            byte_length: byte_length as u64,
+            byte_length,
             manifest_digest,
             created_at,
         })

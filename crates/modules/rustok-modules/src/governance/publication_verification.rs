@@ -273,6 +273,46 @@ pub(crate) async fn verify_publish_request_prerequisites(
     if !author_signature_recorded {
         return Err(ModuleGovernanceError::PublishRequestMissingAuthorSignature);
     }
+    // Marketplace approval was checked for independence from the requester
+    // and the then-stored publisher when it was recorded, but publication
+    // binds the release to the host-supplied `command.publisher_principal`.
+    // Re-check independence against that final publisher here: an approval
+    // recorded by the principal that will own the release is not a valid
+    // independent approval, even if the stored publisher differed earlier.
+    let marketplace_approval_recorders = tx
+        .query_all_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            format!(
+                "SELECT CAST(approval.recorded_by_principal AS TEXT) AS recorded_by_principal \
+                     FROM registry_publication_evidence AS approval \
+                     WHERE approval.request_id = {} AND approval.authority = 'marketplace_approval' \
+                     AND approval.subject_digest_sha256 = {} \
+                     AND approval.policy_revision = {} \
+                     AND approval.created_at >= ( \
+                         SELECT request.submitted_at FROM registry_publish_requests AS request \
+                         WHERE request.id = approval.request_id \
+                     )",
+                mark(1),
+                mark(2),
+                mark(3),
+            ),
+            vec![
+                command.request_id.clone().into(),
+                checksum_sha256.clone().into(),
+                MARKETPLACE_APPROVAL_POLICY_REVISION.into(),
+            ],
+        ))
+        .await
+        .map_err(store_error)?
+        .iter()
+        .map(|row| required_json_text(row, "recorded_by_principal"))
+        .collect::<Result<Vec<_>, _>>()?;
+    if !marketplace_approval_recorders
+        .iter()
+        .any(|recorded_by| recorded_by != &command.publisher_principal)
+    {
+        return Err(ModuleGovernanceError::PublishRequestMissingMarketplaceApproval);
+    }
     match artifact_origin {
         ModulePublicationArtifactOrigin::PlatformBuilt => {
             let platform_build_manifest = platform_build_manifest
@@ -354,6 +394,8 @@ pub(crate) async fn verify_publish_request_prerequisites(
         }
     }
 
+    verify_approval_override_gate(tx, backend, command, artifact_origin).await?;
+
     let translations = tx
         .query_all_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -406,4 +448,89 @@ pub(crate) async fn verify_publish_request_prerequisites(
         artifact_origin,
         translations,
     })
+}
+
+async fn verify_approval_override_gate(
+    tx: &DatabaseTransaction,
+    backend: SupportedBackend,
+    command: &ModulePublishRequestPublicationCommand,
+    artifact_origin: ModulePublicationArtifactOrigin,
+) -> Result<(), ModuleGovernanceError> {
+    let mark = |n| backend.placeholder(n);
+    let rows = tx
+        .query_all_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            format!(
+                "SELECT stage_key, status, attempt_number \
+                     FROM registry_validation_stages WHERE request_id = {} \
+                     ORDER BY attempt_number DESC, created_at DESC, id DESC",
+                mark(1),
+            ),
+            vec![command.request_id.clone().into()],
+        ))
+        .await
+        .map_err(store_error)?;
+    let mut latest_by_key = std::collections::HashMap::<String, (String, i64)>::new();
+    for row in rows {
+        let stage_key: String = row.try_get("", "stage_key").map_err(store_error)?;
+        let status: String = row.try_get("", "status").map_err(store_error)?;
+        let attempt_number: i32 = row.try_get("", "attempt_number").map_err(store_error)?;
+        latest_by_key
+            .entry(stage_key.to_ascii_lowercase())
+            .or_insert((status.to_ascii_lowercase(), i64::from(attempt_number)));
+    }
+
+    let mut incomplete = Vec::new();
+    for required_stage in publication_follow_up_stages(artifact_origin) {
+        let (status, attempt_number) = latest_by_key
+            .get(required_stage.key)
+            .cloned()
+            .unwrap_or_else(|| ("queued".to_string(), 0));
+        if status != "passed" {
+            incomplete.push((required_stage.key.to_string(), status, attempt_number));
+        }
+    }
+
+    if incomplete.is_empty() {
+        if command.approval_override.is_some() {
+            return Err(ModuleGovernanceError::InvalidPublishApprovalOverride);
+        }
+        return Ok(());
+    }
+    let Some(approval_override) = &command.approval_override else {
+        return Err(ModuleGovernanceError::PublishRequestApprovalOverrideRequired);
+    };
+    let Some(override_stages) = approval_override.validation_stages.as_array() else {
+        return Err(ModuleGovernanceError::InvalidPublishApprovalOverride);
+    };
+    let mut recorded = Vec::with_capacity(override_stages.len());
+    for stage in override_stages {
+        let Some(stage_key) = stage
+            .get("stage_key")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_ascii_lowercase)
+        else {
+            return Err(ModuleGovernanceError::PublishApprovalOverrideStageMismatch);
+        };
+        let Some(status) = stage
+            .get("status")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_ascii_lowercase)
+        else {
+            return Err(ModuleGovernanceError::PublishApprovalOverrideStageMismatch);
+        };
+        let Some(attempt_number) = stage
+            .get("attempt_number")
+            .and_then(serde_json::Value::as_i64)
+        else {
+            return Err(ModuleGovernanceError::PublishApprovalOverrideStageMismatch);
+        };
+        recorded.push((stage_key, status, attempt_number));
+    }
+    incomplete.sort();
+    recorded.sort();
+    if recorded != incomplete {
+        return Err(ModuleGovernanceError::PublishApprovalOverrideStageMismatch);
+    }
+    Ok(())
 }

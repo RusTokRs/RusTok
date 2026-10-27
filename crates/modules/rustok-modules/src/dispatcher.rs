@@ -11,8 +11,9 @@ use rustok_sandbox::ExecutionPhase;
 
 use crate::{
     ArtifactReleaseRef, ArtifactUiAuditPolicy, ArtifactUiContribution,
-    ArtifactUiContributionContent, ModuleBindingIdempotency, ModuleDefinitionCatalog,
-    ModuleDefinitionSource, ModuleHttpMethod, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
+    ArtifactUiContributionContent, InstalledModuleArtifact, ModuleBindingIdempotency,
+    ModuleDefinitionCatalog, ModuleDefinitionSource, ModuleHttpMethod, ModuleInstallationScope,
+    ModuleRuntimeBinding, ModuleRuntimeBindingKind,
     artifact::{event_topic_matches, valid_event_topic},
 };
 
@@ -75,6 +76,10 @@ pub struct ArtifactCommandBindingRequest<'a> {
     pub bindings: &'a [ModuleRuntimeBinding],
     pub target: ArtifactInstallationTarget,
     pub tenant_id: uuid::Uuid,
+    /// Policy-owner admission for this exact release/target/tenant. Hosts
+    /// obtain it from `ModuleEffectivePolicy::admit_artifact_execution`;
+    /// it cannot be constructed from descriptor or transport data.
+    pub admission: ArtifactExecutionAdmission,
     pub binding_id: &'a str,
     pub input: serde_json::Value,
     pub context: ArtifactBindingExecutionContext,
@@ -85,6 +90,9 @@ pub struct ArtifactHttpBindingRequest<'a> {
     pub bindings: &'a [ModuleRuntimeBinding],
     pub target: ArtifactInstallationTarget,
     pub tenant_id: uuid::Uuid,
+    /// Policy-owner admission for this exact release/target/tenant (see
+    /// [`ArtifactCommandBindingRequest::admission`]).
+    pub admission: ArtifactExecutionAdmission,
     pub method: ModuleHttpMethod,
     pub path: &'a str,
     pub body: serde_json::Value,
@@ -255,6 +263,7 @@ impl<'a> ModuleExecutionDispatcher<'a> {
         binding_id: &str,
         input: serde_json::Value,
         phase: ExecutionPhase,
+        admission: ArtifactExecutionAdmission,
         context: ArtifactBindingExecutionContext,
     ) -> Result<serde_json::Value, ModuleDispatchError> {
         if !context.is_valid() {
@@ -278,6 +287,15 @@ impl<'a> ModuleExecutionDispatcher<'a> {
                 phase,
             });
         }
+        if !admission.matches_dispatch(
+            release,
+            binding,
+            ArtifactInstallationTarget::CurrentRelease,
+            tenant_id,
+            phase,
+        ) {
+            return Err(ModuleDispatchError::AdmissionMismatch);
+        }
         let executor = self.artifact_executor.ok_or_else(|| {
             ModuleDispatchError::ArtifactExecutorUnavailable(module_slug.to_string())
         })?;
@@ -287,6 +305,7 @@ impl<'a> ModuleExecutionDispatcher<'a> {
                 binding,
                 target: ArtifactInstallationTarget::CurrentRelease,
                 tenant_id,
+                admission,
                 input,
                 phase,
                 context,
@@ -311,6 +330,7 @@ impl<'a> ModuleExecutionDispatcher<'a> {
         module_slug: &str,
         event_type: &str,
         payload: serde_json::Value,
+        admission: ArtifactExecutionAdmission,
         context: ArtifactBindingExecutionContext,
     ) -> Result<Vec<ArtifactEventBindingOutcome>, ModuleDispatchError> {
         if !valid_delivered_event_type(event_type) {
@@ -355,6 +375,7 @@ impl<'a> ModuleExecutionDispatcher<'a> {
                         "payload": payload.clone(),
                     }),
                     ExecutionPhase::Event,
+                    admission.clone(),
                     context.clone(),
                 )
                 .await;
@@ -374,6 +395,7 @@ impl<'a> ModuleExecutionDispatcher<'a> {
         method: ModuleHttpMethod,
         path: &str,
         body: serde_json::Value,
+        admission: ArtifactExecutionAdmission,
         context: ArtifactBindingExecutionContext,
     ) -> Result<serde_json::Value, ModuleDispatchError> {
         if !context.is_valid() {
@@ -397,6 +419,7 @@ impl<'a> ModuleExecutionDispatcher<'a> {
                 bindings: &definition.bindings,
                 target: ArtifactInstallationTarget::CurrentRelease,
                 tenant_id,
+                admission,
                 method,
                 path,
                 body,
@@ -501,6 +524,7 @@ where
         bindings,
         target,
         tenant_id,
+        admission,
         binding_id,
         input,
         context,
@@ -514,12 +538,16 @@ where
             binding_id: binding_id.to_string(),
         }
     })?;
+    if !admission.matches_dispatch(release, binding, target, tenant_id, ExecutionPhase::Manual) {
+        return Err(ModuleDispatchError::AdmissionMismatch);
+    }
     executor
         .dispatch_binding(ArtifactBindingDispatch {
             release,
             binding,
             target,
             tenant_id,
+            admission,
             input,
             phase: ExecutionPhase::Manual,
             context,
@@ -543,6 +571,7 @@ where
         bindings,
         target,
         tenant_id,
+        admission,
         method,
         path,
         body,
@@ -557,6 +586,9 @@ where
             path: path.to_string(),
         }
     })?;
+    if !admission.matches_dispatch(release, binding, target, tenant_id, ExecutionPhase::Http) {
+        return Err(ModuleDispatchError::AdmissionMismatch);
+    }
     let http = binding
         .http
         .as_ref()
@@ -575,6 +607,7 @@ where
             binding,
             target,
             tenant_id,
+            admission,
             input: serde_json::json!({
                 "binding_id": binding_id,
                 "method": method,
@@ -612,6 +645,8 @@ pub enum ArtifactBindingDispatchError {
         slug: String,
         policy_revision: String,
     },
+    #[error("artifact execution admission does not match the dispatch or resolved installation")]
+    AdmissionMismatch,
     #[error(transparent)]
     Installation(#[from] crate::ArtifactInstallationResolveError),
     #[error(transparent)]
@@ -629,10 +664,14 @@ impl ArtifactBindingDispatchError {
     /// an operator or state change. Store failures and node-readiness gaps
     /// are transient; sandbox execution failures stay retryable because
     /// executor availability is transient evidence (see the M-5 policy
-    /// rationale).
+    /// rationale). A policy denial is deliberately *not* terminal: policy
+    /// toggles are routine state, so durable queues park the delivery (see
+    /// [`Self::is_policy_denied`]) instead of dead-lettering work that
+    /// becomes valid again when the module is re-enabled.
     pub fn is_terminal(&self) -> bool {
         match self {
-            Self::InvalidContext | Self::HttpBindingRequired | Self::DeniedByPolicy { .. } => true,
+            Self::InvalidContext | Self::HttpBindingRequired | Self::AdmissionMismatch => true,
+            Self::DeniedByPolicy { .. } => false,
             Self::Installation(error) => {
                 !matches!(error, crate::ArtifactInstallationResolveError::Store(_))
             }
@@ -643,8 +682,109 @@ impl ArtifactBindingDispatchError {
                 error,
                 crate::ArtifactEffectivePolicyResolveError::InvalidRequest(_)
             ),
-            Self::Runtime(_) | Self::Execution(_) => false,
+            Self::Runtime(error) => error.is_terminal(),
+            Self::Execution(_) => false,
         }
+    }
+
+    /// Terminality for one admitted binding's declared idempotency. A
+    /// binding that declares `ModuleBindingIdempotency::None` must never
+    /// be auto-retried after an ambiguous outcome: sandbox/execution
+    /// failures can mean the guest already performed side effects, and a
+    /// retry would silently execute it twice. Failures raised before
+    /// guest execution (resolution, policy, envelope, input-schema)
+    /// remain governed by [`Self::is_terminal`].
+    pub fn is_terminal_for(&self, idempotency: crate::ModuleBindingIdempotency) -> bool {
+        self.is_terminal()
+            || (idempotency == crate::ModuleBindingIdempotency::None && self.may_have_executed())
+    }
+
+    /// Whether the failure is an effective-policy denial raised before any
+    /// guest execution. Durable delivery queues use this to park (hold)
+    /// the delivery without consuming its failure-attempt budget: nothing
+    /// executed, and the work becomes deliverable again on re-enable.
+    pub fn is_policy_denied(&self) -> bool {
+        matches!(self, Self::DeniedByPolicy { .. })
+    }
+
+    fn may_have_executed(&self) -> bool {
+        match self {
+            Self::Runtime(error) => {
+                matches!(error, crate::ArtifactRuntimeError::Sandbox(_))
+            }
+            Self::Execution(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Stable, redacted failure code for durable delivery records (see
+    /// `ArtifactRuntimeError::code`).
+    pub fn code(&self) -> &'static str {
+        use crate::{
+            ArtifactEffectivePolicyResolveError, ArtifactInstallationResolveError,
+            ArtifactSandboxPolicyResolveError,
+        };
+        match self {
+            Self::InvalidContext => "execution_context_invalid",
+            Self::HttpBindingRequired => "http_binding_required",
+            Self::DeniedByPolicy { .. } => DELIVERY_CODE_DENIED_BY_POLICY,
+            Self::AdmissionMismatch => "execution_admission_mismatch",
+            Self::Installation(error) => match error {
+                ArtifactInstallationResolveError::Unavailable => "installation_unavailable",
+                ArtifactInstallationResolveError::NotActiveSelection => {
+                    "installation_not_active_selection"
+                }
+                ArtifactInstallationResolveError::InvalidRequest(_) => {
+                    "installation_request_invalid"
+                }
+                ArtifactInstallationResolveError::Invariant(_) => "installation_state_invalid",
+                ArtifactInstallationResolveError::Store(_) => "installation_store_failed",
+            },
+            Self::SandboxPolicy(error) => match error {
+                ArtifactSandboxPolicyResolveError::Unavailable => "sandbox_policy_unavailable",
+                ArtifactSandboxPolicyResolveError::RevisionMismatch => {
+                    "sandbox_policy_revision_mismatch"
+                }
+                ArtifactSandboxPolicyResolveError::InvalidRequest(_) => {
+                    "sandbox_policy_request_invalid"
+                }
+                ArtifactSandboxPolicyResolveError::Invariant(_) => "sandbox_policy_state_invalid",
+                ArtifactSandboxPolicyResolveError::Store(_) => "sandbox_policy_store_failed",
+            },
+            Self::EffectivePolicy(error) => match error {
+                ArtifactEffectivePolicyResolveError::InvalidRequest(_) => {
+                    "effective_policy_request_invalid"
+                }
+                ArtifactEffectivePolicyResolveError::NodeNotReady(_) => "node_not_ready",
+                ArtifactEffectivePolicyResolveError::Store(_) => "effective_policy_store_failed",
+            },
+            Self::Runtime(error) => error.code(),
+            Self::Execution(_) => "execution_failed",
+        }
+    }
+}
+
+/// Accepts a work-outcome message as a durable delivery error code only
+/// when it already looks like one of the stable snake_case codes; any
+/// other message (foreign executor, free-form text) collapses to the
+/// caller's generic fallback so unbounded error text is never persisted
+/// as a code.
+/// Stable delivery error code for an effective-policy denial (see
+/// [`ArtifactBindingDispatchError::code`]). Delivery queues compare the
+/// sanitized code against this constant to park the delivery instead of
+/// spending its failure-attempt budget.
+pub(crate) const DELIVERY_CODE_DENIED_BY_POLICY: &str = "denied_by_policy";
+
+pub(crate) fn delivery_error_code(message: &str, fallback: &'static str) -> String {
+    let looks_like_code = !message.is_empty()
+        && message.len() <= 64
+        && message
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_');
+    if looks_like_code {
+        message.to_string()
+    } else {
+        fallback.to_string()
     }
 }
 
@@ -681,6 +821,7 @@ pub trait ArtifactLifecycleExecutor: ArtifactBindingExecutor {
             binding,
             target: ArtifactInstallationTarget::CurrentRelease,
             tenant_id,
+            admission: ArtifactExecutionAdmission::lifecycle(tenant_id, release),
             input: serde_json::json!({
                 "binding_id": binding.id,
                 "phase": phase,
@@ -696,6 +837,201 @@ pub trait ArtifactLifecycleExecutor: ArtifactBindingExecutor {
 
 impl<T> ArtifactLifecycleExecutor for T where T: ArtifactBindingExecutor + ?Sized {}
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ArtifactExecutionAdmissionKind {
+    /// Minted by `ModuleEffectivePolicy` for one enabled decision.
+    EffectivePolicy,
+    /// Minted only by the lifecycle port; the lifecycle operation itself
+    /// (enable/disable under the operation journal) is the authorization,
+    /// so no effective-policy decision is required or consulted.
+    Lifecycle,
+    /// Minted only by crate-owned durable delivery workers. It proves the
+    /// dispatch came from the owner queue, not that policy still admits
+    /// it: the production executor re-resolves effective policy and parks
+    /// denied work without executing.
+    OwnerRevalidation,
+    /// Minted only by the owner data-upgrade bridge for its dedicated
+    /// binding kind, which the generic dispatcher never exposes.
+    DataUpgrade,
+}
+
+/// Opaque proof that an artifact binding dispatch was admitted by the
+/// policy/lifecycle owner for one exact tenant, release, and installation
+/// target.
+///
+/// Hosts can obtain a token only from
+/// `ModuleEffectivePolicy::admit_artifact_execution`; the fields and all
+/// other constructors are crate-private, so a transport cannot fabricate
+/// admission from descriptor data, headers, or an enabled-slug set. The
+/// production executor additionally re-resolves current effective policy
+/// for every non-lifecycle dispatch, so a token minted under a policy
+/// that has since been revoked still cannot execute.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArtifactExecutionAdmission {
+    kind: ArtifactExecutionAdmissionKind,
+    tenant_id: uuid::Uuid,
+    module_slug: String,
+    release_digest: String,
+    installation_id: Option<uuid::Uuid>,
+    policy_revision: Option<String>,
+}
+
+impl ArtifactExecutionAdmission {
+    fn new(
+        kind: ArtifactExecutionAdmissionKind,
+        tenant_id: uuid::Uuid,
+        release: &ArtifactReleaseRef,
+        target: ArtifactInstallationTarget,
+        policy_revision: Option<String>,
+    ) -> Self {
+        Self {
+            kind,
+            tenant_id,
+            module_slug: release.slug.clone(),
+            release_digest: release.digest.clone(),
+            installation_id: match target {
+                ArtifactInstallationTarget::CurrentRelease => None,
+                ArtifactInstallationTarget::ExactInstallation { installation_id } => {
+                    Some(installation_id)
+                }
+            },
+            policy_revision,
+        }
+    }
+
+    pub(crate) fn effective_policy(
+        tenant_id: uuid::Uuid,
+        release: &ArtifactReleaseRef,
+        target: ArtifactInstallationTarget,
+        policy_revision: String,
+    ) -> Self {
+        Self::new(
+            ArtifactExecutionAdmissionKind::EffectivePolicy,
+            tenant_id,
+            release,
+            target,
+            Some(policy_revision),
+        )
+    }
+
+    pub(crate) fn lifecycle(tenant_id: uuid::Uuid, release: &ArtifactReleaseRef) -> Self {
+        Self::new(
+            ArtifactExecutionAdmissionKind::Lifecycle,
+            tenant_id,
+            release,
+            ArtifactInstallationTarget::CurrentRelease,
+            None,
+        )
+    }
+
+    pub(crate) fn owner_revalidation(
+        tenant_id: uuid::Uuid,
+        release: &ArtifactReleaseRef,
+        target: ArtifactInstallationTarget,
+    ) -> Self {
+        Self::new(
+            ArtifactExecutionAdmissionKind::OwnerRevalidation,
+            tenant_id,
+            release,
+            target,
+            None,
+        )
+    }
+
+    pub(crate) fn data_upgrade(tenant_id: uuid::Uuid, release: &ArtifactReleaseRef) -> Self {
+        Self::new(
+            ArtifactExecutionAdmissionKind::DataUpgrade,
+            tenant_id,
+            release,
+            ArtifactInstallationTarget::CurrentRelease,
+            None,
+        )
+    }
+
+    /// Effective-policy revision under which this token was minted, when
+    /// it is a policy token. Lifecycle and owner-revalidation tokens do
+    /// not carry a revision.
+    pub fn policy_revision(&self) -> Option<&str> {
+        self.policy_revision.as_deref()
+    }
+
+    /// Whether this token was minted for exactly this not-yet-resolved
+    /// dispatch shape. Checked by the dispatcher helpers before any
+    /// executor is invoked.
+    pub(crate) fn matches_dispatch(
+        &self,
+        release: &ArtifactReleaseRef,
+        binding: &ModuleRuntimeBinding,
+        target: ArtifactInstallationTarget,
+        tenant_id: uuid::Uuid,
+        phase: ExecutionPhase,
+    ) -> bool {
+        if self.tenant_id != tenant_id
+            || self.module_slug != release.slug
+            || self.release_digest != release.digest
+        {
+            return false;
+        }
+        let target_matches = match target {
+            ArtifactInstallationTarget::CurrentRelease => self.installation_id.is_none(),
+            ArtifactInstallationTarget::ExactInstallation { installation_id } => {
+                self.installation_id == Some(installation_id)
+            }
+        };
+        if !target_matches {
+            return false;
+        }
+        match self.kind {
+            ArtifactExecutionAdmissionKind::EffectivePolicy
+            | ArtifactExecutionAdmissionKind::OwnerRevalidation => {
+                phase != ExecutionPhase::Lifecycle
+                    && binding.kind != ModuleRuntimeBindingKind::DataUpgrade
+                    && binding_allows_phase(binding.kind.clone(), phase)
+            }
+            ArtifactExecutionAdmissionKind::Lifecycle => {
+                phase == ExecutionPhase::Lifecycle
+                    && binding_allows_phase(binding.kind.clone(), phase)
+            }
+            ArtifactExecutionAdmissionKind::DataUpgrade => {
+                phase == ExecutionPhase::Manual
+                    && binding.kind == ModuleRuntimeBindingKind::DataUpgrade
+            }
+        }
+    }
+
+    /// Full check against the resolved immutable installation, performed
+    /// by the production executor immediately before sandbox policy
+    /// resolution. A token minted for one tenant/release/installation
+    /// can never authorize a different resolved artifact.
+    pub(crate) fn authorize(
+        &self,
+        release: &ArtifactReleaseRef,
+        binding: &ModuleRuntimeBinding,
+        target: ArtifactInstallationTarget,
+        tenant_id: uuid::Uuid,
+        phase: ExecutionPhase,
+        artifact: &InstalledModuleArtifact,
+    ) -> Result<(), ArtifactBindingDispatchError> {
+        let scope_matches = match artifact.scope {
+            ModuleInstallationScope::Platform => true,
+            ModuleInstallationScope::Tenant {
+                tenant_id: scoped_tenant_id,
+            } => scoped_tenant_id == tenant_id,
+        };
+        if !self.matches_dispatch(release, binding, target, tenant_id, phase)
+            || !scope_matches
+            || artifact.release.slug != self.module_slug
+            || artifact.descriptor.artifact_digest != self.release_digest
+            || self
+                .installation_id
+                .is_some_and(|installation_id| installation_id != artifact.installation_id)
+        {
+            return Err(ArtifactBindingDispatchError::AdmissionMismatch);
+        }
+        Ok(())
+    }
+}
+
 pub struct ArtifactBindingDispatch<'a> {
     pub release: &'a ArtifactReleaseRef,
     pub binding: &'a ModuleRuntimeBinding,
@@ -704,6 +1040,10 @@ pub struct ArtifactBindingDispatch<'a> {
     /// composition change cannot execute a different artifact.
     pub target: ArtifactInstallationTarget,
     pub tenant_id: uuid::Uuid,
+    /// Owner-minted execution admission for this dispatch. See
+    /// [`ArtifactExecutionAdmission`]; executors must not run a binding
+    /// whose admission does not authorize the resolved installation.
+    pub admission: ArtifactExecutionAdmission,
     pub input: serde_json::Value,
     pub phase: ExecutionPhase,
     /// Authenticated transport identity supplied by the host, never by the
@@ -801,6 +1141,8 @@ pub enum ModuleDispatchError {
     ArtifactHttpEnvelope(String),
     #[error("artifact binding execution context is invalid")]
     InvalidArtifactExecutionContext,
+    #[error("artifact execution admission does not match the requested dispatch")]
+    AdmissionMismatch,
     #[error(
         "artifact module `{module_slug}` declares {matches} bindings for kind `{kind}`; exactly one is admissible"
     )]
@@ -827,6 +1169,63 @@ mod tests {
         ArtifactUiContributionContent, ModuleBindingIdempotency, ModuleDefinition,
         ModuleDefinitionKind, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
     };
+
+    #[test]
+    fn delivery_error_code_accepts_only_stable_codes() {
+        assert_eq!(
+            delivery_error_code("denied_by_policy", "execution_failed"),
+            "denied_by_policy"
+        );
+        assert_eq!(
+            delivery_error_code("guest input with spaces", "execution_failed"),
+            "execution_failed"
+        );
+        assert_eq!(
+            delivery_error_code("", "execution_rejected"),
+            "execution_rejected"
+        );
+        assert_eq!(
+            delivery_error_code(&"x".repeat(65), "execution_failed"),
+            "execution_failed"
+        );
+
+        let terminal = ArtifactBindingDispatchError::Runtime(
+            crate::ArtifactRuntimeError::BindingSchemaViolation {
+                binding: "apply".to_string(),
+                stage: "input",
+                schema_digest: format!("sha256:{}", "a".repeat(64)),
+            },
+        );
+        assert!(terminal.is_terminal());
+        assert_eq!(terminal.code(), "binding_schema_violation");
+
+        // An ambiguous execution failure is retryable only when the
+        // binding declared itself retry-safe.
+        let ambiguous = ArtifactBindingDispatchError::Execution("timeout".to_string());
+        assert!(!ambiguous.is_terminal());
+        assert!(ambiguous.is_terminal_for(ModuleBindingIdempotency::None));
+        assert!(!ambiguous.is_terminal_for(ModuleBindingIdempotency::Required));
+        assert!(!ambiguous.is_terminal_for(ModuleBindingIdempotency::BestEffort));
+
+        // Pre-execution failures stay retryable even for `None` bindings:
+        // the guest provably never ran.
+        let pre_execution = ArtifactBindingDispatchError::Installation(
+            crate::ArtifactInstallationResolveError::Store("db down".to_string()),
+        );
+        assert!(!pre_execution.is_terminal_for(ModuleBindingIdempotency::None));
+
+        // A policy denial parks durable work: it is not terminal for any
+        // binding (nothing executed) and is identifiable by its stable
+        // code so queues can hold without spending failure attempts.
+        let denied = ArtifactBindingDispatchError::DeniedByPolicy {
+            slug: "blog".to_string(),
+            policy_revision: "7".to_string(),
+        };
+        assert!(denied.is_policy_denied());
+        assert!(!denied.is_terminal());
+        assert!(!denied.is_terminal_for(ModuleBindingIdempotency::None));
+        assert_eq!(denied.code(), DELIVERY_CODE_DENIED_BY_POLICY);
+    }
 
     struct RecordingArtifactExecutor(Mutex<Vec<(String, ModuleLifecycleHookPhase)>>);
 
@@ -1045,15 +1444,22 @@ mod tests {
             .expect("artifact definition");
         let executor = EchoArtifactExecutor;
         let dispatcher = ModuleExecutionDispatcher::artifact_only(&catalog, &executor);
+        let tenant_id = uuid::Uuid::new_v4();
+        let admission = ArtifactExecutionAdmission::owner_revalidation(
+            tenant_id,
+            &release,
+            ArtifactInstallationTarget::CurrentRelease,
+        );
         let body = serde_json::json!({ "include": "summary" });
 
         let output = dispatcher
             .dispatch_artifact_http(
-                uuid::Uuid::new_v4(),
+                tenant_id,
                 "artifact_module",
                 ModuleHttpMethod::Post,
                 "status/query",
                 body.clone(),
+                admission.clone(),
                 ArtifactBindingExecutionContext {
                     actor_id: Some("user-42".to_string()),
                     trace_id: Some("trace-42".to_string()),
@@ -1067,11 +1473,12 @@ mod tests {
         assert!(matches!(
             dispatcher
                 .dispatch_artifact_http(
-                    uuid::Uuid::new_v4(),
+                    tenant_id,
                     "artifact_module",
                     ModuleHttpMethod::Get,
                     "status/query",
                     serde_json::json!({}),
+                    admission,
                     ArtifactBindingExecutionContext::default(),
                 )
                 .await,
@@ -1084,15 +1491,27 @@ mod tests {
         let catalog = ModuleDefinitionCatalog::default();
         let executor = EchoArtifactExecutor;
         let dispatcher = ModuleExecutionDispatcher::artifact_only(&catalog, &executor);
+        let release = ArtifactReleaseRef {
+            slug: "artifact_module".to_string(),
+            version: "1.0.0".to_string(),
+            digest: format!("sha256:{}", "a".repeat(64)),
+        };
+        let tenant_id = uuid::Uuid::new_v4();
+        let admission = ArtifactExecutionAdmission::owner_revalidation(
+            tenant_id,
+            &release,
+            ArtifactInstallationTarget::CurrentRelease,
+        );
 
         assert!(matches!(
             dispatcher
                 .dispatch_artifact_http(
-                    uuid::Uuid::new_v4(),
+                    tenant_id,
                     "artifact_module",
                     ModuleHttpMethod::Post,
                     "status/query",
                     serde_json::json!({}),
+                    admission,
                     ArtifactBindingExecutionContext {
                         actor_id: Some(String::new()),
                         trace_id: None,

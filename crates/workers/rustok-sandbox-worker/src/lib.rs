@@ -7,11 +7,12 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use rustok_sandbox::{
-    SandboxExecutor, SandboxExecutorKind, SandboxHost, SandboxLimits, SandboxOutcome,
-    SandboxRequest, SandboxResult,
+    RHAI_SANDBOX_RUNTIME_ABI, SandboxExecutor, SandboxExecutorKind, SandboxHost, SandboxLimits,
+    SandboxOutcome, SandboxRequest, SandboxResult,
 };
-use rustok_sandbox_transport::SandboxWorkerReadiness;
+use rustok_sandbox_transport::{SandboxWorkerIdentity, SandboxWorkerReadiness};
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 
 const MAX_ATTESTATION_BYTES: u64 = 16 * 1024;
 const MIN_CPU_MILLIS: u32 = 100;
@@ -128,6 +129,10 @@ where
     async fn admit_limits(&self, limits: &SandboxLimits) -> Result<(), String> {
         self.memory.current_bytes().map(|_| ())?;
         self.inner.admit_limits(limits).await
+    }
+
+    fn worker_identity(&self) -> Option<SandboxWorkerIdentity> {
+        self.inner.worker_identity()
     }
 }
 
@@ -296,10 +301,67 @@ impl IsolationPolicy {
     }
 }
 
+/// Canonical SHA-256 of the running worker binary, computed once by
+/// streaming the executable file. The Rhai engine is compiled into this
+/// binary, so the same digest is the engine-build fact as well. A worker
+/// that cannot read its own image reports no identity, which keeps plain
+/// execution available while governed pool composition fails closed.
+fn current_exe_digest() -> Option<String> {
+    static DIGEST: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    DIGEST
+        .get_or_init(|| {
+            const MAX_EXECUTABLE_BYTES: u64 = 512 * 1024 * 1024;
+            let exe = std::env::current_exe().ok()?;
+            let metadata = std::fs::metadata(&exe).ok()?;
+            if !metadata.is_file()
+                || metadata.len() == 0
+                || metadata.len() > MAX_EXECUTABLE_BYTES
+            {
+                return None;
+            }
+            let mut file = std::fs::File::open(&exe).ok()?;
+            let mut hasher = Sha256::new();
+            let mut buffer = [0u8; 64 * 1024];
+            loop {
+                let read = std::io::Read::read(&mut file, &mut buffer).ok()?;
+                if read == 0 {
+                    break;
+                }
+                hasher.update(&buffer[..read]);
+            }
+            Some(format!("sha256:{}", hex::encode(hasher.finalize())))
+        })
+        .clone()
+}
+
 #[async_trait]
 impl SandboxWorkerReadiness for IsolationPolicy {
     async fn check_readiness(&self) -> Result<(), String> {
         self.validate_current().map(|_| ())
+    }
+
+    fn worker_identity(&self) -> Option<SandboxWorkerIdentity> {
+        let binary_digest = current_exe_digest()?;
+        // The engine configuration fact is the exact isolation envelope the
+        // deployment mounted: the digest covers the validated attestation
+        // bytes (runtime, network/mount posture, and resource limits), so
+        // any envelope change advances the host-side pool generation.
+        let attestation_bytes = read_attestation_bytes(&self.attestation_path).ok()?;
+        let attestation: IsolationAttestation = serde_json::from_slice(&attestation_bytes).ok()?;
+        attestation.validate(self.runtime, &self.image_digest).ok()?;
+        let engine_config_digest = format!(
+            "sha256:{}",
+            hex::encode(Sha256::digest(&attestation_bytes))
+        );
+        Some(SandboxWorkerIdentity {
+            executor_binary_digest: binary_digest.clone(),
+            engine_build_digest: binary_digest,
+            worker_image_digest: self.image_digest.clone(),
+            engine_config_digest,
+            target_cpu_contract: std::env::consts::ARCH.to_string(),
+            runtime_abi: RHAI_SANDBOX_RUNTIME_ABI.to_string(),
+            isolation_runtime: self.runtime.as_str().to_string(),
+        })
     }
 
     async fn admit_limits(&self, limits: &SandboxLimits) -> Result<(), String> {

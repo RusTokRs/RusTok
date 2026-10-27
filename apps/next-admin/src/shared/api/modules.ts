@@ -108,7 +108,7 @@ export type ModuleTransitionState =
   | 'POINT_OF_NO_RETURN'
   | 'RECOVERED_TO_PREDECESSOR'
   | 'CONVERGED'
-  | 'FAILED_CLOSED';
+  | 'INTERVENTION_REQUIRED';
 
 export interface ModuleTransitionCheckpoint {
   operationId: string;

@@ -29,6 +29,16 @@ pub trait SandboxWorkerReadiness: Send + Sync {
     /// Revalidates deployment isolation and proves that the request fits inside
     /// the process/container envelope before any guest code starts.
     async fn admit_limits(&self, limits: &SandboxLimits) -> Result<(), String>;
+
+    /// Deployment identity evidence for the governed runtime fingerprint.
+    ///
+    /// The default reports no identity, which keeps plain execution
+    /// unaffected while making governed pool composition fail closed. A
+    /// production worker overrides this with digests derived from its own
+    /// deployment facts.
+    fn worker_identity(&self) -> Option<crate::SandboxWorkerIdentity> {
+        None
+    }
 }
 
 /// Worker-side streaming adapter. The process supplies exactly one neutral
@@ -150,10 +160,18 @@ impl SandboxWorkerService for SandboxWorkerGrpcService {
         &self,
         _request: Request<ReadinessRequest>,
     ) -> Result<Response<ReadinessResponse>, Status> {
+        let identity = self.readiness.worker_identity().unwrap_or_default();
         Ok(Response::new(ReadinessResponse {
             ready: self.readiness.check_readiness().await.is_ok(),
             executor: SandboxExecutorKind::Rhai.to_string(),
             protocol_revision: SANDBOX_WORKER_PROTOCOL_REVISION,
+            executor_binary_digest: identity.executor_binary_digest,
+            engine_build_digest: identity.engine_build_digest,
+            worker_image_digest: identity.worker_image_digest,
+            engine_config_digest: identity.engine_config_digest,
+            target_cpu_contract: identity.target_cpu_contract,
+            runtime_abi: identity.runtime_abi,
+            isolation_runtime: identity.isolation_runtime,
         }))
     }
 

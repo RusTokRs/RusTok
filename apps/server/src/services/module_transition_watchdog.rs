@@ -4,7 +4,10 @@ use std::time::Duration;
 use tokio::task::JoinHandle;
 use tracing::{error, info};
 
-use rustok_modules::evaluate_transition_watchdog;
+use rustok_modules::{
+    MAX_STALE_MODULE_OPERATIONS_PER_REAP, ModuleOperationJournal, evaluate_transition_watchdog,
+    reap_expired_retention_holds,
+};
 
 static MODULE_TRANSITION_WATCHDOG_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
@@ -66,8 +69,58 @@ pub fn spawn_module_transition_watchdog_handle(
                     tracing::debug!(
                         worker = "module_transition_watchdog",
                         instance_id,
-                        "Evaluating transition watchdog checkpoints"
+                        "Evaluating module lifecycle watchdogs"
                     );
+
+                    match ModuleOperationJournal::reap_stale(
+                        &db,
+                        MAX_STALE_MODULE_OPERATIONS_PER_REAP,
+                    )
+                    .await
+                    {
+                        Ok(report) if report.has_changes() => {
+                            info!(
+                                worker = "module_transition_watchdog",
+                                instance_id,
+                                scanned = report.scanned,
+                                orphaned = report.orphaned,
+                                committed_hook_unknown = report.committed_hook_unknown,
+                                released_claims = report.released_claims,
+                                "Reconciled stale module lifecycle operations"
+                            );
+                        }
+                        Ok(_) => {}
+                        Err(err) => {
+                            error!(
+                                worker = "module_transition_watchdog",
+                                instance_id,
+                                error = %err,
+                                "Stale module lifecycle operation reconciliation failed"
+                            );
+                        }
+                    }
+
+                    match reap_expired_retention_holds(&db).await {
+                        Ok(report) if report.has_changes() => {
+                            info!(
+                                worker = "module_transition_watchdog",
+                                instance_id,
+                                scanned = report.scanned,
+                                expired = report.expired,
+                                deleted = report.deleted,
+                                "Reaped expired module retention holds"
+                            );
+                        }
+                        Ok(_) => {}
+                        Err(err) => {
+                            error!(
+                                worker = "module_transition_watchdog",
+                                instance_id,
+                                error = %err,
+                                "Expired module retention hold reconciliation failed"
+                            );
+                        }
+                    }
 
                     match evaluate_transition_watchdog(&db).await {
                         Ok(updated) if !updated.is_empty() => {

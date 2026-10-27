@@ -5,10 +5,25 @@ use rustok_modules::{ModuleEffectivePolicy, ModuleEffectivePolicyCache};
 
 fn sample_policy(digest_char: char, enabled: &[&str]) -> ModuleEffectivePolicy {
     let revision = format!("sha256:{}", digest_char.to_string().repeat(64));
+    let decisions = enabled
+        .iter()
+        .map(|slug| {
+            (
+                (*slug).to_string(),
+                serde_json::json!({
+                    "module_slug": slug,
+                    "enabled": true,
+                    "policy_revision": revision,
+                    "facts": [{ "kind": "platform_default", "enabled": true }],
+                    "denial_reasons": []
+                }),
+            )
+        })
+        .collect::<serde_json::Map<_, _>>();
     serde_json::from_value(serde_json::json!({
         "policy_revision": revision,
         "enabled_modules": enabled,
-        "decisions": {}
+        "decisions": decisions
     }))
     .expect("deserialize sample policy")
 }

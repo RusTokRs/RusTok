@@ -379,7 +379,8 @@ where
         request: ArtifactSecretBindingRequest,
     ) -> Result<ArtifactSecretHandle, ArtifactSecretError> {
         validate_request(&request)?;
-        let request_digest = crate::promotion::digest_json(&request).map_err(storage_error)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&request).map_err(storage_error)?;
         self.authorizer.authorize_secret_binding(&request).await?;
 
         let transaction = self.db.begin().await.map_err(storage_error)?;
@@ -417,7 +418,6 @@ where
             let expected_revision: Option<i64> =
                 row.try_get("", "expected_revision").map_err(storage_error)?;
             let context = command_context_from_receipt_row(&row, request.scope.capability.tenant_id, backend)?;
-            let reason: String = row.try_get("", "reason").map_err(storage_error)?;
             let revision: i64 = row.try_get("", "revision").map_err(storage_error)?;
             let stored_digest: String = row.try_get("", "request_digest").map_err(storage_error)?;
             if stored_digest != request_digest
@@ -429,8 +429,7 @@ where
                     .transpose()
                     .map_err(|_| ArtifactSecretError::IdempotencyConflict)?
                     != request.expected_revision
-                || context != request.context
-                || reason != request.reason
+                || context.actor_id != request.context.actor_id
             {
                 return Err(ArtifactSecretError::IdempotencyConflict);
             }
@@ -1548,7 +1547,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn secret_binding_persists_and_replays_the_complete_command_context() {
+    async fn secret_binding_persists_audit_context_and_replays_semantic_command() {
         let database = Database::connect("sqlite::memory:")
             .await
             .expect("sqlite database");
@@ -1574,6 +1573,15 @@ mod tests {
             .expect("exact secret binding replay");
         assert_eq!(replay, first);
         assert_eq!(first.secret_instance_id, binding.scope.secret_instance_id);
+        let mut changed_observability = binding.clone();
+        changed_observability.context.trace_id = "test:artifact-secret-binding:retry".to_string();
+        changed_observability.context.correlation_id = Uuid::new_v4();
+        changed_observability.reason = "retry after an uncertain response".to_string();
+        let changed_observability_replay = service
+            .bind(changed_observability)
+            .await
+            .expect("changed observability secret binding replay");
+        assert_eq!(changed_observability_replay, first);
         assert!(database.execute_unprepared("UPDATE module_artifact_secret_binding_operations SET request_digest = 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'").await.is_err());
         assert!(
             database
@@ -1610,6 +1618,18 @@ mod tests {
                 .try_get::<String>("", "trace_id")
                 .expect("receipt trace"),
             binding.context.trace_id
+        );
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "correlation_id")
+                .expect("receipt correlation"),
+            binding.context.correlation_id.to_string()
+        );
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "idempotency_key")
+                .expect("receipt idempotency key"),
+            binding.context.idempotency_key.to_string()
         );
     }
 

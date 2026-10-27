@@ -12,12 +12,25 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+use std::time::Duration;
+
+use chrono::Utc;
+use rustok_api::manifest_hash::hash_manifest;
+
 use crate::backend::SupportedBackend;
+use crate::installation::GovernedArtifactActivation;
 use crate::{
-    ControlPlaneInfrastructure, ModuleTransitionCheckpoint, ModuleTransitionCoordinator,
-    ModuleTransitionFinalizeCommand, RetentionHoldStore, SeaOrmSecurityEpochStore,
-    TransitionCheckpointStore, TransitionCoordinatorError, TransitionStoreError,
-    data::uuid_from_row,
+    ArtifactActivationRequest, ArtifactActivationResult, ControlPlaneInfrastructure,
+    EvaluateReadinessCommand, ExecutorPoolIdentity, ExecutorReadinessError,
+    ExecutorReadinessService, ExecutorSmokeReceipt, InstalledModuleArtifact,
+    MAX_EXPIRED_RETENTION_HOLDS_PER_REAP, MigrationPreflightInput, MigrationPreflightReceipt,
+    ModuleBindingIdempotency, ModuleCommandContext, ModuleInstallationScope,
+    ModuleRuntimeBindingKind, ModuleTransitionCheckpoint, ModuleTransitionCoordinator,
+    ModuleTransitionFinalizeCommand, ModuleTransitionState, OwnerPlacementPolicy,
+    ReleaseReadinessTarget, RetentionHoldReapReport, RetentionHoldStore,
+    SeaOrmArtifactInstallationStore, SeaOrmSecurityEpochStore, StartTransitionInput,
+    TransitionCheckpointStore, TransitionCoordinatorError, TransitionStoreError, UpdateMode,
+    data::uuid_from_row, evaluate_migration_preflight,
 };
 
 const OPERATION_KIND: &str = "finalize";
@@ -58,8 +71,8 @@ impl From<ModuleTransitionCheckpoint> for ModuleTransitionCheckpointView {
                 ModuleTransitionStateView::Converged,
                 Some(format!("Finalized at {}", finalized_at.to_rfc3339())),
             ),
-            crate::ModuleTransitionState::FailedClosed { failure_reason } => (
-                ModuleTransitionStateView::FailedClosed,
+            crate::ModuleTransitionState::InterventionRequired { failure_reason } => (
+                ModuleTransitionStateView::InterventionRequired,
                 Some(failure_reason),
             ),
         };
@@ -103,6 +116,70 @@ pub struct ModuleTransitionFinalizeReceipt {
     pub checkpoint: ModuleTransitionCheckpoint,
     pub released_holds: u64,
     pub created: bool,
+}
+
+/// Command to start one governed *automatic* artifact transition.
+///
+/// The host supplies authenticated authorization, the exact admitted
+/// candidate installation, its scope, and the executor topology facts
+/// (placement policy and every pool that may serve or recover the
+/// release). It does not supply a predecessor, migration classification,
+/// readiness evidence, or checkpoint state: the owner resolves the
+/// serving predecessor, derives data/settings preflight from the exact
+/// admitted descriptors, executes smoke readiness through the injected
+/// readiness service, and binds all of it to one durable checkpoint
+/// before serving selection changes.
+#[derive(Debug, Clone)]
+pub struct GovernedArtifactTransitionCommand {
+    pub candidate_installation_id: Uuid,
+    pub scope: ModuleInstallationScope,
+    pub expected_candidate_revision: u64,
+    pub context: ModuleCommandContext,
+    pub reason: String,
+    /// Authenticated host fact. The owner rejects a command that did not
+    /// pass the platform `modules:manage` authorization boundary.
+    pub actor_can_manage_modules: bool,
+    pub placement_policy: OwnerPlacementPolicy,
+    pub required_pools: Vec<ExecutorPoolIdentity>,
+    pub observation_duration: Duration,
+}
+
+/// Receipt of a governed automatic transition that reached `Observing`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GovernedArtifactTransitionReceipt {
+    pub checkpoint: ModuleTransitionCheckpoint,
+    pub activation: ArtifactActivationResult,
+    /// Owner-derived migration/data preflight evaluated by this call.
+    /// `None` only when resuming a checkpoint that had already reached
+    /// `Observing` in a previous call: the preflight was evaluated then,
+    /// and the checkpoint plus activation operation are the durable
+    /// evidence returned here.
+    pub preflight: Option<MigrationPreflightReceipt>,
+    /// Durable smoke-readiness receipts produced by this call for the
+    /// local executor pool (candidate first, then predecessor). Empty
+    /// only on the already-`Observing` resume path above.
+    pub readiness_receipt_ids: Vec<Uuid>,
+    pub resumed: bool,
+}
+
+#[derive(Debug, Error)]
+pub enum GovernedArtifactTransitionError {
+    #[error("governed transition command is invalid: {0}")]
+    InvalidCommand(String),
+    #[error("governed transition authorization denied")]
+    AuthorizationDenied,
+    #[error("governed transition conflict: {0}")]
+    Conflict(String),
+    #[error("governed transition preflight denied automatic mode: {reasons:?}")]
+    PreflightFailed { reasons: Vec<String> },
+    #[error(transparent)]
+    Readiness(#[from] ExecutorReadinessError),
+    #[error(transparent)]
+    Coordinator(#[from] TransitionCoordinatorError),
+    #[error("governed transition installation owner failed: {0}")]
+    Installation(String),
+    #[error("governed transition store failed: {0}")]
+    Store(String),
 }
 
 #[derive(Debug, Error)]
@@ -152,6 +229,8 @@ impl SeaOrmModuleTransitionService {
         Ok(checkpoint.filter(|checkpoint| checkpoint.tenant_id == tenant_id))
     }
 
+    /// Lists unresolved checkpoints in one scope, including checkpoints
+    /// whose automatic progression stopped at `InterventionRequired`.
     pub async fn active_checkpoints(
         &self,
         tenant_id: Option<Uuid>,
@@ -214,6 +293,380 @@ impl SeaOrmModuleTransitionService {
                 )
             })
             .collect())
+    }
+
+    /// Starts one governed automatic artifact transition and drives it
+    /// to `Observing`.
+    ///
+    /// Order is part of the safety contract: resolve the exact candidate
+    /// and serving predecessor; derive migration/data preflight from
+    /// their admitted descriptors (never from caller assertions); durably
+    /// record the checkpoint in `PreStaging`; execute candidate and
+    /// predecessor smoke readiness outside any database transaction and
+    /// require automatic-mode eligibility on every required pool; only
+    /// then change serving selection through the governed activation,
+    /// which revalidates the checkpoint under the activation lock and
+    /// commits checkpoint `Observing` plus predecessor retention in the
+    /// same transaction as the selection change.
+    ///
+    /// A retry discovers the unresolved checkpoint for the same
+    /// slug/scope/candidate and resumes it. A different unresolved
+    /// governed transition for the slug, a changed predecessor, a
+    /// maintenance-classified data/settings change, or missing smoke
+    /// readiness on any required pool fails closed without changing
+    /// serving selection. Maintenance-mode data/settings migrations are
+    /// deliberately not started here: they require their dedicated
+    /// guarded migration operations before any activation exists.
+    pub async fn start_governed_automatic_artifact_transition(
+        &self,
+        command: GovernedArtifactTransitionCommand,
+        readiness_services: &[ExecutorReadinessService],
+    ) -> Result<GovernedArtifactTransitionReceipt, GovernedArtifactTransitionError> {
+        validate_governed_command(&command)?;
+        if readiness_services.is_empty() {
+            return Err(GovernedArtifactTransitionError::InvalidCommand(
+                "at least one executor readiness service must be composed".to_string(),
+            ));
+        }
+        if !command.actor_can_manage_modules {
+            return Err(GovernedArtifactTransitionError::AuthorizationDenied);
+        }
+        let tenant_id = match &command.scope {
+            ModuleInstallationScope::Platform => None,
+            ModuleInstallationScope::Tenant { tenant_id } => Some(*tenant_id),
+        };
+        let installations = SeaOrmArtifactInstallationStore::with_infrastructure(
+            self.db.clone(),
+            self.infrastructure.clone(),
+        );
+        let candidate = installations
+            .load_admitted_installation_exact(command.candidate_installation_id, &command.scope)
+            .await
+            .map_err(|error| GovernedArtifactTransitionError::Installation(error.to_string()))?;
+        let candidate_digest = candidate.descriptor.artifact_digest.clone();
+
+        let mut resumed = false;
+        let mut checkpoint_to_resume = None;
+        let existing_for_slug =
+            TransitionCheckpointStore::list_active_checkpoints_for_tenant(&self.db, tenant_id)
+                .await
+                .map_err(|error| GovernedArtifactTransitionError::Store(error.to_string()))?
+                .into_iter()
+                .filter(|checkpoint| checkpoint.module_slug == candidate.release.slug)
+                .collect::<Vec<_>>();
+        if let Some(existing) = existing_for_slug
+            .iter()
+            .find(|checkpoint| checkpoint.candidate_digest == candidate_digest)
+        {
+            match &existing.state {
+                ModuleTransitionState::Observing { .. } => {
+                    let activation = installations
+                        .load_activation_result(existing.operation_id, &command.scope)
+                        .await
+                        .map_err(|error| {
+                            GovernedArtifactTransitionError::Installation(error.to_string())
+                        })?
+                        .ok_or_else(|| {
+                            GovernedArtifactTransitionError::Store(format!(
+                                "observing governed checkpoint `{}` has no activation operation",
+                                existing.operation_id
+                            ))
+                        })?;
+                    return Ok(GovernedArtifactTransitionReceipt {
+                        checkpoint: existing.clone(),
+                        activation,
+                        preflight: None,
+                        readiness_receipt_ids: Vec::new(),
+                        resumed: true,
+                    });
+                }
+                ModuleTransitionState::Fenced | ModuleTransitionState::PreStaging => {
+                    resumed = true;
+                    checkpoint_to_resume = Some(existing.clone());
+                }
+                state => {
+                    return Err(GovernedArtifactTransitionError::Conflict(format!(
+                        "governed transition `{}` for this candidate is in `{}` and cannot be started again",
+                        existing.operation_id,
+                        state.name()
+                    )));
+                }
+            }
+        } else if let Some(other) = existing_for_slug.first() {
+            return Err(GovernedArtifactTransitionError::Conflict(format!(
+                "unresolved governed transition `{}` already owns module `{}` in this scope",
+                other.operation_id, candidate.release.slug
+            )));
+        }
+
+        let predecessor = installations
+            .load_active_installation_for_scope(&command.scope, &candidate.release.slug)
+            .await
+            .map_err(|error| GovernedArtifactTransitionError::Installation(error.to_string()))?;
+        if predecessor
+            .as_ref()
+            .is_some_and(|artifact| artifact.installation_id == candidate.installation_id)
+        {
+            return Err(GovernedArtifactTransitionError::Conflict(
+                "candidate installation is already the serving selection".to_string(),
+            ));
+        }
+        let predecessor_digest = predecessor
+            .as_ref()
+            .map(|artifact| artifact.descriptor.artifact_digest.clone());
+        if let Some(checkpoint) = &checkpoint_to_resume
+            && checkpoint.predecessor_digest != predecessor_digest
+        {
+            return Err(GovernedArtifactTransitionError::Conflict(format!(
+                "governed transition `{}` was staged against a different serving predecessor",
+                checkpoint.operation_id
+            )));
+        }
+
+        let operation_id = checkpoint_to_resume
+            .as_ref()
+            .map(|checkpoint| checkpoint.operation_id)
+            .unwrap_or_else(|| self.infrastructure.new_id());
+        let preflight = derive_governed_preflight(operation_id, &candidate, predecessor.as_ref())?;
+        if preflight.mode != UpdateMode::Automatic {
+            return Err(GovernedArtifactTransitionError::PreflightFailed {
+                reasons: preflight.denial_reasons.clone(),
+            });
+        }
+
+        let security_registry = SeaOrmSecurityEpochStore::load_registry(&self.db)
+            .await
+            .map_err(|error| GovernedArtifactTransitionError::Store(error.to_string()))?;
+        let _coordinator = match checkpoint_to_resume {
+            Some(checkpoint) => {
+                let mut coordinator = ModuleTransitionCoordinator::new(checkpoint);
+                if coordinator.state() == &ModuleTransitionState::Fenced {
+                    coordinator.advance_to_prestaging(&security_registry)?;
+                    self.save_governed_checkpoint(coordinator.checkpoint())
+                        .await?;
+                }
+                coordinator
+            }
+            None => {
+                let mut coordinator = ModuleTransitionCoordinator::start_transition(
+                    StartTransitionInput {
+                        operation_id,
+                        module_slug: candidate.release.slug.clone(),
+                        tenant_id,
+                        predecessor_digest: predecessor_digest.clone(),
+                        candidate_digest: candidate_digest.clone(),
+                        affected_nodes: command
+                            .required_pools
+                            .iter()
+                            .map(|pool| pool.pool_id.clone())
+                            .collect(),
+                        preflight_receipt: preflight.clone(),
+                        requested_mode: UpdateMode::Automatic,
+                    },
+                    &security_registry,
+                )?;
+                coordinator.advance_to_prestaging(&security_registry)?;
+                self.save_governed_checkpoint(coordinator.checkpoint())
+                    .await?;
+                coordinator
+            }
+        };
+
+        let candidate_receipt = evaluate_readiness_on_supporting_pool(
+            readiness_services,
+            &command,
+            operation_id,
+            &candidate,
+        )
+        .await?;
+        let mut readiness_receipt_ids = vec![candidate_receipt.id];
+        if let Some(predecessor) = &predecessor {
+            let predecessor_receipt = evaluate_readiness_on_supporting_pool(
+                readiness_services,
+                &command,
+                operation_id,
+                predecessor,
+            )
+            .await?;
+            readiness_receipt_ids.push(predecessor_receipt.id);
+        }
+        readiness_services[0]
+            .check_automatic_mode_eligibility(
+                &candidate.reference.digest,
+                predecessor
+                    .as_ref()
+                    .map(|artifact| artifact.reference.digest.as_str()),
+                &command.required_pools,
+                &command.placement_policy,
+            )
+            .await?;
+
+        let activation = match installations
+            .activate_artifact_governed(
+                ArtifactActivationRequest {
+                    installation_id: command.candidate_installation_id,
+                    scope: command.scope.clone(),
+                    expected_revision: command.expected_candidate_revision,
+                    context: command.context.clone(),
+                    reason: command.reason.clone(),
+                },
+                GovernedArtifactActivation {
+                    operation_id,
+                    expected_candidate_digest: candidate_digest,
+                    expected_predecessor_digest: predecessor_digest,
+                    observation_duration: command.observation_duration,
+                },
+            )
+            .await
+        {
+            Ok(activation) => activation,
+            Err(error) => {
+                self.mark_governed_checkpoint_intervention_if_stale(
+                    operation_id,
+                    tenant_id,
+                    &installations,
+                    &command.scope,
+                    &candidate.release.slug,
+                )
+                .await
+                .map_err(|mark_error| {
+                    GovernedArtifactTransitionError::Store(format!(
+                        "governed activation failed ({error}); recording intervention also failed ({mark_error})"
+                    ))
+                })?;
+                return Err(GovernedArtifactTransitionError::Installation(
+                    error.to_string(),
+                ));
+            }
+        };
+        let checkpoint = self
+            .checkpoint(operation_id, tenant_id)
+            .await
+            .map_err(|error| GovernedArtifactTransitionError::Store(error.to_string()))?
+            .ok_or_else(|| {
+                GovernedArtifactTransitionError::Store(format!(
+                    "governed checkpoint `{operation_id}` is missing after activation"
+                ))
+            })?;
+        Ok(GovernedArtifactTransitionReceipt {
+            checkpoint,
+            activation,
+            preflight: Some(preflight),
+            readiness_receipt_ids,
+            resumed,
+        })
+    }
+
+    /// Marks a still-`PreStaging` governed checkpoint
+    /// `InterventionRequired` when activation proved its staged
+    /// predecessor pair or security epoch stale. Transient activation
+    /// failures leave the checkpoint resumable; a stale pair can never
+    /// become valid again for this operation, so automatic action stops
+    /// and the checkpoint surfaces to operators instead of fencing the
+    /// module forever in an ambiguous state.
+    async fn mark_governed_checkpoint_intervention_if_stale(
+        &self,
+        operation_id: Uuid,
+        tenant_id: Option<Uuid>,
+        installations: &SeaOrmArtifactInstallationStore,
+        scope: &ModuleInstallationScope,
+        module_slug: &str,
+    ) -> Result<(), GovernedArtifactTransitionError> {
+        let Some(observed) = self
+            .checkpoint(operation_id, tenant_id)
+            .await
+            .map_err(|error| GovernedArtifactTransitionError::Store(error.to_string()))?
+        else {
+            return Ok(());
+        };
+        if !matches!(
+            observed.state,
+            ModuleTransitionState::Fenced | ModuleTransitionState::PreStaging
+        ) {
+            return Ok(());
+        }
+        let mut reasons = Vec::new();
+        let security_registry = SeaOrmSecurityEpochStore::load_registry(&self.db)
+            .await
+            .map_err(|error| GovernedArtifactTransitionError::Store(error.to_string()))?;
+        if security_registry
+            .validate_epoch(observed.security_epoch)
+            .is_err()
+        {
+            reasons.push("security epoch advanced after the transition was staged".to_string());
+        }
+        let current_predecessor = installations
+            .load_active_installation_for_scope(scope, module_slug)
+            .await
+            .map_err(|error| GovernedArtifactTransitionError::Installation(error.to_string()))?;
+        let current_predecessor_digest = current_predecessor
+            .as_ref()
+            .map(|artifact| artifact.descriptor.artifact_digest.clone());
+        if observed.predecessor_digest != current_predecessor_digest {
+            reasons.push("serving predecessor changed after the transition was staged".to_string());
+        }
+        if reasons.is_empty() {
+            return Ok(());
+        }
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| GovernedArtifactTransitionError::Store(error.to_string()))?;
+        match tenant_id {
+            Some(tenant_id) => crate::backend::set_tenant_scope(&transaction, tenant_id).await,
+            None => crate::backend::set_platform_scope(&transaction).await,
+        }
+        .map_err(|error| GovernedArtifactTransitionError::Store(error.to_string()))?;
+        let current = TransitionCheckpointStore::load_checkpoint(&transaction, operation_id)
+            .await
+            .map_err(|error| GovernedArtifactTransitionError::Store(error.to_string()))?;
+        let Some(current) = current else {
+            return Ok(());
+        };
+        if current.revision != observed.revision
+            || !matches!(
+                current.state,
+                ModuleTransitionState::Fenced | ModuleTransitionState::PreStaging
+            )
+        {
+            return Ok(());
+        }
+        let mut coordinator = ModuleTransitionCoordinator::new(current);
+        coordinator.require_intervention(format!(
+            "Governed transition cannot activate: {}",
+            reasons.join("; ")
+        ))?;
+        TransitionCheckpointStore::save_checkpoint(&transaction, coordinator.checkpoint())
+            .await
+            .map_err(|error| GovernedArtifactTransitionError::Store(error.to_string()))?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| GovernedArtifactTransitionError::Store(error.to_string()))
+    }
+
+    async fn save_governed_checkpoint(
+        &self,
+        checkpoint: &ModuleTransitionCheckpoint,
+    ) -> Result<(), GovernedArtifactTransitionError> {
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| GovernedArtifactTransitionError::Store(error.to_string()))?;
+        match checkpoint.tenant_id {
+            Some(tenant_id) => crate::backend::set_tenant_scope(&transaction, tenant_id).await,
+            None => crate::backend::set_platform_scope(&transaction).await,
+        }
+        .map_err(|error| GovernedArtifactTransitionError::Store(error.to_string()))?;
+        TransitionCheckpointStore::save_checkpoint(&transaction, checkpoint)
+            .await
+            .map_err(|error| GovernedArtifactTransitionError::Store(error.to_string()))?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| GovernedArtifactTransitionError::Store(error.to_string()))
     }
 
     pub async fn finalize(
@@ -303,11 +756,13 @@ impl SeaOrmModuleTransitionService {
     /// Convergence is an attested decision, never an automatic timeout
     /// consequence: the checkpoint model records no positive health evidence
     /// during `Observing`, so an elapsed window proves nothing about the
-    /// candidate. The watchdog therefore fails both stale-epoch and
-    /// expired-window checkpoints closed (retaining predecessor holds); the
+    /// candidate. The watchdog therefore marks both stale-epoch and
+    /// expired-window checkpoints `InterventionRequired`. That state stops
+    /// automatic transition action but deliberately does not change serving
+    /// selection; an operator must explicitly rollback or deactivate the
+    /// candidate through the installation owner if traffic must move. The
     /// only convergence path is the explicit, actor-authorized
-    /// [`finalize`](Self::finalize) command. Until this change the watchdog
-    /// silently marked every candidate converged ~300s after activation.
+    /// [`finalize`](Self::finalize) command before intervention is required.
     pub async fn evaluate_watchdog(
         &self,
     ) -> Result<Vec<ModuleTransitionCheckpoint>, ModuleTransitionServiceError> {
@@ -323,6 +778,13 @@ impl SeaOrmModuleTransitionService {
             .map_err(store_error)?;
         let mut updated = Vec::new();
         for observed in active {
+            // The unresolved listing deliberately includes
+            // intervention-required checkpoints for operator discovery.
+            // Automatic actors must not rewrite or re-emit them on every
+            // sweep; only the explicit operator recovery path may move one.
+            if observed.state.requires_operator_attention() {
+                continue;
+            }
             let stale_epoch = security_registry
                 .validate_epoch(observed.security_epoch)
                 .is_err();
@@ -333,14 +795,15 @@ impl SeaOrmModuleTransitionService {
             );
             let failure_reason = if stale_epoch {
                 format!(
-                    "Security epoch preemption: epoch {} is stale; current epoch is {}. Automatic rollback requires a fresh owner policy grant and was not attempted.",
+                    "Security epoch preemption: epoch {} is stale; current epoch is {}. Automatic rollback requires a fresh owner policy grant and was not attempted; serving selection was not changed by the watchdog.",
                     observed.security_epoch.value(),
                     security_registry.current_epoch().value(),
                 )
             } else if timed_out {
                 "Observation window elapsed without an explicit finalize attestation; \
                  no positive health evidence is recorded for the candidate, so automatic \
-                 convergence is not permitted and the transition failed closed."
+                 convergence is not permitted. Operator intervention is required; serving \
+                 selection was not changed by the watchdog."
                     .to_string()
             } else {
                 continue;
@@ -363,10 +826,14 @@ impl SeaOrmModuleTransitionService {
                 continue;
             }
             let mut coordinator = ModuleTransitionCoordinator::new(current);
-            coordinator.fail_closed(failure_reason.clone())?;
+            coordinator.require_intervention(failure_reason.clone())?;
             TransitionCheckpointStore::save_checkpoint(&transaction, coordinator.checkpoint())
                 .await
                 .map_err(store_error)?;
+            // The v1 root event contract retains its historical
+            // `module.transition.failed_closed` name. Its checkpoint fact is
+            // that automatic action stopped and intervention is required; it
+            // does not assert that serving selection changed.
             self.infrastructure
                 .write_event(
                     &transaction,
@@ -401,6 +868,250 @@ pub async fn evaluate_transition_watchdog(
     .await
 }
 
+/// Deletes one bounded batch of elapsed rollout-window retention holds.
+/// Hosts run this independently of checkpoint evaluation so retention stays
+/// time-bounded even when a transition is never finalized or rolled back.
+pub async fn reap_expired_retention_holds(
+    db: &DatabaseConnection,
+) -> Result<RetentionHoldReapReport, ModuleTransitionServiceError> {
+    RetentionHoldStore::reap_expired_holds(db, Utc::now(), MAX_EXPIRED_RETENTION_HOLDS_PER_REAP)
+        .await
+        .map_err(store_error)
+}
+
+fn validate_governed_command(
+    command: &GovernedArtifactTransitionCommand,
+) -> Result<(), GovernedArtifactTransitionError> {
+    let invalid =
+        |message: &str| GovernedArtifactTransitionError::InvalidCommand(message.to_string());
+    if command.candidate_installation_id.is_nil()
+        || command.expected_candidate_revision == 0
+        || command.expected_candidate_revision > i64::MAX as u64
+        || command.reason.trim().is_empty()
+    {
+        return Err(invalid(
+            "candidate identity, positive expected revision, and a non-empty reason are required",
+        ));
+    }
+    if matches!(
+        command.scope,
+        ModuleInstallationScope::Tenant { tenant_id } if tenant_id.is_nil()
+    ) || !command.scope.matches_command_context(&command.context)
+    {
+        return Err(invalid(
+            "command context does not match the candidate installation scope",
+        ));
+    }
+    command
+        .context
+        .validate()
+        .map_err(|error| invalid(&error.to_string()))?;
+    if command.observation_duration.is_zero()
+        || command.observation_duration > Duration::from_secs(7 * 24 * 60 * 60)
+    {
+        return Err(invalid(
+            "observation duration must be positive and no longer than seven days",
+        ));
+    }
+    if command.required_pools.is_empty() {
+        return Err(invalid(
+            "at least one required executor pool must be configured",
+        ));
+    }
+    for (index, pool) in command.required_pools.iter().enumerate() {
+        pool.validate()?;
+        command.placement_policy.enforce(pool)?;
+        for other in &command.required_pools[..index] {
+            if other.pool_id == pool.pool_id && other.pool_generation == pool.pool_generation {
+                return Err(invalid(
+                    "required executor pools must not repeat a pool generation",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn readiness_command(
+    command: &GovernedArtifactTransitionCommand,
+    operation_id: Uuid,
+    artifact: &InstalledModuleArtifact,
+) -> EvaluateReadinessCommand {
+    EvaluateReadinessCommand {
+        operation_id,
+        target: ReleaseReadinessTarget {
+            release_digest: artifact.reference.digest.clone(),
+            descriptor: artifact.descriptor.clone(),
+            payload_digest: artifact.descriptor.artifact_digest.clone(),
+            installed_artifact: artifact.clone(),
+        },
+        policy: command.placement_policy.clone(),
+        context: command.context.clone(),
+        actor_can_manage_modules: command.actor_can_manage_modules,
+    }
+}
+
+/// Evaluates smoke readiness on the composed pool that supports this
+/// artifact's payload kind. Mixed deployments compose one readiness
+/// service per executor pool (for example an in-process WASM pool and an
+/// isolated Rhai pool); an unsupported-kind or wrong-placement result
+/// from one pool is a routing fact, while every other failure is
+/// terminal for the start.
+/// The produced receipt must belong to one of the command's required
+/// pools, so a host cannot accidentally smoke on an unlisted pool and
+/// then claim required-pool eligibility from stale receipts alone.
+async fn evaluate_readiness_on_supporting_pool(
+    readiness_services: &[ExecutorReadinessService],
+    command: &GovernedArtifactTransitionCommand,
+    operation_id: Uuid,
+    artifact: &InstalledModuleArtifact,
+) -> Result<ExecutorSmokeReceipt, GovernedArtifactTransitionError> {
+    let mut last_pool_mismatch: Option<ExecutorReadinessError> = None;
+    for service in readiness_services {
+        match service
+            .evaluate_readiness(readiness_command(command, operation_id, artifact))
+            .await
+        {
+            Ok(receipt) => {
+                if !command.required_pools.iter().any(|pool| {
+                    pool.pool_id == receipt.pool_id
+                        && pool.pool_generation == receipt.pool_generation
+                        && pool.fingerprint.compute_digest() == receipt.runtime_fingerprint
+                }) {
+                    return Err(GovernedArtifactTransitionError::InvalidCommand(
+                        "the readiness service pool must be one of the required serving or recovery pools"
+                            .to_string(),
+                    ));
+                }
+                return Ok(receipt);
+            }
+            // Placement policy is enforced before payload-kind support
+            // inside `evaluate_readiness`, so a pool that is simply the
+            // wrong pool for this artifact can fail with a placement
+            // error rather than `UnsupportedPayloadKind`. All three are
+            // per-pool routing facts: try the next composed pool. If no
+            // pool qualifies, the last mismatch is the truthful error.
+            Err(
+                error @ (ExecutorReadinessError::UnsupportedPayloadKind(_)
+                | ExecutorReadinessError::IsolatedWorkerRequired
+                | ExecutorReadinessError::MissingWorkerAttestation),
+            ) => {
+                last_pool_mismatch = Some(error);
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+    match last_pool_mismatch {
+        Some(error) => Err(error.into()),
+        None => Err(GovernedArtifactTransitionError::InvalidCommand(format!(
+            "no composed executor readiness pool supports payload kind {:?}",
+            artifact.descriptor.payload_kind
+        ))),
+    }
+}
+
+/// Canonical digest standing for "no brokered data schema" in preflight
+/// receipts (SHA-256 of the empty byte string).
+const EMPTY_DATA_SCHEMA_DIGEST: &str =
+    "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+fn artifact_data_schema_digest(descriptor: &crate::ModuleArtifactDescriptor) -> String {
+    if let Some(contract) = &descriptor.persistence_contract {
+        contract.schema_digest.clone()
+    } else if let Some(digest) = &descriptor.data_schema_digest {
+        digest.clone()
+    } else {
+        EMPTY_DATA_SCHEMA_DIGEST.to_string()
+    }
+}
+
+/// Derives migration/data preflight from the exact admitted descriptors.
+///
+/// Dynamic artifacts carry no SQL or DDL: brokered-data safety is a
+/// property of the declared persistence contract and data schema. An
+/// identical contract means the candidate serves the predecessor's
+/// namespace unchanged; any contract or data-schema change would switch
+/// namespaces or require a cross-revision copy and is therefore
+/// maintenance-only. A settings-schema change is likewise not
+/// automatically migratable (no guarded settings migration exists), and
+/// lifecycle bindings that are not declared idempotency-`Required`
+/// cannot prove their enable/disable effects are compensable, so they
+/// deny automatic mode as potentially irreversible.
+fn derive_governed_preflight(
+    operation_id: Uuid,
+    candidate: &InstalledModuleArtifact,
+    predecessor: Option<&InstalledModuleArtifact>,
+) -> Result<MigrationPreflightReceipt, GovernedArtifactTransitionError> {
+    let settings_changed = predecessor.is_some_and(|artifact| {
+        artifact.descriptor.settings_schema_digest != candidate.descriptor.settings_schema_digest
+    });
+    let requires_cross_revision_data_copy = predecessor.is_some_and(|artifact| {
+        artifact.descriptor.persistence_contract != candidate.descriptor.persistence_contract
+            || artifact.descriptor.data_schema_digest != candidate.descriptor.data_schema_digest
+    });
+    let mut migration_reasons = Vec::new();
+    if settings_changed {
+        migration_reasons.push(
+            "Artifact settings schema changed and no guarded settings migration is available"
+                .to_string(),
+        );
+    }
+    if requires_cross_revision_data_copy {
+        migration_reasons.push(
+            "Artifact persistence contract or data schema changed across revisions".to_string(),
+        );
+    }
+    let has_irreversible_external_effects = candidate.descriptor.bindings.iter().any(|binding| {
+        matches!(
+            binding.kind,
+            ModuleRuntimeBindingKind::PreEnable
+                | ModuleRuntimeBindingKind::PostEnable
+                | ModuleRuntimeBindingKind::PreDisable
+                | ModuleRuntimeBindingKind::PostDisable
+                | ModuleRuntimeBindingKind::DataUpgrade
+        ) && binding.idempotency != ModuleBindingIdempotency::Required
+    });
+    let plan = serde_json::json!({
+        "contract": "rustok.governed_artifact_migration_plan.v1",
+        "module_slug": candidate.release.slug,
+        "source": predecessor.map(|artifact| serde_json::json!({
+            "installation_id": artifact.installation_id,
+            "payload_digest": artifact.descriptor.artifact_digest,
+            "manifest_digest": artifact.reference.digest,
+            "persistence_contract": artifact.descriptor.persistence_contract,
+            "data_schema_digest": artifact.descriptor.data_schema_digest,
+            "settings_schema_digest": artifact.descriptor.settings_schema_digest,
+        })),
+        "target": {
+            "installation_id": candidate.installation_id,
+            "payload_digest": candidate.descriptor.artifact_digest,
+            "manifest_digest": candidate.reference.digest,
+            "persistence_contract": candidate.descriptor.persistence_contract,
+            "data_schema_digest": candidate.descriptor.data_schema_digest,
+            "settings_schema_digest": candidate.descriptor.settings_schema_digest,
+        },
+    });
+    let migration_plan_digest = hash_manifest(&plan)
+        .map(|digest| format!("sha256:{digest}"))
+        .map_err(|error| GovernedArtifactTransitionError::Store(error.to_string()))?;
+    let target_schema_digest = artifact_data_schema_digest(&candidate.descriptor);
+    let source_schema_digest = predecessor
+        .map(|artifact| artifact_data_schema_digest(&artifact.descriptor))
+        .unwrap_or_else(|| target_schema_digest.clone());
+    Ok(evaluate_migration_preflight(MigrationPreflightInput {
+        operation_id,
+        module_slug: candidate.release.slug.clone(),
+        source_schema_digest,
+        target_schema_digest,
+        migration_plan_digest,
+        is_additive_safe: !settings_changed && !requires_cross_revision_data_copy,
+        migration_reasons,
+        settings_guard_installed: !settings_changed,
+        has_irreversible_external_effects,
+        requires_cross_revision_data_copy,
+    }))
+}
+
 fn validate_command(
     command: &ModuleTransitionFinalizeCommand,
 ) -> Result<(), ModuleTransitionServiceError> {
@@ -418,9 +1129,8 @@ fn validate_command(
 fn request_digest(
     command: &ModuleTransitionFinalizeCommand,
 ) -> Result<String, ModuleTransitionServiceError> {
-    let bytes = serde_json::to_vec(command)
-        .map_err(|error| ModuleTransitionServiceError::Store(error.to_string()))?;
-    Ok(crate::installation::sha256_digest(&bytes))
+    crate::idempotency::semantic_request_digest(command)
+        .map_err(|error| ModuleTransitionServiceError::Store(error.to_string()))
 }
 
 async fn reserve_operation(
@@ -512,15 +1222,9 @@ fn validate_operation_row(
     command: &ModuleTransitionFinalizeCommand,
     request_digest: &str,
 ) -> Result<(), ModuleTransitionServiceError> {
-    let stored_tenant = match row.try_get::<Option<Uuid>>("", "tenant_id") {
-        Ok(value) => value,
-        Err(_) if backend != SupportedBackend::Postgres => row
-            .try_get::<Option<String>>("", "tenant_id")
-            .map_err(database_error)?
-            .map(|value| Uuid::parse_str(&value).map_err(database_error))
-            .transpose()?,
-        Err(error) => return Err(database_error(error)),
-    };
+    let stored_tenant = backend
+        .optional_uuid_from_row(row, "tenant_id")
+        .map_err(database_error)?;
     let matches = row
         .try_get::<String>("", "operation_kind")
         .map_err(database_error)?
@@ -532,12 +1236,6 @@ fn validate_operation_row(
         && uuid_from_row(row, "actor_id", backend).map_err(database_error)?
             == command.context.actor_id
         && stored_tenant == command.context.tenant_id
-        && row
-            .try_get::<String>("", "trace_id")
-            .map_err(database_error)?
-            == command.context.trace_id
-        && uuid_from_row(row, "correlation_id", backend).map_err(database_error)?
-            == command.context.correlation_id
         && uuid_from_row(row, "operation_id", backend).map_err(database_error)?
             == command.operation_id;
     if matches {

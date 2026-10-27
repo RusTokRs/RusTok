@@ -97,7 +97,7 @@ impl SeaOrmModuleGovernanceService {
         let stale_job = tx.query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
-                "SELECT id FROM registry_validation_jobs WHERE request_id = {} AND status = 'running' AND {stale_predicate} ORDER BY started_at ASC LIMIT 1",
+                "SELECT id FROM registry_validation_jobs WHERE request_id = {} AND status = 'running' AND {stale_predicate} ORDER BY started_at ASC, id ASC LIMIT 1",
                 mark(1)
             ),
             vec![request_id.clone().into()],
@@ -143,7 +143,7 @@ impl SeaOrmModuleGovernanceService {
         };
         let active_job = tx.query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
-            format!("SELECT id FROM registry_validation_jobs WHERE request_id = {} AND status IN ('queued', 'running') ORDER BY created_at DESC LIMIT 1", mark(1)),
+            format!("SELECT id FROM registry_validation_jobs WHERE request_id = {} AND status IN ('queued', 'running') ORDER BY created_at DESC, id DESC LIMIT 1", mark(1)),
             vec![request_id.clone().into()],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         if let Some(job) = active_job {
@@ -200,7 +200,8 @@ impl SeaOrmModuleGovernanceService {
             backend.db_backend(),
             format!("SELECT COALESCE(MAX(attempt_number), 0) AS attempt_number FROM registry_validation_jobs WHERE request_id = {}", mark(1)),
             vec![request_id.clone().into()],
-        )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?.ok_or_else(|| ModuleGovernanceError::Store("missing validation job attempt aggregate".to_string()))?.try_get::<i64>("", "attempt_number").map_err(|e| ModuleGovernanceError::Store(e.to_string()))? as i32 + 1;
+        )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?.ok_or_else(|| ModuleGovernanceError::Store("missing validation job attempt aggregate".to_string()))?.try_get::<i64>("", "attempt_number").map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        let attempt = next_attempt_number(attempt)?;
         let job_id = self.infrastructure.prefixed_id("rvj");
         tx.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),

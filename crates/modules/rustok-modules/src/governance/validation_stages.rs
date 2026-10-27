@@ -111,8 +111,8 @@ impl SeaOrmModuleGovernanceService {
         );
         let actor_label = validation_stage_actor_label(&command.actor_principal)?;
         let (stage_id, attempt_number, queue_reason, event_type) = if command.requeue {
-            let next_attempt =
-                tx.query_one_raw(Statement::from_sql_and_values(
+            let next_attempt = tx
+                .query_one_raw(Statement::from_sql_and_values(
                     backend.db_backend(),
                     format!(
                         "SELECT COALESCE(MAX(attempt_number), 0) AS attempt_number \
@@ -131,8 +131,8 @@ impl SeaOrmModuleGovernanceService {
                     ModuleGovernanceError::Store("missing validation attempt aggregate".to_string())
                 })?
                 .try_get::<i64>("", "attempt_number")
-                .map_err(|e| ModuleGovernanceError::Store(e.to_string()))? as i32
-                    + 1;
+                .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+            let next_attempt = next_attempt_number(next_attempt)?;
             let stage_id = self.infrastructure.prefixed_id("rvs");
             let queue_reason = "manual_requeue".to_string();
             tx.execute_raw(Statement::from_sql_and_values(
@@ -168,7 +168,7 @@ impl SeaOrmModuleGovernanceService {
                     format!(
                         "SELECT id, status, attempt_number, queue_reason \
                          FROM registry_validation_stages WHERE request_id = {} AND stage_key = {} \
-                         ORDER BY attempt_number DESC, created_at DESC LIMIT 1",
+                         ORDER BY attempt_number DESC, created_at DESC, id DESC LIMIT 1",
                         mark(1),
                         mark(2),
                     ),

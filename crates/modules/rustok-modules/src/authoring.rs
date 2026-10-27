@@ -648,6 +648,8 @@ impl ModuleAuthoringPublishCommand {
             marketplace_tags: self.marketplace_tags.clone(),
             admin_ui_crate_name: None,
             storefront_ui_crate_name: None,
+            admin_support_crate_name: None,
+            storefront_support_crate_name: None,
         })
     }
 }
@@ -659,8 +661,42 @@ fn author_principal(actor_id: Uuid) -> serde_json::Value {
 fn deterministic_request_id(
     command: &ModuleAuthoringBuildCommand,
 ) -> Result<Uuid, ModuleAuthoringBuildError> {
-    let encoded = serde_json::to_vec(command)
-        .map_err(|error| ModuleAuthoringBuildError::Encoding(error.to_string()))?;
+    #[derive(Serialize)]
+    struct RequestIdentity<'a> {
+        actor_id: Uuid,
+        tenant_id: Option<Uuid>,
+        idempotency_key: Uuid,
+        project_id: &'a str,
+        source_digest: &'a str,
+        scenario: &'a ModuleBuildScenario,
+        expected_module_slug: &'a str,
+        expected_version: &'a str,
+        parent_release: &'a Option<ArtifactReleaseRef>,
+        rust_toolchain: &'a str,
+        sdk_version: &'a str,
+        template_version: &'a str,
+        dependency_lock_digest: &'a str,
+    }
+
+    // Trace and correlation identify one delivery attempt, not the build
+    // being requested. The actor, tenant, and idempotency key remain in the
+    // deterministic identity because they are the durable replay scope.
+    let encoded = serde_json::to_vec(&RequestIdentity {
+        actor_id: command.context.actor_id,
+        tenant_id: command.context.tenant_id,
+        idempotency_key: command.context.idempotency_key,
+        project_id: &command.project_id,
+        source_digest: &command.source_digest,
+        scenario: &command.scenario,
+        expected_module_slug: &command.expected_module_slug,
+        expected_version: &command.expected_version,
+        parent_release: &command.parent_release,
+        rust_toolchain: &command.rust_toolchain,
+        sdk_version: &command.sdk_version,
+        template_version: &command.template_version,
+        dependency_lock_digest: &command.dependency_lock_digest,
+    })
+    .map_err(|error| ModuleAuthoringBuildError::Encoding(error.to_string()))?;
     let digest = Sha256::digest(
         [
             b"rustok.module.authoring-build.request\0".as_slice(),
@@ -795,6 +831,28 @@ mod tests {
 
         assert_eq!(first, repeated);
         assert_eq!(first.request_id.get_version_num(), 8);
+
+        let mut changed_observability = command.clone();
+        changed_observability.context.trace_id = "trace:authoring-build:retry".to_string();
+        changed_observability.context.correlation_id = Uuid::new_v4();
+        let changed_observability_request =
+            SeaOrmModuleAuthoringBuildService::immutable_request(&changed_observability)
+                .expect("changed observability immutable request");
+        assert_eq!(changed_observability_request.request_id, first.request_id);
+
+        let mut changed_source = command.clone();
+        changed_source.source_digest = digest('c');
+        let changed_source_request =
+            SeaOrmModuleAuthoringBuildService::immutable_request(&changed_source)
+                .expect("changed source immutable request");
+        assert_ne!(changed_source_request.request_id, first.request_id);
+
+        let mut changed_actor = command.clone();
+        changed_actor.context.actor_id = Uuid::new_v4();
+        let changed_actor_request =
+            SeaOrmModuleAuthoringBuildService::immutable_request(&changed_actor)
+                .expect("changed actor immutable request");
+        assert_ne!(changed_actor_request.request_id, first.request_id);
         assert_eq!(
             first.source.reference,
             format!("cas://{}", command.source_digest)

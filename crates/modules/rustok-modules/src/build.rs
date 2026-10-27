@@ -1355,9 +1355,8 @@ async fn existing_submission<C: ConnectionTrait>(
 }
 
 fn build_request_hash(request: &ModuleBuildRequest) -> Result<String, ModuleBuildProtocolError> {
-    let serialized = serde_json::to_vec(request)
-        .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))?;
-    Ok(crate::installation::sha256_digest(&serialized))
+    crate::idempotency::semantic_request_digest(request)
+        .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))
 }
 
 fn build_result_hash(result: &ModuleBuildResult) -> Result<String, ModuleBuildProtocolError> {
@@ -1702,10 +1701,11 @@ mod tests {
 
         let mut changed_context_retry = request.clone();
         changed_context_retry.context.trace_id = "trace-2".to_string();
-        assert!(matches!(
-            service.submit(changed_context_retry).await,
-            Err(ModuleBuildProtocolError::IdempotencyConflict)
-        ));
+        changed_context_retry.context.correlation_id = Uuid::new_v4();
+        service
+            .submit(changed_context_retry)
+            .await
+            .expect("changed observability context replays build submission");
 
         let events = event_writer
             .events

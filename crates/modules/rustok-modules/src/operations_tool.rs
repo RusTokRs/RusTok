@@ -23,7 +23,6 @@ use crate::{
     ModuleCommandContext,
     conflict_fences::ConflictKey,
     installation::{sha256_digest, valid_digest},
-    promotion::digest_json,
 };
 
 pub const OPERATIONS_TOOL_RELEASE_CONTRACT: &str = "rustok.operations_tool_release";
@@ -189,6 +188,29 @@ fn decode_fixed<const N: usize>(encoded: &str) -> Result<[u8; N], OperationsTool
     let mut fixed = [0u8; N];
     fixed.copy_from_slice(&bytes);
     Ok(fixed)
+}
+
+fn stored_protocol_revision(value: u32) -> Result<i32, OperationsToolError> {
+    i32::try_from(value)
+        .ok()
+        .filter(|value| *value > 0)
+        .ok_or_else(|| {
+            OperationsToolError::Storage(
+                "operations-tool protocol revision is outside the supported storage range"
+                    .to_string(),
+            )
+        })
+}
+
+fn protocol_revision_from_storage(value: i32) -> Result<u32, OperationsToolError> {
+    u32::try_from(value)
+        .ok()
+        .filter(|value| *value > 0)
+        .ok_or_else(|| {
+            OperationsToolError::Storage(
+                "stored operations-tool protocol revision is invalid".to_string(),
+            )
+        })
 }
 
 impl OperationsToolRelease {
@@ -369,7 +391,7 @@ impl OperationsToolService {
         let values = vec![
             backend.uuid_value(payload.release_id),
             payload.version.clone().into(),
-            (payload.protocol_revision as i32).into(),
+            stored_protocol_revision(payload.protocol_revision)?.into(),
             payload.package_digest.clone().into(),
             payload.controller_digest.clone().into(),
             payload.reconciler_digest.clone().into(),
@@ -452,7 +474,7 @@ impl OperationsToolService {
         now: DateTime<Utc>,
     ) -> Result<OperationsToolMaintenanceOperation, OperationsToolError> {
         validate_start_maintenance_command(&command)?;
-        let request_digest = digest_json(&command)
+        let request_digest = crate::idempotency::semantic_request_digest(&command)
             .map_err(|error| OperationsToolError::Serialization(error.to_string()))?;
         let transaction = self
             .db
@@ -780,7 +802,7 @@ impl OperationsToolService {
         now: DateTime<Utc>,
     ) -> Result<OperationsToolMaintenanceOperation, OperationsToolError> {
         validate_recovery_command(&command)?;
-        let request_digest = digest_json(&command)
+        let request_digest = crate::idempotency::semantic_request_digest(&command)
             .map_err(|error| OperationsToolError::Serialization(error.to_string()))?;
         let transaction = self
             .db
@@ -1093,7 +1115,7 @@ impl OperationsToolService {
         let operation = self.parse_operation_row(row, backend)?;
         if stored_request_digest != request_digest
             || operation.operation_id != command.operation_id
-            || operation.context != command.context
+            || operation.context.actor_id != command.context.actor_id
         {
             return Err(OperationsToolError::IdempotencyConflict);
         }
@@ -1134,7 +1156,11 @@ impl OperationsToolService {
         let operation = self.parse_operation_row(row, backend)?;
         if stored_request_digest != request_digest
             || operation.operation_id != command.operation_id
-            || operation.recovery_context.as_ref() != Some(&command.context)
+            || operation
+                .recovery_context
+                .as_ref()
+                .map(|context| context.actor_id)
+                != Some(command.context.actor_id)
         {
             return Err(OperationsToolError::IdempotencyConflict);
         }
@@ -1290,7 +1316,7 @@ impl OperationsToolService {
                 contract: OPERATIONS_TOOL_RELEASE_CONTRACT.to_string(),
                 release_id,
                 version,
-                protocol_revision: protocol_revision as u32,
+                protocol_revision: protocol_revision_from_storage(protocol_revision)?,
                 package_digest,
                 controller_digest,
                 reconciler_digest,
@@ -1401,17 +1427,9 @@ impl OperationsToolService {
         col: &str,
         backend: SupportedBackend,
     ) -> Result<Uuid, OperationsToolError> {
-        match backend {
-            SupportedBackend::Sqlite => {
-                let s: String = row
-                    .try_get("", col)
-                    .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-                Uuid::parse_str(&s).map_err(|e| OperationsToolError::Storage(e.to_string()))
-            }
-            SupportedBackend::Postgres => row
-                .try_get("", col)
-                .map_err(|e| OperationsToolError::Storage(e.to_string())),
-        }
+        backend
+            .uuid_from_row(row, col)
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))
     }
 
     fn get_optional_uuid_from_row(
@@ -1420,22 +1438,9 @@ impl OperationsToolService {
         col: &str,
         backend: SupportedBackend,
     ) -> Result<Option<Uuid>, OperationsToolError> {
-        match backend {
-            SupportedBackend::Sqlite => {
-                let s: Option<String> = row
-                    .try_get("", col)
-                    .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-                match s {
-                    Some(val) => Uuid::parse_str(&val)
-                        .map(Some)
-                        .map_err(|e| OperationsToolError::Storage(e.to_string())),
-                    None => Ok(None),
-                }
-            }
-            SupportedBackend::Postgres => row
-                .try_get("", col)
-                .map_err(|e| OperationsToolError::Storage(e.to_string())),
-        }
+        backend
+            .optional_uuid_from_row(row, col)
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))
     }
 
     fn get_datetime_from_row(

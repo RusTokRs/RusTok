@@ -49,19 +49,47 @@ pub enum ModuleTransitionState {
     /// Explicit, actor-authorized finalize attested the candidate and the
     /// transition converged. (An elapsed observation window alone never
     /// converges a transition: no health evidence is recorded while
-    /// observing, so the watchdog fails such checkpoints closed instead.)
+    /// observing, so the watchdog stops automatic action and requires
+    /// operator intervention instead.)
     Converged { finalized_at: DateTime<Utc> },
-    /// Terminal failure where automatic action is exhausted or forbidden; operator intervention required.
-    FailedClosed { failure_reason: String },
+    /// Automatic transition action is exhausted or forbidden. This state
+    /// deliberately does not claim that serving selection changed: the
+    /// candidate may still be serving until an operator explicitly rolls it
+    /// back or deactivates it through the installation owner.
+    InterventionRequired { failure_reason: String },
 }
 
 impl ModuleTransitionState {
+    /// Whether automatic transition progression has stopped.
+    ///
+    /// `InterventionRequired` is terminal for automatic actors, but it is
+    /// not a resolved transition: the explicit operator recovery path may
+    /// still move it to `RecoveredToPredecessor`. Use
+    /// [`Self::is_unresolved`] when the question is whether operators still
+    /// need to discover and close the checkpoint.
     pub fn is_terminal(&self) -> bool {
         matches!(
             self,
             Self::RecoveredToPredecessor { .. }
                 | Self::Converged { .. }
-                | Self::FailedClosed { .. }
+                | Self::InterventionRequired { .. }
+        )
+    }
+
+    /// Whether the checkpoint is waiting for an explicit operator decision.
+    pub fn requires_operator_attention(&self) -> bool {
+        matches!(self, Self::InterventionRequired { .. })
+    }
+
+    /// Whether the transition has not reached a resolved outcome.
+    ///
+    /// Only convergence and completed predecessor recovery resolve a
+    /// checkpoint. In particular, `InterventionRequired` remains unresolved
+    /// even though automatic actors must not progress it further.
+    pub fn is_unresolved(&self) -> bool {
+        !matches!(
+            self,
+            Self::RecoveredToPredecessor { .. } | Self::Converged { .. }
         )
     }
 
@@ -75,7 +103,7 @@ impl ModuleTransitionState {
             Self::PointOfNoReturn { .. } => "point_of_no_return",
             Self::RecoveredToPredecessor { .. } => "recovered_to_predecessor",
             Self::Converged { .. } => "converged",
-            Self::FailedClosed { .. } => "failed_closed",
+            Self::InterventionRequired { .. } => "intervention_required",
         }
     }
 }
@@ -316,13 +344,20 @@ impl ModuleTransitionCoordinator {
     /// Records a completed direct-predecessor recovery.
     ///
     /// The installation owner calls this only inside the transaction that
-    /// already changed serving selection. If the recovery attempt limit is
-    /// exhausted, the transition fails closed.
+    /// already changed serving selection. `InterventionRequired` is terminal
+    /// for automatic actors, but this explicit operator recovery is the
+    /// intervention it requests; converged and already-recovered checkpoints
+    /// remain immutable. If the recovery attempt limit is exhausted, the
+    /// checkpoint stays in intervention-required state.
     pub fn record_predecessor_recovery(
         &mut self,
         reason: String,
     ) -> Result<(), TransitionCoordinatorError> {
-        if self.checkpoint.state.is_terminal() {
+        if matches!(
+            self.checkpoint.state,
+            ModuleTransitionState::RecoveredToPredecessor { .. }
+                | ModuleTransitionState::Converged { .. }
+        ) {
             return Err(TransitionCoordinatorError::OperationAlreadyTerminal(
                 self.checkpoint.state.name().to_string(),
             ));
@@ -341,11 +376,11 @@ impl ModuleTransitionCoordinator {
         // Single-attempt recovery invariant enforcement
         if self.checkpoint.recovery_attempt_count >= 1 {
             let msg = format!(
-                "Automatic recovery already attempted ({}); failing closed to prevent oscillation: {}",
+                "Automatic recovery already attempted ({}); operator intervention is required to prevent oscillation: {}",
                 self.checkpoint.recovery_attempt_count, reason
             );
             self.checkpoint.revision += 1;
-            self.checkpoint.state = ModuleTransitionState::FailedClosed {
+            self.checkpoint.state = ModuleTransitionState::InterventionRequired {
                 failure_reason: msg.clone(),
             };
             self.checkpoint.updated_at = Utc::now();
@@ -443,16 +478,17 @@ impl ModuleTransitionCoordinator {
         }
     }
 
-    /// Contains a transition when an automatic actor cannot safely complete
-    /// the required recovery command. The state deliberately does not claim
-    /// that serving traffic returned to the predecessor.
-    pub fn fail_closed(
+    /// Stops automatic transition action when an automatic actor cannot
+    /// safely complete the required recovery command. The state deliberately
+    /// does not claim that serving traffic returned to the predecessor or
+    /// that the candidate stopped serving.
+    pub fn require_intervention(
         &mut self,
         failure_reason: String,
     ) -> Result<(), TransitionCoordinatorError> {
         self.ensure_active()?;
         self.checkpoint.revision += 1;
-        self.checkpoint.state = ModuleTransitionState::FailedClosed { failure_reason };
+        self.checkpoint.state = ModuleTransitionState::InterventionRequired { failure_reason };
         self.checkpoint.updated_at = Utc::now();
         Ok(())
     }
@@ -567,6 +603,47 @@ mod tests {
         let second_trigger =
             coordinator.record_predecessor_recovery("Second failure signal".to_string());
         assert!(second_trigger.is_err());
+    }
+
+    #[test]
+    fn intervention_required_allows_one_explicit_operator_recovery() {
+        let registry = SecurityEpochRegistry::new();
+        let input = StartTransitionInput {
+            operation_id: Uuid::new_v4(),
+            module_slug: "orders".to_string(),
+            tenant_id: None,
+            predecessor_digest: Some("sha256:v1".to_string()),
+            candidate_digest: "sha256:v2".to_string(),
+            affected_nodes: vec!["node-1".to_string()],
+            preflight_receipt: dummy_preflight_receipt(true),
+            requested_mode: UpdateMode::Automatic,
+        };
+
+        let mut coordinator =
+            ModuleTransitionCoordinator::start_transition(input, &registry).unwrap();
+        coordinator.advance_to_prestaging(&registry).unwrap();
+        coordinator
+            .advance_to_activating(&registry, Duration::from_secs(60))
+            .unwrap();
+        coordinator
+            .require_intervention("observation window elapsed".to_string())
+            .unwrap();
+        assert!(matches!(
+            coordinator.state(),
+            ModuleTransitionState::InterventionRequired { .. }
+        ));
+        assert!(coordinator.state().is_terminal());
+        assert!(coordinator.state().requires_operator_attention());
+        assert!(coordinator.state().is_unresolved());
+
+        coordinator
+            .record_predecessor_recovery("operator restored the predecessor".to_string())
+            .unwrap();
+        assert!(matches!(
+            coordinator.state(),
+            ModuleTransitionState::RecoveredToPredecessor { .. }
+        ));
+        assert_eq!(coordinator.checkpoint().recovery_attempt_count, 1);
     }
 
     #[test]

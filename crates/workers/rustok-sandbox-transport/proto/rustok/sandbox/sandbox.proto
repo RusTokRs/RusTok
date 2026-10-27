@@ -59,4 +59,16 @@ message ReadinessResponse {
   bool ready = 1;
   string executor = 2;
   uint32 protocol_revision = 3;
+  // Deployment identity evidence consumed by the governed
+  // executor-readiness fingerprint. Digests are canonical
+  // `sha256:<hex>` strings. A worker that cannot prove an identity
+  // leaves the fields empty; hosts must fail closed instead of
+  // composing a governed pool from an empty value.
+  string executor_binary_digest = 4;
+  string engine_build_digest = 5;
+  string worker_image_digest = 6;
+  string engine_config_digest = 7;
+  string target_cpu_contract = 8;
+  string runtime_abi = 9;
+  string isolation_runtime = 10;
 }

@@ -145,8 +145,7 @@ impl VariantResponse {
 impl PriceInput {
     pub fn validate_invariants(&self) -> Result<(), crate::error::CommerceError> {
         let trimmed_currency = self.currency_code.trim();
-        if trimmed_currency.len() != 3
-            || !trimmed_currency.chars().all(|c| c.is_ascii_alphabetic())
+        if trimmed_currency.len() != 3 || !trimmed_currency.chars().all(|c| c.is_ascii_alphabetic())
         {
             return Err(crate::error::CommerceError::validation(format!(
                 "currency_code must be a 3-letter ISO-4217 code: '{}'",
@@ -247,7 +246,6 @@ impl CreateVariantInput {
         Ok(())
     }
 }
-
 
 impl AdjustInventoryInput {
     pub fn validate_invariants(&self) -> Result<(), crate::error::CommerceError> {
@@ -384,7 +382,10 @@ mod tests {
         };
         assert!(on_sale_price.is_on_sale());
         assert_eq!(on_sale_price.discount_amount(), Some(Decimal::new(20, 0)));
-        assert_eq!(on_sale_price.discount_percentage(), Some(Decimal::new(20, 0)));
+        assert_eq!(
+            on_sale_price.discount_percentage(),
+            Some(Decimal::new(20, 0))
+        );
 
         let regular_price = PriceResponse {
             currency_code: "USD".into(),

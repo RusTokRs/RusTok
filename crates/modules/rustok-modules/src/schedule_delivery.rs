@@ -73,9 +73,23 @@ pub struct ArtifactScheduleDeliveryWorkItem {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ArtifactScheduleDeliveryOutcome {
     Succeeded,
-    Retryable { error_code: String },
-    DeadLetter { error_code: String },
-    Cancelled { error_code: String },
+    Retryable {
+        error_code: String,
+    },
+    /// The binding was denied by effective policy before any guest
+    /// execution. The delivery is parked (returned to `pending` with its
+    /// claim's attempt increment reverted) so a later re-enable can still
+    /// deliver it; only genuine execution failures spend the
+    /// `max_attempts` dead-letter budget.
+    Held {
+        error_code: String,
+    },
+    DeadLetter {
+        error_code: String,
+    },
+    Cancelled {
+        error_code: String,
+    },
 }
 
 /// Queue-owned execution limits.
@@ -165,8 +179,27 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
             .map_err(storage_error)?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        let receipt = self
+            .enqueue_in_transaction(&transaction, backend, request)
+            .await?;
+        transaction.commit().await.map_err(storage_error)?;
+        Ok(receipt)
+    }
+
+    /// Transaction-scoped core of [`Self::enqueue`]. The caller owns the
+    /// transaction, its tenant scope, and the commit; the schedule
+    /// materializer uses this so cursor locking, the overlap probe, slot
+    /// creation, and the cursor advance commit atomically (one
+    /// transaction per binding, no check-then-enqueue window).
+    pub(crate) async fn enqueue_in_transaction(
+        &self,
+        transaction: &sea_orm::DatabaseTransaction,
+        backend: SupportedBackend,
+        request: ArtifactScheduleDeliveryRequest,
+    ) -> Result<ArtifactScheduleDeliveryReceipt, ArtifactScheduleDeliveryError> {
+        validate_request(&request)?;
         let descriptor = load_admitted_descriptor(
-            &transaction,
+            transaction,
             backend,
             request.tenant_id,
             request.installation_id,
@@ -209,7 +242,6 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
             .await
             .map_err(storage_error)?;
         if inserted.rows_affected() == 1 {
-            transaction.commit().await.map_err(storage_error)?;
             return Ok(ArtifactScheduleDeliveryReceipt {
                 delivery_id,
                 created: true,
@@ -248,7 +280,6 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
         }
         let delivery_id =
             uuid_from_row(&existing, "delivery_id", backend).map_err(storage_error)?;
-        transaction.commit().await.map_err(storage_error)?;
         Ok(ArtifactScheduleDeliveryReceipt {
             delivery_id,
             created: false,
@@ -425,13 +456,19 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
         if delivery_id.is_nil() || attempt == 0 {
             return Err(ArtifactScheduleDeliveryError::InvalidCompletion);
         }
-        let (status, error_code, terminal_column, retryable) = match outcome {
+        let (status, error_code, terminal_column, retryable, held) = match outcome {
             ArtifactScheduleDeliveryOutcome::Succeeded => {
-                ("succeeded", None, Some("completed_at"), false)
+                ("succeeded", None, Some("completed_at"), false, false)
             }
             ArtifactScheduleDeliveryOutcome::Cancelled { error_code } => {
                 validate_error_code(&error_code)?;
-                ("cancelled", Some(error_code), Some("cancelled_at"), false)
+                (
+                    "cancelled",
+                    Some(error_code),
+                    Some("cancelled_at"),
+                    false,
+                    false,
+                )
             }
             ArtifactScheduleDeliveryOutcome::DeadLetter { error_code } => {
                 validate_error_code(&error_code)?;
@@ -440,11 +477,16 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
                     Some(error_code),
                     Some("dead_lettered_at"),
                     false,
+                    false,
                 )
             }
             ArtifactScheduleDeliveryOutcome::Retryable { error_code } => {
                 validate_error_code(&error_code)?;
-                ("pending", Some(error_code), None, true)
+                ("pending", Some(error_code), None, true, false)
+            }
+            ArtifactScheduleDeliveryOutcome::Held { error_code } => {
+                validate_error_code(&error_code)?;
+                ("pending", Some(error_code), None, false, true)
             }
         };
         let transaction = self.db.begin().await.map_err(storage_error)?;
@@ -453,7 +495,23 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
             .map_err(storage_error)?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
-        let affected = if retryable && attempt < self.config.max_attempts {
+        let affected = if held {
+            complete_held(
+                &transaction,
+                ScheduleDeliveryClaim {
+                    backend,
+                    tenant_id,
+                    worker_id,
+                    delivery_id,
+                    attempt,
+                },
+                error_code
+                    .as_deref()
+                    .expect("held outcome has an error code"),
+                self.config.retry_delay_seconds(attempt),
+            )
+            .await?
+        } else if retryable && attempt < self.config.max_attempts {
             complete_retryable(
                 &transaction,
                 ScheduleDeliveryClaim {
@@ -674,12 +732,30 @@ impl ModuleWorkSource for ArtifactScheduleDeliveryWorkAdapter {
         }
         let outcome = match outcome {
             ModuleWorkOutcome::Completed => ArtifactScheduleDeliveryOutcome::Succeeded,
-            ModuleWorkOutcome::Retryable { .. } => ArtifactScheduleDeliveryOutcome::Retryable {
-                error_code: "execution_failed".to_string(),
+            // A policy denial never executed the guest; park the delivery
+            // instead of spending its failure-attempt budget.
+            ModuleWorkOutcome::Held { message } => ArtifactScheduleDeliveryOutcome::Held {
+                error_code: crate::dispatcher::delivery_error_code(
+                    &message,
+                    crate::dispatcher::DELIVERY_CODE_DENIED_BY_POLICY,
+                ),
             },
-            ModuleWorkOutcome::Rejected { .. } => ArtifactScheduleDeliveryOutcome::DeadLetter {
-                error_code: "execution_rejected".to_string(),
-            },
+            ModuleWorkOutcome::Retryable { message } => {
+                ArtifactScheduleDeliveryOutcome::Retryable {
+                    error_code: crate::dispatcher::delivery_error_code(
+                        &message,
+                        "execution_failed",
+                    ),
+                }
+            }
+            ModuleWorkOutcome::Rejected { message } => {
+                ArtifactScheduleDeliveryOutcome::DeadLetter {
+                    error_code: crate::dispatcher::delivery_error_code(
+                        &message,
+                        "execution_rejected",
+                    ),
+                }
+            }
             ModuleWorkOutcome::Cancelled => ArtifactScheduleDeliveryOutcome::Cancelled {
                 error_code: "execution_cancelled".to_string(),
             },
@@ -724,6 +800,13 @@ impl ModuleWorkHandler for ArtifactScheduleDeliveryWorkAdapter {
                     installation_id: payload.installation_id,
                 },
                 tenant_id: payload.tenant_id,
+                admission: crate::ArtifactExecutionAdmission::owner_revalidation(
+                    payload.tenant_id,
+                    &payload.release,
+                    ArtifactInstallationTarget::ExactInstallation {
+                        installation_id: payload.installation_id,
+                    },
+                ),
                 input: serde_json::json!({
                     "binding_id": payload.binding.id.clone(),
                     "scheduled_for": payload.scheduled_for,
@@ -735,11 +818,16 @@ impl ModuleWorkHandler for ArtifactScheduleDeliveryWorkAdapter {
             .await
         {
             Ok(_) => Ok(ModuleWorkOutcome::Completed),
-            Err(error) if error.is_terminal() => Ok(ModuleWorkOutcome::Rejected {
-                message: "execution_rejected".to_string(),
+            Err(error) if error.is_policy_denied() => Ok(ModuleWorkOutcome::Held {
+                message: error.code().to_string(),
             }),
-            Err(_) => Ok(ModuleWorkOutcome::Retryable {
-                message: "execution_failed".to_string(),
+            Err(error) if error.is_terminal_for(payload.binding.idempotency) => {
+                Ok(ModuleWorkOutcome::Rejected {
+                    message: error.code().to_string(),
+                })
+            }
+            Err(error) => Ok(ModuleWorkOutcome::Retryable {
+                message: error.code().to_string(),
             }),
         }
     }
@@ -910,6 +998,32 @@ async fn complete_retryable<C: ConnectionTrait>(
     let result = connection.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
         "UPDATE module_artifact_schedule_deliveries \
          SET status = 'pending', claimed_by = NULL, claimed_until = NULL, last_error_code = {}, available_at = {} \
+         WHERE delivery_id = {} AND tenant_id = {} AND status = 'running' AND claimed_by = {} AND attempt = {}",
+        backend.placeholder(1), lease_expression(backend, 2), backend.placeholder(3), backend.placeholder(4), backend.placeholder(5), backend.placeholder(6)),
+        vec![error_code.to_owned().into(), i64::from(delay_seconds).into(), backend.uuid_value(delivery_id), backend.uuid_value(tenant_id), worker_id.to_owned().into(), i64::from(attempt).into()])).await.map_err(storage_error)?;
+    Ok(result.rows_affected())
+}
+
+/// Parks a policy-denied delivery: identical requeue to a retryable
+/// failure except the claim's attempt increment is reverted, because the
+/// guest never executed. `attempt` in the guard is the claimed attempt
+/// (>= 1, validated by `complete`), so the decrement cannot underflow.
+async fn complete_held<C: ConnectionTrait>(
+    connection: &C,
+    claim: ScheduleDeliveryClaim<'_>,
+    error_code: &str,
+    delay_seconds: u32,
+) -> Result<u64, ArtifactScheduleDeliveryError> {
+    let ScheduleDeliveryClaim {
+        backend,
+        tenant_id,
+        worker_id,
+        delivery_id,
+        attempt,
+    } = claim;
+    let result = connection.execute_raw(Statement::from_sql_and_values(backend.db_backend(), format!(
+        "UPDATE module_artifact_schedule_deliveries \
+         SET status = 'pending', attempt = attempt - 1, claimed_by = NULL, claimed_until = NULL, last_error_code = {}, available_at = {} \
          WHERE delivery_id = {} AND tenant_id = {} AND status = 'running' AND claimed_by = {} AND attempt = {}",
         backend.placeholder(1), lease_expression(backend, 2), backend.placeholder(3), backend.placeholder(4), backend.placeholder(5), backend.placeholder(6)),
         vec![error_code.to_owned().into(), i64::from(delay_seconds).into(), backend.uuid_value(delivery_id), backend.uuid_value(tenant_id), worker_id.to_owned().into(), i64::from(attempt).into()])).await.map_err(storage_error)?;

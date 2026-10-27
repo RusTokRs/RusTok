@@ -621,14 +621,8 @@ async fn find_artifact_data_purge_operation<C: ConnectionTrait>(
         .try_get("", "expected_namespace_revision")
         .map_err(storage_error)?;
     let actor_id = uuid_from_row(&row, "actor_id", backend)?;
-    let trace_id: String = row.try_get("", "trace_id").map_err(storage_error)?;
-    let correlation_id = uuid_from_row(&row, "correlation_id", backend)?;
-    let reason: String = row.try_get("", "reason").map_err(storage_error)?;
     if u64::try_from(expected_revision).ok() != Some(request.expected_namespace_revision)
         || actor_id != request.context.actor_id
-        || trace_id != request.context.trace_id
-        || correlation_id != request.context.correlation_id
-        || reason != request.reason
     {
         return Err(ArtifactDataError::IdempotencyConflict);
     }

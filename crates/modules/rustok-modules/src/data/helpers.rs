@@ -413,17 +413,7 @@ pub(crate) fn uuid_from_row(
     column: &str,
     backend: SupportedBackend,
 ) -> Result<Uuid, ArtifactDataError> {
-    match backend {
-        SupportedBackend::Postgres => row.try_get("", column).map_err(storage_error),
-        SupportedBackend::Sqlite => match row.try_get::<Uuid>("", column) {
-            Ok(value) => Ok(value),
-            Err(_) => row
-                .try_get::<String>("", column)
-                .map_err(storage_error)?
-                .parse()
-                .map_err(storage_error),
-        },
-    }
+    backend.uuid_from_row(row, column).map_err(storage_error)
 }
 
 /// SQL expression of the delivery queues' retry delay for a row's current

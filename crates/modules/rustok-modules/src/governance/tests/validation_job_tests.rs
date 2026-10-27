@@ -263,9 +263,13 @@ async fn validation_job_enqueue_replays_only_the_exact_command_context() {
 
     let mut changed_context = command;
     changed_context.context.trace_id = "test:changed-validation-job-enqueue-replay".to_string();
+    changed_context.context.correlation_id = Uuid::new_v4();
     assert_eq!(
-        service.enqueue_validation_job(changed_context).await,
-        Err(ModuleGovernanceError::ValidationJobEnqueueIdempotencyConflict)
+        service
+            .enqueue_validation_job(changed_context)
+            .await
+            .expect("changed observability context replays enqueue"),
+        queued
     );
 
     let job_count = database

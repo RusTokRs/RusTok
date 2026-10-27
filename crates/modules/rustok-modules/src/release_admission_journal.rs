@@ -50,16 +50,9 @@ fn parse_uuid_column(
     column: &str,
     backend: SupportedBackend,
 ) -> Result<Uuid, ReleaseAdmissionJournalError> {
-    match backend {
-        SupportedBackend::Postgres => row
-            .try_get::<Uuid>("", column)
-            .map_err(|e| ReleaseAdmissionJournalError::Store(e.to_string())),
-        SupportedBackend::Sqlite => row
-            .try_get::<String>("", column)
-            .map_err(|e| ReleaseAdmissionJournalError::Store(e.to_string()))?
-            .parse()
-            .map_err(|e: uuid::Error| ReleaseAdmissionJournalError::Store(e.to_string())),
-    }
+    backend
+        .uuid_from_row(row, column)
+        .map_err(|e| ReleaseAdmissionJournalError::Store(e.to_string()))
 }
 
 fn parse_datetime_column(
@@ -349,7 +342,7 @@ impl ReleaseAdmissionIntentJournal {
                             trace_id, correlation_id, request_digest, committed_at \
                      FROM module_artifact_admission_commands \
                      WHERE installation_id IS NULL AND committed_at <= {} \
-                     ORDER BY committed_at ASC LIMIT {}",
+                     ORDER BY committed_at ASC, scope_kind ASC, scope_tenant_key ASC, actor_id ASC, idempotency_key ASC LIMIT {}",
                     if backend == SupportedBackend::Postgres {
                         "$1"
                     } else {

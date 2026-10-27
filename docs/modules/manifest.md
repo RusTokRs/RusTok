@@ -136,6 +136,7 @@ Practical rule for the current platform scope:
 - A module with only `[provides.admin_ui]` must have `admin_only`;
 - A module with only `[provides.storefront_ui]` must have `storefront_only`;
 - A module without UI may use `no_ui`, `capability_only` or `future_ui`, but must not simultaneously declare UI sub-crates.
+- `[provides.admin_support]` / `[provides.storefront_support]` declare a UI support sub-crate (reusable components composed into other modules' surfaces or host compositions). A support sub-crate is not a UI surface and does not change `ui_classification`: an `admin_only` module may additionally publish a storefront support crate, and a `future_ui` module may publish support crates before it owns any surface.
 
 ### `[crate].entry_type`
 
@@ -287,11 +288,13 @@ Additional sections are allowed, but this minimum must be preserved.
 - `[[provides.admin_ui.child_pages]]` is canonical metadata for nested admin navigation: each item declares `subpath`, `title`, `nav_label` and is mounted under `/modules/:route_segment/:subpath`.
 - The presence of `[settings]` in `rustok-module.toml` does not create a module-owned settings page. The host shows a contextual settings link at `/modules?module_slug=<slug>` and uses the existing tenant settings editor.
 - `[provides.storefront_ui]` requires not only `leptos_crate`, but also non-empty `slot`, `route_segment`, `page_title` and `[provides.storefront_ui.i18n]` with `default_locale`, `supported_locales`, `leptos_locales_path`. The `slot` value must be one of the platform-known slots: `header_navigation`, `home_after_hero`, `home_after_catalog`, `home_before_footer`, `footer_navigation`, `checkout_shipping_handoff`, `checkout_payment_handoff`, `checkout_result_handoff`.
+- A surface sub-crate exports its root page component under the codegen convention name: `apps/storefront` mounts `{PascalCase(slug)}View` (for example `BlogView`) and `apps/admin` mounts `{PascalCase(slug)}Admin` (for example `BlogAdmin`). Host build scripts generate these references from the manifest slug; a differently named root component does not resolve.
 - `[[provides.storefront_ui.components]]` declares additional no-prop Leptos contributions from the same module UI crate. Each item requires a unique `id`, exported Rust `component`, platform-known `slot`, and may set deterministic `order`. The host registers these through the generic storefront registry; host source must not import module-specific layout components directly.
+- `[provides.admin_support]` / `[provides.storefront_support]` declare that the `admin/` or `storefront/` sub-crate is a support crate instead of a surface: it publishes reusable (typically prop-driven) Leptos components that other modules' surfaces or hand-written host compositions embed. The section requires a non-empty `leptos_crate`; `[provides.*_support.i18n]` is optional and, when present, follows the same contract as surface i18n. A support crate owns no route, slot, or navigation entry and is not registered by host codegen. Declaring both the surface section and the support section for the same host is an error: the single sub-crate is either a surface or a support crate.
 - If a UI sub-crate is declared in the manifest, the corresponding host (`apps/admin` or `apps/storefront`) actually connects it as a dependency and forwards mandatory host feature links (`/hydrate`, `/ssr`) where the sub-crate exports them.
 - The host dependency on a UI sub-crate points to the canonical module path (`crates/modules/<module>/admin` or `crates/modules/<module>/storefront`), not to an arbitrary compatible crate with the same name.
 - If a module publishes `admin_ui` or `storefront_ui`, the host composition includes UI surfaces of its direct module dependencies for the same surface when those dependencies also publish such UI.
-- `apps/admin` and `apps/storefront` do not contain orphaned first-party UI dependencies: a path dependency on `crates/modules/*/admin` or `crates/modules/*/storefront` is allowed only if the corresponding `rustok-module.toml` actually declares this crate as `admin_ui` or `storefront_ui`.
+- `apps/admin` and `apps/storefront` do not contain orphaned first-party UI dependencies: a path dependency on `crates/modules/*/admin` or `crates/modules/*/storefront` is allowed only if the corresponding `rustok-module.toml` actually declares this crate as `admin_ui`/`storefront_ui` (surface) or `admin_support`/`storefront_support` (support crate composed by hand-written host code). The same rule applies to module UI packages: a module surface may depend on another module's storefront/admin sub-crate only when that sub-crate is declared as a support crate (or as the surface of a declared module dependency whose UI the host composes).
 - `apps/admin` and `apps/storefront` do not contain orphaned host feature entries: `hydrate`/`ssr` do not reference `crate/feature` for a first-party module UI crate if that crate is no longer declared in the module manifest or is no longer connected as a host dependency.
 - Central navigation does not lag behind manifest wiring: `docs/modules/_index.md` contains docs/plan links of the module, and `docs/modules/UI_PACKAGES_INDEX.md` lists declared admin/storefront UI surfaces.
 
@@ -408,13 +411,30 @@ description = "Blog module with admin and storefront surfaces."
 
 ## UI Sub-crate Invariants
 
-- The presence of `admin/Cargo.toml` without `[provides.admin_ui].leptos_crate` is considered a wiring error.
-- The presence of `storefront/Cargo.toml` without `[provides.storefront_ui].leptos_crate` is considered a wiring error.
-- Declaring `[provides.admin_ui].leptos_crate` without an actual `admin/Cargo.toml` is considered an error.
-- Declaring `[provides.storefront_ui].leptos_crate` without an actual `storefront/Cargo.toml` is considered an error.
+- The presence of `admin/Cargo.toml` without `[provides.admin_ui].leptos_crate` or `[provides.admin_support].leptos_crate` is considered a wiring error.
+- The presence of `storefront/Cargo.toml` without `[provides.storefront_ui].leptos_crate` or `[provides.storefront_support].leptos_crate` is considered a wiring error.
+- Declaring `[provides.admin_ui].leptos_crate` or `[provides.admin_support].leptos_crate` without an actual `admin/Cargo.toml` is considered an error.
+- Declaring `[provides.storefront_ui].leptos_crate` or `[provides.storefront_support].leptos_crate` without an actual `storefront/Cargo.toml` is considered an error.
+- Declaring both the surface section and the support section for the same host (`admin_ui` + `admin_support`, or `storefront_ui` + `storefront_support`) is considered an error.
 - Versions of UI sub-crates must match the version of the main module.
 
 The mere presence of an `admin/` or `storefront/` subfolder is not considered proof of integration. The canonical source of truth here is manifest wiring.
+
+## UI Support Sub-crates
+
+Some modules publish Leptos components that are rendered inside other modules' surfaces or inside hand-written host compositions, typically because the component is prop-driven (bound to a concrete subject entity) and therefore cannot be a no-prop registry/slot contribution. Such a sub-crate is declared as a support crate:
+
+```toml
+[provides.storefront_support]
+leptos_crate = "rustok-reactions-storefront"
+
+[provides.storefront_support.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"
+```
+
+Live examples: `rustok-comments` publishes `rustok-comments-storefront-support` (embedded by `rustok-blog` storefront surfaces) while remaining `admin_only`; `rustok-reactions` publishes `rustok-reactions-storefront` (the `ReactionBar` component composed by the storefront host into forum pages) while remaining `future_ui`. A support crate is bundled and version-checked like a surface sub-crate in publish artifacts (under its own `ui_packages` key), but hosts never generate routes, slots, or navigation entries for it.
 
 ## Support and Capability Crates
 
@@ -448,7 +468,7 @@ Minimum order of addition:
 6. For an optional runtime module, add a `mod-<slug>` feature and server wiring in `apps/server/Cargo.toml`.
    For a regular optional module this means `dep:<crate>`, and for a `capability_only` ghost module an empty feature-guard is acceptable if the crate is already always-linked as a shared server capability dependency.
 7. For a required runtime module, add direct registration in `apps/server/src/modules/mod.rs`.
-8. For module-owned UI, declare `[provides.admin_ui]` and/or `[provides.storefront_ui]` only together with an actual UI sub-crate and host wiring.
+8. For module-owned UI, declare `[provides.admin_ui]` and/or `[provides.storefront_ui]` only together with an actual UI sub-crate and host wiring. If the sub-crate only publishes reusable components for composition into other surfaces, declare `[provides.admin_support]` / `[provides.storefront_support]` instead (see "UI Support Sub-crates").
 9. Update navigation: `docs/modules/_index.md`, `docs/modules/registry.md`, and for UI modules also `docs/modules/UI_PACKAGES_INDEX.md`.
 10. Run local preflight: `cargo xtask validate-manifest`, `cargo xtask module validate <slug>`, `cargo xtask module test <slug>`.
 

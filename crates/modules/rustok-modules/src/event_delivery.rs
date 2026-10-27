@@ -86,8 +86,20 @@ pub struct ArtifactEventDeliveryWorkItem {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ArtifactEventDeliveryOutcome {
     Succeeded,
-    Retryable { error_code: String },
-    DeadLetter { error_code: String },
+    Retryable {
+        error_code: String,
+    },
+    /// The binding was denied by effective policy before any guest
+    /// execution. The delivery is parked (returned to `pending` with its
+    /// claim's attempt increment reverted) so a later re-enable can still
+    /// deliver it; only genuine execution failures spend the
+    /// `max_attempts` dead-letter budget.
+    Held {
+        error_code: String,
+    },
+    DeadLetter {
+        error_code: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -262,8 +274,22 @@ impl SeaOrmArtifactEventSubscriptionProjector {
             .await
             .map_err(storage_error)?;
         let mut effective = BTreeMap::<String, ArtifactSubscriptionCandidate>::new();
+        let mut excluded_slugs = std::collections::BTreeSet::new();
         for row in rows {
-            let candidate = subscription_candidate_from_row(&row, backend)?;
+            // Per-installation corruption (unparseable/invalid stored
+            // descriptor, slug mismatch) quarantines only that
+            // installation. Failing the whole projection would stall every
+            // tenant event behind one poisoned row — the transport
+            // decorator projects before downstream publish, so the outbox
+            // relay would retry forever. Storage failures still propagate.
+            let candidate = match subscription_candidate_from_row(&row, backend) {
+                Ok(candidate) => candidate,
+                Err(ArtifactEventDeliveryError::SubscriptionStateInvalid) => continue,
+                Err(error) => return Err(error),
+            };
+            if excluded_slugs.contains(&candidate.slug) {
+                continue;
+            }
             match effective.get(&candidate.slug) {
                 None => {
                     effective.insert(candidate.slug.clone(), candidate);
@@ -273,9 +299,11 @@ impl SeaOrmArtifactEventSubscriptionProjector {
                 }
                 Some(existing) if !candidate.tenant_scoped && existing.tenant_scoped => {}
                 Some(_) => {
-                    return Err(ArtifactEventDeliveryError::AmbiguousSubscription(
-                        candidate.slug,
-                    ));
+                    // Duplicate active installations for one slug are an
+                    // invariant breach; disable only the offending slug
+                    // instead of failing the tenant-wide projection.
+                    effective.remove(&candidate.slug);
+                    excluded_slugs.insert(candidate.slug);
                 }
             }
         }
@@ -526,11 +554,19 @@ impl ModuleWorkSource for ArtifactEventDeliveryWorkAdapter {
         }
         let outcome = match outcome {
             ModuleWorkOutcome::Completed => ArtifactEventDeliveryOutcome::Succeeded,
-            ModuleWorkOutcome::Retryable { .. } => ArtifactEventDeliveryOutcome::Retryable {
-                error_code: "execution_failed".to_string(),
+            // A policy denial never executed the guest; park the delivery
+            // instead of spending its failure-attempt budget.
+            ModuleWorkOutcome::Held { message } => ArtifactEventDeliveryOutcome::Held {
+                error_code: crate::dispatcher::delivery_error_code(
+                    &message,
+                    crate::dispatcher::DELIVERY_CODE_DENIED_BY_POLICY,
+                ),
             },
-            ModuleWorkOutcome::Rejected { .. } => ArtifactEventDeliveryOutcome::DeadLetter {
-                error_code: "execution_rejected".to_string(),
+            ModuleWorkOutcome::Retryable { message } => ArtifactEventDeliveryOutcome::Retryable {
+                error_code: crate::dispatcher::delivery_error_code(&message, "execution_failed"),
+            },
+            ModuleWorkOutcome::Rejected { message } => ArtifactEventDeliveryOutcome::DeadLetter {
+                error_code: crate::dispatcher::delivery_error_code(&message, "execution_rejected"),
             },
             ModuleWorkOutcome::Cancelled => ArtifactEventDeliveryOutcome::DeadLetter {
                 error_code: "execution_cancelled".to_string(),
@@ -578,6 +614,13 @@ impl ModuleWorkHandler for ArtifactEventDeliveryWorkAdapter {
                     installation_id: payload.installation_id,
                 },
                 tenant_id: payload.tenant_id,
+                admission: crate::ArtifactExecutionAdmission::owner_revalidation(
+                    payload.tenant_id,
+                    &payload.release,
+                    ArtifactInstallationTarget::ExactInstallation {
+                        installation_id: payload.installation_id,
+                    },
+                ),
                 input: serde_json::json!({
                     "binding_id": payload.binding.id.clone(),
                     "event": {
@@ -593,11 +636,16 @@ impl ModuleWorkHandler for ArtifactEventDeliveryWorkAdapter {
             .await
         {
             Ok(_) => Ok(ModuleWorkOutcome::Completed),
-            Err(error) if error.is_terminal() => Ok(ModuleWorkOutcome::Rejected {
-                message: "execution_rejected".to_string(),
+            Err(error) if error.is_policy_denied() => Ok(ModuleWorkOutcome::Held {
+                message: error.code().to_string(),
             }),
-            Err(_) => Ok(ModuleWorkOutcome::Retryable {
-                message: "execution_failed".to_string(),
+            Err(error) if error.is_terminal_for(payload.binding.idempotency) => {
+                Ok(ModuleWorkOutcome::Rejected {
+                    message: error.code().to_string(),
+                })
+            }
+            Err(error) => Ok(ModuleWorkOutcome::Retryable {
+                message: error.code().to_string(),
             }),
         }
     }
@@ -965,6 +1013,7 @@ impl SeaOrmArtifactEventDeliveryQueue {
             return Err(ArtifactEventDeliveryError::InvalidCompletion);
         }
         if let ArtifactEventDeliveryOutcome::Retryable { error_code }
+        | ArtifactEventDeliveryOutcome::Held { error_code }
         | ArtifactEventDeliveryOutcome::DeadLetter { error_code } = &completion.outcome
         {
             validate_error_code(error_code)?;
@@ -996,6 +1045,21 @@ impl SeaOrmArtifactEventDeliveryQueue {
                     completion.delivery_id,
                     completion.attempt,
                     error_code,
+                )
+                .await?
+            }
+            ArtifactEventDeliveryOutcome::Held { error_code } => {
+                complete_held(
+                    &transaction,
+                    EventDeliveryClaim {
+                        backend,
+                        tenant_id,
+                        worker_id,
+                        delivery_id: completion.delivery_id,
+                        attempt: completion.attempt,
+                    },
+                    error_code,
+                    self.config.retry_delay_seconds(completion.attempt),
                 )
                 .await?
             }
@@ -1182,6 +1246,53 @@ async fn complete_retryable<C: ConnectionTrait>(
             format!(
                 "UPDATE module_artifact_event_deliveries \
                  SET status = 'pending', claimed_by = NULL, claimed_until = NULL, \
+                     last_error_code = {}, available_at = {delay} \
+                 WHERE delivery_id = {} AND tenant_id = {} AND status = 'running' \
+                   AND claimed_by = {} AND attempt = {}",
+                backend.placeholder(1),
+                backend.placeholder(3),
+                backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+            ),
+            vec![
+                error_code.into(),
+                i64::from(delay_seconds).into(),
+                backend.uuid_value(delivery_id),
+                backend.uuid_value(tenant_id),
+                worker_id.to_owned().into(),
+                i64::from(attempt).into(),
+            ],
+        ))
+        .await
+        .map_err(storage_error)?;
+    Ok(result.rows_affected())
+}
+
+/// Parks a policy-denied delivery: identical requeue to a retryable
+/// failure except the claim's attempt increment is reverted, because the
+/// guest never executed. `attempt` in the guard is the claimed attempt
+/// (>= 1, validated by `complete`), so the decrement cannot underflow.
+async fn complete_held<C: ConnectionTrait>(
+    connection: &C,
+    claim: EventDeliveryClaim<'_>,
+    error_code: String,
+    delay_seconds: u32,
+) -> Result<u64, ArtifactEventDeliveryError> {
+    let EventDeliveryClaim {
+        backend,
+        tenant_id,
+        worker_id,
+        delivery_id,
+        attempt,
+    } = claim;
+    let delay = retry_expression(backend, 2);
+    let result = connection
+        .execute_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            format!(
+                "UPDATE module_artifact_event_deliveries \
+                 SET status = 'pending', attempt = attempt - 1, claimed_by = NULL, claimed_until = NULL, \
                      last_error_code = {}, available_at = {delay} \
                  WHERE delivery_id = {} AND tenant_id = {} AND status = 'running' \
                    AND claimed_by = {} AND attempt = {}",
@@ -1412,8 +1523,6 @@ pub enum ArtifactEventDeliveryError {
     BindingUnavailable,
     #[error("artifact event subscription state is invalid")]
     SubscriptionStateInvalid,
-    #[error("artifact event subscription for module `{0}` is ambiguous")]
-    AmbiguousSubscription(String),
     #[error("artifact event-delivery claim was lost or expired")]
     ClaimLost,
     #[error("artifact event-delivery storage failed: {0}")]

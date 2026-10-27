@@ -130,7 +130,7 @@ pub(crate) async fn canonical_marketplace_artifact_contract(
                          FROM registry_publish_external_staging \
                          WHERE request_id = {} AND artifact_digest = {} \
                            AND source_evidence_kind = 'reproducible' \
-                         ORDER BY staged_at DESC LIMIT 1",
+                         ORDER BY staged_at DESC, id DESC LIMIT 1",
                         mark(1),
                         mark(2),
                     ),
@@ -164,7 +164,7 @@ pub(crate) async fn canonical_marketplace_artifact_contract(
                          parent_release_slug, parent_release_version, parent_release_digest \
                          FROM registry_publish_alloy_staging \
                          WHERE request_id = {} AND artifact_digest = {} \
-                         ORDER BY staged_at DESC LIMIT 1",
+                         ORDER BY staged_at DESC, id DESC LIMIT 1",
                         mark(1),
                         mark(2),
                     ),

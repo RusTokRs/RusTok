@@ -21,7 +21,7 @@ use crate::backend::SupportedBackend;
 use crate::{
     ArtifactAdmissionLimits, ArtifactPayloadSource, ArtifactRegistry, ControlPlaneInfrastructure,
     DurableArtifactBlobStore, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor,
-    ModuleCommandContext, ModuleInstallationScope, OciArtifactReference,
+    ModuleArtifactPackage, ModuleCommandContext, ModuleInstallationScope, OciArtifactReference,
     ReleaseAdmissionIntentJournal, ReleaseAdmissionJournalError, TrustVerificationRequest,
     TrustVerifier, promotion::digest_json,
 };
@@ -81,6 +81,29 @@ pub struct OciReleaseAdmissionCommand {
     pub context: ModuleCommandContext,
     pub trust_policy_revision: u64,
     pub capability_policy_revision: u64,
+}
+
+impl OciReleaseAdmissionCommand {
+    /// Digest over only the semantic release-admission request. Replay is
+    /// already partitioned by scope, actor, and idempotency key; trace and
+    /// correlation evidence may change between attempts.
+    fn semantic_request_digest(&self) -> Result<String, OciReleaseAdmissionError> {
+        #[derive(Serialize)]
+        struct Fingerprint<'a> {
+            reference: &'a OciArtifactReference,
+            scope: &'a ModuleInstallationScope,
+            trust_policy_revision: u64,
+            capability_policy_revision: u64,
+        }
+
+        digest_json(&Fingerprint {
+            reference: &self.reference,
+            scope: &self.scope,
+            trust_policy_revision: self.trust_policy_revision,
+            capability_policy_revision: self.capability_policy_revision,
+        })
+        .map_err(|error| OciReleaseAdmissionError::Serialization(error.to_string()))
+    }
 }
 
 /// Immutable admission receipt certifying that an OCI artifact has been validated,
@@ -206,10 +229,10 @@ impl OciReleaseAdmissionService {
             ModuleInstallationScope::Tenant { tenant_id } => ("tenant", tenant_id.to_string()),
         };
 
-        // 3. Bind every mutable command fact, including complete context, into
-        // one durable replay fingerprint.
-        let request_digest = digest_json(&command)
-            .map_err(|error| OciReleaseAdmissionError::Serialization(error.to_string()))?;
+        // 3. Bind every semantic command fact into one durable replay
+        // fingerprint. Observability context is stored as evidence, not
+        // replay identity.
+        let request_digest = command.semantic_request_digest()?;
 
         // 4. Reject a reused owner idempotency key before the global immutable
         // release lookup can make a changed command appear successful.
@@ -277,9 +300,29 @@ impl OciReleaseAdmissionService {
                 .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
             let descriptor: ModuleArtifactDescriptor = serde_json::from_str(&descriptor_json)
                 .map_err(|e| OciReleaseAdmissionError::Serialization(e.to_string()))?;
-            let payload_size_bytes: i64 = row
-                .try_get("", "payload_size_bytes")
+            descriptor
+                .validate()
+                .map_err(|e| OciReleaseAdmissionError::InvalidDescriptor(e.to_string()))?;
+            let stored_slug: String = row
+                .try_get("", "slug")
                 .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
+            let stored_version: String = row
+                .try_get("", "version")
+                .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
+            let stored_payload_digest: String = row
+                .try_get("", "payload_digest")
+                .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
+            if descriptor.slug != stored_slug
+                || descriptor.version != stored_version
+                || descriptor.artifact_digest != stored_payload_digest
+            {
+                return Err(OciReleaseAdmissionError::InvalidDescriptor(
+                    "stored descriptor does not match the admitted release identity".to_string(),
+                ));
+            }
+            let payload_size_bytes =
+                crate::backend::nonnegative_count_from_row(&row, "payload_size_bytes")
+                    .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
             let admitted_at: DateTime<Utc> = match backend {
                 SupportedBackend::Postgres => row
                     .try_get("", "admitted_at")
@@ -309,7 +352,7 @@ impl OciReleaseAdmissionService {
                 reference: command.reference.clone(),
                 descriptor: descriptor.clone(),
                 payload_digest: descriptor.artifact_digest,
-                payload_size_bytes: payload_size_bytes as u64,
+                payload_size_bytes,
                 cas_published: false, // already published in previous attempt
                 admitted_at,
             });
@@ -336,7 +379,35 @@ impl OciReleaseAdmissionService {
             .fetch(&command.reference, self.limits)
             .await
             .map_err(|e| OciReleaseAdmissionError::Registry(e.to_string()))?;
+        let temporary_payload_path = match &package.payload {
+            ArtifactPayloadSource::TemporaryFile(path) => Some(path.clone()),
+            ArtifactPayloadSource::Bytes(_) => None,
+        };
+        let result = self
+            .admit_fetched_release(
+                command,
+                backend,
+                scope_kind,
+                scope_tenant_key,
+                request_digest,
+                package,
+            )
+            .await;
+        if let Some(path) = temporary_payload_path {
+            crate::remove_staged_file_best_effort(&path).await;
+        }
+        result
+    }
 
+    async fn admit_fetched_release(
+        &self,
+        command: OciReleaseAdmissionCommand,
+        backend: SupportedBackend,
+        scope_kind: &'static str,
+        scope_tenant_key: String,
+        request_digest: String,
+        package: ModuleArtifactPackage,
+    ) -> Result<OciAdmissionReceipt, OciReleaseAdmissionError> {
         if package.reference != command.reference {
             return Err(OciReleaseAdmissionError::ManifestDigestMismatch {
                 requested: command.reference.canonical(),
@@ -503,7 +574,7 @@ impl OciReleaseAdmissionService {
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
-                    "SELECT release_digest, registry, repository, payload_digest, \
+                    "SELECT release_digest, registry, repository, slug, version, payload_digest, \
                             payload_size_bytes, descriptor_json, admitted_at \
                      FROM module_admitted_oci_releases \
                      WHERE release_digest = {}",
@@ -527,14 +598,31 @@ impl OciReleaseAdmissionService {
         let payload_digest: String = row
             .try_get("", "payload_digest")
             .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
-        let payload_size_bytes: i64 = row
-            .try_get("", "payload_size_bytes")
-            .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
+        let payload_size_bytes =
+            crate::backend::nonnegative_count_from_row(&row, "payload_size_bytes")
+                .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
         let descriptor_json: String = row
             .try_get("", "descriptor_json")
             .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
         let descriptor: ModuleArtifactDescriptor = serde_json::from_str(&descriptor_json)
             .map_err(|e| OciReleaseAdmissionError::Serialization(e.to_string()))?;
+        descriptor
+            .validate()
+            .map_err(|e| OciReleaseAdmissionError::InvalidDescriptor(e.to_string()))?;
+        let stored_slug: String = row
+            .try_get("", "slug")
+            .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
+        let stored_version: String = row
+            .try_get("", "version")
+            .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
+        if descriptor.slug != stored_slug
+            || descriptor.version != stored_version
+            || descriptor.artifact_digest != payload_digest
+        {
+            return Err(OciReleaseAdmissionError::InvalidDescriptor(
+                "stored descriptor does not match the admitted release identity".to_string(),
+            ));
+        }
 
         let admitted_at: DateTime<Utc> = match backend {
             SupportedBackend::Postgres => row
@@ -557,7 +645,7 @@ impl OciReleaseAdmissionService {
             },
             descriptor,
             payload_digest,
-            payload_size_bytes: payload_size_bytes as u64,
+            payload_size_bytes,
             cas_published: false,
             admitted_at,
         }))

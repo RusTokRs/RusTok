@@ -1,14 +1,17 @@
-use rustok_api::ModuleOperationRecoveryPlanView;
+use rustok_api::{ModuleOperationRecoveryPlanView, StaticModuleSettingsReader};
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use thiserror::Error;
 
 use crate::backend::SupportedBackend;
+use crate::executor::{ClaimHeartbeatDispatchError, dispatch_lifecycle_with_claim_heartbeat};
 use crate::{
-    ModuleCommandContext, ModuleExecutionDispatcher, ModuleLifecycleHookPhase,
+    DatabaseStaticModuleSettingsReader, ModuleCommandContext, ModuleControlPlaneError,
+    ModuleDefinitionSource, ModuleExecutionDispatcher, ModuleLifecycleHookPhase,
     ModuleOperationIssue, ModuleOperationJournal, ModuleOperationRecord,
     ModuleOperationRecordOutcome, ModuleOperationRecoveryAction, ModuleOperationRequest,
     ModuleOperationSnapshot, ModuleOperationStatus, ModuleOperationStoreError,
-    TenantModuleStateRecord, TenantModuleStateRequest, TenantModuleStateStore,
+    StaticTenantLifecycleStore, StaticTenantLifecycleStoreError, TenantModuleStateRecord,
+    TenantModuleStateRequest, TenantModuleStateStore, artifact_settings,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -81,13 +84,17 @@ impl ModuleOperationRecoveryPlan {
                 ModuleOperationIssue::PreHookFailed
             }
             (ModuleOperationStatus::Failed, _) => ModuleOperationIssue::OtherFailed,
+            (ModuleOperationStatus::Orphaned, _) => ModuleOperationIssue::Orphaned,
             _ => ModuleOperationIssue::None,
         };
         let override_state_recorded = override_state.is_some();
         let retryable = issue.retryable() && override_state_recorded;
         let recommended_action = if retryable {
             ModuleOperationRecoveryAction::RetryPostHook
-        } else if issue == ModuleOperationIssue::PreHookFailed {
+        } else if matches!(
+            issue,
+            ModuleOperationIssue::PreHookFailed | ModuleOperationIssue::Orphaned
+        ) {
             ModuleOperationRecoveryAction::RepeatToggle
         } else {
             ModuleOperationRecoveryAction::None
@@ -119,13 +126,10 @@ pub(crate) struct ModulePostHookRetryRequest {
     /// Authenticated tenant-scoped command evidence retained by the retry
     /// journal entry. Recovery retries never synthesize a new correlation.
     pub context: ModuleCommandContext,
-    /// Revision reviewed by the actor before retrying a static lifecycle
-    /// operation. Dynamic artifact recovery deliberately leaves this absent.
-    pub expected_revision: Option<u64>,
-    /// Exact persisted tenant override after the original state commit.
-    /// `None` means that no explicit tenant override row exists.
-    pub current_override_enabled: Option<bool>,
-    pub current_settings: serde_json::Value,
+    /// Revision reviewed by the actor before retrying the lifecycle
+    /// operation. Recovery acquires the same tenant/module claim as a
+    /// toggle, then rereads the override and settings under that claim.
+    pub expected_revision: u64,
 }
 
 #[derive(Debug, Error)]
@@ -134,14 +138,16 @@ pub enum ModuleOperationRecoveryError {
     OperationNotFound,
     #[error("module recovery command identity must not be nil")]
     InvalidCommandIdentity,
-    #[error("module operation idempotency key must not be nil")]
-    InvalidIdempotencyKey,
+    #[error(transparent)]
+    InvalidCommandContext(#[from] ModuleControlPlaneError),
     #[error("module operation idempotency key was reused for a different command")]
     IdempotencyConflict,
     #[error("module lifecycle revision conflict: expected {expected}, current {current}")]
     RevisionConflict { expected: u64, current: u64 },
     #[error("module lifecycle operation is already active")]
     OperationInProgress,
+    #[error("module lifecycle claim was lost")]
+    ClaimLost,
     #[error("module operation is not retryable: {0}")]
     NotRetryable(String),
     #[error(
@@ -195,10 +201,39 @@ pub(crate) async fn failed_module_operation_recovery_plans(
     Ok(plans)
 }
 
+/// Loads the settings owned by the definition's implementation class at
+/// claim time. Lifecycle hooks must not consume a caller-side snapshot read
+/// before the aggregate claim was acquired.
+pub(crate) async fn load_current_lifecycle_settings(
+    db: &DatabaseConnection,
+    dispatcher: &ModuleExecutionDispatcher<'_>,
+    tenant_id: uuid::Uuid,
+    module_slug: &str,
+) -> Result<serde_json::Value, ModuleOperationStoreError> {
+    let definition = dispatcher.catalog().get(module_slug).ok_or_else(|| {
+        ModuleOperationStoreError::Database(format!(
+            "module definition `{module_slug}` is unavailable while loading lifecycle settings"
+        ))
+    })?;
+    if matches!(&definition.source, ModuleDefinitionSource::Artifact { .. }) {
+        return artifact_settings::load(db, tenant_id, module_slug)
+            .await
+            .map_err(store_database_error);
+    }
+    let reader = DatabaseStaticModuleSettingsReader::new(db.clone());
+    let snapshot = reader
+        .settings(tenant_id, module_slug)
+        .await
+        .map_err(store_database_error)?;
+    Ok(snapshot
+        .map(|snapshot| snapshot.settings)
+        .unwrap_or_else(|| serde_json::json!({})))
+}
+
 fn retry_operation_request(
     plan: &ModuleOperationRecoveryPlan,
     context: &ModuleCommandContext,
-    expected_revision: Option<u64>,
+    expected_revision: u64,
 ) -> ModuleOperationRequest {
     ModuleOperationRequest {
         tenant_id: plan.tenant_id,
@@ -209,7 +244,7 @@ fn retry_operation_request(
         trace_id: Some(context.trace_id.clone()),
         correlation_id: context.correlation_id.to_string(),
         idempotency_key: Some(context.idempotency_key),
-        expected_revision,
+        expected_revision: Some(expected_revision),
     }
 }
 
@@ -253,13 +288,6 @@ pub(crate) async fn retry_failed_post_hook_operation(
             "unknown_module".to_string(),
         ));
     }
-    if request.current_override_enabled != plan.requested_override_enabled {
-        return Err(ModuleOperationRecoveryError::StateMismatch {
-            requested_override_enabled: plan.requested_override_enabled,
-            current_override_enabled: request.current_override_enabled,
-        });
-    }
-
     let operation = match ModuleOperationJournal::record_idempotent(db, journal_request)
         .await
         .map_err(|error| match error {
@@ -268,32 +296,187 @@ pub(crate) async fn retry_failed_post_hook_operation(
             }
             error => ModuleOperationRecoveryError::Persistence(error.to_string()),
         })? {
-        ModuleOperationRecordOutcome::Recorded(operation) => {
-            if let Err(error) = record_operation_override_state(
-                db,
-                operation.id,
-                plan.previous_override_enabled,
-                plan.requested_override_enabled,
-            )
-            .await
-            {
-                let message = format!("recovery-state: {error}");
-                let journal_result =
-                    ModuleOperationJournal::mark_failed(db, operation.id, &message).await;
-                let persistence = match journal_result {
-                    Ok(()) => error.to_string(),
-                    Err(journal_error) => format!(
-                        "{error} (additionally, marking the operation failed did not \
-                         persist: {journal_error})"
-                    ),
-                };
-                return Err(ModuleOperationRecoveryError::Persistence(persistence));
-            }
-            operation
-        }
+        ModuleOperationRecordOutcome::Recorded(operation) => operation,
         ModuleOperationRecordOutcome::Replayed(operation) => return Ok(operation),
     };
+    if let Err(error) = StaticTenantLifecycleStore::claim(
+        db,
+        plan.tenant_id,
+        &plan.module_slug,
+        request.expected_revision,
+        request.context.idempotency_key,
+    )
+    .await
+    {
+        let contention = matches!(
+            error,
+            StaticTenantLifecycleStoreError::RevisionConflict { .. }
+                | StaticTenantLifecycleStoreError::OperationInProgress { .. }
+        );
+        let mapped = map_lifecycle_claim_error(error);
+        if contention {
+            return Err(
+                match ModuleOperationJournal::discard_validated(db, operation.id).await {
+                    Ok(true) => mapped,
+                    Ok(false) => ModuleOperationRecoveryError::Persistence(format!(
+                        "{mapped}; additionally, the unclaimed recovery operation \
+                         was no longer in the validated state"
+                    )),
+                    Err(discard_error) => ModuleOperationRecoveryError::Persistence(format!(
+                        "{mapped}; additionally, discarding the unclaimed recovery \
+                         operation failed: {discard_error}"
+                    )),
+                },
+            );
+        }
+        let message = format!("aggregate-claim: {mapped}");
+        return Err(
+            match ModuleOperationJournal::mark_failed(db, operation.id, &message).await {
+                Ok(()) => mapped,
+                Err(journal_error) => ModuleOperationRecoveryError::Persistence(format!(
+                    "{mapped}; additionally, marking the recovery operation failed \
+                     did not persist: {journal_error}"
+                )),
+            },
+        );
+    }
+
+    let claimed_result = retry_failed_post_hook_operation_claimed(
+        db,
+        dispatcher,
+        &request,
+        plan.operation_id,
+        operation.clone(),
+    )
+    .await;
+    let release_result = StaticTenantLifecycleStore::release(
+        db,
+        plan.tenant_id,
+        &plan.module_slug,
+        request.context.idempotency_key,
+    )
+    .await
+    .map_err(map_lifecycle_claim_error);
+    match (claimed_result, release_result) {
+        (Ok(operation), Ok(())) => Ok(operation),
+        (Ok(_), Err(release_error)) => Err(release_error),
+        (Err(error), Ok(())) => Err(error),
+        (Err(error), Err(release_error)) => {
+            Err(ModuleOperationRecoveryError::Persistence(format!(
+                "{error}; additionally failed to release the lifecycle claim \
+                 (it will expire via its lease): {release_error}"
+            )))
+        }
+    }
+}
+
+async fn retry_failed_post_hook_operation_claimed(
+    db: &DatabaseConnection,
+    dispatcher: &ModuleExecutionDispatcher<'_>,
+    request: &ModulePostHookRetryRequest,
+    original_operation_id: uuid::Uuid,
+    operation: ModuleOperationRecord,
+) -> Result<ModuleOperationRecord, ModuleOperationRecoveryError> {
+    let plan = match module_operation_recovery_plan(db, original_operation_id).await {
+        Ok(plan) => plan,
+        Err(error) => {
+            return Err(mark_recovery_operation_failed(db, operation.id, error).await);
+        }
+    };
+    if request.context.tenant_id != Some(plan.tenant_id) {
+        return Err(discard_unstarted_recovery_operation(
+            db,
+            operation.id,
+            ModuleOperationRecoveryError::InvalidCommandIdentity,
+        )
+        .await);
+    }
+    if !plan.override_state_recorded {
+        return Err(discard_unstarted_recovery_operation(
+            db,
+            operation.id,
+            ModuleOperationRecoveryError::NotRetryable(
+                "selected_intent_state_unavailable".to_string(),
+            ),
+        )
+        .await);
+    }
+    if !plan.retryable {
+        return Err(discard_unstarted_recovery_operation(
+            db,
+            operation.id,
+            ModuleOperationRecoveryError::NotRetryable(plan.issue.to_string()),
+        )
+        .await);
+    }
+    if dispatcher.catalog().get(&plan.module_slug).is_none() {
+        return Err(discard_unstarted_recovery_operation(
+            db,
+            operation.id,
+            ModuleOperationRecoveryError::NotRetryable("unknown_module".to_string()),
+        )
+        .await);
+    }
+
+    let current_override_enabled =
+        match read_tenant_override_enabled(db, plan.tenant_id, &plan.module_slug).await {
+            Ok(current_override_enabled) => current_override_enabled,
+            Err(error) => {
+                return Err(mark_recovery_operation_failed(
+                    db,
+                    operation.id,
+                    ModuleOperationRecoveryError::Persistence(error.to_string()),
+                )
+                .await);
+            }
+        };
+    if current_override_enabled != plan.requested_override_enabled {
+        return Err(discard_unstarted_recovery_operation(
+            db,
+            operation.id,
+            ModuleOperationRecoveryError::StateMismatch {
+                requested_override_enabled: plan.requested_override_enabled,
+                current_override_enabled,
+            },
+        )
+        .await);
+    }
+    let current_settings =
+        match load_current_lifecycle_settings(db, dispatcher, plan.tenant_id, &plan.module_slug)
+            .await
+        {
+            Ok(current_settings) => current_settings,
+            Err(error) => {
+                return Err(mark_recovery_operation_failed(
+                    db,
+                    operation.id,
+                    ModuleOperationRecoveryError::Persistence(error.to_string()),
+                )
+                .await);
+            }
+        };
+
+    if let Err(error) = record_operation_override_state(
+        db,
+        operation.id,
+        plan.previous_override_enabled,
+        plan.requested_override_enabled,
+    )
+    .await
+    {
+        let error = ModuleOperationRecoveryError::Persistence(format!("recovery-state: {error}"));
+        return Err(mark_recovery_operation_failed(db, operation.id, error).await);
+    }
     ModuleOperationJournal::mark_running(db, operation.id)
+        .await
+        .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
+    // The state this hook belongs to was committed by the original
+    // operation, so the retry enters the same durable shape the executor
+    // uses between state commit and post-hook completion. A crash or
+    // claim loss from here leaves a stale pending operation that the
+    // journal reaper routes back into committed-hook recovery instead of
+    // a plain failure.
+    ModuleOperationJournal::mark_committed_hook_pending(db, operation.id)
         .await
         .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
 
@@ -302,34 +485,112 @@ pub(crate) async fn retry_failed_post_hook_operation(
     } else {
         ModuleLifecycleHookPhase::PostDisable
     };
-    if let Err(error) = dispatcher
-        .dispatch_lifecycle(
-            db,
-            plan.tenant_id,
-            &plan.module_slug,
-            &request.current_settings,
-            phase,
-        )
-        .await
+    if let Err(error) = dispatch_lifecycle_with_claim_heartbeat(
+        db,
+        dispatcher,
+        plan.tenant_id,
+        &plan.module_slug,
+        &current_settings,
+        phase,
+        request.expected_revision,
+        request.context.idempotency_key,
+    )
+    .await
     {
-        let message = error.to_string();
-        ModuleOperationJournal::mark_failed(db, operation.id, &format!("post-hook: {message}"))
-            .await
-            .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
-        return Err(ModuleOperationRecoveryError::PostHookFailed(message));
+        return Err(match error {
+            ClaimHeartbeatDispatchError::Hook(message) => {
+                // Typed status split: the hook outcome is the status, not a
+                // message prefix. Legacy prefix parsing in
+                // `ModuleOperationRecoveryPlan::from_snapshot` remains
+                // read-only compatibility for pre-split rows.
+                match ModuleOperationJournal::mark_committed_hook_failed(db, operation.id, &message)
+                    .await
+                {
+                    Ok(()) => ModuleOperationRecoveryError::PostHookFailed(message),
+                    Err(journal_error) => ModuleOperationRecoveryError::Persistence(format!(
+                        "post-hook failed: {message}; additionally, recording the \
+                         committed-hook failure did not persist: {journal_error}"
+                    )),
+                }
+            }
+            // Claim loss and dispatch-persistence failures leave the
+            // outcome unknown: the operation stays `CommittedHookPending`
+            // for the journal reaper instead of being misrecorded as a
+            // plain (pre-commit) failure.
+            ClaimHeartbeatDispatchError::ClaimLost { .. } => {
+                ModuleOperationRecoveryError::ClaimLost
+            }
+            ClaimHeartbeatDispatchError::Persistence(message) => {
+                ModuleOperationRecoveryError::Persistence(message)
+            }
+        });
     }
     ModuleOperationJournal::mark_committed(db, operation.id)
         .await
         .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
-    if plan.status == crate::ModuleOperationStatus::CommittedHookFailed {
-        // The original operation's state was already committed; the hook has
-        // now succeeded, so resolve it instead of leaving it in the
-        // attention-needed list forever.
-        ModuleOperationJournal::mark_committed(db, plan.operation_id)
+    if plan.issue == ModuleOperationIssue::PostHookFailed {
+        // The original operation's state was already committed; the hook
+        // has now succeeded, so resolve it instead of leaving it in the
+        // attention-needed list forever. This covers both the typed
+        // `CommittedHookFailed` originals and legacy `Failed` rows whose
+        // post-hook classification came from the pre-split message
+        // prefix.
+        let resolved = ModuleOperationJournal::resolve_post_hook_failure(db, plan.operation_id)
             .await
             .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
+        if !resolved {
+            return Err(ModuleOperationRecoveryError::Persistence(
+                "original operation was not in a resolvable post-hook-failed state".to_string(),
+            ));
+        }
     }
     Ok(operation)
+}
+
+async fn discard_unstarted_recovery_operation(
+    db: &DatabaseConnection,
+    operation_id: uuid::Uuid,
+    primary_error: ModuleOperationRecoveryError,
+) -> ModuleOperationRecoveryError {
+    match ModuleOperationJournal::discard_validated(db, operation_id).await {
+        Ok(true) => primary_error,
+        Ok(false) => ModuleOperationRecoveryError::Persistence(format!(
+            "{primary_error}; additionally, the unstarted recovery operation \
+             was no longer in the validated state"
+        )),
+        Err(discard_error) => ModuleOperationRecoveryError::Persistence(format!(
+            "{primary_error}; additionally, discarding the unstarted recovery \
+             operation failed: {discard_error}"
+        )),
+    }
+}
+
+async fn mark_recovery_operation_failed(
+    db: &DatabaseConnection,
+    operation_id: uuid::Uuid,
+    primary_error: ModuleOperationRecoveryError,
+) -> ModuleOperationRecoveryError {
+    match ModuleOperationJournal::mark_failed(db, operation_id, &primary_error.to_string()).await {
+        Ok(()) => primary_error,
+        Err(journal_error) => ModuleOperationRecoveryError::Persistence(format!(
+            "{primary_error}; additionally, marking the recovery operation failed \
+             did not persist: {journal_error}"
+        )),
+    }
+}
+
+fn map_lifecycle_claim_error(
+    error: StaticTenantLifecycleStoreError,
+) -> ModuleOperationRecoveryError {
+    match error {
+        StaticTenantLifecycleStoreError::RevisionConflict {
+            expected, current, ..
+        } => ModuleOperationRecoveryError::RevisionConflict { expected, current },
+        StaticTenantLifecycleStoreError::OperationInProgress { .. } => {
+            ModuleOperationRecoveryError::OperationInProgress
+        }
+        error => ModuleOperationRecoveryError::Persistence(error.to_string()),
+    }
 }
 
 pub(crate) async fn operation_override_state<C: ConnectionTrait>(
@@ -500,6 +761,7 @@ mod tests {
             expected_revision: None,
             error_message: error_message.map(str::to_string),
             created_at: Utc::now(),
+            updated_at: Utc::now(),
         }
     }
 
@@ -542,6 +804,17 @@ mod tests {
         assert!(!pre_hook.retryable);
         assert_eq!(
             pre_hook.recommended_action,
+            ModuleOperationRecoveryAction::RepeatToggle
+        );
+
+        let mut orphaned_snapshot = snapshot(Some("owner did not finish within the claim lease"));
+        orphaned_snapshot.status = ModuleOperationStatus::Orphaned;
+        let orphaned =
+            ModuleOperationRecoveryPlan::from_snapshot(orphaned_snapshot, Some(override_state()));
+        assert_eq!(orphaned.issue, ModuleOperationIssue::Orphaned);
+        assert!(!orphaned.retryable);
+        assert_eq!(
+            orphaned.recommended_action,
             ModuleOperationRecoveryAction::RepeatToggle
         );
 
@@ -605,7 +878,7 @@ mod tests {
             correlation_id: Uuid::new_v4(),
             idempotency_key: Uuid::new_v4(),
         };
-        let request = retry_operation_request(&plan, &context, Some(4));
+        let request = retry_operation_request(&plan, &context, 4);
 
         assert_eq!(request.requested_enabled, plan.requested_enabled);
         assert_eq!(request.expected_revision, Some(4));

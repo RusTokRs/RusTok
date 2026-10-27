@@ -18,8 +18,8 @@ use rustok_events::DomainEvent;
 use crate::backend::SupportedBackend;
 use crate::{
     ControlPlaneInfrastructure, ModuleCommandContext, ModuleStaticDistributionExecutorMode,
-    ModuleStaticDistributionRelease, ModuleStaticDistributionReleaseStatus,
-    ModuleStaticDistributionRole,
+    ModuleStaticDistributionRelease, ModuleStaticDistributionReleaseState,
+    ModuleStaticDistributionReleaseStatus, ModuleStaticDistributionRole,
     data::uuid_from_row,
     distribution_release::{commit_recovery_release, load_release_record, load_release_state},
     installation::valid_digest,
@@ -79,6 +79,20 @@ impl ModuleStaticDistributionTransitionKind {
 }
 
 impl ModuleStaticDistributionRolloutStatus {
+    /// Whether node agents may still claim assignments from this rollout.
+    ///
+    /// Claimability deliberately extends past convergence: a converged
+    /// rollout remains the desired state and agents must be able to claim
+    /// its active assignments to report post-convergence drift, and a
+    /// degraded rollout must let the failed assignment be re-prepared
+    /// under a fresh lease so it can converge again.
+    const fn is_claimable(self) -> bool {
+        matches!(
+            self,
+            Self::Preparing | Self::Activating | Self::Converged | Self::Degraded
+        )
+    }
+
     const fn as_str(self) -> &'static str {
         match self {
             Self::Preparing => "preparing",
@@ -372,7 +386,8 @@ where
     ) -> Result<ModuleStaticDistributionRolloutReceipt, ModuleStaticDistributionRolloutError> {
         validate_request(&command)?;
         self.authorizer.authorize_request(&command).await?;
-        let request_digest = digest_json(&command).map_err(promotion_error)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&command).map_err(promotion_error)?;
         let principal_id = command.context.actor_id.to_string();
         if let Some(operation) = load_operation(
             &self.db,
@@ -548,7 +563,8 @@ where
     ) -> Result<ModuleStaticDistributionRolloutReceipt, ModuleStaticDistributionRolloutError> {
         validate_recovery_request(&command)?;
         self.authorizer.authorize_recovery(&command).await?;
-        let request_digest = digest_json(&command).map_err(promotion_error)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&command).map_err(promotion_error)?;
         let principal_id = command.context.actor_id.to_string();
         if let Some(operation) = load_operation(
             &self.db,
@@ -749,11 +765,7 @@ where
             return Ok(None);
         };
         let rollout = load_rollout(&transaction, rollout_id, true).await?;
-        if !matches!(
-            rollout.status,
-            ModuleStaticDistributionRolloutStatus::Preparing
-                | ModuleStaticDistributionRolloutStatus::Activating
-        ) {
+        if !rollout.status.is_claimable() {
             transaction.commit().await.map_err(store_error)?;
             return Ok(None);
         }
@@ -762,6 +774,7 @@ where
         let Some(assignment) = load_next_assignment_for_node(
             &transaction,
             rollout_id,
+            rollout.status,
             &command.node_id,
             &command.agent_id,
             &now,
@@ -796,6 +809,7 @@ where
         claim_rollout_assignment(
             &transaction,
             rollout_id,
+            rollout.status,
             &assignment,
             claim_id,
             &command.agent_id,
@@ -849,7 +863,8 @@ where
     {
         validate_report(&command)?;
         self.authorizer.authorize_report(&command).await?;
-        let request_digest = digest_json(&command).map_err(promotion_error)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&command).map_err(promotion_error)?;
         if let Some(operation) = load_operation(
             &self.db,
             command.idempotency_key,
@@ -912,33 +927,20 @@ where
             } else {
                 None
             };
-        let release_identity_valid = match rollout.transition_kind {
-            ModuleStaticDistributionTransitionKind::Update => {
-                current_release.status == ModuleStaticDistributionReleaseStatus::Admitted
-                    && release_state.revision == rollout.release_state_revision_at_request
-            }
-            ModuleStaticDistributionTransitionKind::Recovery => {
-                let source_release_id = recovery_source_release
-                    .ok_or(ModuleStaticDistributionRolloutError::RecoveryUnavailable)?;
-                let source_release = load_release_record(&transaction, source_release_id, true)
+        let recovery_source_record = match recovery_source_release {
+            Some(source_release_id) => Some(
+                load_release_record(&transaction, source_release_id, true)
                     .await
-                    .map_err(release_error)?;
-                release_state.revision == rollout.release_state_revision_at_request
-                    && ((current_release.status
-                        == ModuleStaticDistributionReleaseStatus::Superseded
-                        && source_release.status == ModuleStaticDistributionReleaseStatus::Active
-                        && release_state.active_release_id == Some(source_release_id))
-                        || (current_release.status
-                            == ModuleStaticDistributionReleaseStatus::Active
-                            && source_release.status
-                                == ModuleStaticDistributionReleaseStatus::Admitted
-                            && release_state.active_release_id
-                                == Some(rollout.distribution_release_id)))
-            }
+                    .map_err(release_error)?,
+            ),
+            None => None,
         };
-        if !release_identity_valid
-            || current_release.release_revision != rollout.distribution_release_revision
-        {
+        if !rollout_release_identity_valid(
+            &rollout,
+            &release_state,
+            &current_release,
+            recovery_source_record.as_ref(),
+        ) {
             return Err(ModuleStaticDistributionRolloutError::StaleRollout);
         }
         validate_report_identity(&command, &rollout)?;
@@ -996,6 +998,12 @@ where
             next_status = if rollout.status == ModuleStaticDistributionRolloutStatus::Converged {
                 observed_rollout_id = None;
                 ModuleStaticDistributionRolloutStatus::Degraded
+            } else if rollout.status == ModuleStaticDistributionRolloutStatus::Degraded {
+                // Degraded is the recoverable state: additional failed
+                // observations deepen the drift evidence but do not turn
+                // the rollout terminal while its failed assignments can
+                // still be re-prepared under fresh claims.
+                ModuleStaticDistributionRolloutStatus::Degraded
             } else {
                 ModuleStaticDistributionRolloutStatus::Failed
             };
@@ -1012,21 +1020,24 @@ where
             next_status = ModuleStaticDistributionRolloutStatus::Converged;
             observed_rollout_id = Some(rollout.rollout_id);
             let from_release_id = release_state.active_release_id;
-            let release_state_revision = match rollout.transition_kind {
-                ModuleStaticDistributionTransitionKind::Update => {
-                    crate::distribution_release::commit_admitted_release(
-                        &transaction,
-                        rollout.release_state_revision_at_request,
-                        from_release_id,
-                        rollout.distribution_release_id,
-                    )
-                    .await
-                    .map_err(release_error)?
-                }
-                ModuleStaticDistributionTransitionKind::Recovery => {
-                    if from_release_id == Some(rollout.distribution_release_id) {
-                        rollout.release_state_revision_at_request
-                    } else {
+            // Reconvergence after recoverable drift reaches this branch
+            // with this operation's release already committed as the
+            // active head. Restoring the observed head is the whole
+            // effect; committing (or re-announcing activation) again
+            // would be a second, false release transition.
+            if from_release_id != Some(rollout.distribution_release_id) {
+                let release_state_revision = match rollout.transition_kind {
+                    ModuleStaticDistributionTransitionKind::Update => {
+                        crate::distribution_release::commit_admitted_release(
+                            &transaction,
+                            rollout.release_state_revision_at_request,
+                            from_release_id,
+                            rollout.distribution_release_id,
+                        )
+                        .await
+                        .map_err(release_error)?
+                    }
+                    ModuleStaticDistributionTransitionKind::Recovery => {
                         let from_release_id = from_release_id
                             .ok_or(ModuleStaticDistributionRolloutError::RecoveryUnavailable)?;
                         commit_recovery_release(
@@ -1038,9 +1049,9 @@ where
                         .await
                         .map_err(release_error)?
                     }
-                }
-            };
-            release_convergence = Some((from_release_id, release_state_revision));
+                };
+                release_convergence = Some((from_release_id, release_state_revision));
+            }
         }
 
         if next_status != rollout.status {
@@ -1283,8 +1294,6 @@ struct OperationRecord {
     operation_kind: String,
     request_digest: String,
     principal_id: String,
-    trace_id: Option<String>,
-    correlation_id: Option<Uuid>,
     rollout_id: Option<Uuid>,
     rollout_revision: Option<u64>,
     rollout_state_revision: Option<u64>,
@@ -1833,6 +1842,56 @@ async fn update_rollout_assignment(
     Ok(())
 }
 
+/// Status-aware release identity check for agent claim/report flows.
+///
+/// Before convergence the rollout is pinned to the frozen request-time
+/// snapshot: the target release must still be admitted at the exact
+/// release-state revision the request observed. Convergence commits that
+/// same release as the active head and advances the release state, so
+/// after convergence (including the recoverable degraded state) the
+/// identity anchor is the active head itself: the rollout's release must
+/// be the currently active one. Requiring the frozen snapshot after
+/// convergence would make every post-convergence drift observation stale.
+fn rollout_release_identity_valid(
+    rollout: &ModuleStaticDistributionRollout,
+    release_state: &ModuleStaticDistributionReleaseState,
+    current_release: &ModuleStaticDistributionRelease,
+    recovery_source_release: Option<&ModuleStaticDistributionRelease>,
+) -> bool {
+    if current_release.release_revision != rollout.distribution_release_revision {
+        return false;
+    }
+    if matches!(
+        rollout.status,
+        ModuleStaticDistributionRolloutStatus::Converged
+            | ModuleStaticDistributionRolloutStatus::Degraded
+    ) {
+        return current_release.status == ModuleStaticDistributionReleaseStatus::Active
+            && release_state.active_release_id == Some(rollout.distribution_release_id);
+    }
+    match rollout.transition_kind {
+        ModuleStaticDistributionTransitionKind::Update => {
+            current_release.status == ModuleStaticDistributionReleaseStatus::Admitted
+                && release_state.revision == rollout.release_state_revision_at_request
+        }
+        ModuleStaticDistributionTransitionKind::Recovery => {
+            let Some(source_release) = recovery_source_release else {
+                return false;
+            };
+            release_state.revision == rollout.release_state_revision_at_request
+                && ((current_release.status == ModuleStaticDistributionReleaseStatus::Superseded
+                    && source_release.status == ModuleStaticDistributionReleaseStatus::Active
+                    && release_state.active_release_id
+                        == Some(source_release.distribution_release_id))
+                    || (current_release.status == ModuleStaticDistributionReleaseStatus::Active
+                        && source_release.status
+                            == ModuleStaticDistributionReleaseStatus::Admitted
+                        && release_state.active_release_id
+                            == Some(rollout.distribution_release_id)))
+        }
+    }
+}
+
 async fn validate_rollout_release_identity(
     transaction: &DatabaseTransaction,
     rollout: &ModuleStaticDistributionRollout,
@@ -1848,37 +1907,23 @@ async fn validate_rollout_release_identity(
             let predecessor_rollout_id = rollout
                 .predecessor_rollout_id
                 .ok_or(ModuleStaticDistributionRolloutError::RecoveryUnavailable)?;
+            let source_release_id = load_rollout(transaction, predecessor_rollout_id, false)
+                .await?
+                .distribution_release_id;
             Some(
-                load_rollout(transaction, predecessor_rollout_id, false)
-                    .await?
-                    .distribution_release_id,
+                load_release_record(transaction, source_release_id, true)
+                    .await
+                    .map_err(release_error)?,
             )
         } else {
             None
         };
-    let valid = match rollout.transition_kind {
-        ModuleStaticDistributionTransitionKind::Update => {
-            current_release.status == ModuleStaticDistributionReleaseStatus::Admitted
-                && release_state.revision == rollout.release_state_revision_at_request
-        }
-        ModuleStaticDistributionTransitionKind::Recovery => {
-            let source_release_id = recovery_source_release
-                .ok_or(ModuleStaticDistributionRolloutError::RecoveryUnavailable)?;
-            let source_release = load_release_record(transaction, source_release_id, true)
-                .await
-                .map_err(release_error)?;
-            release_state.revision == rollout.release_state_revision_at_request
-                && ((current_release.status == ModuleStaticDistributionReleaseStatus::Superseded
-                    && source_release.status == ModuleStaticDistributionReleaseStatus::Active
-                    && release_state.active_release_id == Some(source_release_id))
-                    || (current_release.status == ModuleStaticDistributionReleaseStatus::Active
-                        && source_release.status
-                            == ModuleStaticDistributionReleaseStatus::Admitted
-                        && release_state.active_release_id
-                            == Some(rollout.distribution_release_id)))
-        }
-    };
-    if !valid || current_release.release_revision != rollout.distribution_release_revision {
+    if !rollout_release_identity_valid(
+        rollout,
+        &release_state,
+        &current_release,
+        recovery_source_release.as_ref(),
+    ) {
         return Err(ModuleStaticDistributionRolloutError::StaleRollout);
     }
     Ok(())
@@ -2255,9 +2300,23 @@ async fn load_rollout_assignment<C: ConnectionTrait>(
 /// Locks the next unclaimed (or expired) exact role assignment for one node.
 /// Assignment order is deterministic so crash recovery does not depend on
 /// process-local scheduling.
+fn claimable_phases(rollout_status: ModuleStaticDistributionRolloutStatus) -> &'static str {
+    // A failed assignment may be claimed again only while the rollout is
+    // degraded: that fresh lease is what lets the agent re-prepare the
+    // assignment (`failed -> prepared`) and drive the rollout back to
+    // convergence. Active assignments are claimable so agents can keep
+    // observing a converged rollout and report drift.
+    if rollout_status == ModuleStaticDistributionRolloutStatus::Degraded {
+        "('pending', 'prepared', 'healthy', 'active', 'failed')"
+    } else {
+        "('pending', 'prepared', 'healthy', 'active')"
+    }
+}
+
 async fn load_next_assignment_for_node(
     transaction: &DatabaseTransaction,
     rollout_id: Uuid,
+    rollout_status: ModuleStaticDistributionRolloutStatus,
     node_id: &str,
     agent_id: &str,
     now: &DateTime<Utc>,
@@ -2269,6 +2328,7 @@ async fn load_next_assignment_for_node(
     } else {
         ""
     };
+    let phases = claimable_phases(rollout_status);
     let row = transaction
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -2280,7 +2340,7 @@ async fn load_next_assignment_for_node(
                         active_claim_id, claimed_by_agent, claim_expires_at
                  FROM module_static_distribution_rollout_assignments
                  WHERE rollout_id = {} AND node_id = {}
-                   AND phase IN ('pending', 'prepared', 'healthy')
+                   AND phase IN {phases}
                    AND (active_claim_id IS NULL OR claim_expires_at < {}
                         OR (claimed_by_agent = {} AND claim_expires_at >= {}))
                  ORDER BY CASE WHEN claimed_by_agent = {} AND claim_expires_at >= {} THEN 0 ELSE 1 END,
@@ -2313,6 +2373,7 @@ async fn load_next_assignment_for_node(
 async fn claim_rollout_assignment(
     transaction: &DatabaseTransaction,
     rollout_id: Uuid,
+    rollout_status: ModuleStaticDistributionRolloutStatus,
     assignment: &ModuleStaticDistributionRolloutAssignment,
     claim_id: Uuid,
     agent_id: &str,
@@ -2320,6 +2381,7 @@ async fn claim_rollout_assignment(
     lease_expires_at: &DateTime<Utc>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     let backend = SupportedBackend::new(transaction.get_database_backend()).map_err(store_error)?;
+    let phases = claimable_phases(rollout_status);
     let updated = transaction
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -2328,7 +2390,7 @@ async fn claim_rollout_assignment(
                  SET active_claim_id = {}, claimed_by_agent = {}, claim_expires_at = {},
                      last_claimed_at = {}
                  WHERE rollout_id = {} AND node_id = {} AND role = {}
-                   AND phase IN ('pending', 'prepared', 'healthy')
+                   AND phase IN {phases}
                    AND observation_revision = {}
                    AND (active_claim_id IS NULL OR claim_expires_at < {})",
                 backend.placeholder(1),
@@ -2514,14 +2576,14 @@ async fn load_operation<C: ConnectionTrait>(
     operation_kind: &str,
     request_digest: &str,
     principal_id: &str,
-    context: Option<&ModuleCommandContext>,
+    _context: Option<&ModuleCommandContext>,
 ) -> Result<Option<OperationRecord>, ModuleStaticDistributionRolloutError> {
     let backend = SupportedBackend::new(connection.get_database_backend()).map_err(store_error)?;
     let Some(row) = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
-                "SELECT operation_kind, request_digest, principal_id, trace_id, correlation_id, rollout_id,
+                "SELECT operation_kind, request_digest, principal_id, rollout_id,
                         rollout_revision, rollout_state_revision, rollout_status,
                         node_id, role, observation_revision, assignment_phase,
                         CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END AS completed
@@ -2540,8 +2602,6 @@ async fn load_operation<C: ConnectionTrait>(
         operation_kind: row.try_get("", "operation_kind").map_err(store_error)?,
         request_digest: row.try_get("", "request_digest").map_err(store_error)?,
         principal_id: row.try_get("", "principal_id").map_err(store_error)?,
-        trace_id: row.try_get("", "trace_id").map_err(store_error)?,
-        correlation_id: optional_uuid_from_row(&row, "correlation_id", backend)?,
         rollout_id: optional_uuid_from_row(&row, "rollout_id", backend)?,
         rollout_revision: optional_revision_from_row(&row, "rollout_revision")?,
         rollout_state_revision: optional_revision_from_row(&row, "rollout_state_revision")?,
@@ -2570,8 +2630,6 @@ async fn load_operation<C: ConnectionTrait>(
     if record.operation_kind != operation_kind
         || record.request_digest != request_digest
         || record.principal_id != principal_id
-        || record.trace_id.as_deref() != context.map(|value| value.trace_id.as_str())
-        || record.correlation_id != context.map(|value| value.correlation_id)
     {
         return Err(ModuleStaticDistributionRolloutError::IdempotencyConflict);
     }
@@ -2760,14 +2818,9 @@ fn optional_uuid_from_row(
     column: &str,
     backend: SupportedBackend,
 ) -> Result<Option<Uuid>, ModuleStaticDistributionRolloutError> {
-    match backend {
-        SupportedBackend::Postgres => row.try_get("", column).map_err(store_error),
-        SupportedBackend::Sqlite => row
-            .try_get::<Option<String>>("", column)
-            .map_err(store_error)?
-            .map(|value| Uuid::parse_str(&value).map_err(store_error))
-            .transpose(),
-    }
+    backend
+        .optional_uuid_from_row(row, column)
+        .map_err(store_error)
 }
 
 fn revision_value(value: u64) -> Result<sea_orm::Value, ModuleStaticDistributionRolloutError> {
@@ -2835,19 +2888,31 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use async_trait::async_trait;
+    use chrono::Utc;
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement, TransactionTrait};
     use sea_orm_migration::{MigrationTrait, SchemaManager};
+
+    use crate::{
+        ModuleStaticDistributionBuildEvidence, ModuleStaticDistributionRelease,
+        ModuleStaticDistributionReleaseAdmission,
+    };
 
     use super::{
         ControlPlaneInfrastructure, ModuleReconciliationPhase, ModuleStaticDistributionAssignment,
         ModuleStaticDistributionAssignmentClaimCommand,
         ModuleStaticDistributionAssignmentHeartbeatCommand,
-        ModuleStaticDistributionAssignmentReport, ModuleStaticDistributionRolloutError,
-        ModuleStaticDistributionRolloutRequest, module_static_distribution_topology_digest,
-        revoke_rollouts_for_release, validate_assignment_claim, validate_assignment_heartbeat,
+        ModuleStaticDistributionAssignmentReport, ModuleStaticDistributionRollout,
+        ModuleStaticDistributionRolloutError, ModuleStaticDistributionRolloutRequest,
+        ModuleStaticDistributionRolloutStatus, ModuleStaticDistributionTransitionKind,
+        module_static_distribution_topology_digest, revoke_rollouts_for_release,
+        rollout_release_identity_valid, validate_assignment_claim, validate_assignment_heartbeat,
         validate_report, validate_request,
     };
-    use crate::{ModuleCommandContext, ModuleStaticDistributionRole};
+    use crate::{
+        ModuleCommandContext, ModuleStaticDistributionExecutorMode,
+        ModuleStaticDistributionReleaseState, ModuleStaticDistributionReleaseStatus,
+        ModuleStaticDistributionRole,
+    };
     use uuid::Uuid;
 
     #[derive(Clone, Default)]
@@ -2892,6 +2957,140 @@ mod tests {
             module_static_distribution_topology_digest("topology:portable-a", &changed).unwrap();
 
         assert_ne!(first_digest, changed_digest);
+    }
+
+    fn rollout_fixture(
+        status: ModuleStaticDistributionRolloutStatus,
+        distribution_release_id: Uuid,
+    ) -> ModuleStaticDistributionRollout {
+        ModuleStaticDistributionRollout {
+            rollout_id: Uuid::new_v4(),
+            predecessor_rollout_id: None,
+            distribution_release_id,
+            transition_kind: ModuleStaticDistributionTransitionKind::Update,
+            rollout_revision: 1,
+            distribution_release_revision: 3,
+            release_state_revision_at_request: 3,
+            composition_revision: 1,
+            composition_digest: digest('a'),
+            bundle_reference: "registry.example/bundle".to_string(),
+            bundle_root_digest: digest('b'),
+            role_set_digest: digest('c'),
+            executor_mode: ModuleStaticDistributionExecutorMode::StaticNative,
+            topology_reference: "topology:portable-a".to_string(),
+            topology_digest: digest('d'),
+            policy_revision: "policy-1".to_string(),
+            target_assignment_count: 1,
+            status,
+            requested_by: Uuid::new_v4(),
+            failure: None,
+            assignments: Vec::new(),
+        }
+    }
+
+    fn release_record_fixture(
+        distribution_release_id: Uuid,
+        status: ModuleStaticDistributionReleaseStatus,
+    ) -> ModuleStaticDistributionRelease {
+        ModuleStaticDistributionRelease {
+            distribution_release_id,
+            distribution_build_id: Uuid::new_v4(),
+            predecessor_release_id: None,
+            release_revision: 3,
+            composition_revision: 1,
+            composition_digest: digest('a'),
+            evidence: ModuleStaticDistributionBuildEvidence {
+                bundle_reference: "registry.example/bundle".to_string(),
+                bundle_root_digest: digest('b'),
+                role_set_digest: digest('c'),
+                roles: Vec::new(),
+                sbom_reference: "sbom:test".to_string(),
+                sbom_digest: digest('e'),
+                provenance_reference: "provenance:test".to_string(),
+                provenance_digest: digest('f'),
+                signature_reference: "signature:test".to_string(),
+                signature_digest: digest('0'),
+                test_evidence_reference: "tests:test".to_string(),
+                test_evidence_digest: digest('1'),
+            },
+            status,
+            admitted_by: Uuid::new_v4(),
+            admitted_at: Utc::now(),
+            activated_at: None,
+            superseded_at: None,
+            revoked_by: None,
+            revoked_at: None,
+            revocation_reason: None,
+            revocation_policy_revision: None,
+            verified_at: Utc::now(),
+            admission: ModuleStaticDistributionReleaseAdmission {
+                verifier_identity: "verifier:test".to_string(),
+                policy_revision: "policy-1".to_string(),
+                evidence_reference: "evidence:test".to_string(),
+                evidence_digest: digest('2'),
+                signature_verified: true,
+                provenance_verified: true,
+                sbom_verified: true,
+                test_evidence_verified: true,
+                dependency_policy_verified: true,
+            },
+            items: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn rollout_release_identity_uses_frozen_snapshot_before_convergence_and_active_head_after() {
+        let release_id = Uuid::new_v4();
+        let preparing =
+            rollout_fixture(ModuleStaticDistributionRolloutStatus::Preparing, release_id);
+        let pre_convergence_state = ModuleStaticDistributionReleaseState {
+            revision: 3,
+            active_release_id: Some(Uuid::new_v4()),
+        };
+        assert!(rollout_release_identity_valid(
+            &preparing,
+            &pre_convergence_state,
+            &release_record_fixture(release_id, ModuleStaticDistributionReleaseStatus::Admitted,),
+            None,
+        ));
+        // After the head moved, pre-convergence work is stale.
+        assert!(!rollout_release_identity_valid(
+            &preparing,
+            &ModuleStaticDistributionReleaseState {
+                revision: 4,
+                active_release_id: Some(release_id),
+            },
+            &release_record_fixture(release_id, ModuleStaticDistributionReleaseStatus::Active,),
+            None,
+        ));
+
+        let converged =
+            rollout_fixture(ModuleStaticDistributionRolloutStatus::Converged, release_id);
+        let post_convergence_state = ModuleStaticDistributionReleaseState {
+            revision: 4,
+            active_release_id: Some(release_id),
+        };
+        assert!(rollout_release_identity_valid(
+            &converged,
+            &post_convergence_state,
+            &release_record_fixture(release_id, ModuleStaticDistributionReleaseStatus::Active,),
+            None,
+        ));
+        // A later release taking the head retires drift observation.
+        assert!(!rollout_release_identity_valid(
+            &converged,
+            &ModuleStaticDistributionReleaseState {
+                revision: 5,
+                active_release_id: Some(Uuid::new_v4()),
+            },
+            &release_record_fixture(release_id, ModuleStaticDistributionReleaseStatus::Active,),
+            None,
+        ));
+
+        assert!(ModuleStaticDistributionRolloutStatus::Converged.is_claimable());
+        assert!(ModuleStaticDistributionRolloutStatus::Degraded.is_claimable());
+        assert!(!ModuleStaticDistributionRolloutStatus::Failed.is_claimable());
+        assert!(!ModuleStaticDistributionRolloutStatus::Superseded.is_claimable());
     }
 
     #[test]

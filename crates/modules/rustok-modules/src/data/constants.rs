@@ -19,3 +19,15 @@ pub(crate) const MAX_ARTIFACT_OBJECT_UPLOAD_CHUNKS_PER_SESSION: u64 = 1_024;
 pub(crate) const MAX_ARTIFACT_OBJECT_CONTENT_TYPE_BYTES: usize = 128;
 pub(crate) const MAX_SANDBOX_ARTIFACT_OBJECT_BYTES: usize = 44 * 1024;
 pub(crate) const MAX_ARTIFACT_OBJECT_GC_BATCH_SIZE: u32 = 100;
+/// Bounds one platform tenant-discovery scan for object GC; the
+/// maintenance worker repeats the scan each pass instead of paging.
+pub(crate) const MAX_ARTIFACT_OBJECT_GC_TENANT_SCAN: u32 = 256;
+/// Grace window between a data object becoming a GC candidate and its
+/// bytes becoming retention-eligible (unless a durable hold retains the
+/// whole namespace). The referencing row is already gone at queue time,
+/// so this window is operator/undo grace, not a correctness delay.
+pub(crate) const ARTIFACT_DATA_OBJECT_GC_RETENTION_WINDOW_SECONDS: i64 = 7 * 24 * 60 * 60;
+/// A data-object GC claim is committed before the external byte delete. If
+/// the worker disappears after that intent, another sweep may reclaim and
+/// retry the idempotent delete only after this lease.
+pub(crate) const ARTIFACT_OBJECT_GC_CLAIM_LEASE_SECONDS: i64 = 300;

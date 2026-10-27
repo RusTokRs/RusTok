@@ -36,7 +36,25 @@ const MAX_LOCALIZATION_LOCALES: usize = 8;
 const MAX_LOCALIZATION_MESSAGES: usize = 256;
 const MAX_LOCALIZATION_MESSAGE_BYTES: usize = 4 * 1024;
 const MAX_UI_CONTRIBUTIONS: usize = 32;
+const MAX_DESCRIPTOR_BINDINGS: usize = 64;
+const MAX_DESCRIPTOR_DEPENDENCIES: usize = 64;
+const MAX_DESCRIPTOR_PERMISSIONS: usize = 128;
+const MAX_DESCRIPTOR_CAPABILITIES: usize = 64;
+const MAX_DESCRIPTOR_REQUIRED_FEATURES: usize = 32;
 const JSON_SCHEMA_DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
+
+/// Parses the one canonical module version-requirement representation.
+///
+/// A requirement string is always explicit in typed module contracts: `*`
+/// means any version, while an empty or whitespace-only value is invalid.
+/// Host file formats that use omission for “any” must canonicalize that
+/// omission to `*` before constructing these contracts.
+pub(crate) fn parse_module_version_requirement(value: &str) -> Result<VersionReq, String> {
+    if value.trim().is_empty() {
+        return Err("version requirement must not be empty; use `*` for any version".to_string());
+    }
+    VersionReq::parse(value).map_err(|error| error.to_string())
+}
 
 /// Stable OCI layer media type for immutable Rhai source artifacts.
 pub const MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE: &str = RHAI_SOURCE_MEDIA_TYPE;
@@ -210,6 +228,7 @@ pub enum ModuleArtifactSourceManifestError {
 #[serde(deny_unknown_fields)]
 pub struct ModuleDependencyConstraint {
     pub slug: String,
+    /// Explicit SemVer requirement; use `*` when any version is acceptable.
     pub version_requirement: String,
 }
 
@@ -562,7 +581,7 @@ pub enum ModuleHttpStreamingPolicy {
     Forbidden,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModuleBindingIdempotency {
     Required,
@@ -598,9 +617,28 @@ impl ModuleArtifactDescriptor {
                 self.schema_version,
             ));
         }
-        VersionReq::parse(&self.platform_compatibility).map_err(|_| {
+        parse_module_version_requirement(&self.platform_compatibility).map_err(|_| {
             ModuleArtifactError::InvalidPlatformCompatibility(self.platform_compatibility.clone())
         })?;
+        // Collection-size limits are enforced before any per-item (and
+        // pairwise duplicate) validation so a maximally sized manifest
+        // cannot turn admission into quadratic work over attacker-sized
+        // vectors.
+        if self.bindings.len() > MAX_DESCRIPTOR_BINDINGS {
+            return Err(ModuleArtifactError::TooManyBindings);
+        }
+        if self.dependencies.len() > MAX_DESCRIPTOR_DEPENDENCIES {
+            return Err(ModuleArtifactError::TooManyDependencies);
+        }
+        if self.permissions.len() > MAX_DESCRIPTOR_PERMISSIONS {
+            return Err(ModuleArtifactError::TooManyPermissions);
+        }
+        if self.capabilities.len() > MAX_DESCRIPTOR_CAPABILITIES {
+            return Err(ModuleArtifactError::TooManyCapabilities);
+        }
+        if self.required_features.len() > MAX_DESCRIPTOR_REQUIRED_FEATURES {
+            return Err(ModuleArtifactError::TooManyRequiredFeatures);
+        }
         for feature in &self.required_features {
             if feature.trim().is_empty() || feature.contains(char::is_whitespace) {
                 return Err(ModuleArtifactError::InvalidRequiredFeature(feature.clone()));
@@ -611,6 +649,11 @@ impl ModuleArtifactDescriptor {
         }
         if self.entrypoint.trim().is_empty() {
             return Err(ModuleArtifactError::MissingEntrypoint);
+        }
+        if !valid_entrypoint_name(&self.entrypoint) {
+            return Err(ModuleArtifactError::InvalidEntrypoint(
+                self.entrypoint.clone(),
+            ));
         }
         for (index, capability) in self.capabilities.iter().enumerate() {
             if self.capabilities[..index]
@@ -625,7 +668,8 @@ impl ModuleArtifactDescriptor {
         let schema_digests = self.validate_schema_bundle()?;
         for (index, binding) in self.bindings.iter().enumerate() {
             if binding.id.trim().is_empty()
-                || binding.entrypoint.trim().is_empty()
+                || !valid_entrypoint_name(&binding.entrypoint)
+                || binding.limit_profile.trim().is_empty()
                 || !self
                     .permissions
                     .iter()
@@ -731,7 +775,7 @@ impl ModuleArtifactDescriptor {
                     dependency.slug.clone(),
                 ));
             }
-            VersionReq::parse(&dependency.version_requirement).map_err(|_| {
+            parse_module_version_requirement(&dependency.version_requirement).map_err(|_| {
                 ModuleArtifactError::InvalidDependencyVersionRequirement {
                     slug: dependency.slug.clone(),
                     requirement: dependency.version_requirement.clone(),
@@ -749,6 +793,7 @@ impl ModuleArtifactDescriptor {
         let permission_prefix = format!("{}.", self.slug);
         for (index, permission) in self.permissions.iter().enumerate() {
             if !permission.key.starts_with(&permission_prefix)
+                || !valid_permission_key_suffix(&permission.key[permission_prefix.len()..])
                 || permission.localizations.is_empty()
                 || permission.localizations.iter().any(|localization| {
                     !is_valid_locale_tag(&localization.locale)
@@ -1364,6 +1409,8 @@ pub enum ModuleArtifactError {
     InvalidSourceDigest(String),
     #[error("artifact entrypoint must be declared")]
     MissingEntrypoint,
+    #[error("artifact entrypoint `{0}` is invalid")]
+    InvalidEntrypoint(String),
     #[error("artifact capability `{0}` is declared more than once")]
     DuplicateCapability(String),
     #[error("artifact binding `{0}` is invalid")]
@@ -1414,6 +1461,16 @@ pub enum ModuleArtifactError {
     MissingLocalizationCatalog(String),
     #[error("artifact descriptor exceeds the UI-contribution limit")]
     TooManyUiContributions,
+    #[error("artifact descriptor exceeds the binding limit")]
+    TooManyBindings,
+    #[error("artifact descriptor exceeds the dependency limit")]
+    TooManyDependencies,
+    #[error("artifact descriptor exceeds the permission limit")]
+    TooManyPermissions,
+    #[error("artifact descriptor exceeds the capability limit")]
+    TooManyCapabilities,
+    #[error("artifact descriptor exceeds the required-feature limit")]
+    TooManyRequiredFeatures,
     #[error("artifact persistence contract must declare a sha256 schema digest")]
     InvalidPersistenceContract,
     #[error("forked artifact slug must remain `{expected}`, received `{received}`")]
@@ -1426,6 +1483,37 @@ pub enum ModuleArtifactError {
 
 /// Validates an admitted event subscription. A terminal wildcard is permitted
 /// only for subscriptions; delivered platform event types must be exact.
+/// Entrypoints are dotted handler names (`settings.apply`) or confined
+/// relative payload paths (`tests/publication_smoke.rhai`). Admission
+/// rejects absolute or parent-escaping shapes here instead of relying on
+/// every sandbox loader to re-derive confinement.
+fn valid_entrypoint_name(value: &str) -> bool {
+    !value.trim().is_empty()
+        && value.len() <= 256
+        && !value.starts_with('/')
+        && value.split('/').all(|segment| {
+            !segment.is_empty()
+                && segment != "."
+                && segment != ".."
+                && segment
+                    .chars()
+                    .all(|character| !character.is_control() && character != '\\')
+        })
+}
+
+/// The part of an artifact permission key after its `"{slug}."` prefix:
+/// dotted lowercase segments, mirroring the event-topic segment grammar.
+fn valid_permission_key_suffix(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.split('.').all(|segment| {
+            !segment.is_empty()
+                && segment.chars().all(|character| {
+                    character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
+                })
+        })
+}
+
 pub(crate) fn valid_event_topic(value: &str) -> bool {
     if value.is_empty() || value.len() > 128 || value == "*" {
         return false;
@@ -1492,10 +1580,23 @@ pub(crate) fn event_topic_matches(subscription: &str, event_type: &str) -> bool 
 
 impl ModuleScheduleBinding {
     fn validate(&self) -> bool {
-        schedule_cron_expression(&self.cron)
-            .is_some_and(|expression| Schedule::from_str(&expression).is_ok())
-            && Tz::from_str(&self.timezone).is_ok()
+        schedule_cron_expression(&self.cron).is_some_and(|expression| {
+            Schedule::from_str(&expression).is_ok()
+                && schedule_minimum_interval_satisfied(&expression)
+        }) && Tz::from_str(&self.timezone).is_ok()
     }
+}
+
+/// Platform schedules fire at most once per minute in v1: per-second
+/// crons would let one admitted binding monopolize the materializer's
+/// due-slot evaluation and enqueue unbounded catch-up work. The
+/// canonical six-field expression satisfies the bound exactly when its
+/// seconds field names one fixed second.
+fn schedule_minimum_interval_satisfied(expression: &str) -> bool {
+    expression
+        .split_whitespace()
+        .next()
+        .is_some_and(|seconds| seconds.parse::<u32>().is_ok_and(|second| second < 60))
 }
 
 /// Converts the admitted five-field minute cron form to the six-field parser
@@ -1514,9 +1615,10 @@ pub(crate) fn schedule_cron_expression(value: &str) -> Option<String> {
     {
         return None;
     }
+    let normalized = fields.join(" ");
     Some(match fields.len() {
-        5 => format!("0 {value}"),
-        6 => value.to_string(),
+        5 => format!("0 {normalized}"),
+        6 => normalized,
         _ => unreachable!("field count is already validated"),
     })
 }
@@ -1525,10 +1627,21 @@ pub(crate) fn schedule_cron_expression(value: &str) -> Option<String> {
 /// store this digest so a descriptor replacement cannot silently complete or
 /// deduplicate work for a different cron/timezone/policy contract.
 pub fn schedule_binding_digest(schedule: &ModuleScheduleBinding) -> String {
+    // Whitespace is presentation, not schedule identity. Valid admitted
+    // schedules use the canonical six-field expression; invalid values are
+    // still whitespace-normalized for callers that fingerprint before the
+    // descriptor-validation error is surfaced.
+    let cron = schedule_cron_expression(&schedule.cron).unwrap_or_else(|| {
+        schedule
+            .cron
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    });
     format!(
         "sha256:{}",
         hash_manifest_snapshot(&serde_json::json!({
-            "cron": schedule.cron,
+            "cron": cron,
             "timezone": schedule.timezone,
             "misfire": schedule.misfire,
             "overlap": schedule.overlap,
@@ -1673,6 +1786,49 @@ mod tests {
     }
 
     #[test]
+    fn schedule_bindings_require_a_one_minute_minimum_interval() {
+        let binding = |cron: &str| ModuleScheduleBinding {
+            cron: cron.to_string(),
+            timezone: "UTC".to_string(),
+            misfire: ModuleScheduleMisfirePolicy::RunOnce,
+            overlap: ModuleScheduleOverlapPolicy::Queue,
+            deduplication: ModuleScheduleDeduplication::PerSlot,
+        };
+
+        assert!(binding("*/10 * * * *").validate());
+        assert!(binding("30 */10 * * * *").validate());
+        assert!(!binding("*/30 * * * * *").validate());
+        assert!(!binding("* * * * * *").validate());
+        assert!(!binding("0,30 * * * * *").validate());
+    }
+
+    #[test]
+    fn schedule_binding_digest_ignores_cron_whitespace_formatting() {
+        let binding = |cron: &str| ModuleScheduleBinding {
+            cron: cron.to_string(),
+            timezone: "UTC".to_string(),
+            misfire: ModuleScheduleMisfirePolicy::RunOnce,
+            overlap: ModuleScheduleOverlapPolicy::Queue,
+            deduplication: ModuleScheduleDeduplication::PerSlot,
+        };
+
+        assert_eq!(
+            schedule_binding_digest(&binding("0 0 * * *")),
+            schedule_binding_digest(&binding("  0   0  * *  *  "))
+        );
+        // The admitted five-field form and the explicit zero-second
+        // six-field form describe the same schedule.
+        assert_eq!(
+            schedule_binding_digest(&binding("0 0 * * *")),
+            schedule_binding_digest(&binding("0 0 0 * * *"))
+        );
+        assert_ne!(
+            schedule_binding_digest(&binding("0 0 * * *")),
+            schedule_binding_digest(&binding("30 0 * * *"))
+        );
+    }
+
+    #[test]
     fn source_manifest_omits_and_worker_finalizes_the_component_digest() {
         let mut declaration = descriptor(ArtifactPayloadKind::WasmComponent, "1.0.0", 'a');
         declaration.artifact_digest.clear();
@@ -1749,6 +1905,58 @@ mod tests {
         );
         assert_eq!(original.descriptor.version, "1.0.0");
         assert_eq!(fork.descriptor.version, "1.1.0");
+    }
+
+    #[test]
+    fn descriptor_collection_limits_are_rejected_before_publish() {
+        let mut candidate = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        candidate.dependencies = (0..=MAX_DESCRIPTOR_DEPENDENCIES)
+            .map(|index| ModuleDependencyConstraint {
+                slug: format!("dependency_{index}"),
+                version_requirement: "*".to_string(),
+            })
+            .collect();
+        assert!(matches!(
+            candidate.validate(),
+            Err(ModuleArtifactError::TooManyDependencies)
+        ));
+
+        let mut candidate = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        candidate.permissions = (0..=MAX_DESCRIPTOR_PERMISSIONS)
+            .map(|index| ArtifactPermissionDescriptor {
+                key: format!("sample_module.permission_{index}"),
+                localizations: vec![permission_localization("Permission")],
+            })
+            .collect();
+        assert!(matches!(
+            candidate.validate(),
+            Err(ModuleArtifactError::TooManyPermissions)
+        ));
+    }
+
+    #[test]
+    fn descriptor_rejects_malformed_permission_suffix_and_escaping_entrypoint() {
+        let mut candidate = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        candidate.permissions = vec![ArtifactPermissionDescriptor {
+            key: "sample_module.".to_string(),
+            localizations: vec![permission_localization("Manage")],
+        }];
+        assert!(matches!(
+            candidate.validate(),
+            Err(ModuleArtifactError::InvalidPermission(_))
+        ));
+
+        let mut candidate = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        candidate.entrypoint = "../outside.rhai".to_string();
+        assert!(matches!(
+            candidate.validate(),
+            Err(ModuleArtifactError::InvalidEntrypoint(_))
+        ));
+
+        // Confined relative payload paths remain valid entrypoints.
+        let mut candidate = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        candidate.entrypoint = "tests/publication_smoke.rhai".to_string();
+        candidate.validate().expect("confined relative entrypoint");
     }
 
     #[test]

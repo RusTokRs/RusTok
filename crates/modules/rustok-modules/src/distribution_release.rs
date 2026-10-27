@@ -271,7 +271,8 @@ where
     {
         validate_admission_command(&command)?;
         self.authorizer.authorize_admission(&command).await?;
-        let request_digest = digest_json(&command).map_err(promotion_error)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&command).map_err(promotion_error)?;
         validate_release_idempotency_key(&self.db, "admit", &command.context, &request_digest)
             .await?;
         if let Some(receipt) =
@@ -430,7 +431,8 @@ where
     {
         validate_revocation_command(&command)?;
         self.authorizer.authorize_revocation(&command).await?;
-        let request_digest = digest_json(&command).map_err(promotion_error)?;
+        let request_digest =
+            crate::idempotency::semantic_request_digest(&command).map_err(promotion_error)?;
         validate_release_idempotency_key(&self.db, "revoke", &command.context, &request_digest)
             .await?;
         if let Some(receipt) =
@@ -1293,7 +1295,7 @@ async fn validate_release_idempotency_key<C: ConnectionTrait>(
         if stored_kind != operation_kind
             || stored_digest != request_digest
             || !valid_platform_command_context(&stored_context)
-            || stored_context != *context
+            || stored_context.actor_id != context.actor_id
         {
             return Err(ModuleStaticDistributionReleaseError::IdempotencyConflict);
         }
@@ -1357,7 +1359,7 @@ async fn reserve_release_idempotency_key(
     if stored_kind != operation_kind
         || stored_digest != request_digest
         || !valid_platform_command_context(&stored_context)
-        || stored_context != *context
+        || stored_context.actor_id != context.actor_id
     {
         return Err(ModuleStaticDistributionReleaseError::IdempotencyConflict);
     }
@@ -1834,14 +1836,9 @@ fn optional_uuid_from_row(
     column: &str,
     backend: SupportedBackend,
 ) -> Result<Option<Uuid>, ModuleStaticDistributionReleaseError> {
-    match backend {
-        SupportedBackend::Postgres => row.try_get("", column).map_err(store_error),
-        SupportedBackend::Sqlite => row
-            .try_get::<Option<String>>("", column)
-            .map_err(store_error)?
-            .map(|value| Uuid::parse_str(&value).map_err(store_error))
-            .transpose(),
-    }
+    backend
+        .optional_uuid_from_row(row, column)
+        .map_err(store_error)
 }
 
 fn optional_bool_from_row(
@@ -1963,20 +1960,10 @@ mod tests {
             .up(&SchemaManager::new(&database))
             .await
             .expect("outbox migration");
-        database
-            .execute_raw(Statement::from_string(
-                DbBackend::Sqlite,
-                "CREATE TABLE registry_module_releases (
-                    id TEXT PRIMARY KEY,
-                    slug TEXT NOT NULL,
-                    version TEXT NOT NULL,
-                    checksum_sha256 TEXT NOT NULL,
-                    status TEXT NOT NULL
-                 )"
-                .to_string(),
-            ))
-            .await
-            .expect("registry release fixture");
+        // `registry_module_releases` is created by migration 000061 with
+        // the full column set the later data migrations read; a minimal
+        // hand-made pre-create would shadow it (`IF NOT EXISTS`) and break
+        // the chain (000069 backfill).
         for migration in ModulesModule.migrations() {
             migration
                 .up(&SchemaManager::new(&database))
@@ -2001,8 +1988,21 @@ mod tests {
         validate_release_idempotency_key(&database, "admit", &context, &request_digest)
             .await
             .expect("exact context replay");
+        let mut changed_observability_context = context.clone();
+        changed_observability_context.trace_id =
+            "test:static-distribution-release:other".to_string();
+        changed_observability_context.correlation_id = Uuid::new_v4();
+        validate_release_idempotency_key(
+            &database,
+            "admit",
+            &changed_observability_context,
+            &request_digest,
+        )
+        .await
+        .expect("changed observability context replays release admission");
+
         let mut conflicting_context = context.clone();
-        conflicting_context.trace_id = "test:static-distribution-release:other".to_string();
+        conflicting_context.actor_id = Uuid::new_v4();
         assert!(matches!(
             validate_release_idempotency_key(
                 &database,

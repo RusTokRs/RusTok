@@ -1038,6 +1038,60 @@ async fn generate_lockfile(root: &Path) -> CliCoreResult<()> {
     .await
 }
 
+/// Terminates a spawned Cargo invocation after a timeout or output
+/// overflow. On Unix the child runs in its own process group, so the
+/// whole group (Cargo plus rustc/build-script descendants) receives
+/// SIGKILL; elsewhere only the direct child can be killed. Failures are
+/// reported on stderr instead of being swallowed, because an
+/// unterminated build tree holds the target-directory lock into the
+/// next command.
+#[cfg(unix)]
+async fn terminate_cargo_tree(
+    child: &mut tokio::process::Child,
+    child_pid: Option<u32>,
+    stage: &str,
+) {
+    match child_pid
+        .and_then(|pid| i32::try_from(pid).ok())
+        .filter(|pid| *pid > 0)
+    {
+        Some(pid) => {
+            // SAFETY: kill() with a negative pid targets the process
+            // group whose id is the positive pid; the child was spawned
+            // as a process-group leader above.
+            let result = unsafe { libc::kill(-pid, libc::SIGKILL) };
+            if result != 0 {
+                eprintln!(
+                    "warning: failed to kill Cargo process group {pid} for stage `{stage}`: {}",
+                    std::io::Error::last_os_error()
+                );
+            }
+        }
+        None => {
+            if let Err(error) = child.kill().await {
+                eprintln!("warning: failed to kill Cargo child for stage `{stage}`: {error}");
+            }
+        }
+    }
+    if let Err(error) = child.wait().await {
+        eprintln!("warning: failed to reap Cargo child for stage `{stage}`: {error}");
+    }
+}
+
+#[cfg(not(unix))]
+async fn terminate_cargo_tree(
+    child: &mut tokio::process::Child,
+    _child_pid: Option<u32>,
+    stage: &str,
+) {
+    if let Err(error) = child.kill().await {
+        eprintln!("warning: failed to kill Cargo child for stage `{stage}`: {error}");
+    }
+    if let Err(error) = child.wait().await {
+        eprintln!("warning: failed to reap Cargo child for stage `{stage}`: {error}");
+    }
+}
+
 async fn run_cargo_command(
     root: &Path,
     target_dir: Option<&Path>,
@@ -1058,6 +1112,15 @@ async fn run_cargo_command(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    // Run Cargo in its own process group so a timeout or output overflow
+    // can terminate the whole build tree (rustc and build-script
+    // descendants), not just the direct child, which would leave
+    // orphaned compilers holding the target-directory lock.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.as_std_mut().process_group(0);
+    }
     for name in [
         "PATH",
         "PATHEXT",
@@ -1097,6 +1160,7 @@ async fn run_cargo_command(
         command.env("CARGO_NET_OFFLINE", "true");
     }
     let mut child = command.spawn().map_err(command_failed)?;
+    let child_pid = child.id();
     let stdout = child
         .stdout
         .take()
@@ -1116,15 +1180,13 @@ async fn run_cargo_command(
     let status = tokio::select! {
         result = child.wait() => result.map_err(command_failed)?,
         _ = tokio::time::sleep(timeout) => {
-            let _ = child.kill().await;
-            let _ = child.wait().await;
+            terminate_cargo_tree(&mut child, child_pid, stage).await;
             stdout_task.abort();
             stderr_task.abort();
             return Err(command_failed(format!("Cargo stage `{stage}` timed out")));
         }
         failure = failure_receiver.recv() => {
-            let _ = child.kill().await;
-            let _ = child.wait().await;
+            terminate_cargo_tree(&mut child, child_pid, stage).await;
             stdout_task.abort();
             stderr_task.abort();
             return Err(command_failed(failure.unwrap_or_else(|| {

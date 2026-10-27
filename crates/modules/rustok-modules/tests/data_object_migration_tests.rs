@@ -451,18 +451,20 @@ async fn migration_copies_actual_bytes_and_replays_terminal_receipt_before_mutab
             .expect("terminal replay"),
         receipt
     );
+    let mut changed_observability = fixture.request.clone();
+    changed_observability.reason.push_str(" changed");
+    changed_observability.context.trace_id.push_str(":changed");
+    changed_observability.context.correlation_id = Uuid::new_v4();
+    assert_eq!(
+        service
+            .migrate_objects(changed_observability)
+            .await
+            .expect("changed observability context replays object migration"),
+        receipt
+    );
     let mut changed = Vec::new();
     let mut request = fixture.request.clone();
-    request.reason.push_str(" changed");
-    changed.push(request);
-    let mut request = fixture.request.clone();
     request.context.actor_id = Uuid::new_v4();
-    changed.push(request);
-    let mut request = fixture.request.clone();
-    request.context.trace_id.push_str(":changed");
-    changed.push(request);
-    let mut request = fixture.request.clone();
-    request.context.correlation_id = Uuid::new_v4();
     changed.push(request);
     let mut request = fixture.request.clone();
     request.expected_source_namespace_revision = 2;

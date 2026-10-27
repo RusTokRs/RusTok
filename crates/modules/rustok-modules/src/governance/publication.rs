@@ -5,7 +5,6 @@ use sea_orm::{ConnectionTrait, Statement, TransactionTrait, Value};
 use super::admissions::*;
 use super::helpers::*;
 use super::publication_verification::*;
-use super::validation_evidence::*;
 use super::*;
 
 impl SeaOrmModuleGovernanceService {
@@ -99,12 +98,6 @@ impl SeaOrmModuleGovernanceService {
             let stored_actor_id = operation
                 .try_get::<String>("", "actor_id")
                 .map_err(store_error)?;
-            let stored_trace_id = operation
-                .try_get::<String>("", "trace_id")
-                .map_err(store_error)?;
-            let stored_correlation_id = operation
-                .try_get::<String>("", "correlation_id")
-                .map_err(store_error)?;
             let expected_allow_owner_rebind = if backend == SupportedBackend::Postgres {
                 if command.allow_owner_rebind {
                     "true"
@@ -121,8 +114,6 @@ impl SeaOrmModuleGovernanceService {
                 || stored_allow_owner_rebind != expected_allow_owner_rebind
                 || stored_override != command_approval_override
                 || stored_actor_id != command.context.actor_id.to_string()
-                || stored_trace_id != command.context.trace_id
-                || stored_correlation_id != command.context.correlation_id.to_string()
             {
                 return Err(ModuleGovernanceError::PublicationIdempotencyConflict);
             }
@@ -172,79 +163,6 @@ impl SeaOrmModuleGovernanceService {
         let artifact_origin = verified.artifact_origin;
         let translations = verified.translations;
 
-        let marketplace_approval = ModulePublicationEvidenceCommand {
-            request_id: command.request_id.clone(),
-            expected_revision: command.expected_revision,
-            authority: ModulePublicationEvidenceAuthority::MarketplaceApproval,
-            subject_digest_sha256: checksum_sha256.clone(),
-            evidence_reference: format!(
-                "registry://publish-requests/{}/marketplace-approval",
-                command.request_id
-            ),
-            issuer_identity: validation_stage_actor_label(&command.actor_principal)?,
-            policy_revision: MARKETPLACE_APPROVAL_POLICY_REVISION.to_string(),
-            signature_digest_sha256: None,
-            actor_principal: command.actor_principal.clone(),
-        };
-        let marketplace_approval_digest = publication_evidence_digest_sha256(&marketplace_approval);
-        let marketplace_approval_id = self.infrastructure.prefixed_id("rpe");
-        let marketplace_approval_inserted = tx
-            .execute_raw(Statement::from_sql_and_values(
-                backend.db_backend(),
-                format!(
-                    "INSERT INTO registry_publication_evidence \
-                 (id, request_id, authority, subject_digest_sha256, evidence_reference, \
-                  issuer_identity, policy_revision, signature_digest_sha256, evidence_digest_sha256, \
-                  recorded_by_principal, created_at) \
-                 VALUES ({}, {}, 'marketplace_approval', {}, {}, {}, {}, NULL, {}, {}, {now}) \
-                 ON CONFLICT (request_id, evidence_digest_sha256) DO NOTHING",
-                    mark(1),
-                    mark(2),
-                    mark(3),
-                    mark(4),
-                    mark(5),
-                    mark(6),
-                    mark(7),
-                    mark(8),
-                ),
-                vec![
-                    marketplace_approval_id.clone().into(),
-                    command.request_id.clone().into(),
-                    marketplace_approval.subject_digest_sha256.into(),
-                    marketplace_approval.evidence_reference.into(),
-                    marketplace_approval.issuer_identity.into(),
-                    marketplace_approval.policy_revision.clone().into(),
-                    marketplace_approval_digest.into(),
-                    Value::Json(Some(Box::new(command.actor_principal.clone()))),
-                ],
-            ))
-            .await
-            .map_err(store_error)?;
-        if marketplace_approval_inserted.rows_affected() == 1 {
-            tx.execute_raw(Statement::from_sql_and_values(
-                backend.db_backend(),
-                format!(
-                    "INSERT INTO registry_governance_events \
-                     (id, slug, request_id, release_id, event_type, actor_principal, \
-                      publisher_principal, details, created_at) \
-                     VALUES ({}, {}, {}, NULL, 'marketplace_approval_recorded', {}, NULL, {}, {now})",
-                    mark(1), mark(2), mark(3), mark(4), mark(5),
-                ),
-                vec![
-                    self.infrastructure.prefixed_id("rge").into(),
-                    slug.clone().into(),
-                    command.request_id.clone().into(),
-                    Value::Json(Some(Box::new(command.actor_principal.clone()))),
-                    Value::Json(Some(Box::new(serde_json::json!({
-                        "evidence_id": marketplace_approval_id,
-                        "authority": "marketplace_approval",
-                        "subject_digest_sha256": checksum_sha256,
-                        "policy_revision": MARKETPLACE_APPROVAL_POLICY_REVISION,
-                    })))),
-                ],
-            )).await.map_err(store_error)?;
-        }
-
         if let Some(override_evidence) = &command.approval_override {
             tx.execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -290,7 +208,7 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?;
 
-        let release_id = tx
+        let existing_release = tx
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
@@ -301,97 +219,38 @@ impl SeaOrmModuleGovernanceService {
                 vec![slug.clone().into(), version.clone().into()],
             ))
             .await
-            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?
-            .map(|row| {
-                row.try_get::<String>("", "id")
-                    .map_err(|e| ModuleGovernanceError::Store(e.to_string()))
-            })
-            .transpose()?
-            .unwrap_or_else(|| self.infrastructure.prefixed_id("rrel"));
-        let release_exists = tx
-            .query_one_raw(Statement::from_sql_and_values(
-                backend.db_backend(),
-                format!(
-                    "SELECT id FROM registry_module_releases WHERE id = {}",
-                    mark(1)
-                ),
-                vec![release_id.clone().into()],
-            ))
-            .await
-            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?
-            .is_some();
-        if release_exists {
-            tx.execute_raw(Statement::from_sql_and_values(
-                backend.db_backend(),
-                format!(
-                    "UPDATE registry_module_releases SET request_id = {}, crate_name = {}, \
-                     default_locale = {}, ownership = {}, trust_level = {}, license = {}, \
-                     entry_type = {}, artifact_origin = {}, marketplace = {}, ui_packages = {}, status = 'active', \
-                     publisher_principal = {}, artifact_storage_key = {}, checksum_sha256 = {}, \
-                     artifact_size = {}, yanked_reason = NULL, yanked_by_principal = NULL, \
-                     yanked_at = NULL, published_at = {now}, updated_at = {now} WHERE id = {}",
-                    mark(1),
-                    mark(2),
-                    mark(3),
-                    mark(4),
-                    mark(5),
-                    mark(6),
-                    mark(7),
-                    mark(8),
-                    mark(9),
-                    mark(10),
-                    mark(11),
-                    mark(12),
-                    mark(13),
-                    mark(14),
-                    mark(15),
-                ),
-                vec![
-                    command.request_id.clone().into(),
-                    crate_name.into(),
-                    default_locale.into(),
-                    ownership.into(),
-                    trust_level.into(),
-                    license.into(),
-                    entry_type.into(),
-                    artifact_origin.as_str().into(),
-                    Value::Json(Some(Box::new(marketplace))),
-                    Value::Json(Some(Box::new(ui_packages))),
-                    Value::Json(Some(Box::new(command.publisher_principal.clone()))),
-                    artifact_storage_key.into(),
-                    checksum_sha256.clone().into(),
-                    artifact_size.into(),
-                    release_id.clone().into(),
-                ],
-            ))
-            .await
-            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-        } else {
-            tx.execute_raw(Statement::from_sql_and_values(
-                backend.db_backend(),
-                format!(
-                    "INSERT INTO registry_module_releases \
-                     (id, request_id, slug, version, crate_name, default_locale, ownership, trust_level, \
-                      license, entry_type, artifact_origin, marketplace, ui_packages, status, publisher_principal, \
-                      artifact_storage_key, checksum_sha256, artifact_size, yanked_reason, \
-                      yanked_by_principal, yanked_at, published_at, created_at, updated_at) \
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'active', {}, {}, {}, {}, \
-                             NULL, NULL, NULL, {now}, {now}, {now})",
-                    mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8),
-                    mark(9), mark(10), mark(11), mark(12), mark(13), mark(14), mark(15), mark(16), mark(17),
-                ),
-                vec![
-                    release_id.clone().into(), command.request_id.clone().into(), slug.clone().into(),
-                    version.clone().into(), crate_name.into(), default_locale.into(), ownership.into(),
-                    trust_level.into(), license.into(), entry_type.into(),
-                    artifact_origin.as_str().into(), Value::Json(Some(Box::new(marketplace))), Value::Json(Some(Box::new(ui_packages))),
-                    Value::Json(Some(Box::new(command.publisher_principal.clone()))),
-                    artifact_storage_key.into(), checksum_sha256.clone().into(), artifact_size.into(),
-                ],
-            ))
-            .await
-            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+            .map_err(store_error)?;
+        if existing_release.is_some() {
+            return Err(ModuleGovernanceError::PublishRequestReleaseAlreadyExists {
+                slug,
+                version,
+            });
         }
+        let release_id = self.infrastructure.prefixed_id("rrel");
+        tx.execute_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            format!(
+                "INSERT INTO registry_module_releases \
+                 (id, request_id, slug, version, crate_name, default_locale, ownership, trust_level, \
+                  license, entry_type, artifact_origin, marketplace, ui_packages, status, publisher_principal, \
+                  artifact_storage_key, checksum_sha256, artifact_size, yanked_reason, \
+                  yanked_by_principal, yanked_at, published_at, created_at, updated_at) \
+                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'active', {}, {}, {}, {}, \
+                         NULL, NULL, NULL, {now}, {now}, {now})",
+                mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8),
+                mark(9), mark(10), mark(11), mark(12), mark(13), mark(14), mark(15), mark(16), mark(17),
+            ),
+            vec![
+                release_id.clone().into(), command.request_id.clone().into(), slug.clone().into(),
+                version.clone().into(), crate_name.into(), default_locale.into(), ownership.into(),
+                trust_level.into(), license.into(), entry_type.into(),
+                artifact_origin.as_str().into(), Value::Json(Some(Box::new(marketplace))), Value::Json(Some(Box::new(ui_packages))),
+                Value::Json(Some(Box::new(command.publisher_principal.clone()))),
+                artifact_storage_key.into(), checksum_sha256.clone().into(), artifact_size.into(),
+            ],
+        ))
+        .await
+        .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
 
         persist_published_artifact_contract(
             &tx,
@@ -404,16 +263,6 @@ impl SeaOrmModuleGovernanceService {
         )
         .await?;
 
-        tx.execute_raw(Statement::from_sql_and_values(
-            backend.db_backend(),
-            format!(
-                "DELETE FROM registry_module_release_translations WHERE release_id = {}",
-                mark(1)
-            ),
-            vec![release_id.clone().into()],
-        ))
-        .await
-        .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         for (locale, name, description) in translations {
             tx.execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),

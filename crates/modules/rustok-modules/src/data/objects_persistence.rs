@@ -156,8 +156,8 @@ pub(crate) async fn queue_artifact_data_object_gc_candidate<C: ConnectionTrait>(
             backend.db_backend(),
             format!(
                 "INSERT INTO module_artifact_data_object_gc_candidates
-                 (candidate_id, tenant_id, data_owner_id, namespace_instance_id, policy_revision, storage_key, queued_at)
-                 VALUES ({}, {}, {}, {}, {}, {}, {}) ON CONFLICT (storage_key) DO NOTHING",
+                 (candidate_id, tenant_id, data_owner_id, namespace_instance_id, policy_revision, storage_key, queued_at, state, revision, delete_started_at)
+                 VALUES ({}, {}, {}, {}, {}, {}, {}, 'queued', 1, NULL) ON CONFLICT (storage_key) DO NOTHING",
                 backend.placeholder(1),
                 backend.placeholder(2),
                 backend.placeholder(3),

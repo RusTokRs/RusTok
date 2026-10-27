@@ -76,6 +76,17 @@ pub fn build_module_publish_bundle(
                     .map(|crate_name| BundleUiPackage {
                         crate_name: crate_name.clone(),
                     }),
+                admin_support: contract
+                    .admin_support_crate_name
+                    .as_ref()
+                    .map(|crate_name| BundleUiPackage {
+                        crate_name: crate_name.clone(),
+                    }),
+                storefront_support: contract.storefront_support_crate_name.as_ref().map(
+                    |crate_name| BundleUiPackage {
+                        crate_name: crate_name.clone(),
+                    },
+                ),
             },
         },
         files: BundleFiles {
@@ -250,6 +261,10 @@ struct BundleMarketplace {
 struct BundleUiPackages {
     admin: Option<BundleUiPackage>,
     storefront: Option<BundleUiPackage>,
+    #[serde(default)]
+    admin_support: Option<BundleUiPackage>,
+    #[serde(default)]
+    storefront_support: Option<BundleUiPackage>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -411,6 +426,28 @@ fn validate_module_contract(
         contract.storefront_ui_crate_name.as_deref(),
         validation,
     );
+    validate_optional(
+        "module.ui_packages.admin_support.crate_name",
+        bundle
+            .module
+            .ui_packages
+            .admin_support
+            .as_ref()
+            .map(|ui| ui.crate_name.as_str()),
+        contract.admin_support_crate_name.as_deref(),
+        validation,
+    );
+    validate_optional(
+        "module.ui_packages.storefront_support.crate_name",
+        bundle
+            .module
+            .ui_packages
+            .storefront_support
+            .as_ref()
+            .map(|ui| ui.crate_name.as_str()),
+        contract.storefront_support_crate_name.as_deref(),
+        validation,
+    );
 }
 
 fn validate_file_contract(
@@ -440,13 +477,14 @@ fn validate_file_contract(
     );
     validate_ui_file_presence(
         "admin/Cargo.toml",
-        contract.admin_ui_crate_name.is_some(),
+        contract.admin_ui_crate_name.is_some() || contract.admin_support_crate_name.is_some(),
         admin_manifest.is_some(),
         validation,
     );
     validate_ui_file_presence(
         "storefront/Cargo.toml",
-        contract.storefront_ui_crate_name.is_some(),
+        contract.storefront_ui_crate_name.is_some()
+            || contract.storefront_support_crate_name.is_some(),
         storefront_manifest.is_some(),
         validation,
     );
@@ -463,7 +501,11 @@ fn validate_file_contract(
             validation,
         );
     }
-    if let (Some(crate_name), Some(source)) = (&contract.admin_ui_crate_name, admin_manifest) {
+    let admin_crate_name = contract
+        .admin_ui_crate_name
+        .as_ref()
+        .or(contract.admin_support_crate_name.as_ref());
+    if let (Some(crate_name), Some(source)) = (admin_crate_name, admin_manifest) {
         validate_cargo_manifest(
             "admin/Cargo.toml",
             source,
@@ -473,9 +515,11 @@ fn validate_file_contract(
             validation,
         );
     }
-    if let (Some(crate_name), Some(source)) =
-        (&contract.storefront_ui_crate_name, storefront_manifest)
-    {
+    let storefront_crate_name = contract
+        .storefront_ui_crate_name
+        .as_ref()
+        .or(contract.storefront_support_crate_name.as_ref());
+    if let (Some(crate_name), Some(source)) = (storefront_crate_name, storefront_manifest) {
         validate_cargo_manifest(
             "storefront/Cargo.toml",
             source,
@@ -745,6 +789,8 @@ mod tests {
             marketplace_tags: Vec::new(),
             admin_ui_crate_name: None,
             storefront_ui_crate_name: None,
+            admin_support_crate_name: None,
+            storefront_support_crate_name: None,
         }
     }
 
@@ -911,6 +957,49 @@ mod tests {
                 .iter()
                 .all(|diagnostic| !diagnostic.contains(marker))
         );
+    }
+
+    #[test]
+    fn registry_bundle_binds_storefront_support_crate_to_owner_contract() {
+        let mut support_contract = contract();
+        support_contract.storefront_support_crate_name =
+            Some("sample_storefront_support".to_string());
+
+        let mut support_bundle = bundle();
+        support_bundle["module"]["ui_packages"]["storefront_support"] =
+            serde_json::json!({ "crate_name": "sample_storefront_support" });
+        support_bundle["files"]["storefront/Cargo.toml"] = serde_json::json!(
+            "[package]\nname = \"sample_storefront_support\"\nversion = \"1.0.0\"\n"
+        );
+        let bytes = serde_json::to_vec(&support_bundle).expect("bundle JSON");
+        let accepted =
+            validate_module_publish_bundle(&support_contract, "application/json", &bytes);
+        assert!(accepted.errors.is_empty(), "{:?}", accepted.errors);
+
+        // The same bundle is undeclared UI for a contract without the
+        // support crate.
+        let undeclared = validate_module_publish_bundle(&contract(), "application/json", &bytes);
+        assert!(!undeclared.errors.is_empty());
+
+        // A support crate name that does not match the contract fails.
+        let mut renamed_bundle = support_bundle.clone();
+        renamed_bundle["module"]["ui_packages"]["storefront_support"]["crate_name"] =
+            serde_json::json!("other_support");
+        let renamed_bytes = serde_json::to_vec(&renamed_bundle).expect("bundle JSON");
+        let renamed =
+            validate_module_publish_bundle(&support_contract, "application/json", &renamed_bytes);
+        assert!(!renamed.errors.is_empty());
+
+        // A declared support crate whose manifest file is missing fails.
+        let mut missing_file_bundle = support_bundle;
+        missing_file_bundle["files"]
+            .as_object_mut()
+            .expect("files object")
+            .remove("storefront/Cargo.toml");
+        let missing_bytes = serde_json::to_vec(&missing_file_bundle).expect("bundle JSON");
+        let missing =
+            validate_module_publish_bundle(&support_contract, "application/json", &missing_bytes);
+        assert!(!missing.errors.is_empty());
     }
 
     #[test]

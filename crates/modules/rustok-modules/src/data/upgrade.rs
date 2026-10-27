@@ -66,6 +66,10 @@ where
                 binding: &self.binding,
                 target: ArtifactInstallationTarget::CurrentRelease,
                 tenant_id: input.source.tenant_id,
+                admission: ArtifactExecutionAdmission::data_upgrade(
+                    input.source.tenant_id,
+                    &self.release,
+                ),
                 input: json!({
                     "source": input.source,
                     "target": input.target,

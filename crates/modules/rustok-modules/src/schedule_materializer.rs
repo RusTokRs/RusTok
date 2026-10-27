@@ -114,7 +114,28 @@ impl ArtifactScheduleMaterializer {
         let mut report = ArtifactScheduleMaterializationReport::default();
         for binding in self.effective_bindings(tenant_id).await? {
             report.scanned_bindings = report.scanned_bindings.saturating_add(1);
-            let Some(through) = self.cursor_through(tenant_id, &binding, now).await? else {
+            // One transaction per binding: the cursor row is locked
+            // (`FOR UPDATE` on PostgreSQL; SQLite serializes writers), so
+            // the due-window decision, the Forbid-overlap probe, slot
+            // creation, and the cursor advance commit atomically. Two
+            // concurrent materializers can no longer both observe "no
+            // active delivery" and create overlapping slots.
+            let transaction = self.db.begin().await.map_err(storage_error)?;
+            configure_tenant_scope(&transaction, tenant_id)
+                .await
+                .map_err(storage_error)?;
+            let backend =
+                SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+            let Some(through) =
+                Self::cursor_through_in_transaction(&transaction, backend, tenant_id, &binding)
+                    .await?
+            else {
+                // New or changed binding: initialize (or reset) its cursor
+                // at `now` inside the same transaction; old schedule
+                // semantics are never replayed under a new digest.
+                Self::store_cursor_in_transaction(&transaction, backend, tenant_id, &binding, now)
+                    .await?;
+                transaction.commit().await.map_err(storage_error)?;
                 report.initialized_cursors = report.initialized_cursors.saturating_add(1);
                 continue;
             };
@@ -125,7 +146,13 @@ impl ArtifactScheduleMaterializer {
                 .saturating_add(decision.skipped_misfires);
             if binding.schedule.overlap == ModuleScheduleOverlapPolicy::Forbid
                 && !selected.is_empty()
-                && self.has_active_delivery(tenant_id, &binding).await?
+                && Self::has_active_delivery_in_transaction(
+                    &transaction,
+                    backend,
+                    tenant_id,
+                    &binding,
+                )
+                .await?
             {
                 report.skipped_overlaps = report
                     .skipped_overlaps
@@ -135,20 +162,31 @@ impl ArtifactScheduleMaterializer {
             for scheduled_for in selected {
                 let receipt = self
                     .deliveries
-                    .enqueue(ArtifactScheduleDeliveryRequest {
-                        tenant_id,
-                        installation_id: binding.installation_id,
-                        binding_id: binding.binding_id.clone(),
-                        scheduled_for,
-                    })
+                    .enqueue_in_transaction(
+                        &transaction,
+                        backend,
+                        ArtifactScheduleDeliveryRequest {
+                            tenant_id,
+                            installation_id: binding.installation_id,
+                            binding_id: binding.binding_id.clone(),
+                            scheduled_for,
+                        },
+                    )
                     .await
                     .map_err(ArtifactScheduleMaterializationError::Queue)?;
                 if receipt.created {
                     report.created_slots = report.created_slots.saturating_add(1);
                 }
             }
-            self.store_cursor(tenant_id, &binding, decision.advance_through)
-                .await?;
+            Self::store_cursor_in_transaction(
+                &transaction,
+                backend,
+                tenant_id,
+                &binding,
+                decision.advance_through,
+            )
+            .await?;
+            transaction.commit().await.map_err(storage_error)?;
         }
         Ok(report)
     }
@@ -198,8 +236,19 @@ impl ArtifactScheduleMaterializer {
             return Err(ArtifactScheduleMaterializationError::BacklogLimitExceeded);
         }
         let mut effective = BTreeMap::<String, ScheduleCandidate>::new();
+        let mut excluded_slugs = std::collections::BTreeSet::new();
         for row in rows {
-            let candidate = candidate_from_row(&row, backend)?;
+            // Per-installation corruption quarantines only that
+            // installation (see the matching event-projection rule);
+            // storage failures still fail the poll.
+            let candidate = match candidate_from_row(&row, backend) {
+                Ok(candidate) => candidate,
+                Err(ArtifactScheduleMaterializationError::InvalidState) => continue,
+                Err(error) => return Err(error),
+            };
+            if excluded_slugs.contains(&candidate.slug) {
+                continue;
+            }
             match effective.get(&candidate.slug) {
                 None => {
                     effective.insert(candidate.slug.clone(), candidate);
@@ -209,9 +258,9 @@ impl ArtifactScheduleMaterializer {
                 }
                 Some(existing) if !candidate.tenant_scoped && existing.tenant_scoped => {}
                 Some(_) => {
-                    return Err(ArtifactScheduleMaterializationError::AmbiguousBinding(
-                        candidate.slug,
-                    ));
+                    // Duplicate active slug: disable only that slug.
+                    effective.remove(&candidate.slug);
+                    excluded_slugs.insert(candidate.slug);
                 }
             }
         }
@@ -236,27 +285,30 @@ impl ArtifactScheduleMaterializer {
         Ok(bindings)
     }
 
-    /// `None` means a new or replaced immutable schedule, whose cursor was
-    /// initialized at `now`. Existing cursors are returned without mutation.
-    async fn cursor_through(
-        &self,
+    /// Reads the binding cursor inside the caller's transaction, locking
+    /// the row on PostgreSQL so concurrent materializers serialize on
+    /// the cursor (SQLite serializes write transactions instead). `None`
+    /// means the cursor is absent or belongs to a previous schedule
+    /// digest; the caller initializes it at `now` in the same
+    /// transaction.
+    async fn cursor_through_in_transaction(
+        transaction: &sea_orm::DatabaseTransaction,
+        backend: SupportedBackend,
         tenant_id: Uuid,
         binding: &EffectiveScheduleBinding,
-        now: DateTime<Utc>,
     ) -> Result<Option<DateTime<Utc>>, ArtifactScheduleMaterializationError> {
-        let transaction = self.db.begin().await.map_err(storage_error)?;
-        configure_tenant_scope(&transaction, tenant_id)
-            .await
-            .map_err(storage_error)?;
-        let backend =
-            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        let lock_clause = if backend == SupportedBackend::Postgres {
+            " FOR UPDATE"
+        } else {
+            ""
+        };
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT schedule_digest, materialized_through \
                      FROM module_artifact_schedule_cursors \
-                     WHERE tenant_id = {} AND installation_id = {} AND binding_id = {}",
+                     WHERE tenant_id = {} AND installation_id = {} AND binding_id = {}{lock_clause}",
                     backend.placeholder(1),
                     backend.placeholder(2),
                     backend.placeholder(3),
@@ -269,36 +321,30 @@ impl ArtifactScheduleMaterializer {
             ))
             .await
             .map_err(storage_error)?;
-        let cursor = match row {
+        match row {
             Some(row) => {
                 let digest: String = row.try_get("", "schedule_digest").map_err(storage_error)?;
                 if digest == binding.schedule_digest {
-                    Some(datetime_from_row(&row, "materialized_through", backend)?)
+                    Ok(Some(datetime_from_row(
+                        &row,
+                        "materialized_through",
+                        backend,
+                    )?))
                 } else {
-                    None
+                    Ok(None)
                 }
             }
-            None => None,
-        };
-        transaction.commit().await.map_err(storage_error)?;
-        if cursor.is_none() {
-            self.store_cursor(tenant_id, binding, now).await?;
+            None => Ok(None),
         }
-        Ok(cursor)
     }
 
-    async fn store_cursor(
-        &self,
+    async fn store_cursor_in_transaction(
+        transaction: &sea_orm::DatabaseTransaction,
+        backend: SupportedBackend,
         tenant_id: Uuid,
         binding: &EffectiveScheduleBinding,
         materialized_through: DateTime<Utc>,
     ) -> Result<(), ArtifactScheduleMaterializationError> {
-        let transaction = self.db.begin().await.map_err(storage_error)?;
-        configure_tenant_scope(&transaction, tenant_id)
-            .await
-            .map_err(storage_error)?;
-        let backend =
-            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -332,21 +378,15 @@ impl ArtifactScheduleMaterializer {
             ))
             .await
             .map_err(storage_error)?;
-        transaction.commit().await.map_err(storage_error)?;
         Ok(())
     }
 
-    async fn has_active_delivery(
-        &self,
+    async fn has_active_delivery_in_transaction(
+        transaction: &sea_orm::DatabaseTransaction,
+        backend: SupportedBackend,
         tenant_id: Uuid,
         binding: &EffectiveScheduleBinding,
     ) -> Result<bool, ArtifactScheduleMaterializationError> {
-        let transaction = self.db.begin().await.map_err(storage_error)?;
-        configure_tenant_scope(&transaction, tenant_id)
-            .await
-            .map_err(storage_error)?;
-        let backend =
-            SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
@@ -368,7 +408,6 @@ impl ArtifactScheduleMaterializer {
             ))
             .await
             .map_err(storage_error)?;
-        transaction.commit().await.map_err(storage_error)?;
         Ok(row.is_some())
     }
 }
@@ -499,10 +538,14 @@ fn due_slots(
     })
 }
 
-/// Upper bound on cron occurrences inspected while counting skipped
-/// misfires. Counting saturates at this bound rather than scanning an
-/// unbounded backlog (a minutely schedule reaches it after ~69 days).
-const MAX_MISFIRE_COUNT_SCAN: u32 = 100_000;
+/// Upper bound on cron occurrences inspected per binding per poll while
+/// counting skipped misfires or finding the latest due slot. The bound
+/// keeps one poll's CPU independent of backlog age: when a scan stops at
+/// the bound, `RunOnce` advances the cursor only to the last scanned
+/// slot, so the next poll (seconds later) continues draining the backlog
+/// instead of pretending it is gone. At the admitted minimum interval
+/// of one minute, one pass covers ~7 days of backlog per binding.
+const MAX_MISFIRE_COUNT_SCAN: u32 = 10_000;
 
 /// Counts occurrences in `(after, through_inclusive]`, saturating at
 /// [`MAX_MISFIRE_COUNT_SCAN`].
@@ -595,8 +638,6 @@ pub enum ArtifactScheduleMaterializationError {
     InvalidState,
     #[error("artifact schedule binding is unavailable")]
     BindingUnavailable,
-    #[error("artifact schedule for a module is ambiguous: {0}")]
-    AmbiguousBinding(String),
     #[error("artifact schedule cron or timezone is invalid")]
     InvalidSchedule,
     #[error("artifact schedule backlog exceeds the configured materialization limit")]

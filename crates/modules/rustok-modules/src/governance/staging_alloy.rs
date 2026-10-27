@@ -291,11 +291,6 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
             let existing_actor_id: String =
                 existing.try_get("", "actor_id").map_err(store_error)?;
-            let existing_trace_id: String =
-                existing.try_get("", "trace_id").map_err(store_error)?;
-            let existing_correlation_id: String = existing
-                .try_get("", "correlation_id")
-                .map_err(store_error)?;
             if existing_expected_revision != command.expected_revision
                 || existing_tenant_id != command.alloy_tenant_id.to_string()
                 || existing_script_id != command.alloy_script_id.to_string()
@@ -319,8 +314,6 @@ impl SeaOrmModuleGovernanceService {
                 || existing_reviewer != command.reviewed_by_principal
                 || existing_actor != command.actor_principal
                 || existing_actor_id != command.context.actor_id.to_string()
-                || existing_trace_id != command.context.trace_id
-                || existing_correlation_id != command.context.correlation_id.to_string()
             {
                 return Err(ModuleGovernanceError::AlloyAuthoredStageIdempotencyConflict);
             }

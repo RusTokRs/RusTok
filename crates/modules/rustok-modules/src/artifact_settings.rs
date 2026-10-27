@@ -371,6 +371,12 @@ fn map_validation_error(error: ArtifactSchemaValidationError) -> ArtifactSetting
     }
 }
 
+/// Decodes immutable installation identity columns for this settings owner.
+///
+/// This remains local to preserve a domain distinction that the canonical
+/// backend decoder cannot express: malformed SQLite installation metadata is
+/// `InvalidInstallation`, while an unavailable/mistyped database value is a
+/// persistence failure.
 fn uuid_from_row(
     row: &sea_orm::QueryResult,
     column: &str,

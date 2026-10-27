@@ -280,13 +280,12 @@ async fn test_fleet_exclusion_fence_and_maintenance_start() {
     assert_eq!(replay.operation_id, op_id);
     let mut changed_trace = command.clone();
     changed_trace.context.trace_id = "trace-op-1-changed".to_string();
-    assert_eq!(
-        service
-            .start_maintenance(changed_trace, now)
-            .await
-            .unwrap_err(),
-        OperationsToolError::IdempotencyConflict
-    );
+    changed_trace.context.correlation_id = Uuid::new_v4();
+    let changed_observability_replay = service
+        .start_maintenance(changed_trace, now)
+        .await
+        .expect("changed observability context replays maintenance start");
+    assert_eq!(changed_observability_replay.operation_id, op_id);
 
     let fence_conflict = StartOperationsToolMaintenanceCommand {
         operation_id: Uuid::new_v4(),
@@ -582,13 +581,12 @@ async fn test_predecessor_recovery_authorization_and_single_attempt_exhaustion()
     assert_eq!(recovery_replay.operation_id, op_id);
     let mut changed_recovery_trace = recovery_command.clone();
     changed_recovery_trace.context.trace_id = "trace-recovery-1-changed".to_string();
-    assert_eq!(
-        service
-            .authorize_predecessor_recovery(changed_recovery_trace, now)
-            .await
-            .unwrap_err(),
-        OperationsToolError::IdempotencyConflict
-    );
+    changed_recovery_trace.context.correlation_id = Uuid::new_v4();
+    let changed_observability_replay = service
+        .authorize_predecessor_recovery(changed_recovery_trace, now)
+        .await
+        .expect("changed observability context replays recovery authorization");
+    assert_eq!(changed_observability_replay.operation_id, op_id);
 
     // Desired digests on node-1 should now point to predecessor digests
     let node1_ctrl = service

@@ -112,16 +112,6 @@ impl SeaOrmArtifactBindingIdempotencyStore {
             if stored_digest != request.request_digest {
                 return Err(ArtifactBindingIdempotencyError::Conflict);
             }
-            let stored_trace_id: String =
-                existing.try_get("", "trace_id").map_err(storage_error)?;
-            let stored_correlation_id: String = existing
-                .try_get("", "correlation_id")
-                .map_err(storage_error)?;
-            if stored_trace_id != request.context.trace_id
-                || stored_correlation_id != request.context.correlation_id.to_string()
-            {
-                return Err(ArtifactBindingIdempotencyError::Conflict);
-            }
             let status: String = existing.try_get("", "status").map_err(storage_error)?;
             if status == "completed" {
                 let response: String = existing.try_get("", "response").map_err(storage_error)?;
@@ -144,8 +134,6 @@ impl SeaOrmArtifactBindingIdempotencyStore {
                         backend.uuid_value(request.installation_id),
                         request.binding_id.clone().into(),
                         backend.uuid_value(request.context.idempotency_key),
-                        request.context.trace_id.clone().into(),
-                        backend.uuid_value(request.context.correlation_id),
                     ],
                 ))
                 .await
@@ -217,8 +205,6 @@ impl SeaOrmArtifactBindingIdempotencyStore {
                     request.binding_id.clone().into(),
                     backend.uuid_value(request.context.idempotency_key),
                     request.request_digest.clone().into(),
-                    request.context.trace_id.clone().into(),
-                    backend.uuid_value(request.context.correlation_id),
                 ],
             ))
             .await
@@ -259,8 +245,6 @@ impl SeaOrmArtifactBindingIdempotencyStore {
                     request.binding_id.clone().into(),
                     backend.uuid_value(request.context.idempotency_key),
                     request.request_digest.clone().into(),
-                    request.context.trace_id.clone().into(),
-                    backend.uuid_value(request.context.correlation_id),
                 ],
             ))
             .await
@@ -304,17 +288,13 @@ fn request_values(
 }
 
 fn lease_value(now: DateTime<Utc>, backend: SupportedBackend) -> sea_orm::Value {
-    let lease = now + Duration::seconds(LEASE_SECONDS);
-    match backend {
-        SupportedBackend::Postgres => lease.into(),
-        SupportedBackend::Sqlite => lease.to_rfc3339().into(),
-    }
+    backend.datetime_value(now + Duration::seconds(LEASE_SECONDS))
 }
 
 fn select_operation_sql(backend: SupportedBackend) -> String {
     let prefix = backend.placeholder_prefix();
     format!(
-        "SELECT request_digest, trace_id, CAST(correlation_id AS TEXT) AS correlation_id, status, CAST(response AS TEXT) AS response FROM module_artifact_binding_operations WHERE tenant_id = {prefix}1 AND actor_id = {prefix}2 AND installation_id = {prefix}3 AND binding_id = {prefix}4 AND idempotency_key = {prefix}5 LIMIT 1"
+        "SELECT request_digest, status, CAST(response AS TEXT) AS response FROM module_artifact_binding_operations WHERE tenant_id = {prefix}1 AND actor_id = {prefix}2 AND installation_id = {prefix}3 AND binding_id = {prefix}4 AND idempotency_key = {prefix}5 LIMIT 1"
     )
 }
 
@@ -325,7 +305,7 @@ fn recover_operation_sql(backend: SupportedBackend) -> String {
         SupportedBackend::Sqlite => "datetime(lease_expires_at) <= CURRENT_TIMESTAMP",
     };
     format!(
-        "UPDATE module_artifact_binding_operations SET operation_id = {prefix}1, lease_expires_at = {prefix}2 WHERE tenant_id = {prefix}3 AND actor_id = {prefix}4 AND installation_id = {prefix}5 AND binding_id = {prefix}6 AND idempotency_key = {prefix}7 AND trace_id = {prefix}8 AND correlation_id = {prefix}9 AND status = 'pending' AND {expired}"
+        "UPDATE module_artifact_binding_operations SET operation_id = {prefix}1, lease_expires_at = {prefix}2 WHERE tenant_id = {prefix}3 AND actor_id = {prefix}4 AND installation_id = {prefix}5 AND binding_id = {prefix}6 AND idempotency_key = {prefix}7 AND status = 'pending' AND {expired}"
     )
 }
 
@@ -340,14 +320,14 @@ fn complete_operation_sql(backend: SupportedBackend) -> String {
     let prefix = backend.placeholder_prefix();
     let now = backend.now_sql();
     format!(
-        "UPDATE module_artifact_binding_operations SET status = 'completed', response = {prefix}1, completed_at = {now} WHERE operation_id = {prefix}2 AND tenant_id = {prefix}3 AND actor_id = {prefix}4 AND installation_id = {prefix}5 AND binding_id = {prefix}6 AND idempotency_key = {prefix}7 AND request_digest = {prefix}8 AND trace_id = {prefix}9 AND correlation_id = {prefix}10 AND status = 'pending'"
+        "UPDATE module_artifact_binding_operations SET status = 'completed', response = {prefix}1, completed_at = {now} WHERE operation_id = {prefix}2 AND tenant_id = {prefix}3 AND actor_id = {prefix}4 AND installation_id = {prefix}5 AND binding_id = {prefix}6 AND idempotency_key = {prefix}7 AND request_digest = {prefix}8 AND status = 'pending'"
     )
 }
 
 fn abandon_operation_sql(backend: SupportedBackend) -> String {
     let prefix = backend.placeholder_prefix();
     format!(
-        "DELETE FROM module_artifact_binding_operations WHERE operation_id = {prefix}1 AND tenant_id = {prefix}2 AND actor_id = {prefix}3 AND installation_id = {prefix}4 AND binding_id = {prefix}5 AND idempotency_key = {prefix}6 AND request_digest = {prefix}7 AND trace_id = {prefix}8 AND correlation_id = {prefix}9 AND status = 'pending'"
+        "DELETE FROM module_artifact_binding_operations WHERE operation_id = {prefix}1 AND tenant_id = {prefix}2 AND actor_id = {prefix}3 AND installation_id = {prefix}4 AND binding_id = {prefix}5 AND idempotency_key = {prefix}6 AND request_digest = {prefix}7 AND status = 'pending'"
     )
 }
 
@@ -470,18 +450,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn changed_command_context_conflicts_with_a_binding_replay() {
+    async fn changed_observability_context_replays_a_completed_binding() {
         let store = store().await;
         let request = request(Uuid::new_v4(), "stable");
-        assert!(matches!(
-            store.claim(&request).await.expect("initial claim"),
-            ArtifactBindingIdempotencyClaim::Execute { .. }
-        ));
+        let operation_id = match store.claim(&request).await.expect("initial claim") {
+            ArtifactBindingIdempotencyClaim::Execute { operation_id } => operation_id,
+            other => panic!("expected execution claim, got {other:?}"),
+        };
+        let response = serde_json::json!({ "status": "accepted" });
+        store
+            .complete(&request, operation_id, &response)
+            .await
+            .expect("complete");
         let mut changed_context = request;
         changed_context.context.trace_id = "test:changed-artifact-binding-trace".to_string();
+        changed_context.context.correlation_id = Uuid::new_v4();
         assert_eq!(
-            store.claim(&changed_context).await,
-            Err(ArtifactBindingIdempotencyError::Conflict)
+            store.claim(&changed_context).await.expect("replay"),
+            ArtifactBindingIdempotencyClaim::Replay { response }
         );
     }
 }

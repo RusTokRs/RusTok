@@ -11,11 +11,11 @@
 //! Pure Rust view-models and input validation for WebRTC Calls & Conferencing storefront UI.
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CallsStorefrontViewModel {
+pub struct CallsViewModel {
     pub title: String,
 }
 
-impl CallsStorefrontViewModel {
+impl CallsViewModel {
     pub fn new(title: String) -> Self {
         Self { title }
     }
@@ -27,7 +27,7 @@ mod tests {
 
     #[test]
     fn test_storefront_view_model() {
-        let vm = CallsStorefrontViewModel::new("Sample Title".to_string());
+        let vm = CallsViewModel::new("Sample Title".to_string());
         assert_eq!(vm.title, "Sample Title");
     }
 }
