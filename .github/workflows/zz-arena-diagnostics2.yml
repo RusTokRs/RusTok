@@ -190,7 +190,7 @@ jobs:
       - name: Checkout base migration source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: main
+          ref: e68bd1e2a6747d927bd0e52ef84473c9ce9aa684
           path: base
           fetch-depth: 1
           persist-credentials: false
@@ -293,7 +293,7 @@ jobs:
       - name: Checkout base migration source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: main
+          ref: e68bd1e2a6747d927bd0e52ef84473c9ce9aa684
           path: base
           fetch-depth: 1
           persist-credentials: false
@@ -403,7 +403,7 @@ jobs:
       - name: Checkout base contract source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: main
+          ref: e68bd1e2a6747d927bd0e52ef84473c9ce9aa684
           path: base
           fetch-depth: 1
           persist-credentials: false
