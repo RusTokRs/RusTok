@@ -2,16 +2,20 @@
 
 import fs from "node:fs";
 
+import { requirePublicReexport } from "./lib/forum-source-verification.mjs";
+
 function read(path) {
   return fs.readFileSync(path, "utf8");
 }
 
+const failures = [];
+
 function requireText(text, marker, message) {
-  if (!text.includes(marker)) throw new Error(message);
+  if (!text.includes(marker)) failures.push(message);
 }
 
 function requireAbsent(text, marker, message) {
-  if (text.includes(marker)) throw new Error(message);
+  if (text.includes(marker)) failures.push(message);
 }
 
 const mappingPath = "crates/modules/rustok-forum/src/export_mapping.rs";
@@ -52,7 +56,7 @@ for (const marker of [
 const inputStart = mapping.indexOf("#[derive(Clone, Debug)]\npub struct ForumExportOwnerViewBatch");
 const nextRecordStart = mapping.indexOf("#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]", inputStart + 1);
 if (inputStart < 0 || nextRecordStart <= inputStart) {
-  throw new Error(`${mappingPath}: owner-view input source boundary is invalid`);
+  failures.push(`${mappingPath}: owner-view input source boundary is invalid`);
 }
 const ownerViewInput = mapping.slice(inputStart, nextRecordStart);
 for (const forbidden of ["Serialize", "Deserialize", "#[serde("]) {
@@ -63,9 +67,14 @@ for (const forbidden of ["Serialize", "Deserialize", "#[serde("]) {
   );
 }
 
-for (const marker of ["pub mod export_mapping;", "pub use export_mapping::*;"]) {
-  requireText(lib, marker, `${libPath}: missing public export mapping marker ${marker}`);
-}
+// Crate-root re-exports are explicit lists, so a glob string pin cannot prove the public surface:
+// require the module to be public *and* actually re-exported from the root.
+requirePublicReexport(
+  failures,
+  lib,
+  "export_mapping",
+  `${libPath}: missing public export mapping marker`,
+);
 
 for (const forbidden of [
   "sea_orm",
@@ -84,9 +93,14 @@ for (const forbidden of [
   "INSERT ",
   "UPDATE ",
   "DELETE ",
-  ".insert(",
-  ".update(",
-  ".delete(",
+  // Collection inserts (`BTreeMap`/`BTreeSet`) are pure and legitimate here; pin the database write
+  // shapes instead so the guard forbids persistence, not in-memory bookkeeping.
+  ".exec(",
+  ".execute(",
+  ".execute_unprepared(",
+  ".insert_one(",
+  ".update_many(",
+  ".delete_many(",
 ]) {
   requireAbsent(
     mapping,
@@ -137,6 +151,12 @@ for (const marker of [
   "no test, Cargo command",
 ]) {
   requireText(packet, marker, `${packetPath}: missing ${marker}`);
+}
+
+if (failures.length > 0) {
+  console.error("Forum source guard failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
 }
 
 console.log("Forum FORUM-34D owner export fragment source: ok");

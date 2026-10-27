@@ -6,12 +6,16 @@ function read(path) {
   return fs.readFileSync(path, "utf8");
 }
 
+// Collect every drift instead of aborting on the first one: a guard that throws hides the rest of
+// the contract behind whichever marker happened to move first.
+const failures = [];
+
 function need(text, marker, label) {
-  if (!text.includes(marker)) throw new Error(`${label}: missing ${marker}`);
+  if (!text.includes(marker)) failures.push(`${label}: missing ${marker}`);
 }
 
 function forbid(text, marker, label) {
-  if (text.includes(marker)) throw new Error(`${label}: forbidden ${marker}`);
+  if (text.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
 const files = {
@@ -45,12 +49,14 @@ for (const marker of [
   "tenant_id.is_nil()",
   "!seen.insert(*category_id)",
   "forum_category::Entity::find()",
-  "forum_category_taxonomy_binding::Entity::find()",
+  "TaxonomyOwnerCategoryReader::new(self.db.clone())",
+  ".load_scoped_categories(",
   "TaxonomyOwnerCategoryReader::new",
   "TaxonomyScopeType::Module",
   'Some("forum")',
   "projection.available_locales",
-  "has no Taxonomy Category binding",
+  "Taxonomy Category projection is missing",
+  "has no Taxonomy-owned locale translation",
   "Taxonomy Category",
 ]) need(source.categoryFacade, marker, "category Taxonomy locale API");
 for (const marker of [
@@ -105,5 +111,19 @@ for (const marker of [
   "all three current Forum export shapes",
   "no tests, Cargo commands",
 ]) need(source.packet, marker, "FORUM-34G historical packet");
+
+for (const retired of ["forum_category_taxonomy_binding::Entity::find()"]) {
+  forbid(
+    source.categoryFacade,
+    retired,
+    "category locale API must read Taxonomy-owned copy instead of the retired binding join",
+  );
+}
+
+if (failures.length > 0) {
+  console.error("Forum category/topic locale enumeration ownership source failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
 
 console.log("Forum category/topic locale enumeration ownership source: ok");

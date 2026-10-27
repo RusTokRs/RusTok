@@ -6,12 +6,16 @@ function read(path) {
   return fs.readFileSync(path, "utf8");
 }
 
+// Collect every drift instead of aborting on the first one: a guard that throws hides the rest of
+// the contract behind whichever marker happened to move first.
+const failures = [];
+
 function need(text, marker, label) {
-  if (!text.includes(marker)) throw new Error(`${label}: missing ${marker}`);
+  if (!text.includes(marker)) failures.push(`${label}: missing ${marker}`);
 }
 
 function forbid(text, marker, label) {
-  if (text.includes(marker)) throw new Error(`${label}: forbidden ${marker}`);
+  if (text.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
 const files = {
@@ -27,7 +31,8 @@ const source = Object.fromEntries(
 
 for (const marker of [
   "pub mod import_write_preparation;",
-  "pub use import_write_preparation::*;",
+  "pub use import_write_preparation::{",
+  "ForumImportWritePreparer",
 ]) need(source.lib, marker, "forum import write preparation export");
 
 for (const marker of [
@@ -122,6 +127,12 @@ for (const marker of [
 const libWiringCount = source.lib.split("import_write_preparation").length - 1;
 if (libWiringCount !== 2) {
   throw new Error(`forum import write preparation wiring count: ${libWiringCount}`);
+}
+
+if (failures.length > 0) {
+  console.error("Forum source guard failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
 }
 
 console.log("Forum FORUM-34L bounded import write preparation source: ok");

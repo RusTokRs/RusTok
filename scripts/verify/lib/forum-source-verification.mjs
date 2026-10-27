@@ -325,3 +325,23 @@ export function requireProse(failures, source, marker, label) {
     (text ?? "").replace(/\s+/g, " ").replace(/\s*\.\s*/g, ".").trim();
   if (!normalize(source).includes(normalize(marker))) failures.push(`${label}: missing ${marker}`);
 }
+
+/**
+ * Crate-root exposure of a module's public surface.
+ *
+ * Owners re-export either as `pub use module::*;` or as an explicit list, and they move between the
+ * two whenever a name collides. Both expose the same contract, so the rule is: the module is public
+ * and the crate root re-exports it, in whichever shape the owner writes today.
+ */
+export function requirePublicReexport(failures, source, moduleName, label) {
+  const escaped = moduleName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const moduleIsPublic = new RegExp(`pub\\s+mod\\s+${escaped}\\b`).test(source ?? "");
+  if (!moduleIsPublic) {
+    failures.push(`${label}: module ${moduleName} is not public`);
+    return;
+  }
+  const reexport = new RegExp(`pub\\s+use\\s+${escaped}::\\s*(\\*|\\{[^}]*\\})`, "s");
+  if (!reexport.test(source ?? "")) {
+    failures.push(`${label}: crate root does not re-export ${moduleName}`);
+  }
+}
