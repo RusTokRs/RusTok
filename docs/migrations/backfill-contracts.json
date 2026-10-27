@@ -309,6 +309,89 @@
       "mode": "none",
       "owner": "rustok-pages",
       "reason": "Adds an empty Pages-owned layout catalog without changing existing pages.template labels or published artifacts; default remains a virtual empty layout and non-default legacy labels require an explicit operator audit before publish enforcement"
+    },
+    {
+      "id": "module-executor-readiness-receipts-bootstrap",
+      "migration": "m20261025_000077_executor_readiness_validity",
+      "mode": "none",
+      "owner": "rustok-modules",
+      "reason": "Creates the executor readiness receipts table as new owner storage for readiness evidence recorded by governed transitions after upgrade; no prior readiness receipts exist anywhere in the base schema to backfill"
+    },
+    {
+      "id": "registry-release-unyank-ledger-bootstrap",
+      "migration": "m20261025_000078_registry_release_unyank_operations",
+      "mode": "none",
+      "owner": "rustok-modules",
+      "reason": "Creates the release un-yank idempotency ledger as new owner storage; un-yank operations can only be recorded by the separately authorized transition introduced with this migration, so no historical rows exist to backfill"
+    },
+    {
+      "id": "module-operation-idempotency-indexes",
+      "migration": "m20261025_000079_module_operation_idempotency_indexes",
+      "mode": "none",
+      "owner": "rustok-modules",
+      "reason": "Adds lookup and uniqueness indexes for module operation idempotency only; no table data is created, changed, or removed"
+    },
+    {
+      "id": "policy-revision-cursor-sequence-epoch",
+      "migration": "m20261025_000080_policy_revision_cursor_sequences",
+      "mode": "none",
+      "owner": "rustok-modules",
+      "reason": "Adds current_sequence to policy revision cursors with the constant default 0, deliberately starting a new sequence epoch; the value does not claim to reconstruct pre-migration advance history, so nothing can be truthfully backfilled"
+    },
+    {
+      "id": "transition-checkpoint-state-rename",
+      "migration": "m20261025_000081_transition_intervention_required_state",
+      "mode": "fixture",
+      "owner": "rustok-modules",
+      "reason": "Renames the stored transition checkpoint state FailedClosed to InterventionRequired in every existing checkpoint JSON document; checkpoints in any other state are preserved unchanged",
+      "setup_sql": "INSERT INTO module_transition_checkpoints (operation_id, revision, module_slug, tenant_id, predecessor_digest, candidate_digest, state, security_epoch, fences, recovery_attempt_count, created_at, updated_at) VALUES ('77000000-0000-0000-0000-000000000001', 1, 'fixture-module', NULL, NULL, 'sha256:fixture-candidate', '{\"state\":\"FailedClosed\"}'::jsonb, 0, '{}'::jsonb, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+      "assertion_sql": "SELECT (EXISTS (SELECT 1 FROM module_transition_checkpoints WHERE operation_id = '77000000-0000-0000-0000-000000000001'::uuid AND state->>'state' = 'InterventionRequired') AND NOT EXISTS (SELECT 1 FROM module_transition_checkpoints WHERE state->>'state' = 'FailedClosed')) AS passed"
+    },
+    {
+      "id": "artifact-gc-candidate-claims-bootstrap",
+      "migration": "m20261025_000082_gc_candidate_claims",
+      "mode": "none",
+      "owner": "rustok-modules",
+      "reason": "Creates the blob GC candidate and publication reservation tables as new owner storage and adds claim columns with constant initial defaults ('queued', revision 1, no delete start) to existing data-object GC candidates; no value is derived from existing row data"
+    },
+    {
+      "id": "artifact-permission-registration-status-backfill",
+      "migration": "m20261025_000083_artifact_permission_registration_status",
+      "mode": "fixture",
+      "owner": "rustok-modules",
+      "reason": "Adds permission_registration_status to existing admissions: admissions whose installation descriptor declares no permissions become not_required, while admissions with declared permissions conservatively start as pending because the prior schema did not record whether projection completed",
+      "setup_sql": "INSERT INTO module_artifact_installations (installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, slug, version, payload_kind, runtime_abi, payload_digest, entrypoint, descriptor, data_owner_id, namespace_instance_id, secret_instance_id, settings_instance_id, dependency_graph_revision, dependency_graph_digest, dependency_lock, installed_at) VALUES ('77000000-0000-0000-0000-000000000011', 'platform', NULL, 'fixture-registry', 'fixture/repo', 'sha256:fixture-manifest-1', 'fixture-module-1', '1.0.0', 'wasm', 'rustok-abi-1', 'sha256:fixture-payload-1', 'main', '{\"permissions\":[]}'::jsonb, '77000000-0000-0000-0000-0000000000a1', NULL, NULL, '77000000-0000-0000-0000-0000000000b1', 1, 'sha256:fixture-graph', '{}'::jsonb, CURRENT_TIMESTAMP); INSERT INTO module_artifact_installations (installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, slug, version, payload_kind, runtime_abi, payload_digest, entrypoint, descriptor, data_owner_id, namespace_instance_id, secret_instance_id, settings_instance_id, dependency_graph_revision, dependency_graph_digest, dependency_lock, installed_at) VALUES ('77000000-0000-0000-0000-000000000012', 'platform', NULL, 'fixture-registry', 'fixture/repo', 'sha256:fixture-manifest-2', 'fixture-module-2', '1.0.0', 'wasm', 'rustok-abi-1', 'sha256:fixture-payload-2', 'main', '{\"permissions\":[\"modules.read\"]}'::jsonb, '77000000-0000-0000-0000-0000000000a2', NULL, NULL, '77000000-0000-0000-0000-0000000000b2', 1, 'sha256:fixture-graph', '{}'::jsonb, CURRENT_TIMESTAMP); INSERT INTO module_artifact_installations (installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, slug, version, payload_kind, runtime_abi, payload_digest, entrypoint, descriptor, data_owner_id, namespace_instance_id, secret_instance_id, settings_instance_id, dependency_graph_revision, dependency_graph_digest, dependency_lock, installed_at) VALUES ('77000000-0000-0000-0000-000000000013', 'platform', NULL, 'fixture-registry', 'fixture/repo', 'sha256:fixture-manifest-3', 'fixture-module-3', '1.0.0', 'wasm', 'rustok-abi-1', 'sha256:fixture-payload-3', 'main', '{}'::jsonb, '77000000-0000-0000-0000-0000000000a3', NULL, NULL, '77000000-0000-0000-0000-0000000000b3', 1, 'sha256:fixture-graph', '{}'::jsonb, CURRENT_TIMESTAMP); INSERT INTO module_artifact_admissions (stage_id, installation_id, payload_digest, media_type, size_bytes, verification_evidence, status, revision, committed_at) VALUES ('77000000-0000-0000-0000-000000000021', '77000000-0000-0000-0000-000000000011', 'sha256:fixture-payload-1', 'application/vnd.rustok.module', 0, '{}'::jsonb, 'installed', 1, CURRENT_TIMESTAMP); INSERT INTO module_artifact_admissions (stage_id, installation_id, payload_digest, media_type, size_bytes, verification_evidence, status, revision, committed_at) VALUES ('77000000-0000-0000-0000-000000000022', '77000000-0000-0000-0000-000000000012', 'sha256:fixture-payload-2', 'application/vnd.rustok.module', 0, '{}'::jsonb, 'installed', 1, CURRENT_TIMESTAMP); INSERT INTO module_artifact_admissions (stage_id, installation_id, payload_digest, media_type, size_bytes, verification_evidence, status, revision, committed_at) VALUES ('77000000-0000-0000-0000-000000000023', '77000000-0000-0000-0000-000000000013', 'sha256:fixture-payload-3', 'application/vnd.rustok.module', 0, '{}'::jsonb, 'installed', 1, CURRENT_TIMESTAMP)",
+      "assertion_sql": "SELECT ((SELECT permission_registration_status FROM module_artifact_admissions WHERE installation_id = '77000000-0000-0000-0000-000000000011'::uuid) = 'not_required' AND (SELECT permission_registration_status FROM module_artifact_admissions WHERE installation_id = '77000000-0000-0000-0000-000000000012'::uuid) = 'pending' AND (SELECT permission_registration_status FROM module_artifact_admissions WHERE installation_id = '77000000-0000-0000-0000-000000000013'::uuid) = 'not_required') AS passed"
+    },
+    {
+      "id": "module-operation-result-snapshot-column",
+      "migration": "m20261025_000084_module_operation_result_snapshot",
+      "mode": "none",
+      "owner": "rustok-modules",
+      "reason": "Adds the nullable result_snapshot column to module_operations; operations committed before the migration keep NULL and idempotent replay falls back to the documented legacy reconstruction, so no snapshot can be truthfully backfilled"
+    },
+    {
+      "id": "artifact-ui-resources-projection-backfill",
+      "migration": "m20261025_000085_artifact_ui_resources",
+      "mode": "fixture",
+      "owner": "rustok-modules",
+      "reason": "Creates the artifact UI resources projection and backfills it from the immutable descriptors of installations admitted before upgrade, projecting navigation routes and storefront slots exactly as admission-time projection does for new installations",
+      "setup_sql": "INSERT INTO module_artifact_installations (installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, slug, version, payload_kind, runtime_abi, payload_digest, entrypoint, descriptor, data_owner_id, namespace_instance_id, secret_instance_id, settings_instance_id, dependency_graph_revision, dependency_graph_digest, dependency_lock, installed_at) VALUES ('77000000-0000-0000-0000-000000000014', 'platform', NULL, 'fixture-registry', 'fixture/repo', 'sha256:fixture-manifest-4', 'fixture-module-4', '1.0.0', 'wasm', 'rustok-abi-1', 'sha256:fixture-payload-4', 'main', '{\"ui_contributions\":[{\"content\":{\"kind\":\"navigation\",\"route\":\"/fixture-route\"}},{\"content\":{\"kind\":\"storefront_slot\",\"slot\":\"fixture-slot\"}}]}'::jsonb, '77000000-0000-0000-0000-0000000000a4', NULL, NULL, '77000000-0000-0000-0000-0000000000b4', 1, 'sha256:fixture-graph', '{}'::jsonb, CURRENT_TIMESTAMP)",
+      "assertion_sql": "SELECT (EXISTS (SELECT 1 FROM module_artifact_ui_resources WHERE installation_id = '77000000-0000-0000-0000-000000000014'::uuid AND resource_kind = 'navigation_route' AND resource_key = '/fixture-route' AND scope_kind = 'platform' AND tenant_id IS NULL) AND EXISTS (SELECT 1 FROM module_artifact_ui_resources WHERE installation_id = '77000000-0000-0000-0000-000000000014'::uuid AND resource_kind = 'storefront_slot' AND resource_key = 'fixture-slot' AND scope_kind = 'platform' AND tenant_id IS NULL)) AS passed"
+    },
+    {
+      "id": "gc-candidate-platform-discovery-policy",
+      "migration": "m20261025_000086_gc_candidate_platform_discovery_policy",
+      "mode": "none",
+      "owner": "rustok-modules",
+      "reason": "Recreates the row-level security scope policy on data-object GC candidates to admit the transaction-local platform control-plane owner for tenant discovery; policy-only change with no row data created, changed, or removed"
+    },
+    {
+      "id": "module-executor-pools-bootstrap",
+      "migration": "m20261025_000087_executor_pools",
+      "mode": "none",
+      "owner": "rustok-modules",
+      "reason": "Creates the executor pools table as new owner storage for durable pool generations; pools are deployment facts registered by the host after upgrade, so no historical rows exist to backfill"
     }
   ]
 }
