@@ -302,7 +302,7 @@ jobs:
     name: Migration Smoke (PostgreSQL)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: check
+    needs: [check, coverage]
     services:
       postgres:
         image: postgres:16
@@ -382,7 +382,7 @@ jobs:
     name: Reference Artifacts Export
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: build-server
+    needs: [build-server, migration-smoke]
     services:
       postgres:
         image: postgres:16
