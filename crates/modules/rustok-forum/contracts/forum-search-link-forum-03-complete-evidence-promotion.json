@@ -36,7 +36,7 @@
     "target/forum-search-link-forum-03-topic-move-evidence.json"
   ],
   "fail_closed_requirements": [
-    "the canonical Forum plan still records FORUM-21 planned FORUM-23 in_progress and LINK-FORUM-03 planned before review",
+    "the canonical Forum plan still records FORUM-21 in_progress FORUM-23 in_progress and LINK-FORUM-03 planned before review",
     "the D17 contract remains source_ready_maintainer_execution_pending and points to the exact complete artifact reviewer verifier and scenario order",
     "the complete artifact has exact contract task source slice status coverage source commit and six canonical scenarios",
     "the complete artifact source commit equals git rev-parse HEAD and every retained source artifact reports the same commit",

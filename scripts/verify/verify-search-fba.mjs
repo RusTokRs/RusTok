@@ -88,7 +88,7 @@ hasNone(projectorCore, ['try_get::<i64>("", "total").ok())', 'unwrap_or(0)'], 'p
 hasNone(projectorFacade, ['try_get::<i64>("", "total").ok())'], 'projector facade bootstrap count handling');
 
 const lib = read('crates/modules/rustok-search/src/lib.rs');
-hasAll(lib, ['pub mod ports;', 'pub use ports::*;', 'canonical_search_result_url'], 'lib.rs');
+hasAll(lib, ['pub mod ports;', 'pub use ports::{SearchQueryPort, SearchSuggestionPort};', 'canonical_search_result_url'], 'lib.rs');
 const source = read('crates/modules/rustok-search/src/ports.rs');
 hasAll(source, ['pub trait SearchQueryPort', 'pub trait SearchSuggestionPort', 'impl SearchQueryPort for PgSearchEngine', 'impl SearchSuggestionPort for PgSearchEngine', 'PortCallPolicy', 'PortContext', 'PortError', 'search_error_to_port_error'], 'ports.rs');
 const queryImpl = source.slice(source.indexOf('impl SearchQueryPort for PgSearchEngine'));
@@ -197,7 +197,7 @@ for (const target of [
 const blogProjectionVerifier = read(blogProjectionVerifierPath);
 hasAll(blogProjectionVerifier, ['search-blog-projection-postgres-harness.json', 'targeted_missing_post_cleanup', 'module_toggle_cleanup_rebuild'], 'Blog projection verifier');
 const blogProjectionSelfTest = read(blogProjectionSelfTestPath);
-hasAll(blogProjectionSelfTest, ['accepts canonical owner-tag source', 'rejects metadata tags as Search projection source', 'rejects missing Taxonomy table availability gate'], 'Blog projection self-test');
+hasAll(blogProjectionSelfTest, ['accepts the owner-produced projection', 'rejects metadata tags as the projection source', 'rejects an author name joined from the account table'], 'Blog projection self-test');
 
 const plan = read('crates/modules/rustok-search/docs/implementation-plan.md');
 hasAll(plan, ['- FBA status: `boundary_ready`', 'search-fba-registry.json', 'SearchQueryPort', 'search-contract-test-static-matrix.json', 'search-runtime-fallback-smoke.json', 'search-runtime-contract-smoke.json', 'search-runtime-invocation-trace.json', 'whole-module extraction pilot', 'SearchEngine', '2026-07-16-media-search-extraction-boundaries.md', 'search-canonical-url-contract.json', 'single owner policy', 'no transport fallback', 'verify:search:canonical-url', 'test:verify:search:canonical-url', 'verify:search:blog-projection', 'test:verify:search:blog-projection'], 'local plan');

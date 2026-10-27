@@ -17,8 +17,12 @@ const migrations = fs.readFileSync(
   "utf8",
 );
 
+// Collect every drift instead of aborting on the first one: a guard that throws hides the rest of
+// the contract behind whichever marker happened to move first.
+const failures = [];
+
 function requireText(source, needle, message) {
-  if (!source.includes(needle)) throw new Error(message);
+  if (!source.includes(needle)) failures.push(message);
 }
 
 for (const marker of [
@@ -61,12 +65,33 @@ for (const marker of [
   requireText(migration, marker, `Forum moderation revision migration source is missing ${marker}`);
 }
 
+// The upgrade harness resolves the revision migration by name and installs every migration listed
+// before it, so the contract is "listed exactly once and reachable by name" — not "last in the
+// list", which stopped holding as soon as later forum migrations were appended after it.
 const migrationList = migrations.match(/pub fn migrations\(\)[\s\S]*?\n}\n/)?.[0];
-if (!migrationList) throw new Error("Forum production migration list could not be located");
-if (!/Box::new\(m20260807_000027_add_forum_moderation_subject_revisions::Migration\),\s*\]\s*}/.test(migrationList)) {
-  throw new Error(
-    "Forum moderation revision migration must remain the final production migration while the upgrade harness uses migrations().pop()",
-  );
+if (!migrationList) {
+  failures.push("Forum production migration list could not be located");
+} else {
+  const revisionEntries =
+    migrationList.match(
+      /Box::new\(m20260807_000027_add_forum_moderation_subject_revisions::Migration\)/g,
+    ) ?? [];
+  if (revisionEntries.length !== 1) {
+    failures.push(
+      `Forum moderation revision migration must be registered exactly once, found ${revisionEntries.length}`,
+    );
+  }
+  for (const needle of [
+    'position(|m| m.name().contains("add_forum_moderation_subject_revisions"))',
+    "migrations.drain(..index)",
+    "migrations.remove(0)",
+  ]) {
+    requireText(
+      test,
+      needle,
+      `Forum moderation upgrade harness must resolve the revision migration by name: missing ${needle}`,
+    );
+  }
 }
 
 for (const marker of [
@@ -78,6 +103,12 @@ for (const marker of [
   "cargo test -p rustok-forum --test moderation_revision_migration_contract",
 ]) {
   requireText(docs, marker, `Forum moderation revision migration handoff is missing ${marker}`);
+}
+
+if (failures.length > 0) {
+  console.error("Forum moderation revision migration contract source guard failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
 }
 
 console.log("Forum moderation revision migration contract source guard passed");

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { pinnedActionProblem } from "./lib/workflow-pins.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
@@ -169,6 +170,18 @@ requireMarkers("scripts/verify/verify-repository-ruleset-self-test.mjs", [
 ]);
 
 const approvalWorkflow = ".github/workflows/migration-infrastructure-approval.yml";
+// The workflows below must use pinned checkout/setup-node steps; the commit itself is governed by
+// verify:workflow-action-pins, so the guard no longer freezes one bumpable SHA per action.
+for (const relativePath of [
+  approvalWorkflow,
+  ".github/workflows/repository-ruleset-audit.yml",
+]) {
+  for (const action of ["actions/checkout", "actions/setup-node"]) {
+    const problem = pinnedActionProblem(read(relativePath), action);
+    if (problem) failures.push(`${relativePath}: ${problem}`);
+  }
+}
+
 requireMarkers(approvalWorkflow, [
   "pull_request_target:",
   "permissions:\n  contents: read\n  checks: write",
@@ -176,8 +189,6 @@ requireMarkers(approvalWorkflow, [
   "Checkout base policy source",
   "Checkout head policy as untrusted data",
   "allow-unsafe-pr-checkout: true",
-  "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
-  "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
   "Require approval for migration harness changes",
   "id: approval",
   "set +e",
@@ -218,8 +229,6 @@ requireMarkers(workflow, [
   "permissions:\n  contents: read\n  checks: write",
   "Repository ruleset contract evaluator",
   "Checkout base-owned ruleset policy",
-  "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
-  "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
   "persist-credentials: false",
   "Verify full repository ruleset contract suite",
   "base/scripts/verify/verify-repository-ruleset-self-test.mjs",

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { containsMarker, markeredIndexes } from "./lib/forum-source-verification.mjs";
 
@@ -48,9 +48,7 @@ const contractIngressPath =
 const inboxPath = "crates/modules/rustok-search/src/forum_inbox.rs";
 const reconciliationPath =
   "crates/modules/rustok-search/src/forum_reconciliation.rs";
-const projectorPath = "crates/modules/rustok-search/src/forum_projector.rs";
-const storefrontExecutionPath =
-  "crates/modules/rustok-search/src/forum_storefront_execution.rs";
+const projectorPath = "crates/modules/rustok-search/src/projection_driver.rs";
 const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
 const evidencePath =
   "target/forum-search-versioned-invalidation-deletion-acl-ordering-evidence.json";
@@ -102,11 +100,11 @@ requireAll(
     "ForumModule.migrations()",
     "SearchModule.migrations()",
     "database_url_in_schema",
-    "ForumSearchProjectionSourceFactory.build",
+    "forum_public_settings::projection_source(db.clone())",
     "ForumProjectionReconciler::new",
     "ForumSearchContractIngress::new",
-    "execute_forum_storefront_search",
-    "ForumSearchResultEligibilityService::new",
+    "execute_audience_eligible_search",
+    "forum_public_settings::eligibility_service",
     "ModerationService::new",
     ".hide_reply(",
     "TopicService::new",
@@ -234,7 +232,7 @@ requireAll(
     "ServerForumSearchResultEligibilityPort",
     "ForumSearchResultEligibilityService::new",
     "filter_public_storefront_visible",
-    "StorefrontSearchResultEligibilityPort",
+    "SearchAudiencePolicyPort",
     "ensure_forum_enabled",
   ],
   "server Forum result eligibility adapter",
@@ -272,7 +270,7 @@ requireAll(
   [
     "DomainEvent::ForumReplyStatusChanged",
     "DomainEvent::ForumTopicStatusChanged",
-    "self.forum_projector",
+    "self.projection_driver",
     "rebuild_tenant(envelope.tenant_id)",
     '("forum_topic", Some(_))',
     '("forum_category", Some(category_id))',
@@ -287,35 +285,48 @@ requireAll(
   [
     "self.source",
     ".list_public_documents(",
-    "delete_forum_scope(&tx, tenant_id)",
+    "self.delete_scope(&tx, tenant_id).await?",
     "INSERT INTO search_documents",
-    "if entity_type == FORUM_TOPIC_ENTITY_TYPE",
+    "if self.source.refresh_scope(entity_type) == SearchProjectionRefreshScope::Tenant",
     "return self.rebuild_tenant(tenant_id).await",
-    "delete_forum_entity",
+    "self.delete_entity_in(&tx, tenant_id, entity_type, entity_id).await?",
   ],
   "production Forum current-state projector",
 );
 
-const storefrontExecution = read(storefrontExecutionPath);
+// The Forum-only execution owner is retired: its visible totals, facets and pagination
+// were computed in Rust over a capped candidate window. The generic executor must keep
+// computing all of them in PostgreSQL over the authorized row set instead, so the guard
+// now asserts the durable shape rather than the retired pipeline's ordering.
+const audienceExecutorPath =
+  "crates/modules/rustok-search/src/audience_security.rs";
+const audienceExecutor = read(audienceExecutorPath);
 requireAll(
-  storefrontExecution,
+  audienceExecutor,
   [
-    "resolve_storefront_search_result_candidates",
-    "let total = visible_items.len() as u64",
-    "build_forum_result_facets(&visible_items)",
+    "pub async fn execute_audience_eligible_search",
+    "SearchAudienceDocumentScope::new",
+    ".search_storefront_scoped(",
+  ],
+  "generic audience executor",
+);
+forbidAll(
+  audienceExecutor,
+  [
+    "visible_items",
+    "build_forum_result_facets",
     ".skip(request.query.offset)",
     ".take(request.query.limit)",
-    "Forum storefront Search requires an explicit Forum-only resolved source scope",
   ],
-  "production storefront eligibility ordering",
+  "generic audience executor",
 );
-const eligibilityIndex = markerIndex(storefrontExecution, "resolve_storefront_search_result_candidates");
-const totalIndex = markerIndex(storefrontExecution, "let total = visible_items.len() as u64");
-const facetsIndex = markerIndex(storefrontExecution, "build_forum_result_facets(&visible_items)");
-const offsetIndex = markerIndex(storefrontExecution, ".skip(request.query.offset)");
-assert.ok(eligibilityIndex >= 0 && eligibilityIndex < totalIndex);
-assert.ok(totalIndex >= 0 && totalIndex < facetsIndex);
-assert.ok(facetsIndex >= 0 && facetsIndex < offsetIndex);
+for (const retiredPath of [
+  "crates/modules/rustok-search/src/forum_storefront_execution.rs",
+  "crates/modules/rustok-search/src/forum_storefront_execution_public.rs",
+  "crates/modules/rustok-search/src/storefront_result_eligibility.rs",
+]) {
+  assert.ok(!existsSync(resolve(root, retiredPath)), `${retiredPath}: retired file must not exist`);
+}
 
 const serverCargo = read(serverCargoPath);
 requireAll(

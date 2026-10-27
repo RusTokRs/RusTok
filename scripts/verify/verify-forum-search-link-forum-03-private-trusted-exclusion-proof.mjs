@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { containsMarker } from "./lib/forum-source-verification.mjs";
+
 const root = process.cwd();
 const contractPath =
   "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-private-trusted-exclusion-proof.json";
@@ -31,7 +33,7 @@ function read(path) {
 function requireIncludes(source, fragments, label) {
   for (const fragment of fragments) {
     assert.ok(
-      source.includes(fragment),
+      containsMarker(source, fragment),
       `${label} is missing required source marker: ${fragment}`,
     );
   }
@@ -77,7 +79,7 @@ assert.deepEqual(contract.required_runtime, {
   host_package: "rustok-server",
   search_inbox: "search_projection_inbox",
   projector: "ForumProjectionReconciler",
-  storefront_execution: "execute_forum_storefront_search",
+  storefront_execution: "execute_audience_eligible_search",
 });
 
 requireArrayIncludes(
@@ -146,10 +148,10 @@ requireIncludes(
     "channel_members_any: vec![TRUSTED_CHANNEL.to_string()]",
     "Some(vec![TRUSTED_CHANNEL.to_string()])",
     "ForumSearchContractIngress::new(db.clone())",
-    "ForumSearchProjectionSourceFactory.build(db.clone())",
+    "forum_public_settings::projection_source(db.clone())",
     "ForumProjectionReconciler::new(db.clone(), projection_source)",
-    "execute_forum_storefront_search(",
-    "ForumSearchResultEligibilityService::new(self.db.clone())",
+    "execute_audience_eligible_search(",
+    "forum_public_settings::eligibility_service(self.db.clone())",
     "ForumSearchResultEligibilityService::with_audience_facts(",
     ".with_deadline(Duration::from_secs(5))",
     "legitimate_private_topic_documents",
@@ -270,7 +272,10 @@ requireIncludes(
   routeVisibility,
   [
     "matching_topic_channel_access_subquery",
-    "ForumTopicVisibilityScope::storefront_for_viewer",
+    // The scope type may build itself through `Self::` internally; the rule is that the
+    // storefront-for-viewer constructor exists on the scope, not one call spelling.
+    "pub struct ForumTopicVisibilityScope",
+    "pub fn storefront_for_viewer",
     "forum_topic::Column::Status.eq(TopicStatus::Open)",
   ],
   "route visibility owner",

@@ -16,49 +16,12 @@ import path from "node:path";
 
 const MAX_SOURCE_BYTES = 4 * 1024 * 1024;
 
-/**
- * Remove formatting only: a method chain continued on the next line is folded into one line and runs
- * of whitespace collapse. Tokens are never touched, so an absent call stays absent.
- */
-export function spaced(text) {
-  return text
-    .replace(/\r?\n\s*\.\s*/g, ".")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+// Layout-tolerant marker matching lives in `source-text.mjs` so guards outside the Forum corpus can
+// use the same rules without importing a Forum-specific module. Re-exported here to keep the Forum
+// guards' existing import path.
+import { containsMarker } from "./source-text.mjs";
 
-/**
- * A marker is a substring or a regular expression, compared on a layout-normalized copy of the source
- * (and of the marker, so a multi-line marker string in a guard still works).
- */
-export function containsMarker(source, marker) {
-  if (source === undefined || source === null) return false;
-  const haystack = spaced(source);
-  return marker instanceof RegExp ? marker.test(haystack) : haystack.includes(spaced(marker));
-}
-
-/**
- * Every occurrence index of a marker, so "exactly one" and ordering rules do not have to spell out one
- * formatting of the expression they count.
- */
-export function markeredIndexes(source, marker) {
-  const haystack = spaced(source);
-  if (marker instanceof RegExp) {
-    const flags = marker.flags.includes("g") ? marker : new RegExp(marker.source, `${marker.flags}g`);
-    const indexes = [];
-    for (let match = flags.exec(haystack); match !== null; match = flags.exec(haystack)) {
-      indexes.push(match.index);
-      if (match.index === flags.lastIndex) flags.lastIndex += 1;
-    }
-    return indexes;
-  }
-  const needle = spaced(marker);
-  const indexes = [];
-  for (let index = haystack.indexOf(needle); index >= 0; index = haystack.indexOf(needle, index + 1)) {
-    indexes.push(index);
-  }
-  return indexes;
-}
+export { containsMarker, markeredIndexes, spaced } from "./source-text.mjs";
 
 /**
  * Read a source file, or - when the path is a Rust module directory - the concatenation of that module
@@ -220,4 +183,209 @@ function closingBrace(text, open) {
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// --- Canonical ledger ---------------------------------------------------------------------------
+//
+// The Forum plan's delivery ledger is append-only: each slice appears as `### Delivered in
+// `FORUM-20AV`` and consecutive slices are collapsed into `### Delivered in `FORUM-20H` through
+// `FORUM-20Q``. Guards used to assert the *current* summary row instead (`FORUM-20A-G provide`), so
+// every delivered slice turned twenty unrelated guards red at once and each guard pinned a different
+// historical frontier. Nineteen of them could never be green together.
+//
+// These helpers read the append-only headings instead: a range heading covers every slice inside it,
+// and the mutable summary row is never matched. A slice counts as delivered exactly when a heading
+// names it, which is the property the ledger actually guarantees.
+
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+/** `A` = 1, `Z` = 26, `AA` = 27, `AF` = 32. */
+export function taskSuffixNumber(suffix) {
+  let value = 0;
+  for (const character of suffix) {
+    value = value * 26 + (LETTERS.indexOf(character) + 1);
+  }
+  return value;
+}
+
+/** Inverse of `taskSuffixNumber`, used to expand a range's upper bound. */
+export function taskSuffixLetters(value) {
+  let remaining = value;
+  let suffix = "";
+  while (remaining > 0) {
+    const digit = (remaining - 1) % 26;
+    suffix = LETTERS[digit] + suffix;
+    remaining = Math.floor((remaining - 1) / 26);
+  }
+  return suffix;
+}
+
+/**
+ * Every task id a ledger records as delivered.
+ *
+ * Two house styles exist and both are append-only: the Forum plan writes
+ * `### Delivered in `FORUM-20H` through `FORUM-20Q``, the Notifications plan writes
+ * `### `FORUM-20AI / FORUM-20AJ``. Both name the slices they cover, so a single parser can read either
+ * ledger and no guard has to know which spelling its owner chose.
+ */
+export function deliveredLedgerSlices(ledger) {
+  const delivered = new Set();
+  for (const line of ledger.split("\n")) {
+    if (!line.startsWith("### ")) continue;
+    const ids = [...line.matchAll(/FORUM-([0-9]+)([A-Z]+)/g)];
+    if (ids.length === 0) continue;
+    const module = ids[0][1];
+    if (ids.length === 2 && /\bthrough\b/.test(line)) {
+      const first = taskSuffixNumber(ids[0][2]);
+      const last = taskSuffixNumber(ids[1][2]);
+      if (ids[1][1] !== module || last < first) {
+        delivered.add(`FORUM-${module}${ids[0][2]}`);
+        continue;
+      }
+      for (let value = first; value <= last; value += 1) {
+        delivered.add(`FORUM-${module}${taskSuffixLetters(value)}`);
+      }
+      continue;
+    }
+    for (const [, idModule, suffix] of ids) delivered.add(`FORUM-${idModule}${suffix}`);
+  }
+  return delivered;
+}
+
+/**
+ * Assert that the canonical ledger records every slice the contract requires, and that the contract
+ * itself has moved off the historical `pending` state once the ledger advanced past it.
+ */
+export function assertCanonicalLedger({
+  failures,
+  plan,
+  slices = [],
+  markers = [],
+  planSync,
+  label,
+}) {
+  if (slices.length > 0 && !plan.includes("| `FORUM-20` |")) {
+    failures.push(`${label}: the canonical plan no longer carries the FORUM-20 program-ledger row`);
+  }
+  const delivered = deliveredLedgerSlices(plan);
+  for (const slice of slices) {
+    if (!delivered.has(slice)) {
+      failures.push(`${label}: the canonical plan does not record ${slice} as delivered`);
+    }
+  }
+  // Content markers are matched layout-tolerantly: a delivered slice's sentence may be re-wrapped, and
+  // that is not a missing fact. They must come from an append-only delivered section, never from the
+  // mutable summary row - pinning the row is what made nineteen guards mutually unsatisfiable.
+  for (const marker of markers) {
+    if (!containsMarker(plan, marker)) {
+      failures.push(`${label}: the canonical plan does not record ${marker}`);
+    }
+  }
+  if (planSync && planSync.status !== "synchronized") {
+    failures.push(
+      `${label}: the canonical ledger records these slices as delivered; canonical_plan_sync.status must be synchronized`,
+    );
+  }
+}
+
+/**
+ * The owner notes end with a validation disclosure, and every guard used to pin one exact spelling of
+ * it (`not run by the implementation agent`, `were not run by`, ...). The sentence differs only in
+ * where the note wraps, so the guard checks that the note discloses *that nothing was executed*
+ * instead of matching one line break.
+ */
+export function requireValidationDisclosure(failures, note, label) {
+  const flattened = note.replace(/\s+/g, " ");
+  // Disclosures are written in several equivalent forms across the owner notes; match the claim,
+  // not one sentence layout.
+  const disclosed =
+    /were not run by the implementation|not run by the implementation|No (tests|compile or runtime status)|None were run by the implementation/.test(
+      flattened,
+    );
+  if (!disclosed) {
+    failures.push(`${label}: the note does not disclose that no tests, Cargo, formatting, or CI were run`);
+  }
+}
+
+/**
+ * Prose pins for owner documentation.
+ *
+ * A guard that pins one exact sentence of a README breaks on a re-wrap, and a guard that pins the
+ * *old* sentence breaks when the owner rewrites a paragraph to say the same thing better. Both are
+ * layout and revision facts, not contract drift. `requireProse` compares on a whitespace-flattened copy,
+ * so only a change of meaning can fail it.
+ *
+ * The rules for the marker still live in the guard: pin the numbers, the API names and the sentence the
+ * owner actually writes today, never sentence scaffolding such as the article that opens it.
+ */
+export function requireProse(failures, source, marker, label) {
+  // Fragment pins mix prose and short code spans, so whitespace is ignored on both sides — including
+  // the whitespace Rust puts between a receiver and the method it calls.
+  const normalize = (text) =>
+    (text ?? "").replace(/\s+/g, " ").replace(/\s*\.\s*/g, ".").trim();
+  if (!normalize(source).includes(normalize(marker))) failures.push(`${label}: missing ${marker}`);
+}
+
+/**
+ * Crate-root exposure of a module's public surface.
+ *
+ * Owners re-export either as `pub use module::*;` or as an explicit list, and they move between the
+ * two whenever a name collides. Both expose the same contract, so the rule is: the module is public
+ * and the crate root re-exports it, in whichever shape the owner writes today.
+ */
+export function requirePublicReexport(failures, source, moduleName, label) {
+  const escaped = moduleName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const moduleIsPublic = new RegExp(`pub\\s+mod\\s+${escaped}\\b`).test(source ?? "");
+  if (!moduleIsPublic) {
+    failures.push(`${label}: module ${moduleName} is not public`);
+    return;
+  }
+  const reexport = new RegExp(`pub\\s+use\\s+${escaped}::\\s*(\\*|\\{[^}]*\\})`, "s");
+  if (!reexport.test(source ?? "")) {
+    failures.push(`${label}: crate root does not re-export ${moduleName}`);
+  }
+}
+
+/**
+ * Ledger row contract for a module `implementation-plan.md`.
+ *
+ * The plan is a status table: one row per task, one lifecycle token, one description. Guards used
+ * to pin a whole sentence of that description plus a per-slice "Delivered through `FORUM-21X`"
+ * heading, so rewriting the ledger — including moving a row from `planned` to `in_progress` — turned
+ * into a red check even though the delivered surface had not moved. The contract that survives
+ * rewording is: the row exists, its lifecycle token is one of the ledger's own values, it does not
+ * claim completion while retained evidence is outstanding, and the description still names the
+ * delivered surface.
+ *
+ * Returns the problems found so callers can report all of them at once instead of throwing on the
+ * first one.
+ */
+export function ledgerRowProblems(plan, taskId, options = {}) {
+  const {
+    label = `implementation-plan ${taskId}`,
+    statuses = ["planned", "in_progress"],
+    mentions = [],
+  } = options;
+  const problems = [];
+  const escaped = taskId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const row = new RegExp(
+    `^\\|\\s*\`${escaped}\`\\s*\\|\\s*\`([a-z_]+)\`\\s*\\|([^\\n]*)\\|\\s*$`,
+    "m",
+  ).exec(plan ?? "");
+  if (!row) {
+    problems.push(`${label}: ledger has no row for ${taskId}`);
+    return problems;
+  }
+  const [, status, description] = row;
+  if (!statuses.includes(status)) {
+    problems.push(
+      `${label}: ${taskId} is \`${status}\`, expected one of ${statuses.map((s) => `\`${s}\``).join(" / ")}`,
+    );
+  }
+  for (const phrase of mentions) {
+    if (!description.includes(phrase)) {
+      problems.push(`${label}: ${taskId} row no longer mentions ${phrase}`);
+    }
+  }
+  return problems;
 }

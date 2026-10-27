@@ -54,7 +54,10 @@ for (const marker of [
 ]) forbid(shipping, marker, 'mounted shipping-option direct owner construction');
 
 for (const marker of [
-  'context.require_policy(PortCallPolicy::write())',
+  // The admission helper splits the receiver across lines, so the marker is the call and
+  // the helper that owns it rather than one formatting of the two.
+  'fn require_write_admission(',
+  '.require_policy(PortCallPolicy::write())',
   'pub trait ShippingOptionAdminCommandPort',
 ]) need(owner, marker, 'fulfillment owner write admission');
 
@@ -81,14 +84,6 @@ if (requiredKeyUses.length !== 4) {
   failures.push(`expected four caller-owned shipping-option idempotency admissions, found ${requiredKeyUses.length}`);
 }
 
-for (const marker of [
-  'admin_shipping_option_command_idempotency_key(',
-]) forbid(shipping, marker, 'synthetic shipping-option identity helper');
-
-const requiredKeyUses = (shipping.match(/require_idempotency_key\(&headers\)/g) || []).length;
-if (requiredKeyUses !== 4) {
-  failures.push('expected four caller-owned shipping-option idempotency admissions, found ' + requiredKeyUses);
-}
 if (failures.length > 0) {
   console.error('[verify-commerce-admin-shipping-option-command-owner-port-cutover] FAIL');
   failures.forEach((failure) => console.error(`- ${failure}`));

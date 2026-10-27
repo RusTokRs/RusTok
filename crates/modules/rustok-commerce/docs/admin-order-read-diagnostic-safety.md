@@ -4,43 +4,66 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This slice hardens `map_admin_order_port_error`, the shared `PortError` mapper used by the mounted Commerce admin order list and detail read routes.
+This slice covers the two mounted Commerce admin order read routes — the order list and the order
+detail — as they are served today by `controllers/admin/orders_owner_ports.rs`.
 
-The routes continue to call the host-selected typed order read port with the same request context, owner operation, filters, pagination, locale fallback, and resource identifiers. Only the failure diagnostic projection changes.
+The list reads `OrderReadPort` (`list_order_projections`); the detail reads three host-selected ports and
+joins them: `OrderReadPort` (`read_order_projection`), `PaymentOrderReadPort`
+(`find_latest_collection_by_order`), and `FulfillmentReadPort`
+(`find_latest_fulfillment_by_order_projection`). All three requests are typed and
+carry the same tenant default locale fallback.
+
+The controller used to be duplicated in `controllers/admin/orders.rs`, a file that was never part of the
+module tree: `controllers/admin/mod.rs` mounts `orders_owner_ports.rs` under the `orders` module name.
+That file is deleted, so a verifier can no longer certify an unmounted copy of these routes.
 
 ## Bounded diagnostic projection
 
-The typed `PortError`, `AdminOrderErrorContext`, and `PortContext` are used for policy selection and then shadowed before `tracing::error!` by dedicated diagnostic structs.
+Reads log shape, never identity:
 
-The event no longer records the complete error, correlation ID, tenant UUID, actor UUID, order UUID, customer UUID, `PortActor`, channel, or locale. Instead it records:
+- the entry line records the operation plus `tenant_id_non_nil`, `actor_id_non_nil`, order presence and
+  nil-shape, and the list filters as presence only (`status_filter_present`, `customer_filter_present`) —
+  a filtered list and an unfiltered one are distinguishable without recording a customer identifier;
+- each failure line records the owner label, the tenant and order nil-shapes, the static owner operation,
+  the correlation identifier used to join the owner's own log, `owner_code_length` instead of the owner
+  error text, `retryable`, the projected `error_kind`, the selected public code, the HTTP status, and the
+  boundary.
 
-- a redacted Debug representation for the error;
-- the stable internal code and retryability;
-- `nil` / `non_nil` shapes for required UUIDs;
-- `absent` / `present_nil` / `present_non_nil` shapes for optional UUIDs;
-- empty/non-empty presence shapes for correlation and actor text;
-- absent/empty/non-empty presence for channel text;
-- locale length and the configured deadline;
-- owner operation, consumer operation, error kind, public code, HTTP status, owner, boundary, and the existing static event message.
-
-The existing broad verifier expressions remain present, but after shadowing they reference bounded diagnostic values rather than the original request and error payloads.
+No `PortError`, message text, UUID, actor, channel, or locale value is logged.
 
 ## Preserved behavior
 
 This work does not change:
 
-- `PortErrorKind` to HTTP policy mapping;
+- the `PortErrorKind` to HTTP policy mapping;
 - public status, code, or message selection;
 - `HttpError::new(status, code, message)` construction;
-- order list and detail permissions;
+- order list and detail permissions (`ORDERS_LIST`, `ORDERS_READ`);
 - owner-port selection and operations;
-- list filters, pagination, locale fallback, or successful response bodies;
-- the concrete mutation mapper;
-- payment and fulfillment detail mappers.
+- list filters, pagination, locale fallback, or successful response bodies.
+
+## Detail fan-out policy
+
+The detail route owns two read-specific mappers, `map_payment_detail_port_error` and
+`map_fulfillment_detail_port_error`. Each is defined once and called once, only from the detail route:
+a read failure cannot be reported through a write envelope, and a write failure cannot be reported
+through the detail ones.
+
+They differ where the domains differ — payment `InvariantViolation` is `409`
+`commerce_admin_payment_reconciliation_required` because the payment state must be reconciled before it
+can be read safely, while fulfillment `InvariantViolation` is `500` `commerce_admin_fulfillment_failed`.
+
+## Read deadline
+
+Every read context is built by `admin_order_port_context`, which resolves the scoped resource (the order
+id, or the tenant when the read is unscoped), attaches the actor, locale, and channel, and sets a two
+second deadline, so a stalled owner cannot pin an admin request.
 
 ## Remaining boundary
 
-This slice does not close raw diagnostic payloads in the admin order mutation mapper, order-detail payment and fulfillment mappers, return/change mutations, shipping, payment, fulfillment, product, or storefront transports. The broader ecommerce correlation-safe mapper and non-`PortError` envelope cleanup remains open.
+This slice does not close raw diagnostic payloads in return/change mutations, shipping, payment,
+fulfillment, product, or storefront transports. The broader ecommerce correlation-safe mapper and
+non-`PortError` envelope cleanup remains open.
 
 ## Evidence
 
@@ -50,4 +73,5 @@ This slice does not close raw diagnostic payloads in the admin order mutation ma
 
 ## Validation disclosure
 
-No tests, Node verifiers, formatting, Cargo commands, workflows, or CI were run. No compile or runtime status is promoted.
+No tests, Node verifiers, formatting, Cargo commands, workflows, or CI were run. No compile or runtime
+status is promoted.

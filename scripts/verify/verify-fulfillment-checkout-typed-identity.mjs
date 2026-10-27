@@ -27,6 +27,9 @@ const migration = read(
 const contract = JSON.parse(
   read('crates/modules/rustok-fulfillment/contracts/fulfillment-checkout-execution-v1.json'),
 );
+const expect = (condition, label) => {
+  if (!condition) failures.push(`${label}: contract assertion failed`);
+};
 
 for (const [content, values, label] of [
   [
@@ -77,11 +80,17 @@ for (const [content, values, label] of [
 }
 
 
+// Only the *retired* metadata identity accessors are forbidden. `checkout.cart_line_item_id`
+// is still a live metadata field (written by checkout execution and Commerce adoption), so a
+// blanket ban on reading the `checkout` object forbade supported code.
 for (const value of [
   'fn fulfillment_key(',
   'fn fulfillment_index(',
   'list_by_order(tenant_id, order_id)',
-  'get("checkout")',
+  'checkout.get("fulfillment_key")',
+  'checkout.get("fulfillment_index")',
+  'checkout.get("operation_id")',
+  'checkout.get("order_plan_hash")',
 ]) {
   forbidText(checkout, value, 'checkout legacy identity implementation');
 }
@@ -97,8 +106,18 @@ requireText(
   "THEN (btrim(metadata #>> '{checkout,fulfillment_index}'))::bigint = checkout_fulfillment_index",
   'PostgreSQL legacy fulfillment index comparison uses a guarded cast',
 );
-requireText(contract, '"typed_identity_migration_required": false', 'contract migration completion');
-requireText(contract, '"identity_guard": "scripts/verify/verify-fulfillment-checkout-typed-identity.mjs"', 'contract identity guard');
+// The contract is JSON, so the assertions read the parsed document instead of its
+// serialized text. A text marker here matched the file's formatting, not its meaning,
+// and the previous version passed the parsed object to `requireText`, which threw.
+expect(
+  contract?.compatibility?.typed_identity_migration_required === false,
+  'contract migration completion',
+);
+expect(
+  contract?.verification?.identity_guard ===
+    'scripts/verify/verify-fulfillment-checkout-typed-identity.mjs',
+  'contract identity guard',
+);
 requireText(
   migration,
   'UPDATE fulfillment_items AS fi\n            SET metadata = jsonb_set(',
@@ -121,8 +140,15 @@ requireText(
 );
 requireText(
   migration,
-  "AND trim(json_extract(fulfillment_items.metadata, '$.checkout.operation_id'))",
+  // The comparison is case-insensitive on purpose, so the pinned fragment is the
+  // parent-bound predicate itself rather than one exact spelling of it.
+  "json_extract(fulfillment_items.metadata, '$.checkout.operation_id')",
   'SQLite item cleanup is parent-bound',
+);
+requireText(
+  migration,
+  "lower(trim(json_extract(fulfillment_items.metadata, '$.checkout.operation_id')))",
+  'SQLite item cleanup compares the parent operation case-insensitively',
 );
 requireText(
   migration,

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { requirePortSurface } from './lib/rust-public-surface.mjs';
 
 const root = new URL('../../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
@@ -28,7 +29,12 @@ for (const op of ['read_region', 'list_regions_for_tenant']) {
 if (port.context !== 'rustok_api::ports::PortContext' || port.error !== 'rustok_api::ports::PortError') fail('context/error drift');
 if (port.deadline_required !== true || port.idempotency_required !== false || port.semantics !== 'read_only') fail('region read projection must be read-only with deadline semantics');
 if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/region-fba-registry.json"') || !manifest.includes('contract_version = "region.read_projection.v1"') || !manifest.includes('context = "rustok_api::ports::PortContext"') || !manifest.includes('error = "rustok_api::ports::PortError"')) fail('manifest metadata drift');
-if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib.rs must export ports');
+{
+  // The registry names the ports consumers import; the crate root has to publish exactly those,
+  // whichever re-export shape it uses (the wildcard is accepted, explicit lists are preferred).
+  const surface = requirePortSurface(lib, registry);
+  if (!surface.ok) fail(surface.message);
+}
 for (const marker of ['trait RegionReadPort', 'impl RegionReadPort for crate::RegionService', 'require_region_read_policy(', '.require_policy(PortCallPolicy::read())', 'RegionReadRequest', 'RegionListRequest', 'RegionReadProjection', 'region.country_code_empty', 'region.tenant_id_invalid', 'PortContext', 'PortError']) {
   if (!ports.includes(marker)) fail(`ports source missing ${marker}`);
 }

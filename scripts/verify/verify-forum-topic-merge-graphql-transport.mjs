@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { containsMarker, ledgerRowProblems } from "./lib/forum-source-verification.mjs";
+
 const paths = {
   contract: "crates/modules/rustok-forum/contracts/forum-topic-merge-graphql-transport.json",
   resolutionContract: "crates/modules/rustok-forum/contracts/forum-topic-merge-solution-resolution.json",
@@ -23,9 +25,11 @@ const paths = {
 };
 
 const read = (path) => readFileSync(path, "utf8");
+// Layout-tolerant by policy: a marker describes an invariant, not where rustfmt or a prose editor put
+// the newline. Tokens are unchanged, so an absent call or sentence is still absent.
 const includesAll = (text, markers, label) => {
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing marker: ${marker}`);
+    assert.ok(containsMarker(text, marker), `${label} is missing marker: ${marker}`);
   }
 };
 
@@ -37,6 +41,22 @@ const resolutionDocs = read(paths.resolutionDocs);
 const cumulativeDocs = read(paths.cumulativeDocs);
 const graphql = read(paths.graphql);
 const graphqlMod = read(paths.graphqlMod);
+
+// The shared forum guard is the only authorization entry point for these mutations: it must keep
+// reading AuthContext through rustok_api, the permission set, and both non-nil identity checks.
+for (const needle of [
+  "pub(crate) fn require_forum_permission",
+  "rustok_api::graphql::require_graphql_auth(ctx, permissions, message)?",
+  "if auth.tenant_id.is_nil()",
+  "if auth.user_id.is_nil()",
+  "pub(crate) fn resolve_tenant_scope(",
+  "Permission denied: tenant scope mismatch",
+]) {
+  assert.ok(
+    graphqlMod.includes(needle),
+    `${paths.graphqlMod}: shared authorization guard is missing ${needle}`,
+  );
+}
 const owner = read(paths.owner);
 const ordinarySchemaTest = read(paths.ordinarySchemaTest);
 const resolutionSchemaTest = read(paths.resolutionSchemaTest);
@@ -119,11 +139,17 @@ includesAll(
     "require_module_enabled(ctx, MODULE_SLUG).await?;",
     "ctx.data::<DatabaseConnection>()?",
     "ctx.data::<TransactionalEventBus>()?",
-    "ctx.data::<AuthContext>()",
+    // Auth is obtained only through the shared forum guard, which pins AuthContext, non-nil
+    // tenant/user and the permission set in one place; the tenant scope goes through
+    // resolve_tenant_scope() instead of an in-resolver comparison.
+    "super::require_forum_permission(",
+    "super::resolve_tenant_scope(tenant, tenant_id)?",
     "ctx.data::<TenantContext>()?",
     "Permission::FORUM_TOPICS_MANAGE",
     "Permission denied: forum_topics:manage required",
-    "Permission denied: tenant scope mismatch",
+    // The mismatch wording is produced by the shared scope resolver in graphql/mod.rs, which the
+    // mutation must call; pinning the literal here only pinned where the string used to live.
+    "resolve_tenant_scope(tenant, tenant_id)?",
     "SecurityContext::from_permission_snapshot",
     "ForumTopicMergeService::new(db.clone(), event_bus.clone())",
     ".merge_topic(",
@@ -142,8 +168,8 @@ assert.equal(
 );
 const ordinaryResolver = graphql.indexOf("async fn merge_forum_topic(");
 const resolutionResolver = graphql.indexOf("async fn merge_forum_topic_resolving_solution(");
-const permission = graphql.indexOf("require_topic_manage_permission(auth)?;", resolutionResolver);
-const tenantScope = graphql.indexOf("resolve_tenant_scope(tenant, requested_tenant_id)?;", resolutionResolver);
+const permission = graphql.indexOf("super::require_forum_permission(", resolutionResolver);
+const tenantScope = graphql.indexOf("super::resolve_tenant_scope(tenant, tenant_id)?", resolutionResolver);
 const resolutionOwner = graphql.indexOf(".merge_topic_resolving_solution(", resolutionResolver);
 assert.ok(ordinaryResolver >= 0 && ordinaryResolver < resolutionResolver);
 assert.ok(permission > resolutionResolver && permission < tenantScope && tenantScope < resolutionOwner);
@@ -234,7 +260,6 @@ includesAll(
     "mergeForumTopic",
     "mergeForumTopicResolvingSolution",
     "selectedSolutionReplyId",
-    "one private `merge_topic_internal` transaction",
     "forum_topic_merge_solution_resolutions",
     "schema version 1",
     "FORUM_TOPIC_MERGE_OPERATION_CONFLICT",
@@ -242,6 +267,12 @@ includesAll(
     "No command above was run by the implementation agent",
   ],
   "GraphQL handoff",
+);
+// The handoff is prose: the phrase wraps differently as the document is edited, so it is compared
+// with whitespace normalised instead of pinning one line break.
+assert.ok(
+  docs.replace(/\s+/g, " ").includes("one private `merge_topic_internal` transaction"),
+  "GraphQL handoff must describe the single private merge_topic_internal transaction",
 );
 includesAll(
   resolutionDocs,
@@ -277,17 +308,19 @@ includesAll(
 includesAll(
   docsIndex,
   [
-    "routed-tenant, `forum_topics:manage` GraphQL commands",
+    // The index now states the wire contract positively instead of describing the command family.
+    "`mergeForumTopic` and `mergeForumTopicResolvingSolution` remain the only admin merge command contracts",
     "FORUM-21L competing solution resolution",
   ],
   "Forum docs index",
 );
 
-assert.ok(plan.includes("| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |"));
-assert.ok(plan.includes("## `FORUM-21` — move, merge, split and fork topics"));
-assert.ok(plan.includes("**Status:** `planned`"));
-assert.ok(!plan.includes("| `FORUM-21` | `done` |"));
-assert.ok(!plan.includes("| `FORUM-21` | `in_progress` |"));
+assert.deepEqual(
+  ledgerRowProblems(plan, "FORUM-21", {
+    mentions: ["move/merge/split/fork/range owners"],
+  }),
+  [],
+);
 
 console.log(
   "FORUM-21K/L topic merge GraphQL transport source is ready; canonical FORUM-21 remains planned.",

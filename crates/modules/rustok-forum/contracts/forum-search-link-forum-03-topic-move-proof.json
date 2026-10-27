@@ -20,7 +20,7 @@
     "host_package": "rustok-server",
     "search_inbox": "search_projection_inbox",
     "projector": "ForumProjectionReconciler",
-    "storefront_execution": "execute_forum_storefront_search"
+    "storefront_execution": "execute_audience_eligible_search"
   },
   "required_owner_trace": [
     "revisions 1 and 2 are the real source and target category-create forum-scope invalidations",

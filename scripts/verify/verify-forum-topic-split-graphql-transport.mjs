@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { containsMarker, ledgerRowProblems } from "./lib/forum-source-verification.mjs";
+
 const paths = {
   contract: "crates/modules/rustok-forum/contracts/forum-topic-split-graphql-transport.json",
   ownerContract: "crates/modules/rustok-forum/contracts/forum-topic-split-owner.json",
@@ -18,9 +20,11 @@ const paths = {
 };
 
 const read = (path) => readFileSync(path, "utf8");
+// Layout-tolerant by policy: a marker describes an invariant, not where rustfmt or a prose editor put
+// the newline. Tokens are unchanged, so an absent call or sentence is still absent.
 const includesAll = (text, markers, label) => {
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing marker: ${marker}`);
+    assert.ok(containsMarker(text, marker), `${label} is missing marker: ${marker}`);
   }
 };
 
@@ -30,6 +34,22 @@ const docs = read(paths.docs);
 const ownerDocs = read(paths.ownerDocs);
 const graphql = read(paths.graphql);
 const graphqlMod = read(paths.graphqlMod);
+
+// The shared forum guard is the only authorization entry point for these mutations: it must keep
+// reading AuthContext through rustok_api, the permission set, and both non-nil identity checks.
+for (const needle of [
+  "pub(crate) fn require_forum_permission",
+  "rustok_api::graphql::require_graphql_auth(ctx, permissions, message)?",
+  "if auth.tenant_id.is_nil()",
+  "if auth.user_id.is_nil()",
+  "pub(crate) fn resolve_tenant_scope(",
+  "Permission denied: tenant scope mismatch",
+]) {
+  assert.ok(
+    graphqlMod.includes(needle),
+    `${paths.graphqlMod}: shared authorization guard is missing ${needle}`,
+  );
+}
 const owner = read(paths.owner);
 const schemaTest = read(paths.schemaTest);
 const ownerRuntimeTest = read(paths.ownerRuntimeTest);
@@ -73,11 +93,17 @@ includesAll(
     "require_module_enabled(ctx, MODULE_SLUG).await?;",
     "ctx.data::<DatabaseConnection>()?",
     "ctx.data::<TransactionalEventBus>()?",
-    "ctx.data::<AuthContext>()",
+    // Auth is obtained only through the shared forum guard, which pins AuthContext, non-nil
+    // tenant/user and the permission set in one place; the tenant scope goes through
+    // resolve_tenant_scope() instead of an in-resolver comparison.
+    "super::require_forum_permission(",
+    "super::resolve_tenant_scope(tenant, tenant_id)?",
     "ctx.data::<TenantContext>()?",
     "Permission::FORUM_TOPICS_MANAGE",
     "Permission denied: forum_topics:manage required",
-    "Permission denied: tenant scope mismatch",
+    // The mismatch wording is produced by the shared scope resolver in graphql/mod.rs, which the
+    // mutation must call; pinning the literal here only pinned where the string used to live.
+    "resolve_tenant_scope(tenant, tenant_id)?",
     "SecurityContext::from_permission_snapshot",
     "ForumTopicSplitService::new(db.clone(), event_bus.clone())",
     ".split_selected_replies(",
@@ -182,19 +208,19 @@ includesAll(
   ],
   "Forum docs index",
 );
-includesAll(
-  plan,
-  [
-    "### Delivered through `FORUM-21R`",
-    "FORUM-21P adds the idempotent selected-reply split owner",
-    "FORUM-21Q adds the idempotent reply-branch fork owner",
-    "FORUM-21R adds the routed-tenant, manager-only GraphQL split transport",
-    "public admin composition for split and fork workflows",
-    "bounded reply-range movement",
-  ],
-  "canonical FORUM-21 plan",
+// The plan carries one ledger row per task; the per-slice statements live in the handoff documents.
+assert.deepEqual(
+  ledgerRowProblems(plan, "FORUM-21", {
+    mentions: ["move/merge/split/fork/range owners"],
+  }),
+  [],
 );
-assert.ok(plan.includes("| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |"));
+assert.deepEqual(
+  ledgerRowProblems(plan, "FORUM-21", {
+    mentions: ["move/merge/split/fork/range owners"],
+  }),
+  [],
+);
 assert.ok(plan.includes("**Status:** `planned`"));
 assert.ok(!plan.includes("idempotent split-selected-replies workflow with immutable receipt"));
 assert.ok(!plan.includes("idempotent reply-branch fork workflow with explicit copy/identity policy"));

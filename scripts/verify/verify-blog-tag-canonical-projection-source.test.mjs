@@ -17,7 +17,7 @@ const files = [
   'crates/modules/rustok-taxonomy/src/owner_read.rs',
   'crates/modules/rustok-taxonomy/src/translation_target_tests.rs',
   'crates/modules/rustok-blog/tests/taxonomy_tags.rs',
-  'crates/modules/rustok-search/src/blog_projector.rs',
+  'crates/modules/rustok-blog/src/services/search_projection.rs',
   'crates/modules/rustok-search/tests/blog_projection_postgres_test.rs',
   'crates/modules/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json',
   'crates/modules/rustok-blog/docs/implementation-plan-slice-103.md',
@@ -83,12 +83,29 @@ test('rejects removal of the Blog read regression harness', () => {
 
 test('rejects metadata-backed Search projection', () => {
   const result = rejects((root) => {
-    const file = 'crates/modules/rustok-search/src/blog_projector.rs';
+    const file = 'crates/modules/rustok-blog/src/services/search_projection.rs';
     const source = readFileSync(absolute(root, file), 'utf8');
-    write(root, file, source.replace('FROM blog_post_tags relation', "FROM jsonb_array_elements_text(p.metadata -> 'tags') relation"));
+    write(
+      root,
+      file,
+      source.replace(
+        'let tag_map = load_post_tags_map(',
+        "let tag_map = load_metadata_tags(p.metadata -> 'tags', ",
+      ),
+    );
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /forbidden|blog_post_tags/);
+  assert.match(result.stderr, /forbidden|p\.metadata -> 'tags'/);
+});
+
+test('rejects a Search-side writer inside the Blog owner source', () => {
+  const result = rejects((root) => {
+    const file = 'crates/modules/rustok-blog/src/services/search_projection.rs';
+    const source = readFileSync(absolute(root, file), 'utf8');
+    write(root, file, `${source}\n// INSERT INTO search_documents (document_key) VALUES ($1)\n`);
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /forbidden search_documents/);
 });
 
 test('rejects removal of global Taxonomy Tag Search invalidation proof', () => {

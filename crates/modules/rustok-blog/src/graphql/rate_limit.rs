@@ -193,7 +193,7 @@ impl BlogGraphqlSurface {
             | Self::BulkArchivePosts
             | Self::BulkRestorePosts => Some(Permission::BLOG_POSTS_PUBLISH),
             Self::CreateBlogComment => Some(Permission::new(Resource::Comments, Action::Create)),
-            Self::ModerateComment => Some(Permission::BLOG_POSTS_MANAGE),
+            Self::ModerateComment => Some(Permission::COMMENTS_MODERATE),
             Self::CreateBlogCategory => Some(Permission::BLOG_CATEGORIES_CREATE),
             Self::UpdateBlogCategory => Some(Permission::BLOG_CATEGORIES_UPDATE),
             Self::DeleteBlogCategory => Some(Permission::BLOG_CATEGORIES_DELETE),
@@ -647,6 +647,12 @@ mod tests {
         assert!(!BlogGraphqlSurface::ModerateComment.actor_is_authorized(&publish));
 
         let manage = auth(tenant_id, vec![Permission::BLOG_POSTS_MANAGE]);
-        assert!(BlogGraphqlSurface::ModerateComment.actor_is_authorized(&manage));
+        assert!(
+            !BlogGraphqlSurface::ModerateComment.actor_is_authorized(&manage),
+            "moderation is a Comments grant, not a Blog post-management one"
+        );
+
+        let moderate = auth(tenant_id, vec![Permission::COMMENTS_MODERATE]);
+        assert!(BlogGraphqlSurface::ModerateComment.actor_is_authorized(&moderate));
     }
 }

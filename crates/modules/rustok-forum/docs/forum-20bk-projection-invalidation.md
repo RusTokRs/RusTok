@@ -93,12 +93,31 @@ Category content, placement and lifecycle writes are routed through private
 same-module transactional owner wrappers. Public category and topic audience
 service names now alias wrappers that delegate reads but own policy replacement.
 
-Moderation is exposed through a public facade. Its transactional owner and the
-legacy delegate are private, so callers cannot construct a bypass around reply
-counter, lock or solution invalidation.
+Moderation has exactly one implementation. `moderation_owner.rs` holds the
+transactional `ModerationService`, and `services/mod.rs` exposes it through the
+`moderation` seam, so there is no second facade or legacy delegate that a caller
+could reach to bypass reply-counter, lock or solution invalidation. The seam is a
+re-export, not a wrapper: one type, one set of commands, one invalidation path.
 
 This owner composition preserves REST, GraphQL and native call signatures while
 keeping read-only internal composers free to use private read implementations.
+
+## Downstream handoff
+
+The invalidation this slice publishes is consumed by four later slices, and each
+one owns its own contract:
+
+- `FORUM-20BL` — exact visibility-scoped category-subtree and tenant-wide
+  read-state commands (`forum-visibility-scoped-bulk-read.json`);
+- `FORUM-20BM` — full-rebuild external-scope preservation
+  (`forum-search-rebuild-scope-preservation.json`);
+- `FORUM-20BN` — legacy GraphQL query-snapshot cleanup
+  (`forum-graphql-query-snapshot-cleanup.json`);
+- `FORUM-20BO` — approved public reply documents
+  (`forum-approved-reply-search.json`).
+
+`FORUM-20BP` consumes all four. This note owns only the invalidation event, its
+scopes and its delivery guarantees; the downstream slices own their own fields.
 
 ## Delivery and idempotency
 

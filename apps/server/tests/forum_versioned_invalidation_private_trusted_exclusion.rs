@@ -33,13 +33,12 @@ use rustok_forum::{
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_search::{
     ForumProjectionReconciler, ForumSearchContractIngress, ForumSearchContractIngressOutcome,
-    ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchRequest, SearchModule,
-    SharedStorefrontSearchCategoryScopePort,
-    SharedStorefrontSearchResultEligibilityPort, StorefrontSearchCategoryScopePort,
-    StorefrontSearchCategoryScopeRequest, StorefrontSearchResultCandidate,
-    StorefrontSearchResultCandidateKind, StorefrontSearchResultEligibilityPort,
-    StorefrontSearchResultEligibilityRequest, StorefrontSearchTransport,
-    execute_forum_storefront_search,
+    PgSearchEngine, SearchAudiencePolicyPort, SearchAudienceRegistry, SearchAudienceRequest,
+    SearchModule, SearchQuery, SearchRankingProfile, SharedStorefrontSearchCategoryScopePort,
+    StorefrontSearchAudienceContext, StorefrontSearchCategoryScopePort,
+    StorefrontSearchCategoryScopeRequest,
+    StorefrontSearchTransport, execute_audience_eligible_search,
+    resolve_trusted_storefront_channel,
 };
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
@@ -219,7 +218,11 @@ struct ExactCategoryScopePort;
 
 #[async_trait]
 impl StorefrontSearchCategoryScopePort for ExactCategoryScopePort {
-    async fn expand_forum_category_scope(
+    fn source_module(&self) -> &'static str {
+        rustok_forum::FORUM_MODULE_SLUG
+    }
+
+    async fn expand_category_scope(
         &self,
         request: StorefrontSearchCategoryScopeRequest,
     ) -> Result<Vec<Uuid>, PortError> {
@@ -305,7 +308,7 @@ struct ExactForumEligibilityPort {
 }
 
 impl ExactForumEligibilityPort {
-    fn public(db: DatabaseConnection) -> SharedStorefrontSearchResultEligibilityPort {
+    fn public(db: DatabaseConnection) -> Arc<Self> {
         Arc::new(Self {
             db,
             mode: ViewerMode::Public,
@@ -316,7 +319,7 @@ impl ExactForumEligibilityPort {
         db: DatabaseConnection,
         user_id: Uuid,
         facts: SharedForumAudienceFactsPort,
-    ) -> SharedStorefrontSearchResultEligibilityPort {
+    ) -> Arc<Self> {
         Arc::new(Self {
             db,
             mode: ViewerMode::Authenticated { user_id, facts },
@@ -325,8 +328,12 @@ impl ExactForumEligibilityPort {
 }
 
 #[async_trait]
-impl StorefrontSearchResultEligibilityPort for ExactForumEligibilityPort {
-    async fn public_forum_discovery_allowed(&self, tenant_id: Uuid) -> Result<bool, PortError> {
+impl SearchAudiencePolicyPort for ExactForumEligibilityPort {
+    fn source_module(&self) -> &'static str {
+        rustok_forum::FORUM_MODULE_SLUG
+    }
+
+    async fn public_discovery_allowed(&self, tenant_id: Uuid) -> Result<bool, PortError> {
         forum_public_settings::default_settings()
             .anonymous_reading_allowed(tenant_id)
             .await
@@ -336,15 +343,14 @@ impl StorefrontSearchResultEligibilityPort for ExactForumEligibilityPort {
             ))
     }
 
-    async fn filter_forum_result_candidates(
+    async fn filter_eligible_candidates(
         &self,
-        request: StorefrontSearchResultEligibilityRequest,
-    ) -> Result<Vec<StorefrontSearchResultCandidate>, PortError> {
+        request: SearchAudienceRequest,
+    ) -> Result<Vec<Uuid>, PortError> {
         let candidates = request
             .candidates
             .iter()
-            .copied()
-            .map(to_forum_candidate)
+            .filter_map(to_forum_candidate)
             .collect::<Vec<_>>();
         let channel_slug = request
             .request_context
@@ -387,42 +393,26 @@ impl StorefrontSearchResultEligibilityPort for ExactForumEligibilityPort {
                 format!("D15 Forum eligibility failed: {error}"),
             )
         })?;
-        Ok(allowed.into_iter().map(from_forum_candidate).collect())
+        Ok(allowed
+            .into_iter()
+            .map(|candidate| candidate.document_id)
+            .collect())
     }
 }
 
-fn to_forum_candidate(candidate: StorefrontSearchResultCandidate) -> ForumSearchResultCandidate {
-    ForumSearchResultCandidate {
+fn to_forum_candidate(
+    candidate: &rustok_search::SearchCandidateDescriptor,
+) -> Option<ForumSearchResultCandidate> {
+    let kind = match candidate.entity_type.as_str() {
+        "forum_category" => ForumSearchResultCandidateKind::Category,
+        "forum_topic" => ForumSearchResultCandidateKind::Topic,
+        "forum_reply" => ForumSearchResultCandidateKind::Reply,
+        _ => return None,
+    };
+    Some(ForumSearchResultCandidate {
         document_id: candidate.document_id,
-        kind: match candidate.kind {
-            StorefrontSearchResultCandidateKind::ForumCategory => {
-                ForumSearchResultCandidateKind::Category
-            }
-            StorefrontSearchResultCandidateKind::ForumTopic => {
-                ForumSearchResultCandidateKind::Topic
-            }
-            StorefrontSearchResultCandidateKind::ForumReply => {
-                ForumSearchResultCandidateKind::Reply
-            }
-        },
-    }
-}
-
-fn from_forum_candidate(candidate: ForumSearchResultCandidate) -> StorefrontSearchResultCandidate {
-    StorefrontSearchResultCandidate {
-        document_id: candidate.document_id,
-        kind: match candidate.kind {
-            ForumSearchResultCandidateKind::Category => {
-                StorefrontSearchResultCandidateKind::ForumCategory
-            }
-            ForumSearchResultCandidateKind::Topic => {
-                StorefrontSearchResultCandidateKind::ForumTopic
-            }
-            ForumSearchResultCandidateKind::Reply => {
-                StorefrontSearchResultCandidateKind::ForumReply
-            }
-        },
-    }
+        kind,
+    })
 }
 
 #[tokio::test]
@@ -1368,7 +1358,7 @@ async fn insert_stale_topic_documents(
 async fn assert_storefront_exact(
     db: &DatabaseConnection,
     category_scope: SharedStorefrontSearchCategoryScopePort,
-    eligibility: SharedStorefrontSearchResultEligibilityPort,
+    eligibility: Arc<RealForumPublicEligibilityPort>,
     fixture: ForumFixture,
     category_id: Uuid,
     channel_slug: Option<&str>,
@@ -1387,47 +1377,57 @@ async fn assert_storefront_exact(
         }
         None => None,
     };
-    let execution = execute_forum_storefront_search(
+    let mut registry = SearchAudienceRegistry::new();
+    registry
+        .register_shared(eligibility)
+        .map_err(|error| {
+            test_error(format!("Forum audience policy registration failed: {error}"))
+        })?;
+    let engine = PgSearchEngine::new(db.clone());
+    let request_context = RequestContext {
+        tenant_id: fixture.tenant_id,
+        user_id: None,
+        correlation_id: "test-correlation-id".to_string(),
+        channel_id,
+        channel_slug: channel_slug.map(str::to_string),
+        channel_resolution_source: None,
+        locale: "en".to_string(),
+    };
+    let channel = resolve_trusted_storefront_channel(&request_context, fixture.tenant_id, None)
+        .map_err(|error| test_error(error.to_string()))?;
+    let result = execute_audience_eligible_search(
         db,
-        Some(category_scope),
-        Some(eligibility),
-        ForumStorefrontSearchRequest {
-            tenant_id: fixture.tenant_id,
-            query: marker.to_string(),
+        &engine,
+        SearchQuery {
+            tenant_id: Some(fixture.tenant_id),
             locale: Some("en".to_string()),
-            fallback_locale: "en".to_string(),
             channel_id: None,
-            current_channel_only: None,
-            limit: Some(10),
-            offset: Some(0),
-            ranking_profile: None,
+            original_query: marker.to_string(),
+            query: marker.to_string(),
+            ranking_profile: SearchRankingProfile::Balanced,
             preset_key: None,
+            limit: 10,
+            offset: 0,
+            published_only: true,
             entity_types: vec!["forum_topic".to_string()],
             source_modules: vec!["forum".to_string()],
             statuses: vec!["open".to_string()],
-            category_ids: vec![category_id.to_string()],
-            author_ids: Vec::new(),
-            tags: Vec::new(),
-            solved: None,
-            published_from: None,
-            published_to: None,
-            attribute_filters: Vec::<ForumStorefrontSearchAttributeFilter>::new(),
+            category_ids: vec![category_id],
+            attribute_filters: Vec::new(),
             sort_attribute_code: None,
             sort_desc: false,
+        },
+        &channel,
+        StorefrontSearchAudienceContext {
+            registry: &registry,
+            category_scope: Some(category_scope),
             auth: None,
-            request_context: Some(RequestContext {
-                tenant_id: fixture.tenant_id,
-                user_id: None,
-                correlation_id: "test-correlation-id".to_string(),
-                channel_id,
-                channel_slug: channel_slug.map(str::to_string),
-                channel_resolution_source: None,
-                locale: "en".to_string(),
-            }),
+            request_context: Some(request_context),
             transport: StorefrontSearchTransport::Graphql,
         },
     )
-    .await?;
+    .await
+    .map_err(|error| test_error(error.to_string()))?;
     let visible_facet_buckets = execution
         .result
         .facets
@@ -1440,10 +1440,10 @@ async fn assert_storefront_exact(
         .iter()
         .map(|item| item.id)
         .collect::<Vec<_>>();
-    if execution.result.total != expected_total {
+    if result.total != expected_total {
         return Err(test_error(format!(
             "D15 storefront `{label}` returned total {}, expected {expected_total}",
-            execution.result.total
+            result.total
         )));
     }
     if expected_total == 1 {
@@ -1460,7 +1460,7 @@ async fn assert_storefront_exact(
     Ok(StorefrontFact {
         label,
         expected_total,
-        actual_total: execution.result.total,
+        actual_total: result.total,
         item_ids,
         visible_facet_buckets,
     })

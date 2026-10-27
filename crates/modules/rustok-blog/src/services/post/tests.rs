@@ -777,3 +777,134 @@ async fn published_posts_reject_a_schedule_patch() {
         .expect_err("a published post must not take a schedule");
     assert!(matches!(refused, BlogError::Validation(_)));
 }
+
+/// The customer-facing list is a public surface, so it applies the same corpus
+/// rule as the public keyset list, the SEO scan and the comment target gate.
+///
+/// A published row whose `published_at` was lost is damaged state: an editor with
+/// tenant-wide read authority still sees it (that is how it gets repaired), a
+/// customer does not — the list used to filter on `status` only and showed it.
+#[tokio::test]
+async fn customer_list_hides_a_published_post_without_a_publication_timestamp() {
+    let db = setup_test_db().await;
+    ensure_blog_schema(&db).await;
+
+    let transport = OutboxTransport::new(db.clone());
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let post_service = PostService::new(db.clone(), event_bus);
+
+    let tenant_id = Uuid::new_v4();
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let customer = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+
+    let healthy = post_service
+        .create_post(
+            tenant_id,
+            admin.clone(),
+            CreatePostInput {
+                locale: "en".to_string(),
+                title: "Healthy".to_string(),
+                content: crate::richtext::article_document_from_plain_text("Body"),
+                excerpt: None,
+                slug: Some("healthy".to_string()),
+                publish: true,
+                tags: vec![],
+                category_id: None,
+                featured_image_url: None,
+                seo_title: None,
+                seo_description: None,
+                channel_slugs: None,
+                metadata: None,
+                scheduled_at: None,
+            },
+        )
+        .await
+        .expect("published post should be created");
+    let damaged = post_service
+        .create_post(
+            tenant_id,
+            admin.clone(),
+            CreatePostInput {
+                locale: "en".to_string(),
+                title: "Damaged".to_string(),
+                content: crate::richtext::article_document_from_plain_text("Body"),
+                excerpt: None,
+                slug: Some("damaged".to_string()),
+                publish: true,
+                tags: vec![],
+                category_id: None,
+                featured_image_url: None,
+                seo_title: None,
+                seo_description: None,
+                channel_slugs: None,
+                metadata: None,
+                scheduled_at: None,
+            },
+        )
+        .await
+        .expect("published post should be created");
+
+    let row = blog_post::Entity::find_by_id(damaged)
+        .one(&db)
+        .await
+        .expect("post read should not fail")
+        .expect("post should exist");
+    let mut active: blog_post::ActiveModel = row.into();
+    active.published_at = sea_orm::Set(None);
+    active.update(&db).await.expect("damage should persist");
+
+    let listed_for_customer = post_service
+        .list_posts(
+            tenant_id,
+            customer.clone(),
+            PostListQuery {
+                per_page: Some(10),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("customer listing should succeed");
+    let visible = listed_for_customer
+        .items
+        .iter()
+        .map(|item| item.id)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        visible,
+        vec![healthy],
+        "only the intact published post belongs in the customer list"
+    );
+
+    // The explicit `status: Published` request takes the other branch and must
+    // apply the same rule.
+    let explicit = post_service
+        .list_posts(
+            tenant_id,
+            customer,
+            PostListQuery {
+                status: Some(BlogPostStatus::Published),
+                per_page: Some(10),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("explicit-status listing should succeed");
+    assert_eq!(explicit.items.len(), 1);
+
+    let listed_for_admin = post_service
+        .list_posts(
+            tenant_id,
+            admin,
+            PostListQuery {
+                per_page: Some(10),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("admin listing should succeed");
+    assert_eq!(
+        listed_for_admin.items.len(),
+        2,
+        "an authorized editor still sees the damaged row they have to repair"
+    );
+}

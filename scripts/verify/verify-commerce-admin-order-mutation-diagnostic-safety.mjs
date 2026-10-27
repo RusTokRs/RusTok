@@ -1,18 +1,38 @@
 #!/usr/bin/env node
 
+// Admin order mutation diagnostic safety.
+//
+// The four mounted admin order mutations — mark paid, ship, deliver, cancel — live in
+// `controllers/admin/orders_owner_ports.rs` and go through `OrderAdminCommandPort` with typed
+// `Owner*Request` values. They share `map_order_port_error`, which is also the read mapper, so a
+// mutation cannot drift into its own envelope set or its own log shape.
+//
+// The verifier used to describe the retired `controllers/admin/orders.rs` (an
+// `AdminOrderErrorContext` / `AdminOrderMutationDiagnosticContext` / `AdminOrderMutationDiagnosticError`
+// trio with a `redacted` Debug marker and a typed `OrderError` policy). That file is not part of the
+// module tree — it was never mounted, and it is now deleted, because keeping a second, stale copy of
+// the same routes is the exact failure mode that lets a guard "pass" while certifying dead code. The
+// guard is written against the live controller: the shared PortError policy, the bounded facts, the
+// caller-owned idempotency key, and the typed owner requests.
+
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { pathToFileURL } from "node:url";
+
+import { forbidRawContextLogging } from "./lib/bounded-diagnostics.mjs";
 
 const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
-  ? path.resolve(configuredRoot)
-  : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const read = (relativePath) => readFileSync(path.join(root, relativePath), "utf8");
+  ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
+  : new URL("../../", import.meta.url);
+const read = (relativePath) => readFileSync(new URL(relativePath, root), "utf8");
 const failures = [];
 
 const paths = {
-  source: "crates/modules/rustok-commerce/src/controllers/admin/orders.rs",
+  source: "crates/modules/rustok-commerce/src/controllers/admin/orders_owner_ports.rs",
+  retiredSource: "crates/modules/rustok-commerce/src/controllers/admin/orders.rs",
+  moduleTree: "crates/modules/rustok-commerce/src/controllers/admin/mod.rs",
+  portErrors: "crates/libs/rustok-api/src/ports.rs",
   evidence:
     "crates/modules/rustok-commerce/contracts/evidence/admin-order-mutation-diagnostic-safety-source-review.json",
   doc: "crates/modules/rustok-commerce/docs/admin-order-mutation-diagnostic-safety.md",
@@ -20,31 +40,36 @@ const paths = {
   plan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
 };
 
-const requireText = (source, value, label) => {
-  if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
+const requireText = (content, value, label) => {
+  if (!content.includes(value)) failures.push(`${label}: missing ${value}`);
 };
-const forbidText = (source, value, label) => {
-  if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
+const requirePattern = (content, pattern, label) => {
+  if (!pattern.test(content)) failures.push(`${label}: missing ${pattern}`);
 };
-const requireCount = (source, value, expected, label) => {
-  const actual = source.split(value).length - 1;
+const forbidText = (content, value, label) => {
+  if (content.includes(value)) failures.push(`${label}: forbidden ${value}`);
+};
+const requireCount = (content, pattern, expected, label) => {
+  const actual = content.match(pattern)?.length ?? 0;
   if (actual !== expected) failures.push(`${label}: expected ${expected}, found ${actual}`);
 };
-
-function blockBetween(source, start, end, label) {
-  const startIndex = source.indexOf(start);
-  const endIndex = source.indexOf(end, startIndex + start.length);
+const blockBetween = (content, start, end, label) => {
+  const startIndex = content.indexOf(start);
+  const endIndex = content.indexOf(end, startIndex + start.length);
   if (startIndex < 0 || endIndex < 0) {
     failures.push(`${label}: unable to isolate block`);
     return "";
   }
-  return source.slice(startIndex, endIndex);
-}
-
-function requireOrder(source, markers, label) {
+  return content.slice(startIndex, endIndex);
+};
+const normalize = (content) => content.replace(/\s+/g, " ");
+const requireTextNormalized = (content, value, label) => {
+  if (!normalize(content).includes(normalize(value))) failures.push(`${label}: missing ${value}`);
+};
+const requireOrder = (content, markers, label) => {
   let previous = -1;
   for (const marker of markers) {
-    const index = source.indexOf(marker);
+    const index = content.indexOf(marker);
     if (index < 0) {
       failures.push(`${label}: missing ${marker}`);
       return;
@@ -55,171 +80,223 @@ function requireOrder(source, markers, label) {
     }
     previous = index;
   }
-}
+};
+const enumVariants = (content, name, label) => {
+  const marker = `pub enum ${name} {`;
+  const start = content.indexOf(marker);
+  if (start < 0) {
+    failures.push(`${label}: missing enum ${name}`);
+    return [];
+  }
+  const body = content.slice(start + marker.length);
+  const end = body.indexOf("\n}");
+  if (end < 0) {
+    failures.push(`${label}: unterminated enum ${name}`);
+    return [];
+  }
+  return [...body.slice(0, end).matchAll(/^ {4}([A-Z][A-Za-z0-9]*)\b/gm)].map(
+    (match) => match[1],
+  );
+};
 
 const source = read(paths.source);
+const moduleTree = read(paths.moduleTree);
+const portErrors = read(paths.portErrors);
 const evidence = JSON.parse(read(paths.evidence));
 const doc = read(paths.doc);
 const broadVerifier = read(paths.broadVerifier);
 const plan = read(paths.plan);
 
-const diagnosticContext = blockBetween(
-  source,
-  "struct AdminOrderMutationDiagnosticContext {",
-  "impl From<&AdminOrderErrorContext> for AdminOrderMutationDiagnosticContext {",
-  "bounded mutation context",
-);
-for (const field of ["tenant_id", "actor_id", "order_id", "customer_id", "operation"]) {
-  requireText(diagnosticContext, `${field}: &'static str`, `${paths.source}: bounded ${field}`);
-}
-for (const forbidden of ["Uuid", "Option<", "String"]) {
-  forbidText(diagnosticContext, forbidden, `${paths.source}: mutation context storage`);
-}
+// --- The retired controller is gone -------------------------------------------------------------
 
-const contextConversion = blockBetween(
-  source,
-  "impl From<&AdminOrderErrorContext> for AdminOrderMutationDiagnosticContext {",
-  "struct AdminOrderMutationDiagnosticError;",
-  "mutation context conversion",
+requireText(
+  moduleTree,
+  '#[path = "orders_owner_ports.rs"]',
+  `${paths.moduleTree}: admin order module is served by the owner-port file`,
 );
-for (const marker of [
-  "tenant_id: uuid_shape(context.tenant_id)",
-  "actor_id: uuid_shape(context.actor_id)",
-  "order_id: optional_uuid_shape(context.order_id)",
-  "customer_id: optional_uuid_shape(context.customer_id)",
-  "operation: context.operation",
-]) requireText(contextConversion, marker, `${paths.source}: mutation context conversion`);
-
-const diagnosticError = blockBetween(
-  source,
-  "struct AdminOrderMutationDiagnosticError;",
-  "fn uuid_shape(",
-  "bounded mutation error",
-);
-for (const marker of [
-  "impl std::fmt::Debug for AdminOrderMutationDiagnosticError",
-  'formatter.write_str("redacted")',
-]) requireText(diagnosticError, marker, `${paths.source}: bounded mutation error`);
-for (const forbidden of ["OrderError", "message:", "source:", "String"]) {
-  forbidText(diagnosticError, forbidden, `${paths.source}: mutation error payload`);
+let retiredExists = true;
+try {
+  read(paths.retiredSource);
+} catch {
+  retiredExists = false;
+}
+if (retiredExists) {
+  failures.push(`${paths.retiredSource}: the unmounted legacy controller must not exist`);
 }
 
-const requiredShape = blockBetween(
-  source,
-  "fn uuid_shape(",
-  "fn optional_uuid_shape(",
-  "required UUID shape",
-);
-for (const marker of ["value.is_nil()", '"nil"', '"non_nil"']) {
-  requireText(requiredShape, marker, `${paths.source}: required UUID shape`);
-}
-
-const optionalShape = blockBetween(
-  source,
-  "fn optional_uuid_shape(",
-  "fn text_presence_shape(",
-  "optional UUID shape",
-);
-for (const marker of [
-  'None => "absent"',
-  'Some(value) if value.is_nil() => "present_nil"',
-  'Some(_) => "present_non_nil"',
-]) requireText(optionalShape, marker, `${paths.source}: optional UUID shape`);
-
-const policy = blockBetween(
-  source,
-  "fn admin_order_error_policy(",
-  "fn map_admin_order_error(",
-  "order mutation policy",
-);
-for (const marker of [
-  "OrderError::Validation(_)",
-  "OrderError::OrderNotFound(_)",
-  "OrderError::OrderReturnNotFound(_)",
-  "OrderError::OrderChangeNotFound(_)",
-  "OrderError::InvalidTransition { .. }",
-  "OrderError::Database(_)",
-  "OrderError::Core(_)",
-  '"commerce_admin_order_invalid"',
-  '"commerce_admin_not_found"',
-  '"commerce_admin_order_state_conflict"',
-  '"commerce_admin_order_storage_unavailable"',
-  '"commerce_admin_order_failed"',
-]) requireText(policy, marker, `${paths.source}: preserved mutation policy`);
+// --- Shared mapper ------------------------------------------------------------------------------
 
 const mapper = blockBetween(
   source,
-  "fn map_admin_order_error(",
-  "/// Show admin ecommerce order",
-  "admin order mutation mapper",
+  "fn map_order_port_error(",
+  "fn map_payment_detail_port_error(",
+  "admin order port mapper",
 );
+const kindProjection = blockBetween(
+  source,
+  "fn port_error_kind(",
+  "fn map_order_port_error(",
+  "port error kind projection",
+);
+
+const portErrorKinds = enumVariants(portErrors, "PortErrorKind", "port error kind enum");
+if (portErrorKinds.length !== 7) {
+  failures.push(`port error kind enum: expected 7 variants, found ${portErrorKinds.length}`);
+}
+for (const variant of portErrorKinds) {
+  requirePattern(
+    mapper,
+    new RegExp(`PortErrorKind::${variant}\\b`),
+    `admin order mapper handles PortErrorKind::${variant}`,
+  );
+  requirePattern(
+    kindProjection,
+    new RegExp(`PortErrorKind::${variant}\\b`),
+    `port error kind projection handles ${variant}`,
+  );
+}
+forbidText(mapper, "        _ =>", "wildcard in the admin order mapper");
+
+for (const [value, label] of [
+  ["let (status, code, message) = match &error.kind {", "typed policy selection first"],
+  ["let error_kind = port_error_kind(&error);", "error kind projection"],
+  ["tracing::error!(", "diagnostic line"],
+  ["HttpError::new(status, code, message)", "single static envelope"],
+]) requireText(mapper, value, `admin order mapper: ${label}`);
 requireOrder(
   mapper,
   [
-    "if let OrderError::OrderNotFound(id) = &error",
-    "context.order_id = Some(*id);",
-    "let (status, code, message, error_kind) = admin_order_error_policy(&error);",
-    "let context = AdminOrderMutationDiagnosticContext::from(&context);",
-    "let error = AdminOrderMutationDiagnosticError;",
+    "let (status, code, message) = match &error.kind {",
+    "let error_kind = port_error_kind(&error);",
     "tracing::error!(",
     "HttpError::new(status, code, message)",
   ],
-  `${paths.source}: identity policy and shadowing order`,
+  "admin order mapper order",
 );
-for (const marker of [
-  "error = ?error",
-  "owner = ADMIN_ORDER_OWNER",
-  "tenant_id = %context.tenant_id",
-  "actor_id = %context.actor_id",
-  "order_id = ?context.order_id",
-  "customer_id = ?context.customer_id",
-  "operation = %context.operation",
-  "error_kind,",
-  "public_code = code",
-  "status = %status",
-  "boundary = ADMIN_ORDER_BOUNDARY",
-  '"commerce admin order operation failed"',
-]) requireText(mapper, marker, `${paths.source}: bounded mutation log site`);
-for (const forbidden of [
-  "error.to_string()",
-  "error.message",
-  "format!(",
-  "tracing::error!(\n        error = ?error,\n        owner = ADMIN_ORDER_OWNER,\n        tenant_id = %context.tenant_id",
-]) {
-  if (forbidden.startsWith("tracing::error!")) continue;
-  forbidText(mapper, forbidden, `${paths.source}: raw mutation payload`);
+
+for (const [value, label] of [
+  ["owner = ADMIN_ORDER_OWNER,", "owner label"],
+  ["tenant_id_non_nil = !tenant_id.is_nil(),", "tenant shape"],
+  ["actor_id_non_nil = !actor_id.is_nil(),", "actor shape"],
+  ["order_id_present = order_id.is_some(),", "order presence"],
+  ["order_id_non_nil = order_id.map(|value| !value.is_nil()).unwrap_or(false),", "order shape"],
+  ["operation,", "route operation"],
+  ["correlation_id = %context.correlation_id,", "correlation join key"],
+  ["owner_code_length = error.code.chars().count(),", "bounded owner code"],
+  ["retryable = error.retryable,", "retryability"],
+  ["error_kind,", "error kind"],
+  ["public_code = code,", "public code"],
+  ["status = %status,", "status"],
+  ["boundary = ADMIN_ORDER_BOUNDARY,", "boundary"],
+  ['"commerce admin order owner port failed"', "static message"],
+]) requireText(mapper, value, `admin order mapper: ${label}`);
+
+for (const forbidden of ["%error", "error.message", ".to_string()", "format!(", "?error"]) {
+  forbidText(mapper, forbidden, "raw admin order mapper payload");
+}
+forbidRawContextLogging(failures, source, "admin order controller");
+
+// --- The four mutations -------------------------------------------------------------------------
+
+const mutations = [
+  {
+    handler: "mark_order_paid",
+    permission: "[Permission::ORDERS_UPDATE]",
+    request: "OwnerMarkOrderPaidRequest {",
+    call: ".mark_paid(",
+    operation: '"mark_order_paid",',
+  },
+  {
+    handler: "ship_order",
+    permission: "[Permission::ORDERS_UPDATE]",
+    request: "OwnerShipOrderRequest {",
+    call: ".ship(",
+    operation: '"ship_order",',
+  },
+  {
+    handler: "deliver_order",
+    permission: "[Permission::ORDERS_UPDATE]",
+    request: "OwnerDeliverOrderRequest {",
+    call: ".deliver(",
+    operation: '"deliver_order",',
+  },
+  {
+    handler: "cancel_order",
+    permission: "[Permission::ORDERS_UPDATE]",
+    request: "OwnerCancelOrderRequest {",
+    call: ".cancel(",
+    operation: '"cancel_order",',
+  },
+];
+
+for (const mutation of mutations) {
+  const block = blockBetween(
+    source,
+    `pub async fn ${mutation.handler}(`,
+    "\n}\n",
+    `${mutation.handler} route`,
+  );
+  requireText(block, "ensure_permissions(", `${mutation.handler}: permission gate`);
+  requireText(block, mutation.permission, `${mutation.handler}: permission set`);
+  requireText(block, '"commerce_invalid_tenant"', `${mutation.handler}: tenant guard`);
+  requireText(block, '"commerce_invalid_id"', `${mutation.handler}: id guard`);
+  requireText(block, "log_admin_order_entry(", `${mutation.handler}: bounded entry line`);
+  requireTextNormalized(block, mutation.operation, `${mutation.handler}: operation label`);
+  requireText(
+    block,
+    "let idempotency_key = require_idempotency_key(&headers)?;",
+    `${mutation.handler}: caller-owned idempotency key`,
+  );
+  requireText(block, "admin_order_command_port_context(", `${mutation.handler}: command context`);
+  requireText(block, "idempotency_key,", `${mutation.handler}: key forwarded to the context`);
+  requireText(block, ".order_admin_command_port()", `${mutation.handler}: host-selected command port`);
+  requireText(block, mutation.request, `${mutation.handler}: typed owner request`);
+  requireText(block, mutation.call, `${mutation.handler}: owner command`);
+  requireText(block, ".map_err(|error| {", `${mutation.handler}: typed mapping closure`);
+  requireText(block, "map_order_port_error(", `${mutation.handler}: shared mapper handoff`);
+  requireText(block, "Ok(Json(order))", `${mutation.handler}: response`);
+  requireOrder(
+    block,
+    [
+      "if tenant.id.is_nil()",
+      "if id.is_nil()",
+      "log_admin_order_entry(",
+      "let idempotency_key = require_idempotency_key(&headers)?;",
+      ".map_err(|error| {",
+    ],
+    `${mutation.handler} route order`,
+  );
 }
 
-requireCount(source, "map_admin_order_error(", 5, "one mutation mapper and four callsites");
-requireCount(source, "map_admin_order_port_error(", 3, "one read mapper and two callsites");
-requireCount(source, "&[Permission::ORDERS_UPDATE]", 4, "four mutation permissions");
-for (const marker of [
-  '"mark_order_paid"',
-  '"ship_order"',
-  '"deliver_order"',
-  '"cancel_order"',
-  ".mark_paid(",
-  ".ship_order(",
-  ".deliver_order(tenant.id, auth.user_id, id, input.delivered_signature)",
-  ".cancel_order(tenant.id, auth.user_id, id, input.reason)",
-]) requireText(source, marker, `${paths.source}: preserved mutation route`);
+const idempotencyCount =
+  source.match(/let idempotency_key = require_idempotency_key\(&headers\)\?;/g) ?? [];
+if (idempotencyCount.length !== 4) {
+  failures.push(
+    `expected four admin order write handlers to require caller-owned Idempotency-Key, found ${idempotencyCount.length}`,
+  );
+}
+requireCount(source, /\[Permission::ORDERS_UPDATE\]/g, 4, "four mutation permissions");
+requireCount(
+  source,
+  /map_order_port_error\(/g,
+  7,
+  "one shared mapper and six callsites (list, detail, four mutations)",
+);
 
-for (const marker of [
-  "fn map_admin_order_port_error(",
-  "AdminOrderReadDiagnosticContext::from(&context)",
-  "AdminOrderReadPortDiagnosticContext::from(port_context)",
-  "fn map_order_detail_payment_error(",
-  "fn map_order_detail_fulfillment_error(",
-  '"commerce admin order detail payment lookup failed"',
-  '"commerce admin order detail fulfillment lookup failed"',
-]) requireText(source, marker, `${paths.source}: unchanged neighboring mapper`);
+// Retired in-process surface: the four mutations never build an owner service.
+for (const forbidden of [
+  "OrderService::new(",
+  "PaymentService::new(",
+  "FulfillmentService::new(",
+  ".mark_paid(tenant.id",
+  ".ship_order(tenant.id",
+  ".deliver_order(tenant.id",
+  ".cancel_order(tenant.id",
+  "AdminOrderMutationDiagnosticContext",
+  "AdminOrderMutationDiagnosticError",
+]) forbidText(source, forbidden, "retired in-process admin order mutation surface");
 
-for (const marker of [
-  "if let OrderError::OrderNotFound(id) = &error",
-  "context.order_id = Some(*id);",
-  "error = ?error",
-  "HttpError::new(status, code, message)",
-]) requireText(broadVerifier, marker, `${paths.broadVerifier}: compatibility marker`);
+// --- Evidence and documentation -----------------------------------------------------------------
 
 if (
   evidence.status !==
@@ -230,22 +307,19 @@ for (const [key, expected] of Object.entries({
   raw_tenant_uuid_logged: false,
   raw_actor_uuid_logged: false,
   raw_order_uuid_logged: false,
-  raw_customer_uuid_logged: false,
-  redacted_error_debug_logged: true,
+  bounded_owner_code_logged: true,
   required_uuid_shapes_logged: true,
   optional_uuid_shapes_logged: true,
   operation_preserved: true,
-  order_not_found_identity_adoption_preserved: true,
-  typed_policy_selection_precedes_shadowing: true,
-  order_error_policy_preserved: true,
-  http_envelopes_preserved: true,
+  shared_port_mapper_used: true,
+  host_selected_command_port_used: true,
+  caller_owned_idempotency_required: true,
   four_mutation_callsites_preserved: true,
   orders_update_permission_preserved: true,
-  read_mapper_unchanged: true,
-  detail_payment_mapper_unchanged: true,
-  detail_fulfillment_mapper_unchanged: true,
-  existing_broad_verifier_markers_preserved: true,
+  retired_legacy_controller_deleted: true,
+  http_envelopes_preserved: true,
   broad_ecommerce_cleanup_closed: false,
+  runtime_evidence_claimed: false,
 })) {
   if (evidence.source_contract?.[key] !== expected) {
     failures.push(`${paths.evidence}: source_contract.${key} must be ${expected}`);
@@ -268,15 +342,37 @@ for (const key of [
 
 for (const marker of [
   "Status: **source-ready / unvalidated**",
-  "order-not-found identity adoption and HTTP policy selection",
-  "Debug output is always `redacted`",
+  "`controllers/admin/orders_owner_ports.rs`",
+  "`OrderAdminCommandPort`",
+  "That file is deleted",
   "The broader ecommerce correlation-safe mapper and non-`PortError` envelope cleanup remains open.",
-]) requireText(doc, marker, `${paths.doc}: documentation contract`);
+]) requireTextNormalized(doc, marker, `${paths.doc}: documentation contract`);
+forbidText(doc, "Debug output is always `redacted`", `${paths.doc}: retired contract`);
+
+const reviewedScope = evidence.reviewed_scope ?? [];
+for (const scope of reviewedScope) {
+  if (scope.endsWith("controllers/admin/orders.rs")) {
+    failures.push(`${paths.evidence}: reviewed_scope still cites ${scope}`);
+  }
+}
+requireText(
+  reviewedScope.join("\n"),
+  "controllers/admin/orders_owner_ports.rs",
+  `${paths.evidence}: reviewed_scope`,
+);
 requireText(
   plan,
   "Finish correlation-safe mapper cleanup",
   `${paths.plan}: broad cleanup remains open`,
 );
+
+// --- Broad verifier stays aligned ---------------------------------------------------------------
+
+for (const marker of [
+  "forbidRawContextLogging(failures, controller,",
+  "map_order_port_error(",
+  "log_admin_order_entry(",
+]) requireText(broadVerifier, marker, `${paths.broadVerifier}: compatibility marker`);
 
 if (failures.length > 0) {
   console.error("Commerce admin order mutation diagnostic verification failed:");
@@ -285,5 +381,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Commerce admin order mutation diagnostics are bounded while identity adoption, four owner calls, permissions, and HTTP policies remain unchanged; execution validation remains open",
+  "Commerce admin order mutations use the shared PortError mapper, host-selected command ports, caller-owned idempotency, and bounded diagnostics; the unmounted legacy controller is deleted",
 );

@@ -32,6 +32,7 @@ pub mod state_machine;
 mod state_machine_proptest;
 
 pub use analytics::{ContentCountSnapshot, load_post_stats_snapshot};
+pub use dto::validation::CONTENT_NODE_KINDS;
 pub use dto::{
     CreateTagInput, ListTagsFilter, TagListItem, TagResponse, UpdateTagInput, format_single_error,
     format_validation_errors,

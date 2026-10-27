@@ -32,16 +32,16 @@
   "notifications_live_contract": "crates/modules/rustok-notifications/docs/README.md",
   "central_manifest_docs": "docs/modules/manifest.md",
   "canonical_plan_sync": {
-    "status": "pending",
+    "status": "synchronized",
     "required_ledger_through": "FORUM-20AJ",
-    "current_plan_through": "FORUM-20G",
-    "follow_up": "Synchronize the canonical plan without replacing unrelated concurrent task updates"
+    "current_plan_through": "FORUM-20BA",
+    "follow_up": "Keep the append-only delivered-ledger headings and this contract in step; the summary row is not a synchronization pin"
   },
   "notifications_local_plan_sync": {
-    "status": "pending",
+    "status": "synchronized",
     "required_ledger_through": "FORUM-20AJ",
-    "current_plan_through": "FORUM-20AA",
-    "follow_up": "Synchronize the owner-local implementation ledger without replacing the large file wholesale"
+    "current_plan_through": "FORUM-20AP",
+    "follow_up": "The Notifications ledger records these slices; keep its append-only delivered headings in step"
   },
   "notifications_owner_docs_sync": {
     "status": "pending",

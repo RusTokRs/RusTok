@@ -27,6 +27,12 @@ The source-only verifier is:
 scripts/verify/verify-forum-search-versioned-invalidation-retained-evidence-promotion.mjs
 ```
 
+The canonical aggregate the reviewer reads is:
+
+```text
+target/forum-search-versioned-invalidation-runtime-evidence.json
+```
+
 The reviewed promotion candidate is written to:
 
 ```text

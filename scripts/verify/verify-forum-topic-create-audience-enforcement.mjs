@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertCanonicalLedger, requireValidationDisclosure } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -196,10 +197,10 @@ for (const marker of [
   "source-ready / unvalidated",
   "before topic, translation, relation, counter, user-stat, or domain-event writes",
   "does **not** compose GraphQL or REST caller contexts",
-  "not run by the implementation agent",
 ]) {
   requireText(note, marker, `topic-create enforcement owner note is missing ${marker}`);
 }
+requireValidationDisclosure(failures, note, "topic-create enforcement owner note is missing");
 for (const marker of [
   "ForumTopicCreateAudienceAuthorizationService",
   "create_with_audience_context",
@@ -207,14 +208,13 @@ for (const marker of [
 ]) {
   requireText(crateApi, marker, `Forum CRATE_API is missing ${marker}`);
 }
-for (const marker of [
-  "FORUM-20A-AS provide",
-  "### Delivered in `FORUM-20AR`",
-  "### Delivered in `FORUM-20AS`",
-  "Forum trust and Channel membership facts adapters",
-]) {
-  requireText(plan, marker, `canonical Forum plan is missing ${marker}`);
-}
+assertCanonicalLedger({
+  failures,
+  plan,
+  slices: ["FORUM-20AR", "FORUM-20AS"],
+  markers: ["the optional facts capability only when trust, Channel, or Groups selectors remain unresolved"],
+  label: "canonical Forum plan",
+});
 
 if (failures.length > 0) {
   console.error("Forum topic-create audience enforcement verification failed:");

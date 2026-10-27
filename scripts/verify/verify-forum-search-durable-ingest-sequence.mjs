@@ -127,9 +127,8 @@ rejectAll(
 requireAll(
   forumPlan,
   [
-    "FORUM-23B2G1",
-    "durable PostgreSQL ingest sequence",
-    "verify-forum-search-durable-ingest-sequence.mjs",
+    "`FORUM-23B2G1` / `FORUM-23B2G1A` (durable PostgreSQL ingest sequence)",
+    "### Delivered slices",
   ],
   paths.forumPlan,
 );

@@ -20,6 +20,7 @@ use uuid::Uuid;
 use crate::dto::{ForumQuoteReferenceInput, ForumQuoteTargetKindInput, SetForumQuotesInput};
 use crate::entities::{
     forum_relation_revision, forum_reply, forum_reply_body, forum_topic, forum_topic_translation,
+    forum_user_mention,
 };
 use crate::mentions::{ForumContentTarget, ForumQuoteReference};
 use crate::state_machine::{ReplyStatus, TopicStatus};
@@ -312,8 +313,8 @@ async fn relation_revision_replay_diff_quotes_and_guards_are_atomic() {
 
     assert_eq!(
         relation_revision_count(&db, tenant_id).await,
-        0,
-        "relation identities are created only by the canonical command owner"
+        2,
+        "bodies written before the relation stream existed receive one baseline identity each"
     );
 
     let alice_id = Uuid::new_v4();
@@ -468,6 +469,93 @@ async fn relation_revision_replay_diff_quotes_and_guards_are_atomic() {
         immutable_error
             .to_string()
             .contains("forum relation projections are immutable")
+    );
+}
+
+#[tokio::test]
+async fn new_source_rows_must_receive_one_legacy_relation_identity_before_forum_12b2() {
+    let db = setup_db().await;
+    apply_relation_migrations(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let topic_id = Uuid::new_v4();
+    let reply_id = Uuid::new_v4();
+
+    // Both tables carry an AFTER INSERT seed, so a writer that knows nothing about relations - an
+    // import, a fork, a split, a translation apply - still leaves a readable revision behind.
+    // new source rows must receive one legacy relation identity before FORUM-12B2.
+    insert_topic_source(&db, tenant_id, topic_id, "Imported topic").await;
+    insert_reply_source(&db, tenant_id, topic_id, reply_id, "Imported reply").await;
+
+    let topic_revisions = forum_relation_revision::Entity::find()
+        .filter(forum_relation_revision::Column::TenantId.eq(tenant_id))
+        .filter(forum_relation_revision::Column::TargetKind.eq("topic"))
+        .filter(forum_relation_revision::Column::TargetId.eq(topic_id))
+        .all(&db)
+        .await
+        .expect("topic revision query should succeed");
+    assert_eq!(
+        topic_revisions.len(),
+        1,
+        "a source INSERT must seed exactly one baseline revision"
+    );
+    assert_eq!(topic_revisions[0].locale, "en");
+    assert_eq!(
+        topic_revisions[0].projection_fingerprint, "legacy",
+        "a baseline revision must not claim a computed projection fingerprint"
+    );
+
+    let reply_revisions = forum_relation_revision::Entity::find()
+        .filter(forum_relation_revision::Column::TenantId.eq(tenant_id))
+        .filter(forum_relation_revision::Column::TargetKind.eq("reply"))
+        .filter(forum_relation_revision::Column::TargetId.eq(reply_id))
+        .all(&db)
+        .await
+        .expect("reply revision query should succeed");
+    assert_eq!(reply_revisions.len(), 1);
+    assert_eq!(reply_revisions[0].projection_fingerprint, "legacy");
+
+    // The baseline is the whole revision: nothing claims a mention that was never resolved.
+    assert_eq!(
+        forum_user_mention::Entity::find()
+            .filter(forum_user_mention::Column::TenantId.eq(tenant_id))
+            .count(&db)
+            .await
+            .expect("mention count should load"),
+        0
+    );
+
+    // A relation-aware writer appends its own projection revision on top of the baseline, so the
+    // read path keeps returning the resolved snapshot as the latest revision.
+    let reader = FakeProfilesReader {
+        records: [(
+            (tenant_id, "alice".to_string()),
+            profile(tenant_id, Uuid::new_v4(), "alice"),
+        )]
+        .into_iter()
+        .collect(),
+    };
+    let service = MentionRelationService::with_profiles(Arc::new(reader));
+    let prepared = service
+        .prepare(
+            tenant_id,
+            ForumContentTarget::topic(topic_id),
+            "en",
+            &document("Imported topic"),
+            &SecurityContext::system(),
+            [],
+        )
+        .await
+        .expect("projection over a seeded baseline should prepare");
+    let txn = db.begin().await.expect("transaction should begin");
+    service
+        .persist_in_tx(&txn, prepared)
+        .await
+        .expect("projection over a seeded baseline should persist");
+    txn.commit().await.expect("transaction should commit");
+    assert_eq!(
+        relation_revision_count(&db, tenant_id).await,
+        3,
+        "the projection appends to the seeded baseline instead of replacing it"
     );
 }
 

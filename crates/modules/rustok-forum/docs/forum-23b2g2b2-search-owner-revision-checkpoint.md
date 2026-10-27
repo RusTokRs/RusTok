@@ -105,7 +105,7 @@ later repeat that projection without moving the owner checkpoint backwards.
 ## Repair and commit protocol
 
 If any revision in the bounded page lacks durable delivery coverage, Search runs
-one `ForumSearchProjector::rebuild_tenant` from current owner state. One rebuild
+one `SearchProjectionDriver::rebuild_tenant` from current owner state. One rebuild
 covers the complete page because every ledger row represents a Forum projection
 invalidation and the projector materializes current category/topic/reply state.
 

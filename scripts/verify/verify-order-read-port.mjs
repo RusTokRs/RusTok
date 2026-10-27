@@ -18,7 +18,7 @@ const graphqlOrderShim = read(
 );
 const httpRuntime = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
 const adminRouter = read('crates/modules/rustok-commerce/src/controllers/admin/mod.rs');
-const adminOrders = read('crates/modules/rustok-commerce/src/controllers/admin/orders.rs');
+const adminOrders = read('crates/modules/rustok-commerce/src/controllers/admin/orders_owner_ports.rs');
 const adminPostOrderReads = read(
   'crates/modules/rustok-commerce/src/controllers/admin/post_order_reads.rs',
 );
@@ -156,7 +156,7 @@ const adminList = between(
 const adminDetail = between(
   adminOrders,
   'pub async fn show_order(',
-  'fn map_order_detail_payment_port_error(',
+  '#[utoipa::path(\n    post,\n    path = \"/admin/orders/{id}/mark-paid\"',
   'admin detail route',
 );
 const storefrontOwnership = between(
@@ -199,10 +199,10 @@ for (const [route, value, label] of [
 ]) forbidText(route, value, label);
 
 for (const [source, value, label] of [
-  [adminOrders, '.mark_paid(', 'mark-paid mutation remains owner service'],
-  [adminOrders, '.ship_order(', 'ship mutation remains owner service'],
-  [adminOrders, '.deliver_order(', 'deliver mutation remains owner service'],
-  [adminOrders, '.cancel_order(', 'cancel mutation remains owner service'],
+  [adminOrders, '.mark_paid(', 'mark-paid mutation stays on the order admin command port'],
+  [adminOrders, '.ship(', 'ship mutation stays on the order admin command port'],
+  [adminOrders, '.deliver(', 'deliver mutation stays on the order admin command port'],
+  [adminOrders, '.cancel(', 'cancel mutation stays on the order admin command port'],
 ]) requireText(source, value, label);
 
 const operationNames = evidence.operations?.map((operation) => operation.name).join(',');

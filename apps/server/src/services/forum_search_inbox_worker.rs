@@ -74,11 +74,21 @@ pub fn start_forum_search_inbox_worker_if_ready(ctx: &ServerRuntimeContext) -> R
             )
         })?;
 
+    // The Blog author projection is a tenant-wide inbox scope, so the sweeper
+    // rebuilds it through the same neutral driver the event handler uses. A host
+    // without the Blog module registers no source and keeps the optional driver
+    // empty instead of failing the worker.
+    let blog_source = source_registry.build_with_extensions(
+        "blog",
+        ctx.db_clone(),
+        extensions.as_ref(),
+    );
     let reconciler = ForumProjectionReconciler::with_owner_revision_source(
         ctx.db_clone(),
         forum_source,
         owner_source,
-    );
+    )
+    .with_blog_source(blog_source);
     if !reconciler.supports_background_reconciliation() {
         tracing::info!("Forum Search inbox worker not started: PostgreSQL backend is required");
         return Ok(());

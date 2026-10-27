@@ -181,9 +181,12 @@ for (const marker of [
   'rustok_blog::CommentService::from_runtime_capabilities(',
   '#[server(prefix = "/api/fn", endpoint = "blog/admin/moderation-comments")]',
   '#[server(prefix = "/api/fn", endpoint = "blog/admin/moderate-comment")]',
-  'require_manage_permission(&context.auth)?;',
-  '&[rustok_api::Permission::BLOG_POSTS_MANAGE]',
-  '"Permission denied: blog_posts:manage required"',
+  // Comment moderation is authorised by the moderation permission. Gating it on the
+  // post management permission let a moderator without authoring rights be refused,
+  // and let the two surfaces share one gate by accident.
+  'require_moderation_permission(&context.auth)?;',
+  '&[rustok_api::Permission::COMMENTS_MODERATE]',
+  '"Permission denied: comments:moderate required"',
   'page: page.max(1)',
   'per_page: per_page.clamp(1, 100)',
   '.list_for_post_with_locale_fallback(',
@@ -219,7 +222,7 @@ for (const [label, source] of [
   ['moderation list', listSegment],
   ['moderation mutation', mutationSegment],
 ]) {
-  const permissionIndex = source.indexOf('require_manage_permission(&context.auth)?;');
+  const permissionIndex = source.indexOf('require_moderation_permission(&context.auth)?;');
   const selectorIndex = source.indexOf('comment_service(&context)');
   if (permissionIndex < 0 || selectorIndex < permissionIndex) {
     failures.push(`${adminAdapterPath}: ${label} authorization/selector order drift`);

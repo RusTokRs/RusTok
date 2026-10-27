@@ -3,7 +3,6 @@
   "status": "commerce_checkout_payment_stage_error_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
     "crates/modules/rustok-commerce/src/services/checkout_payment_stages.rs",
-    "crates/modules/rustok-commerce/src/services/checkout_payment_stages_legacy.rs",
     "crates/modules/rustok-commerce/src/services/staged_checkout.rs",
     "crates/modules/rustok-commerce/src/services/checkout_operation.rs",
     "crates/modules/rustok-commerce/src/services/recovering_staged_checkout.rs",
@@ -15,8 +14,7 @@
   ],
   "source_contract": {
     "mounted_facade_active": true,
-    "legacy_source_private": true,
-    "legacy_source_business_logic_changed": false,
+    "legacy_source_retired": true,
     "canonical_port_api_preserved": true,
     "owner_context_delegation_preserved": true,
     "prepare_wrapped": true,
@@ -33,7 +31,6 @@
     "owner_code_preserved": true,
     "owner_retryability_preserved": true,
     "typed_kind_policy_preserved": true,
-    "legacy_tracing_suppressed": true,
     "owner_stage_guard_updated": true,
     "typed_lifecycle_guard_updated": true,
     "successful_dtos_changed": false,
@@ -44,8 +41,7 @@
     "retryable_payment_boundary_synchronous_compensation": false,
     "operation_journal_implementation_changed": false,
     "recovery_service_implementation_changed": false,
-    "payment_stage_execution_changed": false,
-    "payment_stage_error_code_mapping_changed": false,
+    "payment_stage_execution_changed": true,
     "source_tests_added": true,
     "http_contract_changed": false,
     "graphql_contract_changed": false,
@@ -53,7 +49,8 @@
     "commerce_ffa_status_changed": false,
     "commerce_fba_status_changed": false,
     "broad_mapper_cleanup_closed": false,
-    "runtime_evidence_claimed": false
+    "runtime_evidence_claimed": false,
+    "stage_mapper_message_rederived": true
   },
   "validation": {
     "tests_run": false,

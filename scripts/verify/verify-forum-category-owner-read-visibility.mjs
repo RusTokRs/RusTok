@@ -131,38 +131,56 @@ if (
   failures.push("category exact read must authorize, evaluate visibility, then hydrate");
 }
 
+// The block ends at the next route in the same file, forward-only: `find_category_in_tx` used to sit
+// after this method, and an end anchor that appears *before* the start silently yields "".
 const pageRead = between(
   categoryFacade,
   "pub async fn list_paginated_with_locale_fallback(",
-  "pub(crate) async fn find_category_in_tx(",
+  "pub async fn list_keyset_with_locale_fallback(",
   "category paginated owner read",
 );
 for (const marker of [
   "enforce_scope(&security, Resource::ForumCategories, Action::List)?",
   ".hidden_category_ids_for_viewer(tenant_id, !security.is_public_read())",
   ".list_paginated_with_locale_fallback_and_hidden_categories(",
+  "hidden_category_ids: &hidden_category_ids,",
 ]) {
   requireText(pageRead, marker, `category paginated owner read is missing ${marker}`);
+}
+// Compute-then-discard is the quiet version of this bug: the ids are resolved, then an empty slice is
+// forwarded and every hidden category is counted again.
+if (!pageRead.includes("hidden_category_ids: &hidden_category_ids,")) {
+  failures.push("category paginated owner read must forward the resolved hidden-category ids");
 }
 
 for (const marker of [
   "TaxonomyOwnerCategoryReader",
   "pub(in crate::services) async fn list_paginated_with_locale_fallback_and_hidden_categories(",
   "forum_category::Column::Id.is_not_in(hidden_category_ids.to_vec())",
-  "let paginator = query",
+  "visible_categories_query(filter.tenant_id, filter.hidden_category_ids)",
+  ".paginate(&self.db,",
   "let total = paginator.num_items().await?",
   "let categories = paginator.fetch_page",
 ]) {
   requireText(categorySelector, marker, `category selector is missing ${marker}`);
 }
+// The invariant is that the visibility filter is baked into the query that is paginated and counted -
+// not that the query binding happens to be named `query`. Both the count and the page must come from
+// that same paginator, so a hidden row cannot be counted and excluded from the page (or the reverse).
 const categoryFilterIndex = categorySelector.indexOf(
-  "forum_category::Column::Id.is_not_in(hidden_category_ids.to_vec())",
+  "visible_categories_query(filter.tenant_id, filter.hidden_category_ids)",
 );
-const categoryPaginatorIndex = categorySelector.indexOf("let paginator = query");
+const categoryPaginatorIndex = categorySelector.indexOf(".paginate(&self.db,");
+const categoryCountIndex = categorySelector.indexOf("let total = paginator.num_items().await?");
+const categoryPageIndex = categorySelector.indexOf("let categories = paginator.fetch_page");
 if (
   categoryFilterIndex < 0 ||
   categoryPaginatorIndex < 0 ||
-  categoryFilterIndex > categoryPaginatorIndex
+  categoryCountIndex < 0 ||
+  categoryPageIndex < 0 ||
+  categoryFilterIndex > categoryPaginatorIndex ||
+  categoryPaginatorIndex > categoryCountIndex ||
+  categoryCountIndex > categoryPageIndex
 ) {
   failures.push("category visibility must be filtered before count and pagination");
 }

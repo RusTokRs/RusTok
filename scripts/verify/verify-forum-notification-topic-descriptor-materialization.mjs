@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertCanonicalLedger, requireValidationDisclosure } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -83,7 +84,7 @@ for (const marker of [
   "async fn load_topic_for_description(",
   "if self.recipient_context_port.is_some()",
   "self.load_active_topic(tenant_id, topic_id).await?",
-  "topic.status == TopicStatus::Open",
+  "topic.status != TopicStatus::Open",
   "self.load_public_topic(tenant_id, topic_id).await",
   "load_topic_for_description(event.tenant_id, event.aggregate_id)",
   "load_topic_for_subscription_audience(event.tenant_id, event.aggregate_id)",
@@ -143,17 +144,17 @@ for (const marker of [
   "source-ready / unvalidated",
   "Descriptor creation is not recipient authorization",
   "historical public-only check",
-  "not run by the implementation agent",
 ]) {
   requireText(note, marker, `owner note is missing ${marker}`);
 }
-for (const marker of [
-  "FORUM-20A-AS provide",
-  "### Delivered in `FORUM-20AP`",
-  "Forum trust and Channel membership facts adapters",
-]) {
-  requireText(canonical, marker, `canonical plan is missing ${marker}`);
-}
+requireValidationDisclosure(failures, note, "owner note is missing");
+assertCanonicalLedger({
+  failures,
+  plan: canonical,
+  slices: ["FORUM-20AP"],
+  markers: ["consume the existing feature-guarded Groups facts publication for both transports"],
+  label: "canonical plan",
+});
 for (const marker of [
   "### `FORUM-20AP`",
   "initially non-public topic-created descriptors",

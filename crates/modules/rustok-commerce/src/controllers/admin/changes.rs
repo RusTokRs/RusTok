@@ -14,7 +14,10 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use super::{super::CommerceHttpRuntime, super::common::ensure_permissions};
+use super::{
+    super::{CommerceHttpRuntime, common::ensure_permissions},
+    AdminErrorPolicy, order_error_policy, payment_error_policy, reserved_refund_error_policy,
+};
 use crate::services::OrderChangeOrchestrationService;
 use crate::{
     ApplyOrderChangeResult, ExchangeDifferenceRefundInput, OrderChangeOrchestrationError,
@@ -25,7 +28,25 @@ const ADMIN_ORDER_CHANGE_ORCHESTRATION_OWNER: &str =
     "rustok_commerce.admin_order_change_orchestration";
 const ADMIN_ORDER_CHANGE_BOUNDARY: &str = "commerce_admin_order_change_http";
 
-type AdminOrderChangeHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
+/// Admin HTTP policy shape shared with the other admin mappers in `super`.
+type AdminOrderChangeHttpPolicy = AdminErrorPolicy;
+
+/// Record that the order-change route was entered, with identity as shape only.
+fn log_admin_order_change_entry(
+    operation: &'static str,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    order_change_id: Uuid,
+) {
+    tracing::debug!(
+        boundary = ADMIN_ORDER_CHANGE_BOUNDARY,
+        operation,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        actor_id_non_nil = !actor_id.is_nil(),
+        order_change_id_non_nil = !order_change_id.is_nil(),
+        "commerce admin order change route entered with bounded diagnostics"
+    );
+}
 
 fn require_idempotency_key(headers: &HeaderMap) -> Result<String, HttpError> {
     let value = headers
@@ -144,119 +165,6 @@ fn admin_order_change_port_error_policy(error: &PortError) -> AdminOrderChangeHt
     }
 }
 
-fn admin_order_change_payment_error_policy(error: &PaymentError) -> AdminOrderChangeHttpPolicy {
-    match error {
-        PaymentError::PaymentCollectionNotFound(_)
-        | PaymentError::PaymentNotFound(_)
-        | PaymentError::RefundNotFound(_) => (
-            StatusCode::NOT_FOUND,
-            "commerce_admin_not_found",
-            "Commerce resource not found",
-            "not_found",
-        ),
-        PaymentError::Validation(_) => (
-            StatusCode::BAD_REQUEST,
-            "commerce_admin_payment_invalid",
-            "Payment request is invalid",
-            "validation",
-        ),
-        PaymentError::InvalidTransition { .. } | PaymentError::ProviderRejected { .. } => (
-            StatusCode::CONFLICT,
-            "commerce_admin_payment_state_conflict",
-            "Payment operation conflicts with the current state",
-            "state_conflict",
-        ),
-        PaymentError::ProviderUnavailable { .. } => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_payment_provider_unavailable",
-            "Payment provider is temporarily unavailable",
-            "provider_unavailable",
-        ),
-        PaymentError::ProviderInvalidResponse { .. } => (
-            StatusCode::BAD_GATEWAY,
-            "commerce_admin_payment_provider_invalid_response",
-            "Payment provider returned an invalid response; reconciliation may be required",
-            "provider_invalid_response",
-        ),
-        PaymentError::ProviderOutcomeUnknown { .. } => (
-            StatusCode::CONFLICT,
-            "commerce_admin_payment_reconciliation_required",
-            "Payment provider outcome is unknown and requires reconciliation",
-            "provider_outcome_unknown",
-        ),
-        PaymentError::ProviderConfiguration { .. } => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_payment_provider_not_configured",
-            "Payment provider is not configured for this tenant",
-            "provider_configuration",
-        ),
-        PaymentError::Database(_) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_payment_storage_unavailable",
-            "Payment storage is temporarily unavailable",
-            "database",
-        ),
-    }
-}
-
-fn admin_order_change_reserved_refund_error_policy(
-    error: &PaymentError,
-) -> AdminOrderChangeHttpPolicy {
-    match error {
-        PaymentError::ProviderOutcomeUnknown { .. }
-        | PaymentError::ProviderInvalidResponse { .. } => (
-            StatusCode::CONFLICT,
-            "commerce_admin_refund_reconciliation_required",
-            "Refund remains reserved while the provider outcome is reconciled",
-            "refund_reconciliation_required",
-        ),
-        PaymentError::ProviderUnavailable { .. } => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_refund_provider_unavailable",
-            "Refund remains reserved and the provider operation may be retried safely",
-            "refund_provider_unavailable",
-        ),
-        error => admin_order_change_payment_error_policy(error),
-    }
-}
-
-fn admin_order_change_order_error_policy(error: &OrderError) -> AdminOrderChangeHttpPolicy {
-    match error {
-        OrderError::Validation(_) => (
-            StatusCode::BAD_REQUEST,
-            "commerce_admin_order_invalid",
-            "Order request is invalid",
-            "validation",
-        ),
-        OrderError::OrderNotFound(_)
-        | OrderError::OrderReturnNotFound(_)
-        | OrderError::OrderChangeNotFound(_) => (
-            StatusCode::NOT_FOUND,
-            "commerce_admin_not_found",
-            "Commerce resource not found",
-            "not_found",
-        ),
-        OrderError::InvalidTransition { .. } | OrderError::IdempotencyConflict => (
-            StatusCode::CONFLICT,
-            "commerce_admin_order_state_conflict",
-            "Order operation conflicts with the current state",
-            "state_conflict",
-        ),
-        OrderError::Database(_) | OrderError::CommandReceiptCorrupt => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_order_storage_unavailable",
-            "Order storage is temporarily unavailable",
-            "database",
-        ),
-        OrderError::Core(_) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "commerce_admin_order_failed",
-            "Order operation could not be completed safely",
-            "core",
-        ),
-    }
-}
-
 struct AdminOrderChangeOrchestrationErrorContext {
     tenant_id: Uuid,
     actor_id: Uuid,
@@ -354,13 +262,13 @@ fn map_admin_order_change_orchestration_error(
     let (status, code, message, error_kind, source_owner) = match &error {
         PostOrderOrchestrationError::Order(source) => {
             adopt_order_change_order_error_identity(&mut context, source);
-            let (status, code, message, error_kind) = admin_order_change_order_error_policy(source);
+            let (status, code, message, error_kind) = order_error_policy(source);
             (status, code, message, error_kind, "rustok_order")
         }
         PostOrderOrchestrationError::Payment(source) => {
             adopt_order_change_payment_error_identity(&mut context, source);
             let (status, code, message, error_kind) =
-                admin_order_change_payment_error_policy(source);
+                payment_error_policy(source);
             (status, code, message, error_kind, "rustok_payment")
         }
         PostOrderOrchestrationError::PaymentOrchestration(source) => match source {
@@ -368,13 +276,13 @@ fn map_admin_order_change_orchestration_error(
             | PaymentOrchestrationError::Payment(source) => {
                 adopt_order_change_payment_error_identity(&mut context, source);
                 let (status, code, message, error_kind) =
-                    admin_order_change_payment_error_policy(source);
+                    payment_error_policy(source);
                 (status, code, message, error_kind, "rustok_payment")
             }
             PaymentOrchestrationError::ProviderAfterRefundReservation { refund_id, source } => {
                 context.refund_id = Some(*refund_id);
                 let (status, code, message, error_kind) =
-                    admin_order_change_reserved_refund_error_policy(source);
+                    reserved_refund_error_policy(source);
                 (status, code, message, error_kind, "rustok_payment")
             }
         },
@@ -487,14 +395,7 @@ pub async fn apply_order_change(
     if id.is_nil() {
         return Err(HttpError::bad_request("commerce_invalid_id", "Order change ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_ORDER_CHANGE_BOUNDARY,
-        operation = "apply_order_change",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        order_change_id = %id,
-        "applying order change"
-    );
+    log_admin_order_change_entry("apply_order_change", tenant.id, auth.user_id, id);
 
     let actor_id = auth.user_id;
     let idempotency_key = require_idempotency_key(&headers)?;

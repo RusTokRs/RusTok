@@ -268,8 +268,8 @@ for (const marker of [
   "# FORUM-20AY moderation audience policy",
   "source-ready / unvalidated",
   "The exact tenant-scoped topic author remains independently authorized",
-  "transport context composition remains `FORUM-20AZ`",
-  "canonical `crates/modules/rustok-forum/docs/implementation-plan.md` is intentionally not rewritten",
+  "Existing solution transports were composed in `FORUM-20AZ`",
+  "Resolved by `FORUM-20BA`",
   "were not run by the implementation agent",
 ]) {
   requireText(note, marker, `FORUM-20AY owner note is missing ${marker}`);

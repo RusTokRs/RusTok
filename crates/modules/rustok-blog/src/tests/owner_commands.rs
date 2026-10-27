@@ -14,16 +14,18 @@
 //! require a future schedule on input, and only the passage of time makes one due.
 
 use chrono::{Duration, Utc};
-use sea_orm::{DatabaseConnection, EntityTrait};
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, TransactionTrait,
+};
 use uuid::Uuid;
 
 use super::hardening::{
-    admin, create_draft_post, make_post_due, outbox_event_count, post_service, set_post_schedule,
-    setup_hardening_schema,
+    admin, create_draft_post, make_post_due, outbox_event_count, post_input, post_service,
+    set_post_schedule, setup_hardening_schema,
 };
-use crate::entities::blog_post;
-use crate::services::{MAX_SCHEDULED_PUBLISH_BATCH, status_to_storage};
-use crate::{BlogError, BlogPostStatus};
+use crate::entities::{blog_post, blog_post_tag, blog_tag_usage};
+use crate::services::{MAX_SCHEDULED_PUBLISH_BATCH, TagService, status_to_storage};
+use crate::{BlogError, BlogPostStatus, CreateTagInput, UpdateTagInput};
 
 /// Reads a post row straight from the owner table, so an assertion cannot be satisfied by
 /// a cached DTO.
@@ -326,5 +328,349 @@ async fn pin_writes_leave_lifecycle_columns_and_version_untouched() {
     assert_eq!(
         released.version, published.version,
         "unpin is presentation state, not a new revision"
+    );
+}
+
+/// Lifecycle commands are keyed by their **source** status, not by their target.
+///
+/// `unpublish` and `restore` both land on `Draft`; before the commands carried
+/// their own source status, `unpublish` on an archived post resurrected it and
+/// `restore` on a published post silently unpublished it. A command whose post
+/// is already in the target state is an idempotent no-op (and emits no second
+/// event), so a retried request after a lost response is safe.
+#[tokio::test]
+async fn lifecycle_commands_are_source_scoped_and_idempotent() {
+    let (db, events) = setup_hardening_schema().await;
+    let tenant_id = Uuid::new_v4();
+    let service = post_service(&db, &events);
+    let post_id = create_draft_post(&db, &events, tenant_id, "lifecycle").await;
+
+    // Already in the target state: no-op success, no event.
+    service
+        .restore_post(tenant_id, post_id, admin())
+        .await
+        .expect("restore on a draft is an idempotent no-op");
+    service
+        .unpublish_post(tenant_id, post_id, admin())
+        .await
+        .expect("unpublish on a draft is an idempotent no-op");
+
+    service
+        .publish_post(tenant_id, post_id, admin())
+        .await
+        .expect("a draft should publish");
+    service
+        .publish_post(tenant_id, post_id, admin())
+        .await
+        .expect("publishing a published post is an idempotent no-op");
+    assert_eq!(
+        outbox_event_count(&db, "blog.post.published").await,
+        1,
+        "a repeated publish must not announce a second publication"
+    );
+
+    let error = service
+        .restore_post(tenant_id, post_id, admin())
+        .await
+        .expect_err("restore must not withdraw a published post");
+    assert!(matches!(error, crate::BlogError::CannotRestorePublished));
+    assert_status(
+        &db,
+        post_id,
+        BlogPostStatus::Published,
+        "a refused restore leaves the post published",
+    )
+    .await;
+
+    service
+        .archive_post(tenant_id, post_id, admin(), None)
+        .await
+        .expect("a published post should archive");
+
+    let error = service
+        .unpublish_post(tenant_id, post_id, admin())
+        .await
+        .expect_err("unpublish must not resurrect an archived post");
+    assert!(matches!(error, crate::BlogError::CannotUnpublishArchived));
+    assert_status(
+        &db,
+        post_id,
+        BlogPostStatus::Archived,
+        "a refused unpublish leaves the post archived",
+    )
+    .await;
+
+    service
+        .restore_post(tenant_id, post_id, admin())
+        .await
+        .expect("an archived post restores to draft");
+    assert_status(
+        &db,
+        post_id,
+        BlogPostStatus::Draft,
+        "restore returns the post to draft",
+    )
+    .await;
+}
+
+/// A post created as published is a publication for every event consumer.
+#[tokio::test]
+async fn creating_a_published_post_announces_the_publication() {
+    let (db, events) = setup_hardening_schema().await;
+    let tenant_id = Uuid::new_v4();
+    let service = post_service(&db, &events);
+
+    let mut input = post_input("published-at-create");
+    input.publish = true;
+    service
+        .create_post(tenant_id, admin(), input)
+        .await
+        .expect("a published post should be created");
+
+    assert_eq!(
+        outbox_event_count(&db, "blog.post.created").await,
+        1,
+        "creation is announced"
+    );
+    assert_eq!(
+        outbox_event_count(&db, "blog.post.published").await,
+        1,
+        "the same transaction announces the publication"
+    );
+}
+
+/// `blog_tag_usage` is derived state: a lost projection row is repaired by the
+/// next relation write instead of failing it with an underflow.
+#[tokio::test]
+async fn tag_usage_projection_is_recomputed_from_relations() {
+    let (db, events) = setup_hardening_schema().await;
+    let tenant_id = Uuid::new_v4();
+    let service = post_service(&db, &events);
+
+    let mut input = post_input("tag-projection");
+    input.tags = vec!["Rust".to_string(), "SeaORM".to_string()];
+    let post_id = service
+        .create_post(tenant_id, admin(), input)
+        .await
+        .expect("a tagged post should be created");
+
+    let relations = blog_post_tag::Entity::find()
+        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
+        .filter(blog_post_tag::Column::PostId.eq(post_id))
+        .all(&db)
+        .await
+        .expect("tag relations should be readable");
+    let tag_ids = relations
+        .iter()
+        .map(|relation| relation.tag_id)
+        .collect::<Vec<_>>();
+    assert_eq!(tag_ids.len(), 2, "both tags are linked");
+
+    // Simulate drift: the projection rows disappear while the relations stay.
+    blog_tag_usage::Entity::delete_many()
+        .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
+        .exec(&db)
+        .await
+        .expect("the projection rows should be removable");
+
+    let txn = db.begin().await.expect("transaction should open");
+    crate::services::replace_post_tag_links_in_tx(&txn, tenant_id, post_id, &tag_ids)
+        .await
+        .expect("the owner command must repair the projection instead of underflowing");
+    txn.commit().await.expect("transaction should commit");
+
+    let usage = blog_tag_usage::Entity::find()
+        .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
+        .all(&db)
+        .await
+        .expect("the projection should be readable");
+    assert_eq!(usage.len(), 2, "every linked tag has a projection row");
+    assert!(
+        usage.iter().all(|row| row.use_count == 1),
+        "each tag is counted exactly once"
+    );
+    assert_eq!(
+        blog_tag_usage::Entity::find()
+            .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
+            .count(&db)
+            .await
+            .expect("the projection should be countable"),
+        2
+    );
+}
+
+/// The tag projection is derived state, so the tag's own write path re-derives
+/// it: a row whose `canonical_key` no longer matches the Taxonomy owner is
+/// repaired by the next tag update instead of staying wrong until the next
+/// post save.
+///
+/// Taxonomy `canonical_key` is immutable identity, so a rename must not move
+/// the list ordering; the test asserts both halves — the key matches the owner
+/// after the rename, and the count is unchanged.
+#[tokio::test]
+async fn updating_a_tag_rederives_its_usage_projection_row() {
+    let (db, events) = setup_hardening_schema().await;
+    let tenant_id = Uuid::new_v4();
+    let tags = TagService::new(db.clone());
+    let posts = post_service(&db, &events);
+
+    let tag_id = tags
+        .create_tag(
+            tenant_id,
+            admin(),
+            CreateTagInput {
+                locale: "en".to_string(),
+                name: "Zebra".to_string(),
+                slug: None,
+            },
+        )
+        .await
+        .expect("a tag should be created");
+    let mut input = post_input("tag-update-projection");
+    input.tags = vec!["Zebra".to_string()];
+    posts
+        .create_post(tenant_id, admin(), input)
+        .await
+        .expect("a tagged post should be created");
+
+    // The owner key is read through the Taxonomy owner reader: Blog must not
+    // query Taxonomy persistence directly.
+    let owner_key = {
+        let txn = db.begin().await.expect("transaction should open");
+        let terms = rustok_taxonomy::TaxonomyOwnerReader::load_terms_by_ids_in_tx(
+            &txn,
+            tenant_id,
+            rustok_taxonomy::TaxonomyTermKind::Tag,
+            &[tag_id],
+            "en",
+            None,
+        )
+        .await
+        .expect("the owner term should be readable");
+        txn.commit().await.expect("transaction should commit");
+        terms
+            .into_iter()
+            .next()
+            .expect("the owner term should exist")
+            .canonical_key
+    };
+
+    // Simulate drift: the projection keeps a stale key while the relations and
+    // the owner term are correct.
+    blog_tag_usage::Entity::update_many()
+        .col_expr(
+            blog_tag_usage::Column::CanonicalKey,
+            sea_orm::sea_query::Expr::value("stale-key".to_string()),
+        )
+        .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
+        .filter(blog_tag_usage::Column::TagId.eq(tag_id))
+        .exec(&db)
+        .await
+        .expect("the projection row should be updatable");
+
+    tags.update_tag(
+        tenant_id,
+        tag_id,
+        admin(),
+        UpdateTagInput {
+            locale: "en".to_string(),
+            name: Some("Aardvark".to_string()),
+            slug: None,
+        },
+    )
+    .await
+    .expect("the tag should be renamed");
+
+    let projection = blog_tag_usage::Entity::find()
+        .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
+        .filter(blog_tag_usage::Column::TagId.eq(tag_id))
+        .one(&db)
+        .await
+        .expect("the projection should be readable")
+        .expect("the projection row should still exist");
+    assert_eq!(
+        projection.canonical_key, owner_key,
+        "the projection key is re-derived from the Taxonomy owner"
+    );
+    assert_eq!(
+        projection.use_count, 1,
+        "the count is re-read from the relation table, not decremented"
+    );
+}
+
+/// The SEO scan projects only what the SEO port consumes and does not hand a
+/// row without a publication timestamp to the sitemap.
+///
+/// The scan is the input of `sitemap_candidates` and `list_bulk_summaries_page`,
+/// so a skip here is a skip in every sitemap and bulk export of the tenant.
+#[tokio::test]
+async fn seo_scan_skips_a_published_row_without_a_publication_timestamp() {
+    let (db, events) = setup_hardening_schema().await;
+    let tenant_id = Uuid::new_v4();
+    let posts = post_service(&db, &events);
+
+    let mut healthy = post_input("seo-healthy");
+    healthy.publish = true;
+    let healthy_id = posts
+        .create_post(tenant_id, admin(), healthy)
+        .await
+        .expect("a published post should be created");
+
+    let mut damaged = post_input("seo-damaged");
+    damaged.publish = true;
+    let damaged_id = posts
+        .create_post(tenant_id, admin(), damaged)
+        .await
+        .expect("a published post should be created");
+
+    // Simulate pre-existing corruption the write path no longer permits: the
+    // row is published but carries no publication timestamp.
+    blog_post::Entity::update_many()
+        .col_expr(
+            blog_post::Column::PublishedAt,
+            sea_orm::sea_query::Expr::value(Option::<chrono::DateTime<chrono::FixedOffset>>::None),
+        )
+        .filter(blog_post::Column::Id.eq(damaged_id))
+        .exec(&db)
+        .await
+        .expect("the damaged row should be updatable");
+
+    // Walk the scan one row per page. The damaged row must be skipped *and* the
+    // cursor must move past it, otherwise a tenant is stuck on its first broken
+    // row forever.
+    let mut projected = Vec::new();
+    let mut after = None;
+    for _ in 0..4 {
+        let page = posts
+            .scan_published_posts(tenant_id, "en", Some("en"), after, 1)
+            .await
+            .expect("the scan should not fail on one damaged row");
+        projected.extend(page.items.iter().map(|item| item.id));
+        match page.next_after {
+            Some(next) => after = Some(next),
+            None => break,
+        }
+    }
+
+    assert_eq!(
+        projected,
+        vec![healthy_id],
+        "the row without a publication timestamp is not published to the sitemap, and the \
+         healthy row is still reached"
+    );
+    let page = posts
+        .scan_published_posts(tenant_id, "en", Some("en"), None, 50)
+        .await
+        .expect("the scan should not fail on one damaged row");
+    let item = page
+        .items
+        .first()
+        .expect("the healthy post is projected");
+    assert_eq!(item.slug, "seo-healthy");
+    assert_eq!(item.effective_locale, "en");
+    assert_eq!(
+        item.available_locales,
+        vec!["en".to_string()],
+        "the projection carries the translated locale set the alternates need"
     );
 }

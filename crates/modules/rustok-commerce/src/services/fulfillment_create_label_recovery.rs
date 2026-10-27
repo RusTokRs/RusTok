@@ -95,15 +95,10 @@ impl FulfillmentCreateLabelRecoveryService {
             }
         }
 
-        let operation = journal
-            .claim_execution(tenant_id, operation_id)
-            .await?
-            .ok_or_else(|| {
-                FulfillmentOrchestrationError::Validation(format!(
-                    "create_label operation {operation_id} could not be claimed for execution"
-                ))
-            })?;
-
+        // The stored payload is decoded and checked against the journal *before* the
+        // claim. `claim_execution` only moves a pending/error operation to `executing`,
+        // and `executing` is not claimable again, so a payload discovered to be corrupt
+        // after the claim would strand the operation in that state with no retry path.
         let request: FulfillmentProviderOperationRequest = serde_json::from_value(
             operation.request_payload.clone(),
         )
@@ -121,6 +116,15 @@ impl FulfillmentCreateLabelRecoveryService {
                 "create_label operation {operation_id} request identity does not match the journal"
             )));
         }
+
+        let operation = journal
+            .claim_execution(tenant_id, operation_id)
+            .await?
+            .ok_or_else(|| {
+                FulfillmentOrchestrationError::Validation(format!(
+                    "create_label operation {operation_id} could not be claimed for execution"
+                ))
+            })?;
 
         let result = match self
             .fulfillment_provider_registry

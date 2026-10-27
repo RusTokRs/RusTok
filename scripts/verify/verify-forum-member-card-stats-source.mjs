@@ -6,43 +6,59 @@ function read(path) {
   return fs.readFileSync(path, "utf8");
 }
 
+// Collect every drift instead of aborting on the first one: a guard that throws hides the rest of
+// the contract behind whichever marker happened to move first.
+const failures = [];
+
 function need(text, marker, label) {
-  if (!text.includes(marker)) throw new Error(`${label}: missing ${marker}`);
+  if (!text.includes(marker)) failures.push(`${label}: missing ${marker}`);
 }
 
 function forbid(text, marker, label) {
-  if (text.includes(marker)) throw new Error(`${label}: forbidden ${marker}`);
+  if (text.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
 const query = read("crates/modules/rustok-forum/src/graphql/member_card_query.rs");
+const owner = read("crates/modules/rustok-forum/src/services/member_card.rs");
 const gqlMod = read("crates/modules/rustok-forum/src/graphql/mod.rs");
 const profilePresentation = read("crates/modules/rustok-profiles/src/presentation.rs");
 const profileLoader = read("crates/modules/rustok-profiles/src/loader.rs");
 const packet = read("docs/modules/forum-15-member-card-stats-actualization-2026-08-10.md");
 
+// The resolver is now a thin transport: it admits the permission, normalises the request and hands
+// it to the owner service, which owns privacy admission and the single statistics read.
+for (const marker of [
+  "async fn forum_member_cards(",
+  "require_module_enabled(ctx, MODULE_SLUG).await?",
+  "Permission::FORUM_TOPICS_READ",
+  "ForumMemberCardService::new(db.clone())",
+  "ForumMemberCardService::normalize_user_ids(&user_ids)",
+  "ctx.data_opt::<DataLoader<ProfileSummaryLoader>>()",
+  "ProfileSummaryLoaderKey {",
+  ".load_many(keys)",
+  ".compose_admitted_profiles(tenant.id, &requested_user_ids, profiles)",
+  ".read_for_audience(",
+]) need(query, marker, "FORUM-15B member-card resolver");
+
 for (const marker of [
   "pub const MAX_FORUM_MEMBER_CARD_USER_IDS: usize = 100",
-  "async fn forum_member_cards(",
-  "Permission::FORUM_TOPICS_READ",
   "if user_ids.len() > MAX_FORUM_MEMBER_CARD_USER_IDS",
   "if user_id.is_nil()",
   "seen.insert(user_id)",
-  "load_visible_profiles(",
-  "profiles.contains_key(user_id)",
-  "load_forum_stats(db, tenant.id, &visible_user_ids)",
-  "ProfilePresentationService::new(db.clone())",
-  "ctx.data_opt::<DataLoader<ProfileSummaryLoader>>()",
-  "loader.load_many(keys).await?",
+  "pub fn normalize_user_ids(user_ids: &[Uuid])",
+  "pub async fn read_for_audience(",
+  "pub(crate) async fn compose_admitted_profiles(",
+  ".filter(|user_id| profiles.contains_key(user_id))",
   "forum_user_stat::Entity::find()",
   "forum_user_stat::Column::TenantId.eq(tenant_id)",
-  "forum_user_stat::Column::UserId.is_in(visible_user_ids.to_vec())",
-]) need(query, marker, "FORUM-15B member-card query");
+  "forum_user_stat::Column::UserId.is_in(visible_user_ids.clone())",
+]) need(owner, marker, "FORUM-15B member-card owner");
 
-const profileIndex = query.indexOf("load_visible_profiles(");
-const visibleFilterIndex = query.indexOf("profiles.contains_key(user_id)");
-const statsIndex = query.indexOf("load_forum_stats(db, tenant.id, &visible_user_ids)");
-if (!(profileIndex >= 0 && visibleFilterIndex > profileIndex && statsIndex > visibleFilterIndex)) {
-  throw new Error("FORUM-15B privacy admission must precede Forum stats loading");
+// Only identities admitted by the Profiles owner may reach the Forum statistics read.
+const visibleFilterIndex = owner.indexOf(".filter(|user_id| profiles.contains_key(user_id))");
+const statsIndex = owner.indexOf("forum_user_stat::Entity::find()");
+if (!(visibleFilterIndex >= 0 && statsIndex > visibleFilterIndex)) {
+  failures.push("FORUM-15B privacy admission must precede Forum stats loading");
 }
 
 for (const marker of [
@@ -82,5 +98,11 @@ for (const marker of [
   "is not claimed here",
   "no Cargo command, test, Node verifier",
 ]) need(packet, marker, "FORUM-15B actualization");
+
+if (failures.length > 0) {
+  console.error("Forum FORUM-15B member-card statistics source failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
 
 console.log("Forum FORUM-15B member-card statistics source: ok");

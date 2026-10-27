@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 use uuid::Uuid;
 
-use crate::services::is_post_visible_for_channel;
+use crate::services::{can_read_non_public_posts, is_post_visible_for_channel};
 use crate::{BlogError, CategoryService, PostService, TagService};
 
 use super::runtime_data::BlogGraphqlRuntimeData;
@@ -64,18 +64,15 @@ impl BlogQuery {
             | Err(BlogError::Content(rustok_content::ContentError::NodeNotFound(_))) => {
                 return Ok(None);
             }
-            Err(BlogError::Forbidden(_)) if is_public_request(ctx) => return Ok(None),
+            // A caller who may not read the post must not learn that it exists:
+            // "forbidden" and "not found" answer identically, for anonymous and
+            // authenticated callers alike. The alternative (403 for an existing
+            // draft, `null` for a missing id) is an existence oracle.
+            Err(BlogError::Forbidden(_)) => return Ok(None),
             Err(err) => return Err(crate::error::public::to_graphql_error(err)),
         };
 
-        if is_public_request(ctx)
-            && (post.status != crate::BlogPostStatus::Published
-                || !is_post_visible_for_request(
-                    &post.channel_slugs,
-                    public_channel_slug(ctx).as_deref(),
-                    false,
-                ))
-        {
+        if !is_post_readable_for_request(ctx, &post) {
             return Ok(None);
         }
 
@@ -123,19 +120,14 @@ impl BlogQuery {
             | Err(BlogError::Content(rustok_content::ContentError::NodeNotFound(_))) => {
                 return Ok(None);
             }
-            // A public reader must not learn that a post exists but is not
-            // readable for them: the slug lookup answers with "no post".
-            Err(BlogError::Forbidden(_)) if is_public_request(ctx) => return Ok(None),
+            // A reader who may not read the post must not learn that it exists
+            // but is not readable for them: the slug lookup answers with
+            // "no post" for every caller.
+            Err(BlogError::Forbidden(_)) => return Ok(None),
             Err(err) => return Err(crate::error::public::to_graphql_error(err)),
         };
 
-        if let Some(post) = post.filter(|post| {
-            is_post_visible_for_request(
-                &post.channel_slugs,
-                public_channel_slug(ctx).as_deref(),
-                !is_public_request(ctx),
-            )
-        }) {
+        if let Some(post) = post.filter(|post| is_post_readable_for_request(ctx, post)) {
             let author_profiles = load_author_profiles_map(
                 ctx,
                 tenant_id,
@@ -276,7 +268,11 @@ impl BlogQuery {
             tag: filter.tag,
             author_id: filter.author_id,
             locale: Some(locale.clone()),
-            per_page: filter.per_page.map(|value| value as u32),
+            // `u64 as u32` would wrap a large page size to a small one
+            // (`2^32` becomes `0`, i.e. one row) instead of clamping it.
+            per_page: filter
+                .per_page
+                .map(|value| u32::try_from(value).unwrap_or(u32::MAX)),
             after,
         };
 
@@ -521,12 +517,39 @@ pub(super) fn public_channel_slug(ctx: &Context<'_>) -> Option<String> {
         .filter(|slug| !slug.is_empty())
 }
 
-fn is_post_visible_for_request(
+/// Whether this request may read the post.
+///
+/// Visibility is a property of the caller's authority, not of whether a token
+/// was presented: a reader without tenant-wide `blog_posts:read` sees exactly
+/// the public view (published and visible in the current channel), while an
+/// authorized editor sees the post regardless of status and channel. Treating
+/// "authenticated" as "may read non-public posts" gave every signed-in
+/// customer a different view of the same post than an anonymous reader.
+fn is_post_readable_for_request(ctx: &Context<'_>, post: &crate::PostResponse) -> bool {
+    post_is_readable(
+        &request_security_context(ctx),
+        post.status,
+        post.channel_slugs.as_slice(),
+        public_channel_slug(ctx).as_deref(),
+    )
+}
+
+/// The read policy itself, independent of the GraphQL request plumbing.
+///
+/// See [`is_post_readable_for_request`]: authority decides whether non-public
+/// state is visible, and the channel allowlist applies to the public view
+/// whether or not a token was presented.
+pub(super) fn post_is_readable(
+    security: &SecurityContext,
+    status: crate::BlogPostStatus,
     channel_slugs: &[String],
-    public_channel_slug: Option<&str>,
-    is_authenticated: bool,
+    channel_slug: Option<&str>,
 ) -> bool {
-    is_authenticated || is_post_visible_for_channel(channel_slugs, public_channel_slug)
+    if can_read_non_public_posts(security) {
+        return true;
+    }
+    status == crate::BlogPostStatus::Published
+        && is_post_visible_for_channel(channel_slugs, channel_slug)
 }
 
 fn map_post(post: crate::PostResponse, author_profile: Option<GqlProfileSummary>) -> GqlPost {
@@ -676,9 +699,19 @@ pub(super) async fn ensure_public_blog_channel_enabled(
         return Ok(());
     }
 
+    // No `RequestContext` at all means the host did not scope this request to a
+    // channel (admin surface, non-channel deployment): there is no channel
+    // decision to enforce, and the tenant-level module gate still applies.
     let Some(request_context) = request_context else {
         return Ok(());
     };
+    // A `RequestContext` without a channel is the same case one level down: the
+    // host's channel middleware attaches a channel only when resolution
+    // *succeeded*, so an absent `channel_id` means "this deployment/request has
+    // no channel in scope", not "the resolved channel was withheld". There is
+    // still no channel decision to enforce, and a failed lookup inside
+    // `ChannelService` below is a hard error, so the gate never silently passes
+    // a channel it could not verify.
     let Some(channel_id) = request_context.channel_id else {
         return Ok(());
     };

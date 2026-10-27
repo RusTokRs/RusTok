@@ -6,7 +6,7 @@
   "migration_file": "crates/modules/rustok-forum/src/migrations/m20260728_000003_add_forum_category_moderation_audience.rs",
   "policy_service": "crates/modules/rustok-forum/src/services/category_moderation_audience.rs",
   "authorization_service": "crates/modules/rustok-forum/src/services/moderation_audience_authorization.rs",
-  "moderation_owner": "crates/modules/rustok-forum/src/services/moderation.rs",
+  "moderation_owner": "crates/modules/rustok-forum/src/services/moderation_owner.rs",
   "entities_module": "crates/modules/rustok-forum/src/entities/mod.rs",
   "services_module": "crates/modules/rustok-forum/src/services/mod.rs",
   "crate_root": "crates/modules/rustok-forum/src/lib.rs",

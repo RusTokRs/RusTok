@@ -6,12 +6,16 @@ function read(path) {
   return fs.readFileSync(path, "utf8");
 }
 
+// Collect every drift instead of aborting on the first one: a guard that throws hides the rest of
+// the contract behind whichever marker happened to move first.
+const failures = [];
+
 function need(text, marker, label) {
-  if (!text.includes(marker)) throw new Error(`${label}: missing ${marker}`);
+  if (!text.includes(marker)) failures.push(`${label}: missing ${marker}`);
 }
 
 function forbid(text, marker, label) {
-  if (text.includes(marker)) throw new Error(`${label}: forbidden ${marker}`);
+  if (text.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
 const files = {
@@ -31,9 +35,12 @@ const source = Object.fromEntries(
   Object.entries(files).map(([key, path]) => [key, read(path)]),
 );
 
+// The module is public and its contract is re-exported by name from the crate root; a glob would
+// export the same surface, so pin exposure rather than one spelling of it.
 for (const marker of [
   "pub mod import_tombstone_preparation;",
-  "pub use import_tombstone_preparation::*;",
+  "pub use import_tombstone_preparation::{",
+  "MAX_FORUM_IMPORT_REPLY_TOMBSTONES_PER_BATCH",
 ]) need(source.lib, marker, "FORUM-34P root wiring");
 
 for (const marker of [
@@ -118,5 +125,11 @@ for (const marker of [
   ".delete(&",
   ".commit(",
 ]) forbid(source.tombstone, marker, "side-effect-free tombstone admission");
+
+if (failures.length > 0) {
+  console.error("Forum FORUM-34P deleted reply tombstone admission source failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
 
 console.log("Forum FORUM-34P deleted reply tombstone admission source: ok");

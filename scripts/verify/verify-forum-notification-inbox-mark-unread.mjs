@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertCanonicalLedger, requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -131,31 +132,13 @@ if (planSync.required_ledger_through !== "FORUM-20W") {
 if (JSON.stringify(planSync.required_delivered_sections) !== JSON.stringify(deliveredSlices)) {
   failures.push("mark unread contract must require FORUM-20H through FORUM-20W delivered sections");
 }
-if (planSync.status === "pending") {
-  if (planSync.current_plan_through !== "FORUM-20G") {
-    failures.push("pending canonical plan synchronization must identify FORUM-20G as current");
-  }
-  requireText(
-    plan,
-    "FORUM-20A-G provide",
-    "pending canonical plan synchronization must remain grounded in FORUM-20A-G",
-  );
-  for (const slice of deliveredSlices) {
-    rejectText(
-      plan,
-      `### Delivered in \`${slice}\``,
-      `canonical plan now contains ${slice}; update canonical_plan_sync before claiming pending through G`,
-    );
-  }
-} else if (planSync.status === "synchronized") {
-  requireText(plan, "FORUM-20A-W provide", "synchronized canonical plan must advance through W");
-  for (const slice of deliveredSlices) {
-    requireText(plan, `### Delivered in \`${slice}\``, `canonical plan is missing ${slice}`);
-  }
-} else {
-  failures.push("canonical_plan_sync.status must be pending or synchronized");
-}
-
+assertCanonicalLedger({
+  failures,
+  plan,
+  slices: deliveredSlices,
+  planSync,
+  label: "canonical plan synchronization",
+});
 for (const marker of [
   "pub struct NotificationInboxStateRequest",
   "pub tenant_id: Uuid",
@@ -287,21 +270,20 @@ for (const marker of [
 
 for (const marker of [
   "seen/read/mark-unread/archive state APIs",
-  "mark_unread",
-  "former `mark-unread, bulk/mark-all` residual",
-  "bulk/mark-all mutations",
+  "`mark_unread` returns seen or read rows to unread",
+  "state APIs with one explicit reopen command",
+  "Archived remains terminal: `mark_seen`, `mark_read`, and `mark_unread` cannot reopen",
   "tests/inbox_state_sqlite.rs",
 ]) {
-  requireText(rootReadme, marker, `notifications root README is missing ${marker}`);
+  requireProse(failures, rootReadme, marker, "notifications root README");
 }
 for (const marker of [
-  "Exact seen/read/mark-unread/archive state APIs",
-  "explicit reopen command",
-  "No command reopens an archived row",
-  "mark-unread, bulk/mark-all",
+  "### Exact and bounded inbox state commands",
+  "mark-unread reopens only seen/read, while archived remains terminal",
+  "Idempotent or protected commands return `changed=false` without rewriting timestamps",
   "verify-forum-notification-inbox-mark-unread.mjs",
 ]) {
-  requireText(docs, marker, `notifications live contract is missing ${marker}`);
+  requireProse(failures, docs, marker, "notifications live contract");
 }
 for (const marker of [
   "### `FORUM-20W`",

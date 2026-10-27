@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use rustok_api::SharedStaticModuleSettingsReader;
 use rustok_core::search_projection::{
     MAX_SEARCH_PROJECTION_PAGE_SIZE, SearchProjectionDocument, SearchProjectionPage,
-    SearchProjectionSource, SearchProjectionSourceFactory,
+    SearchProjectionRefreshScope, SearchProjectionSource, SearchProjectionSourceFactory,
 };
 use rustok_core::{Error, ModuleRuntimeExtensions, Result};
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
@@ -612,6 +612,17 @@ impl ForumSearchProjectionSource {
 impl SearchProjectionSource for ForumSearchProjectionSource {
     fn source_module(&self) -> &'static str {
         FORUM_SOURCE_MODULE
+    }
+
+    /// A topic owns its replies: changing one topic changes the reply documents that
+    /// belong to it, and a reply document is derived from its topic as well as itself.
+    /// Every other Forum entity is replaceable on its own.
+    fn refresh_scope(&self, entity_type: &str) -> SearchProjectionRefreshScope {
+        if entity_type == FORUM_TOPIC_ENTITY_TYPE {
+            SearchProjectionRefreshScope::Tenant
+        } else {
+            SearchProjectionRefreshScope::Entity
+        }
     }
 
     async fn list_public_documents(

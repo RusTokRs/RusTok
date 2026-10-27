@@ -146,7 +146,7 @@ requireAll(
     "let lock_key = format!(\"search:{FORUM_SOURCE_MODULE}:{tenant_id}:{FULL_SCOPE_KEY}\")",
     "pg_try_advisory_xact_lock(hashtextextended($1, 0))",
     "return Ok(TenantCheckpointOutcome::Blocked)",
-    "self.forum_projector.rebuild_tenant(head.tenant_id).await?",
+    "self.projection_driver.rebuild_tenant(head.tenant_id).await?",
     "let mut previous_revision = checkpoint",
     "advance_checkpoint(",
     "previous_revision = revision.owner_revision",
@@ -160,13 +160,22 @@ requireAll(
 );
 
 const ownerSource = read(ownerSourcePath);
+// The two invariants are owned by two files: the tenant-head page ordering lives in
+// `forum_owner_checkpoint`, the revision contiguity in `forum_reconciliation`.
+const checkpointOwnerSource = read("crates/modules/rustok-search/src/forum_owner_checkpoint.rs");
+requireAll(
+  checkpointOwnerSource,
+  [
+    "owner tenant heads must be strictly ordered after the requested cursor",
+    "after_tenant_id",
+  ],
+  "owner tenant head ordering",
+);
 requireAll(
   ownerSource,
   [
-    "owner tenant heads must be strictly ordered after the requested cursor",
     "owner revisions must be contiguous and strictly ordered after the requested cursor",
     "ForumProjectionOwnerRevisionImpact::FullRebuild",
-    "after_tenant_id",
     "owner_revision",
     "ingest_sequence",
   ],

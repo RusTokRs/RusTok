@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertCanonicalLedger, requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -125,31 +126,13 @@ if (planSync.required_ledger_through !== "FORUM-20V") {
 if (JSON.stringify(planSync.required_delivered_sections) !== JSON.stringify(deliveredSlices)) {
   failures.push("inbox reconciliation contract must require FORUM-20H through FORUM-20V delivered sections");
 }
-if (planSync.status === "pending") {
-  if (planSync.current_plan_through !== "FORUM-20G") {
-    failures.push("pending canonical plan synchronization must identify FORUM-20G as current");
-  }
-  requireText(
-    plan,
-    "FORUM-20A-G provide",
-    "pending canonical plan synchronization must remain grounded in FORUM-20A-G",
-  );
-  for (const slice of deliveredSlices) {
-    rejectText(
-      plan,
-      `### Delivered in \`${slice}\``,
-      `canonical plan now contains ${slice}; update canonical_plan_sync before claiming pending through G`,
-    );
-  }
-} else if (planSync.status === "synchronized") {
-  requireText(plan, "FORUM-20A-V provide", "synchronized canonical plan must advance through V");
-  for (const slice of deliveredSlices) {
-    requireText(plan, `### Delivered in \`${slice}\``, `canonical plan is missing ${slice}`);
-  }
-} else {
-  failures.push("canonical_plan_sync.status must be pending or synchronized");
-}
-
+assertCanonicalLedger({
+  failures,
+  plan,
+  slices: deliveredSlices,
+  planSync,
+  label: "canonical plan synchronization",
+});
 for (const marker of [
   "pub struct NotificationInboxReconcileRequest",
   "pub tenant_id: Uuid",
@@ -279,22 +262,21 @@ for (const marker of [
   "NotificationInboxReconcileService",
   "bounded exact-recipient reconciliation",
   "crate-private `i1` inbox cursor",
-  "tenant-wide scheduled reconciliation",
+  "tenant-wide scheduled reconciliation and payload redaction",
   "inbox_reconcile_sqlite",
 ]) {
-  requireText(rootReadme, marker, `notifications root README is missing ${marker}`);
+  requireProse(failures, rootReadme, marker, "notifications root README");
 }
 for (const marker of [
   "### Bounded inbox reconciliation",
-  "privacy or source policy",
-  "durable and idempotent",
-  "crate-private `i1` inbox cursor",
-  "Tenant-wide scheduling",
-  "payload redaction",
+  "shared 20/64 bounds and `i1` cursor",
+  "privacy/source authorization",
+  "archives remain durable and retry-safe",
+  "tenant-wide scheduled reconciliation and payload redaction",
   "inbox_reconcile_sqlite",
   "verify-forum-notification-inbox-reconciliation.mjs",
 ]) {
-  requireText(docs, marker, `notifications live contract is missing ${marker}`);
+  requireProse(failures, docs, marker, "notifications live contract");
 }
 for (const marker of [
   "### `FORUM-20V`",

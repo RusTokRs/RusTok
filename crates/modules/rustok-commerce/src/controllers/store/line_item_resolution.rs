@@ -35,12 +35,46 @@ fn storefront_product_port_context(
     }
 }
 
-fn map_storefront_line_item_product_port_error(
-    error: PortError,
-    context: &PortContext,
-    variant_id: Uuid,
-) -> HttpError {
-    let owner_error_kind = match &error.kind {
+/// Bounded projection of a storefront line-item port failure.
+///
+/// The line-item boundary sits in front of the Product catalog read and the Pricing read, and each
+/// of them fails with its own typed `PortError`. What they share is what this struct keeps: the
+/// shape of the caller's port context, non-nil identity flags, the typed failure label, and the
+/// owner code length. No tenant id, channel slug, variant id, product id, owner code, or owner
+/// message is ever carried here.
+struct StorefrontLineItemPortFacts {
+    correlation_id_length: usize,
+    tenant_id_length: usize,
+    channel_present: bool,
+    variant_id_non_nil: bool,
+    product_id_non_nil: Option<bool>,
+    owner_error_kind: &'static str,
+    owner_code_length: usize,
+    retryable: bool,
+}
+
+impl StorefrontLineItemPortFacts {
+    fn new(
+        error: &PortError,
+        context: &PortContext,
+        variant_id: Uuid,
+        product_id: Option<Uuid>,
+    ) -> Self {
+        Self {
+            correlation_id_length: context.correlation_id.chars().count(),
+            tenant_id_length: context.tenant_id.chars().count(),
+            channel_present: context.channel.is_some(),
+            variant_id_non_nil: !variant_id.is_nil(),
+            product_id_non_nil: product_id.map(|value| !value.is_nil()),
+            owner_error_kind: storefront_line_item_port_error_kind(&error.kind),
+            owner_code_length: error.code.chars().count(),
+            retryable: error.retryable,
+        }
+    }
+}
+
+fn storefront_line_item_port_error_kind(kind: &rustok_api::PortErrorKind) -> &'static str {
+    match kind {
         rustok_api::PortErrorKind::Validation => "validation",
         rustok_api::PortErrorKind::NotFound => "not_found",
         rustok_api::PortErrorKind::Conflict => "conflict",
@@ -48,22 +82,78 @@ fn map_storefront_line_item_product_port_error(
         rustok_api::PortErrorKind::Unavailable => "unavailable",
         rustok_api::PortErrorKind::Timeout => "timeout",
         rustok_api::PortErrorKind::InvariantViolation => "invariant_violation",
-    };
-    let owner_code_length = error.code.chars().count();
-    let retryable = error.retryable;
+    }
+}
+
+/// Severity follows the public status, exactly like the other storefront mappers: transport and
+/// invariant failures (503/504/500) are technical and log at `error`, while a rejected caller
+/// request (400/403/404/409) logs at `warn` so expected input never produces an error storm.
+fn is_technical_storefront_status(status: axum::http::StatusCode) -> bool {
+    matches!(
+        status,
+        axum::http::StatusCode::SERVICE_UNAVAILABLE
+            | axum::http::StatusCode::GATEWAY_TIMEOUT
+            | axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    )
+}
+
+fn log_storefront_line_item_port_error(
+    owner: &'static str,
+    operation: &'static str,
+    technical_event: &'static str,
+    rejected_event: &'static str,
+    facts: &StorefrontLineItemPortFacts,
+    public_status: axum::http::StatusCode,
+) {
+    if is_technical_storefront_status(public_status) {
+        tracing::error!(
+            owner,
+            operation,
+            correlation_id_length = facts.correlation_id_length,
+            tenant_id_length = facts.tenant_id_length,
+            channel_present = facts.channel_present,
+            variant_id_non_nil = facts.variant_id_non_nil,
+            product_id_non_nil = ?facts.product_id_non_nil,
+            owner_error_kind = facts.owner_error_kind,
+            owner_code_length = facts.owner_code_length,
+            retryable = facts.retryable,
+            public_status = %public_status,
+            boundary = "commerce_storefront_line_item_http",
+            technical_event
+        );
+    } else {
+        tracing::warn!(
+            owner,
+            operation,
+            correlation_id_length = facts.correlation_id_length,
+            tenant_id_length = facts.tenant_id_length,
+            channel_present = facts.channel_present,
+            variant_id_non_nil = facts.variant_id_non_nil,
+            product_id_non_nil = ?facts.product_id_non_nil,
+            owner_error_kind = facts.owner_error_kind,
+            owner_code_length = facts.owner_code_length,
+            retryable = facts.retryable,
+            public_status = %public_status,
+            boundary = "commerce_storefront_line_item_http",
+            rejected_event
+        );
+    }
+}
+
+fn map_storefront_line_item_product_port_error(
+    error: PortError,
+    context: &PortContext,
+    variant_id: Uuid,
+) -> HttpError {
+    let facts = StorefrontLineItemPortFacts::new(&error, context, variant_id, None);
     let public = port_error_to_http_error(error);
-    tracing::error!(
-        owner = "rustok_product",
-        operation = "read_variant_product_projection",
-        correlation_id = %context.correlation_id,
-        tenant_id_length = context.tenant_id.chars().count(),
-        variant_id_non_nil = !variant_id.is_nil(),
-        owner_error_kind,
-        owner_code_length,
-        retryable,
-        public_status = %public.status,
-        boundary = "commerce_storefront_line_item_http",
-        "storefront line item Product owner read failed with bounded diagnostics"
+    log_storefront_line_item_port_error(
+        "rustok_product",
+        "read_variant_product_projection",
+        "storefront line item Product owner read failed with bounded diagnostics",
+        "storefront line item Product owner read was rejected with bounded diagnostics",
+        &facts,
+        public.status,
     );
     public
 }
@@ -110,32 +200,15 @@ fn map_storefront_line_item_pricing_error(
     variant_id: Uuid,
     product_id: Uuid,
 ) -> HttpError {
-    let owner_error_kind = match &error.kind {
-        rustok_api::PortErrorKind::Validation => "validation",
-        rustok_api::PortErrorKind::NotFound => "not_found",
-        rustok_api::PortErrorKind::Conflict => "conflict",
-        rustok_api::PortErrorKind::Forbidden => "forbidden",
-        rustok_api::PortErrorKind::Unavailable => "unavailable",
-        rustok_api::PortErrorKind::Timeout => "timeout",
-        rustok_api::PortErrorKind::InvariantViolation => "invariant_violation",
-    };
-    let owner_code_length = error.code.chars().count();
-    let retryable = error.retryable;
+    let facts = StorefrontLineItemPortFacts::new(&error, context, variant_id, Some(product_id));
     let public = port_error_to_http_error(error);
-    tracing::error!(
-        owner = "rustok_pricing",
-        operation = "resolve_product_price",
-        correlation_id = %context.correlation_id,
-        tenant_id_length = context.tenant_id.chars().count(),
-        channel_present = context.channel.is_some(),
-        variant_id_non_nil = !variant_id.is_nil(),
-        product_id_non_nil = !product_id.is_nil(),
-        owner_error_kind,
-        owner_code_length,
-        retryable,
-        public_status = %public.status,
-        boundary = "commerce_storefront_line_item_http",
-        "storefront line item pricing resolution failed with bounded diagnostics"
+    log_storefront_line_item_port_error(
+        "rustok_pricing",
+        "resolve_product_price",
+        "storefront line item pricing resolution failed with bounded diagnostics",
+        "storefront line item pricing resolution was rejected with bounded diagnostics",
+        &facts,
+        public.status,
     );
     public
 }
@@ -191,21 +264,41 @@ fn map_storefront_line_item_inventory_error(
             "unexpected_owner_error",
         ),
     };
-    tracing::error!(
-        owner = "rustok_inventory.public_channel",
-        operation,
-        tenant_id_non_nil = !tenant_id.is_nil(),
-        variant_id_non_nil = !variant_id.is_nil(),
-        product_id_non_nil = !product_id.is_nil(),
-        channel_present = public_channel_slug.is_some(),
-        channel_length = public_channel_slug.map(str::len),
-        locale_present = locale.is_some(),
-        locale_length = locale.map(str::len),
-        error_kind,
-        public_status = %status,
-        boundary = "commerce_storefront_line_item_http",
-        "storefront line item inventory operation failed with bounded diagnostics"
-    );
+    if is_technical_storefront_status(status) {
+        tracing::error!(
+            owner = "rustok_inventory.public_channel",
+            operation,
+            tenant_id_non_nil = !tenant_id.is_nil(),
+            variant_id_non_nil = !variant_id.is_nil(),
+            product_id_non_nil = !product_id.is_nil(),
+            channel_present = public_channel_slug.is_some(),
+            channel_length = public_channel_slug.map(str::len),
+            locale_present = locale.is_some(),
+            locale_length = locale.map(str::len),
+            error_kind,
+            owner_code_length = code.chars().count(),
+            public_status = %status,
+            boundary = "commerce_storefront_line_item_http",
+            "storefront line item inventory operation failed with bounded diagnostics"
+        );
+    } else {
+        tracing::warn!(
+            owner = "rustok_inventory.public_channel",
+            operation,
+            tenant_id_non_nil = !tenant_id.is_nil(),
+            variant_id_non_nil = !variant_id.is_nil(),
+            product_id_non_nil = !product_id.is_nil(),
+            channel_present = public_channel_slug.is_some(),
+            channel_length = public_channel_slug.map(str::len),
+            locale_present = locale.is_some(),
+            locale_length = locale.map(str::len),
+            error_kind,
+            owner_code_length = code.chars().count(),
+            public_status = %status,
+            boundary = "commerce_storefront_line_item_http",
+            "storefront line item inventory operation was rejected with bounded diagnostics"
+        );
+    }
     HttpError::new(status, code, message)
 }
 

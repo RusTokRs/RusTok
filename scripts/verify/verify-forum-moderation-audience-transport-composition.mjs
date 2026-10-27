@@ -297,8 +297,8 @@ for (const marker of [
   "existing REST `POST /api/forum/topics/{topic_id}/solution/{reply_id}`",
   "exact tenant-scoped topic author",
   "No new GraphQL field, REST route, OpenAPI shape",
-  "Trust remains blocked on `FORUM-26`",
-  "canonical `crates/modules/rustok-forum/docs/implementation-plan.md` is intentionally not rewritten",
+  "Authoritative Forum trust is host-composed through",
+  "Resolved by `FORUM-20BA`",
   "were not run by the implementation agent",
 ]) {
   requireText(note, marker, `FORUM-20AZ owner note is missing ${marker}`);

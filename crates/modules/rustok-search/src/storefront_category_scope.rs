@@ -4,8 +4,6 @@ use async_trait::async_trait;
 use rustok_api::{AuthContext, PortError, RequestContext};
 use uuid::Uuid;
 
-pub const FORUM_SEARCH_SOURCE_MODULE: &str = "forum";
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StorefrontSearchTransport {
     Graphql,
@@ -24,15 +22,17 @@ pub struct StorefrontSearchCategoryScopeRequest {
     pub transport: StorefrontSearchTransport,
 }
 
-impl StorefrontSearchCategoryScopeRequest {
-    pub fn is_explicit_forum_only(&self) -> bool {
-        self.source_modules.len() == 1 && self.source_modules[0] == FORUM_SEARCH_SOURCE_MODULE
-    }
-}
-
 #[async_trait]
 pub trait StorefrontSearchCategoryScopePort: Send + Sync {
-    async fn expand_forum_category_scope(
+    /// Source module whose storefront category tree this port owns.
+    ///
+    /// Search never guesses a category tree: it consults the capability only when the
+    /// resolved request scope is exactly this module, so a new owner registers its own
+    /// port instead of changing the executor.
+    fn source_module(&self) -> &'static str;
+
+    /// Expands the requested category roots into the exact document category scope.
+    async fn expand_category_scope(
         &self,
         request: StorefrontSearchCategoryScopeRequest,
     ) -> Result<Vec<Uuid>, PortError>;
@@ -40,26 +40,36 @@ pub trait StorefrontSearchCategoryScopePort: Send + Sync {
 
 pub type SharedStorefrontSearchCategoryScopePort = Arc<dyn StorefrontSearchCategoryScopePort>;
 
-/// Applies the owner category-scope capability only to an explicit Forum-only
-/// Search request. Mixed, unspecified, and non-Forum source scopes retain the
-/// existing exact-category semantics. An explicit owner path fails closed when
-/// its capability is not composed.
+/// True when the requested source-module scope is exactly the declaring module.
+///
+/// Both the resolver and every owner port use this predicate, so "the scope belongs to
+/// this capability" has one definition instead of one per module.
+pub fn scope_is_exactly(source_modules: &[String], module: &str) -> bool {
+    source_modules.len() == 1 && source_modules[0] == module
+}
+
+/// Applies the owner category-scope capability to a single-module Search request.
+///
+/// The owner declares the source module it owns, so mixed, unspecified and unrelated
+/// scopes retain exact-category semantics and Search never expands a tree by itself.
+/// A host that did not compose the capability (module disabled or absent) also keeps
+/// exact semantics: its documents are governed by the audience classes, not by this
+/// optional capability.
 pub async fn resolve_storefront_search_category_ids(
     port: Option<SharedStorefrontSearchCategoryScopePort>,
     request: StorefrontSearchCategoryScopeRequest,
 ) -> Result<Vec<Uuid>, PortError> {
-    if request.category_ids.is_empty() || !request.is_explicit_forum_only() {
+    if request.category_ids.is_empty() {
+        return Ok(request.category_ids);
+    }
+    let Some(port) = port else {
+        return Ok(request.category_ids);
+    };
+    if !scope_is_exactly(&request.source_modules, port.source_module()) {
         return Ok(request.category_ids);
     }
 
-    let port = port.ok_or_else(|| {
-        PortError::unavailable(
-            "forum.search_category_scope.owner_unavailable",
-            "Forum Search category scope is temporarily unavailable",
-        )
-    })?;
-
-    port.expand_forum_category_scope(request).await
+    port.expand_category_scope(request).await
 }
 
 #[cfg(test)]
@@ -77,7 +87,11 @@ mod tests {
 
     #[async_trait]
     impl StorefrontSearchCategoryScopePort for CountingScopePort {
-        async fn expand_forum_category_scope(
+        fn source_module(&self) -> &'static str {
+            "forum"
+        }
+
+        async fn expand_category_scope(
             &self,
             request: StorefrontSearchCategoryScopeRequest,
         ) -> Result<Vec<Uuid>, PortError> {
@@ -100,7 +114,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn explicit_forum_only_scope_invokes_owner_port() {
+    async fn declaring_module_scope_invokes_owner_port() {
         let calls = Arc::new(AtomicUsize::new(0));
         let port: SharedStorefrontSearchCategoryScopePort = Arc::new(CountingScopePort {
             calls: calls.clone(),
@@ -108,18 +122,52 @@ mod tests {
 
         resolve_storefront_search_category_ids(Some(port), request(vec!["forum"]))
             .await
-            .expect("Forum-only scope should resolve");
+            .expect("declaring-module scope should resolve");
 
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
-    async fn explicit_forum_only_scope_requires_owner_port() {
-        let error = resolve_storefront_search_category_ids(None, request(vec!["forum"]))
-            .await
-            .expect_err("explicit Forum scope must fail closed without its owner");
+    async fn absent_owner_capability_keeps_exact_categories() {
+        // A host without the capability (module disabled or absent) must not fail a
+        // public search: its documents are governed by the declared audience classes.
+        let request = request(vec!["forum"]);
+        let expected = request.category_ids.clone();
 
-        assert_eq!(error.kind, rustok_api::PortErrorKind::Unavailable);
+        let resolved = resolve_storefront_search_category_ids(None, request)
+            .await
+            .expect("absent owner capability keeps exact semantics");
+
+        assert_eq!(resolved, expected);
+    }
+
+    #[tokio::test]
+    async fn unrelated_single_module_scope_never_uses_another_owners_tree() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let port: SharedStorefrontSearchCategoryScopePort = Arc::new(CountingScopePort {
+            calls: calls.clone(),
+        });
+        let request = request(vec!["blog"]);
+        let expected = request.category_ids.clone();
+
+        let resolved = resolve_storefront_search_category_ids(Some(port), request)
+            .await
+            .expect("unrelated scope remains exact");
+
+        assert_eq!(resolved, expected);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn only_the_declaring_module_is_the_owning_scope() {
+        assert!(scope_is_exactly(&["forum".to_string()], "forum"));
+        assert!(!scope_is_exactly(&[], "forum"));
+        assert!(!scope_is_exactly(
+            &["forum".to_string(), "product".to_string()],
+            "forum",
+        ));
+        assert!(!scope_is_exactly(&["product".to_string()], "forum"));
+        assert!(!scope_is_exactly(&["forum".to_string()], "blog"));
     }
 
     #[tokio::test]

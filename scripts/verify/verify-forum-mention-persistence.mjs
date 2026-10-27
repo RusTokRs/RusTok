@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,11 +10,18 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   : path.resolve(scriptDir, "../..");
 const failures = [];
 
+// A contract or guard may name a migration directory whose backend branches are separate modules.
 function read(relativePath) {
   const absolute = path.join(repoRoot, relativePath);
   if (!existsSync(absolute)) {
     failures.push(`${relativePath}: required file is missing`);
     return "";
+  }
+  if (statSync(absolute).isDirectory()) {
+    return collectRustFiles(absolute)
+      .sort()
+      .map((relative) => readFileSync(path.join(absolute, relative), "utf8"))
+      .join("\n");
   }
   return readFileSync(absolute, "utf8");
 }
@@ -27,6 +34,19 @@ function requireOrder(source, first, second, message) {
   const firstIndex = source.indexOf(first);
   const secondIndex = source.indexOf(second);
   if (firstIndex < 0 || secondIndex < 0 || firstIndex >= secondIndex) failures.push(message);
+}
+
+function collectRustFiles(root, relative = "") {
+  const files = [];
+  for (const entry of readdirSync(path.join(root, relative))) {
+    const childRelative = path.join(relative, entry);
+    if (statSync(path.join(root, childRelative)).isDirectory()) {
+      files.push(...collectRustFiles(root, childRelative));
+    } else if (entry.endsWith(".rs")) {
+      files.push(childRelative);
+    }
+  }
+  return files;
 }
 
 function reject(source, pattern, message) {
@@ -162,7 +182,6 @@ for (const marker of [
 for (const marker of [
   "m20260722_000004_add_forum_mention_quote_relations",
   "m20260722_000005_seed_forum_relation_revisions",
-  "m20260722_000006_add_forum_mention_events",
 ]) {
   requireText(migrationRegistry, marker, `${migrationRegistryPath}: migration is not registered: ${marker}`);
 }
@@ -172,15 +191,26 @@ requireOrder(
   "Box::new(m20260722_000005_seed_forum_relation_revisions::Migration)",
   `${migrationRegistryPath}: rollout seed migration must follow relation schema creation`,
 );
-requireOrder(
+// The append-only journal migration accepts both mention event types in place, so the rollout is
+// closed by pinning that constraint rather than by a separate empty migration.
+const journalMigrationPath =
+  "crates/modules/rustok-forum/src/migrations/m20260713_000011_add_forum_domain_events";
+requireText(
   migrationRegistry,
-  "Box::new(m20260722_000005_seed_forum_relation_revisions::Migration)",
-  "Box::new(m20260722_000006_add_forum_mention_events::Migration)",
-  `${migrationRegistryPath}: mention event journal migration must follow active relation rollout`,
+  "m20260713_000011_add_forum_domain_events",
+  `${migrationRegistryPath}: mention event journal migration is not registered`,
 );
+const journalMigration = read(journalMigrationPath);
+for (const eventType of ["forum.mention.user_added", "forum.mention.audience_added"]) {
+  requireText(
+    journalMigration,
+    eventType,
+    `${journalMigrationPath}: journal constraint must accept ${eventType}`,
+  );
+}
 requireText(
   serviceRegistry,
-  "mod mention_relation;",
+  "mod mention_relation {",
   `${serviceRegistryPath}: owner persistence service is not registered`,
 );
 for (const marker of [
@@ -204,7 +234,7 @@ for (const marker of [
   "FORUM-12C",
   "forum.mention.user_added",
   "ForumRelationReadService",
-  "same event UUID",
+  "one shared identity",
 ]) {
   requireText(cRecord, marker, `${cRecordPath}: event/read rollout record is missing ${marker}`);
 }

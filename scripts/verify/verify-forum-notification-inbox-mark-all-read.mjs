@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertCanonicalLedger, requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -129,31 +130,13 @@ if (planSync.required_ledger_through !== "FORUM-20Y") {
 if (JSON.stringify(planSync.required_delivered_sections) !== JSON.stringify(deliveredSlices)) {
   failures.push("mark-all-read contract must require FORUM-20H through FORUM-20Y delivered sections");
 }
-if (planSync.status === "pending") {
-  if (planSync.current_plan_through !== "FORUM-20G") {
-    failures.push("pending canonical plan synchronization must identify FORUM-20G as current");
-  }
-  requireText(
-    plan,
-    "FORUM-20A-G provide",
-    "pending canonical plan synchronization must remain grounded in FORUM-20A-G",
-  );
-  for (const slice of deliveredSlices) {
-    rejectText(
-      plan,
-      `### Delivered in \`${slice}\``,
-      `canonical plan now contains ${slice}; update canonical_plan_sync before claiming pending through G`,
-    );
-  }
-} else if (planSync.status === "synchronized") {
-  requireText(plan, "FORUM-20A-Y provide", "synchronized canonical plan must advance through Y");
-  for (const slice of deliveredSlices) {
-    requireText(plan, `### Delivered in \`${slice}\``, `canonical plan is missing ${slice}`);
-  }
-} else {
-  failures.push("canonical_plan_sync.status must be pending or synchronized");
-}
-
+assertCanonicalLedger({
+  failures,
+  plan,
+  slices: deliveredSlices,
+  planSync,
+  label: "canonical plan synchronization",
+});
 for (const marker of [
   "pub struct NotificationInboxMarkAllReadRequest",
   "pub tenant_id: Uuid",
@@ -317,22 +300,24 @@ for (const marker of [
 }
 
 for (const marker of [
-  "bounded mark-all-read",
-  "NotificationInboxMarkAllReadService",
+  "bounded mark-all-read, bounded mark-all-unread, bounded mark-all-archive",
   "### 7. Bounded mark-all-read",
+  "`NotificationInboxMarkAllReadService` selects only stored `unread` or `seen` rows",
+  "### 8. Bounded mark-all-unread",
+  "### 9. Bounded mark-all-archive",
   "tests/inbox_mark_all_read_sqlite.rs",
-  "mark-all-unread/archive",
 ]) {
-  requireText(rootReadme, marker, `notifications root README is missing ${marker}`);
+  requireProse(failures, rootReadme, marker, "notifications root README");
 }
 for (const marker of [
-  "### Bounded mark-all-read",
-  "NotificationInboxMarkAllReadService",
-  "unread or seen",
-  "tests/inbox_mark_all_read_sqlite.rs",
+  "### Exact and bounded inbox state commands",
+  "`NotificationInboxMarkAllReadService`",
+  "select bounded exact-recipient pages",
+  "delegate every row to the exact state owner",
+  "inbox_mark_all_read_sqlite",
   "verify-forum-notification-inbox-mark-all-read.mjs",
 ]) {
-  requireText(docs, marker, `notifications live contract is missing ${marker}`);
+  requireProse(failures, docs, marker, "notifications live contract");
 }
 for (const marker of [
   "### `FORUM-20Y`",

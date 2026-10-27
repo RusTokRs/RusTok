@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { containsMarker, ledgerRowProblems } from "./lib/forum-source-verification.mjs";
+
 const paths = {
   contract: "crates/modules/rustok-forum/contracts/forum-topic-merge-solution-resolution.json",
   policyContract: "crates/modules/rustok-forum/contracts/forum-topic-merge-solution-policy.json",
@@ -35,9 +37,11 @@ const paths = {
 };
 
 const read = (path) => readFileSync(path, "utf8");
+// Layout-tolerant by policy: a marker describes an invariant, not where rustfmt or a prose editor put
+// the newline. Tokens are unchanged, so an absent call or sentence is still absent.
 const includesAll = (text, markers, label) => {
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing marker: ${marker}`);
+    assert.ok(containsMarker(text, marker), `${label} is missing marker: ${marker}`);
   }
 };
 
@@ -271,7 +275,8 @@ includesAll(
     "selected_solution_reply_id = input.selected_solution_reply_id",
     ".merge_topic_resolving_solution(",
     "Permission::FORUM_TOPICS_MANAGE",
-    "Permission denied: tenant scope mismatch",
+    // The mismatch wording is produced by the shared scope resolver the resolver must call.
+    "resolve_tenant_scope(tenant, tenant_id)?",
   ],
   "solution-resolution GraphQL adapter",
 );
@@ -371,11 +376,13 @@ includesAll(
 includesAll(
   cumulativeDocs,
   [
-    "FORUM-21A through FORUM-21L",
+    "FORUM-21A through FORUM-21X",
     "mergeForumTopicResolvingSolution",
     "Resolution audit ledger",
     "schema version 1",
-    "native/admin merge command composition and merge/resolution UI",
+    // The cumulative handoff now records the delivered composition instead of listing it as remaining.
+    "Admin composition",
+    "mergeForumTopicResolvingSolution",
   ],
   "cumulative merge handoff",
 );
@@ -392,18 +399,19 @@ includesAll(
 includesAll(
   docsIndex,
   [
-    "explicit manager-selected reply identity",
+    "[FORUM-21L competing solution resolution]",
     "FORUM-21L competing solution resolution",
   ],
   "Forum docs index",
 );
 
-assert.ok(plan.includes("| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |"));
-assert.ok(plan.includes("## `FORUM-21` — move, merge, split and fork topics"));
-assert.ok(plan.includes("**Status:** `planned`"));
-assert.ok(!plan.includes("| `FORUM-21` | `done` |"));
-assert.ok(!plan.includes("| `FORUM-21` | `in_progress` |"));
+assert.deepEqual(
+  ledgerRowProblems(plan, "FORUM-21", {
+    mentions: ["move/merge/split/fork/range owners"],
+  }),
+  [],
+);
 
 console.log(
-  "FORUM-21L competing solution resolution source is ready; canonical FORUM-21 remains planned.",
+  "FORUM-21L competing solution resolution source is ready; canonical FORUM-21 is in progress.",
 );

@@ -1,13 +1,17 @@
 use std::sync::Arc;
+use std::time::Duration;
 
-use rustok_api::PortActor;
+use rustok_api::{PortActor, PortContext, PortError};
 use rustok_cart::PreparedCartCheckoutSnapshot;
 use rustok_inventory::InventoryReservationIdentityPort;
-use rustok_order::{OrderResponse, OrderService};
+use rustok_order::{
+    CheckoutOrderRecoveryAdapter, OrderResponse, ReadCheckoutOrderProjectionRequest,
+};
 use rustok_outbox::TransactionalEventBus;
 use thiserror::Error;
 use uuid::Uuid;
 
+use super::checkout_order_owner_failure::CheckoutOrderBoundaryFailure;
 use super::{
     CheckoutInventoryExecutionError, CheckoutInventoryReservationExecutor, CheckoutOperationError,
     CheckoutOperationJournal, CheckoutOperationStage, CheckoutOrderConfirmationError,
@@ -15,6 +19,12 @@ use super::{
     CheckoutOrderPlanError, CheckoutOrderPlanJournal, CheckoutOrderPlanPayload,
     CheckoutOrderPlanRecord, DEFAULT_CHECKOUT_LEASE_SECONDS,
 };
+
+/// Deadline carried by the order projection read that follows an owner
+/// checkpoint. Same bounded budget as the order identity port refresh.
+const CHECKOUT_ORDER_READ_DEADLINE_SECONDS: u64 = 3;
+const CHECKOUT_ORDER_READ_OPERATION: &str = "read_checkout_order";
+const CHECKOUT_ORDER_READ_STAGE: &str = "load_order";
 
 #[derive(Clone, Debug)]
 pub struct CheckoutPaymentReadyState {
@@ -50,13 +60,45 @@ pub enum CheckoutOrderStageError {
 
 pub type CheckoutOrderStageResult<T> = Result<T, CheckoutOrderStageError>;
 
+impl CheckoutOrderStageError {
+    /// The bounded code and retryability carried by a sanitized owner failure.
+    ///
+    /// Only sanitized variants answer: anything else is Commerce-internal and
+    /// keeps the pipeline's generic code and fail-closed disposition.
+    pub fn bounded_failure(&self) -> Option<(&str, bool)> {
+        match self {
+            Self::Boundary { code, retryable, .. } => Some((code.as_str(), *retryable)),
+            Self::Creation(error) => error.bounded_failure(),
+            Self::Confirmation(error) => error.bounded_failure(),
+            _ => None,
+        }
+    }
+
+    /// Projects an order-owned port rejection onto the bounded stage boundary.
+    fn owner_read_failure(
+        stage: &'static str,
+        owner_operation: &'static str,
+        context: &PortContext,
+        error: PortError,
+    ) -> Self {
+        let failure = CheckoutOrderBoundaryFailure::from_port_error(error);
+        failure.observe_port_error(context, owner_operation, stage);
+        Self::Boundary {
+            stage,
+            code: failure.code,
+            message: failure.message.to_string(),
+            retryable: failure.retryable,
+        }
+    }
+}
+
 pub struct CheckoutOrderStageExecutor {
     operation_journal: CheckoutOperationJournal,
     plan_journal: CheckoutOrderPlanJournal,
     inventory_executor: CheckoutInventoryReservationExecutor,
     order_creation: CheckoutOrderCreationExecutor,
     order_confirmation: CheckoutOrderConfirmationExecutor,
-    order_service: OrderService,
+    order_recovery: CheckoutOrderRecoveryAdapter,
     lease_seconds: i64,
 }
 
@@ -79,7 +121,7 @@ impl CheckoutOrderStageExecutor {
                 db.clone(),
                 event_bus.clone(),
             ),
-            order_service: OrderService::new(db, event_bus),
+            order_recovery: CheckoutOrderRecoveryAdapter::new(db, event_bus),
             lease_seconds: DEFAULT_CHECKOUT_LEASE_SECONDS,
         }
     }
@@ -213,20 +255,36 @@ impl CheckoutOrderStageExecutor {
                 operation.id
             ))
         })?;
+        let context = order_read_context(
+            tenant_id,
+            operation_id,
+            plan.payload.context.locale.as_str(),
+        );
         let order = self
-            .order_service
-            .get_order_with_locale_fallback(
-                tenant_id,
-                order_id,
-                plan.payload.context.locale.as_str(),
-                Some(plan.payload.context.default_locale.as_str()),
+            .order_recovery
+            .read_checkout_order(
+                context.clone(),
+                ReadCheckoutOrderProjectionRequest {
+                    checkout_operation_id: operation_id,
+                    locale: Some(plan.payload.context.locale.clone()),
+                    fallback_locale: Some(plan.payload.context.default_locale.clone()),
+                },
             )
             .await
-            .map_err(|err| {
-                CheckoutOrderStageError::Conflict(format!(
-                    "failed to load order {order_id} for checkout operation {operation_id}: {err}"
-                ))
+            .map_err(|error| {
+                CheckoutOrderStageError::owner_read_failure(
+                    CHECKOUT_ORDER_READ_STAGE,
+                    CHECKOUT_ORDER_READ_OPERATION,
+                    &context,
+                    error,
+                )
             })?;
+        if order.id != order_id {
+            return Err(CheckoutOrderStageError::Conflict(format!(
+                "checkout operation {operation_id} resolved order {} but the operation journal records {order_id}",
+                order.id
+            )));
+        }
         Ok(CheckoutPaymentReadyState {
             operation_id,
             order,
@@ -237,4 +295,21 @@ impl CheckoutOrderStageExecutor {
     pub fn plan_journal(&self) -> &CheckoutOrderPlanJournal {
         &self.plan_journal
     }
+}
+
+/// Builds the bounded port context for the order projection read.
+///
+/// The read continues an operation that the caller already authorized: the owner
+/// port enforces tenant and deadline semantics, and the read decision does not
+/// depend on the caller actor, so the context carries the platform system actor
+/// instead of inventing a user identity.
+fn order_read_context(tenant_id: Uuid, operation_id: Uuid, locale: &str) -> PortContext {
+    PortContext::new(
+        tenant_id.to_string(),
+        PortActor::system(),
+        locale,
+        format!("checkout:{operation_id}:order:read"),
+    )
+    .with_causation_id(operation_id.to_string())
+    .with_deadline(Duration::from_secs(CHECKOUT_ORDER_READ_DEADLINE_SECONDS))
 }

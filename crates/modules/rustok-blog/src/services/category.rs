@@ -231,8 +231,13 @@ impl CategoryService {
                         None if requested_name.is_some() => normalize_non_empty_slug(&name)?,
                         None => normalize_non_empty_slug(&existing.slug)?,
                     };
-                    let description =
-                        requested_description.clone().or_else(|| existing.description.clone());
+                    // `Patch` keeps "field not supplied" distinct from
+                    // "clear the field", so a description can be removed.
+                    let description = match requested_description {
+                        rustok_api::Patch::Keep => existing.description.clone(),
+                        rustok_api::Patch::Clear => None,
+                        rustok_api::Patch::Set(value) => Some(value),
+                    };
                     validate_optional_description(description.as_deref())?;
                     let unchanged = name == existing.name
                         && slug == existing.slug
@@ -248,10 +253,14 @@ impl CategoryService {
                         Some(slug) => normalize_non_empty_slug(slug)?,
                         None => normalize_non_empty_slug(&name)?,
                     };
-                    validate_optional_description(requested_description.as_deref())?;
+                    let description = match requested_description {
+                        rustok_api::Patch::Set(value) => Some(value),
+                        rustok_api::Patch::Keep | rustok_api::Patch::Clear => None,
+                    };
+                    validate_optional_description(description.as_deref())?;
                     // A missing localized copy is created by this update, so the
                     // request always carries a change.
-                    (name, slug, requested_description.clone(), false)
+                    (name, slug, description, false)
                 }
             };
 
@@ -263,12 +272,14 @@ impl CategoryService {
             None => category.settings.clone(),
         };
 
-        // A request that changes nothing must not advance the resource revision,
-        // rewrite the settings column or publish a reindex event. The post owner
-        // rejects such a request outright, and a Category that advances its
-        // revision on every call breaks every revision-based consumer.
+        // A request that changes nothing is a successful no-op: it must not
+        // advance the resource revision, rewrite the settings column or publish
+        // a reindex event (a Category that advances its revision on every call
+        // breaks every revision-based consumer). Returning the current state is
+        // the idempotent answer a PUT owes its caller.
         if copy_unchanged && settings == category.settings {
-            return Err(BlogError::validation("No Blog category changes were supplied"));
+            txn.rollback().await.map_err(BlogError::from)?;
+            return Ok(());
         }
 
         let resource_updated = blog_category::Entity::update_many()

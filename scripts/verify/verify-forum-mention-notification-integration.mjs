@@ -94,10 +94,18 @@ rejectText(
   '"forum.mention.audience_added"',
   `${contract.forum_source_provider}: moderator audience delivery must remain deferred until bounded expansion exists`,
 );
+// The provider implements the Notifications *source contract*, so importing the contract crate is
+// the point of the file. What it must never touch is another owner's persistence or policy: Profiles
+// and Social Graph, Notifications entities and delivery rows, or the candidate/notification service.
 for (const forbiddenOwnerImport of [
   "use rustok_profiles",
   "use rustok_social_graph",
-  "use rustok_notifications::",
+  "rustok_notifications::entities",
+  "notification::ActiveModel",
+  "notification::Entity",
+  "delivery_attempt",
+  "NotificationService",
+  "persist_final_notification",
 ]) {
   rejectText(
     forumSource,

@@ -23,6 +23,24 @@ use rustok_pricing::{ResolveProductPriceRequest, in_process_pricing_read_port};
 use super::line_item_resolution;
 mod shipping_owner_reads;
 
+fn log_storefront_cart_route_entry(
+    operation: &'static str,
+    tenant_id: Uuid,
+    cart_id: Option<Uuid>,
+    line_item_id: Option<Uuid>,
+) {
+    tracing::debug!(
+        boundary = "commerce_storefront_cart_http",
+        operation,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        cart_id_present = cart_id.is_some(),
+        cart_id_non_nil = cart_id.is_some_and(|value| !value.is_nil()),
+        line_item_id_present = line_item_id.is_some(),
+        line_item_id_non_nil = line_item_id.is_some_and(|value| !value.is_nil()),
+        "storefront cart route entered with bounded diagnostics"
+    );
+}
+
 fn map_cart_port_error(
     error: PortError,
     operation: &'static str,
@@ -41,18 +59,39 @@ fn map_cart_port_error(
     let owner_code_length = error.code.chars().count();
     let retryable = error.retryable;
     let public = port_error_to_http_error(error);
-    tracing::error!(
-        owner = "rustok_cart",
-        operation,
-        tenant_non_nil = !tenant_id.is_nil(),
-        cart_id_present = cart_id.is_some(),
-        owner_error_kind,
-        owner_code_length,
-        retryable,
-        public_status = %public.status,
-        boundary = "commerce_storefront_cart_http",
-        "storefront cart port operation failed with bounded diagnostics"
+    let critical = matches!(
+        public.status,
+        StatusCode::SERVICE_UNAVAILABLE
+            | StatusCode::GATEWAY_TIMEOUT
+            | StatusCode::INTERNAL_SERVER_ERROR
     );
+    if critical {
+        tracing::error!(
+            owner = "rustok_cart",
+            operation,
+            tenant_id_non_nil = !tenant_id.is_nil(),
+            cart_id_present = cart_id.is_some(),
+            owner_error_kind,
+            owner_code_length,
+            retryable,
+            public_status = %public.status,
+            boundary = "commerce_storefront_cart_http",
+            "storefront cart port operation failed with bounded diagnostics"
+        );
+    } else {
+        tracing::warn!(
+            owner = "rustok_cart",
+            operation,
+            tenant_id_non_nil = !tenant_id.is_nil(),
+            cart_id_present = cart_id.is_some(),
+            owner_error_kind,
+            owner_code_length,
+            retryable,
+            public_status = %public.status,
+            boundary = "commerce_storefront_cart_http",
+            "storefront cart port operation was rejected with bounded diagnostics"
+        );
+    }
     public
 }
 
@@ -77,12 +116,7 @@ pub async fn create_cart(
     if tenant.id.is_nil() {
         return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = "commerce_storefront_cart_http",
-        operation = "create_cart",
-        tenant_id = %tenant.id,
-        "handling create_cart"
-    );
+    log_storefront_cart_route_entry("create_cart", tenant.id, None, None);
 
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
@@ -179,13 +213,7 @@ pub async fn get_cart(
     if id.is_nil() {
         return Err(HttpError::bad_request("invalid_cart_id", "Cart ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = "commerce_storefront_cart_http",
-        operation = "get_cart",
-        tenant_id = %tenant.id,
-        cart_id = %id,
-        "handling get_cart"
-    );
+    log_storefront_cart_route_entry("get_cart", tenant.id, Some(id), None);
 
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
@@ -248,13 +276,7 @@ pub async fn update_cart_context(
     if id.is_nil() {
         return Err(HttpError::bad_request("invalid_cart_id", "Cart ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = "commerce_storefront_cart_http",
-        operation = "update_cart_context",
-        tenant_id = %tenant.id,
-        cart_id = %id,
-        "handling update_cart_context"
-    );
+    log_storefront_cart_route_entry("update_cart_context", tenant.id, Some(id), None);
 
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
@@ -335,13 +357,7 @@ pub async fn add_cart_line_item(
     if id.is_nil() {
         return Err(HttpError::bad_request("invalid_cart_id", "Cart ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = "commerce_storefront_cart_http",
-        operation = "add_cart_line_item",
-        tenant_id = %tenant.id,
-        cart_id = %id,
-        "handling add_cart_line_item"
-    );
+    log_storefront_cart_route_entry("add_cart_line_item", tenant.id, Some(id), None);
 
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
@@ -456,14 +472,7 @@ pub async fn update_cart_line_item(
     if line_id.is_nil() {
         return Err(HttpError::bad_request("invalid_line_item_id", "Line item ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = "commerce_storefront_cart_http",
-        operation = "update_cart_line_item",
-        tenant_id = %tenant.id,
-        cart_id = %id,
-        line_item_id = %line_id,
-        "handling update_cart_line_item"
-    );
+    log_storefront_cart_route_entry("update_cart_line_item", tenant.id, Some(id), Some(line_id));
 
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
@@ -626,14 +635,7 @@ pub async fn remove_cart_line_item(
     if line_id.is_nil() {
         return Err(HttpError::bad_request("invalid_line_item_id", "Line item ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = "commerce_storefront_cart_http",
-        operation = "remove_cart_line_item",
-        tenant_id = %tenant.id,
-        cart_id = %id,
-        line_item_id = %line_id,
-        "handling remove_cart_line_item"
-    );
+    log_storefront_cart_route_entry("remove_cart_line_item", tenant.id, Some(id), Some(line_id));
 
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 

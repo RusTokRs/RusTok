@@ -269,7 +269,11 @@ async fn blog_admin_update_post_native() {}
 async fn blog_admin_moderation_comments_native() {}
 #[server(prefix = "/api/fn", endpoint = "blog/admin/moderate-comment")]
 async fn blog_admin_moderate_comment_native() {
-  let _ = Permission::BLOG_POSTS_MANAGE;
+  let _ = Permission::COMMENTS_MODERATE;
+}
+fn require_moderation_permission(auth: &rustok_api::AuthContext) -> Result<(), ServerFnError> {
+  let _ = auth;
+  Ok(())
 }
 `;
 }
@@ -291,9 +295,9 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/transport/moderation_adapter.rs", moderationAdapterSource(options));
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/transport/native_server_adapter.rs", nativeAdapterSource(options));
   writeFixtureFile(root, "apps/admin/Cargo.toml", 'csr = ["rustok-blog-admin/csr"]\nhydrate = ["rustok-blog-admin/hydrate"]\nssr = ["rustok-blog-admin/ssr"]');
-  writeFixtureFile(root, "crates/modules/rustok-blog/src/graphql/types.rs", options.omitModeration ? "pub struct GqlPost;" : "async fn moderation_comments() {} Permission::BLOG_POSTS_MANAGE GqlModerationCommentList");
-  writeFixtureFile(root, "crates/modules/rustok-blog/src/graphql/mutation.rs", options.omitModeration ? "pub struct BlogMutation;" : "async fn moderate_comment() {} Permission::BLOG_POSTS_MANAGE ModerateCommentInput");
-  writeFixtureFile(root, "crates/modules/rustok-blog/src/graphql/rate_limit.rs", options.omitModeration ? "enum Surface {}" : "ModerateComment moderateComment Permission::BLOG_POSTS_MANAGE");
+  writeFixtureFile(root, "crates/modules/rustok-blog/src/graphql/types.rs", options.omitModeration ? "pub struct GqlPost;" : "async fn moderation_comments() {} Permission::COMMENTS_MODERATE GqlModerationCommentList");
+  writeFixtureFile(root, "crates/modules/rustok-blog/src/graphql/mutation.rs", options.omitModeration ? "pub struct BlogMutation;" : "async fn moderate_comment() {} Permission::COMMENTS_MODERATE ModerateCommentInput");
+  writeFixtureFile(root, "crates/modules/rustok-blog/src/graphql/rate_limit.rs", options.omitModeration ? "enum Surface {}" : "ModerateComment moderateComment Permission::COMMENTS_MODERATE");
   if (options.includeLegacyApiFile) {
     writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/api.rs", "pub async fn fetch_posts() {}");
   }

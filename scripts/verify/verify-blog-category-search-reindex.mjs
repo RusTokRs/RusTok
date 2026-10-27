@@ -50,7 +50,7 @@ const modulePath = "crates/modules/rustok-blog/src/module.rs";
 const controllerPath = "crates/modules/rustok-blog/src/controllers/categories.rs";
 const routerPath = "crates/modules/rustok-blog/src/controllers/mod.rs";
 const openapiPath = "crates/modules/rustok-blog/src/controllers/openapi.rs";
-const projectorPath = "crates/modules/rustok-search/src/blog_projector.rs";
+const projectorPath = "crates/modules/rustok-blog/src/services/search_projection.rs";
 const ingestionPath = "crates/modules/rustok-search/src/ingestion.rs";
 const evidencePath =
   "crates/modules/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json";
@@ -229,17 +229,19 @@ for (const marker of [
   requireMarker(openapi, marker, openapiPath);
 }
 
+// A Category rename or delete reindexes the Blog scope, and the projected Category name
+// and slug come from the owner's Taxonomy projection — no longer from Search-side SQL.
 for (const marker of [
-  "'category_name', COALESCE(bct.name, bct_fallback.name, bct_term.canonical_key)",
-  "'category_slug', COALESCE(bct.slug, bct_fallback.slug, bct_term.canonical_key)",
-  "LEFT JOIN taxonomy_terms bct_term",
-  "LEFT JOIN taxonomy_term_translations bct",
+  "load_category_projections_map(",
+  '"category_name": category_name',
+  '"category_slug": category_slug',
+  '"category_id": post.category_id',
 ]) {
   requireMarker(projector, marker, projectorPath);
 }
 
 for (const marker of [
-  '("blog", None) => self.blog_projector.rebuild_tenant(tenant_id).await',
+  '("blog", None) => rebuild_owner_scope(self.blog_driver.as_ref(), tenant_id).await',
   'target_type == "blog"',
 ]) {
   requireMarker(ingestion, marker, ingestionPath);

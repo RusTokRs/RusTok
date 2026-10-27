@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { reExportedNames } from './lib/rust-public-surface.mjs';
 
 export const ecommerceFbaModules = ['payment', 'fulfillment', 'order', 'pricing', 'inventory', 'product', 'customer', 'cart'];
 const boundaryReadyProviderSpiModules = new Set(['payment', 'fulfillment']);
@@ -174,7 +175,11 @@ const assertProviderSpiSource = ({ module, providerSpi, providerSource, libSourc
   if (!providerSource.includes('idempotency_key: Option<String>')) {
     fail(`${module} provider SPI operation request must carry idempotency_key`);
   }
-  if (!libSource.includes('pub mod providers;') || !libSource.includes('pub use providers::*;')) {
+  // "The provider SPI is reachable from the crate root" — not "the crate root uses a wildcard".
+  // The owner crates list their re-exports explicitly, and other guards in this corpus forbid the
+  // wildcard form; requiring it here reported a correct crate as broken.
+  const providers = reExportedNames(libSource, 'providers');
+  if (!libSource.includes('pub mod providers;') || (!providers.glob && providers.names.length === 0)) {
     fail(`${module} lib.rs must export provider SPI`);
   }
 };

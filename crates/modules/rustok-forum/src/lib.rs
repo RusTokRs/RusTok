@@ -67,7 +67,9 @@ pub use audience::{
 pub use category_read_transport::{
     category_read_audience_port_context, ForumCategoryReadOperation, ForumCategoryReadTransport,
 };
-pub use constants::{reply_status, topic_status, KIND_CATEGORY, KIND_REPLY, KIND_TOPIC};
+pub use constants::{
+    reply_status, topic_status, FORUM_MODULE_SLUG, KIND_CATEGORY, KIND_REPLY, KIND_TOPIC,
+};
 pub use dto::{
     bounded_forum_read_limit, deserialize_forum_read_limit, CategoryBreadcrumb, CategoryCursorPage,
     CategoryCursorQuery, CategoryListItem, CategoryPlacementResponse, CategoryReadModel,

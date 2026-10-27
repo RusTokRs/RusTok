@@ -208,15 +208,31 @@ const forumTagSync = between(
   'async fn sync_forum_tags_for_topic_in_tx(',
   'fn unique_source_ids(',
 );
+/*
+ * The bridge must not rewrite Blog's relation rows itself: those rows feed the owner's
+ * `blog_tag_usage` projection, and a raw delete/insert left the projection stale (tag
+ * counts drifted, then the next Blog `update_post` failed on an underflow). The tenant
+ * constraint and the `tenant_id` stamp now live in the owner command the bridge calls,
+ * so the bridge is pinned to the delegation and to the absence of its own writes.
+ */
 check(
-  'blog conversion tag sync is tenant-safe on delete and insert',
+  'blog conversion tag sync delegates to the Blog owner command',
   includesAll(blogTagSync, [
-    'blog_post_tag::Entity::delete_many()',
-    '.filter(blog_post_tag::Column::TenantId.eq(tenant_id))',
-    '.filter(blog_post_tag::Column::PostId.eq(post_id))',
+    'replace_post_tag_links_in_tx(',
+    'blog_error_to_content_error',
+  ]) &&
+    !blogTagSync.includes('blog_post_tag::Entity::delete_many()') &&
+    !blogTagSync.includes('blog_post_tag::ActiveModel'),
+  'Blog conversion tag sync must delegate relation replacement to the Blog owner command instead of writing the rows itself',
+);
+check(
+  'Blog owner command keeps relation replacement tenant-safe',
+  includesAll(read('crates/modules/rustok-blog/src/services/tag.rs'), [
+    'pub async fn replace_post_tag_links_in_tx(',
+    'blog_post_tag::Column::TenantId.eq(tenant_id)',
     'tenant_id: Set(tenant_id)',
   ]),
-  'Blog conversion tag sync must constrain relation deletion to the tenant and persist tenant_id on new relations',
+  'Blog owner relation replacement must constrain deletion and insert to the tenant',
 );
 check(
   'forum conversion tag sync is tenant-safe on delete and insert',

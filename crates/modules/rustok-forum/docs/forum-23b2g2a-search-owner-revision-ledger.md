@@ -4,6 +4,13 @@
 
 `source_complete_execution_pending`
 
+> **Current state (2026-10-25).** This slice's own handoff was superseded by
+> `FORUM-23B2G2B3C`: the persistent Search consumer now receives the owner
+> revision and enforces `ingest_sequence` ordering, and the aggregate
+> `FORUM-23` boundary stays open only for maintainer runtime evidence. The
+> "does not yet receive" paragraph below records the FORUM-23B2G2A handoff state
+> and must not be read as the current system.
+
 This foundation slice gives Forum one tenant-scoped monotonic projection revision
 owner without changing the current Search delivery or execution path. Every
 canonical PostgreSQL Forum Search invalidation now receives a positive revision

@@ -23,8 +23,15 @@ RusToK.
 - Consume Blog lifecycle and scoped rebuild events into Search-owned documents.
 - Own canonical application URLs for normalized `SearchResultItem` values through
   `canonical_search_result_url`.
-- Serve storefront Search, admin preview, and host global-search capabilities. Generic storefront FTS and suggestions exclude Forum documents at the SQL boundary (including totals, facets and pinned query rules) because those surfaces have no Forum audience owner; admin Search is unaffected. The explicit Forum-only storefront path preflights the Forum owner's public-discovery policy before scanning raw indexed candidates; its query rules may reorder only the already authorized page and never inject a pinned document outside owner eligibility.
-- Provide generic `SearchAudiencePolicyPort` and `SearchAudienceRegistry` SPI for domain-owned real-time audience discovery preflights and batch candidate authorization across dynamic access-controlled source modules.
+- Serve storefront Search, admin preview, and host global-search capabilities.
+  Storefront Search and suggestions read only the *declared* Search corpus: the host
+  declares each source module as public or gated, gated modules answer a real-time
+  discovery preflight and per-candidate authorization, and modules that were never
+  declared are denied. Admin Search is unaffected.
+- Provide the generic `SearchAudiencePolicyPort` and `SearchAudienceRegistry` SPI for
+  domain-owned real-time audience discovery preflights and batch candidate
+  authorization across dynamic access-controlled source modules, without any
+  module-specific code inside the generic storefront engine.
 - Publish transport-neutral `SearchQueryPort` and `SearchSuggestionPort` provider
   boundaries.
 
@@ -73,8 +80,11 @@ transport-local Blog route builder, or compatibility URL implementation.
 - `PgSearchEngine`
 - `SearchQueryPort`
 - `SearchSuggestionPort`
-- `SearchAudiencePolicyPort` / `SearchAudienceRegistry`
+- `SearchAudiencePolicyPort` / `SearchAudienceRegistry` / `SearchAudienceClass`
 - `SearchCandidateDescriptor` / `resolve_audience_eligible_candidates`
+- `execute_audience_eligible_search` / `StorefrontSearchAudienceContext`
+- `SearchAudienceDocumentScope`
+- `StorefrontSuggestionAudience`
 - `canonical_search_result_url`
 - `graphql::SearchQueryRoot` / `graphql::SearchMutationRoot`
 
@@ -131,12 +141,93 @@ transport-local Blog route builder, or compatibility URL implementation.
 
 ## Audience Security and Legacy Retirement Path
 
-To preserve module isolation and prevent cross-module leakage, the historical specialized Forum search execution pipeline (`forum_storefront_execution.rs`, `storefront_result_eligibility.rs`) has been superseded by the generic **Audience Security SPI** (`audience_security.rs`):
-- `execute_forum_storefront_search` and `StorefrontSearchResultEligibilityPort` are marked `#[deprecated]`.
-- Domain modules implement `SearchAudiencePolicyPort` directly and register in `SearchAudienceRegistry`.
-- Storefront consumers query through the unified `storefront_search` GraphQL entrypoint; candidate post-authorization is dispatched across all modules registered in `SearchAudienceRegistry`.
-- Unconstrained source modules (e.g. `blog`, `content`, `products`) pass through automatically as public candidates without requiring dedicated authorization policies.
-- Full physical removal of legacy `forum_*.rs` files from `rustok-search` is scheduled for Phase 4 after external verification scripts and contract JSONs transition to the generic SPI.
+The historical specialized Forum search execution pipeline
+(`forum_storefront_execution.rs`, `storefront_result_eligibility.rs`) is retired in
+favor of the generic **Audience Security SPI** (`audience_security.rs`), governed by
+[ADR 2026-10-25](../../../DECISIONS/2026-10-25-search-audience-declared-corpus.md).
+
+### Declared audience classes
+
+Every source module that writes `search_documents` must be declared exactly once:
+
+- `SearchAudienceRegistry::declare_public_modules([...])` declares public discovery
+  modules (Blog, Content, Commerce, Docs, Pages in the shipped host).
+- `SearchAudienceRegistry::register(policy)` declares a gated module and registers its
+  `SearchAudiencePolicyPort`.
+
+Declaring a module twice is a `conflict` error. A module with **no** declared class is
+never publicly discoverable: candidates from it are denied with an operator warning, and
+`public_discovery_allowed` answers `false`. `apps/server` owns the inventory in
+`search_public_source_modules()` — `blog`, `commerce`, `docs`, `pages`, the
+Content-owned `CONTENT_NODE_KINDS` (the Content projector keys its documents by node
+kind) and the `content` fallback bucket the projector uses for a damaged empty kind —
+and fails host composition when a declaration or the Forum policy registration is
+rejected.
+
+### Execution model
+
+1. The request scope is resolved against the declared corpus; undeclared modules are
+   denied and unused classes never reach SQL.
+2. Anonymous requests run the per-module public discovery preflight; a closed or
+   disabled module is excluded instead of failing the request (authenticated callers are
+   authorized per candidate, because discovery gating is a public-surface concept).
+3. Gated candidates are scanned in `AUDIENCE_CANDIDATE_SCAN_PAGE_SIZE` pages and
+   authorized in batches of at most `MAX_SEARCH_AUDIENCE_CANDIDATES`. A scan above
+   `MAX_SEARCH_AUDIENCE_SCAN_DOCUMENTS` is a documented `Validation` error; public
+   modules are never bounded by it.
+4. The authorized ids are applied inside the SQL visibility filter
+   (`(source_module NOT IN (gated) OR document_id IN (authorized))`), so totals, facets,
+   ordering and pagination are computed by PostgreSQL over the authorized row set. There
+   is no second facet vocabulary and no in-memory pagination.
+5. Storefront query rules may reorder the authorized page; they may inject an extra
+   pinned document only when no gated module is in scope, and injected documents are
+   checked for payload channel visibility for every entity type.
+
+### SPI error contract
+
+- `Ok(false)`, `NotFound`, `Forbidden` — module unavailable to this caller: its
+  documents are excluded, the request succeeds.
+- `Unavailable`, `Timeout` — operational failure: the request fails without partial
+  results.
+- `Validation`, `Conflict` — caller error; `InvariantViolation` — internal error.
+
+### Boundaries and fail-closed defaults
+
+- `apps/server` attaches the composed registry to the GraphQL schema data
+  (`graphql_runtime_inputs.shared_get::<SearchAudienceRegistry>()`); schema construction
+  fails when the host did not compose it. Search is a required module, so the manifest
+  `runtime_data_factory` hook is not wired for it and the attachment is explicit.
+- GraphQL `storefrontSearch` / `storefrontSearchSuggestions` and the native SSR adapter
+  return an explicit error when the request data has no `SearchAudienceRegistry`. They
+  never fall back to an empty registry.
+- Storefront suggestions use the same corpus: declared module scope, public discovery
+  preflight, and per-candidate authorization for gated modules.
+- `SearchAudiencePolicyPort::public_discovery_allowed` has no permissive default; every
+  gated policy states it.
+- The generic engine receives only `SearchAudienceDocumentScope`; `exclude_forum` and
+  `source_module <> 'forum'` no longer exist in `pg_engine`.
+
+### Retired legacy surface (Phase 4, complete)
+
+Nothing of the specialized Forum storefront pipeline remains, not even as a
+`#[deprecated]` bridge:
+
+- deleted from `rustok-search`: `forum_storefront_execution.rs`,
+  `forum_storefront_execution_public.rs`, `storefront_result_eligibility.rs`,
+  `forum_document_filters.rs`, `forum_current_channel_filter.rs` and
+  `graphql/forum_storefront.rs`;
+- deleted from `rustok-search-storefront`: `transport/forum_graphql_adapter.rs` and
+  `transport/forum_native_server_adapter.rs`;
+- deleted the matching `forumStorefrontSearch` operation, the
+  `execute_forum_storefront_search` entry point and `StorefrontSearchResultEligibilityPort`
+  in every form (type, shared alias, resolver function, candidate kind).
+
+The generic path is the only path: one `execute_audience_eligible_search` executor over
+`storefrontSearch`, one `SearchAudiencePolicyPort` implementation per gated module
+(`apps/server/src/services/forum_search_result_eligibility.rs` for Forum), and one
+`StorefrontSearchCategoryScopePort` capability that the owner module implements and
+declares with `source_module()`. `npm run verify:search:audience` fails when any retired
+file or symbol reappears.
 
 ## Current architecture
 
@@ -170,20 +261,16 @@ To preserve module isolation and prevent cross-module leakage, the historical sp
 
 ## Verification
 
+- `npm run verify:search:audience`
 - `npm run verify:search:fba`
 - `npm run verify:search:ui-boundary`
 - `node scripts/verify/verify-search-canonical-url-contract.mjs`
 - `node scripts/verify/verify-search-canonical-url-contract.test.mjs`
 - `node scripts/verify/verify-search-blog-projection.mjs`
 - `node scripts/verify/verify-search-blog-projection.test.mjs`
-- `node scripts/verify/verify-forum-search-exact-category-filter.mjs`
-- `node scripts/verify/verify-forum-search-storefront-scope.mjs`
-- `node scripts/verify/verify-forum-search-result-eligibility.mjs`
-- `node scripts/verify/verify-forum-search-author-filter.mjs`
-- `node scripts/verify/verify-forum-search-tag-solved-filter.mjs`
-- `node scripts/verify/verify-forum-search-locale-date-filter.mjs`
+- `node scripts/verify/verify-search-audience-classes.mjs`
 - `cargo test -p rustok-search engine::tests::canonical_url`
-- `cargo test -p rustok-search category_filter_preserves_product_and_adds_exact_forum_scope -- --nocapture`
+- `cargo test -p rustok-search category_filter -- --nocapture`
 - `cargo xtask module validate search`
 
 ## Known Limitations / Pending Implementation
@@ -192,14 +279,13 @@ The items below are verified gaps. They are not hidden behind compatibility wrap
 Each one has a follow-up task in
 [`docs/implementation-plan.md`](./docs/implementation-plan.md).
 
-- The Forum-only Search filters are transport-only. `forumStorefrontSearch` accepts
-  exact author, tag, solved-state, locale, inclusive published-date and trusted
-  current-channel arguments, and both storefront transports can send each family as an
-  additive operation through the single Forum-only execution owner, but no storefront
-  surface renders a control for them yet. The shared `SearchPreviewInput`/`SearchPreviewFilters`
-  model deliberately does not carry these fields, so a caller that has not landed a
-  filter keeps the base `forumStorefrontSearch(input: $input)` operation. Owner plan:
-  `FORUM-23B2F1` to `FORUM-23B2F4`.
+- The Forum-only Search filters are owner-side. `storefrontSearch` accepts no Forum
+  argument: author, tag, solved-state, locale, inclusive published-date and trusted
+  current-channel narrowing are owned by the Forum read surface
+  (`forumStorefrontAudienceTopics` / `forumTopics`) and by the host
+  `SearchAudiencePolicyPort`, so Search never learns a Forum field. No storefront
+  surface renders additional filter controls yet. Owner plan: `FORUM-23B2F1` to
+  `FORUM-23B2F4`, now scoped to the generic surface.
 - Storefront query-text suggestions remain disabled because the aggregate query logs
   cannot be channel-authorized; admin and global query suggestions are unchanged.
   Owner plan: `FORUM-23B2E1`/`FORUM-23B2E2`.

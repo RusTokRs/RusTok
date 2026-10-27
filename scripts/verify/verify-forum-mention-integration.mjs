@@ -44,6 +44,32 @@ function section(source, marker, description) {
   return source.slice(index);
 }
 
+// A write path is identified by the block that persists prepared relations, not by the name the
+// owner happened to give the method: the invariant is the order, and the method is free to be
+// renamed, split into an audited entrypoint plus an implementation, or inlined.
+function relationWriteBlock(source, distinguishing, description) {
+  const blocks = [];
+  const pattern = /async fn ([a-z0-9_]+)/g;
+  let match;
+  while ((match = pattern.exec(source)) !== null) {
+    blocks.push({ name: match[1], start: match.index });
+  }
+  for (let index = 0; index < blocks.length; index += 1) {
+    const end = index + 1 < blocks.length ? blocks[index + 1].start : source.length;
+    const body = source.slice(blocks[index].start, end);
+    if (
+      body.includes(".persist_in_tx(&txn, prepared_relations)") &&
+      body.includes(distinguishing)
+    ) {
+      return body;
+    }
+  }
+  failures.push(
+    `${description}: no owner method persists prepared relations together with ${distinguishing}`,
+  );
+  return "";
+}
+
 function collectRustFiles(root, relative = "") {
   const absolute = path.join(root, relative);
   if (!existsSync(absolute)) return [];
@@ -83,12 +109,27 @@ for (const forbidden of [
     failures.push(`crates/modules/rustok-forum/src/mentions.rs: mention resolution must not reintroduce per-handle Profiles reads: ${forbidden}`);
   }
 }
-requireText(topicOwner, "create_with_relations", "topic owner must route relation-aware create");
-requireText(topicOwner, "update_with_relations", "topic owner must route relation-aware edit");
-requireText(replyOwner, "MentionRelationService", "reply owner must own relation composition");
-requireText(replyOwner, "update_with_relations", "reply owner must route relation-aware edits");
+// The owner entrypoints and their delegates are declared by the contract; the guard reads them from
+// there so a renamed method keeps the delegation honest instead of pinning one spelling.
+for (const [entryKey, entry] of Object.entries(contract.owner_entrypoints ?? {})) {
+  const ownerSource = read(entry.owner ?? "");
+  requireText(
+    ownerSource,
+    entry.delegate,
+    `${entryKey}: owner must delegate relation-aware work to ${entry.delegate}`,
+  );
+}
+// The reply owner holds the relation service as a field, so composition is proven by the field being
+// driven for both prepare and persist rather than by the type name appearing in this file.
+if (!/self\s*\.relations\s*\n?\s*\.prepare\(/.test(replyOwner)) {
+  failures.push("reply owner must prepare relation composition through its own relation service");
+}
 
-const topicCreate = section(topicEntry, "pub(crate) async fn create_with_relations", "topic create");
+const topicCreate = relationWriteBlock(
+  topicEntry,
+  "forum_topic_translation::ActiveModel",
+  "topic create",
+);
 requireOrder(
   topicCreate,
   [
@@ -102,7 +143,11 @@ requireOrder(
   "topic create must prepare outside the transaction and persist after the source body",
 );
 
-const topicUpdate = section(topicEntry, "pub(crate) async fn update_with_relations", "topic edit");
+const topicUpdate = relationWriteBlock(
+  topicEntry,
+  "self.upsert_translation_in_tx(",
+  "topic edit",
+);
 requireOrder(
   topicUpdate,
   [
@@ -116,7 +161,11 @@ requireOrder(
   "topic edit must persist relations after the translation write",
 );
 
-const replyCreate = section(replyOwner, "pub async fn create(", "reply create");
+const replyCreate = relationWriteBlock(
+  replyOwner,
+  "forum_reply_body::ActiveModel",
+  "reply create",
+);
 requireOrder(
   replyCreate,
   [
@@ -130,7 +179,7 @@ requireOrder(
   "reply create must persist relations after the body write",
 );
 
-const replyUpdate = section(replyEntry, "pub(crate) async fn update_with_relations", "reply edit");
+const replyUpdate = relationWriteBlock(replyEntry, "self.upsert_body_in_tx(", "reply edit");
 requireOrder(
   replyUpdate,
   [

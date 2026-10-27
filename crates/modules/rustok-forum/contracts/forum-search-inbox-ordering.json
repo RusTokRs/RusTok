@@ -38,7 +38,7 @@
       "event_envelope_timestamp_utc",
       "event_id_ulid_backed_uuid"
     ],
-    "ordering_is_timestamp_then_event_id": true,
+    "ordering_is_timestamp_then_event_id": false,
     "ordering_is_causal_owner_revision": false,
     "producer_clock_synchronization_required": true,
     "cross_producer_clock_skew_fully_resolved": false,
@@ -51,7 +51,8 @@
     "category_scope_has_specific_watermark": true,
     "category_completion_advances_full_scope_watermark": false,
     "category_effective_watermark_includes_last_full_scope_watermark": true,
-    "full_scope_watermark_is_advanced_only_by_full_scope_work": true
+    "full_scope_watermark_is_advanced_only_by_full_scope_work": true,
+    "ordering_is_database_ingest_sequence": true
   },
   "serialization_boundary": {
     "postgresql_try_advisory_transaction_lock_added": true,
@@ -162,5 +163,6 @@
       "node scripts/verify/verify-forum-approved-reply-search.mjs",
       "cargo xtask module validate forum"
     ]
-  }
+  },
+  "superseded_ordering_by": "crates/modules/rustok-forum/contracts/forum-search-durable-ingest-sequence.json"
 }

@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { requireValidationDisclosure } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -148,10 +149,10 @@ for (const marker of [
   "not a concurrency-safe distributed reservation",
   "edit-window fact",
   "bump-age fact",
-  "not run by the implementation agent",
 ]) {
   requireText(note, marker, `FORUM-26J owner note is missing ${marker}`);
 }
+requireValidationDisclosure(failures, note, "FORUM-26J owner note is missing");
 
 for (const marker of [
   '"downstream_create_window_task": "FORUM-26J"',

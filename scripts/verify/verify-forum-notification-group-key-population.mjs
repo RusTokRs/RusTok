@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -36,6 +37,7 @@ const candidate = read(contract.notifications_candidate_file ?? "");
 const entity = read(contract.notifications_entity_file ?? "");
 const readme = read(contract.notifications_readme ?? "");
 const library = read(contract.notifications_lib_file ?? "");
+const moduleFile = read(contract.notifications_module_file ?? "");
 const proof = read(contract.sqlite_proof ?? "");
 const upstream = JSON.parse(read(contract.upstream_contract ?? "") || "{}");
 const note = read(contract.owner_note ?? "");
@@ -115,11 +117,13 @@ for (const marker of [
   "NEW.group_key := 'g1:' || NEW.target_owner || ':' || NEW.target_id::text",
   "AFTER INSERT ON notifications",
   "WHEN NEW.group_key IS NULL",
-  "SET group_key = 'g1:' || NEW.target_owner || ':' || NEW.target_id",
+  "SET group_key = 'g1:' || NEW.target_owner || ':'",
+  "SET group_key = 'g1:' || target_owner || ':'",
+  "lower(hex(substr(NEW.target_id, 1, 4)))",
   "UPDATE notifications",
   "WHERE group_key IS NULL",
   "SET group_key = NULL",
-  "WHERE group_key = 'g1:' || target_owner || ':' || target_id",
+  "WHERE group_key = 'g1:' || target_owner || ':'",
 ]) {
   requireText(migration, marker, `group-key migration is missing ${marker}`);
 }
@@ -149,22 +153,48 @@ requireText(
   "candidate must remain compatible with persistence-owned group-key assignment",
 );
 requireText(entity, "pub group_key: Option<String>", "notification entity must retain group_key");
-requireText(library, "assert_eq!(module.migrations().len(), 6)", "module must expose six migrations");
+
+// The registry is the source of truth for how many migrations the module owns; the self-test must
+// count exactly those, so adding a migration keeps this guard honest instead of red.
+const registryMigrations = (
+  registry.match(/Box::new\(m\d{8}_\d{6}_[a-z0-9_]+::Migration\)/g) ?? []
+).length;
+const registryDependencies = (
+  registry.match(/MigrationDependencyDescriptor::new\(/g) ?? []
+).length;
+if (registryMigrations === 0 || registryMigrations !== registryDependencies) {
+  failures.push(
+    `migration registry declares ${registryMigrations} migrations but ${registryDependencies} dependency descriptors`,
+  );
+}
 requireText(
   library,
-  "assert_eq!(module.migration_dependencies().len(), 6)",
-  "module must expose six migration dependencies",
+  "pub mod migrations;",
+  "public library must expose the migrations module",
+);
+requireText(
+  moduleFile,
+  `assert_eq!(module.migrations().len(), ${registryMigrations})`,
+  `module self-test must assert ${registryMigrations} migrations`,
+);
+requireText(
+  moduleFile,
+  `assert_eq!(module.migration_dependencies().len(), ${registryDependencies})`,
+  `module self-test must assert ${registryDependencies} migration dependencies`,
 );
 
+const migrationCountWord = { 5: "five", 6: "six", 7: "seven", 8: "eight", 9: "nine" }[registryMigrations];
 for (const marker of [
-  "The owner exposes six ordered PostgreSQL/SQLite migrations",
+  migrationCountWord
+    ? `The owner exposes ${migrationCountWord} ordered PostgreSQL/SQLite migrations`
+    : "ordered PostgreSQL/SQLite migrations",
   "m20260726_000015_populate_notification_group_keys",
   "g1:{target_owner}:{target_id}",
   "NotificationInboxGroupListService",
   "tests/group_key_population_sqlite.rs",
-  "Group summaries, per-group unread totals",
+  "Bounded group summaries",
 ]) {
-  requireText(readme, marker, `notifications README is missing ${marker}`);
+  requireProse(failures, readme, marker, "notifications README");
 }
 
 for (const marker of [

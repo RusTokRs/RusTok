@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { containsMarker, ledgerRowProblems } from "./lib/forum-source-verification.mjs";
+
 const paths = {
   contract: "crates/modules/rustok-forum/contracts/forum-topic-merge-vote-reconciliation.json",
   docs: "crates/modules/rustok-forum/docs/forum-21f-topic-merge-vote-reconciliation.md",
@@ -27,9 +29,11 @@ function read(path) {
   return readFileSync(path, "utf8");
 }
 
+// Layout-tolerant by policy: a marker describes an invariant, not where rustfmt or a prose editor put
+// the newline. Tokens are unchanged, so an absent call or sentence is still absent.
 function includesAll(text, markers, label) {
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing marker: ${marker}`);
+    assert.ok(containsMarker(text, marker), `${label} is missing marker: ${marker}`);
   }
 }
 
@@ -86,7 +90,7 @@ assert.deepEqual(contract.search_projection, {
   reason:
     "current Forum Search projection does not contain topic vote score or current-user vote state",
 });
-assert.equal(contract.semantic_event.event_type, "forum.topic.merge_votes_reconciled");
+assert.equal(contract.semantic_event.event_type, "forum.topic.merge.votes_reconciled");
 assert.equal(contract.semantic_event.schema_version, 1);
 assert.equal(contract.semantic_event.aggregate_is_retained_target, true);
 assert.equal(contract.semantic_event.event_id_equals_operation_id, true);
@@ -137,7 +141,7 @@ includesAll(
   migrationsMod,
   [
     "mod m20260803_000014_add_forum_topic_merge_vote_reconciliations;",
-    "m20260803_000014_add_forum_topic_merge_vote_reconciliations::Migration,",
+    "m20260803_000014_add_forum_topic_merge_vote_reconciliations::Migration",
   ],
   "migration registry",
 );
@@ -228,7 +232,7 @@ includesAll(
     "pub struct ForumTopicMergeVoteReconciliationService",
     "pub async fn reconcile_merge_votes(",
     "enforce_scope(&security, Resource::ForumTopics, Action::Manage)?;",
-    "lock_reconciliation_tenant_in_tx(&txn, tenant_id).await?;",
+    "lock_reconciliation_tenant_in_tx(txn, tenant_id).await?;",
     "forum_topic_merge_vote_reconciliation::Entity::find_by_id",
     "TopicMergeVoteReconciliationConflict",
     "forum_topic_merge_operation::Entity::find_by_id",
@@ -242,7 +246,7 @@ includesAll(
     "move_source_row_in_tx",
     "delete_source_row_in_tx",
     "ensure_source_votes_empty_in_tx",
-    '"forum.topic.merge_votes_reconciled"',
+    '"forum.topic.merge.votes_reconciled"',
     "forum_domain_event::ActiveModel",
     "forum_topic_merge_vote_reconciliation::ActiveModel",
     "txn.commit().await?;",
@@ -319,7 +323,7 @@ includesAll(
     "TopicMergeVoteReconciliationConflict",
     "UPDATE forum_topic_merge_vote_reconciliations",
     "DELETE FROM forum_topic_merge_vote_reconciliations",
-    '"forum.topic.merge_votes_reconciled"',
+    '"forum.topic.merge.votes_reconciled"',
     "summary.current_user_vote, Some(-1)",
   ],
   "SQLite regression",
@@ -340,13 +344,12 @@ includesAll(
   ],
   "FORUM-21F handoff",
 );
-assert.ok(
-  plan.includes(
-    "| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |",
-  ),
+assert.deepEqual(
+  ledgerRowProblems(plan, "FORUM-21", {
+    mentions: ["move/merge/split/fork/range owners"],
+  }),
+  [],
 );
-assert.ok(!plan.includes("| `FORUM-21` | `done` |"));
-assert.ok(!plan.includes("| `FORUM-21` | `in_progress` |"));
 assert.ok(verifier.includes("source_ready_maintainer_execution_pending"));
 
 console.log(

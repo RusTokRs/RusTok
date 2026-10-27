@@ -61,7 +61,7 @@ assert.equal(contract.required_runtime.search_inbox, "search_projection_inbox");
 assert.equal(contract.required_runtime.projector, "ForumProjectionReconciler");
 assert.equal(
   contract.required_runtime.storefront_execution,
-  "execute_forum_storefront_search",
+  "execute_audience_eligible_search",
 );
 assert.equal(contract.required_owner_trace.length, 6);
 assert.ok(contract.fail_closed_requirements.length >= 12);
@@ -116,10 +116,10 @@ requireAll(
     "search_projection_inbox",
     "approval_inbox_order[0].event_id != approval_status_event.id",
     "approval_inbox_order[1].event_id != approval_revisions[0].event_id",
-    "ForumSearchProjectionSourceFactory.build",
+    "forum_public_settings::projection_source(db.clone())",
     "ForumProjectionReconciler::new",
-    "execute_forum_storefront_search",
-    "ForumSearchResultEligibilityService::new",
+    "execute_audience_eligible_search",
+    "forum_public_settings::eligibility_service(self.db.clone())",
     "ensure_baseline_documents",
     "ensure_translated_documents",
     "ensure_approved_documents",

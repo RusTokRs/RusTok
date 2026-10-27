@@ -1,3 +1,6 @@
+/// Module slug the host, the audience registry and Search all key Forum by.
+pub const FORUM_MODULE_SLUG: &str = "forum";
+
 /// Node kinds for forum content (backed by rustok-content nodes).
 pub const KIND_CATEGORY: &str = "forum_category";
 pub const KIND_TOPIC: &str = "forum_topic";

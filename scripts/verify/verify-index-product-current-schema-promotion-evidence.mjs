@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pinnedActionProblem } from './lib/workflow-pins.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const workflowPath = '.github/workflows/index-product-current-schema-promotion-evidence.yml';
@@ -33,7 +34,6 @@ for (const marker of [
   'run_attempt=${GITHUB_RUN_ATTEMPT}',
   'sha=${GITHUB_SHA}',
   'event=${GITHUB_EVENT_NAME}',
-  'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
   'retention-days: 90',
   'name: Product Current Schema Promotion Evidence Gate',
 ]) {
@@ -73,7 +73,8 @@ if (/^\s*DATABASE_URL\s*:/m.test(workflow)) {
   fail(`${workflowPath} must use the evidence-specific Product key4 database variable, not generic DATABASE_URL`);
 }
 
-if (!workflow.includes('if: always()\n        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a')) {
+// `always()` plus a pinned upload step — the commit is governed by verify:workflow-action-pins.
+if (!/if: always\(\)\s*\n\s*uses: actions\/upload-artifact@[0-9a-f]{40}/.test(workflow)) {
   fail(`${workflowPath} must archive bounded evidence even when the PostgreSQL packet fails`);
 }
 

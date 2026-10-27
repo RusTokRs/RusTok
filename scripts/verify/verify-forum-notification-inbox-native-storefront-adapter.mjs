@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { deliveredLedgerSlices, requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -120,19 +121,16 @@ for (const key of [
   }
 }
 
-if (
-  contract.canonical_plan_sync?.status !== "pending" ||
-  contract.canonical_plan_sync?.required_ledger_through !== "FORUM-20AH" ||
-  contract.canonical_plan_sync?.current_plan_through !== "FORUM-20G"
-) {
-  failures.push("canonical Forum ledger must remain pending from FORUM-20G through FORUM-20AH");
-}
-if (
-  contract.notifications_local_plan_sync?.status !== "pending" ||
-  contract.notifications_local_plan_sync?.required_ledger_through !== "FORUM-20AH" ||
-  contract.notifications_local_plan_sync?.current_plan_through !== "FORUM-20AA"
-) {
-  failures.push("Notifications ledger must remain pending from FORUM-20AA through FORUM-20AH");
+for (const [sync, ledger, label] of [
+  [contract.canonical_plan_sync, canonicalPlan, "canonical Forum ledger"],
+  [contract.notifications_local_plan_sync, localPlan, "Notifications ledger"],
+]) {
+  if (sync?.status !== "synchronized" || sync.required_ledger_through !== "FORUM-20AH") {
+    failures.push(`${label} must record the delivered FORUM-20AH chain as synchronized`);
+  }
+  if (!deliveredLedgerSlices(ledger).has("FORUM-20AH")) {
+    failures.push(`${label} does not record FORUM-20AH as delivered`);
+  }
 }
 if (
   contract.notifications_owner_docs_sync?.status !== "pending" ||
@@ -142,12 +140,20 @@ if (
 }
 requireText(canonicalPlan, "FORUM-20A-G provide", "canonical plan must remain grounded through G");
 requireText(localPlan, "### `FORUM-20AA`", "Notifications local plan must remain grounded through AA");
-requireText(
+// The native adapter and the grouped UI are delivered, so pin the delivered state instead of the
+// retired "remain closed" pending-sync sentence.
+requireProse(
+  failures,
   ownerReadme,
-  "External transport adapters and grouped UI remain closed",
-  "pending owner README sync must remain explicit",
+  "The native Leptos server-function adapter serves SSR/hydrate",
+  "owner README must describe the delivered native adapter",
 );
-requireText(liveContract, "grouped UI", "pending live-contract sync must remain explicit");
+requireProse(
+  failures,
+  liveContract,
+  "Native Leptos server functions are selected for SSR/hydrate",
+  "live contract must describe the delivered native adapter",
+);
 
 for (const marker of [
   "pub struct NotificationStorefrontUnreadCount",

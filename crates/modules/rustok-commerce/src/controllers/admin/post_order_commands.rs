@@ -25,6 +25,28 @@ use crate::dto::{
 const ADMIN_POST_ORDER_OWNER: &str = "rustok_order.post_order_command";
 const ADMIN_POST_ORDER_BOUNDARY: &str = "commerce_admin_post_order_command_http";
 
+/// Record that a post-order command route was entered, describing shape instead of identity.
+///
+/// The request span already carries tenant and actor identity; a boundary line repeats only whether
+/// they are non-nil, which resource kind the route addresses, and whether that id is non-nil.
+fn log_admin_post_order_command_entry(
+    operation: &'static str,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    resource_kind: &'static str,
+    resource_id: Uuid,
+) {
+    tracing::debug!(
+        boundary = ADMIN_POST_ORDER_BOUNDARY,
+        operation,
+        resource_kind,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        actor_id_non_nil = !actor_id.is_nil(),
+        resource_id_non_nil = !resource_id.is_nil(),
+        "commerce admin post-order command entered with bounded diagnostics"
+    );
+}
+
 fn require_idempotency_key(headers: &HeaderMap) -> Result<String, HttpError> {
     let value = headers
         .get("Idempotency-Key")
@@ -178,13 +200,12 @@ pub async fn create_order_change(
     if id.is_nil() {
         return Err(HttpError::bad_request("invalid_order_id", "Order ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_POST_ORDER_BOUNDARY,
-        operation = "create_order_change",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        order_id = %id,
-        "handling create_order_change"
+    log_admin_post_order_command_entry(
+        "create_order_change",
+        tenant.id,
+        auth.user_id,
+        "order",
+        id,
     );
 
     let idempotency_key = require_idempotency_key(&headers)?;
@@ -250,15 +271,17 @@ pub async fn cancel_order_change(
         return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_order_change_id", "Order change ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_order_change_id",
+            "Order change ID must not be nil",
+        ));
     }
-    tracing::debug!(
-        boundary = ADMIN_POST_ORDER_BOUNDARY,
-        operation = "cancel_order_change",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        change_id = %id,
-        "handling cancel_order_change"
+    log_admin_post_order_command_entry(
+        "cancel_order_change",
+        tenant.id,
+        auth.user_id,
+        "order_change",
+        id,
     );
 
     let idempotency_key = require_idempotency_key(&headers)?;
@@ -326,13 +349,12 @@ pub async fn create_order_return(
     if id.is_nil() {
         return Err(HttpError::bad_request("invalid_order_id", "Order ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = ADMIN_POST_ORDER_BOUNDARY,
-        operation = "create_order_return",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        order_id = %id,
-        "handling create_order_return"
+    log_admin_post_order_command_entry(
+        "create_order_return",
+        tenant.id,
+        auth.user_id,
+        "order",
+        id,
     );
 
     let idempotency_key = require_idempotency_key(&headers)?;
@@ -398,15 +420,17 @@ pub async fn cancel_order_return(
         return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_order_return_id", "Order return ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_order_return_id",
+            "Order return ID must not be nil",
+        ));
     }
-    tracing::debug!(
-        boundary = ADMIN_POST_ORDER_BOUNDARY,
-        operation = "cancel_order_return",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        return_id = %id,
-        "handling cancel_order_return"
+    log_admin_post_order_command_entry(
+        "cancel_order_return",
+        tenant.id,
+        auth.user_id,
+        "order_return",
+        id,
     );
 
     let idempotency_key = require_idempotency_key(&headers)?;

@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -36,6 +37,7 @@ const entity = read(contract.notifications_entity_file ?? "");
 const indexMigration = read(contract.notifications_index_migration_file ?? "");
 const migrationRegistry = read(contract.notifications_migration_registry ?? "");
 const library = read(contract.notifications_lib_file ?? "");
+const moduleFile = read(contract.notifications_module_file ?? "");
 const readme = read(contract.notifications_readme ?? "");
 const liveContract = read(contract.notifications_live_contract ?? "");
 const localPlan = read(contract.notifications_local_plan ?? "");
@@ -164,7 +166,7 @@ for (const forbidden of [
   rejectText(owner, forbidden, `group-summary owner must not use ${forbidden}`);
 }
 
-const rawQuery = owner.indexOf("let query_rows = self.db.query_all(statement).await?");
+const rawQuery = owner.indexOf("let query_rows = self.db.query_all_raw(statement).await?");
 const authorize = owner.indexOf(".authorize_open(NotificationInboxOpenRequest", rawQuery);
 if (rawQuery < 0 || authorize < 0 || rawQuery >= authorize) {
   failures.push("group-summary owner must select bounded raw groups before authorization");
@@ -212,11 +214,34 @@ for (const marker of [
   "NotificationInboxGroupSummaryPage",
   "NotificationInboxGroupSummaryRequest",
   "NotificationInboxGroupSummaryService",
-  "assert_eq!(module.migrations().len(), 7)",
-  "assert_eq!(module.migration_dependencies().len(), 7)",
 ]) {
   requireText(library, marker, `public library is missing ${marker}`);
 }
+
+// The module self-test must count exactly the migrations and dependency descriptors the registry
+// declares. Deriving the number keeps the check honest when a migration is added instead of
+// pinning today's total.
+const declaredMigrations = (
+  migrationRegistry.match(/Box::new\(m\d{8}_\d{6}_[a-z0-9_]+::Migration\)/g) ?? []
+).length;
+const declaredDependencies = (
+  migrationRegistry.match(/MigrationDependencyDescriptor::new\(/g) ?? []
+).length;
+if (declaredMigrations === 0 || declaredMigrations !== declaredDependencies) {
+  failures.push(
+    `migration registry declares ${declaredMigrations} migrations but ${declaredDependencies} dependency descriptors`,
+  );
+}
+requireText(
+  moduleFile,
+  `assert_eq!(module.migrations().len(), ${declaredMigrations})`,
+  `module self-test must assert ${declaredMigrations} migrations`,
+);
+requireText(
+  moduleFile,
+  `assert_eq!(module.migration_dependencies().len(), ${declaredDependencies})`,
+  `module self-test must assert ${declaredDependencies} migration dependencies`,
+);
 
 for (const marker of [
   "summaries_count_non_archived_rows_order_latest_and_preserve_sparse_progress",
@@ -250,9 +275,9 @@ for (const marker of [
   "seven ordered PostgreSQL/SQLite migrations",
   "m20260726_000016_add_notification_group_summary_index",
   "tests/inbox_group_summary_sqlite.rs",
-  "group-level mark-read, mark-unread, and archive commands",
+  "bounded exact-group state commands",
 ]) {
-  requireText(readme, marker, `notifications README is missing ${marker}`);
+  requireProse(failures, readme, marker, "notifications README");
 }
 
 for (const marker of [

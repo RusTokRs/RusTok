@@ -177,16 +177,17 @@ verify through a real Axum router and real SQLite owner merge:
 
 ## Remaining FORUM-21 and FORUM-24 work
 
-The canonical `FORUM-21` and `FORUM-24` entries remain `planned`. FORUM-21A
-through FORUM-21J are bounded source-ready slices. Remaining work includes:
+The canonical `FORUM-21` and `FORUM-24` entries are `in_progress`. FORUM-21A
+through FORUM-21X are source-ready slices covering the move, merge, split, fork
+and reply-range owners, their transports and the admin composition, including
+manager-selected resolution, checked cross-category merge and the canonical
+merged-topic redirect. Remaining work includes:
 
-- maintainer execution and retained SQLite/PostgreSQL evidence;
+- maintainer execution and retained SQLite/PostgreSQL and browser evidence;
 - localized public routes, canonical storefront URLs, slug aliases and slug
   tombstones under FORUM-24;
-- public/admin merge command transport composition;
-- manager-selected resolution when both topics have accepted solutions;
-- cross-category merge;
-- split, fork and reply-range workflows.
+- direct authenticated native owner composition for the split, fork and
+  reply-range admin workflows while retaining GraphQL parity.
 
 ## Maintainer verification
 

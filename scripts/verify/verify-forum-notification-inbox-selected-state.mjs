@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { deliveredLedgerSlices, requireValidationDisclosure } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -80,11 +81,11 @@ if (!contract.not_delivered?.includes("grouped inbox views")) {
 }
 
 const sync = contract.canonical_plan_sync ?? {};
-if (sync.status !== "pending" || sync.required_ledger_through !== "FORUM-20AB") {
-  failures.push("canonical plan synchronization must remain explicit through FORUM-20AB");
+if (sync.status !== "synchronized" || sync.required_ledger_through !== "FORUM-20AB") {
+  failures.push("canonical plan must record the delivered FORUM-20AB chain as synchronized");
 }
-if (sync.current_plan_through !== "FORUM-20G") {
-  failures.push("pending plan synchronization must identify FORUM-20G");
+if (!deliveredLedgerSlices(plan).has("FORUM-20AB")) {
+  failures.push("canonical plan does not record FORUM-20AB as delivered");
 }
 requireText(plan, "FORUM-20A-G provide", "pending plan sync must remain grounded through G");
 rejectText(plan, "### Delivered in `FORUM-20AB`", "canonical plan sync status is stale");
@@ -183,10 +184,10 @@ for (const marker of [
   "NotificationInboxStateService",
   "`requested`, `changed`, and `not_changed`",
   "tests/inbox_selected_state_sqlite.rs",
-  "not run by the implementation agent",
 ]) {
   requireText(note, marker, `owner contract note is missing ${marker}`);
 }
+requireValidationDisclosure(failures, note, "owner contract note is missing");
 
 if (
   upstream.schema_version !== 1 ||

@@ -147,7 +147,7 @@ One first-execution transaction performs:
 8. classification as source-only or target-overlap;
 9. deletion of every source row with exact affected-row validation;
 10. source-emptiness proof;
-11. one `forum.topic.merge_read_states_reconciled` journal record;
+11. one `forum.topic.merge.read_state_reconciled` journal record;
 12. one immutable reconciliation receipt;
 13. commit.
 

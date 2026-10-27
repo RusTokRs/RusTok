@@ -1,14 +1,26 @@
 #!/usr/bin/env node
-
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+/**
+ * Checkout order stage error safety.
+ *
+ * Commerce checkout reads, creates, and confirms the order behind a staged
+ * checkout operation. Every Order owner failure is projected onto a bounded
+ * vocabulary: a stable Commerce code, a static consumer message, and the owner
+ * retryability decision. Owner text survives only as shape and length facts on a
+ * redacted tracing event, and the staged-checkout journal persists only
+ * Commerce-authored text.
+ *
+ * This guard pins that contract in the source, the design note, and the source
+ * review evidence, and it fails if the retired compatibility sources return.
+ */
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
-  : new URL('../../', import.meta.url);
-const read = (file) => readFileSync(new URL(file, root), 'utf8');
+  : new URL("../../", import.meta.url);
+const read = (file) => readFileSync(new URL(file, root), "utf8");
 const failures = [];
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
@@ -17,120 +29,146 @@ const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
 
-const facade = read('crates/modules/rustok-commerce/src/services/checkout_order_stages.rs');
-const legacy = read('crates/modules/rustok-commerce/src/services/checkout_order_stages_legacy.rs');
-const doc = read('crates/modules/rustok-commerce/docs/checkout-order-stage-context.md');
-const evidence = JSON.parse(read(
-  'crates/modules/rustok-commerce/contracts/evidence/checkout-order-stage-error-safety-source-review.json',
-));
-const combined = `${facade}\n${legacy}`;
+const stage = read("crates/modules/rustok-commerce/src/services/checkout_order_stages.rs");
+const ownerFailure = read(
+  "crates/modules/rustok-commerce/src/services/checkout_order_owner_failure.rs",
+);
+const creation = read(
+  "crates/modules/rustok-commerce/src/services/checkout_order_creation.rs",
+);
+const confirmation = read(
+  "crates/modules/rustok-commerce/src/services/checkout_order_confirmation.rs",
+);
+const staged = read("crates/modules/rustok-commerce/src/services/staged_checkout.rs");
+const doc = read("crates/modules/rustok-commerce/docs/checkout-order-stage-context.md");
+const evidence = JSON.parse(
+  read(
+    "crates/modules/rustok-commerce/contracts/evidence/checkout-order-stage-error-safety-source-review.json",
+  ),
+);
+
+for (const retired of [
+  "crates/modules/rustok-commerce/src/services/checkout_order_stages_legacy.rs",
+  "crates/modules/rustok-commerce/src/services/checkout_stage_pipeline.rs",
+]) {
+  if (existsSync(new URL(retired, root))) {
+    failures.push(`${retired}: retired source must not return`);
+  }
+}
 
 for (const [value, label] of [
-  ['include!("checkout_order_stages_legacy.rs");', 'mounted private legacy include'],
-  ['struct SanitizingCheckoutCompletionPort', 'completion owner adapter'],
-  ['pub struct CheckoutOrderRecoveryAdapter', 'recovery/read owner adapter'],
-  ['wrap_checkout_completion_port', 'custom completion port wrapping'],
-  ['sanitize_owner_error(&error_context, "complete_checkout", error)', 'completion sanitization'],
-  ['sanitize_owner_error(&error_context, "recover_existing_checkout", error)', 'recovery sanitization'],
-  ['sanitize_owner_error(&error_context, "read_checkout_order", error)', 'projection read sanitization'],
-  ['struct CheckoutOrderStageDiagnosticError', 'redacted diagnostic token'],
-  ['formatter.write_str("redacted")', 'redacted debug output'],
-  ['struct CheckoutOrderStageContextFacts', 'bounded context projection'],
-  ['tenant_id_shape', 'tenant identity shape'],
-  ['actor_kind', 'actor kind'],
-  ['actor_id_shape', 'actor identity shape'],
-  ['claim_count', 'claim count'],
-  ['role_count', 'role count'],
-  ['channel_shape', 'channel shape'],
-  ['locale_shape', 'locale shape'],
-  ['correlation_id_shape', 'correlation shape'],
-  ['causation_id_shape', 'causation shape'],
-  ['traceparent_shape', 'trace shape'],
-  ['idempotency_key_shape', 'idempotency shape'],
-  ['owner_message_shape', 'owner message shape'],
-  ['owner_message_len', 'owner message length'],
-  ['owner_code = %error.code', 'owner code'],
-  ['owner_kind = ?error.kind', 'owner kind'],
-  ['owner_retryable = error.retryable', 'owner retryability'],
-  ['boundary = CHECKOUT_ORDER_STAGE_ADAPTER_BOUNDARY', 'adapter boundary'],
-  ['PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation', 'technical severity'],
-  ['Checkout order request is invalid', 'validation public message'],
-  ['Checkout order resource was not found', 'not-found public message'],
-  ['Checkout order state conflicts with the requested operation', 'conflict public message'],
-  ['Checkout order operation is not permitted', 'forbidden public message'],
-  ['Checkout order service is temporarily unavailable', 'availability public message'],
-  ['Checkout order operation could not be completed safely', 'invariant public message'],
-  ['message: public_message.to_string()', 'sanitized owner message projection'],
-]) requireText(facade, value, label);
+  [".read_checkout_order(", "owner projection read"],
+  ["ReadCheckoutOrderProjectionRequest {", "owner projection read request"],
+  ["fn order_read_context(", "bounded read context"],
+  ["PortActor::system()", "internal continuation actor"],
+  ["fn owner_read_failure(", "order-stage owner sanitization"],
+  ["CheckoutOrderBoundaryFailure::from_port_error(error)", "port failure projection"],
+  ["failure.observe_port_error(context, owner_operation, stage)", "bounded port diagnostics"],
+  ["Self::Boundary {", "retained boundary variant"],
+  ["code: failure.code", "owner code propagation"],
+  ["message: failure.message.to_string()", "static message propagation"],
+  ["retryable: failure.retryable", "owner retryability propagation"],
+  ["pub fn bounded_failure(&self) -> Option<(&str, bool)>", "bounded failure accessor"],
+]) requireText(stage, value, label);
 
 for (const [value, label] of [
-  ['error = ?boundary_error', 'raw legacy PortError diagnostic'],
-  ['correlation_id = %context.correlation_id', 'raw legacy correlation diagnostic'],
-  ['tenant_id = %context.tenant_id', 'raw legacy tenant diagnostic'],
-  ['actor = ?context.actor', 'raw legacy actor diagnostic'],
-  ['channel = ?context.channel', 'raw legacy channel diagnostic'],
-  ['locale = %context.locale', 'raw legacy locale diagnostic'],
-  ['internal_message = %boundary_error.message', 'raw legacy owner message diagnostic'],
-]) requireText(legacy, value, label);
+  ["include!(", "retired include mount"],
+  ["CheckoutCompletionPort", "retired completion write path"],
+  ["OrderService", "direct owner service"],
+  ["{err}", "raw owner error interpolation"],
+  ["{error}", "raw error interpolation"],
+  ["error = ?error", "raw owner error logging"],
+  ["tenant_id = %context.tenant_id", "raw tenant logging"],
+  ["correlation_id = %context.correlation_id", "raw correlation logging"],
+  ["message: error.message", "raw owner message propagation"],
+]) forbidText(stage, value, label);
 
 for (const [value, label] of [
-  ['mod tracing_shim', 'legacy tracing suppression shim'],
-  ['use super::tracing_shim as tracing;', 'legacy tracing redirect'],
-]) requireText(facade, value, label);
+  ["pub(crate) const CHECKOUT_ORDER_OWNER_BOUNDARY", "adapter boundary"],
+  ["pub(crate) struct CheckoutOrderDiagnosticError", "redacted diagnostic token"],
+  ['formatter.write_str("redacted")', "redacted debug output"],
+  ["pub(crate) fn from_owner_error(error: &OrderError) -> Self", "owner error projection"],
+  ["pub(crate) fn from_port_error(error: PortError) -> Self", "port error projection"],
+  ["fn of_owner_error(error: &OrderError) -> Self", "typed owner classification"],
+  ["fn of_port_error(kind: &PortErrorKind) -> Self", "typed port classification"],
+  ["pub(crate) fn observe_owner_error(", "owner error diagnostics"],
+  ["pub(crate) fn observe_port_error(", "port error diagnostics"],
+  ["owner_message_shape", "owner message shape"],
+  ["owner_message_len", "owner message length"],
+  ["owner_kind = self.kind.label()", "owner kind"],
+  ["owner_code = %self.code", "owner code"],
+  ["owner_retryable = self.retryable", "owner retryability"],
+  ["fn is_technical(self) -> bool", "severity classification"],
+  ["Checkout order request is invalid", "validation public message"],
+  ["Checkout order resource was not found", "not-found public message"],
+  ["Checkout order state conflicts with the requested operation", "conflict public message"],
+  ["Checkout order operation is not permitted", "forbidden public message"],
+  ["Checkout order service is temporarily unavailable", "availability public message"],
+  ["Checkout order operation could not be completed safely", "invariant public message"],
+  ["checkout.order_request_invalid", "validation code"],
+  ["checkout.order_resource_not_found", "not-found code"],
+  ["checkout.order_state_conflict", "conflict code"],
+  ["checkout.order_temporarily_unavailable", "availability code"],
+  ["checkout.order_receipt_corrupt", "receipt code"],
+  ["checkout.order_operation_failed", "core code"],
+  ["impl From<&PortContext> for CheckoutOrderContextFacts", "bounded context projection"],
+]) requireText(ownerFailure, value, label);
 
 for (const [value, label] of [
-  ['error = ?error', 'raw canonical PortError logging'],
-  ['error = ?boundary_error', 'raw boundary error logging'],
-  ['correlation_id = %context.correlation_id', 'raw correlation logging'],
-  ['tenant_id = %context.tenant_id', 'raw tenant logging'],
-  ['actor = ?context.actor', 'raw actor logging'],
-  ['channel = ?context.channel', 'raw channel logging'],
-  ['locale = %context.locale', 'raw locale logging'],
-  ['internal_message = %error.message', 'raw owner message logging'],
-  ['message: error.message', 'raw owner message propagation'],
-]) forbidText(facade, value, label);
+  ["message = %", "raw owner message diagnostic"],
+  ["error = ?error", "raw owner error diagnostic"],
+  ["error = %error", "raw owner error diagnostic"],
+]) forbidText(ownerFailure, value, label);
+
+for (const [source, label] of [
+  [creation, "order creation executor"],
+  [confirmation, "order confirmation executor"],
+]) {
+  for (const [value, marker] of [
+    ["OrderBoundary {", "bounded owner failure variant"],
+    ["fn owner_failure(", "owner failure projection"],
+    ["CheckoutOrderBoundaryFailure::from_owner_error(&error)", "owner error classification"],
+    ["failure.observe_owner_error(", "bounded owner diagnostics"],
+    ["pub fn bounded_failure(&self) -> Option<(&str, bool)>", "bounded failure accessor"],
+  ]) requireText(source, value, `${label} ${marker}`);
+  for (const [value, marker] of [
+    ["Order(#[from] OrderError)", "transparent owner error"],
+    ["{err}", "raw owner error interpolation"],
+    ["{error}", "raw error interpolation"],
+  ]) forbidText(source, value, `${label} ${marker}`);
+}
 
 for (const [value, label] of [
-  ['CheckoutCompletionPort', 'retained completion port'],
-  ['CheckoutOrderRecoveryAdapter', 'retained recovery adapter'],
-  ['recover_existing_checkout(', 'retained recovery call'],
-  ['complete_checkout(write_context.clone(), request)', 'retained completion call'],
-  ['read_checkout_order(', 'retained projection read'],
-  ['RecoverExistingCheckoutOrderRequest {', 'retained recovery request'],
-  ['completion: request.clone()', 'retained completion request reuse'],
-  ['legacy_snapshot_hash', 'retained legacy snapshot hash'],
-  ['legacy_request_hash', 'retained legacy request hash'],
-  ['validate_order_projection(&operation, &order, &[OrderStatusKind::Confirmed])', 'retained typed confirmed validation'],
-  ['expected_stage: CheckoutOperationStage::InventoryReserved', 'retained inventory-reserved checkpoint'],
-  ['next_stage: CheckoutOperationStage::OrderCreated', 'retained order-created checkpoint'],
-  ['expected_stage: CheckoutOperationStage::OrderCreated', 'retained order-created admission'],
-  ['next_stage: CheckoutOperationStage::PaymentReady', 'retained payment-ready checkpoint'],
-  ['checkout:{operation_id}:order:complete', 'retained completion idempotency key'],
-  ['.with_causation_id(operation_id.to_string())', 'retained causation'],
-  ['.with_deadline(deadline)', 'retained deadline'],
-  ['allowed_statuses: &[OrderStatusKind]', 'retained typed lifecycle policy'],
-]) requireText(legacy, value, label);
+  ["fn pipeline_failure_message(error: &CheckoutStagePipelineError) -> String", "bounded journal text"],
+  ["pipeline_failure_message(&pipeline)", "bounded journal persistence"],
+  ["fn pipeline_failure_stage(error: &CheckoutStagePipelineError) -> &'static str", "stage label fallback"],
+  ["checkout pipeline failed at stage", "static fallback sentence"],
+  ["CheckoutStagePipelineError::OrderStage(error) => error", "order-stage code propagation"],
+  ["checkout.order_stage_failed", "order-stage code fallback"],
+  ["bounded_failure()", "bounded retryability propagation"],
+]) requireText(staged, value, label);
+
+forbidText(staged, "pipeline.to_string()", "raw pipeline text persistence");
 
 for (const [value, label] of [
-  ['pub struct CheckoutOrderStageExecutor', 'public executor facade'],
-  ['pub fn with_completion_port(', 'public custom completion injection'],
-  ['pub async fn advance_to_payment_ready(', 'public advance API'],
-  ['pub async fn load_payment_ready_state(', 'public recovery API'],
-  ['pub fn plan_journal(&self)', 'public plan journal API'],
-]) requireText(facade, value, label);
+  ["Status: **source-reviewed / unvalidated**", "truthful document status"],
+  ["## Retired sources", "retired source section"],
+  ["Checkout order service is temporarily unavailable", "documented availability message"],
+  ["checkout pipeline failed at stage", "documented journal fallback"],
+  ["## Remaining work", "open work disclosure"],
+  ["cargo check -p rustok-commerce --lib", "maintainer compile check"],
+]) requireText(doc, value, label);
 
 for (const [key, expected] of Object.entries({
   mounted_facade_active: true,
-  legacy_source_private: true,
-  legacy_source_business_logic_changed: false,
-  canonical_completion_port_preserved: true,
-  canonical_recovery_adapter_preserved: true,
-  recover_wrapped: true,
-  complete_wrapped: true,
-  read_wrapped: true,
+  legacy_source_retired: true,
+  dead_pipeline_duplicate_retired: true,
+  completion_port_writes_retired: true,
+  order_service_calls_removed_from_stage: true,
+  order_projection_read_uses_owner_port: true,
   owner_message_public: false,
   owner_message_persisted: false,
-  raw_port_error_logged: false,
+  raw_owner_error_logged: false,
   raw_context_values_logged: false,
   bounded_context_shapes_logged: true,
   owner_message_shape_logged: true,
@@ -138,16 +176,16 @@ for (const [key, expected] of Object.entries({
   owner_code_preserved: true,
   owner_kind_preserved: true,
   owner_retryability_preserved: true,
-  legacy_tracing_suppressed: true,
-  completion_cutover_guard_updated: true,
-  owner_stage_guard_updated: true,
-  typed_lifecycle_guard_updated: true,
+  order_stage_bounded_code_propagated: true,
+  order_stage_retryability_propagated: true,
+  journal_persists_bounded_text: true,
   successful_dtos_changed: false,
   checkpoint_order_changed: false,
   idempotency_identity_changed: false,
   commerce_ffa_status_changed: false,
   commerce_fba_status_changed: false,
   broad_mapper_cleanup_closed: false,
+  transport_display_cleanup_closed: false,
   runtime_evidence_claimed: false,
 })) {
   if (evidence.source_contract?.[key] !== expected) {
@@ -158,26 +196,15 @@ for (const [key, value] of Object.entries(evidence.validation ?? {})) {
   if (value !== false) failures.push(`evidence validation.${key} must remain false`);
 }
 if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
-  failures.push('evidence execution must remain empty');
-}
-
-for (const [value, label] of [
-  ['Status: **source-reviewed / unvalidated**', 'truthful document status'],
-  ['Checkout order service is temporarily unavailable', 'documented static availability message'],
-  ['No tests, Node verifiers, Cargo commands', 'validation disclosure'],
-  ['The broader ecommerce correlation-safe mapper cleanup remains open', 'open broad mapper disclosure'],
-]) requireText(doc, value, label);
-
-if (!combined.includes('CheckoutOrderStageError::Boundary {')) {
-  failures.push('combined stage source must retain the public Boundary variant');
+  failures.push("evidence execution must remain empty");
 }
 
 if (failures.length > 0) {
-  console.error('Checkout order stage error-safety verification failed:');
+  console.error("Checkout order stage error-safety verification failed:");
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '✔ Checkout order recovery, completion, and projection-read owner failures are sanitized before the retained stage mapper',
+  "✔ Checkout order read, creation, and confirmation owner failures are sanitized before the mounted stage mapper and the operation journal",
 );

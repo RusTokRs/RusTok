@@ -13,7 +13,7 @@
     "host_package": "rustok-server",
     "search_inbox": "search_projection_inbox",
     "projector": "ForumProjectionReconciler",
-    "storefront_execution": "execute_forum_storefront_search"
+    "storefront_execution": "execute_audience_eligible_search"
   },
   "required_owner_trace": [
     "revision 1 is the real category-create forum-scope invalidation",
@@ -33,7 +33,7 @@
     "Search ingest_sequence ordering increases independently and is never compared numerically with Forum owner_revision",
     "the production Forum projection source and ForumProjectionReconciler project English and French current state",
     "the pending reply is absent before approval and the exact approved reply becomes visible only after the real moderation command",
-    "the production storefront execution and Forum eligibility owner return exact English French and approved-reply results",
+    "the production audience-eligible storefront execution and Forum eligibility owner return exact English French and approved-reply results",
     "each root event retains exactly one Search inbox row and a caught-up repeat performs no duplicate work",
     "the evidence artifact is written only after every assertion succeeds and the isolated schema is removed"
   ],

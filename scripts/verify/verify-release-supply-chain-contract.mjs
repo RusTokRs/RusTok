@@ -6,11 +6,14 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const ACTIONS = Object.freeze({
-  checkout: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
-  setupNode: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
-  uploadArtifact: "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
-  downloadArtifact: "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
-  attest: "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6",
+  // Action *names*: the allowlist is the supply-chain rule, the SHA pin is a separate rule enforced
+  // below and globally by `verify:workflow-action-pins`. Hard-coding one commit per action here made
+  // every workflow bump a guard failure without adding any protection.
+  checkout: "actions/checkout",
+  setupNode: "actions/setup-node",
+  uploadArtifact: "actions/upload-artifact",
+  downloadArtifact: "actions/download-artifact",
+  attest: "actions/attest",
 });
 
 function parseArguments(argv) {
@@ -95,12 +98,13 @@ function requirePinnedGithubActions(relativePath, expectedCounts) {
   }
   const allowed = new Set(Object.values(ACTIONS));
   for (const reference of references) {
-    if (!allowed.has(reference)) failures.push(`${relativePath}: unapproved action reference ${reference}`);
+    const name = reference.split("@")[0];
+    if (!allowed.has(name)) failures.push(`${relativePath}: unapproved action reference ${reference}`);
   }
-  for (const [reference, expected] of expectedCounts) {
-    const actual = references.filter((candidate) => candidate === reference).length;
+  for (const [action, expected] of expectedCounts) {
+    const actual = references.filter((candidate) => candidate.startsWith(`${action}@`)).length;
     if (actual !== expected) {
-      failures.push(`${relativePath}: expected ${expected} use(s) of ${reference}, found ${actual}`);
+      failures.push(`${relativePath}: expected ${expected} use(s) of ${action}, found ${actual}`);
     }
   }
 }

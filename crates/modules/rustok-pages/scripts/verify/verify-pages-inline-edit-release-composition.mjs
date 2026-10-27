@@ -18,6 +18,16 @@ const needCount = (text, marker, expected, label) => {
   const actual = count(text, marker);
   if (actual !== expected) failures.push(`${label}: expected ${expected} occurrence(s) of ${marker}, found ${actual}`);
 };
+// Action counts are about *which* action a step uses, not about one commit: the pin (a 40-character
+// SHA) is enforced by verify:workflow-action-pins, and hard-coding a bumpable commit here reported a
+// correctly pinned workflow as broken.
+const needActionCount = (text, action, expected, label) => {
+  const actual = text.split("\n").filter((line) => {
+    const uses = /^\s*(?:-\s+)?uses:\s*(\S+)/.exec(line);
+    return uses !== null && uses[1].startsWith(`${action}@`);
+  }).length;
+  if (actual !== expected) failures.push(`${label}: expected ${expected} use(s) of ${action}, found ${actual}`);
+};
 
 const files = {
   evidence: "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-release-composition-source.json",
@@ -193,9 +203,9 @@ for (const marker of [
   "--sbom=true",
 ]) need(release, marker, "release workflow");
 needCount(release, "scripts/build/build-pages-inline-edit-deployment.sh", 2, "release workflow");
-needCount(release, "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0", 6, "release workflow");
-needCount(release, "actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38", 6, "release workflow");
-needCount(release, "actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0", 4, "release workflow");
+needActionCount(release, "actions/checkout", 6, "release workflow");
+needActionCount(release, "actions/setup-node", 6, "release workflow");
+needActionCount(release, "actions/download-artifact", 4, "release workflow");
 for (const marker of [
   "Build embedded admin assets",
   "Rebuild embedded admin assets",
@@ -204,10 +214,10 @@ for (const marker of [
   "actions/setup-node@v",
 ]) forbid(release, marker, "release workflow");
 
-needCount(infrastructure, "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0", 2, "release infrastructure workflow");
-needCount(infrastructure, "actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38", 1, "release infrastructure workflow");
-needCount(hardening, "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0", 2, "hardening workflow");
-needCount(hardening, "actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38", 2, "hardening workflow");
+needActionCount(infrastructure, "actions/checkout", 2, "release infrastructure workflow");
+needActionCount(infrastructure, "actions/setup-node", 1, "release infrastructure workflow");
+needActionCount(hardening, "actions/checkout", 2, "hardening workflow");
+needActionCount(hardening, "actions/setup-node", 2, "hardening workflow");
 
 for (const marker of [
   "bash scripts/build/build-embedded-admin.sh",

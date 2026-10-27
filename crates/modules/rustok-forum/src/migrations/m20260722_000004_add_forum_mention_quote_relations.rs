@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS forum_relation_revisions (
     locale VARCHAR(32) NOT NULL,
     projection_fingerprint VARCHAR(64) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_forum_relation_revision_fingerprint
+        CHECK (projection_fingerprint = 'legacy' OR length(projection_fingerprint) = 64),
     CONSTRAINT chk_forum_relation_revision_kind
         CHECK (target_kind IN ('topic', 'reply')),
     CONSTRAINT uq_forum_relation_revision_identity
@@ -311,7 +313,8 @@ async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             target_kind TEXT NOT NULL CHECK (target_kind IN ('topic', 'reply')),
             target_id TEXT NOT NULL,
             locale TEXT NOT NULL,
-            projection_fingerprint TEXT NOT NULL CHECK (length(projection_fingerprint) <= 64),
+            projection_fingerprint TEXT NOT NULL
+                CHECK (projection_fingerprint = 'legacy' OR length(projection_fingerprint) = 64),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE (tenant_id, target_kind, target_id, locale, revision_id)
         )"#,

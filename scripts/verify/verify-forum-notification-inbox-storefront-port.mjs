@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -227,7 +228,10 @@ for (const forbidden of [
   rejectText(owner, forbidden, `transport-neutral storefront port must not use ${forbidden}`);
 }
 
-requireText(cargo, "rustok-api.workspace = true", "Notifications crate must depend on rustok-api");
+// The dependency carries an explicit feature set, so pin the crate and the feature, not one
+// spelling of the manifest line.
+requireText(cargo, "rustok-api = { workspace = true", "Notifications crate must depend on rustok-api");
+requireText(cargo, "features = [\"runtime\"]", "Notifications crate must enable the rustok-api runtime feature");
 for (const marker of [
   "mod inbox_storefront_port;",
   "NotificationInboxStorefrontPort",
@@ -258,15 +262,19 @@ for (const marker of [
   requireText(proof, marker, `SQLite storefront-port proof is missing ${marker}`);
 }
 
-requireText(
+// Owner docs now describe the delivered transport boundary; the earlier "transport adapters and
+// grouped UI remain closed" sentence was the pending-sync marker and is no longer true.
+requireProse(
+  failures,
   readme,
-  "External transport adapters and grouped UI remain closed",
-  "Notifications README must keep its pending owner-doc sync explicit",
+  "`NotificationInboxStorefrontPort` is the transport-neutral authenticated-user boundary",
+  "Notifications README must describe the delivered storefront port",
 );
-requireText(
+requireProse(
+  failures,
   liveContract,
-  "external inbox transport adapters",
-  "Notifications live contract must keep its pending owner-doc sync explicit",
+  "`NotificationInboxStorefrontPort` derives owner scope from a human-user `PortContext`",
+  "Notifications live contract must describe the delivered storefront port",
 );
 if (groupedUiDelivered) {
   requireText(

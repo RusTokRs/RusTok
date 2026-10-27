@@ -128,7 +128,7 @@ One transaction performs:
 6. bounded source-row and overlap loading;
 7. source-only row moves and duplicate deletion;
 8. source-emptiness and count-conservation proof;
-9. one `forum.topic.merge_tags_reconciled` Forum-local semantic event;
+9. one `forum.topic.merge.tags_reconciled` Forum-local semantic event;
 10. one immutable reconciliation receipt;
 11. one source-topic and one target-topic projection invalidation;
 12. commit.

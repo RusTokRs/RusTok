@@ -1,5 +1,16 @@
 # FORUM-23B2C: explicit Forum storefront Search scope
 
+> **Superseded on 2026-10-25.** The dedicated Forum storefront Search pipeline
+> (`execute_forum_storefront_search`, `forumStorefrontSearch` and the two storefront
+> adapters) is retired. The capability described below now lives on the generic
+> declared-corpus path: `storefrontSearch` plus `SearchAudiencePolicyPort`, with
+> `forumStorefrontAudienceTopics`/`forumTopics` owning Forum-specific filters
+> (author, solved state, tags, ordering). Everything below this notice is the design
+> record of the milestone as delivered and must not be read as current code. See
+> [ADR 2026-10-25](../../../../DECISIONS/2026-10-25-search-audience-declared-corpus.md)
+> and `npm run verify:search:audience`.
+
+
 Date: 2026-07-30
 
 Status: `source_complete_execution_pending`
@@ -74,9 +85,9 @@ Suggested commands:
 
 ```bash
 cargo test -p rustok-search storefront_category_scope -- --nocapture
-cargo test -p rustok-search-storefront transport::tests::only_explicit_forum_category_scope_selects_owner_path -- --nocapture
+cargo test -p rustok-search storefront_category_scope -- --nocapture
 cargo test -p rustok-server --features mod-forum forum_search_category_scope -- --nocapture
-node scripts/verify/verify-forum-search-storefront-scope.mjs
+node scripts/verify/verify-search-audience-classes.mjs
 cargo check -p rustok-search --features graphql --all-targets
 cargo check -p rustok-search-storefront --features ssr --all-targets
 cargo check -p rustok-server --features mod-forum --all-targets

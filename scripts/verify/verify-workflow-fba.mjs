@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { validateProviderRegistryBaseline } from './lib/fba-registry-validation.mjs';
+import { requirePortSurface } from './lib/rust-public-surface.mjs';
 
 const root = new URL('../../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
@@ -41,7 +42,12 @@ if (!port || port.name !== 'WorkflowReadPort') fail('WorkflowReadPort missing');
 for (const op of ['list_workflows', 'get_workflow']) if (!port.operations.includes(op)) fail(`port lacks ${op}`);
 if (port.deadline_required !== true || port.idempotency_required !== false) fail('read projection semantics drift');
 if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/workflow-fba-registry.json"') || !manifest.includes('contract_version = "workflow.read_projection.v1"')) fail('manifest FBA metadata drift');
-if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib.rs must export ports');
+{
+  // The registry names the ports consumers import; the crate root has to publish exactly those,
+  // whichever re-export shape it uses (the wildcard is accepted, explicit lists are preferred).
+  const surface = requirePortSurface(lib, registry);
+  if (!surface.ok) fail(surface.message);
+}
 for (const marker of ['trait WorkflowReadPort', 'impl WorkflowReadPort for WorkflowService', 'context.require_policy(PortCallPolicy::read())?', 'workflow_tenant_id(&context)?', 'workflow.tenant_id_invalid', 'PortErrorKind::NotFound']) if (!ports.includes(marker)) fail(`ports source missing ${marker}`);
 if (ports.includes('require_write_semantics()?')) fail('workflow read port must not require write idempotency');
 if (!dto.includes('Serialize, Deserialize')) fail('workflow DTOs must remain serializable');

@@ -4,7 +4,7 @@ Status: **source-reviewed / unvalidated**
 
 ## Scope
 
-The mounted payment-execution facade covers the four canonical
+The mounted payment stage covers the four canonical
 `CheckoutPaymentExecutionPort` calls:
 
 - `prepare_checkout_collection`;
@@ -17,7 +17,23 @@ requests and successful responses, exact owner code, typed kind, and owner
 retryability while replacing owner message text with a static Commerce message.
 
 This source slice additionally corrects staged-checkout failure disposition for
-retryable payment-stage owner boundaries.
+retryable payment-stage owner boundaries, and retires the compatibility source
+`checkout_payment_stages_legacy.rs` with the shim modules that existed only to mount
+it.
+
+## Retired sources
+
+`checkout_payment_stages_legacy.rs` — the compatibility source mounted through
+`#[path]` — is retired, together with the `rustok_api_shim`, `rustok_payment_shim`,
+and `tracing_shim` modules that existed only to mount it. The guard fails if any of
+them returns.
+
+The mounted module now owns the whole stage:
+
+- `payment_execution_boundary` keeps the bounded projection and the sanitizing
+  adapter, and re-derives the static message from the typed kind;
+- `payment_execution_port` keeps the four owner calls and the admission wiring;
+- the stage mapper carries the prepare/authorize/capture/read checkpoints.
 
 ## Retry disposition
 

@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { containsMarker } from "./lib/forum-source-verification.mjs";
+
 const paths = {
   contract: "crates/modules/rustok-forum/contracts/forum-reply-range-move-owner.json",
   docs: "crates/modules/rustok-forum/docs/forum-21s-reply-range-move-owner.md",
@@ -20,9 +22,11 @@ const paths = {
 };
 
 const read = (path) => readFileSync(path, "utf8");
+// Layout-tolerant by policy: a marker describes an invariant, not where rustfmt or a prose editor put
+// the newline. Tokens are unchanged, so an absent call or sentence is still absent.
 const includesAll = (text, markers, label) => {
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing marker: ${marker}`);
+    assert.ok(containsMarker(text, marker), `${label} is missing marker: ${marker}`);
   }
 };
 

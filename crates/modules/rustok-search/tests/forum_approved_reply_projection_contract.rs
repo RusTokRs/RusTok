@@ -3,7 +3,7 @@ const PUBLIC_DISCOVERY: &str = include_str!("../../rustok-forum/src/services/pub
 const REPLY_AUDIENCE_READ: &str =
     include_str!("../../rustok-forum/src/services/reply_audience_read.rs");
 const FORUM_REPLY_UPDATE: &str = include_str!("../../rustok-forum/src/services/reply_inline.rs");
-const SEARCH_PROJECTOR: &str = include_str!("../src/forum_projector.rs");
+const SEARCH_PROJECTION_DRIVER: &str = include_str!("../src/projection_driver.rs");
 const SEARCH_ENGINE: &str = include_str!("../src/engine.rs");
 const ADMIN_GLOBAL_SEARCH: &str =
     include_str!("../../../../apps/admin/src/widgets/app_shell/native_server_adapter.rs");
@@ -70,12 +70,19 @@ fn reply_edits_reuse_topic_invalidation_and_topic_refresh_rebuilds_child_scope()
         require(FORUM_REPLY_UPDATE, marker);
     }
     for marker in [
-        "FORUM_TOPIC_ENTITY_TYPE | FORUM_REPLY_ENTITY_TYPE",
+        // The owner, not Search, decides that a topic refresh replaces its replies.
+        "fn refresh_scope(&self, entity_type: &str) -> SearchProjectionRefreshScope",
         "if entity_type == FORUM_TOPIC_ENTITY_TYPE",
-        "return self.rebuild_tenant(tenant_id).await",
-        "'forum_category', 'forum_topic', 'forum_reply'",
+        "SearchProjectionRefreshScope::Tenant",
     ] {
-        require(SEARCH_PROJECTOR, marker);
+        require(FORUM_SOURCE, marker);
+    }
+    for marker in [
+        "if self.source.refresh_scope(entity_type) == SearchProjectionRefreshScope::Tenant",
+        "return self.rebuild_tenant(tenant_id).await",
+        "DELETE FROM search_documents WHERE tenant_id = $1 AND source_module = $2",
+    ] {
+        require(SEARCH_PROJECTION_DRIVER, marker);
     }
 }
 

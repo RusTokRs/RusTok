@@ -36,6 +36,24 @@ const STOREFRONT_ORDER_RETURN_COMMAND_OPERATION: &str = "create_return";
 const STOREFRONT_ORDER_PAYMENT_OWNER: &str = "rustok_payment.storefront_order_refunds";
 const STOREFRONT_ORDER_PAYMENT_BOUNDARY: &str = "commerce_storefront_order_http";
 
+fn log_storefront_order_route_entry(
+    boundary: &'static str,
+    operation: &'static str,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    order_id: Option<Uuid>,
+) {
+    tracing::debug!(
+        boundary,
+        operation,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        actor_id_non_nil = !actor_id.is_nil(),
+        order_id_present = order_id.is_some(),
+        order_id_non_nil = order_id.is_some_and(|value| !value.is_nil()),
+        "storefront order route entered with bounded diagnostics"
+    );
+}
+
 fn map_storefront_customer_port_error(
     error: PortError,
     context: &PortContext,
@@ -77,9 +95,18 @@ fn map_storefront_customer_port_error(
             channel_present = context.channel.is_some(),
             channel_length = context.channel.as_ref().map(|value| value.chars().count()),
             locale_length = context.locale.chars().count(),
+            claim_count = context.claims.len(),
+            role_count = context.roles.len(),
             causation_id_present = context.causation_id.is_some(),
+            causation_id_length = ?context.causation_id.as_ref().map(|value| value.chars().count()),
             traceparent_present = context.traceparent.is_some(),
+            traceparent_length = ?context.traceparent.as_ref().map(|value| value.chars().count()),
             idempotency_key_present = context.idempotency_key.is_some(),
+            idempotency_key_length = ?context
+                .idempotency_key
+                .as_ref()
+                .map(|value| value.chars().count()),
+            deadline_ms = ?context.deadline_ms,
             owner_error_kind,
             owner_code_length,
             retryable,
@@ -104,9 +131,18 @@ fn map_storefront_customer_port_error(
             channel_present = context.channel.is_some(),
             channel_length = context.channel.as_ref().map(|value| value.chars().count()),
             locale_length = context.locale.chars().count(),
+            claim_count = context.claims.len(),
+            role_count = context.roles.len(),
             causation_id_present = context.causation_id.is_some(),
+            causation_id_length = ?context.causation_id.as_ref().map(|value| value.chars().count()),
             traceparent_present = context.traceparent.is_some(),
+            traceparent_length = ?context.traceparent.as_ref().map(|value| value.chars().count()),
             idempotency_key_present = context.idempotency_key.is_some(),
+            idempotency_key_length = ?context
+                .idempotency_key
+                .as_ref()
+                .map(|value| value.chars().count()),
+            deadline_ms = ?context.deadline_ms,
             owner_error_kind,
             owner_code_length,
             retryable,
@@ -546,12 +582,12 @@ pub async fn get_me(
     if auth.user_id.is_nil() {
         return Err(HttpError::bad_request("invalid_user_id", "User ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
-        operation = "get_me",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        "handling get_me"
+    log_storefront_order_route_entry(
+        STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
+        "get_me",
+        tenant.id,
+        auth.user_id,
+        None,
     );
 
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
@@ -600,13 +636,12 @@ pub async fn get_order(
     if id.is_nil() {
         return Err(HttpError::bad_request("invalid_order_id", "Order ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
-        operation = "get_order",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        order_id = %id,
-        "handling get_order"
+    log_storefront_order_route_entry(
+        STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
+        "get_order",
+        tenant.id,
+        auth.user_id,
+        Some(id),
     );
 
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
@@ -673,13 +708,12 @@ pub async fn create_order_return(
     if id.is_nil() {
         return Err(HttpError::bad_request("invalid_order_id", "Order ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
-        operation = "create_order_return",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        order_id = %id,
-        "handling create_order_return"
+    log_storefront_order_route_entry(
+        STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
+        "create_order_return",
+        tenant.id,
+        auth.user_id,
+        Some(id),
     );
 
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
@@ -761,13 +795,12 @@ pub async fn list_order_returns(
     if id.is_nil() {
         return Err(HttpError::bad_request("invalid_order_id", "Order ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
-        operation = "list_order_returns",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        order_id = %id,
-        "handling list_order_returns"
+    log_storefront_order_route_entry(
+        STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
+        "list_order_returns",
+        tenant.id,
+        auth.user_id,
+        Some(id),
     );
 
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
@@ -858,13 +891,12 @@ pub async fn list_order_refunds(
     if id.is_nil() {
         return Err(HttpError::bad_request("invalid_order_id", "Order ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = STOREFRONT_ORDER_PAYMENT_BOUNDARY,
-        operation = "list_order_refunds",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        order_id = %id,
-        "handling list_order_refunds"
+    log_storefront_order_route_entry(
+        STOREFRONT_ORDER_PAYMENT_BOUNDARY,
+        "list_order_refunds",
+        tenant.id,
+        auth.user_id,
+        Some(id),
     );
 
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
@@ -954,13 +986,12 @@ pub async fn list_order_changes(
     if id.is_nil() {
         return Err(HttpError::bad_request("invalid_order_id", "Order ID must not be nil"));
     }
-    tracing::debug!(
-        boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
-        operation = "list_order_changes",
-        tenant_id = %tenant.id,
-        actor_id = %auth.user_id,
-        order_id = %id,
-        "handling list_order_changes"
+    log_storefront_order_route_entry(
+        STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
+        "list_order_changes",
+        tenant.id,
+        auth.user_id,
+        Some(id),
     );
 
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;

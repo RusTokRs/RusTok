@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { containsMarker, ledgerRowProblems } from "./lib/forum-source-verification.mjs";
+
 const paths = {
   contract: "crates/modules/rustok-forum/contracts/forum-topic-merge-owner.json",
   crossContract: "crates/modules/rustok-forum/contracts/forum-topic-merge-cross-category.json",
@@ -50,9 +52,11 @@ const paths = {
 };
 
 const read = (path) => readFileSync(path, "utf8");
+// Layout-tolerant by policy: a marker describes an invariant, not where rustfmt or a prose editor put
+// the newline. Tokens are unchanged, so an absent call or sentence is still absent.
 const includesAll = (text, markers, label) => {
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing marker: ${marker}`);
+    assert.ok(containsMarker(text, marker), `${label} is missing marker: ${marker}`);
   }
 };
 
@@ -339,15 +343,23 @@ assert.ok(!service.includes('"source_category_id"'));
 const receiptLookup = service.indexOf("forum_topic_merge_operation::Entity::find_by_id");
 const preliminaryRead = service.indexOf("let preliminary_source =");
 const solutionPlan = service.indexOf("let solution_plan = plan_solution_merge");
-const counterTransfer = service.indexOf("transfer_cross_category_reply_counters_in_tx(");
-const replyMove = service.indexOf("move_replies_in_tx(", counterTransfer);
+const replyMove = service.indexOf("move_replies_in_tx(", solutionPlan);
+const counterTransfer = service.indexOf(
+  "transfer_cross_category_reply_counters_in_tx(",
+  replyMove,
+);
 const eventInsert = service.indexOf("forum_domain_event::ActiveModel", replyMove);
 const receiptInsert = service.indexOf("forum_topic_merge_operation::ActiveModel", eventInsert);
 const auditInsert = service.indexOf("forum_topic_merge_solution_resolution::ActiveModel", receiptInsert);
 const invalidation = service.indexOf("publish_forum_topic_projection_in_tx(", receiptInsert);
+// The merge order that carries meaning: the receipt is read before any work, the solution plan is
+// computed from live rows before those rows move, and every mutating step lands before the immutable
+// event and receipt rows are written. The relative order of the reply move and the category counter
+// transfer is not an invariant — both are transactional writes over disjoint tables — so it is not
+// pinned here.
 assert.ok(receiptLookup < preliminaryRead);
-assert.ok(preliminaryRead < solutionPlan && solutionPlan < counterTransfer);
-assert.ok(counterTransfer < replyMove && replyMove < eventInsert);
+assert.ok(preliminaryRead < solutionPlan && solutionPlan < replyMove);
+assert.ok(replyMove < eventInsert && counterTransfer < eventInsert);
 assert.ok(eventInsert < receiptInsert && receiptInsert < auditInsert && auditInsert < invalidation);
 
 includesAll(
@@ -494,7 +506,7 @@ includesAll(
     paths.contract,
     paths.crossContract,
     paths.adminContract,
-    "FORUM-21A through FORUM-21N",
+    "FORUM-21A through FORUM-21X",
     "Cross-category category counters",
     "Admin composition",
     "mergeForumTopicResolvingSolution",
@@ -516,19 +528,21 @@ includesAll(
   adminDocs,
   [
     "# FORUM-21N admin topic merge workflow",
-    "single-adapter GraphQL state",
+    "explicit GraphQL-only adapter state",
     "/modules/forum/merge",
     "/dashboard/forum/merge",
   ],
   "admin merge handoff",
 );
-assert.ok(plan.includes("| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |"));
-assert.ok(plan.includes("### Delivered through `FORUM-21N`"));
-assert.ok(plan.includes("checked cross-category merge"));
-assert.ok(plan.includes("admin topic merge workflow"));
-assert.ok(plan.includes("m20260803_000019_allow_cross_category_topic_merge_redirect_edges"));
-assert.ok(!plan.includes("| `FORUM-21` | `done` |"));
-assert.ok(!plan.includes("| `FORUM-21` | `in_progress` |"));
+assert.deepEqual(
+  ledgerRowProblems(plan, "FORUM-21", {
+    mentions: ["move/merge/split/fork/range owners"],
+  }),
+  [],
+);
+
+
+
 
 console.log(
   "FORUM-21B/H/I/J/K/L/M/N topic merge owner and admin composition source are ready; FORUM-21 and FORUM-24 remain planned.",

@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import { requirePortSurface } from './lib/rust-public-surface.mjs';
+import { containsMarker } from './lib/source-text.mjs';
 
 const root = new URL('../../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
@@ -41,7 +43,12 @@ if (port.context !== 'crates/modules/rustok-tenant/src/ports.rs::PortContext' ||
 if (port.deadline_required !== true || port.idempotency_required !== false) fail('tenant read projection must be read-like with deadline semantics');
 if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/tenant-fba-registry.json"') || !manifest.includes('contract_version = "tenant.read_projection.v1"')) fail('manifest metadata drift');
 if (!cargo.includes('rustok-api.workspace = true')) fail('tenant FBA provider must depend on shared rustok-api PortContext/PortError');
-if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib.rs must export ports');
+{
+  // The registry names the ports consumers import; the crate root has to publish exactly those,
+  // whichever re-export shape it uses (the wildcard is accepted, explicit lists are preferred).
+  const surface = requirePortSurface(lib, registry);
+  if (!surface.ok) fail(surface.message);
+}
 for (const marker of ['trait TenantReadPort', 'impl TenantReadPort for crate::TenantService', 'context.require_policy(PortCallPolicy::read())?', 'TenantReadRequest', 'TenantReadProjection', 'TenantReadSelector::Domain', 'get_tenant_by_domain', 'tenant.slug_empty', 'tenant.domain_empty', 'PortErrorKind::Validation', 'PortContext', 'PortError']) {
   if (!ports.includes(marker)) fail(`ports source missing ${marker}`);
 }
@@ -66,14 +73,18 @@ for (const marker of [
 ]) {
   if (!tenantService.includes(marker)) fail(`tenant lifecycle owner source missing ${marker}`);
 }
+// The invariant is the replay sequence, not one spelling of it: `ensure_tenant` normalizes the slug,
+// tries the owner command, and on failure re-reads by slug so a concurrent creator wins cleanly.
+// Matching is layout-tolerant (see lib/source-text.mjs) because the call and the arguments were
+// reformatted when the input gained validation.
 for (const marker of [
-  'let slug = input.slug.clone();',
-  'match self.create_tenant(input).await',
+  'let slug = input.slug.trim().to_string();',
+  'match self.create_tenant(CreateTenantInput {',
   'self.get_tenant_by_slug(&slug).await',
   'Ok(existing) => Ok((existing, false))',
   'Err(_) => Err(error)',
 ]) {
-  if (!tenantService.includes(marker)) fail(`tenant ensure concurrency replay missing ${marker}`);
+  if (!containsMarker(tenantService, marker)) fail(`tenant ensure concurrency replay missing ${marker}`);
 }
 for (const forbidden of [
   'event_bus: Option<TransactionalEventBus>',
@@ -169,15 +180,24 @@ for (const forbidden of [
   if (tenantAdminNative.includes(forbidden)) fail(`tenant admin must not treat raw tenant_modules as effective policy through ${forbidden}`);
 }
 
+// The storefront reads the *effective* module policy through the shared owner reader. It used to read
+// raw `tenant_modules` rows, which under-reported default-enabled modules and could not express the
+// tri-state `enabled` column; the direct read is now the defect, not the requirement.
 for (const marker of [
   'pub(crate) async fn list_enabled_modules()',
   'leptos_axum::extract::<rustok_api::TenantContext>()',
-  '.list_tenant_modules(tenant.id)',
+  'SharedModuleEffectivePolicyReader',
+  '.resolve(tenant.id)',
 ]) {
-  if (!storefrontEnabledModulesNative.includes(marker)) fail(`storefront native module-state tenant guard missing ${marker}`);
+  if (!containsMarker(storefrontEnabledModulesNative, marker)) fail(`storefront native module-state tenant guard missing ${marker}`);
 }
-for (const forbidden of ['tenant_slug: String', 'get_tenant_by_slug(', 'list_enabled_modules(tenant_slug)']) {
-  if (storefrontEnabledModulesNative.includes(forbidden)) fail(`storefront native module-state read trusts caller tenant through ${forbidden}`);
+for (const forbidden of [
+  'tenant_slug: String',
+  'get_tenant_by_slug(',
+  'list_enabled_modules(tenant_slug)',
+  '.list_tenant_modules(',
+]) {
+  if (containsMarker(storefrontEnabledModulesNative, forbidden)) fail(`storefront native module-state read trusts caller tenant through ${forbidden}`);
 }
 for (const marker of [
   'UiTransportPath::NativeServer => fetch_enabled_modules_server().await',

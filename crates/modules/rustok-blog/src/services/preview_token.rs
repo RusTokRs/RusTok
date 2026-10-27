@@ -1,7 +1,7 @@
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect,
-    Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -27,6 +27,19 @@ const MIN_TTL_HOURS: i64 = 1;
 /// Upper bound for one cleanup iteration, so retention housekeeping stays bounded
 /// on a large backlog.
 pub(crate) const MAX_PREVIEW_TOKEN_CLEANUP_BATCH: u32 = 500;
+
+/// Upper bound of concurrently usable tokens per post.
+///
+/// A preview token is a bearer credential minted by an author; minting is not
+/// bounded by time, so without a cap a long-lived draft could accumulate an
+/// unbounded number of live credentials (and an unbounded `list_tokens`
+/// response). The oldest *active* token is revoked when the cap is reached, so
+/// the cap never blocks the mint operation itself.
+pub(crate) const MAX_ACTIVE_PREVIEW_TOKENS_PER_POST: usize = 20;
+
+/// Upper bound of a token listing, mirroring the active-token cap with room
+/// for expired rows that await the cleanup worker.
+pub(crate) const MAX_PREVIEW_TOKEN_LIST_LIMIT: u64 = 100;
 
 /// Clamps a caller-supplied cleanup limit into `1..=MAX_PREVIEW_TOKEN_CLEANUP_BATCH`.
 ///
@@ -134,6 +147,32 @@ impl PreviewTokenService {
 
         let now = Utc::now();
         let expires_at = now + Duration::hours(ttl);
+
+        // The post row is locked, so this count and the eviction below cannot
+        // race another mint of the same post. Expired rows do not consume the
+        // cap: they are already dead credentials waiting for the cleanup worker.
+        let active = blog_preview_token::Entity::find()
+            .filter(blog_preview_token::Column::TenantId.eq(tenant_id))
+            .filter(blog_preview_token::Column::PostId.eq(post_id))
+            .filter(blog_preview_token::Column::ExpiresAt.gt(now))
+            .order_by_asc(blog_preview_token::Column::CreatedAt)
+            .all(&txn)
+            .await
+            .map_err(BlogError::from)?;
+        if active.len() >= MAX_ACTIVE_PREVIEW_TOKENS_PER_POST {
+            let evict = active.len() + 1 - MAX_ACTIVE_PREVIEW_TOKENS_PER_POST;
+            let evicted_ids = active
+                .iter()
+                .take(evict)
+                .map(|token| token.id)
+                .collect::<Vec<_>>();
+            blog_preview_token::Entity::delete_many()
+                .filter(blog_preview_token::Column::TenantId.eq(tenant_id))
+                .filter(blog_preview_token::Column::Id.is_in(evicted_ids))
+                .exec(&txn)
+                .await
+                .map_err(BlogError::from)?;
+        }
 
         // Generate a cryptographically random token. Only its SHA-256 digest
         // is persisted; the plaintext is returned exactly once, here.
@@ -292,6 +331,8 @@ impl PreviewTokenService {
         let tokens = blog_preview_token::Entity::find()
             .filter(blog_preview_token::Column::TenantId.eq(tenant_id))
             .filter(blog_preview_token::Column::PostId.eq(post_id))
+            .order_by_desc(blog_preview_token::Column::CreatedAt)
+            .limit(MAX_PREVIEW_TOKEN_LIST_LIMIT)
             .all(&self.db)
             .await
             .map_err(BlogError::from)?;

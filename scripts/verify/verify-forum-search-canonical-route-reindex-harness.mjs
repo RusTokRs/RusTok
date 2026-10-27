@@ -33,7 +33,7 @@ const cargoPath = "crates/modules/rustok-search/Cargo.toml";
 const testPath = "crates/modules/rustok-search/tests/forum_canonical_route_reindex_postgres.rs";
 const forumProjectionPath = "crates/modules/rustok-forum/src/search_projection.rs";
 const ingestionPath = "crates/modules/rustok-search/src/ingestion.rs";
-const projectorPath = "crates/modules/rustok-search/src/forum_projector.rs";
+const projectorPath = "crates/modules/rustok-search/src/projection_driver.rs";
 const enginePath = "crates/modules/rustok-search/src/engine.rs";
 const contractPath =
   "crates/modules/rustok-forum/contracts/forum-search-canonical-route-reindex-harness.json";
@@ -103,10 +103,10 @@ for (const marker of [
   requireMarker(test, marker, testPath);
 }
 for (const forbidden of [
-  "ForumSearchProjector::new",
+  "SearchProjectionDriver::new",
   "ForumCategoryRouteService::new",
   "ForumTopicRouteService::new",
-  "CREATE TEMP TABLE forum_search_projection_stage",
+  "CREATE TEMP TABLE search_projection_stage",
   "DELETE FROM search_documents WHERE tenant_id",
 ]) {
   rejectMarker(test, forbidden, testPath);
@@ -130,10 +130,11 @@ for (const marker of [
   requireMarker(ingestion, marker, ingestionPath);
 }
 for (const marker of [
-  "CREATE TEMP TABLE forum_search_projection_stage",
+  'const STAGE_TABLE: &str = "search_projection_stage";',
+  "CREATE TEMP TABLE {STAGE_TABLE}",
   "ON COMMIT DROP",
-  "delete_forum_scope(&tx, tenant_id)",
-  "FROM forum_search_projection_stage",
+  "self.delete_scope(&tx, tenant_id).await?",
+  "FROM {STAGE_TABLE}",
   "tx.commit()",
 ]) {
   requireMarker(projector, marker, projectorPath);
@@ -172,7 +173,7 @@ if (contract) {
   for (const [key, expected] of Object.entries({
     forum_projection: forumProjectionPath,
     search_ingestion: ingestionPath,
-    search_projector: projectorPath,
+    search_projection_driver: projectorPath,
     search_url_projection: enginePath,
     source_guardrail:
       "scripts/verify/verify-forum-search-canonical-route-reindex-harness.mjs",

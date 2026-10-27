@@ -16,7 +16,7 @@
   ],
   "production_contract": {
     "event_handler": "crates/modules/rustok-search/src/ingestion.rs",
-    "projector": "crates/modules/rustok-search/src/blog_projector.rs",
+    "projector": "crates/modules/rustok-blog/src/services/search_projection.rs",
     "search_migrations": "crates/modules/rustok-search/src/migrations/mod.rs",
     "source_guardrail": "scripts/verify/verify-search-blog-projection.mjs",
     "blog_category_projection_source": "taxonomy_terms + taxonomy_term_translations",
@@ -30,16 +30,20 @@
       "global",
       "module:blog"
     ],
-    "blog_author_join_tenant_constrained": true
+    "projection_driver": "crates/modules/rustok-search/src/projection_driver.rs",
+    "blog_author_source": "rustok-profiles ProfileSummaryReader port",
+    "blog_author_account_table_join": false,
+    "blog_author_audience": "anonymous public summary",
+    "public_corpus_status": "published and stamped"
   },
   "cases": [
     {
       "name": "lifecycle_upsert_delete",
-      "expected": "created, published, and archived source states replace the tenant-local Blog search document; delete removes it"
+      "expected": "a published and stamped Blog post is stored by the neutral driver; a draft is not stored at all, and unpublishing, archiving or deleting removes the stored document"
     },
     {
       "name": "projected_payload",
-      "expected": "slug, author, canonical attached taxonomy tags, channels, publication timestamps, counts, and version are projected from owner tables; author projection joins users by both author_id and tenant_id"
+      "expected": "slug, category, canonical attached taxonomy tags, channels, publication timestamps, counts and version are projected from owner tables; the author name comes from the Profiles owner port and the indexed body is the article plain text, not the excerpt"
     },
     {
       "name": "canonical_taxonomy_tag_projection",
@@ -59,11 +63,19 @@
     },
     {
       "name": "schema_search_path",
-      "expected": "Blog, Blog-tag relation, Taxonomy source-table availability and unqualified projector SQL resolve through the same active PostgreSQL search_path"
+      "expected": "the harness puts the test schema first on the server startup search_path of every pooled connection, because the driver replaces a scope inside a transaction while the owner source answers on another connection"
     },
     {
       "name": "event_routing",
       "expected": "all Blog lifecycle events, Blog module toggles, and targeted/full Blog reindex requests are claimed; unrelated module and reindex targets are ignored"
+    },
+    {
+      "name": "author_profile_refresh",
+      "expected": "a ProfileUpdated, UserUpdated or UserDeleted event rebuilds the tenant Blog scope, so a renamed or redacted public author summary is refreshed even though the event is also a Forum inbox scope"
+    },
+    {
+      "name": "profiles_port_absent_degrades",
+      "expected": "without the Profiles owner port the projection still stores the post and omits the author name with a warning, instead of reading the account table"
     }
   ],
   "runtime_promotion_requirements": [
@@ -74,6 +86,6 @@
     "retain migration and pg_trgm permission evidence",
     "retain host event-delivery evidence for disable and enable toggles",
     "retain query visibility evidence for published_only storefront search",
-    "retain evidence that Blog author projection cannot resolve a user row from another tenant"
+    "retain evidence that the Blog author name comes from the Profiles owner port: a non-public profile and a profile of another tenant both project no author name"
   ]
 }

@@ -374,7 +374,10 @@ for (const marker of [
   "security_context_from_access_token",
   "PostService",
   "CommentService",
-  "Permission::BLOG_POSTS_MANAGE",
+  // Comment moderation is gated by the moderation permission, not by the post
+  // management permission: a moderator without post-authoring rights can moderate.
+  "fn require_moderation_permission(",
+  "Permission::COMMENTS_MODERATE",
   "blog_admin_posts_native",
   "blog_admin_create_post_native",
   "blog_admin_update_post_native",
@@ -397,14 +400,14 @@ for (const feature of ["rustok-blog-admin/csr", "rustok-blog-admin/hydrate", "ru
 
 for (const marker of [
   "async fn moderation_comments(",
-  "Permission::BLOG_POSTS_MANAGE",
+  "Permission::COMMENTS_MODERATE",
   "GqlModerationCommentList",
 ]) {
   assertContains(graphqlTypes, marker, `${graphqlTypesPath}: missing authenticated moderation queue marker ${marker}`);
 }
 for (const marker of [
   "async fn moderate_comment(",
-  "Permission::BLOG_POSTS_MANAGE",
+  "Permission::COMMENTS_MODERATE",
   "ModerateCommentInput",
 ]) {
   assertContains(graphqlMutation, marker, `${graphqlMutationPath}: missing comment moderation mutation marker ${marker}`);
@@ -412,7 +415,7 @@ for (const marker of [
 for (const marker of [
   "ModerateComment",
   "moderateComment",
-  "Permission::BLOG_POSTS_MANAGE",
+  "Permission::COMMENTS_MODERATE",
 ]) {
   assertContains(graphqlRateLimit, marker, `${graphqlRateLimitPath}: missing moderation rate-limit marker ${marker}`);
 }

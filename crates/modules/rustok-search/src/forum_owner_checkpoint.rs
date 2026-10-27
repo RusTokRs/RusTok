@@ -7,11 +7,11 @@ use uuid::Uuid;
 
 use rustok_core::{Error, Result};
 
-use crate::forum_projector::ForumSearchProjector;
 use crate::forum_reconciliation::{
     ForumProjectionOwnerRevisionImpact, ForumProjectionOwnerRevisionRequest,
     SharedForumProjectionOwnerRevisionSourcePort, resolve_forum_projection_owner_revisions,
 };
+use crate::projection_driver::SearchProjectionDriver;
 
 const FORUM_SOURCE_MODULE: &str = "forum";
 const FULL_SCOPE_KEY: &str = "forum";
@@ -125,19 +125,19 @@ pub(crate) struct ForumOwnerCheckpointSweepReport {
 #[derive(Clone)]
 pub(crate) struct ForumOwnerCheckpointReconciler {
     db: DatabaseConnection,
-    forum_projector: ForumSearchProjector,
+    projection_driver: SearchProjectionDriver,
     owner_source: SharedForumProjectionOwnerRevisionSourcePort,
 }
 
 impl ForumOwnerCheckpointReconciler {
     pub(crate) fn new(
         db: DatabaseConnection,
-        forum_projector: ForumSearchProjector,
+        projection_driver: SearchProjectionDriver,
         owner_source: SharedForumProjectionOwnerRevisionSourcePort,
     ) -> Self {
         Self {
             db,
-            forum_projector,
+            projection_driver,
             owner_source,
         }
     }
@@ -274,7 +274,7 @@ impl ForumOwnerCheckpointReconciler {
         }
 
         if rebuild_required {
-            self.forum_projector.rebuild_tenant(head.tenant_id).await?;
+            self.projection_driver.rebuild_tenant(head.tenant_id).await?;
         }
 
         let outcome = if rebuild_required {

@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertCanonicalLedger, requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -111,31 +112,13 @@ if (planSync.required_ledger_through !== "FORUM-20R") {
 if (JSON.stringify(planSync.required_delivered_sections) !== JSON.stringify(deliveredSlices)) {
   failures.push("inbox open contract must require FORUM-20H through FORUM-20R delivered sections");
 }
-if (planSync.status === "pending") {
-  if (planSync.current_plan_through !== "FORUM-20G") {
-    failures.push("pending canonical plan synchronization must identify FORUM-20G as current");
-  }
-  requireText(
-    plan,
-    "FORUM-20A-G provide",
-    "pending canonical plan synchronization must remain grounded in FORUM-20A-G",
-  );
-  for (const slice of deliveredSlices) {
-    rejectText(
-      plan,
-      `### Delivered in \`${slice}\``,
-      `canonical plan now contains ${slice}; update canonical_plan_sync before claiming pending through G`,
-    );
-  }
-} else if (planSync.status === "synchronized") {
-  requireText(plan, "FORUM-20A-R provide", "synchronized canonical plan must advance through R");
-  for (const slice of deliveredSlices) {
-    requireText(plan, `### Delivered in \`${slice}\``, `canonical plan is missing ${slice}`);
-  }
-} else {
-  failures.push("canonical_plan_sync.status must be pending or synchronized");
-}
-
+assertCanonicalLedger({
+  failures,
+  plan,
+  slices: deliveredSlices,
+  planSync,
+  label: "canonical plan synchronization",
+});
 for (const marker of [
   "pub struct NotificationInboxOpenRequest",
   "pub tenant_id: Uuid",
@@ -251,13 +234,14 @@ for (const marker of [
 
 for (const marker of [
   "### Inbox open-time authorization",
-  "Missing, cross-tenant, and cross-recipient rows all",
-  "Only an allowed recipient reaches the registered source provider",
-  "### Bounded authorized inbox listing",
-  "seen/read/archive state APIs",
+  "Missing, cross-tenant, and cross-recipient rows return `Unavailable` before policy or source calls",
+  "recipient privacy runs before source target authorization",
+  "does not expose the stored row, mutate inbox state, or enqueue delivery attempts",
+  "### Exact and bounded inbox state commands",
+  "archived remains terminal",
   "inbox_open_authorization_sqlite",
 ]) {
-  requireText(docs, marker, `notifications live contract is missing ${marker}`);
+  requireProse(failures, docs, marker, "notifications live contract");
 }
 
 if (

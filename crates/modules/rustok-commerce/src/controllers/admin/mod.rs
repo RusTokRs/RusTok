@@ -371,83 +371,131 @@ fn admin_public_error(
     HttpError::new(status, code, message)
 }
 
-pub(crate) fn map_payment_orchestration_error(
-    error: crate::PaymentOrchestrationError,
-) -> HttpError {
-    match error {
-        crate::PaymentOrchestrationError::Payment(error)
-        | crate::PaymentOrchestrationError::Provider(error) => map_payment_error(error),
-        crate::PaymentOrchestrationError::ProviderAfterRefundReservation { source, .. } => {
-            map_reserved_refund_provider_error(source)
-        }
-    }
-}
+/// One static admin HTTP policy: status, public code, public message, and diagnostic kind.
+pub(crate) type AdminErrorPolicy = (
+    axum::http::StatusCode,
+    &'static str,
+    &'static str,
+    &'static str,
+);
 
-pub(crate) fn map_payment_error(error: PaymentError) -> HttpError {
+/// HTTP policy for a payment owner failure, before any logging.
+///
+/// Returned as data so every admin surface — the generic mappers below and the checkout-operation
+/// controller, which emits its own bounded diagnostic — makes the same decision exactly once.
+pub(crate) fn payment_error_policy(error: &PaymentError) -> AdminErrorPolicy {
     match error {
         PaymentError::PaymentCollectionNotFound(_)
         | PaymentError::PaymentNotFound(_)
-        | PaymentError::RefundNotFound(_) => {
-            HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
-        }
-        PaymentError::Validation(_) => HttpError::bad_request(
+        | PaymentError::RefundNotFound(_) => (
+            axum::http::StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        PaymentError::Validation(_) => (
+            axum::http::StatusCode::BAD_REQUEST,
             "commerce_admin_payment_invalid",
             "Payment request is invalid",
+            "validation",
         ),
-        PaymentError::InvalidTransition { .. } | PaymentError::ProviderRejected { .. } => {
-            HttpError::new(
-                axum::http::StatusCode::CONFLICT,
-                "commerce_admin_payment_state_conflict",
-                "Payment operation conflicts with the current state",
-            )
-        }
-        PaymentError::ProviderUnavailable { .. } => HttpError::new(
+        PaymentError::InvalidTransition { .. } | PaymentError::ProviderRejected { .. } => (
+            axum::http::StatusCode::CONFLICT,
+            "commerce_admin_payment_state_conflict",
+            "Payment operation conflicts with the current state",
+            "state_conflict",
+        ),
+        PaymentError::ProviderUnavailable { .. } => (
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
             "commerce_admin_payment_provider_unavailable",
             "Payment provider is temporarily unavailable",
+            "provider_unavailable",
         ),
-        PaymentError::ProviderInvalidResponse { .. } => HttpError::new(
+        PaymentError::ProviderInvalidResponse { .. } => (
             axum::http::StatusCode::BAD_GATEWAY,
             "commerce_admin_payment_provider_invalid_response",
             "Payment provider returned an invalid response; reconciliation may be required",
+            "provider_invalid_response",
         ),
-        PaymentError::ProviderOutcomeUnknown { .. } => HttpError::new(
+        PaymentError::ProviderOutcomeUnknown { .. } => (
             axum::http::StatusCode::CONFLICT,
             "commerce_admin_payment_reconciliation_required",
             "Payment provider outcome is unknown and requires reconciliation",
+            "provider_outcome_unknown",
         ),
-        PaymentError::ProviderConfiguration { .. } => HttpError::new(
+        PaymentError::ProviderConfiguration { .. } => (
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
             "commerce_admin_payment_provider_not_configured",
             "Payment provider is not configured for this tenant",
+            "provider_configuration",
         ),
-        PaymentError::Database(_) => HttpError::new(
+        PaymentError::Database(_) => (
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
             "commerce_admin_payment_storage_unavailable",
             "Payment storage is temporarily unavailable",
+            "database",
         ),
     }
 }
 
-fn map_reserved_refund_provider_error(error: PaymentError) -> HttpError {
+/// HTTP policy for a provider failure raised *after* a refund was reserved.
+///
+/// The refund stays reserved, so a provider outage is retryable and an unknown outcome needs
+/// reconciliation rather than a plain conflict.
+pub(crate) fn reserved_refund_error_policy(error: &PaymentError) -> AdminErrorPolicy {
     match error {
         PaymentError::ProviderOutcomeUnknown { .. }
-        | PaymentError::ProviderInvalidResponse { .. } => HttpError::new(
+        | PaymentError::ProviderInvalidResponse { .. } => (
             axum::http::StatusCode::CONFLICT,
             "commerce_admin_refund_reconciliation_required",
             "Refund remains reserved while the provider outcome is reconciled",
+            "refund_reconciliation_required",
         ),
-        PaymentError::ProviderUnavailable { .. } => HttpError::new(
+        PaymentError::ProviderUnavailable { .. } => (
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
             "commerce_admin_refund_provider_unavailable",
             "Refund remains reserved and the provider operation may be retried safely",
+            "refund_provider_unavailable",
         ),
-        other => map_payment_error(other),
+        other => payment_error_policy(other),
     }
 }
 
-pub(crate) fn map_order_error(error: OrderError) -> HttpError {
-    let (status, code, message, error_kind) = match &error {
+/// HTTP policy for a payment-orchestration failure, with the owner that produced it.
+///
+/// A provider failure raised after a refund was reserved maps through the reserved-refund policy,
+/// because the refund is still reserved and the caller can act on that fact.
+pub(crate) fn payment_orchestration_error_policy(
+    error: &crate::PaymentOrchestrationError,
+) -> (AdminErrorPolicy, &'static str) {
+    match error {
+        crate::PaymentOrchestrationError::Payment(source)
+        | crate::PaymentOrchestrationError::Provider(source) => {
+            (payment_error_policy(source), "rustok_payment")
+        }
+        crate::PaymentOrchestrationError::ProviderAfterRefundReservation { source, .. } => (
+            reserved_refund_error_policy(source),
+            "rustok_payment.refund_reservation",
+        ),
+    }
+}
+
+pub(crate) fn map_payment_orchestration_error(
+    error: crate::PaymentOrchestrationError,
+) -> HttpError {
+    let (policy, _source_owner) = payment_orchestration_error_policy(&error);
+    let (status, code, message, _error_kind) = policy;
+    HttpError::new(status, code, message)
+}
+
+pub(crate) fn map_payment_error(error: PaymentError) -> HttpError {
+    let (status, code, message, _error_kind) = payment_error_policy(&error);
+    HttpError::new(status, code, message)
+}
+
+/// HTTP policy for an order owner failure, before any logging.
+pub(crate) fn order_error_policy(error: &OrderError) -> AdminErrorPolicy {
+    let (status, code, message, error_kind) = match error {
         OrderError::Validation(_) => (
             axum::http::StatusCode::BAD_REQUEST,
             "commerce_admin_order_invalid",
@@ -481,6 +529,11 @@ pub(crate) fn map_order_error(error: OrderError) -> HttpError {
             "core",
         ),
     };
+    (status, code, message, error_kind)
+}
+
+pub(crate) fn map_order_error(error: OrderError) -> HttpError {
+    let (status, code, message, error_kind) = order_error_policy(&error);
     admin_public_error("rustok_order", error_kind, status, code, message)
 }
 

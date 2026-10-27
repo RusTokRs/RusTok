@@ -6,12 +6,14 @@ function read(path) {
   return fs.readFileSync(path, "utf8");
 }
 
+const failures = [];
+
 function requireText(text, marker, message) {
-  if (!text.includes(marker)) throw new Error(message);
+  if (!text.includes(marker)) failures.push(message);
 }
 
 function requireAbsent(text, marker, message) {
-  if (text.includes(marker)) throw new Error(message);
+  if (text.includes(marker)) failures.push(message);
 }
 
 const storagePath = "crates/modules/rustok-forum/src/services/reply_inline.rs";
@@ -51,7 +53,7 @@ const storageMethodEnd = storage.indexOf(
   storageMethodStart,
 );
 if (storageMethodStart < 0 || storageMethodEnd <= storageMethodStart) {
-  throw new Error(`${storagePath}: locale enumeration method boundary is invalid`);
+  failures.push(`${storagePath}: locale enumeration method boundary is invalid`);
 }
 const storageMethod = storage.slice(storageMethodStart, storageMethodEnd);
 
@@ -74,14 +76,17 @@ for (const forbidden of [
 
 const awaitCount = storageMethod.split(".await?").length - 1;
 if (awaitCount !== 2) {
-  throw new Error(
+  failures.push(
     `${storagePath}: locale enumeration should keep the bounded two-query shape, found ${awaitCount} awaited owner queries`,
   );
 }
 
+// The owner declares its own bound and delegates the query to the storage layer; the facade is what
+// aliases `reply_owner::ReplyService::MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS`, so no second
+// `reply::` alias may be pinned here.
 for (const marker of [
   "pub(crate) const MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS: usize =",
-  "reply::ReplyService::MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS;",
+  "self.inner\n            .available_locales_for_replies(tenant_id, security, reply_ids)",
   "pub(crate) async fn available_locales_for_replies(",
   "enforce_scope(&security, Resource::ForumReplies, Action::Manage)?;",
   ".available_locales_for_replies(tenant_id, security, reply_ids)",
@@ -104,7 +109,7 @@ for (const marker of [
 const facadeMethodStart = facade.indexOf("    pub async fn available_locales_for_replies(");
 const facadeMethodEnd = facade.indexOf("    pub async fn create(", facadeMethodStart);
 if (facadeMethodStart < 0 || facadeMethodEnd <= facadeMethodStart) {
-  throw new Error(`${facadePath}: public locale enumeration method boundary is invalid`);
+  failures.push(`${facadePath}: public locale enumeration method boundary is invalid`);
 }
 const facadeMethod = facade.slice(facadeMethodStart, facadeMethodEnd);
 for (const forbidden of [
@@ -139,6 +144,12 @@ for (const marker of [
   "no test, Cargo command",
 ]) {
   requireText(packet, marker, `${packetPath}: missing ${marker}`);
+}
+
+if (failures.length > 0) {
+  console.error("Forum source guard failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
 }
 
 console.log("Forum FORUM-34E reply locale enumeration source: ok");

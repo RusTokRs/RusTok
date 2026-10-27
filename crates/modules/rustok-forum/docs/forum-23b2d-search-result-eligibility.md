@@ -1,5 +1,16 @@
 # FORUM-23B2D — storefront Search result eligibility
 
+> **Superseded on 2026-10-25.** The dedicated Forum storefront Search pipeline
+> (`execute_forum_storefront_search`, `forumStorefrontSearch` and the two storefront
+> adapters) is retired. The capability described below now lives on the generic
+> declared-corpus path: `storefrontSearch` plus `SearchAudiencePolicyPort`, with
+> `forumStorefrontAudienceTopics`/`forumTopics` owning Forum-specific filters
+> (author, solved state, tags, ordering). Everything below this notice is the design
+> record of the milestone as delivered and must not be read as current code. See
+> [ADR 2026-10-25](../../../../DECISIONS/2026-10-25-search-audience-declared-corpus.md)
+> and `npm run verify:search:audience`.
+
+
 ## Result
 
 The explicit Forum-only storefront Search path now reauthorizes every topic and
@@ -87,16 +98,16 @@ result-eligibility ports.
 The machine contract is
 `crates/modules/rustok-forum/contracts/forum-search-result-eligibility.json`. The static
 guardrail is
-`scripts/verify/verify-forum-search-result-eligibility.mjs`.
+`scripts/verify/verify-search-audience-classes.mjs`.
 
 Maintainers should run the focused verification set before claiming executable
 evidence:
 
 ```bash
-cargo test -p rustok-search storefront_result_eligibility -- --nocapture
+cargo test -p rustok-search audience_security -- --nocapture
 cargo test -p rustok-search visible_forum_statuses_match_owner_eligibility -- --nocapture
 cargo test -p rustok-server --features mod-forum forum_search_result_eligibility -- --nocapture
-node scripts/verify/verify-forum-search-result-eligibility.mjs
+node scripts/verify/verify-search-audience-classes.mjs
 cargo check -p rustok-search --features graphql --all-targets
 cargo check -p rustok-search-storefront --features ssr --all-targets
 cargo check -p rustok-server --features mod-forum --all-targets

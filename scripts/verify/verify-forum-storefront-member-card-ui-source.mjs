@@ -6,12 +6,16 @@ function read(path) {
   return fs.readFileSync(path, "utf8");
 }
 
+// Collect every drift instead of aborting on the first one: a guard that throws hides the rest of
+// the contract behind whichever marker happened to move first.
+const failures = [];
+
 function need(text, marker, label) {
-  if (!text.includes(marker)) throw new Error(`${label}: missing ${marker}`);
+  if (!text.includes(marker)) failures.push(`${label}: missing ${marker}`);
 }
 
 function forbid(text, marker, label) {
-  if (text.includes(marker)) throw new Error(`${label}: forbidden ${marker}`);
+  if (text.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
 function count(text, marker) {
@@ -19,6 +23,7 @@ function count(text, marker) {
 }
 
 const leptos = read("crates/modules/rustok-forum/storefront/src/ui/leptos.rs");
+const topicFeed = read("crates/modules/rustok-forum/storefront/src/ui/topic_feed.rs");
 const memberCard = read("crates/modules/rustok-forum/storefront/src/ui/member_card.rs");
 const uiMod = read("crates/modules/rustok-forum/storefront/src/ui/mod.rs");
 const model = read("crates/modules/rustok-forum/storefront/src/model.rs");
@@ -42,8 +47,16 @@ for (const marker of [
   "provide_context(member_card_context(member_cards));",
   "use super::member_card::{ForumAuthorBadge, member_card_context};",
 ]) need(leptos, marker, "FORUM-15E storefront composition");
-if (count(leptos, "<ForumAuthorBadge author_id />") !== 3) {
-  throw new Error("FORUM-15E must render the shared author badge on feed, opening post and reply surfaces");
+
+// The topic feed owns its own card component, so the badge must appear there too. Count across the
+// surfaces that render authors instead of pinning the count inside the showcase file only.
+need(topicFeed, "use super::member_card::ForumAuthorBadge;", "FORUM-15E feed composition");
+const badgeRenders = count(leptos, "<ForumAuthorBadge author_id />") +
+  count(topicFeed, "<ForumAuthorBadge author_id />");
+if (badgeRenders !== 3) {
+  failures.push(
+    `FORUM-15E must render the shared author badge on feed, opening post and reply surfaces (found ${badgeRenders})`,
+  );
 }
 forbid(leptos, "member_cards: _", "FORUM-15E member-card payload must be consumed");
 
@@ -52,7 +65,7 @@ for (const marker of [
   "pub fn member_card_context(",
   "pub fn ForumAuthorBadge(",
   "cards.get(user_id)",
-  "card.map(|card|",
+  "\n            .and_then(|user_id| cards.get(user_id))\n            .cloned()",
   'class="forum-member-card ',
   '"forum.member.topics"',
   '"forum.member.replies"',
@@ -60,7 +73,7 @@ for (const marker of [
   "fn profile_initials(",
 ]) need(memberCard, marker, "FORUM-15E member-card presentation helper");
 
-for (const source of [leptos, memberCard]) {
+for (const source of [leptos, topicFeed, memberCard]) {
   for (const marker of [
     "forumMemberCards",
     "ForumMemberCardService",
@@ -102,5 +115,11 @@ for (const marker of [
   "Permission::FORUM_TOPICS_READ",
   "ForumMemberCardService::new(db.clone())",
 ]) need(native, marker, "FORUM-15E native transport baseline");
+
+if (failures.length > 0) {
+  console.error("Forum FORUM-15E storefront member-card UI source failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
 
 console.log("Forum FORUM-15E storefront member-card UI source: ok");

@@ -1,21 +1,14 @@
 use async_trait::async_trait;
-use rustok_api::{
-    PortError, PortErrorKind, SharedStaticModuleSettingsReader, is_tenant_module_enabled,
-};
+use rustok_api::{PortError, PortErrorKind, SharedStaticModuleSettingsReader, is_tenant_module_enabled};
 use rustok_core::SecurityContext;
 use rustok_forum::{
     ForumCategoryReadOperation, ForumCategoryReadTransport, ForumError, ForumSearchResultCandidate,
     ForumSearchResultCandidateKind, ForumSearchResultEligibilityService, ForumSettingsProviders,
     SharedForumAudienceFactsPort, category_read_audience_port_context,
 };
+use rustok_forum::FORUM_MODULE_SLUG;
 use rustok_search::{
-    FORUM_SEARCH_SOURCE_MODULE, SearchAudiencePolicyPort, SearchAudienceRequest,
-    StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
-    StorefrontSearchResultEligibilityRequest, StorefrontSearchTransport,
-};
-#[allow(deprecated)]
-use rustok_search::{
-    SharedStorefrontSearchResultEligibilityPort, StorefrontSearchResultEligibilityPort,
+    SearchAudiencePolicyPort, SearchAudienceRequest, StorefrontSearchTransport,
 };
 use sea_orm::DatabaseConnection;
 
@@ -32,20 +25,7 @@ impl ServerForumSearchResultEligibilityPort {
         audience_facts: Option<SharedForumAudienceFactsPort>,
         settings_reader: Option<SharedStaticModuleSettingsReader>,
     ) -> Self {
-        Self {
-            db,
-            audience_facts,
-            settings_reader,
-        }
-    }
-
-    #[allow(deprecated)]
-    pub(crate) fn shared(
-        db: DatabaseConnection,
-        audience_facts: Option<SharedForumAudienceFactsPort>,
-        settings_reader: Option<SharedStaticModuleSettingsReader>,
-    ) -> SharedStorefrontSearchResultEligibilityPort {
-        std::sync::Arc::new(Self::new(db, audience_facts, settings_reader))
+        Self { db, audience_facts, settings_reader }
     }
 
     fn service(&self) -> ForumSearchResultEligibilityService {
@@ -76,8 +56,8 @@ impl ServerForumSearchResultEligibilityPort {
 
     pub(crate) async fn filter_forum_result_candidates(
         &self,
-        request: StorefrontSearchResultEligibilityRequest,
-    ) -> Result<Vec<StorefrontSearchResultCandidate>, PortError> {
+        request: SearchAudienceRequest,
+    ) -> Result<Vec<uuid::Uuid>, PortError> {
         if request.candidates.is_empty() {
             return Ok(Vec::new());
         }
@@ -118,8 +98,7 @@ impl ServerForumSearchResultEligibilityPort {
         let forum_candidates = request
             .candidates
             .iter()
-            .copied()
-            .map(to_forum_candidate)
+            .filter_map(to_forum_candidate)
             .collect::<Vec<_>>();
         let service = self.service();
         // Do not downgrade an authenticated Search caller to the public audience
@@ -163,14 +142,17 @@ impl ServerForumSearchResultEligibilityPort {
         }
         .map_err(map_forum_error)?;
 
-        Ok(allowed.into_iter().map(from_forum_candidate).collect())
+        Ok(allowed
+            .into_iter()
+            .map(|candidate| candidate.document_id)
+            .collect())
     }
 }
 
 #[async_trait]
 impl SearchAudiencePolicyPort for ServerForumSearchResultEligibilityPort {
     fn source_module(&self) -> &'static str {
-        FORUM_SEARCH_SOURCE_MODULE
+        FORUM_MODULE_SLUG
     }
 
     async fn public_discovery_allowed(&self, tenant_id: uuid::Uuid) -> Result<bool, PortError> {
@@ -181,48 +163,6 @@ impl SearchAudiencePolicyPort for ServerForumSearchResultEligibilityPort {
         &self,
         request: SearchAudienceRequest,
     ) -> Result<Vec<uuid::Uuid>, PortError> {
-        let forum_candidates = request
-            .candidates
-            .into_iter()
-            .filter_map(|candidate| {
-                let kind =
-                    StorefrontSearchResultCandidateKind::from_entity_type(&candidate.entity_type)?;
-                Some(StorefrontSearchResultCandidate {
-                    document_id: candidate.document_id,
-                    kind,
-                })
-            })
-            .collect();
-
-        let allowed = self
-            .filter_forum_result_candidates(StorefrontSearchResultEligibilityRequest {
-                tenant_id: request.tenant_id,
-                locale: request.locale,
-                candidates: forum_candidates,
-                auth: request.auth,
-                request_context: request.request_context,
-                transport: request.transport,
-            })
-            .await?;
-
-        Ok(allowed.into_iter().map(|item| item.document_id).collect())
-    }
-}
-
-#[allow(deprecated)]
-#[async_trait]
-impl StorefrontSearchResultEligibilityPort for ServerForumSearchResultEligibilityPort {
-    async fn public_forum_discovery_allowed(
-        &self,
-        tenant_id: uuid::Uuid,
-    ) -> Result<bool, PortError> {
-        self.public_forum_discovery_allowed(tenant_id).await
-    }
-
-    async fn filter_forum_result_candidates(
-        &self,
-        request: StorefrontSearchResultEligibilityRequest,
-    ) -> Result<Vec<StorefrontSearchResultCandidate>, PortError> {
         self.filter_forum_result_candidates(request).await
     }
 }
@@ -231,7 +171,7 @@ async fn ensure_forum_enabled(
     db: &DatabaseConnection,
     tenant_id: uuid::Uuid,
 ) -> Result<(), PortError> {
-    let enabled = is_tenant_module_enabled(db, tenant_id, FORUM_SEARCH_SOURCE_MODULE)
+    let enabled = is_tenant_module_enabled(db, tenant_id, FORUM_MODULE_SLUG)
         .await
         .map_err(|error| {
             tracing::error!(
@@ -254,38 +194,21 @@ async fn ensure_forum_enabled(
     }
 }
 
-fn to_forum_candidate(candidate: StorefrontSearchResultCandidate) -> ForumSearchResultCandidate {
-    ForumSearchResultCandidate {
+fn to_forum_candidate(
+    candidate: &rustok_search::SearchCandidateDescriptor,
+) -> Option<ForumSearchResultCandidate> {
+    let kind = match candidate.entity_type.as_str() {
+        "forum_category" => ForumSearchResultCandidateKind::Category,
+        "forum_topic" => ForumSearchResultCandidateKind::Topic,
+        "forum_reply" => ForumSearchResultCandidateKind::Reply,
+        // A document outside the Forum entity vocabulary is not this owner's to
+        // authorize; the neutral executor only sends candidates of its own module.
+        _ => return None,
+    };
+    Some(ForumSearchResultCandidate {
         document_id: candidate.document_id,
-        kind: match candidate.kind {
-            StorefrontSearchResultCandidateKind::ForumCategory => {
-                ForumSearchResultCandidateKind::Category
-            }
-            StorefrontSearchResultCandidateKind::ForumTopic => {
-                ForumSearchResultCandidateKind::Topic
-            }
-            StorefrontSearchResultCandidateKind::ForumReply => {
-                ForumSearchResultCandidateKind::Reply
-            }
-        },
-    }
-}
-
-fn from_forum_candidate(candidate: ForumSearchResultCandidate) -> StorefrontSearchResultCandidate {
-    StorefrontSearchResultCandidate {
-        document_id: candidate.document_id,
-        kind: match candidate.kind {
-            ForumSearchResultCandidateKind::Category => {
-                StorefrontSearchResultCandidateKind::ForumCategory
-            }
-            ForumSearchResultCandidateKind::Topic => {
-                StorefrontSearchResultCandidateKind::ForumTopic
-            }
-            ForumSearchResultCandidateKind::Reply => {
-                StorefrontSearchResultCandidateKind::ForumReply
-            }
-        },
-    }
+        kind,
+    })
 }
 
 fn map_forum_error(error: ForumError) -> PortError {

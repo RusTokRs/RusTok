@@ -11,12 +11,16 @@ function read(path) {
   return fs.readFileSync(path, "utf8");
 }
 
+// Collect every drift instead of aborting on the first one: a guard that throws hides the rest of
+// the contract behind whichever marker happened to move first.
+const failures = [];
+
 function need(text, marker, label) {
-  if (!text.includes(marker)) throw new Error(`${label}: missing ${marker}`);
+  if (!text.includes(marker)) failures.push(`${label}: missing ${marker}`);
 }
 
 function forbid(text, marker, label) {
-  if (text.includes(marker)) throw new Error(`${label}: forbidden ${marker}`);
+  if (text.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
 // The admission-only boundary is a rule about production code. A file's own `#[cfg(test)]` module
@@ -47,7 +51,8 @@ const forumPlan = read("crates/modules/rustok-forum/docs/implementation-plan.md"
 
 for (const marker of [
   "pub mod attachment_relation;",
-  "pub use attachment_relation::*;",
+  "pub use attachment_relation::{",
+  "ForumAttachmentRelationPreparer",
 ]) need(lib, marker, "FORUM-14A crate wiring");
 
 for (const marker of [
@@ -123,5 +128,11 @@ for (const marker of [
   "FORUM-14B",
   "no Cargo command, test, Node verifier",
 ]) need(packet, marker, "FORUM-14A actualization");
+
+if (failures.length > 0) {
+  console.error("Forum source guard failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
 
 console.log("Forum FORUM-14A attachment relation admission source: ok");
