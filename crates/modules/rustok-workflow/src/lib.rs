@@ -27,8 +27,8 @@ pub mod templates;
 pub use dto::{
     CreateWorkflowInput, CreateWorkflowStepInput, TriggerConfig, UpdateWorkflowInput,
     UpdateWorkflowStepInput, WorkflowExecutionResponse, WorkflowResponse,
-    WorkflowStepExecutionResponse, WorkflowStepResponse, WorkflowSummary,
-    WorkflowVersionDetail, WorkflowVersionSummary,
+    WorkflowStepExecutionResponse, WorkflowStepResponse, WorkflowSummary, WorkflowVersionDetail,
+    WorkflowVersionSummary,
 };
 pub use error::{WorkflowError, WorkflowResult};
 pub use graphql::{WorkflowMutation, WorkflowQuery};

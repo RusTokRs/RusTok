@@ -1,5 +1,7 @@
 use async_trait::async_trait;
-use rustok_api::{PortError, PortErrorKind, SharedStaticModuleSettingsReader, is_tenant_module_enabled};
+use rustok_api::{
+    PortError, PortErrorKind, SharedStaticModuleSettingsReader, is_tenant_module_enabled,
+};
 use rustok_core::SecurityContext;
 use rustok_forum::{
     ForumCategoryReadOperation, ForumCategoryReadTransport, ForumError,
@@ -25,7 +27,11 @@ impl ServerForumSearchCategoryScopePort {
         audience_facts: Option<SharedForumAudienceFactsPort>,
         settings_reader: Option<SharedStaticModuleSettingsReader>,
     ) -> SharedStorefrontSearchCategoryScopePort {
-        std::sync::Arc::new(Self { db, audience_facts, settings_reader })
+        std::sync::Arc::new(Self {
+            db,
+            audience_facts,
+            settings_reader,
+        })
     }
 
     fn service(&self) -> ForumSearchCategoryAudienceScopeService {

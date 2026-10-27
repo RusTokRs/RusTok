@@ -140,7 +140,14 @@ async fn preview_token_reads_stop_after_revocation_and_expiry() {
         .await
         .expect("a draft may be previewed");
     let preview = service
-        .get_post_by_token(token.token.as_deref().expect("a created token carries its one-time plaintext"), "en", None)
+        .get_post_by_token(
+            token
+                .token
+                .as_deref()
+                .expect("a created token carries its one-time plaintext"),
+            "en",
+            None,
+        )
         .await
         .expect("token read should not fail")
         .expect("a live token must resolve");
@@ -152,7 +159,14 @@ async fn preview_token_reads_stop_after_revocation_and_expiry() {
         .expect("revocation should succeed");
     assert!(
         service
-            .get_post_by_token(token.token.as_deref().expect("a created token carries its one-time plaintext"), "en", None)
+            .get_post_by_token(
+                token
+                    .token
+                    .as_deref()
+                    .expect("a created token carries its one-time plaintext"),
+                "en",
+                None
+            )
             .await
             .expect("token read should not fail")
             .is_none(),
@@ -194,7 +208,14 @@ async fn preview_token_read_fails_closed_when_blog_is_disabled_for_the_tenant() 
         .expect("a draft may be previewed");
     assert!(
         service
-            .get_post_by_token(token.token.as_deref().expect("a created token carries its one-time plaintext"), "en", None)
+            .get_post_by_token(
+                token
+                    .token
+                    .as_deref()
+                    .expect("a created token carries its one-time plaintext"),
+                "en",
+                None
+            )
             .await
             .expect("token read should not fail")
             .is_some(),
@@ -204,7 +225,14 @@ async fn preview_token_read_fails_closed_when_blog_is_disabled_for_the_tenant() 
     set_blog_module_enabled(&db, tenant_id, false).await;
     assert!(
         service
-            .get_post_by_token(token.token.as_deref().expect("a created token carries its one-time plaintext"), "en", None)
+            .get_post_by_token(
+                token
+                    .token
+                    .as_deref()
+                    .expect("a created token carries its one-time plaintext"),
+                "en",
+                None
+            )
             .await
             .expect("token read should not fail")
             .is_none(),
@@ -257,7 +285,13 @@ async fn preview_token_cleanup_is_tenant_scoped_and_bounded() {
     );
     assert!(
         service
-            .get_post_by_token(live.token.as_deref().expect("a created token carries its one-time plaintext"), "en", None)
+            .get_post_by_token(
+                live.token
+                    .as_deref()
+                    .expect("a created token carries its one-time plaintext"),
+                "en",
+                None
+            )
             .await
             .expect("token read should not fail")
             .is_some(),
@@ -303,7 +337,14 @@ async fn leaving_draft_revokes_the_post_preview_tokens() {
         .expect("a draft may be previewed");
     assert!(
         service
-            .get_post_by_token(token.token.as_deref().expect("a created token carries its one-time plaintext"), "en", None)
+            .get_post_by_token(
+                token
+                    .token
+                    .as_deref()
+                    .expect("a created token carries its one-time plaintext"),
+                "en",
+                None
+            )
             .await
             .expect("token read should not fail")
             .is_some(),
@@ -321,7 +362,14 @@ async fn leaving_draft_revokes_the_post_preview_tokens() {
     );
     assert!(
         service
-            .get_post_by_token(token.token.as_deref().expect("a created token carries its one-time plaintext"), "en", None)
+            .get_post_by_token(
+                token
+                    .token
+                    .as_deref()
+                    .expect("a created token carries its one-time plaintext"),
+                "en",
+                None
+            )
             .await
             .expect("token read should not fail")
             .is_none(),
@@ -341,7 +389,14 @@ async fn leaving_draft_revokes_the_post_preview_tokens() {
         .expect("the post should unpublish");
     assert!(
         service
-            .get_post_by_token(token.token.as_deref().expect("a created token carries its one-time plaintext"), "en", None)
+            .get_post_by_token(
+                token
+                    .token
+                    .as_deref()
+                    .expect("a created token carries its one-time plaintext"),
+                "en",
+                None
+            )
             .await
             .expect("token read should not fail")
             .is_none(),
@@ -375,7 +430,14 @@ async fn leaving_draft_revokes_the_post_preview_tokens() {
     );
     assert!(
         service
-            .get_post_by_token(archived_token.token.as_deref().expect("a created token carries its one-time plaintext"), "en", None)
+            .get_post_by_token(
+                archived_token
+                    .token
+                    .as_deref()
+                    .expect("a created token carries its one-time plaintext"),
+                "en",
+                None
+            )
             .await
             .expect("token read should not fail")
             .is_none(),

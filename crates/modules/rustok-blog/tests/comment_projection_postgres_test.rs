@@ -260,8 +260,7 @@ async fn concurrent_created_events_converge_without_lost_updates() -> TestResult
 }
 
 #[tokio::test]
-async fn approval_counts_once_and_update_events_preserve_the_count() -> TestResult<()>
-{
+async fn approval_counts_once_and_update_events_preserve_the_count() -> TestResult<()> {
     let Some(test_db) = PostgresBlogProjectionTestDb::setup("lifecycle_cursor").await? else {
         return Ok(());
     };

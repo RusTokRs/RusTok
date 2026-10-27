@@ -197,7 +197,9 @@ mod tests {
             surface: "commerce".into(),
             failed_path: UiTransportPath::Graphql,
             native_error: None,
-            graphql_error: Some("shipping option opt-9 is not available for shipping profile standard".into()),
+            graphql_error: Some(
+                "shipping option opt-9 is not available for shipping profile standard".into(),
+            ),
             fallback_attempted: false,
         };
         match ctx.map_error(err_graphql) {

@@ -127,10 +127,14 @@ impl CheckoutService {
         input: CompleteCheckoutInput,
     ) -> CheckoutResult<CompleteCheckoutResponse> {
         if tenant_id.is_nil() {
-            return Err(CheckoutError::Validation("tenant_id must not be nil UUID".to_string()));
+            return Err(CheckoutError::Validation(
+                "tenant_id must not be nil UUID".to_string(),
+            ));
         }
         if input.cart_id.is_nil() {
-            return Err(CheckoutError::Validation("cart_id must not be nil UUID".to_string()));
+            return Err(CheckoutError::Validation(
+                "cart_id must not be nil UUID".to_string(),
+            ));
         }
         tracing::debug!(
             tenant_id = %tenant_id,

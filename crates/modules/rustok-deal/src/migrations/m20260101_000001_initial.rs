@@ -29,7 +29,11 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(Alias::new("tenant_id")).uuid().not_null())
-                    .col(ColumnDef::new(Alias::new("name")).string_len(255).not_null())
+                    .col(
+                        ColumnDef::new(Alias::new("name"))
+                            .string_len(255)
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(Alias::new("created_at"))
                             .timestamp_with_time_zone()

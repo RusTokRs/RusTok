@@ -212,10 +212,12 @@ impl StorefrontSearchResultEligibilityPort for RealForumPublicEligibilityPort {
         forum_public_settings::default_settings()
             .anonymous_reading_allowed(tenant_id)
             .await
-            .map_err(|_| PortError::unavailable(
-                "forum.search_result_eligibility.public_discovery_unavailable",
-                "Forum public discovery is temporarily unavailable",
-            ))
+            .map_err(|_| {
+                PortError::unavailable(
+                    "forum.search_result_eligibility.public_discovery_unavailable",
+                    "Forum public discovery is temporarily unavailable",
+                )
+            })
     }
 
     async fn filter_forum_result_candidates(

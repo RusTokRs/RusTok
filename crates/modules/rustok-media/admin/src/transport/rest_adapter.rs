@@ -45,10 +45,7 @@ fn api_base_url() -> String {
     }
 }
 
-pub(crate) fn validate_upload_inputs(
-    file_name: &str,
-    data_len: usize,
-) -> Result<&str, ApiError> {
+pub(crate) fn validate_upload_inputs(file_name: &str, data_len: usize) -> Result<&str, ApiError> {
     let clean = file_name.trim();
     if clean.is_empty() {
         return Err(ApiError::Validation(
@@ -100,7 +97,11 @@ pub(super) async fn upload_media_rest(
     if let Some(token) = token.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         request = request.header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"));
     }
-    if let Some(slug) = tenant_slug.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    if let Some(slug) = tenant_slug
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         if let Ok(tenant_uuid) = uuid::Uuid::parse_str(slug)
             && tenant_uuid.is_nil()
         {

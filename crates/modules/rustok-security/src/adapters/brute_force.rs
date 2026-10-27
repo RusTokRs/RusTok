@@ -8,6 +8,9 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+use crate::domain::LockoutDecision;
+use crate::error::SecurityResult;
+use crate::ports::BruteForceTrackerPort;
 use async_trait::async_trait;
 use chrono::Utc;
 use moka::future::Cache;
@@ -15,9 +18,6 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
-use crate::domain::LockoutDecision;
-use crate::error::SecurityResult;
-use crate::ports::BruteForceTrackerPort;
 
 #[derive(Clone, Debug)]
 struct AttemptRecord {
@@ -176,17 +176,26 @@ mod tests {
         assert_eq!(d.failed_attempts, 0);
 
         // Attempt 1 fails (max 3)
-        let d1 = tracker.record_failure(tenant_id, user, &ip, 3, 900).await.unwrap();
+        let d1 = tracker
+            .record_failure(tenant_id, user, &ip, 3, 900)
+            .await
+            .unwrap();
         assert!(!d1.is_locked);
         assert_eq!(d1.failed_attempts, 1);
 
         // Attempt 2 fails
-        let d2 = tracker.record_failure(tenant_id, user, &ip, 3, 900).await.unwrap();
+        let d2 = tracker
+            .record_failure(tenant_id, user, &ip, 3, 900)
+            .await
+            .unwrap();
         assert!(!d2.is_locked);
         assert_eq!(d2.failed_attempts, 2);
 
         // Attempt 3 fails -> Lockout triggered!
-        let d3 = tracker.record_failure(tenant_id, user, &ip, 3, 900).await.unwrap();
+        let d3 = tracker
+            .record_failure(tenant_id, user, &ip, 3, 900)
+            .await
+            .unwrap();
         assert!(d3.is_locked);
         assert_eq!(d3.failed_attempts, 3);
         assert!(d3.remaining_lockout_secs.is_some());

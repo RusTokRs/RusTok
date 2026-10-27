@@ -5,7 +5,9 @@
 //! `manage` wildcard semantics from `permission_policy`). No external policy
 //! engine or policy-file model is involved.
 
-use crate::services::permission_policy::{check_all_permissions, check_any_permission, check_permission};
+use crate::services::permission_policy::{
+    check_all_permissions, check_any_permission, check_permission,
+};
 use rustok_api::Permission;
 
 use super::permission_check::PermissionCheck;

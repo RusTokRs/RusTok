@@ -94,7 +94,10 @@ pub async fn get_conversation(
     let actor_id = require_actor_id(&auth)?;
 
     if id.is_nil() {
-        return Err(HttpError::bad_request("INVALID_ID", "Conversation ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "INVALID_ID",
+            "Conversation ID must not be nil",
+        ));
     }
 
     let output = runtime
@@ -117,11 +120,17 @@ pub async fn update_channel_translation(
     let actor_id = require_actor_id(&auth)?;
 
     if id.is_nil() || input.channel_id.is_nil() {
-        return Err(HttpError::bad_request("INVALID_ID", "Channel ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "INVALID_ID",
+            "Channel ID must not be nil",
+        ));
     }
 
     if input.channel_id != id {
-        return Err(HttpError::bad_request("MISMATCHED_ID", "Path ID and body channel_id do not match"));
+        return Err(HttpError::bad_request(
+            "MISMATCHED_ID",
+            "Path ID and body channel_id do not match",
+        ));
     }
 
     let output = runtime
@@ -144,7 +153,10 @@ pub async fn send_message(
 
     let conversation_id = input.conversation_id;
     if conversation_id.is_nil() {
-        return Err(HttpError::bad_request("INVALID_CONVERSATION", "Conversation ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "INVALID_CONVERSATION",
+            "Conversation ID must not be nil",
+        ));
     }
 
     let output = runtime
@@ -173,7 +185,10 @@ pub async fn list_messages(
     let actor_id = require_actor_id(&auth)?;
 
     if conversation_id.is_nil() {
-        return Err(HttpError::bad_request("INVALID_CONVERSATION", "Conversation ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "INVALID_CONVERSATION",
+            "Conversation ID must not be nil",
+        ));
     }
 
     let mut q = query;
@@ -199,10 +214,16 @@ pub async fn fast_sync(
     let actor_id = require_actor_id(&auth)?;
 
     if conversation_id.is_nil() {
-        return Err(HttpError::bad_request("INVALID_CONVERSATION", "Conversation ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "INVALID_CONVERSATION",
+            "Conversation ID must not be nil",
+        ));
     }
     if query.since_seq < 0 {
-        return Err(HttpError::bad_request("INVALID_SEQUENCE", "since_seq cannot be negative"));
+        return Err(HttpError::bad_request(
+            "INVALID_SEQUENCE",
+            "since_seq cannot be negative",
+        ));
     }
 
     let output = runtime
@@ -233,10 +254,16 @@ pub async fn update_cursor(
     let actor_id = require_actor_id(&auth)?;
 
     if conversation_id.is_nil() {
-        return Err(HttpError::bad_request("INVALID_CONVERSATION", "Conversation ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "INVALID_CONVERSATION",
+            "Conversation ID must not be nil",
+        ));
     }
     if body.last_read_message_id < 0 {
-        return Err(HttpError::bad_request("INVALID_CURSOR", "last_read_message_id cannot be negative"));
+        return Err(HttpError::bad_request(
+            "INVALID_CURSOR",
+            "last_read_message_id cannot be negative",
+        ));
     }
 
     let output = runtime
@@ -307,7 +334,10 @@ pub async fn list_user_devices(
     ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
 
     if user_id.is_nil() {
-        return Err(HttpError::bad_request("INVALID_USER", "User ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "INVALID_USER",
+            "User ID must not be nil",
+        ));
     }
 
     let devices = runtime.service.device_keys().list_user_devices(user_id);
@@ -324,11 +354,17 @@ pub async fn claim_prekey_bundle(
     ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
 
     if target_user_id.is_nil() {
-        return Err(HttpError::bad_request("INVALID_USER", "Target user ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "INVALID_USER",
+            "Target user ID must not be nil",
+        ));
     }
     let trimmed_device_id = device_id.trim();
     if trimmed_device_id.is_empty() {
-        return Err(HttpError::bad_request("INVALID_DEVICE", "Device ID must not be empty"));
+        return Err(HttpError::bad_request(
+            "INVALID_DEVICE",
+            "Device ID must not be empty",
+        ));
     }
 
     let bundle = runtime
@@ -352,7 +388,10 @@ pub async fn patch_message(
     let actor_id = require_actor_id(&auth)?;
 
     if message_id <= 0 {
-        return Err(HttpError::bad_request("INVALID_MESSAGE_ID", "Message ID must be positive"));
+        return Err(HttpError::bad_request(
+            "INVALID_MESSAGE_ID",
+            "Message ID must be positive",
+        ));
     }
 
     let output = runtime
@@ -380,7 +419,10 @@ pub async fn delete_message(
     let actor_id = require_actor_id(&auth)?;
 
     if message_id <= 0 {
-        return Err(HttpError::bad_request("INVALID_MESSAGE_ID", "Message ID must be positive"));
+        return Err(HttpError::bad_request(
+            "INVALID_MESSAGE_ID",
+            "Message ID must be positive",
+        ));
     }
 
     let conv_id = runtime
@@ -409,7 +451,10 @@ pub async fn add_member(
     let actor_id = require_actor_id(&auth)?;
 
     if conversation_id.is_nil() || input.user_id.is_nil() {
-        return Err(HttpError::bad_request("INVALID_ID", "Conversation ID and user ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "INVALID_ID",
+            "Conversation ID and user ID must not be nil",
+        ));
     }
 
     let output = runtime
@@ -431,7 +476,10 @@ pub async fn remove_member(
     let actor_id = require_actor_id(&auth)?;
 
     if conversation_id.is_nil() || target_user_id.is_nil() {
-        return Err(HttpError::bad_request("INVALID_ID", "Conversation ID and target user ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "INVALID_ID",
+            "Conversation ID and target user ID must not be nil",
+        ));
     }
 
     runtime
@@ -453,7 +501,10 @@ pub async fn list_members(
     let actor_id = require_actor_id(&auth)?;
 
     if conversation_id.is_nil() {
-        return Err(HttpError::bad_request("INVALID_CONVERSATION", "Conversation ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "INVALID_CONVERSATION",
+            "Conversation ID must not be nil",
+        ));
     }
 
     let output = runtime

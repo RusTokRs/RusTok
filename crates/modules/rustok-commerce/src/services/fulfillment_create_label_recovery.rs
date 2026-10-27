@@ -335,10 +335,20 @@ mod tests {
             .await
             .expect("memory db");
         let service = FulfillmentCreateLabelRecoveryService::new(db);
-        let err = service.retry(Uuid::nil(), Uuid::new_v4()).await.unwrap_err();
-        assert!(matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("tenant_id")));
+        let err = service
+            .retry(Uuid::nil(), Uuid::new_v4())
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("tenant_id"))
+        );
 
-        let err = service.retry(Uuid::new_v4(), Uuid::nil()).await.unwrap_err();
-        assert!(matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("operation_id")));
+        let err = service
+            .retry(Uuid::new_v4(), Uuid::nil())
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("operation_id"))
+        );
     }
 }

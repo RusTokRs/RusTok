@@ -15,10 +15,10 @@
 pub mod ip_net;
 pub use ip_net::IpNet;
 
+use crate::error::{SecurityError, SecurityResult};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use crate::error::{SecurityError, SecurityResult};
 
 /// Type of rule for an IP or CIDR address.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

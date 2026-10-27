@@ -11,8 +11,8 @@ mod ui;
 
 #[allow(unused_imports)]
 pub use options::{
-    default_title_from_slug, is_valid_slug, parse_options, print_scaffold_usage, ScaffoldOptions,
-    ScaffoldUi,
+    ScaffoldOptions, ScaffoldUi, default_title_from_slug, is_valid_slug, parse_options,
+    print_scaffold_usage,
 };
 
 pub(crate) fn write_file_content(path: &Path, content: &str, dry_run: bool) -> Result<()> {
@@ -26,8 +26,7 @@ pub(crate) fn write_file_content(path: &Path, content: &str, dry_run: bool) -> R
             .with_context(|| format!("Failed to create directory {}", parent.display()))?;
     }
 
-    fs::write(path, content)
-        .with_context(|| format!("Failed to write file {}", path.display()))?;
+    fs::write(path, content).with_context(|| format!("Failed to write file {}", path.display()))?;
     println!("  Created {}", path.display());
     Ok(())
 }

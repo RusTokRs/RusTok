@@ -156,9 +156,9 @@ pub(crate) fn module_stage_command(args: &[String]) -> Result<()> {
         return Ok(());
     }
 
-    let registry_url = registry_url.with_context(|| {
-        "Live module stage requires --registry-url or RUSTOK_MODULE_REGISTRY_URL"
-    })?;
+    let registry_url = registry_url.with_context(
+        || "Live module stage requires --registry-url or RUSTOK_MODULE_REGISTRY_URL",
+    )?;
     let auth_token = auth_token.with_context(|| {
         format!(
             "Live module stage requires --auth-token <token> or {}",

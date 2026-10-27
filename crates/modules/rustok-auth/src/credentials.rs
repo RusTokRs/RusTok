@@ -12,7 +12,10 @@ pub const MAX_PASSWORD_LENGTH_BYTES: usize = 1024;
 
 /// Hash a password with Argon2id and a random salt.
 pub fn hash_password(password: &str) -> Result<String> {
-    tracing::debug!(password_len = password.len(), "Hashing password with Argon2id");
+    tracing::debug!(
+        password_len = password.len(),
+        "Hashing password with Argon2id"
+    );
     if password.is_empty() || password.len() > MAX_PASSWORD_LENGTH_BYTES {
         return Err(AuthError::PasswordHashFailed);
     }
@@ -24,7 +27,10 @@ pub fn hash_password(password: &str) -> Result<String> {
 
 /// Verify a password against an Argon2 hash.
 pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
-    tracing::debug!(password_len = password.len(), "Verifying password against hash");
+    tracing::debug!(
+        password_len = password.len(),
+        "Verifying password against hash"
+    );
     if password.is_empty() || password.len() > MAX_PASSWORD_LENGTH_BYTES {
         return Ok(false);
     }
@@ -89,7 +95,10 @@ mod tests {
     #[test]
     fn refresh_token_hash_trims_whitespace() {
         let token = "  abcdef0123456789  ";
-        assert_eq!(hash_refresh_token(token), hash_refresh_token("abcdef0123456789"));
+        assert_eq!(
+            hash_refresh_token(token),
+            hash_refresh_token("abcdef0123456789")
+        );
     }
 
     #[test]
@@ -129,7 +138,10 @@ mod tests {
         let oversized = "a".repeat(MAX_PASSWORD_LENGTH_BYTES + 1);
         assert!(hash_password(&oversized).is_err());
         assert!(!verify_password("", "$argon2id$v=19$m=19456,t=2,p=1$fake$fake").unwrap_or(true));
-        assert!(!verify_password(&oversized, "$argon2id$v=19$m=19456,t=2,p=1$fake$fake").unwrap_or(true));
+        assert!(
+            !verify_password(&oversized, "$argon2id$v=19$m=19456,t=2,p=1$fake$fake")
+                .unwrap_or(true)
+        );
     }
 
     #[test]

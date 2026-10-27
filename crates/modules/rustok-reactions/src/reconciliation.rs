@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::{ReactionCatalog, ReactionKey, ReactionSubjectRef};
 use chrono::Utc;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
 use rustok_events::{MAX_REACTIONS_EVENT_KEYS, ReactionsEvent};
 use rustok_outbox::{ContractEventWriteOnceError, TransactionalEventBus, idempotency};
-use crate::{ReactionCatalog, ReactionKey, ReactionSubjectRef};
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, EntityTrait,
@@ -818,8 +818,8 @@ fn decode_replay<T: DeserializeOwned>(value: serde_json::Value) -> Result<T, Por
 
 #[cfg(test)]
 mod tests {
-    use rustok_api::{PortActor, PortContext};
     use crate::{ReactionKey, ReactionSourceSlug, ReactionSubjectKind, ReactionSubjectRef};
+    use rustok_api::{PortActor, PortContext};
     use uuid::Uuid;
 
     use super::*;
@@ -998,4 +998,3 @@ mod tests {
         assert!(i64_to_u64(-1, "test").is_err());
     }
 }
-

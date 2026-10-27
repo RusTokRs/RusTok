@@ -52,8 +52,9 @@ impl RbacService {
 
         if let Some(row) = db.query_one_raw(role_query).await? {
             let slug: String = row.try_get("", "slug")?;
-            let role = std::str::FromStr::from_str(&slug)
-                .map_err(|_| sea_orm::DbErr::Custom(format!("invalid persisted role slug: {slug}")))?;
+            let role = std::str::FromStr::from_str(&slug).map_err(|_| {
+                sea_orm::DbErr::Custom(format!("invalid persisted role slug: {slug}"))
+            })?;
             return Ok(role);
         }
 

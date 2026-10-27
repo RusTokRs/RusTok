@@ -435,10 +435,7 @@ mod tests {
 
     #[test]
     fn required_media_id_accepts_valid_id() {
-        assert_eq!(
-            required_media_id("  media-123  ").unwrap(),
-            "media-123"
-        );
+        assert_eq!(required_media_id("  media-123  ").unwrap(), "media-123");
     }
 
     #[test]

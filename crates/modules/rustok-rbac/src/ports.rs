@@ -313,10 +313,7 @@ mod tests {
 
         assert!(!response.allowed);
         assert_eq!(response.matched_permissions, vec!["users:read".to_string()]);
-        assert_eq!(
-            response.missing_permissions,
-            vec!["Users:Read".to_string()]
-        );
+        assert_eq!(response.missing_permissions, vec!["Users:Read".to_string()]);
     }
 
     #[tokio::test]

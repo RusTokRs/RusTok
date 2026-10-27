@@ -247,10 +247,16 @@ pub async fn show_checkout_operation(
         "Permission denied: orders:read required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Checkout operation ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Checkout operation ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_CHECKOUT_OPERATION_BOUNDARY,
@@ -301,10 +307,16 @@ pub async fn compensate_checkout_operation(
         "Permission denied: orders:manage required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Checkout operation ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Checkout operation ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_CHECKOUT_OPERATION_BOUNDARY,
@@ -370,7 +382,10 @@ pub async fn list_checkout_operations(
         "Permission denied: orders:read required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_CHECKOUT_OPERATION_BOUNDARY,
@@ -434,10 +449,16 @@ pub async fn execute_checkout_reconciliation_action(
         action_permission_message(action),
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Checkout operation ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Checkout operation ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_CHECKOUT_OPERATION_BOUNDARY,
@@ -526,10 +547,16 @@ pub async fn list_checkout_reconciliation_actions(
         "Permission denied: orders:read required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Checkout operation ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Checkout operation ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_CHECKOUT_OPERATION_BOUNDARY,
@@ -587,7 +614,10 @@ pub async fn sweep_checkout_compensations(
         "Permission denied: orders:manage required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_CHECKOUT_OPERATION_BOUNDARY,

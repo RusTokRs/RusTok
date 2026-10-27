@@ -77,11 +77,7 @@ pub async fn permission_availability_for(
     )
     .await
     .map_err(|error| Error::Message(format!("module policy resolution failed: {error}")))?;
-    let enabled: BTreeSet<String> = snapshot
-        .policy
-        .into_enabled_modules()
-        .into_iter()
-        .collect();
+    let enabled: BTreeSet<String> = snapshot.policy.into_enabled_modules().into_iter().collect();
     Ok(Some(PermissionAvailability::new(
         (*ownership).clone(),
         enabled,
@@ -100,9 +96,7 @@ impl ServerRbacModuleAvailabilityProvider {
 }
 
 #[async_trait::async_trait]
-impl rustok_rbac::graphql::RbacModuleAvailabilityProvider
-    for ServerRbacModuleAvailabilityProvider
-{
+impl rustok_rbac::graphql::RbacModuleAvailabilityProvider for ServerRbacModuleAvailabilityProvider {
     async fn permission_availability(
         &self,
         tenant_id: &uuid::Uuid,
@@ -127,7 +121,7 @@ pub fn rbac_module_availability_handle(
     if ctx.shared_get::<ModuleRegistry>().is_none() {
         return None;
     }
-    Some(rustok_rbac::graphql::RbacModuleAvailabilityHandle(Arc::new(
-        ServerRbacModuleAvailabilityProvider::new(ctx.clone()),
-    )))
+    Some(rustok_rbac::graphql::RbacModuleAvailabilityHandle(
+        Arc::new(ServerRbacModuleAvailabilityProvider::new(ctx.clone())),
+    ))
 }

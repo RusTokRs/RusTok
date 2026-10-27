@@ -252,4 +252,3 @@ async fn test_navigation_nil_uuid_and_bounds_guards() {
         .unwrap_err();
     assert!(err.to_string().contains("Menu ID must not be nil"));
 }
-

@@ -33,7 +33,7 @@ for (const marker of [
   'run_attempt=${GITHUB_RUN_ATTEMPT}',
   'sha=${GITHUB_SHA}',
   'event=${GITHUB_EVENT_NAME}',
-  'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+  'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9',
   'retention-days: 90',
   'name: Product Current Schema Promotion Evidence Gate',
 ]) {
@@ -73,7 +73,7 @@ if (/^\s*DATABASE_URL\s*:/m.test(workflow)) {
   fail(`${workflowPath} must use the evidence-specific Product key4 database variable, not generic DATABASE_URL`);
 }
 
-if (!workflow.includes('if: always()\n        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a')) {
+if (!workflow.includes('if: always()\n        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9')) {
   fail(`${workflowPath} must archive bounded evidence even when the PostgreSQL packet fails`);
 }
 

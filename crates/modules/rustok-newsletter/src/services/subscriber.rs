@@ -1,5 +1,5 @@
-use chrono::Utc;
 use crate::model::{NewsletterApiError, SubscriberStatus};
+use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
     ModelTrait, QueryFilter, QueryOrder, QuerySelect,
@@ -336,9 +336,7 @@ impl SubscriberService {
 fn parse_status(value: &str) -> NewsletterResult<SubscriberStatus> {
     value
         .parse()
-        .map_err(|e: NewsletterApiError| {
-            NewsletterError::validation(e.to_string())
-        })
+        .map_err(|e: NewsletterApiError| NewsletterError::validation(e.to_string()))
 }
 
 fn status_to_string(status: SubscriberStatus) -> String {

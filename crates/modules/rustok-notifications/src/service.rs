@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use rustok_core::ModuleRuntimeExtensions;
 use crate::{
     NotificationSourceProvider, NotificationSourceRegistry, NotificationSourceRegistryEntry,
     NotificationSourceSlug, notification_source_registry_from_extensions,
 };
+use rustok_core::ModuleRuntimeExtensions;
 
 /// Owner-facing access to the registered semantic notification sources.
 ///

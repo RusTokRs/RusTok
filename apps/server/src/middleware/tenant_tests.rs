@@ -115,11 +115,20 @@ fn tenant_context_load_error_codes_and_responses() {
     assert_eq!(disabled.client_message(), "Tenant is disabled");
 
     let invalid_assertion = TenantContextLoadError::InvalidAssertion("mismatch".to_string());
-    assert_eq!(invalid_assertion.error_code(), "conflicting_tenant_assertions");
-    assert_eq!(invalid_assertion.status_code(), axum::http::StatusCode::BAD_REQUEST);
+    assert_eq!(
+        invalid_assertion.error_code(),
+        "conflicting_tenant_assertions"
+    );
+    assert_eq!(
+        invalid_assertion.status_code(),
+        axum::http::StatusCode::BAD_REQUEST
+    );
 
     let infra = TenantContextLoadError::InfrastructureUnavailable;
     assert_eq!(infra.error_code(), "tenant_infrastructure_unavailable");
-    assert_eq!(infra.status_code(), axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(
+        infra.status_code(),
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    );
     assert_eq!(infra.client_message(), "Failed to resolve tenant");
 }

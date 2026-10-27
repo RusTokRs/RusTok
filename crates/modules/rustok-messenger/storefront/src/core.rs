@@ -29,7 +29,9 @@ impl ConversationFilter {
     pub fn matches(&self, conv: &ConversationItemViewModel) -> bool {
         match self {
             Self::All => true,
-            Self::Channels => conv.conversation_type == "channel" || conv.conversation_type == "group",
+            Self::Channels => {
+                conv.conversation_type == "channel" || conv.conversation_type == "group"
+            }
             Self::Direct => conv.conversation_type == "direct",
             Self::EntityThreads => conv.is_entity_thread,
         }
@@ -73,7 +75,8 @@ pub struct ConversationItemViewModel {
 
 impl ConversationItemViewModel {
     pub fn from_payload(payload: &ConversationItemPayload) -> Self {
-        let is_entity = payload.entity_type.is_some() || payload.conversation_type == "entity_thread";
+        let is_entity =
+            payload.entity_type.is_some() || payload.conversation_type == "entity_thread";
         let title = payload
             .title
             .as_deref()
@@ -163,10 +166,13 @@ pub struct ChatMessageViewModel {
 impl ChatMessageViewModel {
     pub fn from_payload(payload: &MessageItemPayload, current_user_id: Uuid) -> Self {
         let is_outgoing = payload.sender_id == current_user_id;
-        let display_name = payload
-            .sender_name
-            .clone()
-            .unwrap_or_else(|| if is_outgoing { "You".to_string() } else { "Colleague".to_string() });
+        let display_name = payload.sender_name.clone().unwrap_or_else(|| {
+            if is_outgoing {
+                "You".to_string()
+            } else {
+                "Colleague".to_string()
+            }
+        });
 
         Self {
             id: payload.id,
@@ -220,7 +226,10 @@ impl MessengerWorkspaceState {
     }
 
     pub fn set_conversations(&mut self, payloads: &[ConversationItemPayload]) {
-        self.conversations = payloads.iter().map(ConversationItemViewModel::from_payload).collect();
+        self.conversations = payloads
+            .iter()
+            .map(ConversationItemViewModel::from_payload)
+            .collect();
         if self.active_conversation_id.is_none() {
             self.active_conversation_id = self.conversations.first().map(|c| c.id);
         }
@@ -276,7 +285,11 @@ impl MessengerWorkspaceState {
                     true
                 } else {
                     c.title.to_lowercase().contains(&q)
-                        || c.topic.as_deref().unwrap_or_default().to_lowercase().contains(&q)
+                        || c.topic
+                            .as_deref()
+                            .unwrap_or_default()
+                            .to_lowercase()
+                            .contains(&q)
                         || c.last_message_snippet.to_lowercase().contains(&q)
                 }
             })
@@ -730,4 +743,3 @@ mod tests {
         assert_eq!(state.messages[2].id, 300);
     }
 }
-

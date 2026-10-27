@@ -16,11 +16,19 @@ workflow-table-clear = Clear
 workflow-table-details = View details ->
 workflow-table-failures = Failures
 workflow-table-name = Name
-workflow-table-selected = { $count } workflows selected
+workflow-table-selected =
+    { $count ->
+        [one] 1 workflow selected
+       *[other] { $count } workflows selected
+    }
 workflow-table-status = Status
 workflow-table-updated = Updated
 workflow-search-placeholder = Search by name...
-workflow-total = Total workflows: { $count }
+workflow-total =
+    { $count ->
+        [one] Total workflows: 1
+       *[other] Total workflows: { $count }
+    }
 workflow-template-defaultNamePrefix = Workflow from
 workflow-template-pending = ...
 workflow-template-placeholder = Workflow name...

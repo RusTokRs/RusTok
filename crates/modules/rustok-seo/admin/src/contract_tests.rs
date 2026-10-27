@@ -32,6 +32,9 @@ fn core_view_models_pure_unit_test() {
     use crate::core::SeoAdminTab;
 
     assert_eq!(SeoAdminTab::Index.as_str(), "index");
-    assert_eq!(SeoAdminTab::from_str("redirects"), Some(SeoAdminTab::Redirects));
+    assert_eq!(
+        SeoAdminTab::from_str("redirects"),
+        Some(SeoAdminTab::Redirects)
+    );
     assert_eq!(SeoAdminTab::from_str("unknown"), None);
 }

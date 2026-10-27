@@ -16,7 +16,7 @@ use rustok_grid::filter::GridFilterType;
 use rustok_grid::pagination::GridPagination;
 use rustok_grid_leptos::prelude::*;
 
-use crate::core::{filter_rows, TasksAdminTableRow};
+use crate::core::{TasksAdminTableRow, filter_rows};
 use crate::i18n::t;
 
 pub use TasksAdminPage as TasksAdmin;
@@ -28,21 +28,39 @@ pub fn TasksAdminPage() -> impl IntoView {
 
     // Sample/initial data rows — in production, loaded via transport facade
     let sample_rows = vec![
-        TasksAdminTableRow::new("rec-1", "Default Team Issues & Tasks Workspace", "active", "2026-01-01"),
-        TasksAdminTableRow::new("rec-2", "Secondary Team Issues & Tasks Profile", "draft", "2026-01-02"),
+        TasksAdminTableRow::new(
+            "rec-1",
+            "Default Team Issues & Tasks Workspace",
+            "active",
+            "2026-01-01",
+        ),
+        TasksAdminTableRow::new(
+            "rec-2",
+            "Secondary Team Issues & Tasks Profile",
+            "draft",
+            "2026-01-02",
+        ),
     ];
     let rows_store = StoredValue::new(sample_rows);
 
     let filtered_rows = Memo::new(move |_| {
         let query = search_query.get();
         let rows = rows_store.get_value();
-        filter_rows(&rows, if query.trim().is_empty() { None } else { Some(&query) })
+        filter_rows(
+            &rows,
+            if query.trim().is_empty() {
+                None
+            } else {
+                Some(&query)
+            },
+        )
     });
 
     // Columns specification for shared DataGrid
     let columns = vec![
         GridColumnDef::checkbox(),
-        GridColumnDef::new("title", t(None, "tasks-col-title", "Title")).filter(GridFilterType::text()),
+        GridColumnDef::new("title", t(None, "tasks-col-title", "Title"))
+            .filter(GridFilterType::text()),
         GridColumnDef::new("status", t(None, "tasks-col-status", "Status")),
         GridColumnDef::new("created_at", t(None, "tasks-col-created", "Created At")),
         GridColumnDef::new("actions", t(None, "tasks-col-actions", "Actions")),

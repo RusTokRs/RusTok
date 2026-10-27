@@ -302,7 +302,10 @@ mod tests {
     #[test]
     fn normalize_cart_id_trims_and_discards_blank() {
         assert_eq!(normalize_cart_id(Some("  ".into())), None);
-        assert_eq!(normalize_cart_id(Some(" cart-1 ".into())), Some("cart-1".into()));
+        assert_eq!(
+            normalize_cart_id(Some(" cart-1 ".into())),
+            Some("cart-1".into())
+        );
         assert_eq!(normalize_cart_id(None), None);
     }
 
@@ -394,7 +397,10 @@ mod tests {
         assert_eq!(mapped.selected_shipping_option_id.as_deref(), Some("opt-1"));
         assert_eq!(mapped.delivery_group_count, 1);
         assert_eq!(mapped.delivery_groups[0].shipping_profile_slug, "standard");
-        assert_eq!(mapped.delivery_groups[0].available_shipping_options.len(), 1);
+        assert_eq!(
+            mapped.delivery_groups[0].available_shipping_options.len(),
+            1
+        );
     }
 
     #[cfg(feature = "ssr")]
@@ -404,14 +410,8 @@ mod tests {
             resolve_requested_locale(Some(" ru ".into()), Some("en"), "es"),
             "ru"
         );
-        assert_eq!(
-            resolve_requested_locale(None, Some("en"), "es"),
-            "en"
-        );
-        assert_eq!(
-            resolve_requested_locale(None, None, "es"),
-            "es"
-        );
+        assert_eq!(resolve_requested_locale(None, Some("en"), "es"), "en");
+        assert_eq!(resolve_requested_locale(None, None, "es"), "es");
 
         let valid_uuid = "a1a2a3a4-b1b2-c1c2-d1d2-d3d4d5d6d7d8";
         let parsed = parse_cart_id(Some(valid_uuid.into())).unwrap();

@@ -61,10 +61,7 @@ pub struct PermissionAvailability {
 }
 
 impl PermissionAvailability {
-    pub fn new(
-        ownership: BTreeMap<String, String>,
-        enabled_modules: BTreeSet<String>,
-    ) -> Self {
+    pub fn new(ownership: BTreeMap<String, String>, enabled_modules: BTreeSet<String>) -> Self {
         Self {
             ownership,
             enabled_modules,
@@ -90,10 +87,7 @@ impl PermissionAvailability {
     }
 
     /// Split grants into (active, dormant) preserving input order.
-    pub fn partition_active(
-        &self,
-        grants: &[Permission],
-    ) -> (Vec<Permission>, Vec<Permission>) {
+    pub fn partition_active(&self, grants: &[Permission]) -> (Vec<Permission>, Vec<Permission>) {
         let mut active = Vec::new();
         let mut dormant = Vec::new();
         for grant in grants {
@@ -135,7 +129,10 @@ mod tests {
     #[test]
     fn unknown_permissions_are_core_and_active() {
         let snapshot = availability();
-        assert_eq!(snapshot.status("users:manage"), ModulePermissionStatus::Core);
+        assert_eq!(
+            snapshot.status("users:manage"),
+            ModulePermissionStatus::Core
+        );
         assert!(snapshot.is_active(&Permission::USERS_MANAGE));
     }
 

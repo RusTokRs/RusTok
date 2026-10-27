@@ -176,7 +176,11 @@ mod tests {
         );
         let cancel_cmd = prepare_cancel_group_membership_application(valid_uuid).unwrap();
         assert_eq!(cancel_cmd.application_id, valid_uuid);
-        assert!(cancel_cmd.idempotency_key.starts_with("groups-storefront-cancel-application-"));
+        assert!(
+            cancel_cmd
+                .idempotency_key
+                .starts_with("groups-storefront-cancel-application-")
+        );
     }
 
     #[test]
@@ -288,20 +292,29 @@ mod tests {
         let mut acknowledged = BTreeSet::new();
         acknowledged.insert("unknown_rule".to_string());
         assert_eq!(
-            prepare_submit_group_membership_application(&base_policy, answers.clone(), acknowledged),
+            prepare_submit_group_membership_application(
+                &base_policy,
+                answers.clone(),
+                acknowledged
+            ),
             Err(GroupsStorefrontApplicationInputError::UnknownRule)
         );
 
         // Missing required rule
         assert_eq!(
-            prepare_submit_group_membership_application(&base_policy, answers.clone(), BTreeSet::new()),
+            prepare_submit_group_membership_application(
+                &base_policy,
+                answers.clone(),
+                BTreeSet::new()
+            ),
             Err(GroupsStorefrontApplicationInputError::MissingRequiredRule)
         );
 
         // Valid submission
         let mut acknowledged = BTreeSet::new();
         acknowledged.insert("rule_respect".to_string());
-        let cmd = prepare_submit_group_membership_application(&base_policy, answers, acknowledged).unwrap();
+        let cmd = prepare_submit_group_membership_application(&base_policy, answers, acknowledged)
+            .unwrap();
         assert_eq!(cmd.group_id, valid_group);
         assert_eq!(cmd.expected_policy.policy_id, valid_policy);
         assert_eq!(cmd.expected_policy.revision, 1);

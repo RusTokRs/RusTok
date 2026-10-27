@@ -30,7 +30,12 @@ pub(crate) fn forum_error_to_content_error(
     }
 }
 
-#[cfg(all(test, feature = "mod-content", feature = "mod-blog", feature = "mod-forum"))]
+#[cfg(all(
+    test,
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum"
+))]
 mod tests {
     use super::*;
 
@@ -38,28 +43,41 @@ mod tests {
     fn test_blog_error_to_content_error() {
         let err = rustok_blog::BlogError::Forbidden("access denied".to_string());
         let converted = blog_error_to_content_error(err);
-        assert!(matches!(converted, rustok_content::ContentError::Forbidden(_)));
+        assert!(matches!(
+            converted,
+            rustok_content::ContentError::Forbidden(_)
+        ));
 
         let err = rustok_blog::BlogError::DuplicateSlug {
             slug: "test-slug".to_string(),
         };
         let converted = blog_error_to_content_error(err);
-        assert!(matches!(converted, rustok_content::ContentError::DuplicateSlug { .. }));
+        assert!(matches!(
+            converted,
+            rustok_content::ContentError::DuplicateSlug { .. }
+        ));
 
         let err = rustok_blog::BlogError::Validation("invalid input".to_string());
         let converted = blog_error_to_content_error(err);
-        assert!(matches!(converted, rustok_content::ContentError::Validation(_)));
+        assert!(matches!(
+            converted,
+            rustok_content::ContentError::Validation(_)
+        ));
     }
 
     #[test]
     fn test_forum_error_to_content_error() {
         let err = rustok_forum::ForumError::Validation("invalid input".to_string());
         let converted = forum_error_to_content_error(err);
-        assert!(matches!(converted, rustok_content::ContentError::Validation(_)));
+        assert!(matches!(
+            converted,
+            rustok_content::ContentError::Validation(_)
+        ));
 
-        let err = rustok_forum::ForumError::Internal(rustok_core::Error::NotFound("not found".to_string()));
+        let err = rustok_forum::ForumError::Internal(rustok_core::Error::NotFound(
+            "not found".to_string(),
+        ));
         let converted = forum_error_to_content_error(err);
         assert!(matches!(converted, rustok_content::ContentError::Core(_)));
     }
 }
-

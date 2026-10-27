@@ -24,7 +24,9 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::dto::{PageBodyRevisionInput, PublishPageInput, PublishPageResult};
-use crate::entities::{page, page_builder_scenario_baseline, page_publish_operation, page_template};
+use crate::entities::{
+    page, page_builder_scenario_baseline, page_publish_operation, page_template,
+};
 use crate::error::{PagesError, PagesResult};
 use crate::services::page_builder_artifact::CompiledLandingArtifact;
 use crate::services::rbac::enforce_owned_scope;
@@ -128,23 +130,22 @@ impl PageService {
         // each body's embedded working copy, and every instance expands into its
         // definition before sanitization so re-publishing re-issues occurrences.
         let site_symbols = super::symbols::load_site_symbols_by_locale(&txn, tenant_id).await?;
-        let template_records = if existing_page.template.is_empty()
-            || existing_page.template == "default"
-        {
-            HashMap::new()
-        } else {
-            let rows = page_template::Entity::find()
-                .filter(page_template::Column::TenantId.eq(tenant_id))
-                .filter(page_template::Column::TemplateKey.eq(&existing_page.template))
-                .all(&txn)
-                .await?;
-            let mut by_locale = HashMap::new();
-            for row in rows {
-                let record = PageTemplateRecord::try_from(row)?;
-                by_locale.insert(record.locale.clone(), record);
-            }
-            by_locale
-        };
+        let template_records =
+            if existing_page.template.is_empty() || existing_page.template == "default" {
+                HashMap::new()
+            } else {
+                let rows = page_template::Entity::find()
+                    .filter(page_template::Column::TenantId.eq(tenant_id))
+                    .filter(page_template::Column::TemplateKey.eq(&existing_page.template))
+                    .all(&txn)
+                    .await?;
+                let mut by_locale = HashMap::new();
+                for row in rows {
+                    let record = PageTemplateRecord::try_from(row)?;
+                    by_locale.insert(record.locale.clone(), record);
+                }
+                by_locale
+            };
         let mut builder_sources = builder_sources;
         for (locale, content) in builder_sources.iter_mut() {
             let symbols = site_symbols.get(locale).cloned().unwrap_or_default();

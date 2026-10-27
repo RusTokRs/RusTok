@@ -66,7 +66,6 @@ pub use module::ProductBundlesModule;
 #[cfg(test)]
 mod contract_tests;
 
-
 #[cfg(test)]
 mod tests {
     use super::scoped_caller_idempotency_key;

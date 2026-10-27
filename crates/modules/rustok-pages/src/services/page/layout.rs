@@ -114,9 +114,8 @@ pub(crate) fn strip_layout_nodes(content: &str) -> PagesResult<String> {
             .and_then(ComponentObject::children_mut)
         {
             children.retain(|node| {
-                node.as_object().is_none_or(|obj| {
-                    !obj.attributes.contains_key("data-fly-layout-slot")
-                })
+                node.as_object()
+                    .is_none_or(|obj| !obj.attributes.contains_key("data-fly-layout-slot"))
             });
         }
     }

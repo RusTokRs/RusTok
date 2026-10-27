@@ -32,7 +32,10 @@ pub async fn resolve_optional(
 ) -> Response {
     let (mut parts, body) = req.into_parts();
     let request_path = parts.uri.path().to_string();
-    tracing::debug!(path = request_path.as_str(), "auth_context::resolve_optional entry");
+    tracing::debug!(
+        path = request_path.as_str(),
+        "auth_context::resolve_optional entry"
+    );
     let pages_inline_authoring_surface = is_pages_inline_authoring_surface(request_path.as_str());
     let pages_inline_authoring = pages_inline_authoring_surface
         || is_pages_inline_authoring_server_fn(request_path.as_str());

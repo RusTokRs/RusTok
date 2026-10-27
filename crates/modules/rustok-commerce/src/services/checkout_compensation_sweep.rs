@@ -136,8 +136,7 @@ impl CheckoutCompensationSweepService {
                 // an expired lease is covered by the same decision.
                 let reason = format!(
                     "checkout compensation sweep worker `{}` found attempt_count {} at or above the cap",
-                    worker_id,
-                    operation.attempt_count
+                    worker_id, operation.attempt_count
                 );
                 match self
                     .journal
@@ -162,11 +161,7 @@ impl CheckoutCompensationSweepService {
                 }
                 continue;
             }
-            let lease_owner = format!(
-                "checkout-compensation:{}:{}",
-                worker_id,
-                operation.id
-            );
+            let lease_owner = format!("checkout-compensation:{}:{}", worker_id, operation.id);
             match self
                 .compensation
                 .compensate(tenant_id, actor_id, operation.id, lease_owner)
@@ -277,4 +272,3 @@ mod tests {
         );
     }
 }
-

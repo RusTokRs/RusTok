@@ -282,7 +282,11 @@ mod tests {
             name: "Admin".to_string(),
             password: "password123".to_string(),
         };
-        assert!(AuthUserBootstrapDbWriter::ensure_user_on(&db, req_nil_tenant).await.is_err());
+        assert!(
+            AuthUserBootstrapDbWriter::ensure_user_on(&db, req_nil_tenant)
+                .await
+                .is_err()
+        );
 
         let req_empty_email = AuthUserBootstrapRequest {
             tenant_id: Uuid::new_v4(),
@@ -290,7 +294,11 @@ mod tests {
             name: "Admin".to_string(),
             password: "password123".to_string(),
         };
-        assert!(AuthUserBootstrapDbWriter::ensure_user_on(&db, req_empty_email).await.is_err());
+        assert!(
+            AuthUserBootstrapDbWriter::ensure_user_on(&db, req_empty_email)
+                .await
+                .is_err()
+        );
 
         let req_empty_password = AuthUserBootstrapRequest {
             tenant_id: Uuid::new_v4(),
@@ -298,7 +306,11 @@ mod tests {
             name: "Admin".to_string(),
             password: "".to_string(),
         };
-        assert!(AuthUserBootstrapDbWriter::ensure_user_on(&db, req_empty_password).await.is_err());
+        assert!(
+            AuthUserBootstrapDbWriter::ensure_user_on(&db, req_empty_password)
+                .await
+                .is_err()
+        );
 
         let req_empty_name = AuthUserBootstrapRequest {
             tenant_id: Uuid::new_v4(),
@@ -306,15 +318,23 @@ mod tests {
             name: "   ".to_string(),
             password: "password123".to_string(),
         };
-        assert!(AuthUserBootstrapDbWriter::ensure_user_on(&db, req_empty_name).await.is_err());
+        assert!(
+            AuthUserBootstrapDbWriter::ensure_user_on(&db, req_empty_name)
+                .await
+                .is_err()
+        );
 
         // find_user_on with nil tenant or empty email returns Ok(None)
         assert_eq!(
-            AuthUserBootstrapDbWriter::find_user_on(&db, Uuid::nil(), "admin@example.com").await.unwrap(),
+            AuthUserBootstrapDbWriter::find_user_on(&db, Uuid::nil(), "admin@example.com")
+                .await
+                .unwrap(),
             None
         );
         assert_eq!(
-            AuthUserBootstrapDbWriter::find_user_on(&db, Uuid::new_v4(), "   ").await.unwrap(),
+            AuthUserBootstrapDbWriter::find_user_on(&db, Uuid::new_v4(), "   ")
+                .await
+                .unwrap(),
             None
         );
     }

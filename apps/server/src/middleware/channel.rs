@@ -508,10 +508,7 @@ fn channel_slug_from_header(headers: &axum::http::HeaderMap) -> Option<String> {
             return None;
         }
     }
-    first
-        .to_str()
-        .ok()
-        .and_then(bounded_channel_selector)
+    first.to_str().ok().and_then(bounded_channel_selector)
 }
 
 fn channel_slug_from_query(query: Option<&str>) -> Option<String> {

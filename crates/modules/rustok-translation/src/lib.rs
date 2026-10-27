@@ -7,7 +7,6 @@
 
 #![doc = include_str!("../CRATE_API.md")]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
-mod idempotency;
 mod collaboration;
 pub mod entities;
 mod error;
@@ -17,6 +16,7 @@ mod glossary;
 pub mod graphql;
 #[cfg(feature = "graphql")]
 pub mod graphql_runtime;
+mod idempotency;
 mod interchange;
 mod inventory;
 mod machine;
@@ -31,7 +31,6 @@ mod qa;
 #[cfg(feature = "runtime")]
 mod scheduler;
 mod workflow;
-
 
 pub use collaboration::{
     CreateWorkflowNoteInput, ListWorkflowNotesInput, MAX_WORKFLOW_NOTE_BODY_CHARACTERS,
@@ -116,4 +115,3 @@ pub use module::TranslationModule;
 
 #[cfg(test)]
 mod contract_tests;
-

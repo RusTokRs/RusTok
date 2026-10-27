@@ -720,4 +720,3 @@ async fn tenant_service_input_trimming_and_validation() {
     assert_eq!(total, 1);
     assert_eq!(items.len(), 1);
 }
-

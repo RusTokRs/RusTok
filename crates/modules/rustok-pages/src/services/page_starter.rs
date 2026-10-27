@@ -72,8 +72,8 @@ impl PageStarterService {
         category: Option<&str>,
     ) -> PagesResult<Vec<PageStarterRecord>> {
         require_scope(security, Action::Read)?;
-        let mut query = page_starter::Entity::find()
-            .filter(page_starter::Column::TenantId.eq(tenant_id));
+        let mut query =
+            page_starter::Entity::find().filter(page_starter::Column::TenantId.eq(tenant_id));
 
         if let Some(cat) = category {
             let cat = cat.trim();
@@ -146,12 +146,16 @@ impl PageStarterService {
 
         let category = input.category.trim();
         if category.is_empty() || category.len() > 64 {
-            return Err(PagesError::validation("Category must be between 1 and 64 characters"));
+            return Err(PagesError::validation(
+                "Category must be between 1 and 64 characters",
+            ));
         }
 
         let name = input.name.trim();
         if name.is_empty() || name.len() > 255 {
-            return Err(PagesError::validation("Name must be between 1 and 255 characters"));
+            return Err(PagesError::validation(
+                "Name must be between 1 and 255 characters",
+            ));
         }
 
         let default_template_key = input
@@ -161,9 +165,10 @@ impl PageStarterService {
             .trim();
 
         // Validate that content is a decodable ProjectDocument
-        let _decoded = fly::GrapesJsCodec::decode_value(input.content.clone()).map_err(|error| {
-            PagesError::validation(format!("Invalid starter content document: {error}"))
-        })?;
+        let _decoded =
+            fly::GrapesJsCodec::decode_value(input.content.clone()).map_err(|error| {
+                PagesError::validation(format!("Invalid starter content document: {error}"))
+            })?;
 
         let now = Utc::now();
         let existing = page_starter::Entity::find()
@@ -221,16 +226,18 @@ impl PageStarterService {
 
     /// Instantiates a starter into an independent, remapped page document string.
     pub fn instantiate_starter(starter: &PageStarterRecord) -> PagesResult<String> {
-        let document = fly::GrapesJsCodec::decode_value(starter.content.clone()).map_err(|error| {
-            PagesError::validation(format!("Invalid starter document: {error}"))
-        })?;
+        let document =
+            fly::GrapesJsCodec::decode_value(starter.content.clone()).map_err(|error| {
+                PagesError::validation(format!("Invalid starter document: {error}"))
+            })?;
         let mut generator = fly::SequentialIdGenerator::default();
         let page_doc = document.clone_as_page(&mut generator);
         let value = fly::GrapesJsCodec::encode_value(&page_doc).map_err(|error| {
             PagesError::validation(format!("Cannot encode instantiated page: {error}"))
         })?;
-        serde_json::to_string(&value)
-            .map_err(|error| PagesError::validation(format!("Cannot serialize instantiated page: {error}")))
+        serde_json::to_string(&value).map_err(|error| {
+            PagesError::validation(format!("Cannot serialize instantiated page: {error}"))
+        })
     }
 }
 
@@ -250,7 +257,10 @@ fn builtin_starters() -> Vec<PageStarterRecord> {
             key: "landing-product".to_string(),
             category: "landing".to_string(),
             name: "SaaS & Product Launch".to_string(),
-            description: Some("High-converting landing page with Hero, Feature Grid, Testimonials and CTA.".to_string()),
+            description: Some(
+                "High-converting landing page with Hero, Feature Grid, Testimonials and CTA."
+                    .to_string(),
+            ),
             thumbnail_url: Some("/static/presets/landing-product.svg".to_string()),
             default_template_key: "default".to_string(),
             content: serde_json::json!({
@@ -316,7 +326,10 @@ fn builtin_starters() -> Vec<PageStarterRecord> {
             key: "about-company".to_string(),
             category: "about".to_string(),
             name: "About Company & Team".to_string(),
-            description: Some("Tell your story, introduce your leadership team and share company values.".to_string()),
+            description: Some(
+                "Tell your story, introduce your leadership team and share company values."
+                    .to_string(),
+            ),
             thumbnail_url: Some("/static/presets/about-company.svg".to_string()),
             default_template_key: "default".to_string(),
             content: serde_json::json!({
@@ -351,7 +364,9 @@ fn builtin_starters() -> Vec<PageStarterRecord> {
             key: "contact-simple".to_string(),
             category: "contact".to_string(),
             name: "Contact & Support".to_string(),
-            description: Some("Clean contact form with embedded messaging and contact information.".to_string()),
+            description: Some(
+                "Clean contact form with embedded messaging and contact information.".to_string(),
+            ),
             thumbnail_url: Some("/static/presets/contact-simple.svg".to_string()),
             default_template_key: "default".to_string(),
             content: serde_json::json!({
@@ -399,7 +414,10 @@ mod tests {
             assert!(!starter.category.is_empty());
             let instantiated = PageStarterService::instantiate_starter(starter)
                 .expect("built-in starter must instantiate");
-            assert!(instantiated.contains("\"type\":\"page\"") || instantiated.contains("\"flyDocumentKind\":\"page\""));
+            assert!(
+                instantiated.contains("\"type\":\"page\"")
+                    || instantiated.contains("\"flyDocumentKind\":\"page\"")
+            );
         }
     }
 }

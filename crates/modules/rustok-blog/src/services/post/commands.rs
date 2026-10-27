@@ -293,8 +293,7 @@ impl PostService {
         // A slug that normalizes to the stored one is not a change: treating
         // it as one would turn a copy-only edit into a full reindex event and
         // a route claim for a route the post already owns.
-        let normalized_slug =
-            requested_slug.filter(|slug| !slug.is_empty() && slug != &post.slug);
+        let normalized_slug = requested_slug.filter(|slug| !slug.is_empty() && slug != &post.slug);
         if let Some(normalized_slug) = normalized_slug.as_deref()
             && normalized_slug.len() > MAX_POST_SLUG_BYTES
         {
@@ -870,7 +869,6 @@ pub(super) async fn apply_status_transition_in_tx(
             sea_orm::sea_query::Expr::value(Option::<chrono::DateTime<chrono::FixedOffset>>::None),
         );
     }
-
 
     let result = update
         .filter(blog_post::Column::Id.eq(post_id))

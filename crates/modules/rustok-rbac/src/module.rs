@@ -62,7 +62,9 @@ impl RusToKModule for RbacModule {
         &self,
         extensions: &mut ModuleRuntimeExtensions,
     ) -> rustok_core::Result<()> {
-        extensions.insert(SharedTenantRbacCatalog(Arc::new(crate::catalog::BuiltinTenantRbacCatalog)));
+        extensions.insert(SharedTenantRbacCatalog(Arc::new(
+            crate::catalog::BuiltinTenantRbacCatalog,
+        )));
         Ok(())
     }
 

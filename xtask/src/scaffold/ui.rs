@@ -3,11 +3,7 @@ use super::write_file_content;
 use anyhow::Result;
 use std::path::Path;
 
-pub(crate) fn generate_ui(
-    opts: &ScaffoldOptions,
-    module_dir: &Path,
-    pascal: &str,
-) -> Result<()> {
+pub(crate) fn generate_ui(opts: &ScaffoldOptions, module_dir: &Path, pascal: &str) -> Result<()> {
     if opts.ui.has_admin() {
         generate_admin_ui(opts, module_dir, pascal)?;
     }
@@ -17,11 +13,7 @@ pub(crate) fn generate_ui(
     Ok(())
 }
 
-fn generate_admin_ui(
-    opts: &ScaffoldOptions,
-    module_dir: &Path,
-    pascal: &str,
-) -> Result<()> {
+fn generate_admin_ui(opts: &ScaffoldOptions, module_dir: &Path, pascal: &str) -> Result<()> {
     let slug = &opts.slug;
     let title = &opts.title;
     let desc = &opts.description;
@@ -467,20 +459,12 @@ pub use transport::*;
 pub use ui::{pascal}AdminPage;
 "#
     );
-    write_file_content(
-        &admin_dir.join("src").join("lib.rs"),
-        &lib_rs,
-        opts.dry_run,
-    )?;
+    write_file_content(&admin_dir.join("src").join("lib.rs"), &lib_rs, opts.dry_run)?;
 
     Ok(())
 }
 
-fn generate_storefront_ui(
-    opts: &ScaffoldOptions,
-    module_dir: &Path,
-    pascal: &str,
-) -> Result<()> {
+fn generate_storefront_ui(opts: &ScaffoldOptions, module_dir: &Path, pascal: &str) -> Result<()> {
     let slug = &opts.slug;
     let title = &opts.title;
     let desc = &opts.description;

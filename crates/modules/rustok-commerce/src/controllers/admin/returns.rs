@@ -487,10 +487,16 @@ pub async fn create_order_return_decision(
         )?;
     }
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Order ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Order ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_ORDER_RETURN_BOUNDARY,
@@ -582,10 +588,16 @@ pub async fn complete_order_return(
         )?;
     }
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Return ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Return ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_ORDER_RETURN_BOUNDARY,

@@ -27,13 +27,19 @@ pub(crate) async fn list_public_comments_for_target(
     fallback_locale: Option<&str>,
 ) -> CommentsResult<(Vec<CommentListItem>, u64)> {
     if tenant_id.is_nil() {
-        return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+        return Err(CommentsError::Validation(
+            "tenant_id cannot be nil".to_string(),
+        ));
     }
     if target_type.trim().is_empty() {
-        return Err(CommentsError::Validation("target_type cannot be empty".to_string()));
+        return Err(CommentsError::Validation(
+            "target_type cannot be empty".to_string(),
+        ));
     }
     if target_id.is_nil() {
-        return Err(CommentsError::Validation("target_id cannot be nil".to_string()));
+        return Err(CommentsError::Validation(
+            "target_id cannot be nil".to_string(),
+        ));
     }
     let requested_locale = normalize_locale(&filter.locale)?;
     let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;

@@ -248,6 +248,7 @@ async fn insert_memory_entry(
         owner_lifecycle_revision: Set(None),
         owner_deleted_at: Set(None),
         tombstoned_at: Set(None),
+        data_classification: Set("public".to_string()),
         revision: Set(1),
         created_at: Set(now),
         updated_at: Set(now),

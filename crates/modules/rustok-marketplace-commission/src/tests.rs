@@ -415,7 +415,13 @@ async fn nil_uuid_inputs_are_rejected() {
     };
     assert!(
         service
-            .assess_order_with_receipt(ctx.clone(), Uuid::nil(), actor_id, "k4", assess_input.clone())
+            .assess_order_with_receipt(
+                ctx.clone(),
+                Uuid::nil(),
+                actor_id,
+                "k4",
+                assess_input.clone()
+            )
             .await
             .is_err()
     );
@@ -429,29 +435,72 @@ async fn nil_uuid_inputs_are_rejected() {
     );
 
     // Read methods reject nil UUIDs
-    assert!(service.get_assessment_by_allocation(Uuid::nil(), Uuid::new_v4()).await.is_err());
-    assert!(service.get_assessment_by_allocation(tenant_id, Uuid::nil()).await.is_err());
-    assert!(service.list_assessments_by_order(Uuid::nil(), Uuid::new_v4()).await.is_err());
-    assert!(service.list_assessments_by_order(tenant_id, Uuid::nil()).await.is_err());
-    assert!(service.list_assessments_by_seller(Uuid::nil(), crate::dto::ListMarketplaceCommissionAssessmentsBySellerRequest {
-        seller_id: Uuid::new_v4(),
-        page: 1,
-        per_page: 10,
-        status: None,
-    }).await.is_err());
-    assert!(service.list_assessments_by_seller(tenant_id, crate::dto::ListMarketplaceCommissionAssessmentsBySellerRequest {
-        seller_id: Uuid::nil(),
-        page: 1,
-        per_page: 10,
-        status: None,
-    }).await.is_err());
-    assert!(service.list_rules(Uuid::nil(), crate::dto::ListMarketplaceCommissionRulesRequest {
-        rule_key: None,
-        seller_id: None,
-        listing_id: None,
-        status: None,
-        page: 1,
-        per_page: 10,
-    }).await.is_err());
+    assert!(
+        service
+            .get_assessment_by_allocation(Uuid::nil(), Uuid::new_v4())
+            .await
+            .is_err()
+    );
+    assert!(
+        service
+            .get_assessment_by_allocation(tenant_id, Uuid::nil())
+            .await
+            .is_err()
+    );
+    assert!(
+        service
+            .list_assessments_by_order(Uuid::nil(), Uuid::new_v4())
+            .await
+            .is_err()
+    );
+    assert!(
+        service
+            .list_assessments_by_order(tenant_id, Uuid::nil())
+            .await
+            .is_err()
+    );
+    assert!(
+        service
+            .list_assessments_by_seller(
+                Uuid::nil(),
+                crate::dto::ListMarketplaceCommissionAssessmentsBySellerRequest {
+                    seller_id: Uuid::new_v4(),
+                    page: 1,
+                    per_page: 10,
+                    status: None,
+                }
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        service
+            .list_assessments_by_seller(
+                tenant_id,
+                crate::dto::ListMarketplaceCommissionAssessmentsBySellerRequest {
+                    seller_id: Uuid::nil(),
+                    page: 1,
+                    per_page: 10,
+                    status: None,
+                }
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        service
+            .list_rules(
+                Uuid::nil(),
+                crate::dto::ListMarketplaceCommissionRulesRequest {
+                    rule_key: None,
+                    seller_id: None,
+                    listing_id: None,
+                    status: None,
+                    page: 1,
+                    per_page: 10,
+                }
+            )
+            .await
+            .is_err()
+    );
 }
-

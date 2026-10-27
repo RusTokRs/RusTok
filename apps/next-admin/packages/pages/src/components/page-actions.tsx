@@ -19,7 +19,12 @@ interface PageActionsProps {
  * intentionally live in the Rust FFA builder; here we only create drafts and
  * reverse publication through the same GraphQL both admins consume.
  */
-export function PageActions({ opts, pageId, status, locale = 'en' }: PageActionsProps) {
+export function PageActions({
+  opts,
+  pageId,
+  status,
+  locale = 'en'
+}: PageActionsProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -55,13 +60,13 @@ export function PageActions({ opts, pageId, status, locale = 'en' }: PageActions
           <input
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder="Landing page"
+            placeholder='Landing page'
           />
         </label>{' '}
-        <button type="submit" disabled={pending || !title.trim()}>
+        <button type='submit' disabled={pending || !title.trim()}>
           Create draft
         </button>
-        {error ? <p role="alert">{error}</p> : null}
+        {error ? <p role='alert'>{error}</p> : null}
       </form>
     );
   }
@@ -70,7 +75,7 @@ export function PageActions({ opts, pageId, status, locale = 'en' }: PageActions
     <span>
       {status === 'published' ? (
         <button
-          type="button"
+          type='button'
           disabled={pending}
           onClick={() => run(() => unpublishPage(pageId, undefined, opts))}
         >
@@ -78,7 +83,7 @@ export function PageActions({ opts, pageId, status, locale = 'en' }: PageActions
         </button>
       ) : null}{' '}
       <button
-        type="button"
+        type='button'
         disabled={pending}
         onClick={() => {
           if (window.confirm('Delete this page permanently?')) {
@@ -88,9 +93,7 @@ export function PageActions({ opts, pageId, status, locale = 'en' }: PageActions
       >
         Delete
       </button>
-      {error ? (
-        <span role="alert"> {error}</span>
-      ) : null}
+      {error ? <span role='alert'> {error}</span> : null}
     </span>
   );
 }

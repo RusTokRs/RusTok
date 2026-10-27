@@ -304,11 +304,7 @@ Deliberate public modules and exports:
 - Strongly-typed `{pascal}Error` with structured failure categories.
 "#
     );
-    write_file_content(
-        &module_dir.join("CRATE_API.md"),
-        &crate_api,
-        opts.dry_run,
-    )?;
+    write_file_content(&module_dir.join("CRATE_API.md"), &crate_api, opts.dry_run)?;
 
     // src/contract_tests.rs
     let contract_tests = r####"#[test]

@@ -740,8 +740,7 @@ mod tests {
             version: 1,
             scheduled_at: MaybeUndefined::Undefined,
         };
-        let domain: DomainUpdatePostInput =
-            input.try_into().expect("valid update input converts");
+        let domain: DomainUpdatePostInput = input.try_into().expect("valid update input converts");
         assert_eq!(domain.content, Some(canonical));
     }
 
@@ -763,8 +762,7 @@ mod tests {
             version: 7,
             scheduled_at: MaybeUndefined::Undefined,
         };
-        let domain: DomainUpdatePostInput =
-            input.try_into().expect("valid update input converts");
+        let domain: DomainUpdatePostInput = input.try_into().expect("valid update input converts");
         assert_eq!(domain.content, Some(canonical));
         assert_eq!(domain.excerpt, Patch::Clear);
         assert_eq!(domain.category_id, Patch::Set(Uuid::nil()));
@@ -777,13 +775,18 @@ mod tests {
     #[test]
     fn update_post_input_conversion_rejects_invalid_scheduled_at() {
         let input = UpdatePostInput {
-            locale: None, title: None, content: None,
-            excerpt: MaybeUndefined::Undefined, slug: None, tags: None,
+            locale: None,
+            title: None,
+            content: None,
+            excerpt: MaybeUndefined::Undefined,
+            slug: None,
+            tags: None,
             category_id: MaybeUndefined::Undefined,
             featured_image_url: MaybeUndefined::Undefined,
             seo_title: MaybeUndefined::Undefined,
             seo_description: MaybeUndefined::Undefined,
-            channel_slugs: None, version: 1,
+            channel_slugs: None,
+            version: 1,
             scheduled_at: MaybeUndefined::Value("next friday".to_string()),
         };
         assert!(matches!(

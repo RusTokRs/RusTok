@@ -33,7 +33,6 @@ impl ReactionsModule {
     }
 }
 
-
 #[async_trait]
 impl RusToKModule for ReactionsModule {
     fn slug(&self) -> &'static str {

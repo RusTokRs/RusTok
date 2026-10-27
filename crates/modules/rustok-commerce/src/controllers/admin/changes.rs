@@ -482,10 +482,16 @@ pub async fn apply_order_change(
         "Permission denied: orders:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Order change ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Order change ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_ORDER_CHANGE_BOUNDARY,

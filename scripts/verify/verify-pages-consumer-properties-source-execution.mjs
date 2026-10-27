@@ -292,7 +292,7 @@ for (const marker of [
   "cargo check --locked -p rustok-pages-admin --all-targets",
   "node scripts/evidence/record-pages-consumer-properties-source-execution.mjs",
   "if: github.event_name != 'pull_request'",
-  "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+  "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
   "retention-days: 90",
   "name: Consumer Properties Source Evidence Gate",
   "Publish exact-main evidence run index",

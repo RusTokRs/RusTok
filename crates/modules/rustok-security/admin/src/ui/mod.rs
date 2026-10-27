@@ -16,7 +16,7 @@ use rustok_grid::filter::GridFilterType;
 use rustok_grid::pagination::GridPagination;
 use rustok_grid_leptos::prelude::*;
 
-use crate::core::{filter_rows, SecurityAdminTableRow};
+use crate::core::{SecurityAdminTableRow, filter_rows};
 use crate::i18n::t;
 
 #[component]
@@ -26,7 +26,12 @@ pub fn SecurityAdminPage() -> impl IntoView {
 
     // Sample/initial data rows — in production, loaded via transport facade
     let sample_rows = vec![
-        SecurityAdminTableRow::new("rec-1", "Default Security Workspace", "active", "2026-01-01"),
+        SecurityAdminTableRow::new(
+            "rec-1",
+            "Default Security Workspace",
+            "active",
+            "2026-01-01",
+        ),
         SecurityAdminTableRow::new("rec-2", "Secondary Security Profile", "draft", "2026-01-02"),
     ];
     let rows_store = StoredValue::new(sample_rows);
@@ -34,13 +39,21 @@ pub fn SecurityAdminPage() -> impl IntoView {
     let filtered_rows = Memo::new(move |_| {
         let query = search_query.get();
         let rows = rows_store.get_value();
-        filter_rows(&rows, if query.trim().is_empty() { None } else { Some(&query) })
+        filter_rows(
+            &rows,
+            if query.trim().is_empty() {
+                None
+            } else {
+                Some(&query)
+            },
+        )
     });
 
     // Columns specification for shared DataGrid
     let columns = vec![
         GridColumnDef::checkbox(),
-        GridColumnDef::new("title", t(None, "security-col-title", "Title")).filter(GridFilterType::text()),
+        GridColumnDef::new("title", t(None, "security-col-title", "Title"))
+            .filter(GridFilterType::text()),
         GridColumnDef::new("status", t(None, "security-col-status", "Status")),
         GridColumnDef::new("created_at", t(None, "security-col-created", "Created At")),
         GridColumnDef::new("actions", t(None, "security-col-actions", "Actions")),

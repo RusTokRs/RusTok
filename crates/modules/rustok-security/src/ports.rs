@@ -10,11 +10,11 @@
 
 //! Service Provider Interface (SPI) ports for Security Suite capabilities.
 
+use crate::domain::{LockoutDecision, RateLimitDecision};
+use crate::error::SecurityResult;
 use async_trait::async_trait;
 use std::net::IpAddr;
 use uuid::Uuid;
-use crate::domain::{LockoutDecision, RateLimitDecision};
-use crate::error::SecurityResult;
 
 /// Port for rate limiting requests across IP, tenant, or route boundaries.
 #[async_trait]

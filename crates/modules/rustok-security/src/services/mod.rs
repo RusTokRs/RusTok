@@ -170,7 +170,11 @@ impl SecurityService {
                 .collect())
         } else {
             let store = self.in_memory_rules.read().await;
-            let rules = store.iter().filter(|r| r.tenant_id == tenant_id).cloned().collect();
+            let rules = store
+                .iter()
+                .filter(|r| r.tenant_id == tenant_id)
+                .cloned()
+                .collect();
             Ok(rules)
         }
     }
@@ -523,7 +527,9 @@ impl SecurityService {
         let limit = limit_override.unwrap_or(policy.rate_limit_per_minute);
         let scoped_key = format!("tenant:{}:{}", tenant_id, key);
 
-        self.rate_limiter.check_rate_limit(&scoped_key, limit, 60).await
+        self.rate_limiter
+            .check_rate_limit(&scoped_key, limit, 60)
+            .await
     }
 
     /// Verifies a captcha token against the configured provider.

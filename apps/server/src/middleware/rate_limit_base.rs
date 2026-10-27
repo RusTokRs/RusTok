@@ -12,10 +12,10 @@ use axum::{
 use moka::future::Cache;
 use once_cell::sync::Lazy;
 use redis::Script;
-use rustok_web::ErrorBody;
 use rustok_telemetry::metrics::{
     record_rate_limit_backend_unavailable, record_rate_limit_exceeded, update_rate_limit_runtime,
 };
+use rustok_web::ErrorBody;
 use sha2::{Digest, Sha256};
 use std::net::IpAddr;
 use std::str::FromStr;
@@ -665,11 +665,8 @@ fn apply_rate_limit_headers(headers: &mut axum::http::HeaderMap, info: &RateLimi
 }
 
 fn rate_limited_response(exceeded: &RateLimitExceeded) -> Response {
-    let mut response = Json(ErrorBody::new(
-        "rate_limit_exceeded",
-        "Rate limit exceeded",
-    ))
-    .into_response();
+    let mut response =
+        Json(ErrorBody::new("rate_limit_exceeded", "Rate limit exceeded")).into_response();
     *response.status_mut() = StatusCode::TOO_MANY_REQUESTS;
 
     let headers = response.headers_mut();

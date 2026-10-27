@@ -51,13 +51,11 @@ impl rustok_modules::ArtifactDeliveryTenantSource for ServerArtifactDeliveryTena
             if scanned >= total {
                 return Ok(tenant_ids);
             }
-            page = page
-                .checked_add(1)
-                .ok_or_else(|| {
-                    rustok_modules::ArtifactDeliveryTenantSourceError::Invariant(
-                        "artifact delivery tenant pagination overflowed".to_string(),
-                    )
-                })?;
+            page = page.checked_add(1).ok_or_else(|| {
+                rustok_modules::ArtifactDeliveryTenantSourceError::Invariant(
+                    "artifact delivery tenant pagination overflowed".to_string(),
+                )
+            })?;
         }
     }
 }

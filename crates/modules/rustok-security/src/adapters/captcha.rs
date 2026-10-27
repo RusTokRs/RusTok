@@ -8,10 +8,10 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-use async_trait::async_trait;
-use std::net::IpAddr;
 use crate::error::{SecurityError, SecurityResult};
 use crate::ports::CaptchaVerifierPort;
+use async_trait::async_trait;
+use std::net::IpAddr;
 
 /// Zero-dependency Honeypot verifier.
 /// Expects token in the format "timestamp_ms:honeypot_value".
@@ -34,7 +34,9 @@ impl CaptchaVerifierPort for HoneypotVerifier {
     async fn verify(&self, token: &str, _remote_ip: Option<&IpAddr>) -> SecurityResult<bool> {
         let trimmed = token.trim();
         if trimmed.is_empty() {
-            return Err(SecurityError::CaptchaFailed("Empty honeypot token".to_string()));
+            return Err(SecurityError::CaptchaFailed(
+                "Empty honeypot token".to_string(),
+            ));
         }
 
         // Expected format: "<rendered_timestamp_ms>:<honeypot_field_value>"
@@ -44,9 +46,9 @@ impl CaptchaVerifierPort for HoneypotVerifier {
                 return Ok(false);
             }
 
-            let rendered_ts: u64 = rendered_ts_str
-                .parse()
-                .map_err(|_| SecurityError::CaptchaFailed("Malformed timestamp in honeypot".to_string()))?;
+            let rendered_ts: u64 = rendered_ts_str.parse().map_err(|_| {
+                SecurityError::CaptchaFailed("Malformed timestamp in honeypot".to_string())
+            })?;
 
             let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
             let elapsed_ms = now_ms.saturating_sub(rendered_ts);
@@ -117,27 +119,26 @@ pub mod http_adapters {
     #[async_trait]
     impl CaptchaVerifierPort for TurnstileVerifier {
         async fn verify(&self, token: &str, remote_ip: Option<&IpAddr>) -> SecurityResult<bool> {
-            let mut params = vec![
-                ("secret", self.secret_key.as_str()),
-                ("response", token),
-            ];
+            let mut params = vec![("secret", self.secret_key.as_str()), ("response", token)];
             let ip_str;
             if let Some(ip) = remote_ip {
                 ip_str = ip.to_string();
                 params.push(("remoteip", &ip_str));
             }
 
-            let response = self.client
+            let response = self
+                .client
                 .post("https://challenges.cloudflare.com/turnstile/v0/siteverify")
                 .form(&params)
                 .send()
                 .await
-                .map_err(|e| SecurityError::Internal(format!("Turnstile HTTP request failed: {}", e)))?;
+                .map_err(|e| {
+                    SecurityError::Internal(format!("Turnstile HTTP request failed: {}", e))
+                })?;
 
-            let body: VerificationApiResponse = response
-                .json()
-                .await
-                .map_err(|e| SecurityError::Internal(format!("Failed to parse Turnstile response: {}", e)))?;
+            let body: VerificationApiResponse = response.json().await.map_err(|e| {
+                SecurityError::Internal(format!("Failed to parse Turnstile response: {}", e))
+            })?;
 
             if !body.success {
                 tracing::warn!(
@@ -176,27 +177,26 @@ pub mod http_adapters {
     #[async_trait]
     impl CaptchaVerifierPort for RecaptchaVerifier {
         async fn verify(&self, token: &str, remote_ip: Option<&IpAddr>) -> SecurityResult<bool> {
-            let mut params = vec![
-                ("secret", self.secret_key.as_str()),
-                ("response", token),
-            ];
+            let mut params = vec![("secret", self.secret_key.as_str()), ("response", token)];
             let ip_str;
             if let Some(ip) = remote_ip {
                 ip_str = ip.to_string();
                 params.push(("remoteip", &ip_str));
             }
 
-            let response = self.client
+            let response = self
+                .client
                 .post("https://www.google.com/recaptcha/api/siteverify")
                 .form(&params)
                 .send()
                 .await
-                .map_err(|e| SecurityError::Internal(format!("reCAPTCHA HTTP request failed: {}", e)))?;
+                .map_err(|e| {
+                    SecurityError::Internal(format!("reCAPTCHA HTTP request failed: {}", e))
+                })?;
 
-            let body: VerificationApiResponse = response
-                .json()
-                .await
-                .map_err(|e| SecurityError::Internal(format!("Failed to parse reCAPTCHA response: {}", e)))?;
+            let body: VerificationApiResponse = response.json().await.map_err(|e| {
+                SecurityError::Internal(format!("Failed to parse reCAPTCHA response: {}", e))
+            })?;
 
             Ok(body.success)
         }

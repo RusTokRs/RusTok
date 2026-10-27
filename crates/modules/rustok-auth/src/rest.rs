@@ -78,7 +78,10 @@ impl std::fmt::Debug for ResetRequestResponse {
         formatter
             .debug_struct("ResetRequestResponse")
             .field("status", &self.status)
-            .field("reset_token", &self.reset_token.as_ref().map(|_| "<redacted>"))
+            .field(
+                "reset_token",
+                &self.reset_token.as_ref().map(|_| "<redacted>"),
+            )
             .finish()
     }
 }
@@ -94,7 +97,10 @@ impl std::fmt::Debug for VerificationRequestResponse {
         formatter
             .debug_struct("VerificationRequestResponse")
             .field("status", &self.status)
-            .field("verification_token", &self.verification_token.as_ref().map(|_| "<redacted>"))
+            .field(
+                "verification_token",
+                &self.verification_token.as_ref().map(|_| "<redacted>"),
+            )
             .finish()
     }
 }
@@ -213,12 +219,21 @@ impl std::fmt::Debug for TokenRequest {
             .debug_struct("TokenRequest")
             .field("grant_type", &self.grant_type)
             .field("client_id", &self.client_id)
-            .field("client_secret", &self.client_secret.as_ref().map(|_| "<redacted>"))
+            .field(
+                "client_secret",
+                &self.client_secret.as_ref().map(|_| "<redacted>"),
+            )
             .field("scope", &self.scope)
             .field("code", &self.code.as_ref().map(|_| "<redacted>"))
             .field("redirect_uri", &self.redirect_uri)
-            .field("code_verifier", &self.code_verifier.as_ref().map(|_| "<redacted>"))
-            .field("refresh_token", &self.refresh_token.as_ref().map(|_| "<redacted>"))
+            .field(
+                "code_verifier",
+                &self.code_verifier.as_ref().map(|_| "<redacted>"),
+            )
+            .field(
+                "refresh_token",
+                &self.refresh_token.as_ref().map(|_| "<redacted>"),
+            )
             .finish()
     }
 }
@@ -282,7 +297,10 @@ impl std::fmt::Debug for TokenResponse {
             .field("access_token", &"<redacted>")
             .field("token_type", &self.token_type)
             .field("expires_in", &self.expires_in)
-            .field("refresh_token", &self.refresh_token.as_ref().map(|_| "<redacted>"))
+            .field(
+                "refresh_token",
+                &self.refresh_token.as_ref().map(|_| "<redacted>"),
+            )
             .field("scope", &self.scope)
             .finish()
     }
@@ -311,7 +329,10 @@ impl std::fmt::Debug for RevokeRequest {
             .field("token", &"<redacted>")
             .field("token_type_hint", &self.token_type_hint)
             .field("client_id", &self.client_id)
-            .field("client_secret", &self.client_secret.as_ref().map(|_| "<redacted>"))
+            .field(
+                "client_secret",
+                &self.client_secret.as_ref().map(|_| "<redacted>"),
+            )
             .finish()
     }
 }

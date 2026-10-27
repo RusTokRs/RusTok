@@ -46,7 +46,6 @@ mod contract_tests;
 pub use module::CacheModule;
 pub use settings::CacheSettings;
 
-
 pub use backend_generation::{
     CacheBackendGenerationError, CacheBackendGenerationSnapshot,
     DEFAULT_MAX_CACHE_BACKEND_GENERATIONS, MAX_CACHE_BACKEND_PREFIX_BYTES,
@@ -128,4 +127,3 @@ pub use tenant_generation_observability::{
     record_tenant_generation_listener_metrics,
 };
 pub use typed::{TypedCacheLoadOptions, TypedCacheLoadResult};
-

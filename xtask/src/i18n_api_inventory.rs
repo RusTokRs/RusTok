@@ -85,7 +85,9 @@ pub(crate) fn i18n_api_inventory(args: &[String]) -> Result<()> {
     if report.findings.is_empty() {
         println!();
         println!("No compatibility-only symbol candidates were found in consumer Rust sources.");
-        println!("This is repository evidence for review, not permission to remove exports automatically.");
+        println!(
+            "This is repository evidence for review, not permission to remove exports automatically."
+        );
         return Ok(());
     }
 
@@ -302,15 +304,21 @@ use rustok_ui_i18n::{
             &mut findings,
         );
 
-        assert!(findings
-            .iter()
-            .any(|finding| finding.symbol == "FluentValue"));
-        assert!(findings
-            .iter()
-            .any(|finding| finding.symbol == "module::bundle"));
-        assert!(findings
-            .iter()
-            .all(|finding| finding.evidence == "same-file-candidate"));
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.symbol == "FluentValue")
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.symbol == "module::bundle")
+        );
+        assert!(
+            findings
+                .iter()
+                .all(|finding| finding.evidence == "same-file-candidate")
+        );
     }
 
     #[test]

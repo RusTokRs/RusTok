@@ -146,8 +146,7 @@ pub struct ReactionWriteResultView {
 mod tests {
     use super::{
         ReactionAction, ReactionActorStateView, ReactionAggregateView, ReactionCatalogView,
-        ReactionSelectionMode, ReactionSnapshotView, ReactionSubjectUiRef,
-        ReactionWriteResultView,
+        ReactionSelectionMode, ReactionSnapshotView, ReactionSubjectUiRef, ReactionWriteResultView,
     };
     use uuid::Uuid;
 

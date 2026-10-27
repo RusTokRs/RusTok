@@ -69,7 +69,10 @@ export async function listMedia(
 
 export async function mediaUsage(opts: GqlOpts = {}): Promise<MediaUsage> {
   const tenantId = requireTenantId(opts);
-  const data = await graphqlRequest<{ tenantId: string }, { mediaUsage: MediaUsage }>(
+  const data = await graphqlRequest<
+    { tenantId: string },
+    { mediaUsage: MediaUsage }
+  >(
     `
       query MediaUsage($tenantId: UUID!) {
         mediaUsage(tenantId: $tenantId) { fileCount totalBytes }
@@ -82,9 +85,15 @@ export async function mediaUsage(opts: GqlOpts = {}): Promise<MediaUsage> {
   return data.mediaUsage;
 }
 
-export async function deleteMedia(id: string, opts: GqlOpts = {}): Promise<boolean> {
+export async function deleteMedia(
+  id: string,
+  opts: GqlOpts = {}
+): Promise<boolean> {
   const tenantId = requireTenantId(opts);
-  const data = await graphqlRequest<{ tenantId: string; id: string }, { deleteMedia: boolean }>(
+  const data = await graphqlRequest<
+    { tenantId: string; id: string },
+    { deleteMedia: boolean }
+  >(
     `
       mutation DeleteMedia($tenantId: UUID!, $id: UUID!) {
         deleteMedia(tenantId: $tenantId, id: $id)

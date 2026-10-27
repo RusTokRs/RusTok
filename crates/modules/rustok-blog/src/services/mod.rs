@@ -11,9 +11,9 @@ mod comment_projection;
 pub(crate) mod post;
 pub(crate) mod preview_token;
 mod rbac;
-pub mod search_projection;
 #[cfg(feature = "runtime")]
 pub(crate) mod scheduler;
+pub mod search_projection;
 pub(crate) mod tag;
 mod taxonomy_translation_owner;
 

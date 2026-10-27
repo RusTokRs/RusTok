@@ -46,7 +46,10 @@ mod tests {
 
         let vm_ru = page_builder_view_model(Some("ru"), None, false);
         assert_eq!(vm_ru.title, "Конструктор страниц");
-        assert_eq!(vm_ru.description, "Не удалось отобразить визуальную страницу");
+        assert_eq!(
+            vm_ru.description,
+            "Не удалось отобразить визуальную страницу"
+        );
         assert!(vm_ru.is_empty);
     }
 

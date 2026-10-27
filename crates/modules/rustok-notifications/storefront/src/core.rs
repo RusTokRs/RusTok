@@ -294,10 +294,7 @@ mod tests {
 
     #[test]
     fn priority_labels_match_canonical_names() {
-        assert_eq!(
-            NotificationStorefrontPriority::Low.label(),
-            "Low priority"
-        );
+        assert_eq!(NotificationStorefrontPriority::Low.label(), "Low priority");
         assert_eq!(
             NotificationStorefrontPriority::Normal.label(),
             "Normal priority"

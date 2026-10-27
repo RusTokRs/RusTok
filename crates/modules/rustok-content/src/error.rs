@@ -128,12 +128,9 @@ impl From<ContentError> for rustok_core::Error {
                     node_id, locale
                 ))
             }
-            ContentError::DuplicateSlug { slug, locale } => {
-                rustok_core::Error::Validation(format!(
-                    "Slug already exists: {} for locale {}",
-                    slug, locale
-                ))
-            }
+            ContentError::DuplicateSlug { slug, locale } => rustok_core::Error::Validation(
+                format!("Slug already exists: {} for locale {}", slug, locale),
+            ),
             ContentError::ConcurrentModification { expected, actual } => {
                 rustok_core::Error::Validation(format!(
                     "Concurrent modification: expected version {}, found {}",

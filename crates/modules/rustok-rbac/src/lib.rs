@@ -74,6 +74,7 @@ pub use role_mutation::{
     require_user_management,
 };
 pub use services::authz_mode::AuthzEngine;
+pub use services::module_availability::{ModulePermissionStatus, PermissionAvailability};
 pub use services::permission_authorizer::{
     AuthorizationDecision, authorize_all_permissions, authorize_any_permission,
     authorize_permission,
@@ -81,9 +82,6 @@ pub use services::permission_authorizer::{
 pub use services::permission_evaluator::{
     PermissionEvaluation, evaluate_all_permissions, evaluate_any_permission,
     evaluate_single_permission,
-};
-pub use services::module_availability::{
-    ModulePermissionStatus, PermissionAvailability,
 };
 
 pub use services::permission_policy::{
@@ -131,4 +129,3 @@ pub async fn apply_system_role_repair_in_transaction(
 
 #[cfg(test)]
 mod contract_tests;
-

@@ -206,6 +206,7 @@ async fn insert_memory_entry(
         owner_lifecycle_revision: Set(owner_deleted_at.map(|_| "deleted-7".to_string())),
         owner_deleted_at: Set(owner_deleted_at),
         tombstoned_at: Set(tombstoned_at),
+        data_classification: Set("public".to_string()),
         revision: Set(1),
         created_at: Set(now),
         updated_at: Set(now),

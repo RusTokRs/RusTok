@@ -42,13 +42,14 @@ pub use domain::{
     CaptchaProviderKind, IpNet, IpRule, IpRuleType, LockoutDecision, RateLimitDecision,
     SecurityAuditLog, SecurityEventType, SecurityPolicy, SecuritySeverity, SecurityStatus,
 };
-pub use dto::{CreateIpRuleInput, LogSecurityEventInput, SecuritySummary, UpdateSecurityPolicyInput};
+pub use dto::{
+    CreateIpRuleInput, LogSecurityEventInput, SecuritySummary, UpdateSecurityPolicyInput,
+};
 pub use error::{SecurityError, SecurityResult};
 pub use events::{
-    SecurityCreatedEvent, SecurityDeletedEvent, SecurityDomainEvent, SecurityUpdatedEvent,
-    SECURITY_EVENT_TOPIC,
+    SECURITY_EVENT_TOPIC, SecurityCreatedEvent, SecurityDeletedEvent, SecurityDomainEvent,
+    SecurityUpdatedEvent,
 };
 pub use module::SecurityModule;
 pub use ports::{BruteForceTrackerPort, CaptchaVerifierPort, IpFilterPort, RateLimiterPort};
 pub use services::SecurityService;
-

@@ -915,6 +915,7 @@ async fn initialize_persistence_fixture(
         owner_lifecycle_revision: Set(None),
         owner_deleted_at: Set(None),
         tombstoned_at: Set(tombstoned.then_some(now)),
+        data_classification: Set("public".to_string()),
         revision: Set(1),
         created_at: Set(now),
         updated_at: Set(now),

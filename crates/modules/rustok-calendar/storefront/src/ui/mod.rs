@@ -8,8 +8,8 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-use leptos::prelude::*;
 use crate::i18n::t;
+use leptos::prelude::*;
 
 #[component]
 pub fn CalendarStorefrontView() -> impl IntoView {

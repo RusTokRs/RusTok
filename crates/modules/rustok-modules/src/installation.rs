@@ -1417,7 +1417,9 @@ impl SeaOrmArtifactInstallationStore {
         let operation_id = self.infrastructure.new_id();
         let operation_placeholders = match backend {
             SupportedBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW()",
-            SupportedBackend::Sqlite => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')",
+            SupportedBackend::Sqlite => {
+                "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')"
+            }
         };
         let claimed = transaction
             .execute_raw(Statement::from_sql_and_values(
@@ -1985,7 +1987,9 @@ impl SeaOrmArtifactInstallationStore {
         let operation_id = self.infrastructure.new_id();
         let values = match backend {
             SupportedBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW()",
-            SupportedBackend::Sqlite => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')",
+            SupportedBackend::Sqlite => {
+                "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')"
+            }
         };
         transaction
             .execute_raw(Statement::from_sql_and_values(
@@ -2249,7 +2253,9 @@ impl SeaOrmArtifactInstallationStore {
         let operation_id = self.infrastructure.new_id();
         let placeholders = match backend {
             SupportedBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,NOW()",
-            SupportedBackend::Sqlite => "?1,?2,?3,?4,?5,?6,?7,?8,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')",
+            SupportedBackend::Sqlite => {
+                "?1,?2,?3,?4,?5,?6,?7,?8,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')"
+            }
         };
         transaction
             .execute_raw(Statement::from_sql_and_values(
@@ -4535,7 +4541,9 @@ async fn record_artifact_tenant_lifecycle_operation<C: ConnectionTrait>(
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     let values = match backend {
         SupportedBackend::Postgres => "$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW()",
-        SupportedBackend::Sqlite => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')",
+        SupportedBackend::Sqlite => {
+            "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')"
+        }
     };
     let recorded = connection
         .execute_raw(Statement::from_sql_and_values(

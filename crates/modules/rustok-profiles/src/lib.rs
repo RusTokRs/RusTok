@@ -7,11 +7,11 @@
 
 pub mod api;
 
+pub use api::ProfileSummary as PublicProfileSummary;
 pub use api::{
     GqlProfileSummary, GqlProfileVisibility, ProfileSummaryAudience, ProfileSummaryReadError,
     ProfileSummaryReadResult, ProfileSummaryReader, ProfileSummaryVisibility,
 };
-pub use api::ProfileSummary as PublicProfileSummary;
 
 #[cfg(feature = "server")]
 mod account_redaction;

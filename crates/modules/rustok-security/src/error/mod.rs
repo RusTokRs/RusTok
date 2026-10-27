@@ -51,4 +51,3 @@ pub enum SecurityError {
     #[error("Internal error: {0}")]
     Internal(String),
 }
-

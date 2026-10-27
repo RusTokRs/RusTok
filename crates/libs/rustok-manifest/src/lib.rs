@@ -54,7 +54,8 @@ pub fn load_modules_manifest(path: impl AsRef<Path>) -> Result<ModulesManifest> 
     let path_ref = path.as_ref();
     let content = std::fs::read_to_string(path_ref)
         .map_err(|e| ManifestError::Io(path_ref.display().to_string(), e))?;
-    toml::from_str(&content).map_err(|e| ManifestError::TomlParse(path_ref.display().to_string(), e))
+    toml::from_str(&content)
+        .map_err(|e| ManifestError::TomlParse(path_ref.display().to_string(), e))
 }
 
 /// Parse `rustok-module.toml` from a string slice without validation.
@@ -67,15 +68,17 @@ pub fn load_module_package_manifest(path: impl AsRef<Path>) -> Result<ModulePack
     let path_ref = path.as_ref();
     let content = std::fs::read_to_string(path_ref)
         .map_err(|e| ManifestError::Io(path_ref.display().to_string(), e))?;
-    toml::from_str(&content).map_err(|e| ManifestError::TomlParse(path_ref.display().to_string(), e))
+    toml::from_str(&content)
+        .map_err(|e| ManifestError::TomlParse(path_ref.display().to_string(), e))
 }
 
 /// Compute deterministic SHA-256 hash of a ModulesManifest.
 #[cfg(feature = "snapshot-hash")]
 pub fn compute_modules_manifest_hash(manifest: &ModulesManifest) -> Result<String> {
     use sha2::{Digest, Sha256};
-    let json = serde_json::to_vec(manifest)
-        .map_err(|e| ManifestError::Validation(format!("JSON serialization error for hash: {e}")))?;
+    let json = serde_json::to_vec(manifest).map_err(|e| {
+        ManifestError::Validation(format!("JSON serialization error for hash: {e}"))
+    })?;
     let mut hasher = Sha256::new();
     hasher.update(&json);
     Ok(hex::encode(hasher.finalize()))

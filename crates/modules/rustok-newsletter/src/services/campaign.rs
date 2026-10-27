@@ -1,5 +1,5 @@
-use chrono::Utc;
 use crate::model::{CampaignStatus, NewsletterApiError};
+use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait,
     QueryFilter, QueryOrder, QuerySelect,
@@ -37,11 +37,15 @@ impl CampaignService {
         }
         validate_campaign_input(&input.title, &input.subject)?;
         if input.content_sources.len() > 50 {
-            return Err(NewsletterError::validation("Cannot have more than 50 content sources"));
+            return Err(NewsletterError::validation(
+                "Cannot have more than 50 content sources",
+            ));
         }
         if let Some(ref p) = input.preheader {
             if p.len() > 512 {
-                return Err(NewsletterError::validation("Preheader exceeds 512 characters"));
+                return Err(NewsletterError::validation(
+                    "Preheader exceeds 512 characters",
+                ));
             }
         }
         if let Some(segment_id) = input.segment_id {
@@ -114,19 +118,25 @@ impl CampaignService {
                 return Err(NewsletterError::validation("Subject cannot be empty"));
             }
             if subject.len() > 512 {
-                return Err(NewsletterError::validation("Subject exceeds 512 characters"));
+                return Err(NewsletterError::validation(
+                    "Subject exceeds 512 characters",
+                ));
             }
             active_model.subject = Set(subject);
         }
         if let Some(preheader) = input.preheader {
             if preheader.len() > 512 {
-                return Err(NewsletterError::validation("Preheader exceeds 512 characters"));
+                return Err(NewsletterError::validation(
+                    "Preheader exceeds 512 characters",
+                ));
             }
             active_model.preheader = Set(Some(preheader));
         }
         if let Some(sources) = input.content_sources {
             if sources.len() > 50 {
-                return Err(NewsletterError::validation("Cannot have more than 50 content sources"));
+                return Err(NewsletterError::validation(
+                    "Cannot have more than 50 content sources",
+                ));
             }
             active_model.content_sources = Set(serde_json::to_value(&sources).unwrap_or_default());
         }
@@ -340,9 +350,7 @@ impl CampaignService {
 fn parse_status(value: &str) -> NewsletterResult<CampaignStatus> {
     value
         .parse()
-        .map_err(|e: NewsletterApiError| {
-            NewsletterError::validation(e.to_string())
-        })
+        .map_err(|e: NewsletterApiError| NewsletterError::validation(e.to_string()))
 }
 
 fn status_to_string(status: CampaignStatus) -> String {

@@ -32,7 +32,11 @@ export interface PageResponse {
   version: number;
   status: PageStatus;
   template: string;
-  translation: { locale: string; title: string | null; slug: string | null } | null;
+  translation: {
+    locale: string;
+    title: string | null;
+    slug: string | null;
+  } | null;
 }
 
 export interface CreatePageInput {
@@ -56,7 +60,12 @@ const PAGE_LIST_FIELDS = `
 `;
 
 export async function listPages(
-  filter: { locale?: string; template?: string; page?: number; perPage?: number } = {},
+  filter: {
+    locale?: string;
+    template?: string;
+    page?: number;
+    perPage?: number;
+  } = {},
   opts: GqlOpts = {}
 ): Promise<PageListResponse> {
   const data = await graphqlRequest<
@@ -143,14 +152,21 @@ export async function unpublishPage(
         }
       }
     `,
-    { id, expectedVersion: expectedVersion ?? null, tenantId: opts.tenantId ?? undefined },
+    {
+      id,
+      expectedVersion: expectedVersion ?? null,
+      tenantId: opts.tenantId ?? undefined
+    },
     opts.token,
     opts.tenantSlug
   );
   return data.unpublishPage;
 }
 
-export async function deletePage(id: string, opts: GqlOpts = {}): Promise<boolean> {
+export async function deletePage(
+  id: string,
+  opts: GqlOpts = {}
+): Promise<boolean> {
   const data = await graphqlRequest<
     { id: string; tenantId?: string },
     { deletePage: boolean }
@@ -170,5 +186,3 @@ export async function deletePage(id: string, opts: GqlOpts = {}): Promise<boolea
 // ---------- Builder & Storefront URLs ----------
 
 export { builderUrlForPage, storefrontUrlForPage } from './urls';
-
-

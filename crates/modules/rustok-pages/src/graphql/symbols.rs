@@ -45,9 +45,9 @@ fn scope(
     requested: Option<Uuid>,
     permission: Permission,
 ) -> Result<(Uuid, rustok_core::SecurityContext)> {
-    let auth = ctx.data::<AuthContext>().map_err(|_| {
-        async_graphql::Error::new("Pages symbol authoring requires authentication")
-    })?;
+    let auth = ctx
+        .data::<AuthContext>()
+        .map_err(|_| async_graphql::Error::new("Pages symbol authoring requires authentication"))?;
     let tenant = ctx.data::<TenantContext>()?;
     if auth.tenant_id != tenant.id || requested.is_some_and(|id| id != tenant.id) {
         return Err(async_graphql::Error::new(

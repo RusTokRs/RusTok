@@ -8,16 +8,12 @@ use rustok_core::{
 use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
 
-use crate::cache_invalidation::{
-    PageCacheInvalidationEventHandler, PagesCacheInvalidationRuntime,
-};
+use crate::cache_invalidation::{PageCacheInvalidationEventHandler, PagesCacheInvalidationRuntime};
 use crate::provider_health_binding::{
-    page_builder_provider_health_authority_from_environment,
     PAGES_PROVIDER_HEALTH_ACCEPTANCE_PATH_ENV,
+    page_builder_provider_health_authority_from_environment,
 };
-use crate::services::{
-    page_inline_edit_keyring_from_environment, PAGES_INLINE_EDIT_HMAC_KEY_ENV,
-};
+use crate::services::{PAGES_INLINE_EDIT_HMAC_KEY_ENV, page_inline_edit_keyring_from_environment};
 use crate::{migrations, search_projection, seo_targets};
 
 /// Pages module instance.

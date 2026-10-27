@@ -153,7 +153,13 @@ impl ForumTopicAudienceReadService {
 
         let topic = self
             .topic_service
-            .get_with_locale_fallback(tenant_id, security.clone(), topic_id, &locale, fallback_locale)
+            .get_with_locale_fallback(
+                tenant_id,
+                security.clone(),
+                topic_id,
+                &locale,
+                fallback_locale,
+            )
             .await?;
         if matches!(
             topic.status.as_str(),

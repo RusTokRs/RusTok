@@ -215,7 +215,9 @@ fn parse_optional_uuid(
             let parsed = Uuid::parse_str(value.trim())
                 .map_err(|_| ServerFnError::new(format!("{field_name} must be a valid UUID")))?;
             if parsed.is_nil() {
-                return Err(ServerFnError::new(format!("{field_name} must not be a nil UUID")));
+                return Err(ServerFnError::new(format!(
+                    "{field_name} must not be a nil UUID"
+                )));
             }
             Ok(parsed)
         })
@@ -228,11 +230,18 @@ mod tests {
 
     #[test]
     fn parse_optional_uuid_rejects_nil() {
-        let err = parse_optional_uuid(Some(Uuid::nil().to_string()), "shipping_option_id").unwrap_err();
+        let err =
+            parse_optional_uuid(Some(Uuid::nil().to_string()), "shipping_option_id").unwrap_err();
         assert!(err.to_string().contains("must not be a nil UUID"));
 
-        assert_eq!(parse_optional_uuid(None, "shipping_option_id").unwrap(), None);
-        assert_eq!(parse_optional_uuid(Some("   ".into()), "shipping_option_id").unwrap(), None);
+        assert_eq!(
+            parse_optional_uuid(None, "shipping_option_id").unwrap(),
+            None
+        );
+        assert_eq!(
+            parse_optional_uuid(Some("   ".into()), "shipping_option_id").unwrap(),
+            None
+        );
 
         let valid = Uuid::new_v4();
         assert_eq!(

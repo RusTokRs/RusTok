@@ -1,11 +1,11 @@
-use std::sync::Arc;
 use rustok_core::events::EventHandler;
 use rustok_events::DomainEvent;
 use rustok_search::{
-    SearchResultItem, SearchIngestionHandler, SearchProjectionDocument, SearchProjectionPage,
-    SearchProjectionSource, canonical_search_result_url,
+    SearchIngestionHandler, SearchProjectionDocument, SearchProjectionPage, SearchProjectionSource,
+    SearchResultItem, canonical_search_result_url,
 };
 use sea_orm::Database;
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -120,10 +120,12 @@ async fn pages_reindex_supports_targeted_and_full_scope_requests() {
     }));
 
     let unconfigured_handler = handler_without_pages().await;
-    assert!(!unconfigured_handler.handles(&DomainEvent::ReindexRequested {
-        target_type: "pages".to_string(),
-        target_id: Some(node_id),
-    }));
+    assert!(
+        !unconfigured_handler.handles(&DomainEvent::ReindexRequested {
+            target_type: "pages".to_string(),
+            target_id: Some(node_id),
+        })
+    );
 }
 
 #[tokio::test]
@@ -143,11 +145,13 @@ async fn pages_module_enable_and_disable_are_owned_lifecycle_events() {
     }));
 
     let unconfigured_handler = handler_without_pages().await;
-    assert!(!unconfigured_handler.handles(&DomainEvent::TenantModuleToggled {
-        tenant_id,
-        module_slug: "pages".to_string(),
-        enabled: false,
-    }));
+    assert!(
+        !unconfigured_handler.handles(&DomainEvent::TenantModuleToggled {
+            tenant_id,
+            module_slug: "pages".to_string(),
+            enabled: false,
+        })
+    );
 }
 
 #[test]
@@ -168,5 +172,8 @@ fn pages_canonical_search_url_is_storefront_page_route() {
     };
 
     let url = canonical_search_result_url(&item);
-    assert_eq!(url.as_deref(), Some("/modules/pages?slug=landing-offer-2026"));
+    assert_eq!(
+        url.as_deref(),
+        Some("/modules/pages?slug=landing-offer-2026")
+    );
 }

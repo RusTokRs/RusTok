@@ -362,4 +362,3 @@ impl From<ForumError> for rustok_core::Error {
         }
     }
 }
-

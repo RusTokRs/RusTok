@@ -47,10 +47,7 @@ fn create_post_input_conversion_rejects_invalid_scheduled_at() {
     };
     let result = DomainCreatePostInput::try_from(input);
     assert!(
-        matches!(
-            result,
-            Err(rustok_blog::BlogError::Validation(_))
-        ),
+        matches!(result, Err(rustok_blog::BlogError::Validation(_))),
         "an invalid scheduled_at must be a validation error, not a dropped schedule"
     );
 }

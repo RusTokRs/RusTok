@@ -1263,10 +1263,7 @@ mod tests {
 
     #[test]
     fn normalize_optional_reason_trims_and_bounds() {
-        assert_eq!(
-            normalize_optional_reason(None).unwrap(),
-            None
-        );
+        assert_eq!(normalize_optional_reason(None).unwrap(), None);
         assert_eq!(
             normalize_optional_reason(Some("   ".to_string())).unwrap(),
             None

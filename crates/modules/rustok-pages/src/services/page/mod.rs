@@ -73,6 +73,7 @@ pub use inline_edit_runtime::{
     PAGES_INLINE_EDIT_HMAC_KEY_ID_ENV, page_inline_edit_keyring_from_environment,
 };
 pub use lifecycle::PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED;
+pub(crate) use read::PublishedPageCursor;
 pub use route::{
     PAGE_ROUTE_NOT_FOUND, PAGE_ROUTE_RESOLUTION_CONFLICT, PageRouteDescriptor,
     PageRouteDisposition, PageRouteResolution, PageRouteService,
@@ -87,7 +88,6 @@ pub use schedule::{
     PAGE_PUBLISH_SCHEDULE_NOT_CANCELABLE, PAGE_PUBLISH_SCHEDULE_NOT_FOUND,
     PAGE_PUBLISH_SCHEDULE_TIME_INVALID, PagePublishScheduler,
 };
-pub(crate) use read::PublishedPageCursor;
 pub(crate) use translation_apply::ApplyExactPageMetadataTranslationInput;
 
 pub(super) const PAGE_KIND: &str = "page";

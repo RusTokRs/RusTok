@@ -10,7 +10,8 @@ impl IdempotencyKey {
     pub fn new(key: &str) -> TranslationResult<Self> {
         if key.is_empty() || key.len() > 191 || key.trim() != key {
             return Err(TranslationError::InvalidRequest(
-                "translation idempotency key must contain 1..=191 trimmed non-empty bytes".to_string(),
+                "translation idempotency key must contain 1..=191 trimmed non-empty bytes"
+                    .to_string(),
             ));
         }
         Ok(Self(key.to_string()))
@@ -21,6 +22,7 @@ impl IdempotencyKey {
         Self::new(key)
     }
 
+    #[allow(dead_code)]
     pub fn as_str(&self) -> &str {
         &self.0
     }

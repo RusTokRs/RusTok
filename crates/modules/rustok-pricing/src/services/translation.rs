@@ -600,7 +600,10 @@ mod tests {
             normalize_description(Some("  Bulk pricing tier  ".to_string())).unwrap(),
             Some("Bulk pricing tier".to_string())
         );
-        assert_eq!(normalize_description(Some("   ".to_string())).unwrap(), None);
+        assert_eq!(
+            normalize_description(Some("   ".to_string())).unwrap(),
+            None
+        );
         assert_eq!(normalize_description(None).unwrap(), None);
         assert!(normalize_description(Some("a".repeat(10000))).is_ok());
         assert!(normalize_description(Some("a".repeat(10001))).is_err());

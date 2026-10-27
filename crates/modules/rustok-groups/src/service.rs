@@ -40,10 +40,14 @@ impl GroupsService {
         membership_id: Uuid,
     ) -> GroupsResult<Option<GroupMembershipEffectiveState>> {
         if tenant_id.is_nil() {
-            return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+            return Err(GroupsError::Validation(
+                "tenant_id cannot be nil UUID".to_string(),
+            ));
         }
         if membership_id.is_nil() {
-            return Err(GroupsError::Validation("membership_id cannot be nil UUID".to_string()));
+            return Err(GroupsError::Validation(
+                "membership_id cannot be nil UUID".to_string(),
+            ));
         }
         let transaction = self.db.begin().await?;
         let target = crate::membership_enforcement_transaction::lock_membership_enforcement_target_by_id_for_update(
@@ -73,10 +77,14 @@ impl GroupsService {
 
     async fn group_model(&self, tenant_id: Uuid, group_id: Uuid) -> GroupsResult<group::Model> {
         if tenant_id.is_nil() {
-            return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+            return Err(GroupsError::Validation(
+                "tenant_id cannot be nil UUID".to_string(),
+            ));
         }
         if group_id.is_nil() {
-            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+            return Err(GroupsError::Validation(
+                "group_id cannot be nil UUID".to_string(),
+            ));
         }
         group::Entity::find()
             .filter(group::Column::TenantId.eq(tenant_id))
@@ -93,13 +101,19 @@ impl GroupsService {
         user_id: Uuid,
     ) -> GroupsResult<Option<membership::Model>> {
         if tenant_id.is_nil() {
-            return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+            return Err(GroupsError::Validation(
+                "tenant_id cannot be nil UUID".to_string(),
+            ));
         }
         if group_id.is_nil() {
-            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+            return Err(GroupsError::Validation(
+                "group_id cannot be nil UUID".to_string(),
+            ));
         }
         if user_id.is_nil() {
-            return Err(GroupsError::Validation("user_id cannot be nil UUID".to_string()));
+            return Err(GroupsError::Validation(
+                "user_id cannot be nil UUID".to_string(),
+            ));
         }
         Ok(membership::Entity::find()
             .filter(membership::Column::TenantId.eq(tenant_id))
@@ -115,7 +129,9 @@ impl GroupsService {
         group_ids: Vec<Uuid>,
     ) -> GroupsResult<HashMap<Uuid, Vec<translation::Model>>> {
         if tenant_id.is_nil() {
-            return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+            return Err(GroupsError::Validation(
+                "tenant_id cannot be nil UUID".to_string(),
+            ));
         }
         if group_ids.is_empty() {
             return Ok(HashMap::new());
@@ -595,7 +611,9 @@ impl GroupsService {
     ) -> GroupsResult<GroupAccessDecision> {
         require_read(context)?;
         if group_id.is_nil() {
-            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+            return Err(GroupsError::Validation(
+                "group_id cannot be nil UUID".to_string(),
+            ));
         }
         let tenant_id = context_tenant_id(context)?;
         let group_model = self.group_model(tenant_id, group_id).await?;
@@ -983,7 +1001,9 @@ fn parse_uuid(value: &str, field: &str) -> GroupsResult<Uuid> {
     let parsed = Uuid::parse_str(trimmed)
         .map_err(|_| GroupsError::Validation(format!("{field} must be a UUID")))?;
     if parsed.is_nil() {
-        return Err(GroupsError::Validation(format!("{field} cannot be nil UUID")));
+        return Err(GroupsError::Validation(format!(
+            "{field} cannot be nil UUID"
+        )));
     }
     Ok(parsed)
 }

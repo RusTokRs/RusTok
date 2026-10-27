@@ -261,6 +261,9 @@ mod tests {
         let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
 
         let _tx_bus = transactional_event_bus_from_context(&ctx);
-        assert!(ctx.shared_get::<Arc<dyn rustok_core::events::EventTransport>>().is_some());
+        assert!(
+            ctx.shared_get::<Arc<dyn rustok_core::events::EventTransport>>()
+                .is_some()
+        );
     }
 }

@@ -10,9 +10,9 @@
 
 //! Bank account value objects and validation rules.
 
+use crate::error::{PartyError, PartyResult};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use crate::error::{PartyError, PartyResult};
 
 /// Bank account details associated with a corporate party.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -82,7 +82,9 @@ impl BankAccount {
 pub fn validate_account_number(account: &str) -> PartyResult<()> {
     let trimmed = account.trim();
     if trimmed.is_empty() {
-        return Err(PartyError::Validation("Account number cannot be empty".into()));
+        return Err(PartyError::Validation(
+            "Account number cannot be empty".into(),
+        ));
     }
 
     // Standard 20-digit Russian settlement or correspondent account

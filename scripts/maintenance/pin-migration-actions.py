@@ -5,7 +5,7 @@ from pathlib import Path
 CHECKOUT = "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
 SETUP_NODE = "actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38"
 RUST_TOOLCHAIN = "dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c"
-UPLOAD_ARTIFACT = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+UPLOAD_ARTIFACT = "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
 DOWNLOAD_ARTIFACT = "actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0"
 
 

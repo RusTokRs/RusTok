@@ -1,7 +1,7 @@
 use super::ApiError;
-use crate::model::{StorefrontMenu, StorefrontMenuLocation};
 #[cfg(feature = "ssr")]
 use crate::model::StorefrontMenuItem;
+use crate::model::{StorefrontMenu, StorefrontMenuLocation};
 use leptos::prelude::*;
 
 pub async fn fetch_active_menu_server(

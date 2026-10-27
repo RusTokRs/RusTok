@@ -3,9 +3,7 @@ pub mod keys;
 pub mod registry;
 
 pub use envelope::{E2eeEncryptionAlgo, EncryptedPayload};
-pub use keys::{
-    DeviceKey, OneTimePrekey, OneTimePrekeyInput, PrekeyBundle, UploadDeviceKeysInput,
-};
+pub use keys::{DeviceKey, OneTimePrekey, OneTimePrekeyInput, PrekeyBundle, UploadDeviceKeysInput};
 pub use registry::DeviceKeyRegistry;
 
 #[cfg(test)]

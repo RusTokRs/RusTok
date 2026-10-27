@@ -10,10 +10,10 @@
 
 //! Request/response, command/query, and data transfer objects for Security.
 
+use crate::domain::{CaptchaProviderKind, IpRuleType, SecurityEventType, SecuritySeverity};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use crate::domain::{CaptchaProviderKind, IpRuleType, SecurityEventType, SecuritySeverity};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SecuritySummary {

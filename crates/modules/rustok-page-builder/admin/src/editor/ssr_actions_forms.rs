@@ -637,11 +637,18 @@ impl ActionValues {
                 values.panel_id = panel_id.clone();
                 values.target_id = panel_id.clone();
             }
-            Some(ComponentAction::ToggleAccordion { target_id, exclusive }) => {
+            Some(ComponentAction::ToggleAccordion {
+                target_id,
+                exclusive,
+            }) => {
                 values.kind = "toggle_accordion".to_string();
                 values.target_id = target_id.clone();
                 values.exclusive = *exclusive;
-                values.mode = if *exclusive { "exclusive".to_string() } else { "toggle".to_string() };
+                values.mode = if *exclusive {
+                    "exclusive".to_string()
+                } else {
+                    "toggle".to_string()
+                };
             }
             Some(ComponentAction::SwitchSlide {
                 slider_id,

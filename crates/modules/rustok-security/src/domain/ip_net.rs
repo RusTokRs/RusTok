@@ -8,15 +8,23 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+use crate::error::{SecurityError, SecurityResult};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
-use crate::error::{SecurityError, SecurityResult};
 
 /// Representation of an IP network prefix or single IP address (CIDR).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IpNet {
-    V4 { network: u32, mask: u32, prefix_len: u8 },
-    V6 { network: u128, mask: u128, prefix_len: u8 },
+    V4 {
+        network: u32,
+        mask: u32,
+        prefix_len: u8,
+    },
+    V6 {
+        network: u128,
+        mask: u128,
+        prefix_len: u8,
+    },
 }
 
 impl IpNet {
@@ -24,13 +32,15 @@ impl IpNet {
     pub fn parse(s: &str) -> SecurityResult<Self> {
         let trimmed = s.trim();
         if trimmed.is_empty() {
-            return Err(SecurityError::Validation("IP/CIDR string cannot be empty".to_string()));
+            return Err(SecurityError::Validation(
+                "IP/CIDR string cannot be empty".to_string(),
+            ));
         }
 
         if let Some((ip_str, prefix_str)) = trimmed.split_once('/') {
-            let prefix_len: u8 = prefix_str
-                .parse()
-                .map_err(|_| SecurityError::Validation(format!("Invalid CIDR prefix length: '{}'", prefix_str)))?;
+            let prefix_len: u8 = prefix_str.parse().map_err(|_| {
+                SecurityError::Validation(format!("Invalid CIDR prefix length: '{}'", prefix_str))
+            })?;
 
             if let Ok(v4) = Ipv4Addr::from_str(ip_str) {
                 if prefix_len > 32 {
@@ -69,7 +79,10 @@ impl IpNet {
                     prefix_len,
                 })
             } else {
-                Err(SecurityError::Validation(format!("Invalid IP address in CIDR: '{}'", ip_str)))
+                Err(SecurityError::Validation(format!(
+                    "Invalid IP address in CIDR: '{}'",
+                    ip_str
+                )))
             }
         } else {
             // Single IP address
@@ -90,7 +103,10 @@ impl IpNet {
                         prefix_len: 128,
                     })
                 }
-                Err(_) => Err(SecurityError::Validation(format!("Invalid IP address: '{}'", trimmed))),
+                Err(_) => Err(SecurityError::Validation(format!(
+                    "Invalid IP address: '{}'",
+                    trimmed
+                ))),
             }
         }
     }

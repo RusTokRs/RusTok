@@ -445,4 +445,3 @@ mod tests {
         assert!(validate_identity(Uuid::new_v4(), Uuid::new_v4()).is_ok());
     }
 }
-

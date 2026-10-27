@@ -1578,7 +1578,12 @@ async fn cancel_order_trims_reason_and_normalizes_empty() {
         .await
         .expect("order2 should be created");
     let cancelled2 = service
-        .cancel_order(tenant_id, actor_id, order2.id, Some("   \t\n  ".to_string()))
+        .cancel_order(
+            tenant_id,
+            actor_id,
+            order2.id,
+            Some("   \t\n  ".to_string()),
+        )
         .await
         .expect("order2 should cancel");
     assert_eq!(cancelled2.status, "cancelled");
@@ -1613,11 +1618,23 @@ async fn deliver_order_trims_signature_and_validates_bounds() {
         .await
         .expect("confirm");
     service
-        .mark_paid(tenant_id, actor_id, order.id, "pay_1".to_string(), "card".to_string())
+        .mark_paid(
+            tenant_id,
+            actor_id,
+            order.id,
+            "pay_1".to_string(),
+            "card".to_string(),
+        )
         .await
         .expect("mark_paid");
     service
-        .ship_order(tenant_id, actor_id, order.id, "trk_1".to_string(), "carrier".to_string())
+        .ship_order(
+            tenant_id,
+            actor_id,
+            order.id,
+            "trk_1".to_string(),
+            "carrier".to_string(),
+        )
         .await
         .expect("ship");
 
@@ -1641,9 +1658,30 @@ async fn deliver_order_trims_signature_and_validates_bounds() {
         .create_order(tenant_id, actor_id, create_order_input())
         .await
         .expect("order2");
-    service.confirm_order(tenant_id, actor_id, order2.id).await.unwrap();
-    service.mark_paid(tenant_id, actor_id, order2.id, "p".to_string(), "c".to_string()).await.unwrap();
-    service.ship_order(tenant_id, actor_id, order2.id, "t".to_string(), "c".to_string()).await.unwrap();
+    service
+        .confirm_order(tenant_id, actor_id, order2.id)
+        .await
+        .unwrap();
+    service
+        .mark_paid(
+            tenant_id,
+            actor_id,
+            order2.id,
+            "p".to_string(),
+            "c".to_string(),
+        )
+        .await
+        .unwrap();
+    service
+        .ship_order(
+            tenant_id,
+            actor_id,
+            order2.id,
+            "t".to_string(),
+            "c".to_string(),
+        )
+        .await
+        .unwrap();
     let err = service
         .deliver_order(tenant_id, actor_id, order2.id, Some("s".repeat(256)))
         .await
@@ -1670,24 +1708,46 @@ async fn mark_paid_and_ship_order_validate_bounds_and_trim() {
 
     // Rejects empty / whitespace payment_id
     let empty_err = service
-        .mark_paid(tenant_id, actor_id, order.id, "   ".to_string(), "card".to_string())
+        .mark_paid(
+            tenant_id,
+            actor_id,
+            order.id,
+            "   ".to_string(),
+            "card".to_string(),
+        )
         .await
         .unwrap_err();
     assert!(matches!(empty_err, OrderError::Validation(_)));
 
     // Rejects > 100 char payment_id
     let long_err = service
-        .mark_paid(tenant_id, actor_id, order.id, "p".repeat(101), "card".to_string())
+        .mark_paid(
+            tenant_id,
+            actor_id,
+            order.id,
+            "p".repeat(101),
+            "card".to_string(),
+        )
         .await
         .unwrap_err();
-    assert!(matches!(long_err, OrderError::Validation(msg) if msg.contains("payment_id must not exceed 100 characters")));
+    assert!(
+        matches!(long_err, OrderError::Validation(msg) if msg.contains("payment_id must not exceed 100 characters"))
+    );
 
     // Rejects > 100 char payment_method
     let long_method_err = service
-        .mark_paid(tenant_id, actor_id, order.id, "p1".to_string(), "m".repeat(101))
+        .mark_paid(
+            tenant_id,
+            actor_id,
+            order.id,
+            "p1".to_string(),
+            "m".repeat(101),
+        )
         .await
         .unwrap_err();
-    assert!(matches!(long_method_err, OrderError::Validation(msg) if msg.contains("payment_method must not exceed 100 characters")));
+    assert!(
+        matches!(long_method_err, OrderError::Validation(msg) if msg.contains("payment_method must not exceed 100 characters"))
+    );
 
     // Trims whitespace on payment_id & payment_method
     let paid = service
@@ -1705,17 +1765,31 @@ async fn mark_paid_and_ship_order_validate_bounds_and_trim() {
 
     // Ship: rejects empty tracking_number
     let empty_track = service
-        .ship_order(tenant_id, actor_id, order.id, "  ".to_string(), "dhl".to_string())
+        .ship_order(
+            tenant_id,
+            actor_id,
+            order.id,
+            "  ".to_string(),
+            "dhl".to_string(),
+        )
         .await
         .unwrap_err();
     assert!(matches!(empty_track, OrderError::Validation(_)));
 
     // Ship: rejects > 100 chars
     let long_track = service
-        .ship_order(tenant_id, actor_id, order.id, "t".repeat(101), "dhl".to_string())
+        .ship_order(
+            tenant_id,
+            actor_id,
+            order.id,
+            "t".repeat(101),
+            "dhl".to_string(),
+        )
         .await
         .unwrap_err();
-    assert!(matches!(long_track, OrderError::Validation(msg) if msg.contains("tracking_number must not exceed 100 characters")));
+    assert!(
+        matches!(long_track, OrderError::Validation(msg) if msg.contains("tracking_number must not exceed 100 characters"))
+    );
 
     // Ship: trims tracking_number and carrier
     let shipped = service
@@ -1746,7 +1820,10 @@ async fn list_orders_matches_status_case_insensitively() {
         .create_order(tenant_id, actor_id, create_order_input())
         .await
         .expect("order2");
-    service.confirm_order(tenant_id, actor_id, order2.id).await.expect("confirm order2");
+    service
+        .confirm_order(tenant_id, actor_id, order2.id)
+        .await
+        .expect("confirm order2");
 
     // Filter with uppercase "PENDING"
     let (pending_orders, total_pending) = service

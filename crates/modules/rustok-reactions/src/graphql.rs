@@ -1,16 +1,16 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::{
+    ApplyReactionCommand, ReactionAction, ReactionCommandIdentity, ReactionKey, ReactionReadPort,
+    ReactionReadRequest, ReactionSelectionPolicy, ReactionSnapshot, ReactionSourceSlug,
+    ReactionSubjectKind, ReactionSubjectRef, ReactionSubjectRegistry, ReactionWritePort,
+};
 use async_graphql::{Context, Enum, FieldError, InputObject, Object, Result, SimpleObject};
 use rustok_api::{
     AuthContext, ChannelContext, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
     TenantContext,
     graphql::{GraphQLError, GraphqlRuntimeInputs, require_module_enabled},
-};
-use crate::{
-    ApplyReactionCommand, ReactionAction, ReactionCommandIdentity, ReactionKey, ReactionReadPort,
-    ReactionReadRequest, ReactionSelectionPolicy, ReactionSnapshot, ReactionSourceSlug,
-    ReactionSubjectKind, ReactionSubjectRef, ReactionSubjectRegistry, ReactionWritePort,
 };
 use uuid::Uuid;
 
@@ -268,7 +268,9 @@ fn require_tenant<'a>(ctx: &'a Context<'a>) -> Result<&'a TenantContext> {
         <FieldError as GraphQLError>::internal_error("Reactions tenant context is not registered")
     })?;
     if tenant.id.is_nil() {
-        return Err(<FieldError as GraphQLError>::bad_user_input("tenant ID cannot be nil"));
+        return Err(<FieldError as GraphQLError>::bad_user_input(
+            "tenant ID cannot be nil",
+        ));
     }
     Ok(tenant)
 }

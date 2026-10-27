@@ -69,8 +69,8 @@ pub fn build_storefront_context_view_model(
         .unwrap_or_else(|| t(locale, "commerce.context.tenantMissing", "host tenant"));
     let tenant_default_locale = normalize_optional_ui_text(Some(data.tenant_default_locale))
         .unwrap_or_else(|| empty_value.clone());
-    let channel = normalize_optional_ui_text(data.channel_slug)
-        .unwrap_or_else(|| empty_value.clone());
+    let channel =
+        normalize_optional_ui_text(data.channel_slug).unwrap_or_else(|| empty_value.clone());
     let channel_resolution_source = normalize_optional_ui_text(data.channel_resolution_source)
         .unwrap_or_else(|| empty_value.clone());
 
@@ -295,7 +295,10 @@ mod tests {
         assert_eq!(shell.title, "Commerce orchestration hub");
         assert!(!shell.subtitle.is_empty());
         assert_eq!(shell.load_error, "Failed to load commerce storefront data");
-        assert_eq!(shell.action_error, "Failed to update aggregate checkout state");
+        assert_eq!(
+            shell.action_error,
+            "Failed to update aggregate checkout state"
+        );
     }
 
     #[test]
@@ -314,7 +317,10 @@ mod tests {
 
         let shipping_labels = build_fulfillment_shipping_selection_labels(Some("en"));
         assert_eq!(shipping_labels.badge, "delivery orchestration");
-        assert_eq!(shipping_labels.title, "Delivery groups and shipping selections");
+        assert_eq!(
+            shipping_labels.title,
+            "Delivery groups and shipping selections"
+        );
         assert_eq!(shipping_labels.provider_label, "Provider");
     }
 
@@ -322,7 +328,10 @@ mod tests {
     fn payment_and_order_action_labels_render_expected_text() {
         let payment_actions = build_payment_collection_action_labels(Some("en"));
         assert_eq!(payment_actions.pending, "Processing...");
-        assert_eq!(payment_actions.create_or_reuse, "Create or reuse payment collection");
+        assert_eq!(
+            payment_actions.create_or_reuse,
+            "Create or reuse payment collection"
+        );
 
         let order_actions = build_order_checkout_action_labels(Some("en"));
         assert_eq!(order_actions.pending, "Processing...");

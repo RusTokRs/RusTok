@@ -979,7 +979,8 @@ mod tests {
             "Invalid target id."
         );
         assert_eq!(
-            validate_target_id("00000000-0000-0000-0000-000000000000").expect_err("nil uuid must fail"),
+            validate_target_id("00000000-0000-0000-0000-000000000000")
+                .expect_err("nil uuid must fail"),
             "Invalid target id."
         );
 

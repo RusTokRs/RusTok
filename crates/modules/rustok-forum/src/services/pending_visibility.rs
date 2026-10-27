@@ -28,7 +28,6 @@ pub(crate) fn can_see_pending(
     security.get_scope(resource, Action::Moderate) == PermissionScope::All
 }
 
-
 /// Returns `true` when `security` may read content whose status is not public
 /// (non-`Open`/non-`Closed` topics and non-`Approved` replies, e.g. `Pending`,
 /// `Archived`, `Hidden`, `Rejected`, `Flagged`, `Deleted`).
@@ -58,8 +57,7 @@ pub(crate) fn topic_owner_read_condition(security: &SecurityContext) -> Conditio
         return Condition::all();
     }
     let public = Condition::any().add(
-        forum_topic::Column::Status
-            .is_not_in(vec![TopicStatus::Pending, TopicStatus::Archived]),
+        forum_topic::Column::Status.is_not_in(vec![TopicStatus::Pending, TopicStatus::Archived]),
     );
     match security.user_id {
         Some(user_id) => public.add(forum_topic::Column::AuthorId.eq(user_id)),

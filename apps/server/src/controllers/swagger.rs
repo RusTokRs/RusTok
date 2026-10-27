@@ -744,7 +744,11 @@ mod tests {
             ("/api/v1/flex/schemas", HttpMethod::Get, "GET"),
             ("/api/v1/flex/schemas", HttpMethod::Post, "POST"),
             ("/api/v1/flex/schemas/{schema_id}", HttpMethod::Get, "GET"),
-            ("/api/v1/flex/schemas/{schema_id}", HttpMethod::Patch, "PATCH"),
+            (
+                "/api/v1/flex/schemas/{schema_id}",
+                HttpMethod::Patch,
+                "PATCH",
+            ),
             (
                 "/api/v1/flex/schemas/{schema_id}",
                 HttpMethod::Delete,

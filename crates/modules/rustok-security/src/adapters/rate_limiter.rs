@@ -8,14 +8,14 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+use crate::domain::RateLimitDecision;
+use crate::error::SecurityResult;
+use crate::ports::RateLimiterPort;
 use async_trait::async_trait;
 use chrono::Utc;
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;
-use crate::domain::RateLimitDecision;
-use crate::error::SecurityResult;
-use crate::ports::RateLimiterPort;
 
 /// Lightweight in-memory rate limiter backed by Moka concurrent cache.
 #[derive(Clone)]
@@ -83,7 +83,9 @@ impl RateLimiterPort for MokaRateLimiter {
         // Invalidate current and previous window bucket
         for offset in 0..=2 {
             let window_bucket = now_secs.saturating_sub(offset);
-            self.cache.invalidate(&format!("{}:{}", key, window_bucket)).await;
+            self.cache
+                .invalidate(&format!("{}:{}", key, window_bucket))
+                .await;
         }
         Ok(())
     }

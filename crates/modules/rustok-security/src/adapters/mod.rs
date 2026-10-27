@@ -15,7 +15,7 @@ pub mod captcha;
 pub mod rate_limiter;
 
 pub use brute_force::MokaBruteForceTracker;
-pub use captcha::{HoneypotVerifier, NoopCaptchaVerifier};
 #[cfg(feature = "captcha-http")]
 pub use captcha::http_adapters::{RecaptchaVerifier, TurnstileVerifier};
+pub use captcha::{HoneypotVerifier, NoopCaptchaVerifier};
 pub use rate_limiter::MokaRateLimiter;

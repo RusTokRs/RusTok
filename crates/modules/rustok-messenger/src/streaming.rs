@@ -1,7 +1,7 @@
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use uuid::Uuid;
 
 /// Dedicated Iggy topic for highload messaging stream deliveries.
@@ -50,8 +50,12 @@ impl MessengerStreamEvent {
     /// Returns the conversation ID for FIFO partition affinity.
     pub fn conversation_id(&self) -> Uuid {
         match self {
-            Self::MessageDispatched { conversation_id, .. } => *conversation_id,
-            Self::CursorUpdated { conversation_id, .. } => *conversation_id,
+            Self::MessageDispatched {
+                conversation_id, ..
+            } => *conversation_id,
+            Self::CursorUpdated {
+                conversation_id, ..
+            } => *conversation_id,
         }
     }
 
@@ -117,7 +121,11 @@ pub mod iggy_adapter {
         pub fn new(transport: IggyTransport, partitions: u32) -> Self {
             Self {
                 transport,
-                partitions: if partitions == 0 { DEFAULT_MESSENGER_PARTITIONS } else { partitions },
+                partitions: if partitions == 0 {
+                    DEFAULT_MESSENGER_PARTITIONS
+                } else {
+                    partitions
+                },
             }
         }
 

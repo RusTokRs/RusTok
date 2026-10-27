@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use rustok_api::Permission;
-use rustok_core::search_projection::register_search_projection_source;
 use rustok_core::module::{HealthStatus, ModuleKind};
+use rustok_core::search_projection::register_search_projection_source;
 use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
 use rustok_moderation::register_moderation_subject_adapter_factory;
 use rustok_notifications::register_notification_source_provider_factory;

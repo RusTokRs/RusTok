@@ -411,8 +411,8 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         }
         let final_role = if let Some(slug) = custom_slug.as_ref() {
             let actor_role = self.actor_role(context).await?;
-            let actor_permissions =
-                permissions_for(&context.tenant_id, &context.actor_id).ok_or_else(|| {
+            let actor_permissions = permissions_for(&context.tenant_id, &context.actor_id)
+                .ok_or_else(|| {
                     AuthAdminMutationError::Forbidden(
                         "user administration requires a request-bound permission snapshot"
                             .to_string(),
@@ -434,14 +434,9 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(super::super_admin_guard::persistence_error)?;
             if plan.is_some() {
-                replace_persisted_user_role_by_slug_on(
-                    &tx,
-                    context.tenant_id,
-                    user.id,
-                    slug,
-                )
-                .await
-                .map_err(super::super_admin_guard::persistence_error)?;
+                replace_persisted_user_role_by_slug_on(&tx, context.tenant_id, user.id, slug)
+                    .await
+                    .map_err(super::super_admin_guard::persistence_error)?;
             }
             self.user_role(&tx, context.tenant_id, user.id).await?
         } else {
@@ -581,8 +576,8 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
                 }
             } else if let Some(slug) = requested_custom_slug.as_ref() {
                 let actor_role = self.actor_role(context).await?;
-                let actor_permissions =
-                    permissions_for(&context.tenant_id, &context.actor_id).ok_or_else(|| {
+                let actor_permissions = permissions_for(&context.tenant_id, &context.actor_id)
+                    .ok_or_else(|| {
                         AuthAdminMutationError::Forbidden(
                             "user administration requires a request-bound permission snapshot"
                                 .to_string(),
@@ -771,9 +766,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         let tenant_name = self.tenant_name(&tx, context.tenant_id).await?;
         let final_role = match role_mutation_plan.as_ref() {
             Some(RolePlan::Builtin(plan)) => plan.new_role().clone(),
-            Some(RolePlan::Custom(_)) => {
-                self.user_role(&tx, context.tenant_id, user.id).await?
-            }
+            Some(RolePlan::Custom(_)) => self.user_role(&tx, context.tenant_id, user.id).await?,
             None => current_role.clone(),
         };
         tx.commit().await.map_err(super::internal_admin_error)?;

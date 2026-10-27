@@ -95,10 +95,7 @@ fn progress_count_advances_inside_native_callback() {
         )
         .expect_err("the progress interrupt must stop the unbounded callback");
 
-    assert!(
-        matches!(*err, EvalAltResult::ErrorTerminated(..)),
-        "{err}"
-    );
+    assert!(matches!(*err, EvalAltResult::ErrorTerminated(..)), "{err}");
 
     let counts = counts.lock().unwrap();
     assert!(

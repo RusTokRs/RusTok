@@ -19,12 +19,12 @@ impl NotificationInboxReconciliationInspectRequest {
         if self.recipient_id.is_nil() {
             return Err(crate::model::NotificationContractError::NilRecipientId);
         }
-        if let Some(cursor) = &self.cursor {
-            if cursor.is_empty() || cursor.len() > 512 || cursor.chars().any(char::is_control) {
-                return Err(crate::model::NotificationContractError::InvalidKey(
-                    crate::keys::NotificationKeyError::CursorControlCharacter,
-                ));
-            }
+        if let Some(cursor) = &self.cursor
+            && (cursor.is_empty() || cursor.len() > 512 || cursor.chars().any(char::is_control))
+        {
+            return Err(crate::model::NotificationContractError::InvalidKey(
+                crate::keys::NotificationKeyError::CursorControlCharacter,
+            ));
         }
         Ok(())
     }

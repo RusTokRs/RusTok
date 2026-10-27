@@ -17,9 +17,7 @@ pub use model::{
     SeoVerificationTag,
 };
 pub use render::{render_head_html, render_head_html_with_nonce};
-pub use transport::{
-    SeoPageContextResponse, SeoPageContextVariables, SEO_PAGE_CONTEXT_QUERY,
-};
+pub use transport::{SEO_PAGE_CONTEXT_QUERY, SeoPageContextResponse, SeoPageContextVariables};
 pub use ui::SeoView;
 
 #[cfg(test)]

@@ -222,7 +222,10 @@ pub fn decode_password_reset_token(
         .map(|data| data.claims)
         .map_err(|_| AuthError::InvalidResetToken)?;
 
-    if claims.tenant_id.is_nil() || claims.sub.trim().is_empty() || claims.purpose != PASSWORD_RESET_PURPOSE {
+    if claims.tenant_id.is_nil()
+        || claims.sub.trim().is_empty()
+        || claims.purpose != PASSWORD_RESET_PURPOSE
+    {
         return Err(AuthError::InvalidResetToken);
     }
 
@@ -272,7 +275,10 @@ pub fn decode_email_verification_token(
         .map(|data| data.claims)
         .map_err(|_| AuthError::InvalidVerificationToken)?;
 
-    if claims.tenant_id.is_nil() || claims.sub.trim().is_empty() || claims.purpose != EMAIL_VERIFICATION_PURPOSE {
+    if claims.tenant_id.is_nil()
+        || claims.sub.trim().is_empty()
+        || claims.purpose != EMAIL_VERIFICATION_PURPOSE
+    {
         return Err(AuthError::InvalidVerificationToken);
     }
 
@@ -321,7 +327,8 @@ pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteCla
         .map(|data| data.claims)
         .map_err(|_| AuthError::InvalidInviteToken)?;
 
-    if claims.tenant_id.is_nil() || claims.sub.trim().is_empty() || claims.purpose != INVITE_PURPOSE {
+    if claims.tenant_id.is_nil() || claims.sub.trim().is_empty() || claims.purpose != INVITE_PURPOSE
+    {
         return Err(AuthError::InvalidInviteToken);
     }
 
@@ -836,7 +843,8 @@ mod tests {
         .unwrap();
 
         let padded_token = format!("   {}   \n", token);
-        let claims = decode_access_token(&config, &padded_token).expect("padded token should decode");
+        let claims =
+            decode_access_token(&config, &padded_token).expect("padded token should decode");
         assert_eq!(claims.role, UserRole::Admin);
 
         assert!(decode_access_token(&config, "").is_err());
@@ -850,15 +858,28 @@ mod tests {
 
         assert!(encode_password_reset_token(&config, valid_tenant, "", 900).is_err());
         assert!(encode_password_reset_token(&config, valid_tenant, "   ", 900).is_err());
-        assert!(encode_password_reset_token(&config, Uuid::nil(), "user@example.com", 900).is_err());
+        assert!(
+            encode_password_reset_token(&config, Uuid::nil(), "user@example.com", 900).is_err()
+        );
 
         assert!(encode_email_verification_token(&config, valid_tenant, "", 900).is_err());
         assert!(encode_email_verification_token(&config, valid_tenant, "   ", 900).is_err());
-        assert!(encode_email_verification_token(&config, Uuid::nil(), "user@example.com", 900).is_err());
+        assert!(
+            encode_email_verification_token(&config, Uuid::nil(), "user@example.com", 900).is_err()
+        );
 
         assert!(encode_invite_token(&config, valid_tenant, "", UserRole::Manager, 900).is_err());
         assert!(encode_invite_token(&config, valid_tenant, "   ", UserRole::Manager, 900).is_err());
-        assert!(encode_invite_token(&config, Uuid::nil(), "user@example.com", UserRole::Manager, 900).is_err());
+        assert!(
+            encode_invite_token(
+                &config,
+                Uuid::nil(),
+                "user@example.com",
+                UserRole::Manager,
+                900
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -866,17 +887,26 @@ mod tests {
         let config = test_config();
         let tenant_id = Uuid::new_v4();
 
-        let reset_token = encode_password_reset_token(&config, tenant_id, "user@example.com", 900).unwrap();
+        let reset_token =
+            encode_password_reset_token(&config, tenant_id, "user@example.com", 900).unwrap();
         let padded_reset = format!("  {}  ", reset_token);
         assert!(decode_password_reset_token(&config, &padded_reset).is_ok());
         assert!(decode_password_reset_token(&config, "").is_err());
 
-        let verify_token = encode_email_verification_token(&config, tenant_id, "user@example.com", 900).unwrap();
+        let verify_token =
+            encode_email_verification_token(&config, tenant_id, "user@example.com", 900).unwrap();
         let padded_verify = format!("  {}  ", verify_token);
         assert!(decode_email_verification_token(&config, &padded_verify).is_ok());
         assert!(decode_email_verification_token(&config, "").is_err());
 
-        let invite_token = encode_invite_token(&config, tenant_id, "user@example.com", UserRole::Manager, 900).unwrap();
+        let invite_token = encode_invite_token(
+            &config,
+            tenant_id,
+            "user@example.com",
+            UserRole::Manager,
+            900,
+        )
+        .unwrap();
         let padded_invite = format!("  {}  ", invite_token);
         assert!(decode_invite_token(&config, &padded_invite).is_ok());
         assert!(decode_invite_token(&config, "").is_err());

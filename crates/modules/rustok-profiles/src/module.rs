@@ -89,7 +89,10 @@ mod tests {
         assert_eq!(module.slug(), "profiles");
         assert_eq!(module.name(), "Profiles");
         assert_eq!(module.kind(), ModuleKind::Optional);
-        assert_eq!(module.dependencies(), &["media", "social_graph", "taxonomy"]);
+        assert_eq!(
+            module.dependencies(),
+            &["media", "social_graph", "taxonomy"]
+        );
         assert!(!module.permissions().is_empty());
     }
 

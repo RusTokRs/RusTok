@@ -395,7 +395,10 @@ pub async fn list_payment_collections(
         "Permission denied: payments:read required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_PAYMENT_READ_BOUNDARY,
@@ -466,10 +469,16 @@ pub async fn show_payment_collection(
         "Permission denied: payments:read required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_payment_collection_id", "Payment collection ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_payment_collection_id",
+            "Payment collection ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_PAYMENT_READ_BOUNDARY,
@@ -532,10 +541,16 @@ pub async fn authorize_payment_collection(
         "Permission denied: payments:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_payment_collection_id", "Payment collection ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_payment_collection_id",
+            "Payment collection ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_PAYMENT_COMMAND_BOUNDARY,
@@ -603,10 +618,16 @@ pub async fn capture_payment_collection(
         "Permission denied: payments:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_payment_collection_id", "Payment collection ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_payment_collection_id",
+            "Payment collection ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_PAYMENT_COMMAND_BOUNDARY,
@@ -674,10 +695,16 @@ pub async fn cancel_payment_collection(
         "Permission denied: payments:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_payment_collection_id", "Payment collection ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_payment_collection_id",
+            "Payment collection ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_PAYMENT_COMMAND_BOUNDARY,
@@ -750,10 +777,16 @@ pub async fn create_refund(
         "Permission denied: payments:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_payment_collection_id", "Payment collection ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_payment_collection_id",
+            "Payment collection ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_REFUND_COMMAND_BOUNDARY,
@@ -811,7 +844,10 @@ pub async fn list_refunds(
         "Permission denied: payments:read required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_PAYMENT_READ_BOUNDARY,
@@ -876,10 +912,16 @@ pub async fn show_refund(
         "Permission denied: payments:read required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_refund_id", "Refund ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_refund_id",
+            "Refund ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_PAYMENT_READ_BOUNDARY,
@@ -937,10 +979,16 @@ pub async fn complete_refund(
         "Permission denied: payments:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_refund_id", "Refund ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_refund_id",
+            "Refund ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_REFUND_COMMAND_BOUNDARY,
@@ -1009,10 +1057,16 @@ pub async fn cancel_refund(
         "Permission denied: payments:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_refund_id", "Refund ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_refund_id",
+            "Refund ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_REFUND_COMMAND_BOUNDARY,

@@ -90,7 +90,6 @@ pub const AUTH_USER_PERMISSIONS: [Permission; 6] = [
     Permission::USERS_MANAGE,
 ];
 
-
 #[cfg(test)]
 mod tests {
     use super::{AUTH_USER_PERMISSIONS, AuthModule};

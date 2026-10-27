@@ -156,7 +156,9 @@ pub async fn load_detail(
 ) -> Result<MarketplaceSellerAdminDetail, GraphqlMarketplaceSellerAdminError> {
     let response: DetailResponse = request(
         DETAIL_QUERY,
-        IdVariables { id: seller_id.trim().to_string() },
+        IdVariables {
+            id: seller_id.trim().to_string(),
+        },
         token,
         tenant_slug,
     )

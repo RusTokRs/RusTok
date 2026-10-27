@@ -95,10 +95,14 @@ impl BrandPort for BrandService {
         locale: Option<&str>,
     ) -> BrandResult<BrandDto> {
         if tenant_id.is_nil() {
-            return Err(BrandError::InvalidInput("Tenant ID cannot be nil".to_string()));
+            return Err(BrandError::InvalidInput(
+                "Tenant ID cannot be nil".to_string(),
+            ));
         }
         if id.is_nil() {
-            return Err(BrandError::InvalidInput("Brand ID cannot be nil".to_string()));
+            return Err(BrandError::InvalidInput(
+                "Brand ID cannot be nil".to_string(),
+            ));
         }
 
         let brand = Brand::find_by_id(id)
@@ -122,7 +126,9 @@ impl BrandPort for BrandService {
         locale: Option<&str>,
     ) -> BrandResult<BrandDto> {
         if tenant_id.is_nil() {
-            return Err(BrandError::InvalidInput("Tenant ID cannot be nil".to_string()));
+            return Err(BrandError::InvalidInput(
+                "Tenant ID cannot be nil".to_string(),
+            ));
         }
         let clean_slug = slug.trim().to_lowercase();
         if clean_slug.is_empty() {
@@ -153,7 +159,9 @@ impl BrandPort for BrandService {
         locale: Option<&str>,
     ) -> BrandResult<BrandListResponse> {
         if tenant_id.is_nil() {
-            return Err(BrandError::InvalidInput("Tenant ID cannot be nil".to_string()));
+            return Err(BrandError::InvalidInput(
+                "Tenant ID cannot be nil".to_string(),
+            ));
         }
         let page = if page == 0 { 1 } else { page };
         let per_page = if per_page == 0 {
@@ -205,7 +213,9 @@ impl BrandPort for BrandService {
         input: CreateBrandInput,
     ) -> BrandResult<BrandDto> {
         if tenant_id.is_nil() {
-            return Err(BrandError::InvalidInput("Tenant ID cannot be nil".to_string()));
+            return Err(BrandError::InvalidInput(
+                "Tenant ID cannot be nil".to_string(),
+            ));
         }
         let slug = input.slug.trim().to_lowercase();
         if slug.is_empty() {
@@ -305,10 +315,14 @@ impl BrandPort for BrandService {
         input: UpdateBrandInput,
     ) -> BrandResult<BrandDto> {
         if tenant_id.is_nil() {
-            return Err(BrandError::InvalidInput("Tenant ID cannot be nil".to_string()));
+            return Err(BrandError::InvalidInput(
+                "Tenant ID cannot be nil".to_string(),
+            ));
         }
         if id.is_nil() {
-            return Err(BrandError::InvalidInput("Brand ID cannot be nil".to_string()));
+            return Err(BrandError::InvalidInput(
+                "Brand ID cannot be nil".to_string(),
+            ));
         }
 
         let brand = Brand::find_by_id(id)
@@ -439,10 +453,14 @@ impl BrandPort for BrandService {
 
     async fn delete_brand(&self, tenant_id: Uuid, id: Uuid) -> BrandResult<()> {
         if tenant_id.is_nil() {
-            return Err(BrandError::InvalidInput("Tenant ID cannot be nil".to_string()));
+            return Err(BrandError::InvalidInput(
+                "Tenant ID cannot be nil".to_string(),
+            ));
         }
         if id.is_nil() {
-            return Err(BrandError::InvalidInput("Brand ID cannot be nil".to_string()));
+            return Err(BrandError::InvalidInput(
+                "Brand ID cannot be nil".to_string(),
+            ));
         }
 
         let brand = Brand::find_by_id(id)
@@ -476,10 +494,14 @@ impl BrandPort for BrandService {
         locale: Option<&str>,
     ) -> BrandResult<Option<BrandDto>> {
         if tenant_id.is_nil() {
-            return Err(BrandError::InvalidInput("Tenant ID cannot be nil".to_string()));
+            return Err(BrandError::InvalidInput(
+                "Tenant ID cannot be nil".to_string(),
+            ));
         }
         if product_id.is_nil() {
-            return Err(BrandError::InvalidInput("Product ID cannot be nil".to_string()));
+            return Err(BrandError::InvalidInput(
+                "Product ID cannot be nil".to_string(),
+            ));
         }
 
         let link = BrandProduct::find()
@@ -505,13 +527,19 @@ impl BrandPort for BrandService {
         is_primary: bool,
     ) -> BrandResult<()> {
         if tenant_id.is_nil() {
-            return Err(BrandError::InvalidInput("Tenant ID cannot be nil".to_string()));
+            return Err(BrandError::InvalidInput(
+                "Tenant ID cannot be nil".to_string(),
+            ));
         }
         if brand_id.is_nil() {
-            return Err(BrandError::InvalidInput("Brand ID cannot be nil".to_string()));
+            return Err(BrandError::InvalidInput(
+                "Brand ID cannot be nil".to_string(),
+            ));
         }
         if product_id.is_nil() {
-            return Err(BrandError::InvalidInput("Product ID cannot be nil".to_string()));
+            return Err(BrandError::InvalidInput(
+                "Product ID cannot be nil".to_string(),
+            ));
         }
 
         // Ensure brand exists for tenant
@@ -551,13 +579,19 @@ impl BrandPort for BrandService {
         product_id: Uuid,
     ) -> BrandResult<()> {
         if tenant_id.is_nil() {
-            return Err(BrandError::InvalidInput("Tenant ID cannot be nil".to_string()));
+            return Err(BrandError::InvalidInput(
+                "Tenant ID cannot be nil".to_string(),
+            ));
         }
         if brand_id.is_nil() {
-            return Err(BrandError::InvalidInput("Brand ID cannot be nil".to_string()));
+            return Err(BrandError::InvalidInput(
+                "Brand ID cannot be nil".to_string(),
+            ));
         }
         if product_id.is_nil() {
-            return Err(BrandError::InvalidInput("Product ID cannot be nil".to_string()));
+            return Err(BrandError::InvalidInput(
+                "Product ID cannot be nil".to_string(),
+            ));
         }
 
         let link = BrandProduct::find()

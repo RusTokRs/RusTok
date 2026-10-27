@@ -148,7 +148,9 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
         )
         .route(
             "/api/blog/tags/{id}",
-            get(tags::get_tag).put(tags::update_tag).delete(tags::delete_tag),
+            get(tags::get_tag)
+                .put(tags::update_tag)
+                .delete(tags::delete_tag),
         )
         .route(
             "/api/blog/posts/bulk/publish",

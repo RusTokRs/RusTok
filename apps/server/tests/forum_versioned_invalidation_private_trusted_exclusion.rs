@@ -24,22 +24,20 @@ use rustok_events::{
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumAudienceConstraints,
     ForumAudienceFacts, ForumAudienceFactsPort, ForumAudienceFactsRequest,
-    ForumCategoryAudiencePolicyService, ForumModule,
-    ForumSearchResultCandidate, ForumSearchResultCandidateKind,
-    ForumSearchResultEligibilityService, ForumTopicAudiencePolicyService,
-    SetForumCategoryAudiencePolicyInput, SetForumTopicAudiencePolicyInput,
-    SharedForumAudienceFactsPort, TopicService,
+    ForumCategoryAudiencePolicyService, ForumModule, ForumSearchResultCandidate,
+    ForumSearchResultCandidateKind, ForumSearchResultEligibilityService,
+    ForumTopicAudiencePolicyService, SetForumCategoryAudiencePolicyInput,
+    SetForumTopicAudiencePolicyInput, SharedForumAudienceFactsPort, TopicService,
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_search::{
     ForumProjectionReconciler, ForumSearchContractIngress, ForumSearchContractIngressOutcome,
     ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchRequest, SearchModule,
-    SharedStorefrontSearchCategoryScopePort,
-    SharedStorefrontSearchResultEligibilityPort, StorefrontSearchCategoryScopePort,
-    StorefrontSearchCategoryScopeRequest, StorefrontSearchResultCandidate,
-    StorefrontSearchResultCandidateKind, StorefrontSearchResultEligibilityPort,
-    StorefrontSearchResultEligibilityRequest, StorefrontSearchTransport,
-    execute_forum_storefront_search,
+    SharedStorefrontSearchCategoryScopePort, SharedStorefrontSearchResultEligibilityPort,
+    StorefrontSearchCategoryScopePort, StorefrontSearchCategoryScopeRequest,
+    StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
+    StorefrontSearchResultEligibilityPort, StorefrontSearchResultEligibilityRequest,
+    StorefrontSearchTransport, execute_forum_storefront_search,
 };
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
@@ -330,10 +328,12 @@ impl StorefrontSearchResultEligibilityPort for ExactForumEligibilityPort {
         forum_public_settings::default_settings()
             .anonymous_reading_allowed(tenant_id)
             .await
-            .map_err(|_| PortError::unavailable(
-                "forum.search_result_eligibility.public_discovery_unavailable",
-                "Forum public discovery is temporarily unavailable",
-            ))
+            .map_err(|_| {
+                PortError::unavailable(
+                    "forum.search_result_eligibility.public_discovery_unavailable",
+                    "Forum public discovery is temporarily unavailable",
+                )
+            })
     }
 
     async fn filter_forum_result_candidates(

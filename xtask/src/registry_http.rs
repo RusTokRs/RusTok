@@ -1,6 +1,6 @@
 use super::*;
-use reqwest::blocking::Client;
 use reqwest::Url;
+use reqwest::blocking::Client;
 use serde::de::DeserializeOwned;
 use std::net::IpAddr;
 

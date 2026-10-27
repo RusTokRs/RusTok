@@ -346,4 +346,3 @@ pub struct RollbackModuleTransitionResponse {
     #[serde(rename = "rollbackModuleTransition")]
     pub rollback: rustok_api::ArtifactRollbackView,
 }
-

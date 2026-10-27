@@ -329,7 +329,7 @@ pub async fn resolve_locale(
             Err(error) => {
                 tracing::error!(%error, tenant_id = %tenant.id, "locale::resolve_locale get_tenant_locales_cached FAILED");
                 return Ok(
-                    HttpError::internal("Failed to resolve tenant locale policy").into_response()
+                    HttpError::internal("Failed to resolve tenant locale policy").into_response(),
                 );
             }
         };
@@ -687,6 +687,9 @@ mod tests {
             fallback_locale: None,
         }];
 
-        assert_eq!(constrain_locale_to_tenant(&resolved, &locales, "en-US"), "en");
+        assert_eq!(
+            constrain_locale_to_tenant(&resolved, &locales, "en-US"),
+            "en"
+        );
     }
 }

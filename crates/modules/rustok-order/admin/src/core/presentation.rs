@@ -218,8 +218,14 @@ mod tests {
     #[test]
     fn localized_order_status_normalizes_casing() {
         assert_eq!(localized_order_status(Some("en"), "  PAID  "), "Paid");
-        assert_eq!(localized_order_status(Some("ru"), "Confirmed"), "Подтверждён");
-        assert_eq!(localized_order_status(Some("en"), "custom_status"), "custom_status");
+        assert_eq!(
+            localized_order_status(Some("ru"), "Confirmed"),
+            "Подтверждён"
+        );
+        assert_eq!(
+            localized_order_status(Some("en"), "custom_status"),
+            "custom_status"
+        );
     }
 
     #[test]

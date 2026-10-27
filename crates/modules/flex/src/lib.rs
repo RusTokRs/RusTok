@@ -199,4 +199,3 @@ pub use events::{
 
 #[cfg(test)]
 mod contract_tests;
-

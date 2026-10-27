@@ -38,7 +38,9 @@ pub(crate) fn return_refundable_value(
     let subtotal = order
         .line_items
         .iter()
-        .try_fold(Decimal::ZERO, |total, line| total.checked_add(line.total_price))
+        .try_fold(Decimal::ZERO, |total, line| {
+            total.checked_add(line.total_price)
+        })
         .ok_or_else(overflow)?;
     let order_level_discount = order
         .adjustments
@@ -54,7 +56,9 @@ pub(crate) fn return_refundable_value(
         if item.quantity <= 0 {
             return Err(validation("return item quantity must be positive"));
         }
-        let entry = returned_quantity_by_line.entry(item.line_item_id).or_insert(0);
+        let entry = returned_quantity_by_line
+            .entry(item.line_item_id)
+            .or_insert(0);
         *entry = entry
             .checked_add(item.quantity)
             .ok_or_else(|| validation("return item quantity overflowed"))?;
@@ -106,7 +110,9 @@ pub(crate) fn return_refundable_value(
                 .tax_lines
                 .iter()
                 .filter(|tax_line| tax_line.line_item_id == Some(line.id))
-                .try_fold(Decimal::ZERO, |sum, tax_line| sum.checked_add(tax_line.amount))
+                .try_fold(Decimal::ZERO, |sum, tax_line| {
+                    sum.checked_add(tax_line.amount)
+                })
                 .ok_or_else(overflow)?
         };
 
@@ -165,7 +171,10 @@ pub(crate) fn validate_return_quantities_were_shipped(
     }
 
     let mut shipped_by_line: HashMap<uuid::Uuid, i64> = HashMap::new();
-    for item in fulfillments.iter().flat_map(|fulfillment| &fulfillment.items) {
+    for item in fulfillments
+        .iter()
+        .flat_map(|fulfillment| &fulfillment.items)
+    {
         *shipped_by_line.entry(item.order_line_item_id).or_insert(0) +=
             i64::from(item.shipped_quantity.max(0));
     }
@@ -181,8 +190,7 @@ pub(crate) fn validate_return_quantities_were_shipped(
     {
         for item in &other.items {
             if returned_by_line.contains_key(&item.line_item_id) {
-                *returned_by_line.entry(item.line_item_id).or_insert(0) +=
-                    i64::from(item.quantity);
+                *returned_by_line.entry(item.line_item_id).or_insert(0) += i64::from(item.quantity);
             }
         }
     }
@@ -192,7 +200,9 @@ pub(crate) fn validate_return_quantities_were_shipped(
             .line_items
             .iter()
             .find(|line| line.id == line_item_id)
-            .is_some_and(|line| line.fulfillment_requirement == OrderLineFulfillmentRequirement::Physical);
+            .is_some_and(|line| {
+                line.fulfillment_requirement == OrderLineFulfillmentRequirement::Physical
+            });
         if !requires_shipment {
             continue;
         }
@@ -406,7 +416,12 @@ mod tests {
     #[test]
     fn tax_is_not_added_when_prices_include_tax() {
         let a = line(1, dec!(100));
-        let order = order(vec![a.clone()], vec![], vec![tax_line(a.id, dec!(9.09))], true);
+        let order = order(
+            vec![a.clone()],
+            vec![],
+            vec![tax_line(a.id, dec!(9.09))],
+            true,
+        );
         let value = return_refundable_value(&order, &order_return(&[(a.id, 1)]))
             .expect("valuation")
             .expect("priced");
@@ -465,12 +480,22 @@ mod tests {
         let order = order(vec![a.clone()], vec![], vec![], false);
         let shipped = [fulfillment(a.id, 1)];
         assert!(
-            validate_return_quantities_were_shipped(&order, &order_return(&[(a.id, 1)]), &[], &shipped)
-                .is_ok()
+            validate_return_quantities_were_shipped(
+                &order,
+                &order_return(&[(a.id, 1)]),
+                &[],
+                &shipped
+            )
+            .is_ok()
         );
         assert!(
-            validate_return_quantities_were_shipped(&order, &order_return(&[(a.id, 2)]), &[], &shipped)
-                .is_err()
+            validate_return_quantities_were_shipped(
+                &order,
+                &order_return(&[(a.id, 2)]),
+                &[],
+                &shipped
+            )
+            .is_err()
         );
     }
 

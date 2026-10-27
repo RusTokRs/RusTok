@@ -4,9 +4,8 @@ use rustok_api::{PortContext, PortError};
 use rustok_fulfillment::FulfillmentService;
 use rustok_order::{
     CompleteOrderReturnInput, CompleteOrderReturnRequest, CreateOrderChangeInput,
-    CreateOrderChangeRequest, CreateOrderReturnRequest, OrderPostOrderCommandPort,
-    ListOrderReturnProjectionsRequest, OrderReadPort, OrderReturnResponse,
-    ReadOrderProjectionRequest,
+    CreateOrderChangeRequest, CreateOrderReturnRequest, ListOrderReturnProjectionsRequest,
+    OrderPostOrderCommandPort, OrderReadPort, OrderReturnResponse, ReadOrderProjectionRequest,
 };
 use rustok_payment::{
     ListPaymentCollectionProjectionsRequest, PaymentAdminReadPort,
@@ -22,13 +21,13 @@ use validator::Validate;
 
 use super::{
     PaymentOrchestrationService,
-    return_refund_value::{
-        resolve_return_refund_amount, return_refundable_value,
-        validate_return_quantities_were_shipped,
-    },
     post_order::{
         CreateReturnDecisionInput, PostOrderOrchestrationError, PostOrderOrchestrationResult,
         ReturnDecisionInput, ReturnDecisionResponse, ReturnRefundDecisionInput,
+    },
+    return_refund_value::{
+        resolve_return_refund_amount, return_refundable_value,
+        validate_return_quantities_were_shipped,
     },
 };
 
@@ -363,14 +362,12 @@ impl ReturnDecisionOwnerOrchestrationService {
         let fulfillments = FulfillmentService::new(self.db.clone())
             .list_by_order(tenant_id, order_id)
             .await
-            .map_err(|error| {
-                PostOrderOrchestrationError::OwnerPort {
-                    owner: "fulfillment",
-                    error: PortError::unavailable(
-                        "return_decision.fulfillment_read_failed",
-                        error.to_string(),
-                    ),
-                }
+            .map_err(|error| PostOrderOrchestrationError::OwnerPort {
+                owner: "fulfillment",
+                error: PortError::unavailable(
+                    "return_decision.fulfillment_read_failed",
+                    error.to_string(),
+                ),
             })?;
         let other_returns = order_reads
             .list_order_return_projections(
@@ -602,6 +599,8 @@ mod tests {
             metadata: serde_json::json!({}),
         };
         let err = validate_decision_shape("refund", &decision).unwrap_err();
-        assert!(matches!(err, PostOrderOrchestrationError::Validation(msg) if msg.contains("payment_collection_id")));
+        assert!(
+            matches!(err, PostOrderOrchestrationError::Validation(msg) if msg.contains("payment_collection_id"))
+        );
     }
 }

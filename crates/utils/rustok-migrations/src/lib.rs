@@ -122,14 +122,10 @@ struct InstallerOwnerMigrator;
 #[async_trait::async_trait]
 impl MigratorTrait for InstallerOwnerMigrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-        let mut modules_owner = rustok_core::MigrationSource::migrations(
-            &rustok_modules::ModulesModule,
-        )
-        .into_iter();
+        let mut modules_owner =
+            rustok_core::MigrationSource::migrations(&rustok_modules::ModulesModule).into_iter();
         let publish_tables = modules_owner
-            .find(|migration| {
-                migration.name() == "m20260403_000061_create_registry_publish_tables"
-            })
+            .find(|migration| migration.name() == "m20260403_000061_create_registry_publish_tables")
             .expect("registry publish tables migration must exist");
         let static_owner = modules_owner
             .find(|migration| migration.name() == "m20260722_000034_static_promotions")

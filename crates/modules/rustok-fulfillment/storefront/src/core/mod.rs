@@ -39,7 +39,11 @@ impl ShippingSelectionLabels {
                 "No delivery groups are available for this cart.",
             ),
             group_label: crate::i18n::t(locale, "fulfillment.shipping.group", "Delivery group"),
-            line_items_label: crate::i18n::t(locale, "fulfillment.shipping.lineItems", "line items"),
+            line_items_label: crate::i18n::t(
+                locale,
+                "fulfillment.shipping.lineItems",
+                "line items",
+            ),
             provider_label: crate::i18n::t(locale, "fulfillment.shipping.provider", "Provider"),
             selected_label: crate::i18n::t(locale, "fulfillment.shipping.selected", "Selected"),
             select_label: crate::i18n::t(locale, "fulfillment.shipping.select", "Select"),
@@ -86,10 +90,7 @@ pub fn is_shipping_option_selected(selected_id: Option<&str>, option_id: &str) -
     selected_id.map(str::trim).filter(|s| !s.is_empty()) == Some(option_id)
 }
 
-pub fn selection_action_label(
-    is_selected: bool,
-    labels: &ShippingSelectionLabels,
-) -> &str {
+pub fn selection_action_label(is_selected: bool, labels: &ShippingSelectionLabels) -> &str {
     if is_selected {
         &labels.selected_label
     } else {
@@ -200,10 +201,7 @@ mod tests {
 
     #[test]
     fn formatting_and_selection_helpers_work_consistently() {
-        assert_eq!(
-            format_line_items_label("line items", 5),
-            "line items: 5"
-        );
+        assert_eq!(format_line_items_label("line items", 5), "line items: 5");
         assert_eq!(
             format_provider_label("Carrier", " fedex "),
             "Carrier: fedex"

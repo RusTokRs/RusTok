@@ -1041,10 +1041,14 @@ mod tests {
                 { "type": "pricing_table" }
             ]
         }));
-        let report = LandingSectionValidationReport::for_document(&pricing_project).expect("report");
+        let report =
+            LandingSectionValidationReport::for_document(&pricing_project).expect("report");
         assert!(report.valid);
         assert_eq!(report.pages[0].sections.len(), 1);
-        assert_eq!(report.pages[0].sections[0].kind, LandingSectionKind::Pricing);
+        assert_eq!(
+            report.pages[0].sections[0].kind,
+            LandingSectionKind::Pricing
+        );
     }
 
     #[test]
@@ -1065,10 +1069,14 @@ mod tests {
                 }
             ]
         }));
-        let report = LandingSectionValidationReport::for_document(&newsletter_project).expect("report");
+        let report =
+            LandingSectionValidationReport::for_document(&newsletter_project).expect("report");
         assert!(report.valid);
         assert_eq!(report.pages[0].sections.len(), 1);
-        assert_eq!(report.pages[0].sections[0].kind, LandingSectionKind::Newsletter);
+        assert_eq!(
+            report.pages[0].sections[0].kind,
+            LandingSectionKind::Newsletter
+        );
 
         let lead_capture_project = project_with_section(json!({
             "id": "lead-capture-sec",
@@ -1086,10 +1094,13 @@ mod tests {
                 }
             ]
         }));
-        let report = LandingSectionValidationReport::for_document(&lead_capture_project).expect("report");
+        let report =
+            LandingSectionValidationReport::for_document(&lead_capture_project).expect("report");
         assert!(report.valid);
         assert_eq!(report.pages[0].sections.len(), 1);
-        assert_eq!(report.pages[0].sections[0].kind, LandingSectionKind::LeadCapture);
+        assert_eq!(
+            report.pages[0].sections[0].kind,
+            LandingSectionKind::LeadCapture
+        );
     }
 }
-

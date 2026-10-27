@@ -614,7 +614,6 @@ async fn load_role_row_on<C: sea_orm::ConnectionTrait>(
     tenant_id: Uuid,
     slug: &str,
 ) -> Result<Option<Uuid>, RbacRolePersistenceError> {
-    use sea_orm::ConnectionTrait;
     let row = db
         .query_one_raw(role_statement(
             db,
@@ -633,7 +632,6 @@ async fn load_tenant_role_memberships_on<C: sea_orm::ConnectionTrait>(
     tenant_id: Uuid,
     user_id: Uuid,
 ) -> Result<Vec<(Uuid, String)>, RbacRolePersistenceError> {
-    use sea_orm::ConnectionTrait;
     let rows = db
         .query_all_raw(role_statement(
             db,
@@ -653,7 +651,6 @@ async fn load_role_permissions_on<C: sea_orm::ConnectionTrait>(
     tenant_id: Uuid,
     role_id: Uuid,
 ) -> Result<Vec<rustok_api::Permission>, RbacRolePersistenceError> {
-    use sea_orm::ConnectionTrait;
     let rows = db
         .query_all_raw(role_statement(
             db,
@@ -690,9 +687,7 @@ pub async fn plan_persisted_custom_role_assignment_on(
 
     let slug = normalize_role_slug(&request.requested_role_slug);
     if slug.parse::<UserRole>().is_ok() {
-        return Err(
-            RbacRoleMutationPolicyError::BuiltInRoleRequiresCanonicalPath(slug).into(),
-        );
+        return Err(RbacRoleMutationPolicyError::BuiltInRoleRequiresCanonicalPath(slug).into());
     }
     if request.actor_role == UserRole::Customer {
         return Err(RbacRoleMutationPolicyError::CannotAssignPeerOrHigherRole.into());
@@ -1230,8 +1225,8 @@ mod tests {
             .unwrap();
         }
 
-        let request = |actor_permissions: Vec<rustok_api::Permission>| {
-            RbacCustomRoleAssignmentRequest {
+        let request =
+            |actor_permissions: Vec<rustok_api::Permission>| RbacCustomRoleAssignmentRequest {
                 tenant_id: tenant,
                 actor_id: actor,
                 actor_tenant_id: tenant,
@@ -1240,8 +1235,7 @@ mod tests {
                 target_user_id: target,
                 requested_role_slug: "content_editor".to_string(),
                 resulting_status: None,
-            }
-        };
+            };
 
         // Ceiling: the role grants posts:delete, which this actor lacks.
         let tx = db.begin().await.unwrap();
@@ -1284,22 +1278,16 @@ mod tests {
         .unwrap()
         .expect("custom role assignment should plan");
         assert_eq!(plan.role_slug(), "content_editor");
-        assert!(replace_persisted_user_role_by_slug_on(
-            &tx,
-            tenant,
-            target,
-            "content_editor"
-        )
-        .await
-        .unwrap());
-        assert!(!replace_persisted_user_role_by_slug_on(
-            &tx,
-            tenant,
-            target,
-            "content_editor"
-        )
-        .await
-        .unwrap());
+        assert!(
+            replace_persisted_user_role_by_slug_on(&tx, tenant, target, "content_editor")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !replace_persisted_user_role_by_slug_on(&tx, tenant, target, "content_editor")
+                .await
+                .unwrap()
+        );
         assert!(
             plan_persisted_custom_role_assignment_on(
                 &tx,
@@ -1312,4 +1300,3 @@ mod tests {
         tx.commit().await.unwrap();
     }
 }
-

@@ -429,9 +429,7 @@ mod tests {
     #[tokio::test]
     async fn receipt_completion_failure_rolls_back_staged_bundle_mutation() {
         use rustok_outbox::SysEventsMigration;
-        use sea_orm::{
-            ConnectionTrait, Database, DatabaseBackend, Statement, TransactionTrait,
-        };
+        use sea_orm::{ConnectionTrait, Database, DatabaseBackend, Statement, TransactionTrait};
         use sea_orm_migration::{MigrationTrait, SchemaManager};
         use uuid::Uuid;
 

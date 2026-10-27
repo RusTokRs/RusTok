@@ -415,7 +415,9 @@ fn init_workflow_runtime(ctx: &ServerRuntimeContext) {
         }
     });
 
-    ctx.shared_insert(crate::services::app_lifecycle::WorkflowCronSchedulerHandle::new(join_handle));
+    ctx.shared_insert(
+        crate::services::app_lifecycle::WorkflowCronSchedulerHandle::new(join_handle),
+    );
     tracing::info!("Workflow runtime initialized (cron scheduler)");
 }
 

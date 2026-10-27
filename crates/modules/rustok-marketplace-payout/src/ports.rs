@@ -228,12 +228,8 @@ mod tests {
         );
         assert_eq!(parse_tenant_id(&context).unwrap(), valid_id);
 
-        let invalid_context = PortContext::new(
-            "not-a-uuid",
-            PortActor::system(),
-            "en",
-            "correlation-id",
-        );
+        let invalid_context =
+            PortContext::new("not-a-uuid", PortActor::system(), "en", "correlation-id");
         assert_eq!(
             parse_tenant_id(&invalid_context).unwrap_err().code,
             "marketplace_payout.tenant_id_invalid"
