@@ -295,8 +295,15 @@ None of these are claimed as compiled or live verified until the P0 evidence ste
   settings service reports the deployment-resolved document and rejects a write that would
   redirect the running process, and a redacted read preserves the password inside `redis_url`.
 - [x] The cache admin server functions are real adapters: runtime `CacheService` health and a
-  host-provided `CacheSettingsAdminPort` for settings, both requiring `settings:manage`, and the
-  form builder returns a validation error instead of substituting defaults.
+  host-provided `CacheSettingsAdminPort` for settings, and the form builder returns a validation
+  error instead of substituting defaults.
+- [x] One authority rule for the cache admin surface: `rustok_api::authorizes_host_or_permission`
+  accepts a permission snapshot with the required settings permission **or** the matching
+  host-global authority, and the request-scoped host authority itself now lives in `rustok-api`
+  (`with_host_authority_scope`/`current_host_authority`) instead of the host binary. GraphQL
+  `cacheHealth` and all three native server functions evaluate it; previously the native read
+  paths demanded `settings:manage` while the GraphQL read path was host-only, so neither
+  transport admitted a tenant administrator reading diagnostics.
 - [x] One instrumentation wrapper (`src/instrumentation.rs`): the three near-identical copies
   reported different `stats()`. Counting is now defined once — `hits`/`misses` are the calls the
   wrapper observed (no adding inner counters, which double counted every hit), `evictions` are

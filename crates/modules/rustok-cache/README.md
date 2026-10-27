@@ -290,16 +290,25 @@ rejects a write that would redirect it, instead of persisting a value that nothi
 
 The cache admin server functions are real adapters, not fixtures: Redis health comes from the
 runtime `CacheService` published in the host context, and settings are read/persisted through
-`CacheSettingsAdminPort` (implemented by the host settings service). Both require
-`settings:manage`, matching the GraphQL transport.
+`CacheSettingsAdminPort` (implemented by the host settings service).
+
+Both the native server functions and the GraphQL resolvers they stand in for evaluate **one**
+authority rule, `rustok_api::authorizes_host_or_permission`: a caller is allowed when its
+permission snapshot carries the required settings permission (`settings:read` for diagnostics and
+the settings document, `settings:manage` for a write) **or** when the request carries host-global
+authority of the matching level. The rule also owns the request-scoped host authority
+(`rustok_api::{with_host_authority_scope, current_host_authority}`), so no transport can invent a
+second, stricter-or-looser check; tenant scoping is enforced separately on both paths.
 
 ## Interactions
 
 - Depends on `rustok-core` for cache, atomic CAS and module contracts.
 - Used by `apps/server` to build tenant, RBAC and other runtime caches.
 - Publishes a narrow admin surface (`admin/`: cache health plus the `cache` settings document)
-  and no RBAC vocabulary of its own. Access is enforced by the host (`settings:manage`) on both
-  the GraphQL and native transports.
+  and no RBAC vocabulary of its own. Access is decided by the host contract
+  (`rustok_api::authorizes_host_or_permission`: `settings:read`/`settings:manage` inside the tenant
+  scope, or the matching host-global authority) and evaluated identically by the GraphQL and
+  native transports.
 
 ## Entry points
 

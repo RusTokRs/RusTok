@@ -17,6 +17,7 @@ server = [
   "dep:async-graphql",
   "dep:axum",
   "dep:url",
+  "dep:tokio",
 ]
 
 [dependencies]
@@ -32,6 +33,7 @@ sha2.workspace = true
 hex.workspace = true
 rustok-ui-i18n.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, optional = true }
 utoipa.workspace = true
 uuid.workspace = true
 url = { workspace = true, optional = true }

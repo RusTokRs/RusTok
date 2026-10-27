@@ -75,7 +75,8 @@ pub use context::{
     AuthContext, AuthContextExtension, AuthPrincipalContext, AuthPrincipalContextExtension,
     ChannelContextExt, ChannelContextExtension, HOST_AUTHORITY_REQUIRED, HostAuthority,
     HostAuthorityContext, OptionalAuthContext, OptionalChannel, OptionalTenant, TenantContext,
-    TenantContextExt, TenantContextExtension, scope_matches,
+    TenantContextExt, TenantContextExtension, authorizes_host_or_permission,
+    current_host_authority, scope_matches, with_host_authority_scope,
 };
 pub use context::{
     AuthPrincipalKind, ChannelContext, ChannelResolutionOutcome, ChannelResolutionSource,

@@ -504,3 +504,67 @@ fn cache_publish_reports_shared_transport_failures() {
         "durable publication must propagate the shared transport failure"
     );
 }
+
+#[test]
+fn cache_admin_authority_has_one_rule_for_both_transports() {
+    let system = source("apps/server/src/graphql/system.rs");
+    let transport = source("crates/modules/rustok-cache/admin/src/transport.rs");
+    let api = source("crates/libs/rustok-api/src/context/host_authority.rs");
+    let host = source("apps/server/src/host_authority.rs");
+
+    // One owner for the rule itself.
+    assert!(
+        api.contains("pub fn authorizes_host_or_permission("),
+        "the cache admin authority rule must be owned by the shared host contract"
+    );
+    // ... and one owner for the request scope that the rule reads.
+    assert!(
+        host.contains("pub use rustok_api::{current_host_authority, with_host_authority_scope};")
+            && !host.contains("task_local!"),
+        "the host must not define a second host-authority task-local scope"
+    );
+
+    // GraphQL cache diagnostics accept a tenant settings administrator, not only a host operator.
+    assert!(
+        system.contains("fn require_cache_read_authority(")
+            && system.contains("rustok_api::authorizes_host_or_permission("),
+        "cacheHealth must evaluate the shared authority rule"
+    );
+    let cache_health = system
+        .split("async fn cache_health(")
+        .nth(1)
+        .expect("cache_health resolver must exist");
+    assert!(
+        !cache_health
+            .lines()
+            .take(6)
+            .any(|line| line.contains("require_host_read()")),
+        "cacheHealth must not be limited to host-global authority while the admin UI uses it"
+    );
+
+    // The native transport evaluates the same rule with the same required authority per operation.
+    let normalized = transport.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        normalized.contains(
+            "rustok_api::authorizes_host_or_permission(Some(auth), required, host_authority)"
+        ),
+        "the native cache admin transport must reuse the shared authority rule"
+    );
+    assert!(
+        !transport.contains("fn ensure_cache_admin_permission("),
+        "the native transport must not keep a second, hardcoded permission check"
+    );
+    for (required, level, operation) in [
+        ("SETTINGS_READ", "Read", "cache health and cache settings reads"),
+        ("SETTINGS_MANAGE", "Manage", "cache settings writes"),
+    ] {
+        let expected = format!(
+            "native_scope( &rustok_api::Permission::{required}, \
+             rustok_api::HostAuthority::{level}, )"
+        );
+        assert!(
+            normalized.contains(&expected),
+            "{operation} must require the {level} level"
+        );
+    }
+}

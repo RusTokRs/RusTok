@@ -75,7 +75,10 @@ capacity. Fixed-size counters may use entry-count capacity.
   runtime never reads.
 - The cache admin server functions consume two host-published handles: the runtime `CacheService`
   (health) and `SharedCacheSettingsAdmin` (a `CacheSettingsAdminPort` implementation backed by the
-  host settings service). Both require `settings:manage`.
+  host settings service). Reads require `settings:read` (or host read authority) and the write
+  requires `settings:manage` (or host manage authority) — the same
+  `rustok_api::authorizes_host_or_permission` rule the GraphQL `cacheHealth` resolver and the
+  `platformSettings` resolvers evaluate, so the two transports cannot grant different access.
 - Recovery reconciliation (`CacheBackend::reconcile_local_state`) runs on the same successful Redis
   `PING` that drives `redis_status()`; readiness therefore reports "reachable **and** recovered",
   while `connectivity_healthy` stays a pure transport signal.

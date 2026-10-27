@@ -24,7 +24,8 @@ invalidation transport and cache health for the host runtime.
 - validated invalidation publishing/subscription through Redis pub/sub and local fan-out;
 - an admin surface (`admin/`) limited to cache diagnostics and the deployment-owned `cache`
   settings document; it declares no RBAC vocabulary of its own and defers authority to the host
-  (`settings:manage`).
+  contract (`rustok_api::authorizes_host_or_permission`, evaluated identically by GraphQL and the
+  native server functions).
 
 ## Responsibility Zone
 

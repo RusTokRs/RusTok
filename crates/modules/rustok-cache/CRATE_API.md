@@ -22,6 +22,9 @@
   - `CacheSettings` (resolved target, validation, redaction, merge-back), `preserve_url_password`
   - `CacheSettingsAdminPort`, `SharedCacheSettingsAdmin`
   - `resolve_redis_url` (deployment precedence: settings file → `RUSTOK_REDIS_URL` → `REDIS_URL`)
+  - authority for the admin surface is not owned here: both transports evaluate
+    `rustok_api::authorizes_host_or_permission` (`settings:read` for diagnostics and the settings
+    document, `settings:manage` for a write, or the matching host-global authority)
 - **Generation convergence**:
   - `CacheNamespaceGenerationStore::read` heals a lost shared counter from a trusted local
     observation (`GENERATION_CATCH_UP_SCRIPT`, advance-only) and reports

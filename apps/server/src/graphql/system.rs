@@ -67,6 +67,30 @@ fn require_permission<'a>(
     Ok(auth)
 }
 
+/// Authority for the cache diagnostics surface.
+///
+/// Cache health is part of the tenant cache-administration surface: a tenant
+/// administrator holding `settings:read` may read it, and a host operator with host
+/// read authority may read it. The rule itself is owned by
+/// [`rustok_api::authorizes_host_or_permission`] and is evaluated identically by the
+/// native cache-admin server functions, so the GraphQL and SSR transports cannot
+/// drift apart again. Cache health carries no tenant data, so no tenant scope is
+/// consulted here; the settings category itself is tenant-scoped.
+fn require_cache_read_authority(ctx: &Context<'_>) -> Result<()> {
+    let auth = ctx.data_opt::<AuthContext>();
+    if rustok_api::authorizes_host_or_permission(
+        auth,
+        &Permission::SETTINGS_READ,
+        HostAuthority::Read,
+    ) {
+        return Ok(());
+    }
+
+    Err(<FieldError as GraphQLError>::permission_denied(
+        "cache diagnostics require settings:read or host-global authority",
+    ))
+}
+
 fn require_host_read() -> Result<()> {
     if crate::host_authority::current_host_authority()
         .is_some_and(|authority| authority.allows(HostAuthority::Read))
@@ -158,7 +182,7 @@ impl SystemQuery {
     async fn cache_health(&self, ctx: &Context<'_>) -> Result<CacheHealthPayload> {
         use rustok_cache::CacheService;
 
-        require_host_read()?;
+        require_cache_read_authority(ctx)?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
 
         let Some(cache) = runtime_ctx.shared_get::<CacheService>() else {

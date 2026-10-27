@@ -1065,7 +1065,19 @@ mod tests {
                 1,
                 CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
                 move || async move {
-                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    // The loader waits on the same wall clock the validator reads, so the deadline
+                    // is guaranteed to have passed when validation runs. A fixed sleep would make
+                    // this test depend on the loader being slower than the configured margin on a
+                    // loaded machine.
+                    let mut waited = Duration::ZERO;
+                    while unix_time_millis().unwrap() <= refresh_expires_at {
+                        assert!(
+                            waited <= Duration::from_secs(5),
+                            "wall clock did not advance past the refresh deadline"
+                        );
+                        tokio::time::sleep(Duration::from_millis(5)).await;
+                        waited += Duration::from_millis(5);
+                    }
                     CacheEnvelope::new(
                         1,
                         refresh_expires_at.saturating_sub(1),

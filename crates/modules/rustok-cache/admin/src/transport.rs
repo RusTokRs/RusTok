@@ -146,26 +146,32 @@ mod native_server_adapter {
     use super::*;
     use leptos::server;
 
-    /// Permission the host requires for cache diagnostics and the persisted `cache` category.
+    /// Authority the host requires for cache diagnostics and the persisted `cache` category.
     ///
-    /// The GraphQL path uses host-global authority (`settings:manage` included); the native path
-    /// checks the same capability from the authenticated snapshot so both transports agree on who
-    /// may read or change cache configuration.
+    /// The rule is owned by the host contract ([`rustok_api::authorizes_host_or_permission`]):
+    /// a tenant administrator whose snapshot carries the required settings permission, or a host
+    /// operator whose request carries host-global authority. GraphQL resolvers evaluate the very
+    /// same function, so the two transports cannot disagree about who may read `cacheHealth` or
+    /// change the `cache` category.
     #[cfg(feature = "ssr")]
-    fn ensure_cache_admin_permission(
+    fn ensure_cache_admin_authority(
         auth: &rustok_api::AuthContext,
+        required: &rustok_api::Permission,
+        host_authority: rustok_api::HostAuthority,
     ) -> Result<(), ServerFnError> {
-        if rustok_api::has_effective_permission(
-            &auth.permissions,
-            &rustok_api::Permission::SETTINGS_MANAGE,
-        ) {
+        if rustok_api::authorizes_host_or_permission(Some(auth), required, host_authority) {
             return Ok(());
         }
-        Err(ServerFnError::new("Permission denied: settings:manage required"))
+        Err(ServerFnError::new(format!(
+            "Permission denied: {required} or host-global authority required"
+        )))
     }
 
     #[cfg(feature = "ssr")]
-    async fn native_scope() -> Result<
+    async fn native_scope(
+        required: &rustok_api::Permission,
+        host_authority: rustok_api::HostAuthority,
+    ) -> Result<
         (
             rustok_api::HostRuntimeContext,
             rustok_api::AuthContext,
@@ -179,7 +185,7 @@ mod native_server_adapter {
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(|error| ServerFnError::new(format!("cache admin tenant scope: {error}")))?;
-        ensure_cache_admin_permission(&auth)?;
+        ensure_cache_admin_authority(&auth, required, host_authority)?;
         // The cache settings category is per-tenant; the GraphQL transport enforces the same
         // boundary (`require_tenant_settings_scope`), so both paths must agree.
         if auth.tenant_id != tenant.id {
@@ -201,7 +207,11 @@ mod native_server_adapter {
     pub async fn cache_health_native() -> Result<GraphqlCacheHealthResponse, ServerFnError> {
         #[cfg(feature = "ssr")]
         {
-            let (host, _auth, _tenant) = native_scope().await?;
+            let (host, _auth, _tenant) = native_scope(
+                &rustok_api::Permission::SETTINGS_READ,
+                rustok_api::HostAuthority::Read,
+            )
+            .await?;
             let cache = host.shared_get::<rustok_cache::CacheService>().ok_or_else(|| {
                 ServerFnError::new("cache runtime is not published in the host context")
             })?;
@@ -233,7 +243,11 @@ mod native_server_adapter {
     pub async fn cache_settings_native() -> Result<GraphqlPlatformSettingsResponse, ServerFnError> {
         #[cfg(feature = "ssr")]
         {
-            let (host, _auth, tenant) = native_scope().await?;
+            let (host, _auth, tenant) = native_scope(
+                &rustok_api::Permission::SETTINGS_READ,
+                rustok_api::HostAuthority::Read,
+            )
+            .await?;
             let port = host
                 .shared_get::<rustok_cache::SharedCacheSettingsAdmin>()
                 .ok_or_else(|| {
@@ -267,7 +281,11 @@ mod native_server_adapter {
     ) -> Result<GraphqlUpdatePlatformSettingsResponse, ServerFnError> {
         #[cfg(feature = "ssr")]
         {
-            let (host, auth, tenant) = native_scope().await?;
+            let (host, auth, tenant) = native_scope(
+                &rustok_api::Permission::SETTINGS_MANAGE,
+                rustok_api::HostAuthority::Manage,
+            )
+            .await?;
             let port = host
                 .shared_get::<rustok_cache::SharedCacheSettingsAdmin>()
                 .ok_or_else(|| {

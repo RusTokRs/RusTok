@@ -1,8 +1,13 @@
+use std::future::Future;
+
 use axum::{
     extract::FromRequestParts,
     http::{StatusCode, request::Parts},
 };
 use uuid::Uuid;
+
+use super::auth::AuthContext;
+use crate::permissions::{Permission, has_effective_permission};
 
 pub const HOST_AUTHORITY_REQUIRED: &str = "Host-global authority required";
 
@@ -63,6 +68,66 @@ impl HostAuthorityContext {
     }
 }
 
+tokio::task_local! {
+    static HOST_AUTHORITY_SCOPE: Option<HostAuthorityContext>;
+}
+
+/// Run one request future under the already authenticated typed host authority.
+///
+/// The scope is the single owner of "which host authority is this request acting
+/// with" for the whole process: the host credential middleware establishes it, and
+/// every consumer — GraphQL resolvers, HTTP handlers and native server functions —
+/// reads it through [`current_host_authority`]. It is deliberately request
+/// task-local, so work that escapes the request task (WebSocket upgrades, detached
+/// background tasks) does not inherit host-global authority and stays fail-closed.
+pub async fn with_host_authority_scope<F>(
+    authority: Option<HostAuthorityContext>,
+    future: F,
+) -> F::Output
+where
+    F: Future,
+{
+    HOST_AUTHORITY_SCOPE.scope(authority, future).await
+}
+
+/// Host authority carried by the current request, if any.
+///
+/// Returns `None` outside a request scope and for ordinary tenant requests, both of
+/// which must be treated as "no host-global access".
+pub fn current_host_authority() -> Option<HostAuthorityContext> {
+    HOST_AUTHORITY_SCOPE
+        .try_with(|authority| *authority)
+        .ok()
+        .flatten()
+}
+
+/// Authority rule for a host-owned administrative surface (diagnostics, platform
+/// settings categories).
+///
+/// A caller is authorized when either
+///
+/// - the current request carries host-global authority that allows `host_authority`
+///   (a host operator holding the host credential), or
+/// - the authenticated permission snapshot contains `permission` (a tenant
+///   administrator acting inside its own resolved tenant).
+///
+/// Both transports of the same surface must evaluate this one rule, so a browseable
+/// admin page and an operator CLI cannot disagree about who may read or change the
+/// same cache configuration. Tenant scoping is *not* covered here: callers that act
+/// on tenant data must still reject a snapshot whose tenant differs from the
+/// resolved tenant.
+pub fn authorizes_host_or_permission(
+    auth: Option<&AuthContext>,
+    permission: &Permission,
+    host_authority: HostAuthority,
+) -> bool {
+    if current_host_authority().is_some_and(|authority| authority.allows(host_authority)) {
+        return true;
+    }
+
+    auth.is_some_and(|auth| has_effective_permission(&auth.permissions, permission))
+}
+
 impl<S> FromRequestParts<S> for HostAuthorityContext
 where
     S: Send + Sync,
@@ -80,7 +145,12 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{HostAuthority, HostAuthorityContext};
+    use super::{
+        HostAuthority, HostAuthorityContext, authorizes_host_or_permission, current_host_authority,
+        with_host_authority_scope,
+    };
+    use crate::context::AuthContext;
+    use crate::permissions::Permission;
     use uuid::Uuid;
 
     #[test]
@@ -117,5 +187,84 @@ mod tests {
         assert!(HostAuthorityContext::read(Uuid::nil()).is_none());
         assert!(HostAuthorityContext::manage(Uuid::nil()).is_none());
         assert!(HostAuthorityContext::for_actor(HostAuthority::Manage, Uuid::nil()).is_none());
+    }
+
+    fn admin_auth(permission: Permission) -> AuthContext {
+        AuthContext {
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            permissions: vec![permission],
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "session".to_string(),
+        }
+    }
+
+    #[test]
+    fn admin_surface_rule_accepts_a_tenant_permission_without_host_authority() {
+        let auth = admin_auth(Permission::SETTINGS_READ);
+        assert!(authorizes_host_or_permission(
+            Some(&auth),
+            &Permission::SETTINGS_READ,
+            HostAuthority::Read
+        ));
+        // `settings:read` is not enough for the managing level of the same surface.
+        assert!(!authorizes_host_or_permission(
+            Some(&auth),
+            &Permission::SETTINGS_MANAGE,
+            HostAuthority::Manage
+        ));
+        // `settings:manage` implies read through the effective-permission rule.
+        let manager = admin_auth(Permission::SETTINGS_MANAGE);
+        assert!(authorizes_host_or_permission(
+            Some(&manager),
+            &Permission::SETTINGS_READ,
+            HostAuthority::Read
+        ));
+    }
+
+    #[test]
+    fn admin_surface_rule_rejects_a_caller_with_neither_authority() {
+        assert!(!authorizes_host_or_permission(
+            None,
+            &Permission::SETTINGS_READ,
+            HostAuthority::Read
+        ));
+        assert!(!authorizes_host_or_permission(
+            Some(&admin_auth(Permission::USERS_READ)),
+            &Permission::SETTINGS_READ,
+            HostAuthority::Read
+        ));
+    }
+
+    #[tokio::test]
+    async fn host_scope_is_request_local_and_absent_outside_a_request() {
+        assert!(current_host_authority().is_none());
+
+        let operator = HostAuthorityContext::read(Uuid::new_v4()).expect("non-nil operator actor");
+        let seen =
+            with_host_authority_scope(Some(operator), async { current_host_authority() }).await;
+        assert_eq!(seen, Some(operator));
+
+        assert!(current_host_authority().is_none());
+
+        let allowed = with_host_authority_scope(Some(operator), async {
+            authorizes_host_or_permission(None, &Permission::SETTINGS_READ, HostAuthority::Read)
+        })
+        .await;
+        assert!(
+            allowed,
+            "a host operator may read the surface without tenant RBAC"
+        );
+
+        let denied = with_host_authority_scope(Some(operator), async {
+            authorizes_host_or_permission(None, &Permission::SETTINGS_MANAGE, HostAuthority::Manage)
+        })
+        .await;
+        assert!(
+            !denied,
+            "a read-level host operator may not manage the surface"
+        );
     }
 }
