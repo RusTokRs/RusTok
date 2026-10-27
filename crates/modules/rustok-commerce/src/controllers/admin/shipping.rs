@@ -357,10 +357,7 @@ pub async fn list_shipping_profiles(
         "Permission denied: fulfillments:read required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_tenant_id",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
     }
     tracing::debug!(
         boundary = ADMIN_SHIPPING_BOUNDARY,
@@ -416,10 +413,7 @@ pub async fn create_shipping_profile(
         "Permission denied: fulfillments:create required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_tenant_id",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
     }
     tracing::debug!(
         boundary = ADMIN_SHIPPING_BOUNDARY,
@@ -462,16 +456,10 @@ pub async fn show_shipping_profile(
         "Permission denied: fulfillments:read required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_tenant_id",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_shipping_profile_id",
-            "Shipping profile ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("invalid_shipping_profile_id", "Shipping profile ID must not be nil"));
     }
     tracing::debug!(
         boundary = ADMIN_SHIPPING_BOUNDARY,
@@ -521,16 +509,10 @@ pub async fn update_shipping_profile(
         "Permission denied: fulfillments:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_tenant_id",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_shipping_profile_id",
-            "Shipping profile ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("invalid_shipping_profile_id", "Shipping profile ID must not be nil"));
     }
     tracing::debug!(
         boundary = ADMIN_SHIPPING_BOUNDARY,
@@ -573,16 +555,10 @@ pub async fn deactivate_shipping_profile(
         "Permission denied: fulfillments:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_tenant_id",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_shipping_profile_id",
-            "Shipping profile ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("invalid_shipping_profile_id", "Shipping profile ID must not be nil"));
     }
     tracing::debug!(
         boundary = ADMIN_SHIPPING_BOUNDARY,
@@ -625,16 +601,10 @@ pub async fn reactivate_shipping_profile(
         "Permission denied: fulfillments:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_tenant_id",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_shipping_profile_id",
-            "Shipping profile ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("invalid_shipping_profile_id", "Shipping profile ID must not be nil"));
     }
     tracing::debug!(
         boundary = ADMIN_SHIPPING_BOUNDARY,
@@ -677,10 +647,7 @@ pub async fn list_shipping_options(
         "Permission denied: fulfillments:read required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_tenant_id",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
     }
     tracing::debug!(
         boundary = ADMIN_SHIPPING_BOUNDARY,
@@ -770,10 +737,7 @@ pub async fn create_shipping_option(
         "Permission denied: fulfillments:create required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_tenant_id",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
     }
     tracing::debug!(
         boundary = ADMIN_SHIPPING_BOUNDARY,
@@ -841,16 +805,10 @@ pub async fn show_shipping_option(
         "Permission denied: fulfillments:read required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_tenant_id",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_shipping_option_id",
-            "Shipping option ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("invalid_shipping_option_id", "Shipping option ID must not be nil"));
     }
     tracing::debug!(
         boundary = ADMIN_SHIPPING_BOUNDARY,
@@ -922,16 +880,10 @@ pub async fn update_shipping_option(
         "Permission denied: fulfillments:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_tenant_id",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_shipping_option_id",
-            "Shipping option ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("invalid_shipping_option_id", "Shipping option ID must not be nil"));
     }
     tracing::debug!(
         boundary = ADMIN_SHIPPING_BOUNDARY,
@@ -1007,16 +959,10 @@ pub async fn deactivate_shipping_option(
         "Permission denied: fulfillments:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_tenant_id",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_shipping_option_id",
-            "Shipping option ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("invalid_shipping_option_id", "Shipping option ID must not be nil"));
     }
     tracing::debug!(
         boundary = ADMIN_SHIPPING_BOUNDARY,
@@ -1088,16 +1034,10 @@ pub async fn reactivate_shipping_option(
         "Permission denied: fulfillments:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_tenant_id",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_shipping_option_id",
-            "Shipping option ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("invalid_shipping_option_id", "Shipping option ID must not be nil"));
     }
     tracing::debug!(
         boundary = ADMIN_SHIPPING_BOUNDARY,

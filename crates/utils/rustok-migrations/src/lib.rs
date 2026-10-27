@@ -36,6 +36,9 @@ mod m20260928_000001_create_install_http_jobs;
 mod m20261007_000014_add_sys_events_claim_index;
 mod m20261007_000015_add_sys_events_retention_index;
 mod m20261007_000016_drop_sys_events_superseded_indexes;
+mod m20261025_000001_add_user_login_lockout;
+mod m20261025_000003_add_session_reuse_detection;
+mod m20261025_000005_add_oauth_token_family;
 
 pub mod schema_diff;
 pub use schema_diff::*;
@@ -532,6 +535,11 @@ impl MigratorTrait for Migrator {
         all.push(Box::new(
             m20261007_000016_drop_sys_events_superseded_indexes::Migration,
         ));
+        all.push(Box::new(m20261025_000001_add_user_login_lockout::Migration));
+        all.push(Box::new(
+            m20261025_000003_add_session_reuse_detection::Migration,
+        ));
+        all.push(Box::new(m20261025_000005_add_oauth_token_family::Migration));
         let dependencies = collect_migration_descriptors();
 
         all.sort_by(|a, b| a.name().cmp(b.name()));
@@ -770,6 +778,8 @@ mod tests {
                 "cart",
                 "customer",
                 "product",
+                "product_relations",
+                "product_bundles",
                 "region",
                 "pricing",
                 "inventory",

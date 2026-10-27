@@ -4,9 +4,9 @@ import { readFileSync } from "node:fs";
 
 const files = {
   rootCargo: readFileSync("Cargo.toml", "utf8"),
-  cargo: readFileSync("crates/libs/rustok-iggy/Cargo.toml", "utf8"),
-  lib: readFileSync("crates/libs/rustok-iggy/src/lib.rs", "utf8"),
-  position: readFileSync("crates/libs/rustok-iggy/src/position.rs", "utf8"),
+  cargo: readFileSync("crates/modules/rustok-iggy/Cargo.toml", "utf8"),
+  lib: readFileSync("crates/modules/rustok-iggy/src/lib.rs", "utf8"),
+  position: readFileSync("crates/modules/rustok-iggy/src/position.rs", "utf8"),
   telemetry: readFileSync(
     "crates/libs/rustok-telemetry/src/runtime_consumer_metrics.rs",
     "utf8",

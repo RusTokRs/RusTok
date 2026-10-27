@@ -1,5 +1,5 @@
-use rustok_fulfillment::FulfillmentStatusKind;
 use rustok_fulfillment::providers::FulfillmentProviderRegistry;
+use rustok_fulfillment::FulfillmentStatusKind;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -270,9 +270,7 @@ mod tests {
             )
             .await
             .unwrap_err();
-        assert!(
-            matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("tenant_id"))
-        );
+        assert!(matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("tenant_id")));
 
         let err = service
             .ship_fulfillment(
@@ -287,9 +285,7 @@ mod tests {
             )
             .await
             .unwrap_err();
-        assert!(
-            matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("tenant_id"))
-        );
+        assert!(matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("tenant_id")));
 
         let err = service
             .ship_fulfillment(
@@ -304,8 +300,6 @@ mod tests {
             )
             .await
             .unwrap_err();
-        assert!(
-            matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("fulfillment_id"))
-        );
+        assert!(matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("fulfillment_id")));
     }
 }

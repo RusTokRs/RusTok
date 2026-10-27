@@ -111,6 +111,30 @@ pub enum DomainEvent {
     UserDeleted {
         user_id: Uuid,
     },
+    UserLoggedOut {
+        user_id: Uuid,
+    },
+    UserPasswordChanged {
+        user_id: Uuid,
+    },
+    UserPasswordResetCompleted {
+        user_id: Uuid,
+    },
+    UserEmailVerified {
+        user_id: Uuid,
+    },
+    UserInviteIssued {
+        invite_id: Uuid,
+        issued_by: Option<Uuid>,
+    },
+    UserInviteAccepted {
+        user_id: Uuid,
+        invite_id: Uuid,
+    },
+    UserInviteRevoked {
+        invite_id: Uuid,
+        revoked_by: Option<Uuid>,
+    },
 
     // ════════════════════════════════════════════════════════════════
     // COMMERCE EVENTS (для будущего модуля)
@@ -997,6 +1021,13 @@ impl DomainEvent {
             Self::UserUpdated { .. } => "user.updated",
             Self::ProfileUpdated { .. } => "profile.updated",
             Self::UserDeleted { .. } => "user.deleted",
+            Self::UserLoggedOut { .. } => "user.logged_out",
+            Self::UserPasswordChanged { .. } => "user.password_changed",
+            Self::UserPasswordResetCompleted { .. } => "user.password_reset_completed",
+            Self::UserEmailVerified { .. } => "user.email_verified",
+            Self::UserInviteIssued { .. } => "user.invite_issued",
+            Self::UserInviteAccepted { .. } => "user.invite_accepted",
+            Self::UserInviteRevoked { .. } => "user.invite_revoked",
 
             Self::ProductCreated { .. } => "product.created",
             Self::ProductUpdated { .. } => "product.updated",
@@ -1241,6 +1272,13 @@ impl DomainEvent {
             Self::UserUpdated { .. } => 1,
             Self::ProfileUpdated { .. } => 1,
             Self::UserDeleted { .. } => 1,
+            Self::UserLoggedOut { .. } => 1,
+            Self::UserPasswordChanged { .. } => 1,
+            Self::UserPasswordResetCompleted { .. } => 1,
+            Self::UserEmailVerified { .. } => 1,
+            Self::UserInviteIssued { .. } => 1,
+            Self::UserInviteAccepted { .. } => 1,
+            Self::UserInviteRevoked { .. } => 1,
 
             // Commerce events (v1)
             Self::ProductCreated { .. } => 1,

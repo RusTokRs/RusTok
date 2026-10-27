@@ -17,7 +17,7 @@ The compared default-branch changes are limited to:
 No compared default-branch commit modifies:
 
 - `crates/modules/rustok-index` source, documentation, or Cargo manifest;
-- Product Index source/absence composition under `crates/utils/rustok-distribution`;
+- Product Index source/absence composition under `crates/modules/rustok-distribution`;
 - `apps/server/src/graphql/index_drift_diagnosis.rs` or the Index GraphQL root files changed by this
   PR;
 - `apps/server/src/services/index_drift_diagnosis_operator.rs`;

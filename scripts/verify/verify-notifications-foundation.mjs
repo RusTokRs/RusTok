@@ -169,7 +169,7 @@ for (const relativePath of collectFiles(repoRoot)) {
   if (relativePath === "Cargo.toml") continue;
   if (!relativePath.endsWith(".rs") && !relativePath.endsWith("Cargo.toml")) continue;
   if (relativePath.startsWith("crates/modules/rustok-notifications/")) continue;
-  if (relativePath.startsWith("crates/utils/rustok-distribution/")) continue;
+  if (relativePath.startsWith("crates/modules/rustok-distribution/")) continue;
   if (relativePath.startsWith("crates/utils/rustok-migrations/")) continue;
   if (relativePath.startsWith("apps/server/")) continue;
   if (relativePath.startsWith("apps/admin/")) continue;

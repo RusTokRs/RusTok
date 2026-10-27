@@ -58,4 +58,6 @@ pub use services::{
 pub use state_machine::{BlogPostStatus, CommentStatus};
 
 #[cfg(test)]
+mod contract_tests;
+#[cfg(test)]
 mod tests;

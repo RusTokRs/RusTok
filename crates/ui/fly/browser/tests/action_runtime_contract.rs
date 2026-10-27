@@ -94,3 +94,4 @@ fn runtime_finds_targets_in_published_and_instrumented_renders() {
     assert_contains("root.getElementById(targetId)");
     assert_contains("[data-fly-component-id=\"");
 }
+

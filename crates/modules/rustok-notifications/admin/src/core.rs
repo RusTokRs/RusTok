@@ -89,7 +89,10 @@ mod tests {
         assert!(!status.persistence_ready);
         assert!(!status.delivery_ready);
 
-        assert_eq!(status.source_status(), NotificationsAdminItemStatus::Ready);
+        assert_eq!(
+            status.source_status(),
+            NotificationsAdminItemStatus::Ready
+        );
         assert_eq!(
             status.source_status().i18n_key(),
             "notifications.status.ready"

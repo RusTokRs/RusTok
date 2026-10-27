@@ -13,7 +13,7 @@ const failures = [];
 
 const paths = {
   ports: 'crates/modules/rustok-pricing/src/ports.rs',
-  error: 'crates/libs/rustok-commerce-foundation/src/error.rs',
+  error: 'crates/modules/rustok-commerce-foundation/src/error.rs',
   readContext: 'crates/modules/rustok-pricing/src/read_context.rs',
   writeContext: 'crates/modules/rustok-pricing/src/write_context.rs',
   readEvidence:

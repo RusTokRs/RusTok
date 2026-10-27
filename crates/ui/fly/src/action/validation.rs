@@ -267,7 +267,9 @@ pub(super) fn validate_action_contract(
         | ComponentAction::ToggleAccordion { target_id, .. } => {
             validate_identifier(target_id, "target component id")
         }
-        ComponentAction::SwitchTab { panel_id } => validate_identifier(panel_id, "target panel id"),
+        ComponentAction::SwitchTab { panel_id } => {
+            validate_identifier(panel_id, "target panel id")
+        }
         ComponentAction::SwitchSlide {
             slider_id,
             target_slide,

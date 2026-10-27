@@ -409,17 +409,31 @@ mod tests {
     #[test]
     fn parse_tenant_id_invariants() {
         let valid_uuid = Uuid::new_v4();
-        let ctx = PortContext::new(valid_uuid.to_string(), PortActor::system(), "en", "corr-1");
+        let ctx = PortContext::new(
+            valid_uuid.to_string(),
+            PortActor::system(),
+            "en",
+            "corr-1",
+        );
         assert_eq!(parse_tenant_id(&ctx).unwrap(), valid_uuid);
 
-        let invalid_ctx = PortContext::new("not-a-uuid", PortActor::system(), "en", "corr-1");
+        let invalid_ctx = PortContext::new(
+            "not-a-uuid",
+            PortActor::system(),
+            "en",
+            "corr-1",
+        );
         assert_eq!(
             parse_tenant_id(&invalid_ctx).unwrap_err().code,
             "marketplace_ledger.tenant_id_invalid"
         );
 
-        let nil_ctx =
-            PortContext::new(Uuid::nil().to_string(), PortActor::system(), "en", "corr-1");
+        let nil_ctx = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::system(),
+            "en",
+            "corr-1",
+        );
         assert_eq!(
             parse_tenant_id(&nil_ctx).unwrap_err().code,
             "marketplace_ledger.tenant_id_invalid"
@@ -502,13 +516,8 @@ mod tests {
         assert_eq!(err.code, "marketplace_ledger.reversal_already_posted");
         assert_eq!(err.kind, PortErrorKind::Conflict);
 
-        let err = map_owner_error(MarketplaceLedgerError::BalanceTransferAlreadyPosted(
-            order_id,
-        ));
-        assert_eq!(
-            err.code,
-            "marketplace_ledger.balance_transfer_already_posted"
-        );
+        let err = map_owner_error(MarketplaceLedgerError::BalanceTransferAlreadyPosted(order_id));
+        assert_eq!(err.code, "marketplace_ledger.balance_transfer_already_posted");
         assert_eq!(err.kind, PortErrorKind::Conflict);
 
         let err = map_owner_error(MarketplaceLedgerError::SellerBalanceNotFound {

@@ -127,10 +127,7 @@ pub async fn list_return_completion_operations(
         "Permission denied: orders:read required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "commerce_invalid_tenant",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
     }
     tracing::debug!(
         boundary = RETURN_COMPLETION_OPERATOR_BOUNDARY,
@@ -193,16 +190,10 @@ pub async fn show_return_completion_operation(
         "Permission denied: orders:read required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "commerce_invalid_tenant",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request(
-            "commerce_invalid_id",
-            "Return completion operation ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("commerce_invalid_id", "Return completion operation ID must not be nil"));
     }
     tracing::debug!(
         boundary = RETURN_COMPLETION_OPERATOR_BOUNDARY,
@@ -256,16 +247,10 @@ pub async fn retry_return_completion_operation(
         "Permission denied: orders:manage and payments:manage required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "commerce_invalid_tenant",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request(
-            "commerce_invalid_id",
-            "Return completion operation ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("commerce_invalid_id", "Return completion operation ID must not be nil"));
     }
     tracing::debug!(
         boundary = RETURN_COMPLETION_OPERATOR_BOUNDARY,

@@ -303,16 +303,12 @@ mod tests {
             .retry_local_persistence(Uuid::nil(), Uuid::new_v4())
             .await
             .unwrap_err();
-        assert!(
-            matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("tenant_id"))
-        );
+        assert!(matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("tenant_id")));
 
         let err = service
             .retry_local_persistence(Uuid::new_v4(), Uuid::nil())
             .await
             .unwrap_err();
-        assert!(
-            matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("operation_id"))
-        );
+        assert!(matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("operation_id")));
     }
 }

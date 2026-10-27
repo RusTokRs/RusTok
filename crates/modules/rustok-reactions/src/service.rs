@@ -1,6 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use chrono::Utc;
+use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError};
+use rustok_events::ReactionsEvent;
+use rustok_outbox::{ContractEventWriteOnceError, TransactionalEventBus, idempotency};
 use crate::{
     ApplyReactionCommand, ReactionAction, ReactionActorState, ReactionAggregate, ReactionCatalog,
     ReactionContractError, ReactionKey, ReactionProviderError, ReactionReadPort,
@@ -8,11 +13,6 @@ use crate::{
     ReactionSubjectAuthorization, ReactionSubjectRef, ReactionSubjectRegistry,
     ReactionSubjectRegistryEntry, ReactionSubjectRequest, ReactionWritePort, ReactionWriteReceipt,
 };
-use async_trait::async_trait;
-use chrono::Utc;
-use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError};
-use rustok_events::ReactionsEvent;
-use rustok_outbox::{ContractEventWriteOnceError, TransactionalEventBus, idempotency};
 use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
@@ -1151,9 +1151,9 @@ mod tests {
 
     #[test]
     fn authorize_actor_checks_bounds_and_principals() {
-        use super::{ACT_AS_ACTOR_CLAIM, authorize_actor};
         use rustok_api::{PortActor, PortContext};
         use uuid::Uuid;
+        use super::{authorize_actor, ACT_AS_ACTOR_CLAIM};
 
         let user_id = Uuid::new_v4();
         let other_id = Uuid::new_v4();
@@ -1161,18 +1161,10 @@ mod tests {
 
         // Nil actor ID is rejected
         let nil_err = authorize_actor(
-            &PortContext::new(
-                tenant_id.to_string(),
-                PortActor::system(),
-                "en".to_string(),
-                "req".to_string(),
-            ),
+            &PortContext::new(tenant_id.to_string(), PortActor::system(), "en".to_string(), "req".to_string()),
             Uuid::nil(),
         );
-        assert_eq!(
-            nil_err.expect_err("nil actor").code,
-            "reactions.actor_id_nil"
-        );
+        assert_eq!(nil_err.expect_err("nil actor").code, "reactions.actor_id_nil");
 
         // User actor mismatch
         let mismatch_ctx = PortContext::new(
@@ -1182,10 +1174,7 @@ mod tests {
             "req".to_string(),
         );
         let mismatch_err = authorize_actor(&mismatch_ctx, user_id);
-        assert_eq!(
-            mismatch_err.expect_err("mismatch").code,
-            "reactions.actor_mismatch"
-        );
+        assert_eq!(mismatch_err.expect_err("mismatch").code, "reactions.actor_mismatch");
 
         // User actor match
         let valid_user_ctx = PortContext::new(
@@ -1204,10 +1193,7 @@ mod tests {
             "req".to_string(),
         );
         let svc_err = authorize_actor(&service_ctx, user_id);
-        assert_eq!(
-            svc_err.expect_err("no delegation").code,
-            "reactions.actor_delegation_forbidden"
-        );
+        assert_eq!(svc_err.expect_err("no delegation").code, "reactions.actor_delegation_forbidden");
 
         // Service actor with claim
         let authorized_svc_ctx = service_ctx.with_claim(ACT_AS_ACTOR_CLAIM.to_string());
@@ -1216,10 +1202,10 @@ mod tests {
 
     #[test]
     fn validate_subject_tenant_enforces_exact_tenant() {
-        use super::validate_subject_tenant;
-        use crate::{ReactionSourceSlug, ReactionSubjectKind, ReactionSubjectRef};
         use rustok_api::{PortActor, PortContext};
+        use crate::{ReactionSourceSlug, ReactionSubjectKind, ReactionSubjectRef};
         use uuid::Uuid;
+        use super::validate_subject_tenant;
 
         let tenant_id = Uuid::new_v4();
         let other_tenant = Uuid::new_v4();
@@ -1247,9 +1233,7 @@ mod tests {
             "req".to_string(),
         );
         assert_eq!(
-            validate_subject_tenant(&mismatch_ctx, &subject)
-                .expect_err("mismatch")
-                .code,
+            validate_subject_tenant(&mismatch_ctx, &subject).expect_err("mismatch").code,
             "reactions.tenant_mismatch"
         );
 
@@ -1260,9 +1244,7 @@ mod tests {
             "req".to_string(),
         );
         assert_eq!(
-            validate_subject_tenant(&nil_tenant_ctx, &subject)
-                .expect_err("nil tenant")
-                .code,
+            validate_subject_tenant(&nil_tenant_ctx, &subject).expect_err("nil tenant").code,
             "reactions.tenant_id_nil"
         );
     }

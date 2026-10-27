@@ -43,10 +43,7 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(MessengerConversations::LastMessageId).big_integer())
-                    .col(
-                        ColumnDef::new(MessengerConversations::LastMessageAt)
-                            .timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(MessengerConversations::LastMessageAt).timestamp_with_time_zone())
                     .col(
                         ColumnDef::new(MessengerConversations::CreatedAt)
                             .timestamp_with_time_zone()
@@ -131,7 +128,10 @@ impl MigrationTrait for Migration {
                                 MessengerChannelsTranslations::Table,
                                 MessengerChannelsTranslations::ChannelId,
                             )
-                            .to(MessengerConversations::Table, MessengerConversations::Id)
+                            .to(
+                                MessengerConversations::Table,
+                                MessengerConversations::Id,
+                            )
                             .on_delete(ForeignKeyAction::Cascade),
                     )
                     .to_owned(),
@@ -167,7 +167,11 @@ impl MigrationTrait for Migration {
                             .uuid()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(MessengerMembers::UserId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(MessengerMembers::UserId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(MessengerMembers::Role)
                             .small_integer()
@@ -247,7 +251,11 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(1),
                     )
-                    .col(ColumnDef::new(MessengerMessages::Content).text().not_null())
+                    .col(
+                        ColumnDef::new(MessengerMessages::Content)
+                            .text()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(MessengerMessages::BlocksJson).json())
                     .col(
                         ColumnDef::new(MessengerMessages::IsEncrypted)
@@ -313,7 +321,11 @@ impl MigrationTrait for Migration {
                             .uuid()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(MessengerCursors::UserId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(MessengerCursors::UserId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(MessengerCursors::LastReadMessageId)
                             .big_integer()

@@ -1019,9 +1019,7 @@ pub fn router() -> crate::routes::ServerRouter {
 }
 
 fn bearer_token_from_headers(headers: &HeaderMap) -> Option<String> {
-    let mut auth_iter = headers
-        .get_all(axum::http::header::AUTHORIZATION)
-        .into_iter();
+    let mut auth_iter = headers.get_all(axum::http::header::AUTHORIZATION).into_iter();
     let first = auth_iter.next()?;
     for next in auth_iter {
         if next != first {
@@ -1029,11 +1027,7 @@ fn bearer_token_from_headers(headers: &HeaderMap) -> Option<String> {
             return None;
         }
     }
-    first
-        .to_str()
-        .ok()
-        .and_then(parse_bearer_token)
-        .map(ToOwned::to_owned)
+    first.to_str().ok().and_then(parse_bearer_token).map(ToOwned::to_owned)
 }
 
 fn parse_bearer_token(value: &str) -> Option<&str> {

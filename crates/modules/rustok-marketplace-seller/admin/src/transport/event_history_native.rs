@@ -148,9 +148,7 @@ fn parse_uuid(value: &str, field: &str) -> Result<uuid::Uuid, ServerFnError> {
     let id = uuid::Uuid::parse_str(value.trim())
         .map_err(|_| ServerFnError::new(format!("Invalid {field}")))?;
     if id.is_nil() {
-        return Err(ServerFnError::new(format!(
-            "Invalid {field}: cannot be nil"
-        )));
+        return Err(ServerFnError::new(format!("Invalid {field}: cannot be nil")));
     }
     Ok(id)
 }

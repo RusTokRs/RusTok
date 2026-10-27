@@ -40,9 +40,7 @@ impl BootstrapService {
         C: ConnectionTrait,
     {
         if tenant_id.is_nil() {
-            return Err(sea_orm::DbErr::Custom(
-                "tenant_id cannot be nil".to_string(),
-            ));
+            return Err(sea_orm::DbErr::Custom("tenant_id cannot be nil".to_string()));
         }
         if let Some(location) = entities::stock_location::Entity::find()
             .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
@@ -153,14 +151,10 @@ impl BootstrapService {
         C: ConnectionTrait,
     {
         if location.id.is_nil() {
-            return Err(sea_orm::DbErr::Custom(
-                "location.id cannot be nil".to_string(),
-            ));
+            return Err(sea_orm::DbErr::Custom("location.id cannot be nil".to_string()));
         }
         if input.variant_id.is_nil() {
-            return Err(sea_orm::DbErr::Custom(
-                "variant_id cannot be nil".to_string(),
-            ));
+            return Err(sea_orm::DbErr::Custom("variant_id cannot be nil".to_string()));
         }
         if input.available_quantity < 0 {
             return Err(sea_orm::DbErr::Custom(
@@ -213,9 +207,7 @@ impl BootstrapService {
         C: ConnectionTrait,
     {
         if variant_id.is_nil() {
-            return Err(sea_orm::DbErr::Custom(
-                "variant_id cannot be nil".to_string(),
-            ));
+            return Err(sea_orm::DbErr::Custom("variant_id cannot be nil".to_string()));
         }
         if quantity < 0 {
             return Err(sea_orm::DbErr::Custom(
@@ -283,9 +275,7 @@ impl BootstrapService {
         let mut available_by_variant = HashMap::new();
         for level in levels {
             if let Some(variant_id) = item_to_variant.get(&level.inventory_item_id) {
-                let available = level
-                    .stocked_quantity
-                    .saturating_sub(level.reserved_quantity);
+                let available = level.stocked_quantity.saturating_sub(level.reserved_quantity);
                 let entry = available_by_variant.entry(*variant_id).or_insert(0_i32);
                 *entry = (*entry).saturating_add(available);
             }
@@ -429,10 +419,7 @@ mod tests {
         let err = BootstrapService::create_initial_records_in_tx(&db, &loc, negative_qty_input)
             .await
             .expect_err("negative available_quantity must be rejected");
-        assert!(
-            err.to_string()
-                .contains("available_quantity cannot be negative")
-        );
+        assert!(err.to_string().contains("available_quantity cannot be negative"));
     }
 
     #[tokio::test]
@@ -455,20 +442,11 @@ mod tests {
         let err = BootstrapService::load_available_quantities(&db, &[Uuid::nil()])
             .await
             .expect_err("nil variant_id in slice must be rejected");
-        assert!(
-            err.to_string()
-                .contains("variant_ids must not contain a nil UUID")
-        );
+        assert!(err.to_string().contains("variant_ids must not contain a nil UUID"));
 
-        let err = BootstrapService::delete_records_for_variants_in_tx(
-            &db,
-            &[Uuid::new_v4(), Uuid::nil()],
-        )
-        .await
-        .expect_err("nil variant_id in delete slice must be rejected");
-        assert!(
-            err.to_string()
-                .contains("variant_ids must not contain a nil UUID")
-        );
+        let err = BootstrapService::delete_records_for_variants_in_tx(&db, &[Uuid::new_v4(), Uuid::nil()])
+            .await
+            .expect_err("nil variant_id in delete slice must be rejected");
+        assert!(err.to_string().contains("variant_ids must not contain a nil UUID"));
     }
 }

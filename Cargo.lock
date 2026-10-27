@@ -7082,7 +7082,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
- "webpki-roots 1.0.11",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]
@@ -7343,7 +7343,7 @@ dependencies = [
  "tokio-tungstenite 0.30.0",
  "tracing",
  "trait-variant",
- "webpki-roots 1.0.11",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]
@@ -9009,7 +9009,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "url",
- "webpki-roots 1.0.11",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]
@@ -12700,7 +12700,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-streams 0.4.2",
  "web-sys",
- "webpki-roots 1.0.11",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]
@@ -13627,7 +13627,6 @@ dependencies = [
  "rustok-region-admin",
  "rustok-search",
  "rustok-search-admin",
- "rustok-security-admin",
  "rustok-seo",
  "rustok-seo-admin",
  "rustok-storage",
@@ -15027,7 +15026,6 @@ dependencies = [
  "rustok-region",
  "rustok-runtime",
  "rustok-search",
- "rustok-security",
  "rustok-seo",
  "rustok-social-graph",
  "rustok-tasks",
@@ -17599,79 +17597,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustok-security"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "moka",
- "reqwest 0.13.5",
- "rustok-api",
- "rustok-core",
- "rustok-outbox",
- "sea-orm",
- "sea-orm-migration",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "rustok-security-admin"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "leptos",
- "leptos-auth",
- "leptos-ui",
- "leptos-ui-routing",
- "leptos_axum",
- "leptos_router",
- "rustok-api",
- "rustok-core",
- "rustok-graphql",
- "rustok-grid",
- "rustok-grid-leptos",
- "rustok-security",
- "rustok-ui-core",
- "rustok-ui-i18n",
- "rustok-ui-transport",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "rustok-security-storefront"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "leptos",
- "leptos-auth",
- "leptos-ui",
- "leptos-ui-routing",
- "leptos_axum",
- "leptos_router",
- "rustok-api",
- "rustok-core",
- "rustok-graphql",
- "rustok-security",
- "rustok-ui-core",
- "rustok-ui-i18n",
- "rustok-ui-transport",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "rustok-seo"
 version = "0.1.0"
 dependencies = [
@@ -17887,7 +17812,6 @@ dependencies = [
  "rustok-sandbox-transport",
  "rustok-search",
  "rustok-secrets",
- "rustok-security",
  "rustok-seo",
  "rustok-social-graph",
  "rustok-starter",
@@ -18078,7 +18002,6 @@ dependencies = [
  "rustok-reactions-storefront",
  "rustok-region-storefront",
  "rustok-search-storefront",
- "rustok-security-storefront",
  "rustok-seo",
  "rustok-seo-storefront",
  "rustok-tenant",
@@ -19661,7 +19584,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
- "webpki-roots 1.0.11",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]
@@ -20729,9 +20652,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.54.1"
+version = "1.53.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b52fd3255258d26fac7264ab5a76b53c13367136dc011d3d6ad4f8ed070396a3"
+checksum = "e95f91fcc7a621e8b030f6aa23c71fe9838ae2fb4d8118b75602a328f5144044"
 dependencies = [
  "bytes",
  "libc",
@@ -20979,7 +20902,7 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
- "webpki-roots 1.0.11",
+ "webpki-roots 1.0.9",
  "zstd",
 ]
 
@@ -21723,7 +21646,7 @@ dependencies = [
  "rustls-pki-types",
  "ureq-proto",
  "utf8-zero",
- "webpki-roots 1.0.11",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]
@@ -22488,9 +22411,9 @@ dependencies = [
 
 [[package]]
 name = "webpki-root-certs"
-version = "1.0.11"
+version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e49d0e65abc00c142e8f9428da991da9f1a250c39be97459901eb12b9b49f62a"
+checksum = "b96554aa2acc8ccdb7e1c9a58a7a68dd5d13bccc69cd124cb09406db612a1c9b"
 dependencies = [
  "rustls-pki-types",
 ]
@@ -22501,14 +22424,14 @@ version = "0.26.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
 dependencies = [
- "webpki-roots 1.0.11",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]
 name = "webpki-roots"
-version = "1.0.11"
+version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5f280bbb2b287bc8e7de7e3852945a0ff50d1bbcb5ed42b6c7a568c546df171"
+checksum = "7dcd9d09a39985f5344844e66b0c530a33843579125f23e21e9f0f220850f22a"
 dependencies = [
  "rustls-pki-types",
 ]
@@ -23385,9 +23308,9 @@ dependencies = [
 
 [[package]]
 name = "zstd-safe"
-version = "7.3.0"
+version = "7.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64d80649ab6db9d9f6f9c80a40becd948eda4714a0a5ac8c4d157a32231c7882"
+checksum = "8f49c4d5f0abb602a93fb8736af2a4f4dd9512e36f7f570d66e65ff867ed3b9d"
 dependencies = [
  "zstd-sys",
 ]

@@ -14,13 +14,9 @@ fn workspace_root() -> PathBuf {
 fn test_parse_real_modules_manifest() {
     let root = workspace_root();
     let manifest_path = root.join("modules.toml");
-    assert!(
-        manifest_path.exists(),
-        "modules.toml should exist at workspace root"
-    );
+    assert!(manifest_path.exists(), "modules.toml should exist at workspace root");
 
-    let manifest =
-        load_modules_manifest(&manifest_path).expect("modules.toml should parse cleanly");
+    let manifest = load_modules_manifest(&manifest_path).expect("modules.toml should parse cleanly");
     assert_eq!(manifest.schema, 2);
     assert_eq!(manifest.app, "rustok-server");
     assert!(!manifest.modules.is_empty());
@@ -33,13 +29,9 @@ fn test_parse_real_modules_manifest() {
 fn test_parse_real_blog_module_manifest() {
     let root = workspace_root();
     let manifest_path = root.join("crates/modules/rustok-blog/rustok-module.toml");
-    assert!(
-        manifest_path.exists(),
-        "blog rustok-module.toml should exist"
-    );
+    assert!(manifest_path.exists(), "blog rustok-module.toml should exist");
 
-    let manifest =
-        load_module_package_manifest(&manifest_path).expect("blog manifest should parse");
+    let manifest = load_module_package_manifest(&manifest_path).expect("blog manifest should parse");
     assert_eq!(manifest.module.slug, "blog");
     assert_eq!(manifest.module.ui_classification, "dual_surface");
 

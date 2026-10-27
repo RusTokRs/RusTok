@@ -106,9 +106,7 @@ impl ForumTopicMergeAudienceReconciliationService {
                 &reason,
             )
             .await?
-            .ok_or_else(|| {
-                ForumError::TopicMergeAudienceReconciliationConflict(input.operation_id)
-            })?;
+            .ok_or_else(|| ForumError::TopicMergeAudienceReconciliationConflict(input.operation_id))?;
         txn.commit().await?;
         Ok(operation_to_result(operation))
     }
@@ -130,10 +128,12 @@ impl ForumTopicMergeAudienceReconciliationService {
     ) -> ForumResult<Option<forum_topic_merge_audience_reconciliation::Model>> {
         lock_reconciliation_tenant_in_tx(txn, tenant_id).await?;
 
-        if let Some(existing) =
-            forum_topic_merge_audience_reconciliation::Entity::find_by_id((tenant_id, operation_id))
-                .one(txn)
-                .await?
+        if let Some(existing) = forum_topic_merge_audience_reconciliation::Entity::find_by_id((
+            tenant_id,
+            operation_id,
+        ))
+        .one(txn)
+        .await?
         {
             if existing.merge_operation_id != merge_operation_id
                 || existing.actor_id != actor_id
@@ -356,6 +356,7 @@ impl ForumTopicMergeAudienceReconciliationService {
             merge.target_topic_id,
         )
         .await?;
+
 
         Ok(Some(operation))
     }

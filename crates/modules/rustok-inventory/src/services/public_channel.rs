@@ -89,14 +89,10 @@ pub async fn check_variant_availability_for_public_channel(
     public_channel_slug: Option<&str>,
 ) -> CommerceResult<bool> {
     if tenant_id.is_nil() {
-        return Err(CommerceError::Validation(
-            "tenant_id cannot be nil".to_string(),
-        ));
+        return Err(CommerceError::Validation("tenant_id cannot be nil".to_string()));
     }
     if variant.variant_id.is_nil() {
-        return Err(CommerceError::Validation(
-            "variant_id cannot be nil".to_string(),
-        ));
+        return Err(CommerceError::Validation("variant_id cannot be nil".to_string()));
     }
     if check_public_channel_inventory_request(variant.inventory_policy, requested_quantity)? {
         return Ok(true);
@@ -186,14 +182,10 @@ pub async fn load_available_inventory_by_variant_for_public_channel(
     public_channel_slug: Option<&str>,
 ) -> Result<HashMap<Uuid, i32>, sea_orm::DbErr> {
     if tenant_id.is_nil() {
-        return Err(sea_orm::DbErr::Custom(
-            "tenant_id cannot be nil".to_string(),
-        ));
+        return Err(sea_orm::DbErr::Custom("tenant_id cannot be nil".to_string()));
     }
     if variant_ids.iter().any(|id| id.is_nil()) {
-        return Err(sea_orm::DbErr::Custom(
-            "variant_id cannot be nil".to_string(),
-        ));
+        return Err(sea_orm::DbErr::Custom("variant_id cannot be nil".to_string()));
     }
     if variant_ids.is_empty() {
         return Ok(HashMap::new());
@@ -242,9 +234,7 @@ pub async fn load_available_inventory_by_variant_for_public_channel(
         }
 
         if let Some(variant_id) = item_to_variant.get(&level.inventory_item_id) {
-            let available = level
-                .stocked_quantity
-                .saturating_sub(level.reserved_quantity);
+            let available = level.stocked_quantity.saturating_sub(level.reserved_quantity);
             let entry = available_by_variant.entry(*variant_id).or_insert(0_i32);
             *entry = (*entry).saturating_add(available);
         }
@@ -260,14 +250,10 @@ pub async fn load_available_inventory_for_variant_in_public_channel(
     public_channel_slug: Option<&str>,
 ) -> Result<i32, sea_orm::DbErr> {
     if tenant_id.is_nil() {
-        return Err(sea_orm::DbErr::Custom(
-            "tenant_id cannot be nil".to_string(),
-        ));
+        return Err(sea_orm::DbErr::Custom("tenant_id cannot be nil".to_string()));
     }
     if variant_id.is_nil() {
-        return Err(sea_orm::DbErr::Custom(
-            "variant_id cannot be nil".to_string(),
-        ));
+        return Err(sea_orm::DbErr::Custom("variant_id cannot be nil".to_string()));
     }
     Ok(load_available_inventory_by_variant_for_public_channel(
         db,

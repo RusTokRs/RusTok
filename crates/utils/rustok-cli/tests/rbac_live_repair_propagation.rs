@@ -618,6 +618,8 @@ async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, suffix: &str) -> 
         metadata: Set(serde_json::json!({})),
         created_at: Set(Utc::now().into()),
         updated_at: Set(Utc::now().into()),
+        failed_login_count: Set(0),
+        locked_until: Set(None),
     })
     .exec(db)
     .await?;

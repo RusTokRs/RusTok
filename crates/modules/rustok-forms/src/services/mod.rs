@@ -336,7 +336,8 @@ fn submission_response_from_model(model: form_submission::Model) -> FormSubmissi
         locale: model.locale,
         page_id: model.page_id,
         payload: model.payload,
-        state: FormSubmissionState::parse(&model.state).unwrap_or(FormSubmissionState::New),
+        state: FormSubmissionState::parse(&model.state)
+            .unwrap_or(FormSubmissionState::New),
         created_at: model.created_at.to_string(),
         handled_at: model.handled_at.map(|value| value.to_string()),
         handled_by: model.handled_by,

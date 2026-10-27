@@ -23,7 +23,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const harnessPath = 'crates/utils/rustok-distribution/tests/product_linked_target_availability_equivalence_postgres.rs';
+const harnessPath = 'crates/modules/rustok-distribution/tests/product_linked_target_availability_equivalence_postgres.rs';
 const harness = requireMarkers(harnessPath, [
   '#![cfg(feature = "mod-product")]',
   'linked_target_availability_preserves_filter_order_count_and_runtime_restart_parity',

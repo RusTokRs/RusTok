@@ -12,8 +12,8 @@
 //!
 //! In accordance with FBA, this module MUST NOT depend on database or transport frameworks.
 
-use crate::error::{TasksError, TasksResult};
 use serde::{Deserialize, Serialize};
+use crate::error::{TasksError, TasksResult};
 
 /// Domain lifecycle state for Team Issues & Tasks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]

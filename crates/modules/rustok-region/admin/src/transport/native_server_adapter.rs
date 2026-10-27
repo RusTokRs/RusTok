@@ -154,12 +154,10 @@ fn parse_country_tax_policies(
     if trimmed.is_empty() {
         return Ok(Vec::new());
     }
-    let policies: Vec<rustok_region::RegionCountryTaxPolicyInput> =
-        serde_json::from_str(trimmed)
-            .map_err(|_| ServerFnError::new("Invalid country_tax_policies JSON"))?;
+    let policies: Vec<rustok_region::RegionCountryTaxPolicyInput> = serde_json::from_str(trimmed)
+        .map_err(|_| ServerFnError::new("Invalid country_tax_policies JSON"))?;
     for p in &policies {
-        if p.tax_rate < rust_decimal::Decimal::ZERO || p.tax_rate > rust_decimal::Decimal::from(100)
-        {
+        if p.tax_rate < rust_decimal::Decimal::ZERO || p.tax_rate > rust_decimal::Decimal::from(100) {
             return Err(ServerFnError::new(
                 "country_tax_policy tax_rate must be between 0 and 100",
             ));
@@ -558,12 +556,10 @@ mod tests {
         assert_eq!(policies.len(), 1);
         assert_eq!(policies[0].country_code, "US");
 
-        let out_of_bounds_neg =
-            r#"[{"country_code": "US", "tax_rate": "-5", "tax_included": false}]"#;
+        let out_of_bounds_neg = r#"[{"country_code": "US", "tax_rate": "-5", "tax_included": false}]"#;
         assert!(parse_country_tax_policies(out_of_bounds_neg).is_err());
 
-        let out_of_bounds_high =
-            r#"[{"country_code": "US", "tax_rate": "105", "tax_included": false}]"#;
+        let out_of_bounds_high = r#"[{"country_code": "US", "tax_rate": "105", "tax_included": false}]"#;
         assert!(parse_country_tax_policies(out_of_bounds_high).is_err());
     }
 }

@@ -74,8 +74,8 @@ const files = {
     "crates/modules/rustok-translation/src/graphql/mutation.rs",
   translationNativeAdmin:
     "crates/modules/rustok-translation/admin/src/transport/native_server_adapter.rs",
-  distributionCargo: "crates/utils/rustok-distribution/Cargo.toml",
-  distributionSource: "crates/utils/rustok-distribution/src/lib.rs",
+  distributionCargo: "crates/modules/rustok-distribution/Cargo.toml",
+  distributionSource: "crates/modules/rustok-distribution/src/lib.rs",
   serverCargo: "apps/server/Cargo.toml",
   serverComposition: "apps/server/src/services/module_event_dispatcher.rs",
   adapterCargo: "crates/modules/rustok-ai-translation/Cargo.toml",

@@ -100,12 +100,10 @@ async fn docs_reindex_supports_targeted_and_full_scope_requests() {
     }));
 
     let unconfigured_handler = handler_without_docs().await;
-    assert!(
-        !unconfigured_handler.handles(&DomainEvent::ReindexRequested {
-            target_type: "docs".to_string(),
-            target_id: Some(doc_id),
-        })
-    );
+    assert!(!unconfigured_handler.handles(&DomainEvent::ReindexRequested {
+        target_type: "docs".to_string(),
+        target_id: Some(doc_id),
+    }));
 }
 
 #[tokio::test]
@@ -125,13 +123,11 @@ async fn docs_module_enable_and_disable_are_owned_lifecycle_events() {
     }));
 
     let unconfigured_handler = handler_without_docs().await;
-    assert!(
-        !unconfigured_handler.handles(&DomainEvent::TenantModuleToggled {
-            tenant_id,
-            module_slug: "docs".to_string(),
-            enabled: false,
-        })
-    );
+    assert!(!unconfigured_handler.handles(&DomainEvent::TenantModuleToggled {
+        tenant_id,
+        module_slug: "docs".to_string(),
+        enabled: false,
+    }));
 }
 
 #[test]

@@ -27,7 +27,7 @@ const forbidMarkers = (relative, source, markers) => {
 const productCargo = read('crates/modules/rustok-product/Cargo.toml');
 forbidMarkers('crates/modules/rustok-product/Cargo.toml', productCargo, ['rustok-index', 'rustok-channel']);
 
-const modulePath = 'crates/utils/rustok-distribution/src/product_index/mod.rs';
+const modulePath = 'crates/modules/rustok-distribution/src/product_index/mod.rs';
 const moduleSource = requireMarkers(modulePath, [
   'mod attribute_terms;',
   'mod channel_visibility;',
@@ -44,7 +44,7 @@ const moduleSource = requireMarkers(modulePath, [
 forbidMarkers(modulePath, moduleSource, ['mod graph;', 'graph::', 'four_schemas']);
 
 for (const removed of [
-  'crates/utils/rustok-distribution/src/product_index/graph.rs',
+  'crates/modules/rustok-distribution/src/product_index/graph.rs',
   'crates/modules/rustok-index/docs/m7-product-source.md',
   'crates/modules/rustok-index/docs/m7-product-variant-source.md',
   'crates/modules/rustok-product/docs/index-graph-v3-projection-ledger.md',
@@ -54,7 +54,7 @@ for (const removed of [
   if (fs.existsSync(resolve(removed))) fail(`removed Product compatibility artifact still exists: ${removed}`);
 }
 
-const sourcePath = 'crates/utils/rustok-distribution/src/product_index/product.rs';
+const sourcePath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
 const source = requireMarkers(sourcePath, [
   'PRODUCT_INDEX_SOURCE: &str = "product-postgres-primary"',
   'PRODUCT_EVENT_DOMAIN: &str = "rustok-product.product-replay"',
@@ -123,8 +123,8 @@ forbidMarkers(sourcePath, source, [
 ]);
 
 for (const currentConsumer of [
-  'crates/utils/rustok-distribution/src/product_index/absence.rs',
-  'crates/utils/rustok-distribution/src/product_index/query_admission.rs',
+  'crates/modules/rustok-distribution/src/product_index/absence.rs',
+  'crates/modules/rustok-distribution/src/product_index/query_admission.rs',
 ]) {
   const consumer = requireMarkers(currentConsumer, [
     'PRODUCT_SCHEMA_ROUTING_KEY',
@@ -133,7 +133,7 @@ for (const currentConsumer of [
   forbidMarkers(currentConsumer, consumer, ['SchemaVersion::new(3)']);
 }
 
-requireMarkers('crates/utils/rustok-distribution/src/product_index/attribute_terms.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/attribute_terms.rs', [
   'PRODUCT_ATTRIBUTE_TERMS_CTE',
   'localized_text_filter(',
   'localized_present',

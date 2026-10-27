@@ -413,14 +413,13 @@ pub fn OrderAdmin() -> impl IntoView {
         let tenant_value = tenant.get_untracked();
         let tenant_id = current_tenant.id.clone();
         let user_id = me.id.clone();
-        let deliver_command =
-            match prepare_deliver_order_command(delivered_signature.get_untracked()) {
-                Ok(command) => command,
-                Err(error) => {
-                    set_error.set(Some(error.to_string()));
-                    return;
-                }
-            };
+        let deliver_command = match prepare_deliver_order_command(delivered_signature.get_untracked()) {
+            Ok(command) => command,
+            Err(error) => {
+                set_error.set(Some(error.to_string()));
+                return;
+            }
+        };
         let submit_error_label = deliver_submit_error_label.clone();
         let load_error_label = deliver_load_order_error_label.clone();
         let not_found_label = deliver_order_not_found_label.clone();

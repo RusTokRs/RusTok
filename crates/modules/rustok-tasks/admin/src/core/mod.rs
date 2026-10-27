@@ -45,7 +45,10 @@ impl TasksAdminTableRow {
 }
 
 /// Pure in-memory search filter for Team Issues & Tasks admin records.
-pub fn filter_rows(rows: &[TasksAdminTableRow], query: Option<&str>) -> Vec<TasksAdminTableRow> {
+pub fn filter_rows(
+    rows: &[TasksAdminTableRow],
+    query: Option<&str>,
+) -> Vec<TasksAdminTableRow> {
     match query {
         Some(q) if !q.trim().is_empty() => {
             let normalized = q.trim().to_lowercase();

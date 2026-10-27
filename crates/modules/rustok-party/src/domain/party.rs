@@ -10,11 +10,11 @@
 
 //! Party aggregate root, legal types, and corporate invariants.
 
-use super::tax_details::TaxDetails;
-use crate::error::{PartyError, PartyResult};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use crate::error::{PartyError, PartyResult};
+use super::tax_details::TaxDetails;
 
 /// Legal form/kind of the counterparty.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -161,8 +161,7 @@ mod tests {
             "Ромашка",
             Some("ООО Ромашка".into()),
             None,
-        )
-        .unwrap();
+        ).unwrap();
 
         assert_eq!(legal_entity.status, PartyStatus::Draft);
 

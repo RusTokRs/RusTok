@@ -484,8 +484,7 @@ mod tests {
             CommentsAdminValidationError::EmptyThreadId
         );
 
-        let invalid =
-            CommentThreadDetailRequest::new("not-a-uuid".to_string(), "en".to_string(), 1, 20);
+        let invalid = CommentThreadDetailRequest::new("not-a-uuid".to_string(), "en".to_string(), 1, 20);
         assert!(matches!(
             invalid.validate().unwrap_err(),
             CommentsAdminValidationError::InvalidThreadId(_)
@@ -520,28 +519,16 @@ mod tests {
     #[test]
     fn validates_set_comment_status_command() {
         let valid_id = Uuid::new_v4();
-        let cmd = SetCommentStatusCommand::new(
-            valid_id.to_string(),
-            CommentStatus::Approved,
-            "en".to_string(),
-        );
+        let cmd = SetCommentStatusCommand::new(valid_id.to_string(), CommentStatus::Approved, "en".to_string());
         assert_eq!(cmd.validate().unwrap(), valid_id);
 
-        let empty = SetCommentStatusCommand::new(
-            "  ".to_string(),
-            CommentStatus::Approved,
-            "en".to_string(),
-        );
+        let empty = SetCommentStatusCommand::new("  ".to_string(), CommentStatus::Approved, "en".to_string());
         assert_eq!(
             empty.validate().unwrap_err(),
             CommentsAdminValidationError::EmptyCommentId
         );
 
-        let nil = SetCommentStatusCommand::new(
-            Uuid::nil().to_string(),
-            CommentStatus::Trash,
-            "en".to_string(),
-        );
+        let nil = SetCommentStatusCommand::new(Uuid::nil().to_string(), CommentStatus::Trash, "en".to_string());
         assert_eq!(
             nil.validate().unwrap_err(),
             CommentsAdminValidationError::NilCommentId

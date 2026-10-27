@@ -832,11 +832,13 @@ pub async fn rollback_module_transition(
     idempotency_key: String,
 ) -> Result<ArtifactRollback, ApiError> {
     match selected_transport_path() {
-        UiTransportPath::NativeServer => {
-            rollback_module_transition_native(operation_id, reason, idempotency_key)
-                .await
-                .map_err(map_server_fn_error)
-        }
+        UiTransportPath::NativeServer => rollback_module_transition_native(
+            operation_id,
+            reason,
+            idempotency_key,
+        )
+        .await
+        .map_err(map_server_fn_error),
         UiTransportPath::Graphql => {
             let response: RollbackModuleTransitionResponse = request(
                 ROLLBACK_MODULE_TRANSITION_MUTATION,
@@ -853,3 +855,4 @@ pub async fn rollback_module_transition(
         }
     }
 }
+

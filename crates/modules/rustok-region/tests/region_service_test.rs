@@ -150,18 +150,12 @@ async fn rejects_tax_rate_out_of_bounds() {
     let mut input = create_region_input();
     input.tax_rate = Decimal::from_str("105.00").unwrap();
     let err = service.create_region(tenant_id, input).await.unwrap_err();
-    assert!(
-        err.to_string()
-            .contains("tax_rate must be between 0 and 100")
-    );
+    assert!(err.to_string().contains("tax_rate must be between 0 and 100"));
 
     let mut input = create_region_input();
     input.tax_rate = Decimal::from_str("-1.00").unwrap();
     let err = service.create_region(tenant_id, input).await.unwrap_err();
-    assert!(
-        err.to_string()
-            .contains("tax_rate must be between 0 and 100")
-    );
+    assert!(err.to_string().contains("tax_rate must be between 0 and 100"));
 
     let mut input = create_region_input();
     input.country_tax_policies = Some(vec![RegionCountryTaxPolicyInput {
@@ -170,10 +164,7 @@ async fn rejects_tax_rate_out_of_bounds() {
         tax_included: true,
     }]);
     let err = service.create_region(tenant_id, input).await.unwrap_err();
-    assert!(
-        err.to_string()
-            .contains("country tax policy tax_rate must be between 0 and 100")
-    );
+    assert!(err.to_string().contains("country tax policy tax_rate must be between 0 and 100"));
 }
 
 #[tokio::test]
@@ -200,10 +191,7 @@ async fn rejects_policy_for_unowned_country() {
         tax_included: true,
     }]);
     let err = service.create_region(tenant_id, input).await.unwrap_err();
-    assert!(
-        err.to_string()
-            .contains("country tax policy targets `IT` which is not in region countries")
-    );
+    assert!(err.to_string().contains("country tax policy targets `IT` which is not in region countries"));
 }
 
 #[tokio::test]
@@ -214,10 +202,7 @@ async fn rejects_invalid_currency_code() {
     let mut input = create_region_input();
     input.currency_code = "123".to_string();
     let err = service.create_region(tenant_id, input).await.unwrap_err();
-    assert!(
-        err.to_string()
-            .contains("currency_code must be a 3-letter alphabetic code")
-    );
+    assert!(err.to_string().contains("currency_code must be a 3-letter alphabetic code"));
 }
 
 #[tokio::test]
@@ -241,18 +226,13 @@ async fn prevents_removing_country_with_active_tax_policy() {
         )
         .await
         .unwrap_err();
-    assert!(
-        err.to_string()
-            .contains("region countries cannot exclude existing country tax policy for `DE`")
-    );
+    assert!(err.to_string().contains("region countries cannot exclude existing country tax policy for `DE`"));
 }
 
 #[tokio::test]
 async fn region_read_port_contract() {
     use rustok_api::{PortActor, PortContext};
-    use rustok_region::ports::{
-        RegionListRequest, RegionReadPort, RegionReadRequest, RegionReadSelector,
-    };
+    use rustok_region::ports::{RegionListRequest, RegionReadPort, RegionReadRequest, RegionReadSelector};
     use std::time::Duration;
 
     let service = setup().await;

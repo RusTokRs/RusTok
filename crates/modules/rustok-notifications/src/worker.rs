@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use crate::NotificationSourceRegistry;
 use chrono::{DateTime, Duration, FixedOffset, Utc};
+use crate::NotificationSourceRegistry;
 use sea_orm::{
     ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect,
@@ -365,18 +365,9 @@ mod tests {
     #[test]
     fn worker_configuration_validation_enforces_batch_bounds() {
         assert!(validate_worker_configuration("w1".to_string(), 0).is_err());
-        assert!(
-            validate_worker_configuration(
-                "w1".to_string(),
-                MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE + 1
-            )
-            .is_err()
-        );
+        assert!(validate_worker_configuration("w1".to_string(), MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE + 1).is_err());
         assert!(validate_worker_configuration("w1".to_string(), 1).is_ok());
-        assert!(
-            validate_worker_configuration("w1".to_string(), MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE)
-                .is_ok()
-        );
+        assert!(validate_worker_configuration("w1".to_string(), MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE).is_ok());
     }
 
     #[test]

@@ -29,7 +29,7 @@ pub use error::{DocsError, DocsResult};
 pub use loro::{Frontiers, LoroDoc, TreeID, VersionVector};
 pub use module::DocsModule;
 pub use search_projection::{
-    DOC_PAGE_ENTITY_TYPE, DOCS_SOURCE_MODULE, DocsSearchProjectionSource,
+    DOCS_SOURCE_MODULE, DOC_PAGE_ENTITY_TYPE, DocsSearchProjectionSource,
     DocsSearchProjectionSourceFactory,
 };
 pub use services::{COMPACTION_THRESHOLD, DocumentService};
@@ -205,10 +205,7 @@ mod tests {
             icon: None,
             cover_image: None,
         };
-        assert!(matches!(
-            blank_title.validate(),
-            Err(DocsError::Validation(_))
-        ));
+        assert!(matches!(blank_title.validate(), Err(DocsError::Validation(_))));
 
         // Title exceeding 255 chars
         let long_title = CreatePageDto {
@@ -218,10 +215,7 @@ mod tests {
             icon: None,
             cover_image: None,
         };
-        assert!(matches!(
-            long_title.validate(),
-            Err(DocsError::Validation(_))
-        ));
+        assert!(matches!(long_title.validate(), Err(DocsError::Validation(_))));
 
         // Blank slug when provided
         let blank_slug = CreatePageDto {
@@ -231,10 +225,7 @@ mod tests {
             icon: None,
             cover_image: None,
         };
-        assert!(matches!(
-            blank_slug.validate(),
-            Err(DocsError::Validation(_))
-        ));
+        assert!(matches!(blank_slug.validate(), Err(DocsError::Validation(_))));
 
         // Nil parent_id
         let nil_parent = CreatePageDto {
@@ -244,10 +235,7 @@ mod tests {
             icon: None,
             cover_image: None,
         };
-        assert!(matches!(
-            nil_parent.validate(),
-            Err(DocsError::Validation(_))
-        ));
+        assert!(matches!(nil_parent.validate(), Err(DocsError::Validation(_))));
     }
 
     #[test]
@@ -266,19 +254,13 @@ mod tests {
             title: Some("   ".to_string()),
             ..Default::default()
         };
-        assert!(matches!(
-            blank_title.validate(),
-            Err(DocsError::Validation(_))
-        ));
+        assert!(matches!(blank_title.validate(), Err(DocsError::Validation(_))));
 
         let nil_parent = UpdatePageDto {
             parent_id: Some(Some(Uuid::nil())),
             ..Default::default()
         };
-        assert!(matches!(
-            nil_parent.validate(),
-            Err(DocsError::Validation(_))
-        ));
+        assert!(matches!(nil_parent.validate(), Err(DocsError::Validation(_))));
     }
 
     #[test]
@@ -292,10 +274,7 @@ mod tests {
         let empty_item = ApplyDeltaDto {
             deltas: vec![vec![1, 2], vec![]],
         };
-        assert!(matches!(
-            empty_item.validate(),
-            Err(DocsError::Validation(_))
-        ));
+        assert!(matches!(empty_item.validate(), Err(DocsError::Validation(_))));
 
         // Excess batch size (> 500)
         let too_many = ApplyDeltaDto {
@@ -319,3 +298,4 @@ mod tests {
         assert_eq!(http_err.code, "cycle_detected");
     }
 }
+

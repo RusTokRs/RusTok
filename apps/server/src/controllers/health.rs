@@ -1450,17 +1450,8 @@ mod tests {
     #[test]
     fn resolve_modules_health_status_distinguishes_tri_state() {
         assert_eq!(super::resolve_modules_health_status(false, false), "ok");
-        assert_eq!(
-            super::resolve_modules_health_status(false, true),
-            "degraded"
-        );
-        assert_eq!(
-            super::resolve_modules_health_status(true, false),
-            "unhealthy"
-        );
-        assert_eq!(
-            super::resolve_modules_health_status(true, true),
-            "unhealthy"
-        );
+        assert_eq!(super::resolve_modules_health_status(false, true), "degraded");
+        assert_eq!(super::resolve_modules_health_status(true, false), "unhealthy");
+        assert_eq!(super::resolve_modules_health_status(true, true), "unhealthy");
     }
 }

@@ -63,12 +63,7 @@ async fn list_users(
         .filter(UserColumn::TenantId.eq(tenant.id))
         .order_by_asc(UserColumn::CreatedAt);
 
-    if let Some(search) = params
-        .search
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
+    if let Some(search) = params.search.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         let pattern = format!("%{}%", search);
         query = query.filter(
             sea_orm::Condition::any()
@@ -77,12 +72,7 @@ async fn list_users(
         );
     }
 
-    if let Some(status) = params
-        .status
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
+    if let Some(status) = params.status.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         query = query.filter(UserColumn::Status.eq(status));
     }
 

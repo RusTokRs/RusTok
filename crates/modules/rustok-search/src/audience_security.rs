@@ -115,10 +115,7 @@ impl SearchAudienceRegistry {
         Ok(())
     }
 
-    pub fn register_shared(
-        &mut self,
-        policy: SharedSearchAudiencePolicyPort,
-    ) -> Result<(), PortError> {
+    pub fn register_shared(&mut self, policy: SharedSearchAudiencePolicyPort) -> Result<(), PortError> {
         let source_module = normalize_source_module(policy.source_module())?;
         if self.policies.contains_key(&source_module) {
             return Err(PortError::validation(
@@ -196,10 +193,7 @@ pub async fn resolve_audience_eligible_candidates(
         locale.trim()
     };
 
-    if candidates
-        .iter()
-        .any(|candidate| candidate.document_id.is_nil())
-    {
+    if candidates.iter().any(|candidate| candidate.document_id.is_nil()) {
         return Err(PortError::validation(
             "search.audience.document_id_required",
             "Search audience candidate resolution requires non-nil document identifiers",
@@ -291,14 +285,10 @@ pub fn build_authorized_facets(items: &[crate::SearchResultItem]) -> Vec<SearchF
 
     for item in items {
         *entity_types.entry(item.entity_type.clone()).or_default() += 1;
-        *source_modules
-            .entry(item.source_module.clone())
-            .or_default() += 1;
+        *source_modules.entry(item.source_module.clone()).or_default() += 1;
         if let Some(status) = item.payload.get("status").and_then(|v| v.as_str()) {
             *statuses.entry(status.to_string()).or_default() += 1;
-        } else if let Some(status) =
-            crate::forum_storefront_execution::forum_visible_status(&item.entity_type)
-        {
+        } else if let Some(status) = crate::forum_storefront_execution::forum_visible_status(&item.entity_type) {
             *statuses.entry(status.to_string()).or_default() += 1;
         }
     }
@@ -544,8 +534,7 @@ pub async fn execute_audience_eligible_search(
 
     if all_items.len() != raw_total || raw_rows.len() != raw_total {
         return Err(Error::Internal(
-            "Storefront Search candidate scan did not resolve one unique row per result"
-                .to_string(),
+            "Storefront Search candidate scan did not resolve one unique row per result".to_string(),
         ));
     }
 
@@ -557,7 +546,13 @@ pub async fn execute_audience_eligible_search(
     // 4. Batch post-authorization across registered audience policies
     let descriptors: Vec<SearchCandidateDescriptor> = all_items
         .iter()
-        .map(|item| SearchCandidateDescriptor::new(item.id, &item.source_module, &item.entity_type))
+        .map(|item| {
+            SearchCandidateDescriptor::new(
+                item.id,
+                &item.source_module,
+                &item.entity_type,
+            )
+        })
         .collect();
 
     let effective_locale = search_query

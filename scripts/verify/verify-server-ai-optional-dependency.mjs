@@ -11,8 +11,8 @@ const rootPath = configuredRoot
 const read = (relativePath) => readFileSync(path.join(rootPath, relativePath), 'utf8');
 
 const serverCargo = read('apps/server/Cargo.toml');
-const distributionCargo = read('crates/utils/rustok-distribution/Cargo.toml');
-const distributionSource = read('crates/utils/rustok-distribution/src/lib.rs');
+const distributionCargo = read('crates/modules/rustok-distribution/Cargo.toml');
+const distributionSource = read('crates/modules/rustok-distribution/src/lib.rs');
 const commerceCargo = read('crates/modules/rustok-commerce/Cargo.toml');
 const providerRuntime = read('apps/server/src/services/commerce_provider_runtime.rs');
 const evidence = JSON.parse(

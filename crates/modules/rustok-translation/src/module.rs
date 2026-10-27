@@ -149,9 +149,6 @@ mod tests {
         let perms = module.permissions();
         assert!(perms.contains(&Permission::new(Resource::Translations, Action::Create)));
         assert!(perms.contains(&Permission::new(Resource::TranslationMemory, Action::Read)));
-        assert!(perms.contains(&Permission::new(
-            Resource::TranslationGlossaries,
-            Action::Manage
-        )));
+        assert!(perms.contains(&Permission::new(Resource::TranslationGlossaries, Action::Manage)));
     }
 }

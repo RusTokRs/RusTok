@@ -10,8 +10,8 @@
 
 //! Tax identification value objects and mathematical checksum validators.
 
-use crate::error::{PartyError, PartyResult};
 use serde::{Deserialize, Serialize};
+use crate::error::{PartyError, PartyResult};
 
 /// Canonical tax details for legal entities, sole proprietors, and individuals.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -87,17 +87,12 @@ pub fn validate_inn_10(inn: &str) -> PartyResult<()> {
     let digits: Vec<u32> = inn.chars().map(|c| c.to_digit(10).unwrap()).collect();
     let weights = [2, 4, 10, 3, 5, 9, 4, 6, 8];
 
-    let sum: u32 = digits[..9]
-        .iter()
-        .zip(weights.iter())
-        .map(|(d, w)| d * w)
-        .sum();
+    let sum: u32 = digits[..9].iter().zip(weights.iter()).map(|(d, w)| d * w).sum();
     let checksum = (sum % 11) % 10;
 
     if digits[9] != checksum {
         return Err(PartyError::Validation(format!(
-            "Invalid 10-digit INN checksum: expected {checksum}, got {}",
-            digits[9]
+            "Invalid 10-digit INN checksum: expected {checksum}, got {}", digits[9]
         )));
     }
 
@@ -116,33 +111,23 @@ pub fn validate_inn_12(inn: &str) -> PartyResult<()> {
 
     // 11th digit check
     let weights_11 = [7, 2, 4, 10, 3, 5, 9, 4, 6, 8];
-    let sum_11: u32 = digits[..10]
-        .iter()
-        .zip(weights_11.iter())
-        .map(|(d, w)| d * w)
-        .sum();
+    let sum_11: u32 = digits[..10].iter().zip(weights_11.iter()).map(|(d, w)| d * w).sum();
     let checksum_11 = (sum_11 % 11) % 10;
 
     if digits[10] != checksum_11 {
         return Err(PartyError::Validation(format!(
-            "Invalid 12-digit INN 11th checksum: expected {checksum_11}, got {}",
-            digits[10]
+            "Invalid 12-digit INN 11th checksum: expected {checksum_11}, got {}", digits[10]
         )));
     }
 
     // 12th digit check
     let weights_12 = [3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8];
-    let sum_12: u32 = digits[..11]
-        .iter()
-        .zip(weights_12.iter())
-        .map(|(d, w)| d * w)
-        .sum();
+    let sum_12: u32 = digits[..11].iter().zip(weights_12.iter()).map(|(d, w)| d * w).sum();
     let checksum_12 = (sum_12 % 11) % 10;
 
     if digits[11] != checksum_12 {
         return Err(PartyError::Validation(format!(
-            "Invalid 12-digit INN 12th checksum: expected {checksum_12}, got {}",
-            digits[11]
+            "Invalid 12-digit INN 12th checksum: expected {checksum_12}, got {}", digits[11]
         )));
     }
 
@@ -167,9 +152,7 @@ pub fn validate_ogrn_13(ogrn: &str) -> PartyResult<()> {
         )));
     }
 
-    let first_12: u64 = ogrn[..12]
-        .parse()
-        .map_err(|_| PartyError::Validation("Invalid OGRN prefix".into()))?;
+    let first_12: u64 = ogrn[..12].parse().map_err(|_| PartyError::Validation("Invalid OGRN prefix".into()))?;
     let check_digit = (first_12 % 11) % 10;
     let actual_last = ogrn.chars().last().unwrap().to_digit(10).unwrap() as u64;
 
@@ -190,9 +173,7 @@ pub fn validate_ogrnip_15(ogrnip: &str) -> PartyResult<()> {
         )));
     }
 
-    let first_14: u64 = ogrnip[..14]
-        .parse()
-        .map_err(|_| PartyError::Validation("Invalid OGRNIP prefix".into()))?;
+    let first_14: u64 = ogrnip[..14].parse().map_err(|_| PartyError::Validation("Invalid OGRNIP prefix".into()))?;
     let check_digit = (first_14 % 13) % 10;
     let actual_last = ogrnip.chars().last().unwrap().to_digit(10).unwrap() as u64;
 

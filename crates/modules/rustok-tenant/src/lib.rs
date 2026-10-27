@@ -19,12 +19,13 @@ pub use dto::{CreateTenantInput, TenantModuleResponse, TenantResponse, UpdateTen
 pub use error::TenantError;
 pub use module::TenantModule;
 pub use ports::{
-    PortActor, PortCallPolicy, PortContext, PortError, PortErrorKind,
-    ReplaceTenantLocalePolicyRequest, TenantLocale, TenantLocalePolicyEntry,
+    in_process_tenant_storefront_ports, PortActor, PortCallPolicy, PortContext, PortError,
+    PortErrorKind, ReplaceTenantLocalePolicyRequest, TenantLocale, TenantLocalePolicyEntry,
     TenantLocalePolicyPort, TenantLocalePolicyProjection, TenantReadPort, TenantReadProjection,
-    TenantReadRequest, TenantReadSelector, in_process_tenant_storefront_ports,
+    TenantReadRequest, TenantReadSelector,
 };
 pub use services::TenantService;
 
 #[cfg(test)]
 mod contract_tests;
+

@@ -3086,9 +3086,9 @@ fn require_remote_executor_access(
         ));
     }
     let mut values = headers.get_all("x-rustok-runner-token").iter();
-    let first = values
-        .next()
-        .ok_or_else(|| Error::Unauthorized("Missing x-rustok-runner-token header".to_string()))?;
+    let first = values.next().ok_or_else(|| {
+        Error::Unauthorized("Missing x-rustok-runner-token header".to_string())
+    })?;
     for duplicate in values {
         if duplicate != first {
             tracing::warn!("Conflicting duplicate x-rustok-runner-token headers rejected");
@@ -3338,9 +3338,9 @@ fn map_remote_validation_transition_error(error: RegistryRemoteTransitionError) 
 
 fn required_non_nil_idempotency_key(headers: &HeaderMap) -> Result<Uuid, Error> {
     let mut values = headers.get_all("idempotency-key").iter();
-    let first = values
-        .next()
-        .ok_or_else(|| Error::BadRequest("Idempotency-Key header is required".to_string()))?;
+    let first = values.next().ok_or_else(|| {
+        Error::BadRequest("Idempotency-Key header is required".to_string())
+    })?;
     if values.next().is_some() {
         return Err(Error::BadRequest(
             "Duplicate Idempotency-Key headers are forbidden".to_string(),

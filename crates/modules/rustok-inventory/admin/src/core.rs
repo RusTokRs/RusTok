@@ -312,9 +312,9 @@ pub(crate) fn summarize_inventory(variants: &[InventoryVariant]) -> InventorySum
 
     InventorySummary {
         variant_count: variants.len(),
-        total_quantity: variants.iter().fold(0_i32, |acc, variant| {
-            acc.saturating_add(variant.inventory_quantity)
-        }),
+        total_quantity: variants
+            .iter()
+            .fold(0_i32, |acc, variant| acc.saturating_add(variant.inventory_quantity)),
         low_stock: health_counts.low_stock,
         backorder: health_counts.backorder,
         out_of_stock: health_counts.out_of_stock,
@@ -994,7 +994,10 @@ mod tests {
 
     #[test]
     fn summarize_inventory_saturates_on_large_quantities_without_overflow() {
-        let variants = vec![variant(true, "deny", i32::MAX), variant(true, "deny", 100)];
+        let variants = vec![
+            variant(true, "deny", i32::MAX),
+            variant(true, "deny", 100),
+        ];
 
         let summary = summarize_inventory(&variants);
         assert_eq!(summary.total_quantity, i32::MAX);

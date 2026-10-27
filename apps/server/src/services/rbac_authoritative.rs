@@ -46,7 +46,7 @@ impl RbacService {
             _ => sea_orm::Statement::from_sql_and_values(
                 db.get_database_backend(),
                 "SELECT r.slug FROM user_roles ur JOIN roles r ON ur.role_id = r.id JOIN users u ON u.id = ur.user_id AND u.tenant_id = r.tenant_id WHERE ur.user_id = ? AND r.tenant_id = ? AND r.slug IN ('super_admin', 'admin', 'manager', 'customer') ORDER BY CASE WHEN r.slug = 'super_admin' THEN 1 WHEN r.slug = 'admin' THEN 2 WHEN r.slug = 'manager' THEN 3 ELSE 4 END LIMIT 1",
-                [user_id.to_string().into(), tenant_id.to_string().into()],
+                [(*user_id).into(), (*tenant_id).into()],
             ),
         };
 
@@ -102,6 +102,8 @@ mod tests {
         .expect("failed to insert tenant");
 
         users::Entity::insert(users::ActiveModel {
+            failed_login_count: Set(0),
+            locked_until: Set(None),
             id: Set(user_id),
             tenant_id: Set(tenant_id),
             email: Set(email.to_string()),

@@ -1,5 +1,5 @@
 use crate::module_cli_args::cli_option_value;
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScaffoldUi {
@@ -76,8 +76,8 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
         );
     }
 
-    let category =
-        cli_option_value(args, "--category").unwrap_or_else(|| "collaboration".to_string());
+    let category = cli_option_value(args, "--category")
+        .unwrap_or_else(|| "collaboration".to_string());
 
     let no_db = args.iter().any(|arg| arg == "--no-db");
     let with_db = !no_db;
@@ -133,37 +133,23 @@ pub fn print_scaffold_usage() {
     println!("  --description <desc>     Module description for documentation and manifests");
     println!("  --category <cat>         Marketplace category (default: 'collaboration')");
     println!("  --no-db                  Omit SeaORM persistence entities and migrations");
-    println!(
-        "  --ui <mode>              UI classification: dual, admin, storefront, or none (default: dual)"
-    );
+    println!("  --ui <mode>              UI classification: dual, admin, storefront, or none (default: dual)");
     println!("  --with-ui                Alias for --ui dual");
     println!("  --no-ui                  Alias for --ui none (headless module)");
     println!("  --skip-server-wire       Do not register feature flags in apps/server/Cargo.toml");
     println!("  --skip-validate          Skip post-scaffold contract validation");
-    println!(
-        "  --dry-run                Preview generated files and updates without writing to disk"
-    );
+    println!("  --dry-run                Preview generated files and updates without writing to disk");
     println!();
     println!("Examples:");
-    println!(
-        "  cargo xtask scaffold calls --title \"WebRTC Calls & Conferencing\" --category collaboration"
-    );
-    println!(
-        "  cargo xtask scaffold party --title \"Counterparty & Legal Entities\" --category crm"
-    );
-    println!(
-        "  cargo xtask scaffold page_builder --title \"Visual Page Builder\" --category content"
-    );
-    println!(
-        "  cargo xtask scaffold digital-wallet --title \"Digital Wallet & Balance\" --category fintech"
-    );
+    println!("  cargo xtask scaffold calls --title \"WebRTC Calls & Conferencing\" --category collaboration");
+    println!("  cargo xtask scaffold party --title \"Counterparty & Legal Entities\" --category crm");
+    println!("  cargo xtask scaffold page_builder --title \"Visual Page Builder\" --category content");
+    println!("  cargo xtask scaffold digital-wallet --title \"Digital Wallet & Balance\" --category fintech");
 }
 
 pub fn is_valid_slug(slug: &str) -> bool {
     !slug.is_empty()
-        && slug
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+        && slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
         && !slug.starts_with('-')
         && !slug.ends_with('-')
         && !slug.starts_with('_')

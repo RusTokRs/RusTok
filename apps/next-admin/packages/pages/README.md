@@ -21,3 +21,4 @@ Host wiring (already done in `apps/next-admin`):
 - `src/app/dashboard/pages/page.tsx`: renders `PagesPage` with the session
   token/tenant, Rust admin origin (`builderBaseUrl`), and Storefront origin (`storefrontBaseUrl`).
 - Provides deep links to visual editing (`builderUrlForPage`) and live storefront viewing / draft mode preview (`storefrontUrlForPage`).
+

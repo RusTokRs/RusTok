@@ -58,6 +58,7 @@ pub mod tcp_transport;
 #[cfg(feature = "tcp-transport")]
 pub mod tcp_transport_reload;
 
+
 pub use dto::{
     CommentListItem, CommentRecord, CommentStatus, CommentThreadDetail, CommentThreadStatus,
     CommentThreadSummary, CreateCommentInput, GetThreadDetailFilter, ListCommentsFilter,
@@ -73,8 +74,8 @@ pub use ports::CommentsThreadPort;
 pub use ports::in_process_comments_thread_port;
 #[cfg(feature = "server")]
 pub use remote::{
-    CommentsThreadRequest, CommentsThreadResponse, CommentsThreadTransport,
-    CommentsThreadTransportReply, RemoteCommentsThreadPort, remote_comments_thread_port,
+    remote_comments_thread_port, CommentsThreadRequest, CommentsThreadResponse,
+    CommentsThreadTransport, CommentsThreadTransportReply, RemoteCommentsThreadPort,
 };
 #[cfg(feature = "server")]
 pub use services::CommentsService;

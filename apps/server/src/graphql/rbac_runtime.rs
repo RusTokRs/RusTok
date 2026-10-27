@@ -34,6 +34,10 @@ impl RbacGraphqlRoleWriter for ServerRbacGraphqlRoleWriter {
                     tenant_id: *tenant_id,
                     request_id: None,
                     locale: None,
+                    // Host-internal RBAC composition invokes the port
+                    // without a request principal; self-service operations
+                    // that require DirectUser fail closed on None.
+                    principal_kind: None,
                 },
                 UpdateUserCommand {
                     id: *user_id,
@@ -69,6 +73,10 @@ impl RbacGraphqlRoleWriter for ServerRbacGraphqlRoleWriter {
                     tenant_id: *tenant_id,
                     request_id: None,
                     locale: None,
+                    // Host-internal RBAC composition invokes the port
+                    // without a request principal; self-service operations
+                    // that require DirectUser fail closed on None.
+                    principal_kind: None,
                 },
                 UpdateUserCommand {
                     id: *user_id,

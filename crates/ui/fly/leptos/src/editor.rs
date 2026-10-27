@@ -502,7 +502,9 @@ pub fn FlyCanvasPreview(
                     if let Some(target) = target {
                         if let Ok(Some(element)) = target.closest("[data-fly-component-id]") {
                             let _ = element.remove_attribute("contenteditable");
-                            if let Some(html_element) = element.dyn_ref::<web_sys::HtmlElement>() {
+                            if let Some(html_element) =
+                                element.dyn_ref::<web_sys::HtmlElement>()
+                            {
                                 let _ = html_element.blur();
                             }
                         }
@@ -2382,19 +2384,13 @@ pub fn FlyEditorWorkspace(
                             shortcut_editor.with(|e| e.selection().map(ToString::to_string))
                         {
                             if let Some(on_intent) = on_intent {
-                                on_intent.run(BrowserIntentEnvelope::remove_selected(
-                                    &shortcut_instance,
-                                ));
+                                on_intent.run(BrowserIntentEnvelope::remove_selected(&shortcut_instance));
                             } else {
                                 let apply_result = shortcut_editor.try_update(|e| {
                                     e.apply(fly::EditorCommand::Remove { component_id })
                                 });
                                 if let Some(Err(error)) = &apply_result {
-                                    report_workspace_error(
-                                        on_error,
-                                        "Delete component failed",
-                                        error,
-                                    );
+                                    report_workspace_error(on_error, "Delete component failed", error);
                                 }
                                 if let Some(on_change) = on_change {
                                     shortcut_editor.with(|e| on_change.run(e.document().clone()));
@@ -2416,11 +2412,7 @@ pub fn FlyEditorWorkspace(
                                     e.apply(fly::EditorCommand::Duplicate { component_id })
                                 });
                                 if let Some(Err(error)) = &apply_result {
-                                    report_workspace_error(
-                                        on_error,
-                                        "Duplicate component failed",
-                                        error,
-                                    );
+                                    report_workspace_error(on_error, "Duplicate component failed", error);
                                 }
                                 if let Some(on_change) = on_change {
                                     shortcut_editor.with(|e| on_change.run(e.document().clone()));
@@ -2721,9 +2713,7 @@ mod tests {
         assert!(interactive_html.contains("data-fly-component-id=\"hero-title\""));
         assert!(interactive_html.contains("data-fly-selected=\"hero-title\""));
         assert!(interactive_html.contains(".fly-canvas--interactive [data-fly-component-id]"));
-        assert!(interactive_html.contains(
-            "[data-fly-component-id=\"hero-title\"] { outline: 2px solid #2563eb !important;"
-        ));
+        assert!(interactive_html.contains("[data-fly-component-id=\"hero-title\"] { outline: 2px solid #2563eb !important;"));
         assert!(interactive_html.contains(".fly-canvas--interactive [contenteditable=\"true\"]"));
     }
 

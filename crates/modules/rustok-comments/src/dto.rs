@@ -171,24 +171,16 @@ use crate::error::{CommentsError, CommentsResult};
 impl CreateCommentInput {
     pub fn validate(&self) -> CommentsResult<()> {
         if self.target_type.trim().is_empty() {
-            return Err(CommentsError::Validation(
-                "target_type cannot be empty".to_string(),
-            ));
+            return Err(CommentsError::Validation("target_type cannot be empty".to_string()));
         }
         if self.target_id.is_nil() {
-            return Err(CommentsError::Validation(
-                "target_id cannot be nil".to_string(),
-            ));
+            return Err(CommentsError::Validation("target_id cannot be nil".to_string()));
         }
         if self.parent_comment_id.is_some_and(|id| id.is_nil()) {
-            return Err(CommentsError::Validation(
-                "parent_comment_id cannot be nil".to_string(),
-            ));
+            return Err(CommentsError::Validation("parent_comment_id cannot be nil".to_string()));
         }
         if self.locale.trim().is_empty() {
-            return Err(CommentsError::Validation(
-                "locale cannot be empty".to_string(),
-            ));
+            return Err(CommentsError::Validation("locale cannot be empty".to_string()));
         }
         Ok(())
     }
@@ -198,9 +190,7 @@ impl CreateCommentInput {
 impl UpdateCommentInput {
     pub fn validate(&self) -> CommentsResult<()> {
         if self.locale.trim().is_empty() {
-            return Err(CommentsError::Validation(
-                "locale cannot be empty".to_string(),
-            ));
+            return Err(CommentsError::Validation("locale cannot be empty".to_string()));
         }
         Ok(())
     }
@@ -210,9 +200,7 @@ impl UpdateCommentInput {
 impl ListCommentsFilter {
     pub fn validate(&self) -> CommentsResult<()> {
         if self.locale.trim().is_empty() {
-            return Err(CommentsError::Validation(
-                "locale cannot be empty".to_string(),
-            ));
+            return Err(CommentsError::Validation("locale cannot be empty".to_string()));
         }
         Ok(())
     }
@@ -222,14 +210,10 @@ impl ListCommentsFilter {
 impl GetThreadDetailFilter {
     pub fn validate(&self) -> CommentsResult<()> {
         if self.thread_id.is_nil() {
-            return Err(CommentsError::Validation(
-                "thread_id cannot be nil".to_string(),
-            ));
+            return Err(CommentsError::Validation("thread_id cannot be nil".to_string()));
         }
         if self.locale.trim().is_empty() {
-            return Err(CommentsError::Validation(
-                "locale cannot be empty".to_string(),
-            ));
+            return Err(CommentsError::Validation("locale cannot be empty".to_string()));
         }
         Ok(())
     }

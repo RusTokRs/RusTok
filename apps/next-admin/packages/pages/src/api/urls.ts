@@ -13,10 +13,7 @@ export type PageStatus = 'draft' | 'published' | 'archived';
 /**
  * Deep link into the Rust (FFA/Leptos) page-builder editor for one page.
  */
-export function builderUrlForPage(
-  builderBaseUrl: string,
-  pageId: string
-): string {
+export function builderUrlForPage(builderBaseUrl: string, pageId: string): string {
   const base = builderBaseUrl.replace(/\/+$/, '');
   return `${base}/modules/pages?pageId=${encodeURIComponent(pageId)}`;
 }

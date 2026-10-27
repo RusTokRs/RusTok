@@ -424,21 +424,16 @@ mod tests {
             css: "h1 { color: red; }".to_string(),
             content_hash: "hash".to_string(),
         };
-        let body =
-            published_artifact_page_body(PAGE_ID, Some(artifact), Some("web")).expect("page body");
-        assert_eq!(
-            body.format,
-            crate::builder::STATIC_LANDING_PAYLOAD_BODY_FORMAT
-        );
-        let payload =
-            crate::builder::decode_static_landing_payload(&body).expect("decoded payload");
+        let body = published_artifact_page_body(PAGE_ID, Some(artifact), Some("web"))
+            .expect("page body");
+        assert_eq!(body.format, crate::builder::STATIC_LANDING_PAYLOAD_BODY_FORMAT);
+        let payload = crate::builder::decode_static_landing_payload(&body)
+            .expect("decoded payload");
         assert_eq!(payload.html, "<h1>Hello</h1>");
         assert_eq!(payload.css, "h1 { color: red; }");
         assert_eq!(
             payload.artifact_url,
-            Some(format!(
-                "/api/pages/{PAGE_ID}/artifact?locale=en&channel=web"
-            ))
+            Some(format!("/api/pages/{PAGE_ID}/artifact?locale=en&channel=web"))
         );
     }
 

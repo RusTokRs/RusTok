@@ -15,6 +15,7 @@ use axum::{
     routing::{get, post},
 };
 use reqwest::Url;
+use rustok_api::AuthPrincipalKind;
 pub use rustok_auth::{
     AuthorizeRequest, BrowserAuthorizeRequest, BrowserSessionResponse, ConsentRequest,
     RevokeRequest, TokenErrorResponse, TokenRequest, TokenResponse,
@@ -49,6 +50,122 @@ fn oauth_error_response(error: TokenErrorResponse) -> axum::response::Response {
         .headers_mut()
         .insert(PRAGMA, axum::http::HeaderValue::from_static("no-cache"));
     response
+}
+
+fn direct_user_required_error() -> TokenErrorResponse {
+    TokenErrorResponse {
+        error: "access_denied".to_string(),
+        error_description: "This authorization must be completed with a direct user session; delegated and service tokens cannot authorize or consent".to_string(),
+    }
+}
+
+/// The consent form is authenticated by the browser-session cookie, so
+/// it needs CSRF defense beyond `SameSite=Lax`: a short-lived keyed MAC
+/// binding the rendered form to the signed-in user and the exact
+/// authorization parameters. A forged cross-site submission (including
+/// from a same-site subdomain) cannot produce a valid value.
+const CONSENT_CSRF_TTL_SECS: i64 = 10 * 60;
+
+#[allow(clippy::too_many_arguments)]
+fn consent_csrf_mac(
+    config: &crate::auth::AuthConfig,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    client_id: &str,
+    redirect_uri: &str,
+    scope: Option<&str>,
+    state: Option<&str>,
+    code_challenge: &str,
+    expires_at: i64,
+) -> String {
+    use sha2::{Digest, Sha256};
+
+    let mut hasher = Sha256::new();
+    hasher.update(config.secret.as_bytes());
+    hasher.update([0]);
+    hasher.update(b"oauth-consent-csrf");
+    for part in [
+        tenant_id.to_string(),
+        user_id.to_string(),
+        client_id.to_string(),
+        redirect_uri.to_string(),
+        scope.unwrap_or_default().to_string(),
+        state.unwrap_or_default().to_string(),
+        code_challenge.to_string(),
+        expires_at.to_string(),
+    ] {
+        hasher.update([0]);
+        hasher.update(part.as_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn issue_consent_csrf(
+    config: &crate::auth::AuthConfig,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    client_id: &str,
+    redirect_uri: &str,
+    scope: Option<&str>,
+    state: Option<&str>,
+    code_challenge: &str,
+) -> String {
+    let expires_at = chrono::Utc::now().timestamp() + CONSENT_CSRF_TTL_SECS;
+    format!(
+        "{expires_at}.{}",
+        consent_csrf_mac(
+            config,
+            tenant_id,
+            user_id,
+            client_id,
+            redirect_uri,
+            scope,
+            state,
+            code_challenge,
+            expires_at,
+        )
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_consent_csrf(
+    config: &crate::auth::AuthConfig,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    client_id: &str,
+    redirect_uri: &str,
+    scope: Option<&str>,
+    state: Option<&str>,
+    code_challenge: &str,
+    presented: Option<&str>,
+) -> bool {
+    use subtle::ConstantTimeEq;
+
+    let Some(presented) = presented else {
+        return false;
+    };
+    let Some((expires_at, mac)) = presented.split_once('.') else {
+        return false;
+    };
+    let Ok(expires_at) = expires_at.parse::<i64>() else {
+        return false;
+    };
+    if chrono::Utc::now().timestamp() > expires_at {
+        return false;
+    }
+    let expected = consent_csrf_mac(
+        config,
+        tenant_id,
+        user_id,
+        client_id,
+        redirect_uri,
+        scope,
+        state,
+        code_challenge,
+        expires_at,
+    );
+    expected.as_bytes().ct_eq(mac.as_bytes()).into()
 }
 
 #[derive(Debug, Clone)]
@@ -187,6 +304,13 @@ async fn authorize_handler_inner(
     current_user: CurrentUser,
     req: AuthorizeRequest,
 ) -> Result<Json<serde_json::Value>, TokenErrorResponse> {
+    // Authorization is the user personally delegating authority: a
+    // delegated token presented by application A must never mint codes or
+    // trigger consent decisions for application B.
+    if current_user.principal_kind != AuthPrincipalKind::DirectUser {
+        return Err(direct_user_required_error());
+    }
+
     let validated = validate_authorize_request(
         &ctx,
         tenant_ctx.id,
@@ -304,6 +428,17 @@ pub(crate) async fn authorize_browser_handler(
             }
         };
 
+    if current_user.principal_kind != AuthPrincipalKind::DirectUser {
+        return (
+            StatusCode::FORBIDDEN,
+            Html(render_error_page(
+                "Access denied",
+                "This authorization must be completed with a direct user session.",
+            )),
+        )
+            .into_response();
+    }
+
     if !validated.app.requires_user_consent() {
         return match issue_authorization_code(
             runtime_ctx,
@@ -356,10 +491,28 @@ pub(crate) async fn authorize_browser_handler(
         };
     }
 
+    let Some(auth_config) = ctx.auth_config() else {
+        return oauth_error_response(TokenErrorResponse {
+            error: "server_error".to_string(),
+            error_description: "Authorization is temporarily unavailable".to_string(),
+        });
+    };
+    let consent_csrf = issue_consent_csrf(
+        auth_config,
+        tenant_ctx.id,
+        current_user.user.id,
+        &req.client_id,
+        &req.redirect_uri,
+        req.scope.as_deref(),
+        req.state.as_deref(),
+        &req.code_challenge,
+    );
+
     Html(render_consent_page(
         &validated,
         &req,
         &current_user.user.email,
+        &consent_csrf,
     ))
     .into_response()
 }
@@ -424,6 +577,31 @@ pub(crate) async fn consent_handler(
             }
         };
 
+    if current_user.principal_kind != AuthPrincipalKind::DirectUser {
+        return oauth_error_response(direct_user_required_error());
+    }
+
+    let csrf_valid = ctx.auth_config().is_some_and(|auth_config| {
+        verify_consent_csrf(
+            auth_config,
+            tenant_ctx.id,
+            current_user.user.id,
+            &req.client_id,
+            &req.redirect_uri,
+            req.scope.as_deref(),
+            req.state.as_deref(),
+            &req.code_challenge,
+            req.consent_csrf.as_deref(),
+        )
+    });
+    if !csrf_valid {
+        return oauth_error_response(TokenErrorResponse {
+            error: "invalid_request".to_string(),
+            error_description: "Invalid or expired consent form; restart the authorization flow"
+                .to_string(),
+        });
+    }
+
     if req.action == "deny" {
         return redirect_with_error(
             &validated.redirect_uri,
@@ -441,7 +619,7 @@ pub(crate) async fn consent_handler(
         });
     }
 
-    if OAuthAppService::grant_consent(
+    if OAuthAppService::grant_consent_strict(
         runtime_ctx.db(),
         validated.app.id,
         current_user.user.id,
@@ -480,8 +658,12 @@ pub(crate) async fn create_browser_session_handler(
     State(ctx): State<ServerRuntimeContext>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    _current_user: CurrentUser,
+    current_user: CurrentUser,
 ) -> axum::response::Response {
+    if current_user.principal_kind != AuthPrincipalKind::DirectUser {
+        return oauth_error_response(direct_user_required_error());
+    }
+
     let Some(access_token) = extract_bearer_token(&headers) else {
         return oauth_error_response(TokenErrorResponse {
             error: "invalid_request".to_string(),
@@ -837,6 +1019,7 @@ fn render_consent_page(
     validated: &ValidatedAuthorizeRequest,
     request: &BrowserAuthorizeRequest,
     user_email: &str,
+    consent_csrf: &str,
 ) -> String {
     let scopes = validated
         .requested_scopes
@@ -846,7 +1029,7 @@ fn render_consent_page(
         .join("");
 
     format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Authorize {app}</title><style>body{{font-family:system-ui,sans-serif;background:#f8fafc;color:#0f172a;max-width:760px;margin:40px auto;padding:0 16px}}.card{{background:#fff;border:1px solid #dbe3f0;border-radius:16px;padding:24px;box-shadow:0 12px 30px rgba(15,23,42,0.08)}}.meta{{color:#475569}}ul{{padding-left:20px}}form{{display:flex;gap:12px;margin-top:24px}}button{{border:0;border-radius:10px;padding:12px 18px;font-weight:600;cursor:pointer}}.approve{{background:#0f766e;color:white}}.deny{{background:#e2e8f0;color:#0f172a}}</style></head><body><div class=\"card\"><h1>Authorize {app}</h1><p class=\"meta\">Signed in as {user}. This app is requesting access to:</p><ul>{scopes}</ul><p class=\"meta\">Redirect URI: {redirect}</p><form method=\"post\" action=\"/api/oauth/consent\"><input type=\"hidden\" name=\"client_id\" value=\"{client_id}\"><input type=\"hidden\" name=\"redirect_uri\" value=\"{redirect_attr}\"><input type=\"hidden\" name=\"scope\" value=\"{scope_attr}\"><input type=\"hidden\" name=\"state\" value=\"{state_attr}\"><input type=\"hidden\" name=\"code_challenge\" value=\"{challenge_attr}\"><input type=\"hidden\" name=\"code_challenge_method\" value=\"S256\"><button class=\"approve\" type=\"submit\" name=\"action\" value=\"approve\">Approve</button><button class=\"deny\" type=\"submit\" name=\"action\" value=\"deny\">Deny</button></form></div></body></html>",
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Authorize {app}</title><style>body{{font-family:system-ui,sans-serif;background:#f8fafc;color:#0f172a;max-width:760px;margin:40px auto;padding:0 16px}}.card{{background:#fff;border:1px solid #dbe3f0;border-radius:16px;padding:24px;box-shadow:0 12px 30px rgba(15,23,42,0.08)}}.meta{{color:#475569}}ul{{padding-left:20px}}form{{display:flex;gap:12px;margin-top:24px}}button{{border:0;border-radius:10px;padding:12px 18px;font-weight:600;cursor:pointer}}.approve{{background:#0f766e;color:white}}.deny{{background:#e2e8f0;color:#0f172a}}</style></head><body><div class=\"card\"><h1>Authorize {app}</h1><p class=\"meta\">Signed in as {user}. This app is requesting access to:</p><ul>{scopes}</ul><p class=\"meta\">Redirect URI: {redirect}</p><form method=\"post\" action=\"/api/oauth/consent\"><input type=\"hidden\" name=\"client_id\" value=\"{client_id}\"><input type=\"hidden\" name=\"redirect_uri\" value=\"{redirect_attr}\"><input type=\"hidden\" name=\"scope\" value=\"{scope_attr}\"><input type=\"hidden\" name=\"state\" value=\"{state_attr}\"><input type=\"hidden\" name=\"code_challenge\" value=\"{challenge_attr}\"><input type=\"hidden\" name=\"code_challenge_method\" value=\"S256\"><input type=\"hidden\" name=\"consent_csrf\" value=\"{csrf_attr}\"><button class=\"approve\" type=\"submit\" name=\"action\" value=\"approve\">Approve</button><button class=\"deny\" type=\"submit\" name=\"action\" value=\"deny\">Deny</button></form></div></body></html>",
         app = escape_html(&validated.app.name),
         user = escape_html(user_email),
         scopes = scopes,
@@ -856,6 +1039,7 @@ fn render_consent_page(
         scope_attr = escape_attr(request.scope.as_deref().unwrap_or_default()),
         state_attr = escape_attr(request.state.as_deref().unwrap_or_default()),
         challenge_attr = escape_attr(&request.code_challenge),
+        csrf_attr = escape_attr(consent_csrf),
     )
 }
 
@@ -1324,7 +1508,12 @@ mod tests {
             code_challenge_method: Some("S256".to_string()),
         };
 
-        let html = render_consent_page(&validated, &request, "user+test@example.com");
+        let html = render_consent_page(
+            &validated,
+            &request,
+            "user+test@example.com",
+            "1893456000.deadbeef",
+        );
         assert!(html.contains("Authorize Partner &lt;App&gt;"));
         assert!(html.contains("user+test@example.com"));
         assert!(html.contains("name=\"client_id\""));
@@ -1332,6 +1521,8 @@ mod tests {
         assert!(html.contains("name=\"scope\""));
         assert!(html.contains("name=\"state\""));
         assert!(html.contains("name=\"code_challenge\""));
+        assert!(html.contains("name=\"consent_csrf\""));
+        assert!(html.contains("1893456000.deadbeef"));
         assert!(html.contains("&lt;unsafe&gt;"));
         assert!(html.contains("challenge&lt;&amp;&gt;"));
         assert!(html.contains("&quot;quoted-state&quot;"));

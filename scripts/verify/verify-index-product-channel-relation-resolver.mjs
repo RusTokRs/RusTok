@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const visibilityPath = 'crates/utils/rustok-distribution/src/product_index/channel_visibility.rs';
+const visibilityPath = 'crates/modules/rustok-distribution/src/product_index/channel_visibility.rs';
 requireMarkers(visibilityPath, [
   'MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUGS: usize = 1024',
   'MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUG_BYTES: usize = 100',
@@ -27,7 +27,7 @@ requireMarkers(visibilityPath, [
 ]);
 
 const resolverPath =
-  'crates/utils/rustok-distribution/src/product_index/channel_relation_resolver.rs';
+  'crates/modules/rustok-distribution/src/product_index/channel_relation_resolver.rs';
 const resolver = requireMarkers(resolverPath, [
   'MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE: usize = 64',
   'MAX_PRODUCT_SALES_CHANNEL_STABILIZATION_ATTEMPTS: usize = 3',
@@ -82,7 +82,7 @@ for (const ownerPath of [
   }
 }
 
-requireMarkers('crates/utils/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
   'pub(crate) mod channel_relation_resolver;',
   'mod channel_relation_convergence;',
   'mod channel_visibility;',

@@ -1,8 +1,6 @@
 use async_trait::async_trait;
 use rustok_api::Permission;
-use rustok_core::{
-    MigrationDependencyDescriptor, MigrationSource, ModuleRuntimeExtensions, RusToKModule,
-};
+use rustok_core::{MigrationDependencyDescriptor, MigrationSource, ModuleRuntimeExtensions, RusToKModule};
 use rustok_notifications::register_notification_source_provider_factory;
 use sea_orm_migration::MigrationTrait;
 

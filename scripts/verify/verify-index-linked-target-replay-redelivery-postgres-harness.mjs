@@ -23,7 +23,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const harnessPath = 'crates/utils/rustok-distribution/tests/product_linked_target_replay_redelivery_postgres.rs';
+const harnessPath = 'crates/modules/rustok-distribution/tests/product_linked_target_replay_redelivery_postgres.rs';
 const harness = requireMarkers(harnessPath, [
   '#![cfg(feature = "mod-product")]',
   'replay_checkpoint_failure_duplicate_retry_and_late_stale_target_keep_graph_authoritative',

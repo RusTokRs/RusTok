@@ -893,3 +893,4 @@ mod tests {
         assert_eq!(hash1, hash2);
     }
 }
+

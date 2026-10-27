@@ -1356,9 +1356,10 @@ fn product_translation_search_helper_is_not_server_owned() {
         "apps/server must not re-export a product_search service"
     );
 
-    let foundation_search =
-        std::fs::read_to_string(repo.join("crates/libs/rustok-commerce-foundation/src/search.rs"))
-            .expect("commerce foundation search helper should read");
+    let foundation_search = std::fs::read_to_string(
+        repo.join("crates/modules/rustok-commerce-foundation/src/search.rs"),
+    )
+    .expect("commerce foundation search helper should read");
     assert!(
         foundation_search.contains("pub fn product_translation_title_search_condition"),
         "product translation title search condition must remain owner/foundation-owned"

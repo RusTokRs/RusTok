@@ -37,14 +37,14 @@ pub mod search {
     //!
     //! All discoverable domain entities emit search projection documents into `rustok-search`.
 
+    use std::sync::Arc;
     use async_trait::async_trait;
     use rustok_core::search_projection::{
-        SearchProjectionDocument, SearchProjectionPage, SearchProjectionSource,
-        SearchProjectionSourceFactory,
+        SearchProjectionDocument, SearchProjectionPage,
+        SearchProjectionSource, SearchProjectionSourceFactory,
     };
     use rustok_core::{ModuleRuntimeExtensions, Result};
     use sea_orm::DatabaseConnection;
-    use std::sync::Arc;
     use uuid::Uuid;
 
     pub const DEAL_SOURCE_MODULE: &str = "deal";

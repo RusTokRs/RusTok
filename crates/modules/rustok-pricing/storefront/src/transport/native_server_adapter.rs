@@ -317,11 +317,7 @@ async fn storefront_pricing_native(
             .as_deref()
             .and_then(|value| Uuid::parse_str(value).ok())
             .filter(|uuid| !uuid.is_nil())
-            .or_else(|| {
-                request_context
-                    .as_ref()
-                    .and_then(|ctx| ctx.channel_id.filter(|uuid| !uuid.is_nil()))
-            });
+            .or_else(|| request_context.as_ref().and_then(|ctx| ctx.channel_id.filter(|uuid| !uuid.is_nil())));
         let selected_channel_slug = sanitize_channel_slug(query.channel_slug).or_else(|| {
             request_context
                 .as_ref()

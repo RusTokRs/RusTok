@@ -6,19 +6,19 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/libs/rustok-iggy/contracts/evidence/dlq-duplicate-rolling-window-source.json";
-const sourcePath = "crates/libs/rustok-iggy/src/dlq_duplicate_rolling_window.rs";
-const classifierPath = "crates/libs/rustok-iggy/src/dlq_duplicate_inspection.rs";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-rolling-window-source.json";
+const sourcePath = "crates/modules/rustok-iggy/src/dlq_duplicate_rolling_window.rs";
+const classifierPath = "crates/modules/rustok-iggy/src/dlq_duplicate_inspection.rs";
 const movingContractPath =
-  "crates/libs/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-scan-source.json";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-scan-source.json";
 const movingSourcePath =
-  "crates/libs/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs";
+  "crates/modules/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs";
 const serverContractPath =
-  "crates/libs/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json";
-const iggyObserverPath = "crates/libs/rustok-iggy/src/dlq_duplicate_alert_observer.rs";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json";
+const iggyObserverPath = "crates/modules/rustok-iggy/src/dlq_duplicate_alert_observer.rs";
 const serverPath = "apps/server/src/services/event_dlq_duplicate_alert_observer.rs";
-const libPath = "crates/libs/rustok-iggy/src/lib.rs";
-const documentationPath = "crates/libs/rustok-iggy/docs/dlq-duplicate-rolling-window.md";
+const libPath = "crates/modules/rustok-iggy/src/lib.rs";
+const documentationPath = "crates/modules/rustok-iggy/docs/dlq-duplicate-rolling-window.md";
 const profilesCheckpointPath =
   "crates/modules/rustok-profiles/docs/poison-duplicate-rolling-window-checkpoint.md";
 const verifierPath = "scripts/verify/verify-iggy-dlq-duplicate-rolling-window.mjs";

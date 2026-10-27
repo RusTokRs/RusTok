@@ -84,7 +84,7 @@ requireMarkers('crates/modules/rustok-product/src/catalog_schema_read_port.rs', 
   'request.fallback_locale.as_str()',
 ]);
 
-const distribution = requireMarkers('crates/utils/rustok-distribution/src/product_index/attribute_terms.rs', [
+const distribution = requireMarkers('crates/modules/rustok-distribution/src/product_index/attribute_terms.rs', [
   'pub(crate) use rustok_product::ProductAttributeTermError;',
   'rustok_product::product_attribute_text_term(',
   'rustok_product::product_attribute_localized_text_term(',

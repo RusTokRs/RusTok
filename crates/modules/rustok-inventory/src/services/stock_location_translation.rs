@@ -610,9 +610,6 @@ mod tests {
         let err = load_translations_for_stock_locations(&db, &[Uuid::nil()])
             .await
             .expect_err("nil stock_location_id must be rejected");
-        assert!(
-            err.to_string()
-                .contains("stock_location_ids must not contain a nil UUID")
-        );
+        assert!(err.to_string().contains("stock_location_ids must not contain a nil UUID"));
     }
 }

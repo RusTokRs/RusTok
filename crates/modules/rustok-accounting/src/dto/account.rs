@@ -170,12 +170,9 @@ impl TrialBalanceResponse {
 
     /// Calculates turnover totals grouped by currency code.
     pub fn turnovers_by_currency(&self) -> std::collections::HashMap<String, (i64, i64)> {
-        let mut map: std::collections::HashMap<String, (i64, i64)> =
-            std::collections::HashMap::new();
+        let mut map: std::collections::HashMap<String, (i64, i64)> = std::collections::HashMap::new();
         for line in &self.lines {
-            let entry = map
-                .entry(line.currency_code.clone())
-                .or_insert((0i64, 0i64));
+            let entry = map.entry(line.currency_code.clone()).or_insert((0i64, 0i64));
             entry.0 = entry.0.saturating_add(line.debit_turnover_minor);
             entry.1 = entry.1.saturating_add(line.credit_turnover_minor);
         }

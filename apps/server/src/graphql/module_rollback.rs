@@ -180,35 +180,34 @@ mod tests {
 
     #[test]
     fn rollback_lifecycle_validation_rejects_non_positive_expected_revision() {
-        assert!(
-            artifact_lifecycle_expected_revision(
-                Uuid::new_v4(),
-                0,
-                "incident mitigation",
-                Uuid::new_v4(),
-            )
-            .is_err()
-        );
-        assert!(
-            artifact_lifecycle_expected_revision(
-                Uuid::new_v4(),
-                -5,
-                "incident mitigation",
-                Uuid::new_v4(),
-            )
-            .is_err()
-        );
+        assert!(artifact_lifecycle_expected_revision(
+            Uuid::new_v4(),
+            0,
+            "incident mitigation",
+            Uuid::new_v4(),
+        ).is_err());
+        assert!(artifact_lifecycle_expected_revision(
+            Uuid::new_v4(),
+            -5,
+            "incident mitigation",
+            Uuid::new_v4(),
+        ).is_err());
     }
 
     #[test]
     fn rollback_lifecycle_validation_rejects_empty_or_whitespace_reason() {
-        assert!(
-            artifact_lifecycle_expected_revision(Uuid::new_v4(), 1, "", Uuid::new_v4(),).is_err()
-        );
-        assert!(
-            artifact_lifecycle_expected_revision(Uuid::new_v4(), 1, "   \t\n  ", Uuid::new_v4(),)
-                .is_err()
-        );
+        assert!(artifact_lifecycle_expected_revision(
+            Uuid::new_v4(),
+            1,
+            "",
+            Uuid::new_v4(),
+        ).is_err());
+        assert!(artifact_lifecycle_expected_revision(
+            Uuid::new_v4(),
+            1,
+            "   \t\n  ",
+            Uuid::new_v4(),
+        ).is_err());
     }
 
     #[test]
@@ -218,8 +217,8 @@ mod tests {
             5,
             "  incident rollback  ",
             Uuid::new_v4(),
-        )
-        .expect("valid lifecycle command");
+        ).expect("valid lifecycle command");
         assert_eq!(rev, 5);
     }
 }
+

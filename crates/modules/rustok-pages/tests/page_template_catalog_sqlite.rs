@@ -124,38 +124,18 @@ async fn catalog_is_tenant_and_exact_locale_scoped_with_revision_cas() -> TestRe
             .await
             .is_err()
     );
-    assert_eq!(
-        service.list(tenant, &actor, "en").await?,
-        vec![updated.clone()]
-    );
-    assert_eq!(
-        service.list_keys(tenant, &actor, "en").await?,
-        vec!["default".to_string(), "site".to_string()]
-    );
-    assert_eq!(
-        service.list_keys(other, &actor, "en").await?,
-        vec!["default".to_string()]
-    );
-
-    let default_tpl = service
-        .get(tenant, &actor, "default", "en")
-        .await?
-        .expect("default template must exist");
+    assert_eq!(service.list(tenant, &actor, "en").await?, vec![updated.clone()]);
+    assert_eq!(service.list_keys(tenant, &actor, "en").await?, vec!["default".to_string(), "site".to_string()]);
+    assert_eq!(service.list_keys(other, &actor, "en").await?, vec!["default".to_string()]);
+    
+    let default_tpl = service.get(tenant, &actor, "default", "en").await?.expect("default template must exist");
     assert_eq!(default_tpl.key, "default");
     assert!(default_tpl.header_symbol_ids.is_empty());
 
-    let site_tpl = service
-        .get(tenant, &actor, "site", "en")
-        .await?
-        .expect("site template must exist");
+    let site_tpl = service.get(tenant, &actor, "site", "en").await?.expect("site template must exist");
     assert_eq!(site_tpl, updated);
 
-    assert!(
-        service
-            .get(tenant, &actor, "missing", "en")
-            .await?
-            .is_none()
-    );
+    assert!(service.get(tenant, &actor, "missing", "en").await?.is_none());
 
     assert!(service.list(other, &actor, "en").await?.is_empty());
     assert!(service.list(tenant, &actor, "ru").await?.is_empty());
@@ -190,10 +170,7 @@ async fn catalog_is_tenant_and_exact_locale_scoped_with_revision_cas() -> TestRe
     db.execute_unprepared("DELETE FROM pages").await?;
     service.delete(tenant, &actor, "site", "en", 2).await?;
     assert!(service.list(tenant, &actor, "en").await?.is_empty());
-    assert_eq!(
-        service.list_keys(tenant, &actor, "en").await?,
-        vec!["default".to_string()]
-    );
+    assert_eq!(service.list_keys(tenant, &actor, "en").await?, vec!["default".to_string()]);
     Ok(())
 }
 

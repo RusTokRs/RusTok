@@ -272,7 +272,8 @@ impl ModerationService {
         if enters_public {
             CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, 1, 0)
                 .await?;
-            UserStatsService::adjust_topic_count_in_tx(&txn, tenant_id, topic.author_id, 1).await?;
+            UserStatsService::adjust_topic_count_in_tx(&txn, tenant_id, topic.author_id, 1)
+                .await?;
         }
         self.event_bus
             .publish_in_tx(
@@ -769,9 +770,8 @@ impl ModerationService {
         // public. Returning from `Hidden`/`Flagged` must not re-notify; only a
         // first public appearance (from the pre-moderation states `Pending`
         // and `Rejected`) publishes `ForumTopicReplied`.
-        let first_public_appearance =
-            matches!(current, ReplyStatus::Pending | ReplyStatus::Rejected)
-                && target == ReplyStatus::Approved;
+        let first_public_appearance = matches!(current, ReplyStatus::Pending | ReplyStatus::Rejected)
+            && target == ReplyStatus::Approved;
         let old_status = current.to_string();
         let new_status = target.to_string();
 

@@ -14,9 +14,9 @@ use tracing::Instrument;
 
 use crate::SearchProjectionSource;
 use crate::blog_projector::BlogSearchProjector;
-use crate::docs_projector::DocsSearchProjector;
 use crate::forum_inbox::{ForumProjectionInbox, ForumProjectionScope};
 use crate::forum_projector::ForumSearchProjector;
+use crate::docs_projector::DocsSearchProjector;
 use crate::pages_projector::PagesSearchProjector;
 use crate::projector::SearchProjector;
 
@@ -68,12 +68,10 @@ impl SearchIngestionHandler {
         let forum_inbox = forum_projector
             .as_ref()
             .map(|_| ForumProjectionInbox::new(db.clone()));
-        let pages_projector = pages_source
-            .clone()
-            .map(|source| PagesSearchProjector::new(db.clone(), source));
-        let docs_projector = docs_source
-            .clone()
-            .map(|source| DocsSearchProjector::new(db.clone(), source));
+        let pages_projector =
+            pages_source.clone().map(|source| PagesSearchProjector::new(db.clone(), source));
+        let docs_projector =
+            docs_source.clone().map(|source| DocsSearchProjector::new(db.clone(), source));
         Self {
             projector: SearchProjector::new(db.clone()),
             blog_projector: BlogSearchProjector::new(db),
@@ -144,9 +142,7 @@ impl SearchIngestionHandler {
             }
             ("docs" | "doc" | "doc_page", Some(doc_id)) => {
                 if let Some(projector) = &self.docs_projector {
-                    projector
-                        .refresh_entity(tenant_id, "doc_page", doc_id)
-                        .await?;
+                    projector.refresh_entity(tenant_id, "doc_page", doc_id).await?;
                 }
                 Ok(())
             }
@@ -397,9 +393,7 @@ impl EventHandler for SearchIngestionHandler {
                 | DomainEvent::NodePublished { node_id, kind } => {
                     if kind == "page" {
                         if let Some(projector) = &self.pages_projector {
-                            projector
-                                .refresh_entity(envelope.tenant_id, "page", *node_id)
-                                .await?;
+                            projector.refresh_entity(envelope.tenant_id, "page", *node_id).await?;
                         }
                         Ok(())
                     } else {
@@ -411,9 +405,7 @@ impl EventHandler for SearchIngestionHandler {
                 DomainEvent::NodeUnpublished { node_id, kind } => {
                     if kind == "page" {
                         if let Some(projector) = &self.pages_projector {
-                            projector
-                                .delete_entity(envelope.tenant_id, "page", *node_id)
-                                .await?;
+                            projector.delete_entity(envelope.tenant_id, "page", *node_id).await?;
                         }
                         Ok(())
                     } else {
@@ -431,9 +423,7 @@ impl EventHandler for SearchIngestionHandler {
                 DomainEvent::NodeDeleted { node_id, kind } => {
                     if kind == "page" {
                         if let Some(projector) = &self.pages_projector {
-                            projector
-                                .delete_entity(envelope.tenant_id, "page", *node_id)
-                                .await?;
+                            projector.delete_entity(envelope.tenant_id, "page", *node_id).await?;
                         }
                         Ok(())
                     } else {

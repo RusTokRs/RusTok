@@ -3,8 +3,8 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 
 use crate::core::{
-    EventDeliverySummaryViewModel, EventsAdminLabels, KNOWN_PROFILES, ProfileSelectionDecision,
-    evaluate_profile_selection, is_known_profile,
+    EventDeliverySummaryViewModel, EventsAdminLabels, KNOWN_PROFILES,
+    ProfileSelectionDecision, evaluate_profile_selection, is_known_profile,
 };
 use crate::transport;
 
@@ -76,11 +76,7 @@ pub fn EventsAdmin() -> impl IntoView {
         spawn_local(async move {
             let result = transport::update_profile(token, tenant, profile)
                 .await
-                .map(|outcome| {
-                    labels_save
-                        .format_save_outcome(outcome.restart_required)
-                        .to_string()
-                })
+                .map(|outcome| labels_save.format_save_outcome(outcome.restart_required).to_string())
                 .map_err(|error| error.to_string());
             set_save_result.set(Some(result));
             set_saving.set(false);

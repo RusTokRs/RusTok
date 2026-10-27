@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
+use chrono::{DateTime, FixedOffset};
 use crate::{
     NotificationPriority, NotificationSourceRegistry, NotificationSourceSlug,
     NotificationTemplateData, NotificationTemplateKey, NotificationTypeKey,
 };
-use chrono::{DateTime, FixedOffset};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, DbErr, EntityTrait,
     FromQueryResult, QueryFilter, Statement,

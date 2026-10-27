@@ -224,18 +224,15 @@ impl CategoryService {
         let (canonical_name, canonical_slug, canonical_description, copy_unchanged) =
             match existing_canonical {
                 Some(existing) => {
-                    let name = requested_name
-                        .clone()
-                        .unwrap_or_else(|| existing.name.clone());
+                    let name = requested_name.clone().unwrap_or_else(|| existing.name.clone());
                     validate_category_name(&name)?;
                     let slug = match requested_slug.as_deref() {
                         Some(slug) => normalize_non_empty_slug(slug)?,
                         None if requested_name.is_some() => normalize_non_empty_slug(&name)?,
                         None => normalize_non_empty_slug(&existing.slug)?,
                     };
-                    let description = requested_description
-                        .clone()
-                        .or_else(|| existing.description.clone());
+                    let description =
+                        requested_description.clone().or_else(|| existing.description.clone());
                     validate_optional_description(description.as_deref())?;
                     let unchanged = name == existing.name
                         && slug == existing.slug
@@ -271,9 +268,7 @@ impl CategoryService {
         // rejects such a request outright, and a Category that advances its
         // revision on every call breaks every revision-based consumer.
         if copy_unchanged && settings == category.settings {
-            return Err(BlogError::validation(
-                "No Blog category changes were supplied",
-            ));
+            return Err(BlogError::validation("No Blog category changes were supplied"));
         }
 
         let resource_updated = blog_category::Entity::update_many()

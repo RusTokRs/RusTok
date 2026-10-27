@@ -90,8 +90,14 @@ pub(crate) async fn load_category_names_map(
     locale: &str,
     fallback_locale: Option<&str>,
 ) -> BlogResult<HashMap<Uuid, String>> {
-    let projections =
-        load_category_projections_map(db, tenant_id, category_ids, locale, fallback_locale).await?;
+    let projections = load_category_projections_map(
+        db,
+        tenant_id,
+        category_ids,
+        locale,
+        fallback_locale,
+    )
+    .await?;
     Ok(projections
         .into_iter()
         .map(|(id, info)| (id, info.name))

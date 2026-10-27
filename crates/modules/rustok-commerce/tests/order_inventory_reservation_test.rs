@@ -1,9 +1,8 @@
 use rust_decimal::Decimal;
 use rustok_commerce::migrations as commerce_migrations;
 use rustok_fulfillment::dto::{
-    CancelFulfillmentInput, CreateFulfillmentInput, CreateFulfillmentItemInput,
-    DeliverFulfillmentInput, FulfillmentItemQuantityInput, ReopenFulfillmentInput,
-    ShipFulfillmentInput,
+    CancelFulfillmentInput, CreateFulfillmentInput, CreateFulfillmentItemInput, DeliverFulfillmentInput,
+    FulfillmentItemQuantityInput, ReopenFulfillmentInput, ShipFulfillmentInput,
 };
 use rustok_fulfillment::{FulfillmentService, migrations as fulfillment_migrations};
 use rustok_inventory::InventoryService;
@@ -842,3 +841,4 @@ async fn return_restock_adds_stock_once_and_skips_untracked_lines() {
         "non-positive restock quantities are rejected"
     );
 }
+

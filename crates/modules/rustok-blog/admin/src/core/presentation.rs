@@ -1,6 +1,6 @@
 use super::commands::*;
-use crate::model::*;
 pub use crate::model::{BlogPostSortField, BlogPostSortOrder};
+use crate::model::*;
 use rustok_api::{WritePathIssue, WritePathIssueKind};
 use rustok_grid::{ColumnAlign, ColumnFilters, FilterValue, GridColumnDef, GridFilterType};
 
@@ -544,8 +544,10 @@ pub const BLOG_POST_ADMIN_SORT_FIELDS: [BlogPostSortField; 3] = [
     BlogPostSortField::PublishedAt,
 ];
 
-pub const BLOG_POST_ADMIN_SORT_ORDERS: [BlogPostSortOrder; 2] =
-    [BlogPostSortOrder::Desc, BlogPostSortOrder::Asc];
+pub const BLOG_POST_ADMIN_SORT_ORDERS: [BlogPostSortOrder; 2] = [
+    BlogPostSortOrder::Desc,
+    BlogPostSortOrder::Asc,
+];
 
 pub fn blog_post_admin_sort_field_label_key(field: BlogPostSortField) -> &'static str {
     match field {

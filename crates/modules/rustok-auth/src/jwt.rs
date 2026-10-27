@@ -43,6 +43,11 @@ pub struct InviteClaims {
     pub sub: String,
     pub tenant_id: Uuid,
     pub role: UserRole,
+    /// Tenant-defined custom role layered over the baseline `role`
+    /// membership at acceptance time. Absent on tokens issued before
+    /// custom-role invites existed, which therefore keep decoding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_role_slug: Option<String>,
     pub purpose: String,
     pub iss: String,
     pub aud: String,
@@ -290,6 +295,7 @@ pub fn encode_invite_token(
     tenant_id: Uuid,
     email: &str,
     role: UserRole,
+    custom_role_slug: Option<String>,
     ttl_seconds: u64,
 ) -> Result<String> {
     let email = email.trim();
@@ -304,6 +310,7 @@ pub fn encode_invite_token(
         sub: email.to_lowercase(),
         tenant_id,
         role,
+        custom_role_slug,
         purpose: INVITE_PURPOSE.to_string(),
         iss: config.issuer.clone(),
         aud: config.audience.clone(),
@@ -330,6 +337,13 @@ pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteCla
     if claims.tenant_id.is_nil() || claims.sub.trim().is_empty() || claims.purpose != INVITE_PURPOSE
     {
         return Err(AuthError::InvalidInviteToken);
+    }
+    if let Some(slug) = claims.custom_role_slug.as_deref() {
+        // A custom slug only makes sense layered over the baseline
+        // customer membership; anything else was not issued by us.
+        if slug.trim().is_empty() || slug.len() > 64 || claims.role != UserRole::Customer {
+            return Err(AuthError::InvalidInviteToken);
+        }
     }
 
     Ok(claims)
@@ -389,6 +403,8 @@ fn decoding_key(config: &AuthConfig) -> Result<DecodingKey> {
 fn strict_jwt_validation(config: &AuthConfig) -> Validation {
     let mut validation = Validation::new(jwt_algorithm(config));
     validation.validate_exp = true;
+    // Strict expiration: the same authority issues and validates these
+    // tokens, so there is no cross-machine clock skew to absorb.
     validation.leeway = 0;
     // RFC 7519: token MUST NOT be accepted on or after `exp`.
     validation.reject_tokens_expiring_in_less_than = 1;
@@ -454,6 +470,7 @@ mod tests {
             algorithm: JwtAlgorithm::HS256,
             rsa_private_key_pem: None,
             rsa_public_key_pem: None,
+            min_password_length: crate::credentials::DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
         }
     }
 
@@ -551,6 +568,7 @@ mod tests {
             tenant_id,
             "INVITED@example.com",
             UserRole::Admin,
+            None,
             900,
         )
         .unwrap();
@@ -608,6 +626,7 @@ mod tests {
                 Uuid::new_v4(),
                 "user@example.com",
                 UserRole::Customer,
+                None,
                 u64::MAX
             )
             .is_err()
@@ -709,6 +728,7 @@ mod tests {
             tenant_id,
             "NewUser@Example.COM",
             UserRole::Manager,
+            None,
             1_800,
         )
         .unwrap();
@@ -868,14 +888,20 @@ mod tests {
             encode_email_verification_token(&config, Uuid::nil(), "user@example.com", 900).is_err()
         );
 
-        assert!(encode_invite_token(&config, valid_tenant, "", UserRole::Manager, 900).is_err());
-        assert!(encode_invite_token(&config, valid_tenant, "   ", UserRole::Manager, 900).is_err());
+        assert!(
+            encode_invite_token(&config, valid_tenant, "", UserRole::Manager, None, 900).is_err()
+        );
+        assert!(
+            encode_invite_token(&config, valid_tenant, "   ", UserRole::Manager, None, 900)
+                .is_err()
+        );
         assert!(
             encode_invite_token(
                 &config,
                 Uuid::nil(),
                 "user@example.com",
                 UserRole::Manager,
+                None,
                 900
             )
             .is_err()
@@ -904,6 +930,7 @@ mod tests {
             tenant_id,
             "user@example.com",
             UserRole::Manager,
+            None,
             900,
         )
         .unwrap();

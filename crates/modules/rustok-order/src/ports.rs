@@ -1105,7 +1105,12 @@ fn parse_port_tenant_id(
         )
     })?;
     if tenant_id.is_nil() {
-        log_order_context_rejection(context, owner_operation, "order.tenant_id_nil", "tenant_id");
+        log_order_context_rejection(
+            context,
+            owner_operation,
+            "order.tenant_id_nil",
+            "tenant_id",
+        );
         return Err(PortError::validation(
             "order.tenant_id_nil",
             "order tenant_id must not be a nil UUID",
@@ -1128,7 +1133,12 @@ fn parse_port_actor_id(
         PortError::validation("order.actor_id_invalid", "order request context is invalid")
     })?;
     if actor_id.is_nil() {
-        log_order_context_rejection(context, owner_operation, "order.actor_id_nil", "actor_id");
+        log_order_context_rejection(
+            context,
+            owner_operation,
+            "order.actor_id_nil",
+            "actor_id",
+        );
         return Err(PortError::validation(
             "order.actor_id_nil",
             "order actor_id must not be a nil UUID",
@@ -1447,9 +1457,17 @@ mod tests {
     #[test]
     fn test_parse_port_tenant_id_validation() {
         let valid_id = Uuid::new_v4();
-        let mut ctx = PortContext::new(valid_id.to_string(), PortActor::system(), "en", "corr-1");
+        let mut ctx = PortContext::new(
+            valid_id.to_string(),
+            PortActor::system(),
+            "en",
+            "corr-1",
+        );
 
-        assert_eq!(parse_port_tenant_id(&ctx, "test_op").unwrap(), valid_id);
+        assert_eq!(
+            parse_port_tenant_id(&ctx, "test_op").unwrap(),
+            valid_id
+        );
 
         ctx.tenant_id = Uuid::nil().to_string();
         let err = parse_port_tenant_id(&ctx, "test_op").unwrap_err();
@@ -1470,7 +1488,10 @@ mod tests {
             "corr-1",
         );
 
-        assert_eq!(parse_port_actor_id(&ctx, "test_op").unwrap(), valid_id);
+        assert_eq!(
+            parse_port_actor_id(&ctx, "test_op").unwrap(),
+            valid_id
+        );
 
         ctx.actor = PortActor::user(Uuid::nil().to_string());
         let err = parse_port_actor_id(&ctx, "test_op").unwrap_err();
@@ -1510,3 +1531,4 @@ mod tests {
         assert_eq!(err.code, "order.checkout_operation_id_required");
     }
 }
+

@@ -8,11 +8,11 @@ use std::time::Duration;
 use rust_decimal::Decimal;
 use rustok_api::{PortActor, PortContext};
 use rustok_commerce::OrderCancellationOrchestrator;
-use rustok_order::CancelOrderRequest;
 use rustok_order::dto::{
     CreateOrderInput, CreateOrderLineItemInput, OrderLineFulfillmentRequirement, OrderResponse,
 };
 use rustok_order::services::OrderService;
+use rustok_order::CancelOrderRequest;
 use rustok_payment::dto::{
     AuthorizePaymentInput, CapturePaymentInput, CreatePaymentCollectionInput,
     PaymentCollectionResponse,
@@ -107,10 +107,7 @@ async fn create_collection(
             .await
             .unwrap();
     }
-    payments
-        .get_collection(tenant_id, collection.id)
-        .await
-        .unwrap()
+    payments.get_collection(tenant_id, collection.id).await.unwrap()
 }
 
 fn context(tenant_id: Uuid, actor_id: Uuid, key: &str) -> PortContext {
@@ -135,8 +132,7 @@ fn request(order_id: Uuid) -> CancelOrderRequest {
 async fn cancelling_a_plain_order_is_idempotent() {
     let (db, tenant_id, actor_id) = setup().await;
     let order = create_order(&db, tenant_id, actor_id).await;
-    let orchestrator =
-        OrderCancellationOrchestrator::new(db.clone(), mock_transactional_event_bus());
+    let orchestrator = OrderCancellationOrchestrator::new(db.clone(), mock_transactional_event_bus());
 
     let first = orchestrator
         .cancel(context(tenant_id, actor_id, "cancel-1"), request(order.id))
@@ -156,14 +152,10 @@ async fn cancelling_voids_an_authorized_collection() {
     let (db, tenant_id, actor_id) = setup().await;
     let order = create_order(&db, tenant_id, actor_id).await;
     let collection = create_collection(&db, tenant_id, &order, false).await;
-    let orchestrator =
-        OrderCancellationOrchestrator::new(db.clone(), mock_transactional_event_bus());
+    let orchestrator = OrderCancellationOrchestrator::new(db.clone(), mock_transactional_event_bus());
 
     let cancelled = orchestrator
-        .cancel(
-            context(tenant_id, actor_id, "cancel-void"),
-            request(order.id),
-        )
+        .cancel(context(tenant_id, actor_id, "cancel-void"), request(order.id))
         .await
         .unwrap();
     assert_eq!(cancelled.status, "cancelled");
@@ -180,22 +172,15 @@ async fn cancelling_refunds_a_captured_collection_in_full_once() {
     let (db, tenant_id, actor_id) = setup().await;
     let order = create_order(&db, tenant_id, actor_id).await;
     let collection = create_collection(&db, tenant_id, &order, true).await;
-    let orchestrator =
-        OrderCancellationOrchestrator::new(db.clone(), mock_transactional_event_bus());
+    let orchestrator = OrderCancellationOrchestrator::new(db.clone(), mock_transactional_event_bus());
 
     orchestrator
-        .cancel(
-            context(tenant_id, actor_id, "cancel-refund-1"),
-            request(order.id),
-        )
+        .cancel(context(tenant_id, actor_id, "cancel-refund-1"), request(order.id))
         .await
         .unwrap();
     // A repeated command (even with a new idempotency key) must not create a second refund.
     orchestrator
-        .cancel(
-            context(tenant_id, actor_id, "cancel-refund-2"),
-            request(order.id),
-        )
+        .cancel(context(tenant_id, actor_id, "cancel-refund-2"), request(order.id))
         .await
         .unwrap();
 
@@ -211,8 +196,7 @@ async fn cancelling_refunds_a_captured_collection_in_full_once() {
 async fn cancel_requires_write_semantics() {
     let (db, tenant_id, actor_id) = setup().await;
     let order = create_order(&db, tenant_id, actor_id).await;
-    let orchestrator =
-        OrderCancellationOrchestrator::new(db.clone(), mock_transactional_event_bus());
+    let orchestrator = OrderCancellationOrchestrator::new(db.clone(), mock_transactional_event_bus());
 
     let context = PortContext::new(
         tenant_id.to_string(),
@@ -220,10 +204,5 @@ async fn cancel_requires_write_semantics() {
         "en",
         "order-cancellation-test",
     );
-    assert!(
-        orchestrator
-            .cancel(context, request(order.id))
-            .await
-            .is_err()
-    );
+    assert!(orchestrator.cancel(context, request(order.id)).await.is_err());
 }

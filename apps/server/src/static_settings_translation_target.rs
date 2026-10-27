@@ -10,11 +10,6 @@ use std::collections::BTreeSet;
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
 use rustok_core::{PermissionScope, SecurityContext};
-use rustok_modules::translation::{
-    STATIC_SETTINGS_TRANSLATION_OWNER_SLUG, STATIC_SETTINGS_TRANSLATION_RESOURCE_KIND,
-    StaticSettingsTranslationIdentity, StaticSettingsTranslationIdentityError,
-    StaticSettingsTranslationPrepareResult,
-};
 use rustok_modules::{
     ModuleCommandContext, StaticSettingsLocalizationError, StaticSettingsLocalizationRegistry,
     StaticSettingsLocalizationService, StaticSettingsSourceLocaleError,
@@ -22,6 +17,11 @@ use rustok_modules::{
         StaticSettingsChangeReadRequest, StaticSettingsExactLocaleSnapshot,
         StaticSettingsTranslationReadError, StaticSettingsTranslationReadService,
     },
+};
+use rustok_modules::translation::{
+    STATIC_SETTINGS_TRANSLATION_OWNER_SLUG, STATIC_SETTINGS_TRANSLATION_RESOURCE_KIND,
+    StaticSettingsTranslationIdentity, StaticSettingsTranslationIdentityError,
+    StaticSettingsTranslationPrepareResult,
 };
 use rustok_outbox::idempotency::{self, Admission};
 use rustok_translation_targets::{

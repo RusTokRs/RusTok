@@ -269,8 +269,7 @@ mod tests {
 
     #[tokio::test]
     async fn error_into_response_sanitizes_other_database_errors() {
-        let db_err =
-            sea_orm::DbErr::Custom("postgres://admin:secret@host/db connection failed".into());
+        let db_err = sea_orm::DbErr::Custom("postgres://admin:secret@host/db connection failed".into());
         let err = Error::Database(db_err);
         let (status, body) = parse_error_response(err.into_response()).await;
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
@@ -281,8 +280,7 @@ mod tests {
 
     #[tokio::test]
     async fn error_into_response_sanitizes_cache_and_internal_errors() {
-        let err =
-            Error::Cache("redis connection pool exhausted on redis://secret@cache:6379".into());
+        let err = Error::Cache("redis connection pool exhausted on redis://secret@cache:6379".into());
         let (status, body) = parse_error_response(err.into_response()).await;
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(body.code, "internal_error");

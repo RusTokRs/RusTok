@@ -36,9 +36,7 @@ impl WorkflowStep for DelayStep {
                     .map(|s| s.saturating_mul(1000))
             })
             .ok_or_else(|| {
-                WorkflowError::InvalidStepConfig(
-                    "delay: missing 'delay_ms' or 'duration_seconds'".into(),
-                )
+                WorkflowError::InvalidStepConfig("delay: missing 'delay_ms' or 'duration_seconds'".into())
             })?;
 
         if delay_ms > MAX_INLINE_DELAY_MS {
@@ -93,3 +91,4 @@ mod tests {
         assert!(matches!(err, WorkflowError::InvalidStepConfig(_)));
     }
 }
+

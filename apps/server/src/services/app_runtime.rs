@@ -428,8 +428,10 @@ struct RateLimitLayers {
 const AUTH_RATE_LIMIT_PREFIXES: &[&str] = &[
     "/api/auth/login",
     "/api/auth/register",
+    "/api/auth/session",
     "/api/auth/reset",
     "/api/auth/verify",
+    "/api/auth/invite",
 ];
 
 fn init_rate_limit_layers(
@@ -661,6 +663,11 @@ mod tests {
                 .any(|prefix| "/api/auth/verify/request".starts_with(prefix))
         );
         assert!(AUTH_RATE_LIMIT_PREFIXES.contains(&"/api/auth/reset"));
+        assert!(
+            AUTH_RATE_LIMIT_PREFIXES
+                .iter()
+                .any(|prefix| "/api/auth/invite/accept".starts_with(prefix))
+        );
     }
 
     #[tokio::test]

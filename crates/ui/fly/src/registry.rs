@@ -1786,3 +1786,4 @@ mod tests {
         assert!(registries.accepts_child_type(Some("slider"), "button"));
     }
 }
+

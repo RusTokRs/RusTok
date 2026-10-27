@@ -1,9 +1,9 @@
 //! Shared Axum router state and global routing table for the executable server host.
 
+use axum::response::IntoResponse;
 use crate::common::settings::RuntimeHostMode;
 use crate::error::Error;
 use crate::services::server_runtime_context::ServerAuthRuntime;
-use axum::response::IntoResponse;
 
 /// A router which still requires the host's auth/runtime state.
 pub type ServerRouter = axum::Router<ServerAuthRuntime>;

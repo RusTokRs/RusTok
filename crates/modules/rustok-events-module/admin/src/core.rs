@@ -35,15 +35,11 @@ pub struct EventDeliverySummaryViewModel {
 }
 
 impl EventDeliverySummaryViewModel {
-    pub fn from_configuration(
-        config: &EventDeliveryConfiguration,
-        labels: &EventsAdminLabels,
-    ) -> Self {
+    pub fn from_configuration(config: &EventDeliveryConfiguration, labels: &EventsAdminLabels) -> Self {
         Self {
             active_profile: config.active_profile.clone(),
             desired_profile: config.desired_profile.clone(),
-            connector_status: labels
-                .format_connector_status(&config.iggy_mode, config.iggy_configured),
+            connector_status: labels.format_connector_status(&config.iggy_mode, config.iggy_configured),
         }
     }
 }

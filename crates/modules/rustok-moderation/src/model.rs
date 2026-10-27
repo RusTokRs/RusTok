@@ -508,7 +508,8 @@ impl ApplyModerationDecisionCommand {
         {
             return Err(ModerationCommandValidationError::InvalidDecisionHash);
         }
-        self.effect.validate_for_decision_kind(self.decision_kind)?;
+        self.effect
+            .validate_for_decision_kind(self.decision_kind)?;
         Ok(())
     }
 }
@@ -640,11 +641,21 @@ mod tests {
     #[test]
     fn subject_ref_validation_bounds() {
         assert_eq!(
-            ModerationSubjectRef::new("  ", ModerationSubjectKind::ForumTopic, Uuid::new_v4(), 1),
+            ModerationSubjectRef::new(
+                "  ",
+                ModerationSubjectKind::ForumTopic,
+                Uuid::new_v4(),
+                1
+            ),
             Err(ModerationCommandValidationError::EmptySubjectModule)
         );
         assert_eq!(
-            ModerationSubjectRef::new("forum", ModerationSubjectKind::ForumTopic, Uuid::nil(), 1),
+            ModerationSubjectRef::new(
+                "forum",
+                ModerationSubjectKind::ForumTopic,
+                Uuid::nil(),
+                1
+            ),
             Err(ModerationCommandValidationError::NilSubjectId)
         );
         assert_eq!(

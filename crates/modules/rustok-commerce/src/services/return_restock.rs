@@ -94,13 +94,14 @@ pub(crate) fn plan_restock_lines(
     order_return: &OrderReturnResponse,
     decision: &RestockDecision,
 ) -> PostOrderOrchestrationResult<Vec<ReturnRestockLine>> {
-    let line_for =
-        |item: &rustok_order::dto::OrderReturnItemResponse, quantity: i32| ReturnRestockLine {
+    let line_for = |item: &rustok_order::dto::OrderReturnItemResponse, quantity: i32| {
+        ReturnRestockLine {
             return_item_id: item.id,
             return_id: order_return.id,
             order_line_item_id: item.line_item_id,
             quantity,
-        };
+        }
+    };
     match decision {
         RestockDecision::None => Ok(Vec::new()),
         RestockDecision::All => Ok(order_return
@@ -272,17 +273,17 @@ mod tests {
                 {"return_item_id": id, "quantity": 1}
             ]}),
         ] {
-            assert!(
-                parse_restock_decision(&bad).is_err(),
-                "{bad} must be rejected"
-            );
+            assert!(parse_restock_decision(&bad).is_err(), "{bad} must be rejected");
         }
     }
 
     #[test]
     fn plan_restocks_every_item_for_all() {
         let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
-        let ret = order_return(vec![item(Uuid::new_v4(), a, 2), item(Uuid::new_v4(), b, 1)]);
+        let ret = order_return(vec![
+            item(Uuid::new_v4(), a, 2),
+            item(Uuid::new_v4(), b, 1),
+        ]);
         let lines = plan_restock_lines(&ret, &RestockDecision::All).expect("plan");
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0].order_line_item_id, a);

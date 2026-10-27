@@ -93,8 +93,6 @@ members = [
     "crates/modules/rustok-calendar/admin",
     "crates/modules/rustok-calendar/storefront",
     "crates/modules/rustok-tasks/admin",
-    "crates/modules/rustok-security/admin",
-    "crates/modules/rustok-security/storefront",
     "tests/e2e-rust",
     "UI/leptos",
     "ops/benches",
@@ -141,7 +139,6 @@ description = "High-performance, modular headless CMS and e-commerce platform bu
 repository = "https://github.com/RusTokRs/RusTok"
 
 [workspace.dependencies]
-rustok-security = { path = "crates/modules/rustok-security" }
 rustok-tasks = { path = "crates/modules/rustok-tasks" }
 rustok-calendar = { path = "crates/modules/rustok-calendar" }
 rustok-calls = { path = "crates/modules/rustok-calls" }
@@ -319,9 +316,8 @@ rustok-modules = { path = "crates/modules/rustok-modules", default-features = fa
 rustok-events = { path = "crates/libs/rustok-events" }
 rustok-forms-module = { path = "crates/modules/rustok-forms" }
 rustok-forms-admin = { path = "crates/modules/rustok-forms/admin" }
-rustok-groups = { path = "crates/modules/rustok-groups" }
 rustok-events-module = { path = "crates/modules/rustok-events-module" }
-rustok-commerce-foundation = { path = "crates/libs/rustok-commerce-foundation" }
+rustok-commerce-foundation = { path = "crates/modules/rustok-commerce-foundation" }
 rustok-commerce = { path = "crates/modules/rustok-commerce", default-features = false }
 rustok-marketplace = { path = "crates/modules/rustok-marketplace" }
 rustok-marketplace-seller = { path = "crates/modules/rustok-marketplace-seller" }
@@ -389,7 +385,7 @@ rustok-fba = { path = "crates/libs/rustok-fba" }
 rustok-cli-core = { path = "crates/utils/rustok-cli-core" }
 rustok-cli-registry = { path = "crates/utils/rustok-cli-registry" }
 rustok-cli-platform = { path = "crates/utils/rustok-cli-platform" }
-rustok-distribution = { path = "crates/utils/rustok-distribution", default-features = false }
+rustok-distribution = { path = "crates/modules/rustok-distribution", default-features = false }
 rustok-migrations = { path = "crates/utils/rustok-migrations" }
 rustok-installer = { path = "crates/utils/rustok-installer" }
 rustok-installer-persistence = { path = "crates/utils/rustok-installer-persistence" }
@@ -425,7 +421,7 @@ rustok-email = { path = "crates/modules/rustok-email" }
 rustok-outbox = { path = "crates/modules/rustok-outbox" }
 rustok-notifications = { path = "crates/modules/rustok-notifications", default-features = false }
 rustok-newsletter = { path = "crates/modules/rustok-newsletter", default-features = false }
-rustok-iggy = { path = "crates/libs/rustok-iggy" }
+rustok-iggy = { path = "crates/modules/rustok-iggy" }
 rustok-iggy-connector = { path = "crates/modules/rustok-iggy-connector" }
 rustok-forum = { path = "crates/modules/rustok-forum" }
 rustok-tenant = { path = "crates/modules/rustok-tenant" }

@@ -74,15 +74,16 @@ impl RegionReadPort for crate::RegionService {
         validate_region_read_request(&context, owner_operation, &request)?;
 
         let result = match request.selector {
-            RegionReadSelector::Id(region_id) => self
-                .get_region(
+            RegionReadSelector::Id(region_id) => {
+                self.get_region(
                     tenant_id,
                     region_id,
                     request.requested_locale.as_deref(),
                     request.tenant_default_locale.as_deref(),
                 )
                 .await
-                .map(Some),
+                .map(Some)
+            }
             RegionReadSelector::CountryCode(country_code) => {
                 self.resolve_region_for_country(
                     tenant_id,

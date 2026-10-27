@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
+use async_trait::async_trait;
+use rustok_api::PortError;
 use crate::api::{
     ProfileSummary as ApiProfileSummary, ProfileSummaryAudience, ProfileSummaryReadError,
     ProfileSummaryReader,
 };
-use async_trait::async_trait;
-use rustok_api::PortError;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 

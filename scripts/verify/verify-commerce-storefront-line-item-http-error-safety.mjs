@@ -15,7 +15,7 @@ const boundary = read(
   'crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs',
 );
 const portContract = read('crates/libs/rustok-api/src/ports.rs');
-const commerceErrors = read('crates/libs/rustok-commerce-foundation/src/error.rs');
+const commerceErrors = read('crates/modules/rustok-commerce-foundation/src/error.rs');
 const inventoryOwner = read('crates/modules/rustok-inventory/src/services/public_channel.rs');
 const productTests = read('crates/modules/rustok-commerce/src/controllers/store/tests/products.rs');
 const testRoot = read('crates/modules/rustok-commerce/src/controllers/store/tests/mod.rs');

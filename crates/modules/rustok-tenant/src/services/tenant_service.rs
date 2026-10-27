@@ -41,20 +41,13 @@ impl TenantService {
     pub async fn create_tenant(&self, input: CreateTenantInput) -> TenantResult<TenantResponse> {
         let slug = input.slug.trim().to_string();
         if slug.is_empty() {
-            return Err(TenantError::Validation(
-                "tenant slug cannot be empty".to_string(),
-            ));
+            return Err(TenantError::Validation("tenant slug cannot be empty".to_string()));
         }
         let name = input.name.trim().to_string();
         if name.is_empty() {
-            return Err(TenantError::Validation(
-                "tenant name cannot be empty".to_string(),
-            ));
+            return Err(TenantError::Validation("tenant name cannot be empty".to_string()));
         }
-        let domain = input
-            .domain
-            .map(|d| d.trim().to_string())
-            .filter(|d| !d.is_empty());
+        let domain = input.domain.map(|d| d.trim().to_string()).filter(|d| !d.is_empty());
 
         tracing::debug!(slug = %slug, name = %name, ?domain, "creating tenant");
 
@@ -120,9 +113,7 @@ impl TenantService {
     ) -> TenantResult<(TenantResponse, bool)> {
         let slug = input.slug.trim().to_string();
         if slug.is_empty() {
-            return Err(TenantError::Validation(
-                "tenant slug cannot be empty".to_string(),
-            ));
+            return Err(TenantError::Validation("tenant slug cannot be empty".to_string()));
         }
         tracing::debug!(slug = %slug, "ensuring tenant");
 
@@ -135,10 +126,7 @@ impl TenantService {
         }
 
         let name = input.name.trim().to_string();
-        let domain = input
-            .domain
-            .map(|d| d.trim().to_string())
-            .filter(|d| !d.is_empty());
+        let domain = input.domain.map(|d| d.trim().to_string()).filter(|d| !d.is_empty());
 
         match self
             .create_tenant(CreateTenantInput {
@@ -227,19 +215,13 @@ impl TenantService {
         if let Some(name) = input.name {
             let name = name.trim().to_string();
             if name.is_empty() {
-                return Err(TenantError::Validation(
-                    "tenant name cannot be empty".to_string(),
-                ));
+                return Err(TenantError::Validation("tenant name cannot be empty".to_string()));
             }
             active.name = Set(name);
         }
         if let Some(domain) = input.domain {
             let domain = domain.trim().to_string();
-            active.domain = Set(if domain.is_empty() {
-                None
-            } else {
-                Some(domain)
-            });
+            active.domain = Set(if domain.is_empty() { None } else { Some(domain) });
         }
         if let Some(is_active) = input.is_active {
             active.is_active = Set(is_active);

@@ -65,15 +65,13 @@ impl StaticModuleSettingsReader for ZeroCooldownSettings {
         _tenant_id: Uuid,
         module_slug: &str,
     ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
-        Ok(
-            (module_slug == "forum").then(|| StaticModuleSettingsSnapshot {
-                enabled: Some(true),
-                settings: serde_json::json!({
-                    "rate_limit_new_topic_seconds": 0,
-                    "rate_limit_new_reply_seconds": 0,
-                }),
+        Ok((module_slug == "forum").then(|| StaticModuleSettingsSnapshot {
+            enabled: Some(true),
+            settings: serde_json::json!({
+                "rate_limit_new_topic_seconds": 0,
+                "rate_limit_new_reply_seconds": 0,
             }),
-        )
+        }))
     }
 }
 
@@ -85,15 +83,13 @@ impl StaticModuleSettingsTransactionReader for ZeroCooldownSettings {
         _tenant_id: Uuid,
         module_slug: &str,
     ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
-        Ok(
-            (module_slug == "forum").then(|| StaticModuleSettingsSnapshot {
-                enabled: Some(true),
-                settings: serde_json::json!({
-                    "rate_limit_new_topic_seconds": 0,
-                    "rate_limit_new_reply_seconds": 0,
-                }),
+        Ok((module_slug == "forum").then(|| StaticModuleSettingsSnapshot {
+            enabled: Some(true),
+            settings: serde_json::json!({
+                "rate_limit_new_topic_seconds": 0,
+                "rate_limit_new_reply_seconds": 0,
             }),
-        )
+        }))
     }
 }
 
@@ -104,6 +100,7 @@ pub(crate) fn zero_cooldown_providers() -> ForumSettingsProviders {
         SharedStaticModuleSettingsTransactionReader(reader),
     )
 }
+
 
 pub(crate) async fn setup_conversion_test_db() -> DatabaseConnection {
     let mut opts = ConnectOptions::new("sqlite::memory:");

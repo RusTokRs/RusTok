@@ -67,6 +67,7 @@ pub use module::SocialGraphModule;
 #[cfg(test)]
 mod contract_tests;
 
+
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "index")]

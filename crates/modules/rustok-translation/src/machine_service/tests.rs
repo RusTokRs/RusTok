@@ -888,6 +888,7 @@ async fn initialize_persistence_fixture(
     .unwrap();
     let memory_entry_id = Uuid::new_v4();
     memory_entry::Entity::insert(memory_entry::ActiveModel {
+        data_classification: Set("tenant_private".to_string()),
         id: Set(memory_entry_id),
         tenant_id: Set(tenant_id),
         source_locale: Set("en".to_string()),
@@ -915,7 +916,6 @@ async fn initialize_persistence_fixture(
         owner_lifecycle_revision: Set(None),
         owner_deleted_at: Set(None),
         tombstoned_at: Set(tombstoned.then_some(now)),
-        data_classification: Set("public".to_string()),
         revision: Set(1),
         created_at: Set(now),
         updated_at: Set(now),

@@ -1,5 +1,5 @@
-use rustok_api::graphql::GraphqlRuntimeInputs;
 use std::sync::Arc;
+use rustok_api::graphql::GraphqlRuntimeInputs;
 
 use crate::controllers::realtime::MessengerRoomHub;
 use crate::e2ee::DeviceKeyRegistry;

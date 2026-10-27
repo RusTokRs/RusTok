@@ -383,8 +383,7 @@ mod tests {
     #[test]
     fn test_default_generated_workflow_utf8_boundary_safety() {
         // Cyrillic string where byte 50 would split a 2-byte UTF-8 char
-        let description =
-            "Создание автоматического процесса для синхронизации всех заказов в платформе";
+        let description = "Создание автоматического процесса для синхронизации всех заказов в платформе";
         let workflow = default_generated_workflow(description);
         let name = workflow["name"].as_str().unwrap();
         assert!(name.starts_with("Workflow: Создание"));
@@ -398,3 +397,4 @@ mod tests {
         assert_eq!(workflow["name"], "Workflow: Simple");
     }
 }
+

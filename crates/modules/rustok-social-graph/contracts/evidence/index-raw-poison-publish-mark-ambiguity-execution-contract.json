@@ -74,7 +74,7 @@
     "crates/modules/rustok-social-graph/tests/index_raw_poison_publish_mark_ambiguity.rs",
     "crates/modules/rustok-social-graph/Cargo.toml",
     "crates/modules/rustok-iggy-connector/src/consumer_poison_receipt.rs",
-    "crates/libs/rustok-iggy/src/transport.rs",
+    "crates/modules/rustok-iggy/src/transport.rs",
     "apps/server/src/services/social_graph_index_worker.rs",
     "scripts/evidence/capture-social-graph-index-raw-poison-publish-mark-ambiguity.mjs",
     "scripts/verify/verify-social-graph-index-raw-poison-publish-mark-ambiguity.mjs",

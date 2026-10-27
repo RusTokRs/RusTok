@@ -132,8 +132,7 @@ fn valid_fly_project_json(content_text: &str) -> serde_json::Value {
 }
 
 #[tokio::test]
-async fn publish_reviewed_composes_page_template_layout_into_published_artifact() -> TestResult<()>
-{
+async fn publish_reviewed_composes_page_template_layout_into_published_artifact() -> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let db = setup_db(tenant_id).await?;
     let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
@@ -142,22 +141,8 @@ async fn publish_reviewed_composes_page_template_layout_into_published_artifact(
     let actor = SecurityContext::system();
 
     // 1. Create site symbols: header and footer
-    insert_site_symbol(
-        &db,
-        tenant_id,
-        "en",
-        "site-header",
-        "Global Header Navigation",
-    )
-    .await?;
-    insert_site_symbol(
-        &db,
-        tenant_id,
-        "en",
-        "site-footer",
-        "Global Footer Copyright",
-    )
-    .await?;
+    insert_site_symbol(&db, tenant_id, "en", "site-header", "Global Header Navigation").await?;
+    insert_site_symbol(&db, tenant_id, "en", "site-footer", "Global Footer Copyright").await?;
 
     // 2. Create a page template "main-layout" for "en" referencing the symbols
     template_service
@@ -357,10 +342,7 @@ async fn publish_reviewed_fails_closed_when_template_is_missing() -> TestResult<
         )
         .await;
 
-    assert!(
-        result.is_err(),
-        "Publishing with missing template must fail"
-    );
+    assert!(result.is_err(), "Publishing with missing template must fail");
     let err_msg = result.unwrap_err().to_string();
     assert!(
         err_msg.contains("Page template `non-existent-layout` is not defined for locale `en`"),
@@ -489,12 +471,9 @@ async fn save_document_strips_layout_nodes_before_persistence() -> TestResult<()
     let components = doc["pages"][0]["component"]["components"]
         .as_array()
         .unwrap();
-    assert_eq!(
-        components.len(),
-        1,
-        "Only the 1 page body component must remain"
-    );
+    assert_eq!(components.len(), 1, "Only the 1 page body component must remain");
     assert_eq!(components[0]["id"], "b1");
 
     Ok(())
 }
+

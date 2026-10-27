@@ -31,8 +31,7 @@ const PUBLISH_PAGE_MUTATION: &str = "mutation PublishPage($id: UUID!, $input: Pu
 const ROLLBACK_PAGE_MUTATION: &str = "mutation RollbackPage($id: UUID!, $input: RollbackGqlPageInput!) { rollbackPage(id: $id, input: $input) { operationId pageId version idempotencyKey targetPublishOperationId sourceArtifactSetHash targetArtifactSetHash replayed rolledBackAt } }";
 const UNPUBLISH_PAGE_MUTATION: &str = "mutation UnpublishPage($id: UUID!) { unpublishPage(id: $id) { id version status updatedAt translation { locale title slug } } }";
 const DELETE_PAGE_MUTATION: &str = "mutation DeletePage($id: UUID!) { deletePage(id: $id) }";
-const PAGE_TEMPLATE_KEYS_QUERY: &str =
-    "query PageTemplateKeys($locale: String!) { pageTemplateKeys(locale: $locale) }";
+const PAGE_TEMPLATE_KEYS_QUERY: &str = "query PageTemplateKeys($locale: String!) { pageTemplateKeys(locale: $locale) }";
 const PAGE_TEMPLATES_QUERY: &str = "query PageTemplates($locale: String!) { pageTemplates(locale: $locale) { key locale headerSymbolIds footerSymbolIds revision } }";
 const PREVIEW_PAGE_TEMPLATE_DOCUMENT_QUERY: &str = "query PreviewPageTemplateDocument($key: String!, $locale: String!, $document: String!) { previewPageTemplateDocument(key: $key, locale: $locale, document: $document) }";
 const SITE_SYMBOLS_QUERY: &str = "query SiteSymbols($locale: String!) { siteSymbols(locale: $locale) { symbolId locale name contentJson createdAt updatedAt } }";
@@ -893,11 +892,7 @@ pub async fn preview_page_template_document(
 ) -> Result<String, ApiError> {
     let response: PreviewPageTemplateDocumentResponse = request(
         PREVIEW_PAGE_TEMPLATE_DOCUMENT_QUERY,
-        PreviewPageTemplateVariables {
-            key,
-            locale,
-            document,
-        },
+        PreviewPageTemplateVariables { key, locale, document },
         token,
         tenant_slug,
     )
@@ -999,7 +994,10 @@ pub async fn delete_site_symbol(
 ) -> Result<bool, ApiError> {
     let response: DeleteSiteSymbolResponse = request(
         DELETE_SITE_SYMBOL_MUTATION,
-        DeleteSiteSymbolVariables { symbol_id, locale },
+        DeleteSiteSymbolVariables {
+            symbol_id,
+            locale,
+        },
         token,
         tenant_slug,
     )
@@ -1028,7 +1026,10 @@ pub async fn fetch_site_symbol_usage(
 ) -> Result<Vec<String>, ApiError> {
     let response: SiteSymbolUsageResponse = request(
         SITE_SYMBOL_USAGE_QUERY,
-        SiteSymbolUsageVariables { symbol_id, locale },
+        SiteSymbolUsageVariables {
+            symbol_id,
+            locale,
+        },
         token,
         tenant_slug,
     )

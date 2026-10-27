@@ -514,9 +514,7 @@ mod tests {
             "en",
             "test",
         );
-        assert_eq!(
-            parse_port_tenant_id(&valid_context, "test").unwrap(),
-            valid_id
-        );
+        assert_eq!(parse_port_tenant_id(&valid_context, "test").unwrap(), valid_id);
     }
 }
+

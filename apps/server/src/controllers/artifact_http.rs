@@ -426,10 +426,7 @@ mod tests {
         );
         dup_headers.append(
             IDEMPOTENCY_KEY_HEADER,
-            Uuid::new_v4()
-                .to_string()
-                .parse()
-                .expect("valid header value"),
+            Uuid::new_v4().to_string().parse().expect("valid header value"),
         );
         assert!(matches!(
             header_idempotency_key(&dup_headers),

@@ -104,7 +104,7 @@ async fn insert_oauth_app(
     grant_types: &[&str],
     is_active: bool,
 ) -> oauth_apps::Model {
-    oauth_apps::ActiveModel {
+    let model = oauth_apps::ActiveModel {
         id: Set(Uuid::new_v4()),
         tenant_id: Set(tenant_id),
         name: Set("Auth extractor test app".to_string()),
@@ -126,10 +126,12 @@ async fn insert_oauth_app(
         metadata: Set(serde_json::json!({})),
         created_at: Set(chrono::Utc::now().into()),
         updated_at: Set(chrono::Utc::now().into()),
-    }
-    .insert(db)
-    .await
-    .expect("insert oauth app")
+    };
+    // Manual (non-manifest) app writes copy display text into the
+    // translation table and require a request-scoped locale.
+    oauth_apps::scope_runtime_copy_locale("en".to_string(), model.insert(db))
+        .await
+        .expect("insert oauth app")
 }
 
 #[test]

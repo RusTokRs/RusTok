@@ -223,51 +223,21 @@ async fn input_validation_and_arithmetic_invariants_are_enforced() {
     );
 
     // Read methods reject nil UUIDs
-    assert!(
-        service
-            .get_by_order_line(Uuid::nil(), Uuid::new_v4())
-            .await
-            .is_err()
-    );
-    assert!(
-        service
-            .get_by_order_line(tenant_id, Uuid::nil())
-            .await
-            .is_err()
-    );
-    assert!(
-        service
-            .list_by_order(Uuid::nil(), Uuid::new_v4())
-            .await
-            .is_err()
-    );
+    assert!(service.get_by_order_line(Uuid::nil(), Uuid::new_v4()).await.is_err());
+    assert!(service.get_by_order_line(tenant_id, Uuid::nil()).await.is_err());
+    assert!(service.list_by_order(Uuid::nil(), Uuid::new_v4()).await.is_err());
     assert!(service.list_by_order(tenant_id, Uuid::nil()).await.is_err());
-    assert!(
-        service
-            .list_by_seller(
-                Uuid::nil(),
-                crate::dto::ListMarketplaceAllocationsBySellerRequest {
-                    seller_id: Uuid::new_v4(),
-                    page: 1,
-                    per_page: 10,
-                    status: None,
-                }
-            )
-            .await
-            .is_err()
-    );
-    assert!(
-        service
-            .list_by_seller(
-                tenant_id,
-                crate::dto::ListMarketplaceAllocationsBySellerRequest {
-                    seller_id: Uuid::nil(),
-                    page: 1,
-                    per_page: 10,
-                    status: None,
-                }
-            )
-            .await
-            .is_err()
-    );
+    assert!(service.list_by_seller(Uuid::nil(), crate::dto::ListMarketplaceAllocationsBySellerRequest {
+        seller_id: Uuid::new_v4(),
+        page: 1,
+        per_page: 10,
+        status: None,
+    }).await.is_err());
+    assert!(service.list_by_seller(tenant_id, crate::dto::ListMarketplaceAllocationsBySellerRequest {
+        seller_id: Uuid::nil(),
+        page: 1,
+        per_page: 10,
+        status: None,
+    }).await.is_err());
 }
+

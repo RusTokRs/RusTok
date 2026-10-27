@@ -19,14 +19,11 @@ where
     C: ConnectionTrait,
 {
     if tenant_id.is_nil() {
-        return Err(sea_orm::DbErr::Custom(
-            "tenant_id must not be nil".to_string(),
-        ));
+        return Err(sea_orm::DbErr::Custom("tenant_id must not be nil".to_string()));
     }
     if current_period_start < previous_period_start {
         return Err(sea_orm::DbErr::Custom(
-            "current_period_start must be greater than or equal to previous_period_start"
-                .to_string(),
+            "current_period_start must be greater than or equal to previous_period_start".to_string(),
         ));
     }
 

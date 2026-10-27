@@ -11,7 +11,8 @@ csr = []
 hydrate = ["leptos/hydrate"]
 ssr = [
   "leptos/ssr",
-  "dep:reqwest",
+  "dep:leptos_axum",
+  "dep:axum",
 ]
 
 [dependencies]
@@ -24,7 +25,9 @@ leptos-use = { workspace = true }
 futures-util.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-reqwest = { version = "0.13", default-features = false, features = ["json"], optional = true }
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
+leptos_axum = { workspace = true, optional = true }
+axum = { workspace = true, optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 gloo-storage = { workspace = true }

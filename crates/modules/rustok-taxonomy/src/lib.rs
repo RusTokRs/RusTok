@@ -1,3 +1,4 @@
+
 //! # RusToK Taxonomy Module
 //!
 //! Provides scope-aware hierarchical taxonomy dictionaries, shared and module-local terms,
@@ -83,3 +84,4 @@ pub use module::TaxonomyModule;
 
 #[cfg(test)]
 mod contract_tests;
+

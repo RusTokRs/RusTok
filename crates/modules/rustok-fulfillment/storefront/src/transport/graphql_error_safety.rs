@@ -171,8 +171,7 @@ mod tests {
     fn map_error_redacts_sensitive_details() {
         let ctx = test_context();
         let raw = ShippingSelectionTransportError::Graphql(
-            rustok_graphql::GraphqlHttpError::Http("500 token=secret-bearer-123".into())
-                .to_string(),
+            rustok_graphql::GraphqlHttpError::Http("500 token=secret-bearer-123".into()).to_string(),
         );
         let mapped = ctx.map_error(raw);
 

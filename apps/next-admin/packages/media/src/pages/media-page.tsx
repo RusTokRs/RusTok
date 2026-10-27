@@ -20,20 +20,13 @@ function formatBytes(bytes: number): string {
  * modules' flows; this surface lists, inspects, and deletes tenant assets
  * (the same assets page-builder images reference).
  */
-export default async function MediaPage({
-  token,
-  tenantSlug,
-  tenantId
-}: MediaPageProps) {
+export default async function MediaPage({ token, tenantSlug, tenantId }: MediaPageProps) {
   const opts: GqlOpts = { token, tenantSlug, tenantId };
   let items: MediaItem[] = [];
   let usage: { fileCount: number; totalBytes: number } | null = null;
   let loadError: string | null = null;
   try {
-    const [list, stats] = await Promise.all([
-      listMedia(opts),
-      mediaUsage(opts)
-    ]);
+    const [list, stats] = await Promise.all([listMedia(opts), mediaUsage(opts)]);
     items = list.items;
     usage = stats;
   } catch (cause) {
@@ -49,7 +42,7 @@ export default async function MediaPage({
         </p>
       ) : null}
       {loadError ? (
-        <p role='alert'>Media could not be loaded: {loadError}</p>
+        <p role="alert">Media could not be loaded: {loadError}</p>
       ) : items.length === 0 ? (
         <p>No media assets yet.</p>
       ) : (
@@ -69,16 +62,14 @@ export default async function MediaPage({
             {items.map((item) => (
               <tr key={item.id}>
                 <td>
-                  <a href={item.publicUrl} target='_blank' rel='noreferrer'>
+                  <a href={item.publicUrl} target="_blank" rel="noreferrer">
                     {item.originalName}
                   </a>
                 </td>
                 <td>{item.mimeType}</td>
                 <td>{formatBytes(item.size)}</td>
                 <td>
-                  {item.width && item.height
-                    ? `${item.width}×${item.height}`
-                    : '—'}
+                  {item.width && item.height ? `${item.width}×${item.height}` : '—'}
                 </td>
                 <td>{item.ownerModule}</td>
                 <td>{item.createdAt}</td>

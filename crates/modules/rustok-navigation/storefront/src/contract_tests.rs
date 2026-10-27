@@ -12,18 +12,9 @@ use super::*;
 
 #[test]
 fn test_storefront_menu_location_variants() {
-    assert_eq!(
-        StorefrontMenuLocation::Header,
-        StorefrontMenuLocation::Header
-    );
-    assert_ne!(
-        StorefrontMenuLocation::Header,
-        StorefrontMenuLocation::Footer
-    );
-    assert_ne!(
-        StorefrontMenuLocation::Sidebar,
-        StorefrontMenuLocation::Mobile
-    );
+    assert_eq!(StorefrontMenuLocation::Header, StorefrontMenuLocation::Header);
+    assert_ne!(StorefrontMenuLocation::Header, StorefrontMenuLocation::Footer);
+    assert_ne!(StorefrontMenuLocation::Sidebar, StorefrontMenuLocation::Mobile);
 
     let locations = [
         StorefrontMenuLocation::Header,
@@ -55,10 +46,7 @@ fn test_storefront_navigation_snapshot() {
         footer: None,
     };
 
-    assert_eq!(
-        snapshot.menu(StorefrontMenuLocation::Header),
-        Some(&header_menu)
-    );
+    assert_eq!(snapshot.menu(StorefrontMenuLocation::Header), Some(&header_menu));
     assert_eq!(snapshot.menu(StorefrontMenuLocation::Footer), None);
     assert_eq!(snapshot.menu(StorefrontMenuLocation::Sidebar), None);
     assert_eq!(snapshot.menu(StorefrontMenuLocation::Mobile), None);

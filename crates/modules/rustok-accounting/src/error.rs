@@ -63,18 +63,12 @@ mod tests {
 
         let tx_id = Uuid::new_v4();
         let err5 = AccountingError::TransactionNotFound(tx_id);
-        assert_eq!(
-            err5.to_string(),
-            format!("Transaction not found for ID: {tx_id}")
-        );
+        assert_eq!(err5.to_string(), format!("Transaction not found for ID: {tx_id}"));
 
         let err6 = AccountingError::Validation("invalid input".into());
         assert_eq!(err6.to_string(), "Validation error: invalid input");
 
         let err7 = AccountingError::InvariantViolation("broken invariant".into());
-        assert_eq!(
-            err7.to_string(),
-            "Accounting invariant violation: broken invariant"
-        );
+        assert_eq!(err7.to_string(), "Accounting invariant violation: broken invariant");
     }
 }

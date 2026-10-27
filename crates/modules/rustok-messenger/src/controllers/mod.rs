@@ -97,7 +97,10 @@ pub fn router(runtime: MessengerHttpRuntime) -> Router {
             "/api/messenger/messages/{message_id}",
             patch(rest::patch_message).delete(rest::delete_message),
         )
-        .route("/api/messenger/messages/search", get(rest::search_messages))
+        .route(
+            "/api/messenger/messages/search",
+            get(rest::search_messages),
+        )
         .route(
             "/api/messenger/conversations/{conversation_id}/messages",
             get(rest::list_messages),

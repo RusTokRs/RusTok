@@ -56,8 +56,8 @@ mod membership_enforcement_command;
 pub mod membership_enforcement_entities;
 mod membership_enforcement_transaction;
 pub mod migrations;
-mod moderation_subject;
 pub mod module;
+mod moderation_subject;
 mod notification_source;
 pub mod policy_history;
 pub mod ports;
@@ -117,9 +117,9 @@ pub mod targeted_invitations {
 }
 
 pub use applications::{
-    BulkReviewGroupMembershipApplicationItemResult, BulkReviewGroupMembershipApplicationsRequest,
-    BulkReviewGroupMembershipApplicationsResult, CancelGroupMembershipApplicationRequest,
-    GROUP_APPLICATION_POLICY_CHANGED_CODE, GroupApplicationBulkReviewCommandPort,
+    BulkReviewGroupMembershipApplicationItemResult,
+    BulkReviewGroupMembershipApplicationsRequest, BulkReviewGroupMembershipApplicationsResult,
+    CancelGroupMembershipApplicationRequest, GroupApplicationBulkReviewCommandPort,
     GroupApplicationCasCommandPort, GroupApplicationCommandPort,
     GroupApplicationLifecycleCommandPort, GroupApplicationLifecycleReadPort,
     GroupApplicationLifecycleResult, GroupApplicationPolicy, GroupApplicationPolicyLocaleCatalog,
@@ -134,12 +134,13 @@ pub use applications::{
     ReviewGroupMembershipApplicationResult, SubmitGroupMembershipApplicationIfCurrentRequest,
     SubmitGroupMembershipApplicationRequest, SubmitGroupMembershipApplicationResult,
     UpsertGroupApplicationPolicyIfCurrentRequest, UpsertGroupApplicationPolicyRequest,
-    UpsertGroupApplicationPolicyResult,
+    UpsertGroupApplicationPolicyResult, GROUP_APPLICATION_POLICY_CHANGED_CODE,
 };
 pub use domain::{
-    GroupAction, GroupFeatureStatus, GroupJoinPolicy, GroupMembershipEffectiveStatus,
-    GroupMembershipEnforcementSourceKind, GroupMembershipEnforcementState, GroupMembershipStatus,
-    GroupRole, GroupStatus, GroupVisibility, normalize_feature_key, normalize_group_handle,
+    normalize_feature_key, normalize_group_handle, GroupAction, GroupFeatureStatus,
+    GroupJoinPolicy, GroupMembershipEffectiveStatus, GroupMembershipEnforcementSourceKind,
+    GroupMembershipEnforcementState, GroupMembershipStatus, GroupRole, GroupStatus,
+    GroupVisibility,
 };
 pub use dto::{
     CreateGroupInput, DeleteGroupTranslationRequest, DeleteGroupTranslationResult,
@@ -177,13 +178,13 @@ pub use policy_history::{
     ListGroupApplicationPolicyRevisionsRequest,
 };
 pub use ports::{
-    GroupAccessReadPort, GroupCapabilityDescriptor, GroupCommandPort, GroupLocalizationCommandPort,
-    GroupLocalizationReadPort, GroupMembershipEnforcementCommandPort,
-    GroupMembershipEnforcementReadPort, GroupMembershipReadPort, GroupSummaryReadPort,
-    SharedGroupAccessReadPort, SharedGroupCommandPort, SharedGroupLocalizationCommandPort,
-    SharedGroupLocalizationReadPort, SharedGroupMembershipEnforcementCommandPort,
-    SharedGroupMembershipEnforcementReadPort, SharedGroupMembershipReadPort,
-    SharedGroupSummaryReadPort,
+    GroupAccessReadPort, GroupCapabilityDescriptor, GroupCommandPort,
+    GroupLocalizationCommandPort, GroupLocalizationReadPort,
+    GroupMembershipEnforcementCommandPort, GroupMembershipEnforcementReadPort,
+    GroupMembershipReadPort, GroupSummaryReadPort, SharedGroupAccessReadPort,
+    SharedGroupCommandPort, SharedGroupLocalizationCommandPort, SharedGroupLocalizationReadPort,
+    SharedGroupMembershipEnforcementCommandPort, SharedGroupMembershipEnforcementReadPort,
+    SharedGroupMembershipReadPort, SharedGroupSummaryReadPort,
 };
 pub use targeted_invitations::{
     AcceptTargetedGroupInvitationRequest, GroupTargetedInvitationCommandPort,
@@ -217,3 +218,4 @@ mod tests {
         );
     }
 }
+

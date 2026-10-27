@@ -517,9 +517,8 @@ pub async fn rollback_tenant_artifact_native(
             ));
         }
 
-        let expected_revision_u64 = u64::try_from(expected_revision).map_err(|_| {
-            server_error("BAD_USER_INPUT: expected_revision is outside the supported range")
-        })?;
+        let expected_revision_u64 = u64::try_from(expected_revision)
+            .map_err(|_| server_error("BAD_USER_INPUT: expected_revision is outside the supported range"))?;
         let target_grant_rev_u64 = u64::try_from(target_capability_grant_revision)
             .map_err(|_| server_error("BAD_USER_INPUT: target_capability_grant_revision is outside the supported range"))?;
 
@@ -527,9 +526,7 @@ pub async fn rollback_tenant_artifact_native(
             .installation()
             .rollback_artifact(rustok_modules::ArtifactRollbackRequest {
                 installation_id: installation_id_uuid,
-                scope: rustok_modules::ModuleInstallationScope::Tenant {
-                    tenant_id: tenant.id,
-                },
+                scope: rustok_modules::ModuleInstallationScope::Tenant { tenant_id: tenant.id },
                 expected_revision: expected_revision_u64,
                 context: rustok_modules::ModuleCommandContext {
                     actor_id: auth.user_id,
@@ -582,8 +579,7 @@ pub async fn rollback_module_transition_native(
         let idempotency_key_uuid = uuid::Uuid::parse_str(&idempotency_key)
             .map_err(|_| server_error("BAD_USER_INPUT: idempotency_key must be a UUID"))?;
         let trimmed_reason = reason.trim().to_string();
-        if operation_id_uuid.is_nil() || idempotency_key_uuid.is_nil() || trimmed_reason.is_empty()
-        {
+        if operation_id_uuid.is_nil() || idempotency_key_uuid.is_nil() || trimmed_reason.is_empty() {
             return Err(server_error(
                 "BAD_USER_INPUT: Transition rollback requires non-nil operation and idempotency identities plus a non-empty reason",
             ));
@@ -600,9 +596,7 @@ pub async fn rollback_module_transition_native(
             .installation()
             .rollback_transition_operation(rustok_modules::TransitionRollbackRequest {
                 operation_id: operation_id_uuid,
-                scope: rustok_modules::ModuleInstallationScope::Tenant {
-                    tenant_id: tenant.id,
-                },
+                scope: rustok_modules::ModuleInstallationScope::Tenant { tenant_id: tenant.id },
                 context: rustok_modules::ModuleCommandContext {
                     actor_id: auth.user_id,
                     tenant_id: Some(tenant.id),
@@ -631,6 +625,7 @@ pub async fn rollback_module_transition_native(
         ))
     }
 }
+
 
 #[server(prefix = "/api/fn", endpoint = "admin/module-effective-policy")]
 pub async fn module_effective_policy_native()

@@ -31,7 +31,7 @@ The event/runtime layer must remain consistent with the current-state model:
 - `apps/server/src/services/event_transport_factory.rs`
 - `apps/server/src/services/event_bus.rs`
 - `crates/modules/rustok-outbox/`
-- `crates/libs/rustok-iggy/`
+- `crates/modules/rustok-iggy/`
 
 - [ ] Server bootstrap raises the current event runtime.
 - [ ] Transport mode is consistent with current settings and runtime wiring.

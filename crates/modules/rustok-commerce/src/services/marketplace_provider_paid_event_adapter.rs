@@ -108,12 +108,10 @@ impl MarketplaceProviderPaidEventAdapter {
                 ))
             })?;
         if checkout_operation_id.is_nil() {
-            return Err(MarketplaceProviderPaidEventAdapterError::Validation(
-                format!(
-                    "payment collection {} has nil checkout operation id",
-                    payment.id
-                ),
-            ));
+            return Err(MarketplaceProviderPaidEventAdapterError::Validation(format!(
+                "payment collection {} has nil checkout operation id",
+                payment.id
+            )));
         }
         let order_id = payment.order_id.ok_or_else(|| {
             MarketplaceProviderPaidEventAdapterError::Validation(format!(
@@ -122,9 +120,10 @@ impl MarketplaceProviderPaidEventAdapter {
             ))
         })?;
         if order_id.is_nil() {
-            return Err(MarketplaceProviderPaidEventAdapterError::Validation(
-                format!("payment collection {} has nil order id", payment.id),
-            ));
+            return Err(MarketplaceProviderPaidEventAdapterError::Validation(format!(
+                "payment collection {} has nil order id",
+                payment.id
+            )));
         }
         let captured_at = payment.captured_at.ok_or_else(|| {
             MarketplaceProviderPaidEventAdapterError::Validation(format!(
@@ -179,9 +178,9 @@ fn parse_uuid(metadata: &Value, field: &str) -> MarketplaceProviderPaidEventAdap
             ))
         })?;
     if id.is_nil() {
-        return Err(MarketplaceProviderPaidEventAdapterError::Validation(
-            format!("normalized provider event field `{field}` must not be nil UUID"),
-        ));
+        return Err(MarketplaceProviderPaidEventAdapterError::Validation(format!(
+            "normalized provider event field `{field}` must not be nil UUID"
+        )));
     }
     Ok(id)
 }
@@ -256,3 +255,4 @@ mod tests {
         assert!(parse_currency(&val_invalid, "currency").is_err());
     }
 }
+

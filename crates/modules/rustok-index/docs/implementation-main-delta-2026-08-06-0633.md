@@ -15,7 +15,7 @@ The additional commit after the preceding 06:26 UTC comparison is Pages-only:
 It does not modify:
 
 - `crates/modules/rustok-index` source, documentation, or Cargo manifest;
-- Product Index source/absence composition under `crates/utils/rustok-distribution`;
+- Product Index source/absence composition under `crates/modules/rustok-distribution`;
 - the server Index GraphQL files;
 - Index diagnosis or source-page service composition;
 - Index verifier files changed by this PR.

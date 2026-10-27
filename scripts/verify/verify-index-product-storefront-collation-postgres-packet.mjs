@@ -40,7 +40,7 @@ if (!localizedCompiler.includes('COALESCE({} LIKE {pattern}')) {
   fail(`${localizedCompilerPath} no longer compiles TextLike through PostgreSQL LIKE`);
 }
 
-const packetPath = 'crates/utils/rustok-distribution/tests/product_storefront_search_collation_postgres.rs';
+const packetPath = 'crates/modules/rustok-distribution/tests/product_storefront_search_collation_postgres.rs';
 const packet = requireMarkers(packetPath, [
   'RUSTOK_PRODUCT_STOREFRONT_COLLATION_DATABASE_URL',
   'rustok_product::migrations::migrations()',

@@ -52,8 +52,8 @@ for (const relativePath of contract.required_files) read(relativePath);
 
 const modules = read("modules.toml");
 const forumCargo = read("crates/modules/rustok-forum/Cargo.toml");
-const distributionCargo = read("crates/utils/rustok-distribution/Cargo.toml");
-const distributionLib = read("crates/utils/rustok-distribution/src/lib.rs");
+const distributionCargo = read("crates/modules/rustok-distribution/Cargo.toml");
+const distributionLib = read("crates/modules/rustok-distribution/src/lib.rs");
 const serverCargo = read("apps/server/Cargo.toml");
 const dispatcher = read("apps/server/src/services/module_event_dispatcher.rs");
 const forumPlan = compact(read("crates/modules/rustok-forum/docs/implementation-plan.md"));

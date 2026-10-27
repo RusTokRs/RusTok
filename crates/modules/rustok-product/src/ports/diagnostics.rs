@@ -350,12 +350,7 @@ fn product_error_code(error: &crate::error::CommerceError) -> &'static str {
         }
         CommerceError::NoVariants => "product.no_variants",
         CommerceError::CannotDeletePublished => "product.cannot_delete_published",
-        CommerceError::Core(error) => match error {
-            rustok_core::error::Error::Serialization(_)
-            | rustok_core::error::Error::Scripting(_)
-            | rustok_core::error::Error::Internal(_) => "product.invariant_violation",
-            _ => crate::error::core_error_code(error),
-        },
+        CommerceError::Core(error) => crate::error::core_error_code(error),
         CommerceError::Conflict(_) => "product.conflict",
     }
 }
@@ -415,15 +410,7 @@ pub(super) fn product_error_to_port_error(
             "product.cannot_delete_published",
             "cannot delete a published product",
         ),
-        CommerceError::Core(error) => match error {
-            rustok_core::error::Error::Serialization(_)
-            | rustok_core::error::Error::Scripting(_)
-            | rustok_core::error::Error::Internal(_) => PortError::invariant_violation(
-                "product.invariant_violation",
-                "product operation could not be completed safely",
-            ),
-            _ => crate::error::core_port_error(&error),
-        },
+        CommerceError::Core(error) => crate::error::core_port_error(&error),
         CommerceError::Conflict(_) => PortError::conflict(
             "product.conflict",
             "product request conflicts with the current state",

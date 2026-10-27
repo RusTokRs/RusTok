@@ -12,7 +12,7 @@
 #[tokio::main]
 async fn main() {
     use axum::{
-        Json, Router,
+        Extension, Json, Router,
         extract::Path,
         http::{HeaderMap, StatusCode, header::AUTHORIZATION},
         middleware,
@@ -20,12 +20,11 @@ async fn main() {
     };
     use leptos::logging::log;
     use leptos::prelude::*;
-    use leptos_auth::provide_server_auth_snapshot;
+    use leptos_auth::{ServerAuthSnapshot, provide_server_auth_snapshot};
     use leptos_axum::{LeptosRoutes, generate_route_list};
     use rustok_admin::app::{
-        App, admin_security_headers,
-        auth_ssr::{auth_snapshot_from_headers, verify_auth_snapshot},
-        request_auth_snapshot, request_csp_nonce, shell, validate_admin_security_profile,
+        App, admin_security_headers, auth_ssr::verify_auth_snapshot, request_auth_snapshot,
+        request_csp_nonce, shell, validate_admin_security_profile,
     };
     use rustok_pages_admin::{
         BrowserIntentEnvelope, FLY_CSRF_HEADER_NAME, PagesBrowserIntentAccessError,
@@ -39,10 +38,13 @@ async fn main() {
 
     async fn page_builder_intent(
         Path(page_id): Path<String>,
+        // Inserted by `verify_auth_snapshot`, which performed the
+        // single server-side refresh-cookie exchange for this request
+        // and propagates rotation on the response.
+        Extension(auth): Extension<ServerAuthSnapshot>,
         headers: HeaderMap,
         Json(envelope): Json<BrowserIntentEnvelope>,
     ) -> Result<Json<PagesBrowserIntentResponse>, (StatusCode, Json<Value>)> {
-        let auth = auth_snapshot_from_headers(&headers);
         // One authority per request. An `authorization: Bearer` request is an API client, which
         // may state its tenant in `x-tenant-slug` (the documented transport contract); a request
         // without one is the standalone admin's own browser session, and then BOTH the token and
@@ -66,8 +68,14 @@ async fn main() {
                     )
                 })?;
                 let csrf_header = header_value(&headers, FLY_CSRF_HEADER_NAME);
+                // The CSRF secret is the session id: stable across
+                // refresh-token rotation (unlike the access token),
+                // unguessable, and only ever embedded into pages this
+                // host renders for the authenticated browser.
+                let csrf_secret =
+                    leptos_auth::session_id_from_access_token(&session.token).unwrap_or_default();
                 match csrf_header {
-                    Some(client_csrf) if verify_csrf_token(&session.token, &client_csrf) => {
+                    Some(client_csrf) if verify_csrf_token(&csrf_secret, &client_csrf) => {
                         (session.token.clone(), session.tenant.clone())
                     }
                     Some(_) => {

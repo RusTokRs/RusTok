@@ -325,7 +325,9 @@ mod tests {
                 is_active: true,
             })
             .finish();
-        let response = schema.execute("{ tenant(requested: null) }").await;
+        let response = schema
+            .execute("{ tenant(requested: null) }")
+            .await;
         assert!(!response.errors.is_empty());
     }
 }

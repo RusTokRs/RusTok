@@ -7,7 +7,9 @@ use chrono::Utc;
 use rustok_core::{MigrationSource, SecurityContext};
 use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 use rustok_pages::entities::page_body;
-use rustok_pages::{PageTemplateService, PagesModule, SaveSiteSymbolInput, SiteSymbolService};
+use rustok_pages::{
+    PageTemplateService, PagesModule, SaveSiteSymbolInput, SiteSymbolService,
+};
 use sea_orm::{
     ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Set,
 };
@@ -140,10 +142,7 @@ async fn save_validates_identifiers_and_symbol_descriptors() -> TestResult<()> {
         .await?;
 
     assert_eq!(updated.name.as_deref(), Some("Updated Header"));
-    assert_eq!(
-        updated.content["components"][0]["content"],
-        "Updated Navigation"
-    );
+    assert_eq!(updated.content["components"][0]["content"], "Updated Navigation");
 
     Ok(())
 }
@@ -242,10 +241,7 @@ async fn deletion_reference_protection() -> TestResult<()> {
     let delete_err = symbol_service
         .delete(tenant, &actor, "site-footer", "en")
         .await;
-    assert!(
-        delete_err.is_err(),
-        "Must reject deleting symbol referenced by template"
-    );
+    assert!(delete_err.is_err(), "Must reject deleting symbol referenced by template");
 
     // Remove the template
     template_service
@@ -285,10 +281,7 @@ async fn deletion_reference_protection() -> TestResult<()> {
     let delete_page_err = symbol_service
         .delete(tenant, &actor, "site-footer", "en")
         .await;
-    assert!(
-        delete_page_err.is_err(),
-        "Must reject deleting symbol referenced by page body"
-    );
+    assert!(delete_page_err.is_err(), "Must reject deleting symbol referenced by page body");
 
     // Delete the page body
     db.execute_unprepared("DELETE FROM page_bodies").await?;

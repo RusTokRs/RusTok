@@ -131,10 +131,7 @@ pub async fn list_operator_review(
 ) -> HttpResult<Json<Vec<MarketplaceReversalEventResponse>>> {
     ensure_read_permission(&auth)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "commerce_invalid_tenant",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
     }
     tracing::debug!(
         boundary = MARKETPLACE_REVERSAL_BOUNDARY,
@@ -172,16 +169,10 @@ pub async fn show_event(
 ) -> HttpResult<Json<MarketplaceReversalEventResponse>> {
     ensure_read_permission(&auth)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "commerce_invalid_tenant",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request(
-            "commerce_invalid_id",
-            "Event ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("commerce_invalid_id", "Event ID must not be nil"));
     }
     tracing::debug!(
         boundary = MARKETPLACE_REVERSAL_BOUNDARY,
@@ -220,16 +211,10 @@ pub async fn retry_event(
 ) -> HttpResult<Json<MarketplaceReversalEventResponse>> {
     ensure_manage_permission(&auth)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "commerce_invalid_tenant",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request(
-            "commerce_invalid_id",
-            "Event ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("commerce_invalid_id", "Event ID must not be nil"));
     }
     tracing::debug!(
         boundary = MARKETPLACE_REVERSAL_BOUNDARY,
@@ -268,10 +253,7 @@ pub async fn run_recovery_sweep(
 ) -> HttpResult<Json<MarketplaceReversalSweepResponse>> {
     ensure_manage_permission(&auth)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "commerce_invalid_tenant",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
     }
     tracing::debug!(
         boundary = MARKETPLACE_REVERSAL_BOUNDARY,
@@ -321,10 +303,7 @@ pub async fn list_adaptation_failures_operator_review(
 ) -> HttpResult<Json<Vec<MarketplaceReversalAdaptationFailureResponse>>> {
     ensure_read_permission(&auth)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "commerce_invalid_tenant",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
     }
     tracing::debug!(
         boundary = MARKETPLACE_REVERSAL_BOUNDARY,
@@ -362,16 +341,10 @@ pub async fn show_adaptation_failure(
 ) -> HttpResult<Json<MarketplaceReversalAdaptationFailureResponse>> {
     ensure_read_permission(&auth)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "commerce_invalid_tenant",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request(
-            "commerce_invalid_id",
-            "Adaptation failure ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("commerce_invalid_id", "Adaptation failure ID must not be nil"));
     }
     tracing::debug!(
         boundary = MARKETPLACE_REVERSAL_BOUNDARY,
@@ -411,16 +384,10 @@ pub async fn retry_adaptation_failure(
 ) -> HttpResult<Json<MarketplaceReversalAdaptationFailureResponse>> {
     ensure_manage_permission(&auth)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request(
-            "commerce_invalid_tenant",
-            "Tenant ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request(
-            "commerce_invalid_id",
-            "Adaptation failure ID must not be nil",
-        ));
+        return Err(HttpError::bad_request("commerce_invalid_id", "Adaptation failure ID must not be nil"));
     }
     tracing::debug!(
         boundary = MARKETPLACE_REVERSAL_BOUNDARY,

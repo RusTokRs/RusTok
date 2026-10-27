@@ -21,45 +21,47 @@ pub mod model;
 pub mod provider;
 
 pub use model::{
-    ApplyReactionCommand, MAX_REACTION_CATALOG_SIZE, MAX_REACTION_KEY_BYTES,
-    MAX_REACTION_SOURCE_SLUG_BYTES, MAX_REACTION_SUBJECT_KIND_BYTES, MAX_REACTIONS_PER_ACTOR,
-    ReactionAction, ReactionActorState, ReactionAggregate, ReactionCatalog,
+    ApplyReactionCommand, ReactionAction, ReactionActorState, ReactionAggregate, ReactionCatalog,
     ReactionCommandIdentity, ReactionContractError, ReactionKey, ReactionReadRequest,
     ReactionSelectionPolicy, ReactionSnapshot, ReactionSourceSlug, ReactionSubjectKind,
-    ReactionSubjectRef, ReactionWriteReceipt,
+    ReactionSubjectRef, ReactionWriteReceipt, MAX_REACTIONS_PER_ACTOR, MAX_REACTION_CATALOG_SIZE,
+    MAX_REACTION_KEY_BYTES, MAX_REACTION_SOURCE_SLUG_BYTES, MAX_REACTION_SUBJECT_KIND_BYTES,
 };
 pub use provider::{
-    MAX_REACTION_PROVIDER_KINDS, ReactionProviderError, ReactionProviderResult, ReactionReadPort,
-    ReactionSubjectAccess, ReactionSubjectAuthorization, ReactionSubjectDeletionBinding,
-    ReactionSubjectFactoryRegistry, ReactionSubjectProvider, ReactionSubjectProviderFactory,
-    ReactionSubjectRegistry, ReactionSubjectRegistryEntry, ReactionSubjectRegistryError,
-    ReactionSubjectRequest, ReactionWritePort, ensure_reaction_subject_factory_registry,
-    ensure_reaction_subject_registry, materialize_reaction_subject_registry,
-    reaction_subject_factory_registry_from_extensions, reaction_subject_registry_from_extensions,
-    register_reaction_subject_provider, register_reaction_subject_provider_factory,
+    ensure_reaction_subject_factory_registry, ensure_reaction_subject_registry,
+    materialize_reaction_subject_registry, reaction_subject_factory_registry_from_extensions,
+    reaction_subject_registry_from_extensions, register_reaction_subject_provider,
+    register_reaction_subject_provider_factory, ReactionProviderError, ReactionProviderResult,
+    ReactionReadPort, ReactionSubjectAccess, ReactionSubjectAuthorization,
+    ReactionSubjectDeletionBinding, ReactionSubjectFactoryRegistry, ReactionSubjectProvider,
+    ReactionSubjectProviderFactory, ReactionSubjectRegistry, ReactionSubjectRegistryEntry,
+    ReactionSubjectRegistryError, ReactionSubjectRequest, ReactionWritePort,
+    MAX_REACTION_PROVIDER_KINDS,
 };
 
 pub mod api {
     pub use crate::model::{
-        ApplyReactionCommand, MAX_REACTION_CATALOG_SIZE, MAX_REACTION_KEY_BYTES,
-        MAX_REACTION_SOURCE_SLUG_BYTES, MAX_REACTION_SUBJECT_KIND_BYTES, MAX_REACTIONS_PER_ACTOR,
-        ReactionAction, ReactionActorState, ReactionAggregate, ReactionCatalog,
-        ReactionCommandIdentity, ReactionContractError, ReactionKey, ReactionReadRequest,
-        ReactionSelectionPolicy, ReactionSnapshot, ReactionSourceSlug, ReactionSubjectKind,
-        ReactionSubjectRef, ReactionWriteReceipt,
+        ApplyReactionCommand, ReactionAction, ReactionActorState, ReactionAggregate,
+        ReactionCatalog, ReactionCommandIdentity, ReactionContractError, ReactionKey,
+        ReactionReadRequest, ReactionSelectionPolicy, ReactionSnapshot, ReactionSourceSlug,
+        ReactionSubjectKind, ReactionSubjectRef, ReactionWriteReceipt, MAX_REACTIONS_PER_ACTOR,
+        MAX_REACTION_CATALOG_SIZE, MAX_REACTION_KEY_BYTES, MAX_REACTION_SOURCE_SLUG_BYTES,
+        MAX_REACTION_SUBJECT_KIND_BYTES,
     };
     pub use crate::provider::{
-        MAX_REACTION_PROVIDER_KINDS, ReactionProviderError, ReactionProviderResult,
+        ensure_reaction_subject_factory_registry, ensure_reaction_subject_registry,
+        materialize_reaction_subject_registry, reaction_subject_factory_registry_from_extensions,
+        reaction_subject_registry_from_extensions, register_reaction_subject_provider,
+        register_reaction_subject_provider_factory, ReactionProviderError, ReactionProviderResult,
         ReactionReadPort, ReactionSubjectAccess, ReactionSubjectAuthorization,
         ReactionSubjectDeletionBinding, ReactionSubjectFactoryRegistry, ReactionSubjectProvider,
         ReactionSubjectProviderFactory, ReactionSubjectRegistry, ReactionSubjectRegistryEntry,
         ReactionSubjectRegistryError, ReactionSubjectRequest, ReactionWritePort,
-        ensure_reaction_subject_factory_registry, ensure_reaction_subject_registry,
-        materialize_reaction_subject_registry, reaction_subject_factory_registry_from_extensions,
-        reaction_subject_registry_from_extensions, register_reaction_subject_provider,
-        register_reaction_subject_provider_factory,
+        MAX_REACTION_PROVIDER_KINDS,
     };
 }
+
+
 
 #[cfg(feature = "server")]
 pub mod entities;

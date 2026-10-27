@@ -24,13 +24,13 @@ const ownerHelpers = requireMarkers('crates/modules/rustok-product/src/services/
   "COALESCE(metadata #> '{channel_visibility,allowed_channel_slugs}', '[]'::jsonb) = '[]'::jsonb",
 ]);
 
-const resolver = requireMarkers('crates/utils/rustok-distribution/src/product_index/channel_relation_resolver.rs', [
+const resolver = requireMarkers('crates/modules/rustok-distribution/src/product_index/channel_relation_resolver.rs', [
   'ProductChannelVisibility::Unrestricted => (',
   'SELECT id FROM channels WHERE tenant_id = $1 ORDER BY id ASC LIMIT $2',
   'ProductChannelVisibility::Restricted(slugs)',
 ]);
 
-const productBridgePath = 'crates/utils/rustok-distribution/src/product_index/product.rs';
+const productBridgePath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
 const productBridge = requireMarkers(productBridgePath, [
   'assert_eq!(schema.fields.len(), 15);',
   'many_field("sales_channel_ids", IndexValueType::Uuid, true, true)',
@@ -40,7 +40,7 @@ if (productBridge.includes('SchemaVersion::new(5)')) {
   fail(`${productBridgePath} must not invent a replacement schema merely to approximate channel-less visibility`);
 }
 
-const executorPath = 'crates/utils/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
+const executorPath = 'crates/modules/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
 const executor = requireMarkers(executorPath, [
   'pub(crate) enum ProductStorefrontIndexChannelScopeDecision',
   'ShadowEligible { public_channel_id: Uuid }',
@@ -63,7 +63,7 @@ for (const forbidden of [
   }
 }
 
-requireMarkers('crates/utils/rustok-distribution/src/product_index/storefront_shadow.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/storefront_shadow.rs', [
   'PublicChannelRequired',
   'FilterExpr::Contains(',
   'root_field("sales_channel_ids")?',

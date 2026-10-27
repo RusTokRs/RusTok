@@ -221,17 +221,13 @@ impl InventoryReservationPort for crate::InventoryService {
         context.require_write_semantics()?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         validate_non_nil_uuid(request.variant_id, "variant_id")?;
-        if let Some(cart_id) = request.cart_id
-            && cart_id.is_nil()
-        {
+        if let Some(cart_id) = request.cart_id && cart_id.is_nil() {
             return Err(PortError::validation(
                 "inventory.cart_id_nil",
                 "cart_id cannot be nil",
             ));
         }
-        if let Some(line_item_id) = request.line_item_id
-            && line_item_id.is_nil()
-        {
+        if let Some(line_item_id) = request.line_item_id && line_item_id.is_nil() {
             return Err(PortError::validation(
                 "inventory.line_item_id_nil",
                 "line_item_id cannot be nil",
@@ -275,17 +271,13 @@ impl InventoryReservationPort for crate::InventoryService {
         context.require_write_semantics()?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         validate_non_nil_uuid(request.variant_id, "variant_id")?;
-        if let Some(order_id) = request.order_id
-            && order_id.is_nil()
-        {
+        if let Some(order_id) = request.order_id && order_id.is_nil() {
             return Err(PortError::validation(
                 "inventory.order_id_nil",
                 "order_id cannot be nil",
             ));
         }
-        if let Some(line_item_id) = request.line_item_id
-            && line_item_id.is_nil()
-        {
+        if let Some(line_item_id) = request.line_item_id && line_item_id.is_nil() {
             return Err(PortError::validation(
                 "inventory.line_item_id_nil",
                 "line_item_id cannot be nil",
@@ -334,9 +326,7 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         validate_non_nil_uuid(request.reservation_id, "reservation_id")?;
         validate_non_nil_uuid(request.variant_id, "variant_id")?;
-        if let Some(line_item_id) = request.line_item_id
-            && line_item_id.is_nil()
-        {
+        if let Some(line_item_id) = request.line_item_id && line_item_id.is_nil() {
             return Err(PortError::validation(
                 "inventory.line_item_id_nil",
                 "line_item_id cannot be nil",
@@ -1348,10 +1338,7 @@ mod tests {
             "en",
             "test",
         );
-        assert_eq!(
-            parse_port_tenant_id(&valid_context, "test").unwrap(),
-            valid_id
-        );
+        assert_eq!(parse_port_tenant_id(&valid_context, "test").unwrap(), valid_id);
     }
 
     #[test]

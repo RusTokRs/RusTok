@@ -25,12 +25,12 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use super::post_order::{PostOrderOrchestrationError, PostOrderOrchestrationResult};
+use super::return_restock::{RestockDecision, apply_restock_decision, parse_restock_decision};
 use super::return_completion_operation::{
     BeginReturnCompletionOperation, DEFAULT_RETURN_COMPLETION_LEASE_SECONDS,
     ReturnCompletionOperationCheckpoint, ReturnCompletionOperationError,
     ReturnCompletionOperationJournal, ReturnCompletionOperationStage,
 };
-use super::return_restock::{RestockDecision, apply_restock_decision, parse_restock_decision};
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CompleteReturnResolutionInput {
@@ -1278,9 +1278,7 @@ mod tests {
             metadata: serde_json::json!({}),
         };
         let err = validate_completion_shape(&input).unwrap_err();
-        assert!(
-            matches!(err, PostOrderOrchestrationError::Validation(msg) if msg.contains("refund_id"))
-        );
+        assert!(matches!(err, PostOrderOrchestrationError::Validation(msg) if msg.contains("refund_id")));
 
         let input = CompleteReturnResolutionInput {
             resolution_type: None,
@@ -1292,9 +1290,7 @@ mod tests {
             metadata: serde_json::json!({}),
         };
         let err = validate_completion_shape(&input).unwrap_err();
-        assert!(
-            matches!(err, PostOrderOrchestrationError::Validation(msg) if msg.contains("order_change_id"))
-        );
+        assert!(matches!(err, PostOrderOrchestrationError::Validation(msg) if msg.contains("order_change_id")));
 
         let input = CompleteReturnResolutionInput {
             resolution_type: None,
@@ -1312,8 +1308,6 @@ mod tests {
             metadata: serde_json::json!({}),
         };
         let err = validate_completion_shape(&input).unwrap_err();
-        assert!(
-            matches!(err, PostOrderOrchestrationError::Validation(msg) if msg.contains("payment_collection_id"))
-        );
+        assert!(matches!(err, PostOrderOrchestrationError::Validation(msg) if msg.contains("payment_collection_id")));
     }
 }

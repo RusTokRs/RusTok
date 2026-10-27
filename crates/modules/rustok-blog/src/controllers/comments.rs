@@ -11,7 +11,9 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use super::{BlogHttpRuntime, ensure_blog_module_enabled, posts::ensure_blog_permission};
-use crate::dto::{CommentListItem, CreateCommentInput, ListCommentsFilter, UpdateCommentInput};
+use crate::dto::{
+    CommentListItem, CreateCommentInput, ListCommentsFilter, UpdateCommentInput,
+};
 use crate::{CommentResponse, ModerateCommentInput};
 
 fn security_context(auth: &AuthContext) -> rustok_core::SecurityContext {

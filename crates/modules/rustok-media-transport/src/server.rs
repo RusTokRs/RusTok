@@ -441,7 +441,8 @@ fn trusted_context<T>(
             "trusted media authority actor id cannot be nil UUID",
         ));
     }
-    if claimed.tenant_id.trim().is_empty() || claimed.tenant_id.trim() != authority.tenant_id.trim()
+    if claimed.tenant_id.trim().is_empty()
+        || claimed.tenant_id.trim() != authority.tenant_id.trim()
     {
         return Err(Status::permission_denied(
             "media tenant does not match authenticated authority",
@@ -511,8 +512,8 @@ fn port_error_to_status(error: PortError) -> Status {
 #[cfg(test)]
 mod tests {
     use super::{
-        MediaGrpcOperation, MediaGrpcService, TrustedMediaAuthority, parse_id,
-        port_error_to_status, trusted_context,
+        MediaGrpcOperation, MediaGrpcService, TrustedMediaAuthority, parse_id, port_error_to_status,
+        trusted_context,
     };
     use crate::proto::{ImageDescriptorRequest, media_service_server::MediaService};
     use async_trait::async_trait;
@@ -538,10 +539,7 @@ mod tests {
             _context: PortContext,
             _media_id: Uuid,
         ) -> Result<rustok_media::MediaAssetReferenceAdmission, PortError> {
-            Err(PortError::not_found(
-                "media.not_found",
-                "admission not found",
-            ))
+            Err(PortError::not_found("media.not_found", "admission not found"))
         }
 
         async fn lookup_asset_references(
@@ -711,18 +709,10 @@ mod tests {
     fn remote_context_rejects_nil_authority_tenant() {
         let mut request = Request::new(());
         request.extensions_mut().insert(
-            TrustedMediaAuthority::new(
-                Uuid::nil().to_string(),
-                PortActor::service("verified-service"),
-            )
-            .allow_operation(MediaGrpcOperation::GetAsset),
+            TrustedMediaAuthority::new(Uuid::nil().to_string(), PortActor::service("verified-service"))
+                .allow_operation(MediaGrpcOperation::GetAsset),
         );
-        let claimed = PortContext::new(
-            Uuid::nil().to_string(),
-            PortActor::service("verified-service"),
-            "en",
-            "corr",
-        );
+        let claimed = PortContext::new(Uuid::nil().to_string(), PortActor::service("verified-service"), "en", "corr");
 
         let error = trusted_context(&request, claimed, MediaGrpcOperation::GetAsset)
             .expect_err("nil authority tenant must be rejected");
@@ -737,12 +727,7 @@ mod tests {
             TrustedMediaAuthority::new("tenant-a", PortActor::service(Uuid::nil().to_string()))
                 .allow_operation(MediaGrpcOperation::GetAsset),
         );
-        let claimed = PortContext::new(
-            "tenant-a",
-            PortActor::service(Uuid::nil().to_string()),
-            "en",
-            "corr",
-        );
+        let claimed = PortContext::new("tenant-a", PortActor::service(Uuid::nil().to_string()), "en", "corr");
 
         let error = trusted_context(&request, claimed, MediaGrpcOperation::GetAsset)
             .expect_err("nil authority actor must be rejected");

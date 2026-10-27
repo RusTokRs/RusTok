@@ -84,8 +84,14 @@ fn setting_field_hint(field: &ModuleSettingField, locale: Locale) -> Option<Stri
             min,
             max
         )),
-        (Some(min), None) => parts.push(format!("{}: {}", tr(locale, "Min", "Минимум"), min)),
-        (None, Some(max)) => parts.push(format!("{}: {}", tr(locale, "Max", "Максимум"), max)),
+        (Some(min), None) => {
+            parts.push(format!("{}: {}", tr(locale, "Min", "Минимум"), min))
+        }
+        (None, Some(max)) => parts.push(format!(
+            "{}: {}",
+            tr(locale, "Max", "Максимум"),
+            max
+        )),
         (None, None) => {}
     }
     if !field.options.is_empty() {

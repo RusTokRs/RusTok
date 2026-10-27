@@ -17,7 +17,8 @@ use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_events::{ContractEventEnvelope, EventEnvelope};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumError, ForumEventService,
-    ForumModule, ForumProjectionOwnerRevisionImpact as ForumOwnerRevisionImpact, TopicService,
+    ForumModule, ForumProjectionOwnerRevisionImpact as ForumOwnerRevisionImpact,
+    TopicService,
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_search::{

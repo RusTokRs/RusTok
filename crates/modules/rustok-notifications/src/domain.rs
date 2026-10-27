@@ -192,10 +192,7 @@ mod tests {
             (NotificationState::Archived, "\"archived\""),
         ] {
             assert_eq!(serde_json::to_string(&state).unwrap(), json);
-            assert_eq!(
-                serde_json::from_str::<NotificationState>(json).unwrap(),
-                state
-            );
+            assert_eq!(serde_json::from_str::<NotificationState>(json).unwrap(), state);
         }
     }
 
@@ -208,10 +205,7 @@ mod tests {
             (NotificationPriorityValue::Urgent, "\"urgent\""),
         ] {
             assert_eq!(serde_json::to_string(&priority).unwrap(), json);
-            assert_eq!(
-                serde_json::from_str::<NotificationPriorityValue>(json).unwrap(),
-                priority
-            );
+            assert_eq!(serde_json::from_str::<NotificationPriorityValue>(json).unwrap(), priority);
         }
     }
 

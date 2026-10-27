@@ -534,7 +534,9 @@ mod tests {
     use rustok_api::PortError;
     use rustok_outbox::{SysEventsMigration, idempotency};
     use rustok_test_utils::mock_transactional_event_bus;
-    use sea_orm::{ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement};
+    use sea_orm::{
+        ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
+    };
     use sea_orm_migration::{MigrationTrait, SchemaManager};
     use serde_json::json;
     use uuid::Uuid;

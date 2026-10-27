@@ -33,9 +33,7 @@ impl CustomerService {
         mut input: CreateCustomerInput,
     ) -> CustomerResult<CustomerResponse> {
         if tenant_id.is_nil() {
-            return Err(CustomerError::Validation(
-                "tenant_id must not be nil".to_string(),
-            ));
+            return Err(CustomerError::Validation("tenant_id must not be nil".to_string()));
         }
         input.email = input.email.trim().to_string();
         input
@@ -46,9 +44,7 @@ impl CustomerService {
         self.ensure_email_available(tenant_id, &email, None).await?;
         if let Some(user_id) = input.user_id {
             if user_id.is_nil() {
-                return Err(CustomerError::Validation(
-                    "user_id must not be nil".to_string(),
-                ));
+                return Err(CustomerError::Validation("user_id must not be nil".to_string()));
             }
             self.ensure_user_available(tenant_id, user_id, None).await?;
         }
@@ -81,9 +77,7 @@ impl CustomerService {
         customer_id: Uuid,
     ) -> CustomerResult<CustomerResponse> {
         if tenant_id.is_nil() {
-            return Err(CustomerError::Validation(
-                "tenant_id must not be nil".to_string(),
-            ));
+            return Err(CustomerError::Validation("tenant_id must not be nil".to_string()));
         }
         if customer_id.is_nil() {
             return Err(CustomerError::CustomerNotFound(customer_id));
@@ -102,9 +96,7 @@ impl CustomerService {
         user_id: Uuid,
     ) -> CustomerResult<CustomerResponse> {
         if tenant_id.is_nil() {
-            return Err(CustomerError::Validation(
-                "tenant_id must not be nil".to_string(),
-            ));
+            return Err(CustomerError::Validation("tenant_id must not be nil".to_string()));
         }
         if user_id.is_nil() {
             return Err(CustomerError::CustomerByUserNotFound(user_id));
@@ -166,9 +158,7 @@ impl CustomerService {
         input: ListCustomersInput,
     ) -> CustomerResult<(Vec<CustomerResponse>, u64)> {
         if tenant_id.is_nil() {
-            return Err(CustomerError::Validation(
-                "tenant_id must not be nil".to_string(),
-            ));
+            return Err(CustomerError::Validation("tenant_id must not be nil".to_string()));
         }
         let page = input.page.max(1);
         let per_page = input.per_page.clamp(1, 100);
@@ -259,9 +249,7 @@ impl CustomerService {
         input: UpdateCustomerInput,
     ) -> CustomerResult<CustomerResponse> {
         if tenant_id.is_nil() {
-            return Err(CustomerError::Validation(
-                "tenant_id must not be nil".to_string(),
-            ));
+            return Err(CustomerError::Validation("tenant_id must not be nil".to_string()));
         }
         if customer_id.is_nil() {
             return Err(CustomerError::CustomerNotFound(customer_id));
@@ -318,14 +306,10 @@ impl CustomerService {
         input: CreateCustomerInput,
     ) -> CustomerResult<CustomerResponse> {
         if tenant_id.is_nil() {
-            return Err(CustomerError::Validation(
-                "tenant_id must not be nil".to_string(),
-            ));
+            return Err(CustomerError::Validation("tenant_id must not be nil".to_string()));
         }
         if user_id.is_nil() {
-            return Err(CustomerError::Validation(
-                "user_id must not be nil".to_string(),
-            ));
+            return Err(CustomerError::Validation("user_id must not be nil".to_string()));
         }
         match self.get_customer_by_user(tenant_id, user_id).await {
             Ok(existing) => {

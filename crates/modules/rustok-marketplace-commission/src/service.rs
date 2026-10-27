@@ -266,8 +266,7 @@ impl MarketplaceCommissionService {
             || request.listing_id.is_some_and(|id| id.is_nil())
         {
             return Err(MarketplaceCommissionError::Validation(
-                "filter rule_key, seller_id, and listing_id must not be nil when present"
-                    .to_string(),
+                "filter rule_key, seller_id, and listing_id must not be nil when present".to_string(),
             ));
         }
         let page = request.page.max(1);

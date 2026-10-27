@@ -1203,7 +1203,11 @@ fn PagesFlyBuilder(
                 .get_untracked()
                 .as_deref()
                 .filter(|s| !s.trim().is_empty())
-                .map(fly_browser::derive_csrf_token)
+                // Derive from the session id, not the access token:
+                // the id is stable across refresh rotation, so the
+                // embedded CSRF token stays valid for the session.
+                .and_then(leptos_auth::session_id_from_access_token)
+                .map(|session_id| fly_browser::derive_csrf_token(&session_id))
             {
                 host = host.with_browser_csrf_token(csrf);
             }

@@ -89,7 +89,7 @@ requireMarkers('crates/modules/rustok-index/src/lib.rs', [
   'register_postgres_index_query_link_target_availability',
 ]);
 
-const ownerPath = 'crates/utils/rustok-distribution/src/product_index/query_admission.rs';
+const ownerPath = 'crates/modules/rustok-distribution/src/product_index/query_admission.rs';
 const owner = requireMarkers(ownerPath, [
   'register_postgres_index_query_link_target_availability',
   'let product_schema = product_schema_ref()?',
@@ -104,7 +104,7 @@ if ((owner.match(/register_postgres_index_query_link_target_availability\(/g) ??
 }
 forbidMarkers(ownerPath, owner, ['index_entities', 'index_links', '$1']);
 
-requireMarkers('crates/utils/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
   'assert_eq!(admissions.len(), 2)',
   'assert_eq!(admissions.len(), 3)',
   'assert_eq!(admissions.link_availability_len(), 1)',

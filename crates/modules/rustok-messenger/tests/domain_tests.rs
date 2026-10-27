@@ -1,9 +1,9 @@
-use rustok_core::RusToKModule;
 use rustok_messenger::domain::{
     Conversation, ConversationType, Member, MemberRole, Message, MessageType, SnowflakeGenerator,
     SyncCursor,
 };
 use rustok_messenger::module::MessengerModule;
+use rustok_core::RusToKModule;
 use uuid::Uuid;
 
 #[test]
@@ -261,7 +261,12 @@ async fn messenger_graphql_schema_build_and_execute() {
     use async_graphql::{EmptySubscription, Schema};
     use rustok_messenger::graphql::{MessengerMutation, MessengerQuery};
 
-    let schema = Schema::build(MessengerQuery, MessengerMutation, EmptySubscription).finish();
+    let schema = Schema::build(
+        MessengerQuery,
+        MessengerMutation,
+        EmptySubscription,
+    )
+    .finish();
 
     let sdl = schema.sdl();
     assert!(sdl.contains("messengerOverview: MessengerOverviewGql!"));
@@ -448,10 +453,7 @@ fn streaming_events_edited_and_deleted_partitioning() {
         updated_at: chrono::Utc::now(),
     };
 
-    assert_eq!(
-        event_dispatched.partition_key(),
-        event_cursor.partition_key()
-    );
+    assert_eq!(event_dispatched.partition_key(), event_cursor.partition_key());
 }
 
 #[test]
@@ -477,16 +479,12 @@ fn empty_message_validation_contract() {
         conversation_id: conv_id,
         message_type: None,
         content: "".into(),
-        blocks_json: Some(
-            serde_json::json!([{"type": "image", "url": "https://example.com/img.png"}]),
-        ),
+        blocks_json: Some(serde_json::json!([{"type": "image", "url": "https://example.com/img.png"}])),
         reply_to_id: None,
         is_encrypted: None,
         encryption_algo: None,
     };
-    assert!(
-        !(blocks_only_input.content.trim().is_empty() && blocks_only_input.blocks_json.is_none())
-    );
+    assert!(!(blocks_only_input.content.trim().is_empty() && blocks_only_input.blocks_json.is_none()));
 }
 
 #[test]
@@ -702,12 +700,12 @@ fn e2ee_device_registry_nil_uuid_protections() {
 
 #[tokio::test]
 async fn system_message_dispatch_bypasses_membership() {
-    use rustok_messenger::domain::{ConversationType, MessageType};
-    use rustok_messenger::dto::{CreateConversationInput, SendMessageInput};
-    use rustok_messenger::services::MessengerService;
-    use rustok_outbox::SysEventsMigration;
     use sea_orm::Database;
     use sea_orm_migration::{MigrationTrait, SchemaManager};
+    use rustok_messenger::services::MessengerService;
+    use rustok_messenger::dto::{CreateConversationInput, SendMessageInput};
+    use rustok_messenger::domain::{ConversationType, MessageType};
+    use rustok_outbox::SysEventsMigration;
 
     let db = Database::connect("sqlite::memory:")
         .await
@@ -719,10 +717,7 @@ async fn system_message_dispatch_bypasses_membership() {
         .await
         .expect("outbox migration must succeed");
     for migration in rustok_messenger::migrations::migrations() {
-        migration
-            .up(&manager)
-            .await
-            .expect("migration must succeed");
+        migration.up(&manager).await.expect("migration must succeed");
     }
 
     let service = MessengerService::new(db, 1);
@@ -821,8 +816,7 @@ async fn test_messenger_nil_uuid_and_bounds_guards() {
         .expect("db connect");
 
     // ensure_messenger_module_enabled nil tenant guard
-    let res =
-        rustok_messenger::controllers::ensure_messenger_module_enabled(&db, Uuid::nil()).await;
+    let res = rustok_messenger::controllers::ensure_messenger_module_enabled(&db, Uuid::nil()).await;
     assert!(res.is_err());
     let err = res.unwrap_err();
     assert_eq!(err.code, "INVALID_TENANT");
@@ -833,12 +827,7 @@ async fn test_messenger_nil_uuid_and_bounds_guards() {
     assert!(service.get_overview_counts(Uuid::nil()).await.is_err());
 
     // nil tenant in list_channels_summary
-    assert!(
-        service
-            .list_channels_summary(Uuid::nil(), 10, 0)
-            .await
-            .is_err()
-    );
+    assert!(service.list_channels_summary(Uuid::nil(), 10, 0).await.is_err());
 
     // nil tenant or actor in create_conversation
     let input = rustok_messenger::dto::CreateConversationInput {
@@ -851,18 +840,8 @@ async fn test_messenger_nil_uuid_and_bounds_guards() {
         initial_locale: None,
         initial_channel_description: None,
     };
-    assert!(
-        service
-            .create_conversation(Uuid::nil(), Uuid::now_v7(), input.clone())
-            .await
-            .is_err()
-    );
-    assert!(
-        service
-            .create_conversation(Uuid::now_v7(), Uuid::nil(), input)
-            .await
-            .is_err()
-    );
+    assert!(service.create_conversation(Uuid::nil(), Uuid::now_v7(), input.clone()).await.is_err());
+    assert!(service.create_conversation(Uuid::now_v7(), Uuid::nil(), input).await.is_err());
 
     // nil tenant or actor in send_message
     let send_input = rustok_messenger::dto::SendMessageInput {
@@ -874,16 +853,9 @@ async fn test_messenger_nil_uuid_and_bounds_guards() {
         is_encrypted: None,
         encryption_algo: None,
     };
-    assert!(
-        service
-            .send_message(Uuid::nil(), Uuid::now_v7(), send_input.clone())
-            .await
-            .is_err()
-    );
-    assert!(
-        service
-            .send_message(Uuid::now_v7(), Uuid::nil(), send_input)
-            .await
-            .is_err()
-    );
+    assert!(service.send_message(Uuid::nil(), Uuid::now_v7(), send_input.clone()).await.is_err());
+    assert!(service.send_message(Uuid::now_v7(), Uuid::nil(), send_input).await.is_err());
 }
+
+
+

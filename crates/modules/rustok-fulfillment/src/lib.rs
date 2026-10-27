@@ -73,10 +73,6 @@ pub use providers::{
     FulfillmentProviderRegistry, FulfillmentProviderRuntimeMode, FulfillmentRateQuote,
     FulfillmentRateQuoteRequest, MANUAL_FULFILLMENT_PROVIDER_ID, ManualFulfillmentProvider,
 };
-pub use shipment_stock::{
-    NoopShipmentStockPort, ShipmentStockError, ShipmentStockPort, ShipmentStockRequest,
-    UnconfiguredShipmentStockPort,
-};
 pub use shipping_option_admin_command::{
     CreateAdminShippingOptionRequest, DeactivateAdminShippingOptionRequest,
     InProcessShippingOptionAdminCommandPort, ReactivateAdminShippingOptionRequest,
@@ -88,6 +84,10 @@ pub use shipping_option_read::{
     ListAllShippingOptionProjectionsRequest, ListShippingOptionProjectionsRequest,
     ReadShippingOptionProjectionRequest, ShippingOptionAdminReadPort, ShippingOptionReadPort,
     in_process_shipping_option_admin_read_port, in_process_shipping_option_read_port,
+};
+pub use shipment_stock::{
+    NoopShipmentStockPort, ShipmentStockError, ShipmentStockPort, ShipmentStockRequest,
+    UnconfiguredShipmentStockPort,
 };
 pub use status::FulfillmentStatusKind;
 pub use translation_changes::{

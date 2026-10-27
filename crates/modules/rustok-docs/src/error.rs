@@ -37,9 +37,7 @@ pub enum DocsError {
     #[error("Validation error: {0}")]
     Validation(String),
 
-    #[error(
-        "Cycle detected: page '{page_id}' is already an ancestor of target parent '{parent_id}'"
-    )]
+    #[error("Cycle detected: page '{page_id}' is already an ancestor of target parent '{parent_id}'")]
     CycleDetected { page_id: Uuid, parent_id: Uuid },
 
     #[error("Storage error: {0}")]
@@ -70,14 +68,10 @@ impl From<serde_json::Error> for DocsError {
 impl From<DocsError> for rustok_web::HttpError {
     fn from(err: DocsError) -> Self {
         match err {
-            DocsError::Validation(msg) => {
-                rustok_web::HttpError::bad_request("validation_error", msg)
-            }
+            DocsError::Validation(msg) => rustok_web::HttpError::bad_request("validation_error", msg),
             DocsError::CycleDetected { page_id, parent_id } => rustok_web::HttpError::bad_request(
                 "cycle_detected",
-                format!(
-                    "Cycle detected: page '{page_id}' is already an ancestor of target parent '{parent_id}'"
-                ),
+                format!("Cycle detected: page '{page_id}' is already an ancestor of target parent '{parent_id}'"),
             ),
             DocsError::PageNotFound(id) => {
                 rustok_web::HttpError::not_found("page_not_found", format!("Page '{id}' not found"))

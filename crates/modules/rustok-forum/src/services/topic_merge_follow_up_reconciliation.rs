@@ -20,18 +20,15 @@ use crate::services::{
 };
 
 /// Actor-facing audit reason for merge-driven subscription reconciliation.
-const FOLLOW_UP_REASON_SUBSCRIPTIONS: &str =
-    "Merged: subscription coverage follows the retained target topic";
+const FOLLOW_UP_REASON_SUBSCRIPTIONS: &str = "Merged: subscription coverage follows the retained target topic";
 /// Actor-facing audit reason for merge-driven read state reconciliation.
-const FOLLOW_UP_REASON_READ_STATES: &str =
-    "Merged: read progress follows the retained target topic";
+const FOLLOW_UP_REASON_READ_STATES: &str = "Merged: read progress follows the retained target topic";
 /// Actor-facing audit reason for merge-driven vote reconciliation.
 const FOLLOW_UP_REASON_VOTES: &str = "Merged: vote totals follow the retained target topic";
 /// Actor-facing audit reason for merge-driven tag reconciliation.
 const FOLLOW_UP_REASON_TAGS: &str = "Merged: tag coverage follows the retained target topic";
 /// Actor-facing audit reason for merge-driven audience reconciliation.
-const FOLLOW_UP_REASON_AUDIENCE: &str =
-    "Merged: audience membership follows the retained target topic";
+const FOLLOW_UP_REASON_AUDIENCE: &str = "Merged: audience membership follows the retained target topic";
 
 /// Deterministic key domain tag for derived subscription reconciliation operations.
 const FOLLOW_UP_DOMAIN_SUBSCRIPTIONS: &str = "subscriptions";

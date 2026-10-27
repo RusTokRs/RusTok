@@ -512,13 +512,9 @@ mod tests {
             description: None,
             active: true,
         };
-        assert_eq!(
-            profile_choice_label(Some("en"), &profile),
-            "Standard (standard)"
-        );
+        assert_eq!(profile_choice_label(Some("en"), &profile), "Standard (standard)");
 
-        let option =
-            sample_shipping_option("Standard Post", "manual", true, "2026-03-10T12:00:00Z");
+        let option = sample_shipping_option("Standard Post", "manual", true, "2026-03-10T12:00:00Z");
         let summary = summarize_shipping_option(Some("en"), &option);
         assert!(summary.contains("Standard Post"));
         assert!(summary.contains("manual"));

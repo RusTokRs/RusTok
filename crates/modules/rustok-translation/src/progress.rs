@@ -334,10 +334,7 @@ impl TranslationProgressService {
         {
             use sea_orm::{ConnectionTrait as _, DbBackend};
             if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-                if let Err(error) = transaction
-                    .execute_unprepared("PRAGMA busy_timeout = 5000")
-                    .await
-                {
+                if let Err(error) = transaction.execute_unprepared("PRAGMA busy_timeout = 5000").await {
                     tracing::debug!(error = %error, "translation progress busy_timeout PRAGMA best-effort failed");
                 }
             }

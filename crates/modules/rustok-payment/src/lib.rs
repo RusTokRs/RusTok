@@ -99,6 +99,11 @@ pub use providers::{
     PaymentProviderOperationResult, PaymentProviderRegistry, PaymentProviderRuntimeMode,
     PaymentProviderWebhookRequest, PaymentProviderWebhookResult,
 };
+#[cfg(feature = "stripe")]
+pub use stripe_provider::{
+    STRIPE_PAYMENT_PROVIDER_ID, StaticStripeCredentialProvider, StripeCredentialProvider,
+    StripeCredentials, StripePaymentProvider, StripePaymentProviderConfig,
+};
 pub use services::{
     BeginProviderOperation, ChargebackLifecycleEventApplier, CheckoutAdmissionDecision,
     CheckoutAdmissionLinkState, CheckoutAdmissionRefusal, CheckoutExecutionAdmissionPort,
@@ -119,9 +124,4 @@ pub use services::{
     ProviderExecutionEffect, ReceiveProviderEvent, RefundLifecycleEventApplier,
     VerifiedProviderEvent, decide_checkout_admission_claim, execution_admission_refusal_error,
     refusal_metric_operation_label,
-};
-#[cfg(feature = "stripe")]
-pub use stripe_provider::{
-    STRIPE_PAYMENT_PROVIDER_ID, StaticStripeCredentialProvider, StripeCredentialProvider,
-    StripeCredentials, StripePaymentProvider, StripePaymentProviderConfig,
 };

@@ -6,7 +6,6 @@ license.workspace = true
 description = "SEO runtime, metadata, redirects, sitemaps, and robots module"
 repository.workspace = true
 readme = "README.md"
-rust-version.workspace = true
 
 [package.metadata.docs.rs]
 all-features = true

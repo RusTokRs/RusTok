@@ -249,9 +249,10 @@ async fn disabled_binding_error_is_redacted() {
         correlation_id: "test-correlation-id".to_string(),
     };
 
-    let error = ensure_public_blog_channel_enabled(&db, tenant_id, Some(&request_context), false)
-        .await
-        .expect_err("disabled binding should be reported");
+    let error =
+        ensure_public_blog_channel_enabled(&db, tenant_id, Some(&request_context), false)
+            .await
+            .expect_err("disabled binding should be reported");
 
     assert_eq!(
         error.message,

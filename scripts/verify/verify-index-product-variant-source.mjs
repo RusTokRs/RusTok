@@ -24,7 +24,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const modulePath = 'crates/utils/rustok-distribution/src/product_index/mod.rs';
+const modulePath = 'crates/modules/rustok-distribution/src/product_index/mod.rs';
 const moduleSource = requireMarkers(modulePath, [
   'mod product;',
   '#[path = "../product_variant_index.rs"]',
@@ -34,7 +34,7 @@ const moduleSource = requireMarkers(modulePath, [
 ]);
 forbidMarkers(modulePath, moduleSource, ['mod graph;', 'graph::', 'four_schemas']);
 
-const sourcePath = 'crates/utils/rustok-distribution/src/product_variant_index.rs';
+const sourcePath = 'crates/modules/rustok-distribution/src/product_variant_index.rs';
 const source = requireMarkers(sourcePath, [
   'PRODUCT_VARIANT_INDEX_SOURCE: &str = "product-variant-postgres-primary"',
   'PRODUCT_VARIANT_EVENT_DOMAIN: &str = "rustok-product.product-variant-replay"',

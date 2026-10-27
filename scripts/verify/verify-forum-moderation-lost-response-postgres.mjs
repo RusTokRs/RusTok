@@ -1,7 +1,7 @@
 import fs from "node:fs";
 
 const test = fs.readFileSync(
-  "crates/utils/rustok-distribution/tests/forum_moderation_lost_response_postgres.rs",
+  "crates/modules/rustok-distribution/tests/forum_moderation_lost_response_postgres.rs",
   "utf8",
 );
 const docs = fs.readFileSync(
@@ -9,7 +9,7 @@ const docs = fs.readFileSync(
   "utf8",
 );
 const distributionCargo = fs.readFileSync(
-  "crates/utils/rustok-distribution/Cargo.toml",
+  "crates/modules/rustok-distribution/Cargo.toml",
   "utf8",
 );
 

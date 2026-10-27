@@ -75,7 +75,7 @@ if (socialGraph.includes('PostgresIndexQueryPort::new')) {
   fail('Social Graph module composition must not construct the query port');
 }
 
-const distributionPath = 'crates/utils/rustok-distribution/src/lib.rs';
+const distributionPath = 'crates/modules/rustok-distribution/src/lib.rs';
 const distribution = requireMarkers(distributionPath, [
   'materialize_index_schema_sources(&mut extensions)?;',
   'fn materialize_index_schema_sources(',

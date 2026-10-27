@@ -37,7 +37,7 @@ RusToK expands beyond high-integrity Commerce, ERP, and Accounting into an **All
 
 | Sovereign Module | Crate Path | Core Responsibility | Persistence & Technology Stack | Non-Duplication Boundary |
 | :--- | :--- | :--- | :--- | :--- |
-| **`messenger`** | `crates/modules/rustok-messenger` | High-availability team chats, DMs, threads, channel hierarchies, read receipts, typing indicators, reactions. | **Streaming:** [`rustok-iggy`](../../crates/libs/rustok-iggy) partitions.<br>**Hot Cache:** Redis/Dragonfly.<br>**Cold Storage:** Partitioned PostgreSQL (`messenger_messages`, `messenger_conversations`). | Focuses purely on message transmission, cursors, and delivery. Does not own business entities; conversations link to external entities via `entity_type` + `entity_id`. |
+| **`messenger`** | `crates/modules/rustok-messenger` | High-availability team chats, DMs, threads, channel hierarchies, read receipts, typing indicators, reactions. | **Streaming:** [`rustok-iggy`](../../crates/modules/rustok-iggy) partitions.<br>**Hot Cache:** Redis/Dragonfly.<br>**Cold Storage:** Partitioned PostgreSQL (`messenger_messages`, `messenger_conversations`). | Focuses purely on message transmission, cursors, and delivery. Does not own business entities; conversations link to external entities via `entity_type` + `entity_id`. |
 | **`docs`** | `crates/modules/rustok-docs` | Block-based collaborative documents, workspaces, page trees, templates, Notion-like databases. | **CRDT:** Loro (Rust) delta logs + periodic page snapshots in PostgreSQL (`docs_pages`, `docs_blocks`, `docs_snapshots`). | Replaces static wiki tools. Cooperates with [`flex`](../../crates/modules/flex) for typed database properties and [`rustok-grid`](../../crates/ui/rustok-grid) for view rendering. |
 | **`calls`** | `crates/modules/rustok-calls` | Audio/video rooms, participant tokens, screen sharing orchestration, recording egress hooks, meeting transcript ingestion. | **SFU:** LiveKit Server.<br>**State:** PostgreSQL (`calls_rooms`, `calls_sessions`, `calls_recordings`, `calls_transcripts`). | Media streaming is delegated to LiveKit SFU; `rustok-calls` manages room lifecycle, access tokens, RBAC authorization, and transcript persistence. |
 | **`calendar`** | `crates/modules/rustok-calendar` | Personal & resource calendars, scheduling slots, meeting invitations, CalDAV / external calendar bi-directional synchronization. | **State:** PostgreSQL (`calendar_events`, `calendar_attendees`, `calendar_booking_slots`).<br>**Sync:** RFC 5545 iCalendar parsers. | Owns time allocations and booking links. Automatically creates calls via `rustok-calls` and notifies participants via `rustok-messenger`. |
@@ -74,7 +74,7 @@ To guarantee zero database lock contention and scale horizontally across cluster
 ### 3.1 Invariants of the Messenger Core
 1. **Append-Only Immutability:** Messages are never updated in-place. Edits and deletions append delta events (`MessageEdited`, `MessageDeleted`) referencing the original 64-bit `message_id`.
 2. **Monotonic Sequence Cursor (Snowflake ID):** Every message assigned a monotonically increasing 64-bit sequence identifier. Offline clients synchronize by requesting `GET /conversations/{id}/messages?since_seq={last_seen_seq}`, ensuring gap-free, deduplicated reconciliation.
-3. **Decoupled Delivery Pipeline:** Incoming messages are immediately published to [`rustok-iggy`](../../crates/libs/rustok-iggy) and acknowledged to the client within < 5 ms. Persistence workers batch-insert records into PostgreSQL asynchronously, preventing database bottlenecks during traffic surges.
+3. **Decoupled Delivery Pipeline:** Incoming messages are immediately published to [`rustok-iggy`](../../crates/modules/rustok-iggy) and acknowledged to the client within < 5 ms. Persistence workers batch-insert records into PostgreSQL asynchronously, preventing database bottlenecks during traffic surges.
 4. **End-to-End Encryption (E2EE):** Direct 1-on-1 and sensitive executive channels support double-ratchet E2EE; the server persists and relays encrypted binary blobs without inspecting payloads.
 
 ### 3.2 Matrix Cryptographic Stack Evaluation & Library Selection
@@ -119,7 +119,7 @@ The RusToK messaging backend acts strictly as an untrusted, zero-knowledge blind
 For boardroom negotiations and closed B2B executive groups (3–100 participants):
 1. **Outbound Megolm Session:** The sender's client initializes an outbound Megolm ratchet session using `vodozemac::megolm::GroupSession`.
 2. **Pairwise Key Distribution:** The sender securely exports the room session key (`vodozemac::megolm::ExportedSessionKey`) and transmits it to every authorized room participant individually via their pairwise 1-on-1 Olm sessions.
-3. **Single-Payload Group Broadcast:** Every subsequent message in the executive room is encrypted once with the Megolm session key and broadcasted over [`rustok-iggy`](../../crates/libs/rustok-iggy) partitions to all room members simultaneously.
+3. **Single-Payload Group Broadcast:** Every subsequent message in the executive room is encrypted once with the Megolm session key and broadcasted over [`rustok-iggy`](../../crates/modules/rustok-iggy) partitions to all room members simultaneously.
 4. **Immediate Ratchet Revocation on Member Departure (Forward Secrecy):** When a participant is removed or leaves the executive room:
    - The room owner client **immediately discards the current Megolm Outbound Session**;
    - A fresh session is generated and distributed exclusively to the remaining active participants;
@@ -162,7 +162,7 @@ While `rustok-messenger` relies on high-speed native streaming for internal oper
                          • Snowflake sequence cursor ledgers
 ```
 
-1. **Decoupled Architecture:** The highload internal messenger core remains 100% free of Matrix protocol overhead. The `rustok-matrix-gateway` exists as a separate sovereign module that consumes and publishes to [`rustok-iggy`](../../crates/libs/rustok-iggy).
+1. **Decoupled Architecture:** The highload internal messenger core remains 100% free of Matrix protocol overhead. The `rustok-matrix-gateway` exists as a separate sovereign module that consumes and publishes to [`rustok-iggy`](../../crates/modules/rustok-iggy).
 2. **Third-Party Matrix Clients:** Employees can optionally use open-source Matrix clients (Element X, Cinny, FluffyChat) to connect to RusToK workspaces via endpoints powered by `ruma-client-api`.
 3. **B2B Inter-Company Federation:** Organizations running RusToK can securely communicate with partner enterprises running self-hosted Synapse or Conduit servers via standard Matrix Server-Server federation (`ruma-federation-api`).
 4. **Unified Bridges (Mautrix Ecosystem):** Enables seamless integration of popular Mautrix bridges (Telegram, WhatsApp, Slack, MS Teams, Discord), routing inbound external messages directly into RusToK team channels.
@@ -278,16 +278,6 @@ A database in `rustok-docs` is an aggregate of structured pages conforming to a 
    - **Calendar View:** Events arranged by date attributes.
    - **Gallery View:** Visual cards highlighting image covers and key attributes.
    - **List View:** Minimalist linear summary.
-
-### 4.2.1 Collaborative Spreadsheets & Live Formulas (`Loro CRDT` + `IronCalc`)
-While Notion-like databases (`flex`) handle structured metadata, computational commercial workflows (quotations, margin models, inventory balancing, cost rollups) require true spreadsheet capabilities governed by [ADR 2026-10-26-collaborative-spreadsheet-engine-loro-ironcalc](../../DECISIONS/2026-10-26-collaborative-spreadsheet-engine-loro-ironcalc.md):
-1. **Loro CRDT Container Storage:** Every spreadsheet workbook models sheets, rows, and cells inside Loro CRDT maps and lists, preserving cell coordinates and formatting (`currency`, `accounting`, `percent`) across concurrent multi-user edits without merge conflicts.
-2. **IronCalc High-Performance Formula DAG:** Formula evaluation (`=SUM(...)`, `=VLOOKUP(...)`, structured references `Table[Column]`, financial and math functions) is driven by the pure Rust **IronCalc** engine compiled natively for server jobs and into WebAssembly for zero-latency client calculation.
-3. **Live UER Formulas (RusToK Killer Feature):** Spreadsheet formulas natively query live transactional business data:
-   - `=RUSTOK_PRICE("sku-402", "RUB")` — fetches authoritative catalog price from `rustok-pricing`.
-   - `=RUSTOK_STOCK("wh-moscow", "sku-402")` — fetches real-time available inventory from `rustok-inventory`.
-   Changes to inventory or prices emit outbox events that trigger reactive recalculation across dependent spreadsheet cells.
-4. **AI-Agent Sandbox:** Agents calculate formulas and propose sheet modifications on isolated, disposable Loro forks (`prepareSpreadsheetEdit`), merging verified atomic deltas under an explicit AI peer ID.
 
 ### 4.3 Universal Entity Reference Protocol (UER / `EntityRef`)
 To enable Notion-like live embedding of any platform entity across all 50+ RusToK modules, `rustok-docs` establishes a unified, strongly-typed reference protocol:
@@ -463,7 +453,7 @@ gantt
 
 - **Core Business Architecture:** [CRM, ERP, and Accounting Matrix and Plan](./crm-erp-accounting-matrix-and-plan.md)
 - **ADR Governance:** [ADR: Atomic CRM, ERP, and Accounting Domain Architecture](../../DECISIONS/2026-10-12-atomic-crm-erp-accounting-architecture.md)
-- **Streaming Infrastructure:** [`crates/libs/rustok-iggy`](../../crates/libs/rustok-iggy)
+- **Streaming Infrastructure:** [`crates/modules/rustok-iggy`](../../crates/modules/rustok-iggy)
 - **Dynamic Field Engine:** [`crates/modules/flex`](../../crates/modules/flex)
 - **UI Grid & Views:** [`crates/ui/rustok-grid`](../../crates/ui/rustok-grid)
 - **Mobile SuperApp:** [`rustok_mobile`](../../rustok_mobile)

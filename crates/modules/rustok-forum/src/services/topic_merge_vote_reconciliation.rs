@@ -118,10 +118,11 @@ impl ForumTopicMergeVoteReconciliationService {
     ) -> ForumResult<Option<forum_topic_merge_vote_reconciliation::Model>> {
         lock_reconciliation_tenant_in_tx(txn, tenant_id).await?;
 
-        if let Some(existing) =
-            forum_topic_merge_vote_reconciliation::Entity::find_by_id((tenant_id, operation_id))
-                .one(txn)
-                .await?
+        if let Some(existing) = forum_topic_merge_vote_reconciliation::Entity::find_by_id((
+            tenant_id, operation_id,
+        ))
+        .one(txn)
+        .await?
         {
             if existing.merge_operation_id != merge_operation_id
                 || existing.actor_id != actor_id

@@ -45,7 +45,10 @@ impl CallsAdminTableRow {
 }
 
 /// Pure in-memory search filter for WebRTC Calls & Conferencing admin records.
-pub fn filter_rows(rows: &[CallsAdminTableRow], query: Option<&str>) -> Vec<CallsAdminTableRow> {
+pub fn filter_rows(
+    rows: &[CallsAdminTableRow],
+    query: Option<&str>,
+) -> Vec<CallsAdminTableRow> {
     match query {
         Some(q) if !q.trim().is_empty() => {
             let normalized = q.trim().to_lowercase();

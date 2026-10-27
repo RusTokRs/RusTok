@@ -45,7 +45,10 @@ impl PartyAdminTableRow {
 }
 
 /// Pure in-memory search filter for Counterparty & Legal Entities admin records.
-pub fn filter_rows(rows: &[PartyAdminTableRow], query: Option<&str>) -> Vec<PartyAdminTableRow> {
+pub fn filter_rows(
+    rows: &[PartyAdminTableRow],
+    query: Option<&str>,
+) -> Vec<PartyAdminTableRow> {
     match query {
         Some(q) if !q.trim().is_empty() => {
             let normalized = q.trim().to_lowercase();

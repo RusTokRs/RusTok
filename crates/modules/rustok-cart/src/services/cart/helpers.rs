@@ -96,7 +96,11 @@ pub fn normalize_locale_code(value: &str) -> CartResult<String> {
     let normalized = normalize_locale_tag(value)
         .map(|tag| tag.to_ascii_lowercase())
         .filter(|tag| (2..=10).contains(&tag.len()));
-    normalized.ok_or_else(|| CartError::Validation(format!("locale_code `{value}` is invalid")))
+    normalized.ok_or_else(|| {
+        CartError::Validation(format!(
+            "locale_code `{value}` is invalid"
+        ))
+    })
 }
 
 pub fn normalize_shipping_profile_slug(value: Option<&str>) -> String {
@@ -739,14 +743,10 @@ where
     C: ConnectionTrait,
 {
     if tenant_id.is_nil() {
-        return Err(CartError::Validation(
-            "tenant_id must not be a nil UUID".to_string(),
-        ));
+        return Err(CartError::Validation("tenant_id must not be a nil UUID".to_string()));
     }
     if cart_id.is_nil() {
-        return Err(CartError::Validation(
-            "cart_id must not be a nil UUID".to_string(),
-        ));
+        return Err(CartError::Validation("cart_id must not be a nil UUID".to_string()));
     }
     let cart = entities::cart::Entity::find_by_id(cart_id)
         .filter(entities::cart::Column::TenantId.eq(tenant_id))
@@ -765,14 +765,10 @@ where
     C: ConnectionTrait,
 {
     if tenant_id.is_nil() {
-        return Err(CartError::Validation(
-            "tenant_id must not be a nil UUID".to_string(),
-        ));
+        return Err(CartError::Validation("tenant_id must not be a nil UUID".to_string()));
     }
     if cart_id.is_nil() {
-        return Err(CartError::Validation(
-            "cart_id must not be a nil UUID".to_string(),
-        ));
+        return Err(CartError::Validation("cart_id must not be a nil UUID".to_string()));
     }
     let query = entities::cart::Entity::find_by_id(cart_id)
         .filter(entities::cart::Column::TenantId.eq(tenant_id));
@@ -1076,7 +1072,10 @@ where
         priced_lines.push((item, net_item_price));
     }
     priced_lines.sort_by_key(|(item, _)| item.id);
-    let line_nets = priced_lines.iter().map(|(_, net)| *net).collect::<Vec<_>>();
+    let line_nets = priced_lines
+        .iter()
+        .map(|(_, net)| *net)
+        .collect::<Vec<_>>();
     let line_discount_shares =
         allocate_discount_over_nets(&line_nets, cart_level_discount, &cart.currency_code)?;
     for ((item, net_item_price), discount_share) in priced_lines.iter().zip(line_discount_shares) {
@@ -1764,8 +1763,8 @@ mod tests {
             .expect("allocation must succeed");
         assert_eq!(none, vec![Decimal::ZERO, Decimal::ZERO]);
 
-        let empty =
-            allocate_discount_over_nets(&[], Decimal::ONE, "USD").expect("allocation must succeed");
+        let empty = allocate_discount_over_nets(&[], Decimal::ONE, "USD")
+            .expect("allocation must succeed");
         assert!(empty.is_empty());
     }
 }

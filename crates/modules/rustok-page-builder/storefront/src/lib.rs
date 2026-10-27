@@ -30,6 +30,7 @@ mod inline_edit;
 pub use inline_edit::{
     AuthenticatedInlineEditSession, InlineEditApplyResult, InlineEditAuthorizationPort,
     InlineEditError, InlineEditGrant, InlineEditRequest,
+    PageBuilderAuthenticatedInlineStorefront,
 };
 
 use fly::{
@@ -387,9 +388,7 @@ fn normalize_landing_root_selectors(css: &str) -> String {
                 prelude.push_str(":scope");
                 i += 4;
                 continue;
-            } else if chars[i..].starts_with(&[':', 'r', 'o', 'o', 't'])
-                && is_root_boundary(&chars, i, 5)
-            {
+            } else if chars[i..].starts_with(&[':', 'r', 'o', 'o', 't']) && is_root_boundary(&chars, i, 5) {
                 result.push_str(":scope");
                 prelude.push_str(":scope");
                 i += 5;
@@ -433,12 +432,7 @@ fn is_root_boundary(chars: &[char], start: usize, len: usize) -> bool {
 fn is_identifier_boundary(chars: &[char], start: usize, len: usize) -> bool {
     let prev_is_ident = if start > 0 {
         let prev = chars[start - 1];
-        prev.is_alphanumeric()
-            || prev == '-'
-            || prev == '_'
-            || prev == '.'
-            || prev == '#'
-            || prev == ':'
+        prev.is_alphanumeric() || prev == '-' || prev == '_' || prev == '.' || prev == '#' || prev == ':'
     } else {
         false
     };
@@ -572,15 +566,9 @@ body {
 
         assert!(scoped.contains("/* Привет, мир! Комментарий на кириллице */"));
         assert!(scoped.contains(":scope {\n  --primary-color: #007bff;\n}"));
-        assert!(scoped.contains(
-            ":scope {\n  font-family: 'Roboto', sans-serif;\n  --custom-ident: body;\n}"
-        ));
-        assert!(
-            scoped.contains("@media (max-width: 768px) {\n  :scope {\n    padding: 10px;\n  }\n}")
-        );
-        assert!(scoped.contains(
-            "@media (min-width: 1200px) {\n    :scope, :scope {\n      display: flex;\n    }\n  }"
-        ));
+        assert!(scoped.contains(":scope {\n  font-family: 'Roboto', sans-serif;\n  --custom-ident: body;\n}"));
+        assert!(scoped.contains("@media (max-width: 768px) {\n  :scope {\n    padding: 10px;\n  }\n}"));
+        assert!(scoped.contains("@media (min-width: 1200px) {\n    :scope, :scope {\n      display: flex;\n    }\n  }"));
     }
 
     #[test]

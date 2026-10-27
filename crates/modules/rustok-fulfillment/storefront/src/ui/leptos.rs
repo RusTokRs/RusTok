@@ -154,8 +154,7 @@ fn ShippingOptionButton(
     busy: ReadSignal<bool>,
     on_select_shipping_option: Callback<SelectShippingOptionRequest>,
 ) -> impl IntoView {
-    let is_selected =
-        is_shipping_option_selected(selected_shipping_option_id.as_deref(), &option.id);
+    let is_selected = is_shipping_option_selected(selected_shipping_option_id.as_deref(), &option.id);
     let option_for_click = option.clone();
     let group_for_click = group.clone();
     let on_click = move |_| {

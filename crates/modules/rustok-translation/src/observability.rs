@@ -752,10 +752,7 @@ fn checkpoint_age(timestamp: DateTime<FixedOffset>) -> Option<Duration> {
     } else {
         age.to_std().unwrap_or(Duration::from_secs(0))
     };
-    Some(std::cmp::min(
-        std_age,
-        Duration::from_secs(MAX_CHECKPOINT_AGE_SECS),
-    ))
+    Some(std::cmp::min(std_age, Duration::from_secs(MAX_CHECKPOINT_AGE_SECS)))
 }
 
 fn error_category(error: &TranslationError) -> &'static str {
@@ -807,8 +804,7 @@ fn error_category(error: &TranslationError) -> &'static str {
 
 fn workflow_job_transition(transition: &'static str) -> &'static str {
     match transition {
-        "created" | "cancelled" | "completed" | "retry" | "proposal_approved"
-        | "proposal_applied" => transition,
+        "created" | "cancelled" | "completed" | "retry" | "proposal_approved" | "proposal_applied" => transition,
         _ => "other",
     }
 }

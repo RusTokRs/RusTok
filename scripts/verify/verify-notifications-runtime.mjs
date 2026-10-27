@@ -47,8 +47,8 @@ function collectRustFiles(relativeRoot) {
 }
 
 const modulesPath = "modules.toml";
-const distributionCargoPath = "crates/utils/rustok-distribution/Cargo.toml";
-const distributionLibPath = "crates/utils/rustok-distribution/src/lib.rs";
+const distributionCargoPath = "crates/modules/rustok-distribution/Cargo.toml";
+const distributionLibPath = "crates/modules/rustok-distribution/src/lib.rs";
 const serverCargoPath = "apps/server/Cargo.toml";
 const serverRuntimePath = "apps/server/src/services/module_event_dispatcher.rs";
 const adminCargoPath = "apps/admin/Cargo.toml";

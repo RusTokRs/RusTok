@@ -111,8 +111,7 @@ impl PageSearchProjectionSource {
         let mut artifacts_by_page_locale: HashMap<(Uuid, String), String> = HashMap::new();
         for artifact in artifacts {
             if !artifact.body_html.trim().is_empty() {
-                artifacts_by_page_locale
-                    .insert((artifact.page_id, artifact.locale), artifact.body_html);
+                artifacts_by_page_locale.insert((artifact.page_id, artifact.locale), artifact.body_html);
             }
         }
 
@@ -144,9 +143,7 @@ impl PageSearchProjectionSource {
 
             for translation in page_translations {
                 let locale = &translation.locale;
-                let artifact_html = artifacts_by_page_locale
-                    .get(&(page.id, locale.clone()))
-                    .map(String::as_str);
+                let artifact_html = artifacts_by_page_locale.get(&(page.id, locale.clone())).map(String::as_str);
                 let body_content = bodies_by_page_locale
                     .get(&(page.id, locale.clone()))
                     .map(|(fmt, cnt)| (fmt.as_str(), cnt.as_str()));
@@ -399,8 +396,7 @@ mod tests {
 
     #[test]
     fn strip_html_tags_removes_markup_and_normalizes_whitespace() {
-        let input =
-            "<p>Hello, &quot;world&quot;!</p><div>\n\n<span>Welcome &amp; enjoy.</span></div>";
+        let input = "<p>Hello, &quot;world&quot;!</p><div>\n\n<span>Welcome &amp; enjoy.</span></div>";
         assert_eq!(strip_html_tags(input), "Hello, \"world\"! Welcome & enjoy.");
     }
 

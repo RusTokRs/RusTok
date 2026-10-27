@@ -19,7 +19,10 @@ interface IggyConnectorFormProps {
   tenantSlug: string | null;
 }
 
-import { formatSaveOutcome, parseAddresses } from './iggy-connector-model';
+import {
+  formatSaveOutcome,
+  parseAddresses
+} from './iggy-connector-model';
 
 export function IggyConnectorForm({
   configuration,

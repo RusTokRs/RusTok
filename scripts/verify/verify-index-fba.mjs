@@ -148,7 +148,7 @@ for (const marker of [
   'index-storage-mutation-benchmark',
   'index-storage-maintenance-benchmark',
   // SHA-pinned upload-artifact (v7); verify:workflow-action-pins forbids mutable tags.
-  'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9',
+  'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
   'retention-days: 90',
 ]) {
   if (!smokeWorkflow.includes(marker)) fail(`smoke evidence workflow missing ${marker}`);

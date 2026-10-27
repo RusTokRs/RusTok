@@ -49,8 +49,8 @@ pub mod services;
 mod contract_tests;
 
 pub use dto::{
-    CreateProductRelationInput, MAX_RELATION_TYPE_LEN, ProductRelationDto, RelationType,
-    ReorderProductRelationsInput, UpdateProductRelationInput,
+    CreateProductRelationInput, ProductRelationDto, RelationType, ReorderProductRelationsInput,
+    UpdateProductRelationInput, MAX_RELATION_TYPE_LEN,
 };
 pub use error::{ProductRelationError, ProductRelationResult};
 pub use module::ProductRelationsModule;

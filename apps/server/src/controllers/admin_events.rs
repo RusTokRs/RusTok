@@ -91,12 +91,7 @@ pub async fn list_dlq(
         .order_by_desc(entity::Column::CreatedAt)
         .limit(limit);
 
-    if let Some(event_type) = query
-        .event_type
-        .as_deref()
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-    {
+    if let Some(event_type) = query.event_type.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
         db_query = db_query.filter(entity::Column::EventType.eq(event_type));
     }
 

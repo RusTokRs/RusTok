@@ -40,7 +40,6 @@ csr = [
   "rustok-calls-admin/csr",
   "rustok-calendar-admin/csr",
   "rustok-tasks-admin/csr",
-  "rustok-security-admin/csr",
 ]
 hydrate = [
   "leptos/hydrate",
@@ -95,7 +94,6 @@ hydrate = [
   "rustok-calls-admin/hydrate",
   "rustok-calendar-admin/hydrate",
   "rustok-tasks-admin/hydrate",
-  "rustok-security-admin/hydrate",
 ]
 ssr = [
   "leptos/ssr",
@@ -165,7 +163,6 @@ ssr = [
   "rustok-calls-admin/ssr",
   "rustok-calendar-admin/ssr",
   "rustok-tasks-admin/ssr",
-  "rustok-security-admin/ssr",
 ]
 
 [dependencies]
@@ -216,7 +213,6 @@ rustok-tenant = { workspace = true, optional = true }
 rustok-web = { workspace = true, optional = true }
 rustok-workflow = { workspace = true, optional = true }
 rustok-blog-admin = { path = "../../crates/modules/rustok-blog/admin", default-features = false }
-rustok-security-admin = { path = "../../crates/modules/rustok-security/admin", default-features = false }
 rustok-tasks-admin = { path = "../../crates/modules/rustok-tasks/admin", default-features = false }
 rustok-calendar-admin = { path = "../../crates/modules/rustok-calendar/admin", default-features = false }
 rustok-calls-admin = { path = "../../crates/modules/rustok-calls/admin", default-features = false }
@@ -347,7 +343,6 @@ normal = [
   "rustok-calls-admin",
   "rustok-calendar-admin",
   "rustok-tasks-admin",
-  "rustok-security-admin",
 ]
 
 [package.metadata.cargo-machete]
@@ -389,5 +384,4 @@ ignored = [
   "rustok-calls-admin",
   "rustok-calendar-admin",
   "rustok-tasks-admin",
-  "rustok-security-admin",
 ]

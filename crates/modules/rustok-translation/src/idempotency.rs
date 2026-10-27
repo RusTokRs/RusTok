@@ -22,11 +22,6 @@ impl IdempotencyKey {
         Self::new(key)
     }
 
-    #[allow(dead_code)]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
     pub fn into_string(self) -> String {
         self.0
     }

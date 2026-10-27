@@ -31,7 +31,11 @@ pub struct MatrixEventBridge {
 
 impl MatrixEventBridge {
     /// Projects a native RusToK message into an RFC-compliant Matrix `m.room.message` event.
-    pub fn from_message(msg: &MessageOutput, matrix_room_id: &str, server_name: &str) -> Self {
+    pub fn from_message(
+        msg: &MessageOutput,
+        matrix_room_id: &str,
+        server_name: &str,
+    ) -> Self {
         let event_id = format!("${}:{server_name}", msg.id);
         let sender = format!("@{}:{server_name}", msg.sender_id);
         let origin_server_ts = msg.created_at.timestamp_millis();

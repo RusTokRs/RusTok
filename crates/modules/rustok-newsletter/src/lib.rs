@@ -52,6 +52,7 @@ pub use model::{
     NewsletterContentItem, SubscriberStatus,
 };
 
+
 #[cfg(feature = "server")]
 pub use graphql::NewsletterGraphqlRuntimeData;
 #[cfg(feature = "server")]

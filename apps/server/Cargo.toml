@@ -110,7 +110,6 @@ mod-alloy     = ["dep:alloy", "dep:rustok-translation-targets", "rustok-distribu
 mod-flex      = ["dep:rustok-translation-targets", "rustok-distribution/mod-flex"]
 mod-docs      = ["dep:rustok-docs", "mod-flex", "rustok-distribution/mod-docs"]
 mod-messenger = ["dep:rustok-messenger", "rustok-messenger/graphql", "rustok-distribution/mod-messenger"]
-mod-security = ["dep:rustok-security", "rustok-distribution/mod-security"]
 mod-tasks = ["dep:rustok-tasks", "rustok-distribution/mod-tasks"]
 mod-calendar = ["dep:rustok-calendar", "rustok-distribution/mod-calendar"]
 mod-calls = ["dep:rustok-calls", "rustok-distribution/mod-calls"]
@@ -187,7 +186,6 @@ rustok-notifications = { workspace = true, optional = true }
 rustok-pages     = { workspace = true, optional = true }
 rustok-docs      = { workspace = true, optional = true }
 rustok-messenger = { workspace = true, optional = true }
-rustok-security = { workspace = true, optional = true }
 rustok-tasks = { workspace = true, optional = true }
 rustok-calendar = { workspace = true, optional = true }
 rustok-calls = { workspace = true, optional = true }
@@ -282,6 +280,7 @@ rustok-migrations = { path = "../../crates/utils/rustok-migrations" }
 sea-orm-migration.workspace = true
 
 [dev-dependencies]
+jsonwebtoken.workspace = true
 serial_test = "4.0"
 rustok-test-utils.workspace = true
 rustok-translation-admin = { path = "../../crates/modules/rustok-translation/admin", default-features = false, features = ["ssr"] }
@@ -296,5 +295,5 @@ rustok-manifest = { workspace = true, default-features = false }
 
 [package.metadata.cargo-udeps.ignore]
 development = ["serial_test"]
-normal = ["rustok-rbac", "rustok-tenant", "rustok-docs", "rustok-party", "rustok-deal", "rustok-billing", "rustok-finance", "rustok-calls", "rustok-calendar", "rustok-tasks", "rustok-security"]
+normal = ["rustok-rbac", "rustok-tenant", "rustok-docs", "rustok-party", "rustok-deal", "rustok-billing", "rustok-finance", "rustok-calls", "rustok-calendar", "rustok-tasks"]
 

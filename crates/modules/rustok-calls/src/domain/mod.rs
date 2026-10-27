@@ -12,8 +12,8 @@
 //!
 //! In accordance with FBA, this module MUST NOT depend on database or transport frameworks.
 
-use crate::error::{CallsError, CallsResult};
 use serde::{Deserialize, Serialize};
+use crate::error::{CallsError, CallsResult};
 
 /// Domain lifecycle state for WebRTC Calls & Conferencing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]

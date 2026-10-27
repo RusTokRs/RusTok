@@ -1,9 +1,5 @@
 import type { GqlOpts } from '../api/pages';
-import {
-  builderUrlForPage,
-  listPages,
-  storefrontUrlForPage
-} from '../api/pages';
+import { builderUrlForPage, listPages, storefrontUrlForPage } from '../api/pages';
 import { PageActions } from '../components/page-actions';
 
 interface PagesPageProps {
@@ -49,7 +45,7 @@ export default async function PagesPage({
       <h1>Pages</h1>
       <PageActions opts={opts} locale={locale} />
       {loadError ? (
-        <p role='alert'>Pages could not be loaded: {loadError}</p>
+        <p role="alert">Pages could not be loaded: {loadError}</p>
       ) : items.length === 0 ? (
         <p>No pages yet. Create the first draft above.</p>
       ) : (
@@ -77,8 +73,8 @@ export default async function PagesPage({
                       page.status === 'published'
                         ? 'inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800'
                         : page.status === 'draft'
-                          ? 'inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800'
-                          : 'inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-800'
+                        ? 'inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800'
+                        : 'inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-800'
                     }
                   >
                     {page.status}
@@ -90,8 +86,8 @@ export default async function PagesPage({
                   {builderBaseUrl ? (
                     <a
                       href={builderUrlForPage(builderBaseUrl, page.id)}
-                      target='_blank'
-                      rel='noreferrer'
+                      target="_blank"
+                      rel="noreferrer"
                     >
                       Open in builder
                     </a>
@@ -109,23 +105,17 @@ export default async function PagesPage({
                         page.status,
                         previewSecret ?? undefined
                       )}
-                      target='_blank'
-                      rel='noreferrer'
+                      target="_blank"
+                      rel="noreferrer"
                     >
-                      {page.status === 'published'
-                        ? 'View live'
-                        : 'Preview draft'}
+                      {page.status === 'published' ? 'View live' : 'Preview draft'}
                     </a>
                   ) : (
                     '—'
                   )}
                 </td>
                 <td>
-                  <PageActions
-                    opts={opts}
-                    pageId={page.id}
-                    status={page.status}
-                  />
+                  <PageActions opts={opts} pageId={page.id} status={page.status} />
                 </td>
               </tr>
             ))}
@@ -133,8 +123,8 @@ export default async function PagesPage({
         </table>
       )}
       <p>
-        Publishing uses the builder&apos;s reviewed publish flow and is not
-        offered here on purpose.
+        Publishing uses the builder&apos;s reviewed publish flow and is not offered here on
+        purpose.
       </p>
     </section>
   );

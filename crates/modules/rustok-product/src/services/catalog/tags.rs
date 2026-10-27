@@ -1,8 +1,7 @@
 use super::{CatalogService, PRODUCT_SCOPE_VALUE, ProductTagState, helpers::normalize_tag_names};
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, EntityTrait, QueryFilter,
-    QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, Set,
 };
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;

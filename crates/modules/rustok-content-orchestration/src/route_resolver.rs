@@ -14,10 +14,10 @@ use rustok_content::{
     CanonicalRouteResolver, ContentError, ContentResult, ResolvedContentRoute,
     normalize_locale_code, normalize_route, resolve_by_locale,
 };
+use rustok_forum::{TopicStatus, forum_topic, forum_topic_translation};
 use rustok_forum::services::topic_routes::{
     FORUM_ROUTE_PREFIX, ForumTopicRouteOwner, forum_topic_route,
 };
-use rustok_forum::{TopicStatus, forum_topic, forum_topic_translation};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 

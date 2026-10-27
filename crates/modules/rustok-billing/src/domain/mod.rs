@@ -12,8 +12,8 @@
 //!
 //! In accordance with FBA, this module MUST NOT depend on database or transport frameworks.
 
-use crate::error::{BillingError, BillingResult};
 use serde::{Deserialize, Serialize};
+use crate::error::{BillingError, BillingResult};
 
 /// Domain lifecycle state for B2B Billing & Settlements.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]

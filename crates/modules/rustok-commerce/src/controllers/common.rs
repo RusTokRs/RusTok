@@ -6,15 +6,9 @@ use utoipa::{IntoParams, ToSchema};
 
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
 pub struct PaginationParams {
-    #[serde(
-        default = "default_page",
-        deserialize_with = "deserialize_number_or_string"
-    )]
+    #[serde(default = "default_page", deserialize_with = "deserialize_number_or_string")]
     pub page: u64,
-    #[serde(
-        default = "default_per_page",
-        deserialize_with = "deserialize_number_or_string"
-    )]
+    #[serde(default = "default_per_page", deserialize_with = "deserialize_number_or_string")]
     pub per_page: u64,
 }
 

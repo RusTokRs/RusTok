@@ -13,9 +13,6 @@ use chrono::Utc;
 use rustok_api::{HostRuntimeContext, PortActor, PortContext, PortError};
 use rustok_core::{ModuleRuntimeExtensions, RusToKModule};
 use rustok_moderation::{
-    ApplyModerationDecisionCommand, ModerationDecisionApplication, ModerationSubjectCommandPort,
-};
-use rustok_moderation::{
     AssignModerationCaseCommand, DecideModerationCaseCommand, ModerationApplicationOperationStatus,
     ModerationCasePriority, ModerationCaseRecord, ModerationCaseStatus, ModerationDecisionEffect,
     ModerationDecisionEffectAction, ModerationDecisionKind, ModerationDecisionRecord,
@@ -23,6 +20,9 @@ use rustok_moderation::{
     ModerationService, ModerationSubjectAdapterKey, ModerationSubjectAdapterRegistry,
     ModerationSubjectKind, ModerationSubjectRef, OpenModerationCaseCommand,
     SubmitModerationReportCommand,
+};
+use rustok_moderation::{
+    ApplyModerationDecisionCommand, ModerationDecisionApplication, ModerationSubjectCommandPort,
 };
 use rustok_runtime::{ModuleWorkRegistrations, ModuleWorkScheduler};
 use sea_orm::{

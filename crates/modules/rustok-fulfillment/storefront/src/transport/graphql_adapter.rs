@@ -138,29 +138,19 @@ mod tests {
     #[test]
     fn parse_required_uuid_validates_and_rejects_nil() {
         let valid = Uuid::new_v4();
-        assert_eq!(
-            parse_required_uuid(&valid.to_string(), "cart_id").unwrap(),
-            valid
-        );
+        assert_eq!(parse_required_uuid(&valid.to_string(), "cart_id").unwrap(), valid);
 
         let err_invalid = parse_required_uuid("not-a-uuid", "cart_id").unwrap_err();
-        assert!(
-            matches!(err_invalid, ShippingSelectionTransportError::Validation(msg) if msg.contains("must be a valid UUID"))
-        );
+        assert!(matches!(err_invalid, ShippingSelectionTransportError::Validation(msg) if msg.contains("must be a valid UUID")));
 
         let err_nil = parse_required_uuid(&Uuid::nil().to_string(), "cart_id").unwrap_err();
-        assert!(
-            matches!(err_nil, ShippingSelectionTransportError::Validation(msg) if msg.contains("must not be a nil UUID"))
-        );
+        assert!(matches!(err_nil, ShippingSelectionTransportError::Validation(msg) if msg.contains("must not be a nil UUID")));
     }
 
     #[test]
     fn parse_optional_uuid_handles_none_empty_and_valid() {
         assert_eq!(parse_optional_uuid(None, "option_id").unwrap(), None);
-        assert_eq!(
-            parse_optional_uuid(Some("   ".into()), "option_id").unwrap(),
-            None
-        );
+        assert_eq!(parse_optional_uuid(Some("   ".into()), "option_id").unwrap(), None);
 
         let valid = Uuid::new_v4();
         assert_eq!(
@@ -169,8 +159,6 @@ mod tests {
         );
 
         let err_nil = parse_optional_uuid(Some(Uuid::nil().to_string()), "option_id").unwrap_err();
-        assert!(
-            matches!(err_nil, ShippingSelectionTransportError::Validation(msg) if msg.contains("must not be a nil UUID"))
-        );
+        assert!(matches!(err_nil, ShippingSelectionTransportError::Validation(msg) if msg.contains("must not be a nil UUID")));
     }
 }

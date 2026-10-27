@@ -126,3 +126,4 @@ mod tests {
         assert_eq!(stop.data, data);
     }
 }
+

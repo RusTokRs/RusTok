@@ -63,3 +63,4 @@ fn telemetry_config() -> TelemetryConfig {
         otel,
     }
 }
+

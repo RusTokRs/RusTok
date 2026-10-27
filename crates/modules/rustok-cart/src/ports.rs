@@ -452,9 +452,13 @@ impl CartStorefrontPort for crate::CartService {
             cart_id = %request.cart_id,
             "updating storefront context"
         );
-        self.update_context(tenant_id, request.cart_id, request.input)
-            .await
-            .map_err(cart_error_to_port_error)
+        self.update_context(
+            tenant_id,
+            request.cart_id,
+            request.input,
+        )
+        .await
+        .map_err(cart_error_to_port_error)
     }
 
     async fn update_storefront_line_item_quantity(
@@ -533,9 +537,13 @@ impl CartStorefrontPort for crate::CartService {
             line_item_id = %request.line_item_id,
             "removing storefront line item"
         );
-        self.remove_line_item(tenant_id, request.cart_id, request.line_item_id)
-            .await
-            .map_err(cart_error_to_port_error)
+        self.remove_line_item(
+            tenant_id,
+            request.cart_id,
+            request.line_item_id,
+        )
+        .await
+        .map_err(cart_error_to_port_error)
     }
 
     async fn reprice_storefront_line_items(
@@ -557,9 +565,13 @@ impl CartStorefrontPort for crate::CartService {
             updates_count = request.updates.len(),
             "repricing storefront line items"
         );
-        self.reprice_line_items(tenant_id, request.cart_id, request.updates)
-            .await
-            .map_err(cart_error_to_port_error)
+        self.reprice_line_items(
+            tenant_id,
+            request.cart_id,
+            request.updates,
+        )
+        .await
+        .map_err(cart_error_to_port_error)
     }
 }
 
@@ -764,20 +776,33 @@ mod tests {
 
     #[test]
     fn parse_port_tenant_id_validates_nil_and_malformed() {
-        let nil_context =
-            PortContext::new(Uuid::nil().to_string(), PortActor::system(), "en", "req-1");
+        let nil_context = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::system(),
+            "en",
+            "req-1",
+        );
         let err = parse_port_tenant_id(&nil_context).expect_err("should reject nil tenant");
         assert_eq!(err.code, "cart.tenant_id_nil");
 
-        let invalid_context =
-            PortContext::new("not-a-uuid".to_string(), PortActor::system(), "en", "req-2");
+        let invalid_context = PortContext::new(
+            "not-a-uuid".to_string(),
+            PortActor::system(),
+            "en",
+            "req-2",
+        );
         let err = parse_port_tenant_id(&invalid_context).expect_err("should reject invalid tenant");
         assert_eq!(err.code, "cart.tenant_id_invalid");
 
         let valid_uuid = Uuid::new_v4();
-        let valid_context =
-            PortContext::new(valid_uuid.to_string(), PortActor::system(), "en", "req-3");
+        let valid_context = PortContext::new(
+            valid_uuid.to_string(),
+            PortActor::system(),
+            "en",
+            "req-3",
+        );
         let parsed = parse_port_tenant_id(&valid_context).expect("valid tenant");
         assert_eq!(parsed, valid_uuid);
     }
 }
+

@@ -34,8 +34,7 @@ pub(crate) async fn merge_topics(
     let source_ids = unique_source_ids(input.target_topic_id, &input.source_topic_ids)?;
     let target_translations =
         load_topic_translations_in_tx(txn, tenant_id, target_topic.id).await?;
-    let mut next_position =
-        next_forum_reply_position_in_tx(txn, tenant_id, target_topic.id).await?;
+    let mut next_position = next_forum_reply_position_in_tx(txn, tenant_id, target_topic.id).await?;
     let mut moved_count = 0_u64;
     let now = Utc::now();
     let mut source_topics = Vec::new();

@@ -204,7 +204,10 @@ mod tests {
 
         // Valid bulk review
         let cmd = prepare_bulk_review_group_membership_applications(
-            vec![format!("  {}  ", valid_app1), valid_app2.to_string()],
+            vec![
+                format!("  {}  ", valid_app1),
+                valid_app2.to_string(),
+            ],
             GroupsAdminApplicationReviewDecision::Approve,
             Some("  Bulk approved by admin  ".to_string()),
             true,

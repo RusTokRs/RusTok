@@ -477,7 +477,10 @@ mod tests {
     fn empty_status_message_falls_back_to_status_description() {
         let error = status_to_port_error(Status::new(Code::DeadlineExceeded, ""));
         assert_eq!(error.kind, PortErrorKind::Timeout);
-        assert_eq!(error.message, Code::DeadlineExceeded.description());
+        assert_eq!(
+            error.message,
+            Code::DeadlineExceeded.description()
+        );
         assert!(error.retryable);
     }
 
@@ -501,7 +504,12 @@ mod tests {
         assert!(validate_non_nil_id(Uuid::nil(), "media_id").is_err());
         assert!(validate_non_nil_id(Uuid::new_v4(), "media_id").is_ok());
 
-        let empty_ctx = PortContext::new("", PortActor::service("test"), "en", "corr-1");
+        let empty_ctx = PortContext::new(
+            "",
+            PortActor::service("test"),
+            "en",
+            "corr-1",
+        );
         assert!(validate_context(&empty_ctx).is_err());
 
         let nil_tenant_ctx = PortContext::new(

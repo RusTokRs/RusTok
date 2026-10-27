@@ -13,11 +13,11 @@ const files = {
     "utf8",
   ),
   decodeFailure: readFileSync(
-    "crates/libs/rustok-iggy/src/contract_decode_failure.rs",
+    "crates/modules/rustok-iggy/src/contract_decode_failure.rs",
     "utf8",
   ),
   contractCursor: readFileSync(
-    "crates/libs/rustok-iggy/src/contract_consumer.rs",
+    "crates/modules/rustok-iggy/src/contract_consumer.rs",
     "utf8",
   ),
   consumer: readFileSync(

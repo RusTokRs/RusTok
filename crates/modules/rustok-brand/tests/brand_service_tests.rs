@@ -422,14 +422,15 @@ async fn deletes_brand_with_cascading_associations() {
         .unwrap();
 
     // Verify brand exists and is linked
-    assert!(service.get_brand(tenant_id, brand.id, None).await.is_ok());
-    assert!(
-        service
-            .get_brand_for_product(tenant_id, product_id, None)
-            .await
-            .unwrap()
-            .is_some()
-    );
+    assert!(service
+        .get_brand(tenant_id, brand.id, None)
+        .await
+        .is_ok());
+    assert!(service
+        .get_brand_for_product(tenant_id, product_id, None)
+        .await
+        .unwrap()
+        .is_some());
 
     // Delete brand
     service

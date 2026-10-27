@@ -132,7 +132,7 @@ if (productTagEvidence.includes('legacy_metadata_tags_are_used_as_read_fallback'
   fail(`${productTagEvidencePath} still asserts retired metadata-tag read compatibility`);
 }
 
-const sourcePath = 'crates/utils/rustok-distribution/src/product_index/product.rs';
+const sourcePath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
 const productSource = requireMarkers(sourcePath, [
   'product_tag_ids AS (',
   'jsonb_agg(product_tag.term_id ORDER BY product_tag.term_id) AS tag_ids',
@@ -161,7 +161,7 @@ if (externalBody.includes('with_storefront_tag_read_port')) {
   fail(`${runtimePath} external Product runtime must not silently install an embedded tag provider`);
 }
 
-const executorPath = 'crates/utils/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
+const executorPath = 'crates/modules/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
 const executor = requireMarkers(executorPath, [
   'pub(crate) tag_hydration:',
   'Option<Result<ProductStorefrontTagHydration, ProductStorefrontIndexTagHydrationError>>',
@@ -195,7 +195,7 @@ if (projectedPosition < 0 || hydrationPosition <= projectedPosition) {
   fail('tag hydration must begin only after the raw Index page exists');
 }
 
-const publicProjectionPath = 'crates/utils/rustok-distribution/src/product_index/storefront_projection.rs';
+const publicProjectionPath = 'crates/modules/rustok-distribution/src/product_index/storefront_projection.rs';
 requireMarkers(publicProjectionPath, [
   'value(&projected.items[0], "tag_ids")',
   'IndexValue::List(vec![IndexValue::Uuid(tag_id)])',

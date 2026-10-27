@@ -30,11 +30,11 @@ use crate::dto::{
 };
 use crate::entities;
 use crate::error::{FulfillmentError, FulfillmentResult};
-use crate::providers::{
-    validate_durable_provider_payload, validate_provider_id, validate_provider_metadata_safety,
-};
 use crate::shipment_stock::{
     ShipmentStockError, ShipmentStockPort, ShipmentStockRequest, UnconfiguredShipmentStockPort,
+};
+use crate::providers::{
+    validate_durable_provider_payload, validate_provider_id, validate_provider_metadata_safety,
 };
 use crate::translation_changes::{
     ShippingOptionTranslationChangeLifecycle, record_shipping_option_translation_change_in_tx,

@@ -262,9 +262,7 @@ impl MessengerMutation {
         let (tenant, auth, db) = require_auth_context(ctx).await?;
 
         if message_id <= 0 {
-            return Err(FieldError::new(
-                "message_id must be a positive Snowflake ID",
-            ));
+            return Err(FieldError::new("message_id must be a positive Snowflake ID"));
         }
         let trimmed = content.trim();
         if trimmed.is_empty() {
@@ -305,13 +303,15 @@ impl MessengerMutation {
     }
 
     /// Soft-delete a message, preserving sequence monotonicity.
-    async fn delete_chat_message(&self, ctx: &Context<'_>, message_id: i64) -> Result<bool> {
+    async fn delete_chat_message(
+        &self,
+        ctx: &Context<'_>,
+        message_id: i64,
+    ) -> Result<bool> {
         let (tenant, auth, db) = require_auth_context(ctx).await?;
 
         if message_id <= 0 {
-            return Err(FieldError::new(
-                "message_id must be a positive Snowflake ID",
-            ));
+            return Err(FieldError::new("message_id must be a positive Snowflake ID"));
         }
 
         let service = MessengerService::new(db.clone(), 1);

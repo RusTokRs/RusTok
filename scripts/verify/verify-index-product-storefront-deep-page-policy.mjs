@@ -32,14 +32,14 @@ if (modernList.includes('10_000')) {
   fail(`${ownerPath} must not silently narrow owner-valid modern Storefront depth to the Index bound`);
 }
 
-const builderPath = 'crates/utils/rustok-distribution/src/product_index/storefront_shadow.rs';
+const builderPath = 'crates/modules/rustok-distribution/src/product_index/storefront_shadow.rs';
 const builder = requireMarkers(builderPath, [
   'const MAX_INDEX_OFFSET_DEPTH: u64 = 10_000;',
   'if offset > MAX_INDEX_OFFSET_DEPTH',
   'ProductStorefrontIndexShadowError::OffsetTooDeep',
 ]);
 
-const executorPath = 'crates/utils/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
+const executorPath = 'crates/modules/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
 const executor = requireMarkers(executorPath, [
   'const MAX_INDEX_OFFSET_DEPTH: u64 = 10_000;',
   'pub(crate) enum ProductStorefrontIndexPageScopeDecision',

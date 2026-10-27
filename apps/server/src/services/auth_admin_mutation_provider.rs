@@ -1,5 +1,7 @@
 use async_trait::async_trait;
-use rustok_api::{Permission, has_any_effective_permission, has_effective_permission};
+use rustok_api::{
+    AuthPrincipalKind, Permission, has_any_effective_permission, has_effective_permission,
+};
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, AuthorizedOAuthAppRecord,
     CreateOAuthAppCommand, OAuthAdminPort, OAuthAppMutationRecord, OAuthAppSecretResult,
@@ -26,6 +28,23 @@ fn clamp_auth_admin_list_limit(limit: u64) -> u64 {
     limit.clamp(1, MAX_AUTH_ADMIN_LIST_LIMIT)
 }
 
+/// Consent is the user personally delegating authority to an application.
+/// A delegated (`authorization_code`) or service (`client_credentials`)
+/// token must never grant, revoke, or enumerate consent as the user —
+/// otherwise any low-scope application could pre-seed or approve consent
+/// for other applications. Fail closed unless the caller is a direct
+/// user session.
+fn require_direct_user_context(
+    context: &AuthAdminMutationContext,
+) -> Result<(), AuthAdminMutationError> {
+    match context.principal_kind {
+        Some(AuthPrincipalKind::DirectUser) => Ok(()),
+        _ => Err(AuthAdminMutationError::Forbidden(
+            "oauth consent operations require a direct user session".to_string(),
+        )),
+    }
+}
+
 fn internal_admin_error<E>(error: E) -> AuthAdminMutationError
 where
     E: std::fmt::Display,
@@ -34,7 +53,9 @@ where
         error = %error,
         "Auth administration operation failed"
     );
-    AuthAdminMutationError::Internal(format!("Auth administration operation failed: {error}"))
+    // The detail goes to the log above only; the returned error is
+    // sealed so no consumer of the port can leak it to a client.
+    AuthAdminMutationError::Internal("Auth administration operation failed".to_string())
 }
 
 pub(crate) async fn build_oauth_app_record<C>(
@@ -105,11 +126,12 @@ where
 #[derive(Clone)]
 pub struct ServerAuthAdminMutationProvider {
     db: DatabaseConnection,
+    auth_config: crate::auth::AuthConfig,
 }
 
 impl ServerAuthAdminMutationProvider {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+    pub fn new(db: DatabaseConnection, auth_config: crate::auth::AuthConfig) -> Self {
+        Self { db, auth_config }
     }
 
     fn request_permissions(
@@ -289,6 +311,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         context: &AuthAdminMutationContext,
         limit: u64,
     ) -> Result<Vec<AuthorizedOAuthAppRecord>, AuthAdminMutationError> {
+        require_direct_user_context(context)?;
         let consents = oauth_consents::Entity::find()
             .filter(oauth_consents::Column::UserId.eq(context.actor_id))
             .filter(oauth_consents::Column::TenantId.eq(context.tenant_id))
@@ -424,16 +447,12 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         app_id: Uuid,
         scopes: Vec<String>,
     ) -> Result<(), AuthAdminMutationError> {
-        let app = oauth_apps::Entity::find_by_id(app_id)
-            .filter(oauth_apps::Column::TenantId.eq(context.tenant_id))
-            .one(&self.db)
-            .await
-            .map_err(internal_admin_error)?
-            .filter(|app| app.is_active())
-            .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
-        OAuthAppService::grant_consent(
+        require_direct_user_context(context)?;
+        // Strict boundary: validates tenant/app/subject activity and that
+        // every granted scope is inside the application's registered set.
+        OAuthAppService::grant_consent_strict(
             &self.db,
-            app.id,
+            app_id,
             context.actor_id,
             context.tenant_id,
             scopes,
@@ -447,6 +466,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         context: &AuthAdminMutationContext,
         app_id: Uuid,
     ) -> Result<(), AuthAdminMutationError> {
+        require_direct_user_context(context)?;
         OAuthAppService::revoke_user_consent(&self.db, app_id, context.actor_id, context.tenant_id)
             .await
             .map_err(map_service_error)
@@ -492,6 +512,8 @@ mod tests {
             status: rustok_core::UserStatus::Active,
             email_verified_at: None,
             last_login_at: None,
+            failed_login_count: 0,
+            locked_until: None,
             metadata: json!({"team": "platform"}),
             created_at: chrono::Utc::now().into(),
             updated_at: chrono::Utc::now().into(),

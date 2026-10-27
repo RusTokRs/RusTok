@@ -424,6 +424,8 @@ pub fn Users() -> impl IntoView {
                 </Suspense>
             </div>
 
+            <crate::ui::invites::UserInvites />
+
             <Show when=move || show_create_modal.get()>
                 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
                     <div class="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-xl">

@@ -719,6 +719,9 @@ mod product_catalog_read_port_tests {
             .await
             .expect("in-memory database");
         let server = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+        server.shared_insert(TransactionalEventBus::new(Arc::new(OutboxTransport::new(
+            db.clone(),
+        ))));
         let external = rustok_product::ProductCatalogReadRuntime::external(Arc::new(
             ExternalProductCatalogReadPort,
         ));

@@ -1,8 +1,8 @@
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
-use crate::PageBuilderStorefront;
 use crate::core::page_builder_view_model;
+use crate::PageBuilderStorefront;
 
 /// Standard storefront entry point for Page Builder routes and slots.
 #[component]

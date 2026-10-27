@@ -1,5 +1,7 @@
-use crate::model::{CampaignStatus as ApiCampaignStatus, SubscriberStatus as ApiSubscriberStatus};
 use async_graphql::*;
+use crate::model::{
+    CampaignStatus as ApiCampaignStatus, SubscriberStatus as ApiSubscriberStatus,
+};
 use uuid::Uuid;
 
 use crate::dto;

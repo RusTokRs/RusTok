@@ -36,8 +36,8 @@ pub mod migrations;
 pub use domain::BillingStatus;
 pub use error::{BillingError, BillingResult};
 pub use events::{
-    BILLING_EVENT_TOPIC, BillingCreatedEvent, BillingDeletedEvent, BillingDomainEvent,
-    BillingUpdatedEvent,
+    BillingCreatedEvent, BillingDeletedEvent, BillingDomainEvent, BillingUpdatedEvent,
+    BILLING_EVENT_TOPIC,
 };
 pub use module::BillingModule;
 pub use services::BillingService;

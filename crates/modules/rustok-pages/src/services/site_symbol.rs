@@ -114,7 +114,10 @@ impl SiteSymbolService {
                 serde_json::Value::String(symbol_id.clone()),
             );
             if let Some(name) = &input.name {
-                obj.insert("name".to_string(), serde_json::Value::String(name.clone()));
+                obj.insert(
+                    "name".to_string(),
+                    serde_json::Value::String(name.clone()),
+                );
             }
         }
 
@@ -139,10 +142,9 @@ impl SiteSymbolService {
         let tx = self.db.begin().await?;
         crate::services::page::lock_site_symbol_catalog_in_tx(&tx, tenant_id, &locale).await?;
 
-        let existing =
-            site_symbol::Entity::find_by_id((tenant_id, locale.clone(), symbol_id.clone()))
-                .one(&tx)
-                .await?;
+        let existing = site_symbol::Entity::find_by_id((tenant_id, locale.clone(), symbol_id.clone()))
+            .one(&tx)
+            .await?;
 
         let record = match existing {
             Some(row) => {
@@ -187,10 +189,9 @@ impl SiteSymbolService {
         let tx = self.db.begin().await?;
         crate::services::page::lock_site_symbol_catalog_in_tx(&tx, tenant_id, &locale).await?;
 
-        let existing =
-            site_symbol::Entity::find_by_id((tenant_id, locale.clone(), symbol_id.clone()))
-                .one(&tx)
-                .await?;
+        let existing = site_symbol::Entity::find_by_id((tenant_id, locale.clone(), symbol_id.clone()))
+            .one(&tx)
+            .await?;
         if existing.is_none() {
             return Err(PagesError::validation("Site symbol not found"));
         }
@@ -203,9 +204,7 @@ impl SiteSymbolService {
             )));
         }
 
-        if crate::services::page::symbol_used_by_any_page(&tx, tenant_id, &locale, &symbol_id)
-            .await?
-        {
+        if crate::services::page::symbol_used_by_any_page(&tx, tenant_id, &locale, &symbol_id).await? {
             return Err(PagesError::validation(format!(
                 "Cannot delete site symbol `{symbol_id}` because it is referenced by a page"
             )));
@@ -219,15 +218,14 @@ impl SiteSymbolService {
             .await?;
 
         if deleted.rows_affected != 1 {
-            return Err(PagesError::validation(
-                "Site symbol not found during deletion",
-            ));
+            return Err(PagesError::validation("Site symbol not found during deletion"));
         }
 
         tx.commit().await?;
         Ok(())
     }
 }
+
 
 fn require_all(security: &SecurityContext, action: Action) -> PagesResult<()> {
     if security.get_scope(Resource::Pages, action) != PermissionScope::All {
@@ -249,8 +247,7 @@ fn normalize_id(value: &str) -> PagesResult<String> {
     if trimmed != value || trimmed.is_empty() || trimmed.len() > 128 {
         return Err(PagesError::validation("Invalid site symbol identifier"));
     }
-    fly::validate_identifier(trimmed).map_err(|reason| {
-        PagesError::validation(format!("Invalid site symbol identifier: {reason}"))
-    })?;
+    fly::validate_identifier(trimmed)
+        .map_err(|reason| PagesError::validation(format!("Invalid site symbol identifier: {reason}")))?;
     Ok(trimmed.to_string())
 }

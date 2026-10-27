@@ -88,7 +88,10 @@ export interface ProductEditorPageProps {
     productId: string,
     variant: Omit<ProductVariant, 'id'>
   ) => Promise<void>;
-  onUpdateVariant?: (id: string, variant: UpdateVariantInput) => Promise<void>;
+  onUpdateVariant?: (
+    id: string,
+    variant: UpdateVariantInput
+  ) => Promise<void>;
   onDeleteVariant?: (id: string) => Promise<void>;
   onSetVariantAxes?: (
     productId: string,

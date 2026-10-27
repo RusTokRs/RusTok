@@ -44,7 +44,9 @@ impl SearchProjectionSourceFactory for BlogSearchProjectionSourceFactory {
         db: DatabaseConnection,
         extensions: &ModuleRuntimeExtensions,
     ) -> Arc<dyn SearchProjectionSource> {
-        let profiles_reader = extensions.get::<Arc<dyn ProfileSummaryReader>>().cloned();
+        let profiles_reader = extensions
+            .get::<Arc<dyn ProfileSummaryReader>>()
+            .cloned();
         Arc::new(BlogSearchProjectionSource::new(db, profiles_reader))
     }
 }
@@ -115,7 +117,10 @@ impl BlogSearchProjectionSource {
         }
 
         // 3. Collect the Category identities of the whole page
-        let category_ids: Vec<Uuid> = posts.iter().filter_map(|p| p.category_id).collect();
+        let category_ids: Vec<Uuid> = posts
+            .iter()
+            .filter_map(|p| p.category_id)
+            .collect();
 
         // 4. Load authors
         let author_ids: Vec<Uuid> = posts.iter().map(|p| p.author_id).collect();
@@ -125,10 +130,8 @@ impl BlogSearchProjectionSource {
         //    Reading them per (post x locale) multiplied the Taxonomy and Tag
         //    queries by the page size.
         let fallback_locale = Some(PLATFORM_FALLBACK_LOCALE);
-        let mut category_maps_by_locale: HashMap<
-            String,
-            HashMap<Uuid, BlogCategoryProjectionInfo>,
-        > = HashMap::new();
+        let mut category_maps_by_locale: HashMap<String, HashMap<Uuid, BlogCategoryProjectionInfo>> =
+            HashMap::new();
         let mut tag_maps_by_locale: HashMap<String, HashMap<Uuid, Vec<String>>> = HashMap::new();
         for locale in &locales {
             let category_map = load_category_projections_map(
@@ -142,10 +145,15 @@ impl BlogSearchProjectionSource {
             .map_err(|error| Error::External(error.to_string()))?;
             category_maps_by_locale.insert(locale.clone(), category_map);
 
-            let tag_map =
-                load_post_tags_map(&self.db, tenant_id, &post_ids, locale, fallback_locale)
-                    .await
-                    .map_err(|error| Error::External(error.to_string()))?;
+            let tag_map = load_post_tags_map(
+                &self.db,
+                tenant_id,
+                &post_ids,
+                locale,
+                fallback_locale,
+            )
+            .await
+            .map_err(|error| Error::External(error.to_string()))?;
             tag_maps_by_locale.insert(locale.clone(), tag_map);
         }
 

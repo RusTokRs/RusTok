@@ -6,8 +6,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{
-    Arc,
     atomic::{AtomicBool, Ordering},
+    Arc,
 };
 use std::thread;
 use std::time::Duration;
@@ -88,6 +88,7 @@ use module_registry_commands::*;
 use module_registry_previews::*;
 use module_runner_commands::*;
 use module_runtime_contracts::*;
+use scaffold::*;
 use module_semantics::*;
 use module_transport_contracts::*;
 use module_ui_metadata_contracts::*;
@@ -107,7 +108,6 @@ use registry_types::*;
 use root_commands::*;
 use runtime_event_contracts::*;
 use runtime_parsing_helpers::*;
-use scaffold::*;
 use server_contracts::*;
 use server_event_runtime_contracts::*;
 use server_feature_contracts::*;

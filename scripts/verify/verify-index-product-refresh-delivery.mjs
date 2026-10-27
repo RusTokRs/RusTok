@@ -15,9 +15,9 @@ const requireMarker = (source, marker, label) => {
 };
 
 const canonicalFamily = read('crates/libs/rustok-events/src/product_index_refresh.rs');
-const delivery = read('crates/utils/rustok-distribution/src/product_index/refresh_event.rs');
-const productIndexModule = read('crates/utils/rustok-distribution/src/product_index/mod.rs');
-const variantSource = read('crates/utils/rustok-distribution/src/product_variant_index.rs');
+const delivery = read('crates/modules/rustok-distribution/src/product_index/refresh_event.rs');
+const productIndexModule = read('crates/modules/rustok-distribution/src/product_index/mod.rs');
+const variantSource = read('crates/modules/rustok-distribution/src/product_variant_index.rs');
 const genericWorker = read('crates/modules/rustok-index/src/application/source_refresh_event.rs');
 const genericWorkerTests = read('crates/modules/rustok-index/src/application/source_refresh_event_tests.rs');
 

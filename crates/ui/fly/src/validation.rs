@@ -487,25 +487,25 @@ fn walk_opaque_value(
         && component_type == "page_content_slot"
     {
         *slot_count += 1;
-        if document_kind != crate::DocumentKind::LayoutTemplate {
-            report.diagnostics.push(diagnostic(
-                ValidationSeverity::Error,
-                "forbidden_page_content_slot",
-                path,
-                "page_content_slot is only allowed inside layout templates",
-            ));
+            if document_kind != crate::DocumentKind::LayoutTemplate {
+                report.diagnostics.push(diagnostic(
+                    ValidationSeverity::Error,
+                    "forbidden_page_content_slot",
+                    path,
+                    "page_content_slot is only allowed inside layout templates",
+                ));
+            }
+            if let Some(children) = object.get("components").and_then(Value::as_array)
+                && !children.is_empty()
+            {
+                report.diagnostics.push(diagnostic(
+                    ValidationSeverity::Error,
+                    "page_content_slot_cannot_have_children",
+                    path,
+                    "page_content_slot cannot contain child components in persisted state",
+                ));
+            }
         }
-        if let Some(children) = object.get("components").and_then(Value::as_array)
-            && !children.is_empty()
-        {
-            report.diagnostics.push(diagnostic(
-                ValidationSeverity::Error,
-                "page_content_slot_cannot_have_children",
-                path,
-                "page_content_slot cannot contain child components in persisted state",
-            ));
-        }
-    }
 
     if let Some(id) = object.get("id").and_then(Value::as_str) {
         if !ids.insert(id.to_string()) {
@@ -1761,17 +1761,8 @@ mod tests {
         .expect("decode");
 
         document.set_document_kind(crate::DocumentKind::Page);
-        let report = validate_project(
-            &document,
-            &RegistrySet::with_builtins(),
-            ValidationLimits::default(),
-        );
-        assert!(
-            report
-                .diagnostics
-                .iter()
-                .any(|d| d.code == "forbidden_page_content_slot")
-        );
+        let report = validate_project(&document, &RegistrySet::with_builtins(), ValidationLimits::default());
+        assert!(report.diagnostics.iter().any(|d| d.code == "forbidden_page_content_slot"));
     }
 
     #[test]
@@ -1789,17 +1780,8 @@ mod tests {
         }))
         .expect("decode");
         doc_missing.set_document_kind(crate::DocumentKind::LayoutTemplate);
-        let report = validate_project(
-            &doc_missing,
-            &RegistrySet::with_builtins(),
-            ValidationLimits::default(),
-        );
-        assert!(
-            report
-                .diagnostics
-                .iter()
-                .any(|d| d.code == "layout_template_missing_content_slot")
-        );
+        let report = validate_project(&doc_missing, &RegistrySet::with_builtins(), ValidationLimits::default());
+        assert!(report.diagnostics.iter().any(|d| d.code == "layout_template_missing_content_slot"));
 
         // Multiple slots
         let mut doc_multiple = GrapesJsCodec::decode_value(json!({
@@ -1817,17 +1799,8 @@ mod tests {
         }))
         .expect("decode");
         doc_multiple.set_document_kind(crate::DocumentKind::LayoutTemplate);
-        let report = validate_project(
-            &doc_multiple,
-            &RegistrySet::with_builtins(),
-            ValidationLimits::default(),
-        );
-        assert!(
-            report
-                .diagnostics
-                .iter()
-                .any(|d| d.code == "layout_template_multiple_content_slots")
-        );
+        let report = validate_project(&doc_multiple, &RegistrySet::with_builtins(), ValidationLimits::default());
+        assert!(report.diagnostics.iter().any(|d| d.code == "layout_template_multiple_content_slots"));
 
         // Valid layout with exactly one slot
         let mut doc_valid = GrapesJsCodec::decode_value(json!({
@@ -1846,17 +1819,8 @@ mod tests {
         }))
         .expect("decode");
         doc_valid.set_document_kind(crate::DocumentKind::LayoutTemplate);
-        let report = validate_project(
-            &doc_valid,
-            &RegistrySet::with_builtins(),
-            ValidationLimits::default(),
-        );
-        assert!(
-            !report
-                .diagnostics
-                .iter()
-                .any(|d| d.code.contains("content_slot"))
-        );
+        let report = validate_project(&doc_valid, &RegistrySet::with_builtins(), ValidationLimits::default());
+        assert!(!report.diagnostics.iter().any(|d| d.code.contains("content_slot")));
 
         // Slot with forbidden children
         let mut doc_children = GrapesJsCodec::decode_value(json!({
@@ -1877,16 +1841,8 @@ mod tests {
         }))
         .expect("decode");
         doc_children.set_document_kind(crate::DocumentKind::LayoutTemplate);
-        let report = validate_project(
-            &doc_children,
-            &RegistrySet::with_builtins(),
-            ValidationLimits::default(),
-        );
-        assert!(
-            report
-                .diagnostics
-                .iter()
-                .any(|d| d.code == "page_content_slot_cannot_have_children")
-        );
+        let report = validate_project(&doc_children, &RegistrySet::with_builtins(), ValidationLimits::default());
+        assert!(report.diagnostics.iter().any(|d| d.code == "page_content_slot_cannot_have_children"));
     }
 }
+

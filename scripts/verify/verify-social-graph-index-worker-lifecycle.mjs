@@ -40,7 +40,7 @@ const files = {
     "utf8",
   ),
   contractCursor: readFileSync(
-    "crates/libs/rustok-iggy/src/contract_consumer.rs",
+    "crates/modules/rustok-iggy/src/contract_consumer.rs",
     "utf8",
   ),
 };

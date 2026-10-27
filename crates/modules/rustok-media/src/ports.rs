@@ -920,9 +920,10 @@ pub(crate) fn media_error_to_port_error(error: MediaError) -> PortError {
             "media.asset_referenced",
             format!("media asset {id} is still retained by an owner reference"),
         ),
-        MediaError::NilTenantId => {
-            PortError::validation("media.nil_tenant_id", "media tenant_id cannot be nil")
-        }
+        MediaError::NilTenantId => PortError::validation(
+            "media.nil_tenant_id",
+            "media tenant_id cannot be nil",
+        ),
         MediaError::InvalidAssetReferenceId => PortError::validation(
             "media.invalid_asset_reference_id",
             "media asset reference_id must be a non-nil UUID",

@@ -96,14 +96,11 @@ pub async fn restore_unshipped_stock(
 ) -> Result<(), ShipmentStockMovementError> {
     require_positive(quantity)?;
     let level = load_line_level_for_update(txn, order_line_item_id).await?;
-    let stocked = level
-        .stocked_quantity
-        .checked_add(quantity)
-        .ok_or_else(|| {
-            rejected(format!(
-                "restored stock overflows the level of order line {order_line_item_id}"
-            ))
-        })?;
+    let stocked = level.stocked_quantity.checked_add(quantity).ok_or_else(|| {
+        rejected(format!(
+            "restored stock overflows the level of order line {order_line_item_id}"
+        ))
+    })?;
     let mut active: inventory_level::ActiveModel = level.into();
     active.stocked_quantity = Set(stocked);
     active.updated_at = Set(Utc::now().into());
@@ -120,11 +117,7 @@ pub async fn reconsume_restored_stock(
 ) -> Result<(), ShipmentStockMovementError> {
     require_positive(quantity)?;
     let level = load_line_level_for_update(txn, order_line_item_id).await?;
-    if level
-        .stocked_quantity
-        .saturating_sub(level.reserved_quantity)
-        < quantity
-    {
+    if level.stocked_quantity.saturating_sub(level.reserved_quantity) < quantity {
         return Err(rejected(format!(
             "restored stock for order line {order_line_item_id} is no longer available"
         )));

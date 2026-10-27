@@ -27,9 +27,8 @@ async fn setup() -> (sea_orm::DatabaseConnection, FulfillmentService) {
 
     (
         db.clone(),
-        FulfillmentService::new(db).with_shipment_stock_port(std::sync::Arc::new(
-            rustok_fulfillment::NoopShipmentStockPort,
-        )),
+        FulfillmentService::new(db)
+            .with_shipment_stock_port(std::sync::Arc::new(rustok_fulfillment::NoopShipmentStockPort)),
     )
 }
 

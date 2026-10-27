@@ -71,7 +71,7 @@ pub use role_mutation::{
     plan_persisted_custom_role_assignment_on, plan_persisted_user_role_mutation_on,
     plan_user_role_mutation, replace_persisted_user_role_by_slug_on,
     replace_persisted_user_role_on, require_request_role_grant, require_role_assignment,
-    require_user_management,
+    require_user_management, validate_custom_role_grant_on,
 };
 pub use services::authz_mode::AuthzEngine;
 pub use services::module_availability::{ModulePermissionStatus, PermissionAvailability};

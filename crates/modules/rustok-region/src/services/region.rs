@@ -35,9 +35,7 @@ impl RegionService {
         input: CreateRegionInput,
     ) -> RegionResult<RegionResponse> {
         if tenant_id.is_nil() {
-            return Err(RegionError::Validation(
-                "tenant_id must not be nil".to_string(),
-            ));
+            return Err(RegionError::Validation("tenant_id must not be nil".to_string()));
         }
         input
             .validate()
@@ -105,14 +103,10 @@ impl RegionService {
         tenant_default_locale: Option<&str>,
     ) -> RegionResult<RegionResponse> {
         if tenant_id.is_nil() {
-            return Err(RegionError::Validation(
-                "tenant_id must not be nil".to_string(),
-            ));
+            return Err(RegionError::Validation("tenant_id must not be nil".to_string()));
         }
         if region_id.is_nil() {
-            return Err(RegionError::Validation(
-                "region_id must not be nil".to_string(),
-            ));
+            return Err(RegionError::Validation("region_id must not be nil".to_string()));
         }
 
         let model = entities::region::Entity::find_by_id(region_id)
@@ -141,9 +135,7 @@ impl RegionService {
         tenant_default_locale: Option<&str>,
     ) -> RegionResult<Vec<RegionResponse>> {
         if tenant_id.is_nil() {
-            return Err(RegionError::Validation(
-                "tenant_id must not be nil".to_string(),
-            ));
+            return Err(RegionError::Validation("tenant_id must not be nil".to_string()));
         }
 
         let rows = entities::region::Entity::find()
@@ -164,14 +156,10 @@ impl RegionService {
         input: UpdateRegionInput,
     ) -> RegionResult<RegionResponse> {
         if tenant_id.is_nil() {
-            return Err(RegionError::Validation(
-                "tenant_id must not be nil".to_string(),
-            ));
+            return Err(RegionError::Validation("tenant_id must not be nil".to_string()));
         }
         if region_id.is_nil() {
-            return Err(RegionError::Validation(
-                "region_id must not be nil".to_string(),
-            ));
+            return Err(RegionError::Validation("region_id must not be nil".to_string()));
         }
 
         input
@@ -303,9 +291,7 @@ impl RegionService {
         tenant_default_locale: Option<&str>,
     ) -> RegionResult<Option<RegionResponse>> {
         if tenant_id.is_nil() {
-            return Err(RegionError::Validation(
-                "tenant_id must not be nil".to_string(),
-            ));
+            return Err(RegionError::Validation("tenant_id must not be nil".to_string()));
         }
         let normalized_country = normalize_country_code(country_code)?;
         let regions = self

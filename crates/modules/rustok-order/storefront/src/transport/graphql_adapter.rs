@@ -407,10 +407,7 @@ pub(super) async fn fetch_storefront_orders(
     if let Some(pp) = per_page {
         vars.insert("perPage".into(), json!(pp.clamp(1, 100)));
     }
-    if let Some(s) = status
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-    {
+    if let Some(s) = status.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
         vars.insert("status".into(), json!(s));
     }
 

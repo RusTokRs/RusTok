@@ -48,10 +48,7 @@ impl MessengerQuery {
     }
 
     /// List active channels with membership count and localized title for current tenant.
-    async fn messenger_channels(
-        &self,
-        ctx: &Context<'_>,
-    ) -> Result<Vec<MessengerChannelListItemGql>> {
+    async fn messenger_channels(&self, ctx: &Context<'_>) -> Result<Vec<MessengerChannelListItemGql>> {
         let (tenant, _auth, db) = require_auth_context(ctx).await?;
 
         let service = MessengerService::new(db.clone(), 1);
@@ -125,7 +122,10 @@ impl MessengerQuery {
             .await
             .map_err(|e| FieldError::new(e.to_string()))?;
 
-        let last_msg_ids: Vec<i64> = convs.iter().filter_map(|c| c.last_message_id).collect();
+        let last_msg_ids: Vec<i64> = convs
+            .iter()
+            .filter_map(|c| c.last_message_id)
+            .collect();
 
         let message_map: std::collections::HashMap<i64, String> = if last_msg_ids.is_empty() {
             std::collections::HashMap::new()
@@ -145,9 +145,7 @@ impl MessengerQuery {
         let items = convs
             .into_iter()
             .map(|c| {
-                let last_content = c
-                    .last_message_id
-                    .and_then(|id| message_map.get(&id).cloned());
+                let last_content = c.last_message_id.and_then(|id| message_map.get(&id).cloned());
                 ConversationItemGql {
                     id: c.id,
                     conversation_type: c.conversation_type.as_str().to_string(),
@@ -177,9 +175,7 @@ impl MessengerQuery {
         let (tenant, auth, db) = require_auth_context(ctx).await?;
 
         if conversation_id.is_nil() {
-            return Err(FieldError::new(
-                "Invalid conversation ID: nil UUID is not permitted",
-            ));
+            return Err(FieldError::new("Invalid conversation ID: nil UUID is not permitted"));
         }
         if let Some(seq) = since_seq {
             if seq < 0 {

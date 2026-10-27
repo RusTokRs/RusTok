@@ -10,7 +10,6 @@ pub mod audience_security;
 mod blog_projector;
 pub mod diagnostics;
 pub mod dictionaries;
-pub(crate) mod docs_projector;
 pub mod engine;
 mod forum_contract_ingress;
 mod forum_current_channel_filter;
@@ -27,6 +26,7 @@ pub mod ingestion;
 pub mod migrations;
 pub mod models;
 pub mod module;
+pub(crate) mod docs_projector;
 pub(crate) mod pages_projector;
 pub mod pg_engine;
 pub mod ports;
@@ -47,6 +47,7 @@ pub mod suggestions;
 mod contract_tests;
 
 pub use module::SearchModule;
+
 
 pub use analytics::{
     SLOW_QUERY_THRESHOLD_MS, SearchAnalyticsInsightRow, SearchAnalyticsQueryRow,

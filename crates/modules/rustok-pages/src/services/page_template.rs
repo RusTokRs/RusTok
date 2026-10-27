@@ -320,6 +320,7 @@ impl PageTemplateService {
     }
 }
 
+
 fn require_all(security: &SecurityContext, action: Action) -> PagesResult<()> {
     if security.get_scope(Resource::Pages, action) != PermissionScope::All {
         return Err(PagesError::forbidden(

@@ -76,13 +76,7 @@ async fn transition_transport_requires_authentication_and_exposes_only_real_comm
         "reason": "incident mitigation",
         "idempotencyKey": Uuid::new_v4(),
     })));
-    assert!(
-        !schema
-            .execute(rollback_transition_mutation)
-            .await
-            .errors
-            .is_empty()
-    );
+    assert!(!schema.execute(rollback_transition_mutation).await.errors.is_empty());
 
     let rollback_artifact_mutation = Request::new(
         r#"mutation RollbackArtifact(
@@ -114,13 +108,7 @@ async fn transition_transport_requires_authentication_and_exposes_only_real_comm
         "idempotencyKey": Uuid::new_v4(),
         "targetCapabilityGrantRevision": 1,
     })));
-    assert!(
-        !schema
-            .execute(rollback_artifact_mutation)
-            .await
-            .errors
-            .is_empty()
-    );
+    assert!(!schema.execute(rollback_artifact_mutation).await.errors.is_empty());
 
     let contract = schema.sdl();
     assert!(contract.contains("finalizeModuleTransition"));

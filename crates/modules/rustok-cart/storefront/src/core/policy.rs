@@ -141,9 +141,6 @@ mod tests {
             "ord-550e8400"
         );
         // UTF-8 safety check: Cyrillic characters where multi-byte boundaries must not panic
-        assert_eq!(
-            generate_handoff_order_reference("корзина-12345"),
-            "ord-корзина-"
-        );
+        assert_eq!(generate_handoff_order_reference("корзина-12345"), "ord-корзина-");
     }
 }

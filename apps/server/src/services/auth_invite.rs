@@ -1,17 +1,24 @@
+use std::sync::Arc;
+
 use chrono::{DateTime, Utc};
+use rustok_core::events::EventTransport;
+use rustok_events::DomainEvent;
+use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
 use sha2::{Digest, Sha256};
 
-use crate::auth::{AuthConfig, decode_invite_token};
+use crate::auth::{AuthConfig, decode_invite_token, normalize_email};
 use crate::error::Error;
-use crate::models::{auth_invite_consumptions, users};
+use crate::models::{auth_invite_consumptions, auth_invites, users};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
+use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 #[derive(Debug)]
 pub enum InviteAcceptanceError {
     InvalidToken,
     EmailAlreadyExists,
+    Validation(String),
     Internal(Error),
 }
 
@@ -24,6 +31,7 @@ impl From<InviteAcceptanceError> for Error {
             InviteAcceptanceError::EmailAlreadyExists => {
                 Error::BadRequest("A user with this email already exists".to_string())
             }
+            InviteAcceptanceError::Validation(message) => Error::Validation(message),
             InviteAcceptanceError::Internal(error) => error,
         }
     }
@@ -62,11 +70,24 @@ impl AuthLifecycleService {
             return Err(InviteAcceptanceError::InvalidToken);
         }
 
-        let email = claims.sub.trim().to_lowercase();
-        if email.is_empty() {
-            return Err(InviteAcceptanceError::InvalidToken);
-        }
+        // A signed invite carrying a malformed address is an invalid token,
+        // not caller input worth a distinct validation response. Validate
+        // and hash the credentials *before* opening the transaction and
+        // reserving the token digest, so a policy failure never burns a
+        // single-use invite and Argon2 never runs inside the transaction.
+        let email =
+            normalize_email(&claims.sub).map_err(|_| InviteAcceptanceError::InvalidToken)?;
+        let prepared = AuthLifecycleService::prepare_new_user(
+            &email,
+            password,
+            name,
+            config.min_password_length,
+        )
+        .await
+        .map_err(map_lifecycle_error)?;
         let role = claims.role;
+        let custom_role_slug = claims.custom_role_slug.clone();
+        let ledger_role = custom_role_slug.clone().unwrap_or_else(|| role.to_string());
         let token_hash = hex::encode(Sha256::digest(token.as_bytes()));
         let consumption_id = uuid::Uuid::new_v4();
         let consumed_at = Utc::now();
@@ -77,6 +98,20 @@ impl AuthLifecycleService {
             .await
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
 
+        // Fail closed on the issuance ledger: only tokens an
+        // administrator actually issued (and has not revoked) are
+        // acceptable, even if the signature verifies.
+        let issued = auth_invites::Entity::find()
+            .filter(auth_invites::Column::TokenHash.eq(&token_hash))
+            .filter(auth_invites::Column::TenantId.eq(tenant_id))
+            .one(&tx)
+            .await
+            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+        let invite_id = match issued {
+            Some(invite) if invite.revoked_at.is_none() => invite.id,
+            _ => return Err(InviteAcceptanceError::InvalidToken),
+        };
+
         // Reserve the digest first. The unique token_hash constraint is the
         // serialization point, so every concurrent replay is rejected before
         // user creation regardless of email uniqueness or transaction timing.
@@ -85,7 +120,7 @@ impl AuthLifecycleService {
             tenant_id: Set(tenant_id),
             token_hash: Set(token_hash.clone()),
             email: Set(email.clone()),
-            role: Set(role.to_string()),
+            role: Set(ledger_role),
             user_id: Set(None),
             expires_at: Set(expires_at.into()),
             consumed_at: Set(consumed_at.into()),
@@ -111,9 +146,7 @@ impl AuthLifecycleService {
         let user = match AuthLifecycleService::create_user_in_tx(
             &tx,
             tenant_id,
-            &email,
-            password,
-            name,
+            prepared,
             role.clone(),
             Some(rustok_core::UserStatus::Active),
         )
@@ -126,6 +159,32 @@ impl AuthLifecycleService {
                     .map_err(|rollback| InviteAcceptanceError::Internal(rollback.into()))?;
                 return Err(map_lifecycle_error(error));
             }
+        };
+
+        // Layer the tenant-defined role over the baseline customer
+        // membership created above. The issuer's authority ceiling was
+        // validated at issuance; acceptance only needs the role to
+        // still exist. If it was deleted meanwhile this fails closed
+        // and the transaction rollback leaves the invite unconsumed,
+        // so it can be retried after repair or revoked by an admin.
+        let role = if let Some(slug) = custom_role_slug.as_deref() {
+            rustok_rbac::replace_persisted_user_role_by_slug_on(&tx, tenant_id, user.id, slug)
+                .await
+                .map_err(|error| {
+                    tracing::error!(
+                        %error,
+                        role_slug = slug,
+                        "invite custom role assignment failed"
+                    );
+                    InviteAcceptanceError::Internal(Error::InternalServerError)
+                })?;
+            let permissions =
+                RbacService::get_user_permissions_authoritative(&tx, &tenant_id, &user.id)
+                    .await
+                    .map_err(InviteAcceptanceError::Internal)?;
+            rustok_core::infer_user_role_from_permissions(&permissions)
+        } else {
+            role
         };
 
         let reservation = auth_invite_consumptions::Entity::find_by_id(consumption_id)
@@ -144,6 +203,32 @@ impl AuthLifecycleService {
             .await
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
 
+        let event_bus = TransactionalEventBus::new(
+            Arc::new(OutboxTransport::new(ctx.db_clone())) as Arc<dyn EventTransport>
+        );
+        event_bus
+            .publish_in_tx(
+                &tx,
+                tenant_id,
+                Some(user.id),
+                DomainEvent::UserAccountRegistered { user_id: user.id },
+            )
+            .await
+            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+
+        event_bus
+            .publish_in_tx(
+                &tx,
+                tenant_id,
+                Some(user.id),
+                DomainEvent::UserInviteAccepted {
+                    user_id: user.id,
+                    invite_id,
+                },
+            )
+            .await
+            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+
         tx.commit()
             .await
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
@@ -155,6 +240,7 @@ impl AuthLifecycleService {
 fn map_lifecycle_error(error: AuthLifecycleError) -> InviteAcceptanceError {
     match error {
         AuthLifecycleError::EmailAlreadyExists => InviteAcceptanceError::EmailAlreadyExists,
+        AuthLifecycleError::Validation(message) => InviteAcceptanceError::Validation(message),
         other => InviteAcceptanceError::Internal(Error::from(other)),
     }
 }

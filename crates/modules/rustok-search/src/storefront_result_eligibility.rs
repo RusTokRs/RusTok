@@ -211,9 +211,7 @@ struct StorefrontEligibilityAudiencePolicyAdapter {
 
 #[allow(deprecated)]
 #[async_trait]
-impl crate::audience_security::SearchAudiencePolicyPort
-    for StorefrontEligibilityAudiencePolicyAdapter
-{
+impl crate::audience_security::SearchAudiencePolicyPort for StorefrontEligibilityAudiencePolicyAdapter {
     fn source_module(&self) -> &'static str {
         crate::storefront_category_scope::FORUM_SEARCH_SOURCE_MODULE
     }
@@ -230,8 +228,7 @@ impl crate::audience_security::SearchAudiencePolicyPort
             .candidates
             .into_iter()
             .filter_map(|candidate| {
-                let kind =
-                    StorefrontSearchResultCandidateKind::from_entity_type(&candidate.entity_type)?;
+                let kind = StorefrontSearchResultCandidateKind::from_entity_type(&candidate.entity_type)?;
                 Some(StorefrontSearchResultCandidate {
                     document_id: candidate.document_id,
                     kind,

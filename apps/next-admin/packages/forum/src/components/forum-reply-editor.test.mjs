@@ -6,33 +6,36 @@ import test from 'node:test';
 import {
   emptyRichTextDocument,
   richTextDocumentHasText,
-  validateRichTextDocument
+  validateRichTextDocument,
 } from '../../../../../../packages/richtext/src/document.ts';
 
 const source = readFileSync(
   new URL('./forum-reply-editor.tsx', import.meta.url),
-  'utf8'
+  'utf8',
 );
 const profiles = JSON.parse(
   readFileSync(
     new URL(
       '../../../../../../packages/richtext/src/generated/profiles.json',
-      import.meta.url
+      import.meta.url,
     ),
-    'utf8'
-  )
+    'utf8',
+  ),
 );
 const profile = profiles.find((item) => item.id === 'discussion');
 const submitSource = stripTypeScriptTypes(
   source.slice(
     source.indexOf('  async function submit('),
-    source.indexOf('\n\n  return (', source.indexOf('  async function submit('))
-  )
+    source.indexOf(
+      '\n\n  return (',
+      source.indexOf('  async function submit('),
+    ),
+  ),
 );
 
 const document = (text) => ({
   type: 'doc',
-  content: [{ type: 'paragraph', content: [{ type: 'text', text }] }]
+  content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
 });
 function deferred() {
   let resolve;
@@ -64,15 +67,15 @@ function harness(transport, initial = document('Reply body')) {
     form: { reset: (value) => resets.push(value) },
     toast: {
       success: (message) => notices.push(['success', message]),
-      error: (message) => notices.push(['error', message])
-    }
+      error: (message) => notices.push(['error', message]),
+    },
   };
   bindings.updateDocument = (value) => {
     bindings.documentRef.current = value;
   };
   const submit = compileFunction(
     `${submitSource}\nreturn submit;`,
-    Object.keys(bindings)
+    Object.keys(bindings),
   )(...Object.values(bindings));
   return { submit, bindings, resets, notices };
 }
@@ -174,7 +177,7 @@ test('old session completions do not clear a new topic editor or emit stale noti
 test('empty or invalid discussion documents never reach the owner write', async () => {
   for (const value of [
     emptyRichTextDocument(),
-    { type: 'doc', content: [{ type: 'unsafe', text: 'bad' }] }
+    { type: 'doc', content: [{ type: 'unsafe', text: 'bad' }] },
   ]) {
     const h = harness(() => assert.fail('unexpected request'), value);
     await h.submit({ locale: 'en' });

@@ -128,9 +128,8 @@ pub(crate) fn test_app_context(
     let event_bus = mock_transactional_event_bus();
     // Fixtures use random variant ids without inventory reservations; stock movement is
     // covered by `tests/order_inventory_reservation_test.rs`.
-    crate::controllers::CommerceHttpRuntime::in_process(db, event_bus).with_shipment_stock_port(
-        std::sync::Arc::new(rustok_fulfillment::NoopShipmentStockPort),
-    )
+    crate::controllers::CommerceHttpRuntime::in_process(db, event_bus)
+        .with_shipment_stock_port(std::sync::Arc::new(rustok_fulfillment::NoopShipmentStockPort))
 }
 
 pub(crate) async fn seed_tenant_context(db: &sea_orm::DatabaseConnection, tenant_id: Uuid) {

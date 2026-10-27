@@ -665,8 +665,7 @@ mod tests {
                     "style": { "color": "red" }
                 }
             ]
-        }))
-        .expect("valid document");
+        })).expect("valid document");
 
         assert_eq!(doc.document_kind(), DocumentKind::StarterPreset);
 
@@ -687,3 +686,4 @@ mod tests {
         );
     }
 }
+

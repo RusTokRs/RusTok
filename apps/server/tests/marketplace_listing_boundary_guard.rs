@@ -256,8 +256,9 @@ fn marketplace_root_consumes_listing_projection_without_owner_internals() {
         include_str!("../../../crates/modules/rustok-marketplace/rustok-module.toml");
     let modules = include_str!("../../../modules.toml");
     let distribution_manifest =
-        include_str!("../../../crates/utils/rustok-distribution/Cargo.toml");
-    let distribution_source = include_str!("../../../crates/utils/rustok-distribution/src/lib.rs");
+        include_str!("../../../crates/modules/rustok-distribution/Cargo.toml");
+    let distribution_source =
+        include_str!("../../../crates/modules/rustok-distribution/src/lib.rs");
     let server_manifest = include_str!("../../../apps/server/Cargo.toml");
 
     assert!(root.contains("MarketplaceListingDirectoryService"));

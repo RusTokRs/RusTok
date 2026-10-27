@@ -229,34 +229,17 @@ async fn localized_names_resolve_uncommitted_terms_on_the_caller_transaction() {
     let (db, service) = setup().await;
     let tenant_id = Uuid::new_v4();
     let txn = db.begin().await.unwrap();
-    let ids = service
-        .ensure_terms_for_module_in_tx(
-            &txn,
-            tenant_id,
-            TaxonomyTermKind::Tag,
-            "product",
-            "en",
-            &["Uncommitted Tag".to_string()],
-        )
-        .await
-        .unwrap();
-    let names = service
-        .resolve_term_names_in(&txn, tenant_id, &ids, "en", None)
-        .await
-        .unwrap();
-    assert_eq!(
-        names.get(&ids[0]).map(String::as_str),
-        Some("Uncommitted Tag")
-    );
-    let foreign = service
-        .resolve_term_names_in(&txn, Uuid::new_v4(), &ids, "en", None)
-        .await
-        .unwrap();
+    let ids = service.ensure_terms_for_module_in_tx(
+        &txn, tenant_id, TaxonomyTermKind::Tag, "product", "en",
+        &["Uncommitted Tag".to_string()],
+    ).await.unwrap();
+    let names = service.resolve_term_names_in(&txn, tenant_id, &ids, "en", None)
+        .await.unwrap();
+    assert_eq!(names.get(&ids[0]).map(String::as_str), Some("Uncommitted Tag"));
+    let foreign = service.resolve_term_names_in(&txn, Uuid::new_v4(), &ids, "en", None)
+        .await.unwrap();
     assert!(foreign.is_empty());
     txn.rollback().await.unwrap();
-    let after = service
-        .resolve_term_names(tenant_id, &ids, "en", None)
-        .await
-        .unwrap();
+    let after = service.resolve_term_names(tenant_id, &ids, "en", None).await.unwrap();
     assert!(after.is_empty());
 }

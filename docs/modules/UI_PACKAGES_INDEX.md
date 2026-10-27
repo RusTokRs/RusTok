@@ -142,7 +142,6 @@ integration. The canonical source of truth here is only manifest wiring.
 - `rustok-calls` admin UI: [README](../../crates/modules/rustok-calls/admin/README.md)
 - `rustok-calendar` admin UI: [README](../../crates/modules/rustok-calendar/admin/README.md)
 - `rustok-tasks` admin UI: [README](../../crates/modules/rustok-tasks/admin/README.md)
-- `rustok-security` admin UI: [README](../../crates/modules/rustok-security/admin/README.md)
 ### Optional/Storefront Surfaces
 
 - `rustok-notifications` storefront UI: [README](../../crates/modules/rustok-notifications/storefront/README.md)
@@ -174,7 +173,6 @@ integration. The canonical source of truth here is only manifest wiring.
 
 - `rustok-calls` storefront UI: [README](../../crates/modules/rustok-calls/storefront/README.md)
 - `rustok-calendar` storefront UI: [README](../../crates/modules/rustok-calendar/storefront/README.md)
-- `rustok-security` storefront UI: [README](../../crates/modules/rustok-security/storefront/README.md)
 ### Large Capability/Admin Surfaces
 
 These entries are visibility/scaffold references for large capability work. They are not

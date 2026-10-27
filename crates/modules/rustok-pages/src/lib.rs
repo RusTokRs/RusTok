@@ -91,7 +91,6 @@ pub use entities::{
 };
 pub use error::{CANNOT_DELETE_PUBLISHED_ERROR_CODE, PagesError, PagesResult};
 pub use graphql::{PagesMutation, PagesQuery};
-pub use module::PagesModule;
 pub use provider_health_binding::{
     PAGE_BUILDER_PROVIDER_HEALTH_SOURCE_COMMIT_ENV, PAGES_PROVIDER_HEALTH_ACCEPTANCE_PATH_ENV,
     PAGES_PROVIDER_HEALTH_DEPLOYMENT_ID_ENV, PAGES_PROVIDER_HEALTH_DEPLOYMENT_IMAGE_DIGEST_ENV,
@@ -138,7 +137,9 @@ pub use services::{
     SiteSymbolRecord, SiteSymbolService, inline_edit_context_mismatch,
     page_inline_edit_keyring_from_environment,
 };
+pub use module::PagesModule;
 pub use translation_target::PagesMetadataTranslationTargetProvider;
 
 #[cfg(test)]
 mod contract_tests;
+

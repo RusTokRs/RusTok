@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use crate::NotificationSourceRegistry;
 use chrono::{DateTime, Duration, FixedOffset, Utc};
+use crate::NotificationSourceRegistry;
 use sea_orm::{
     ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect,

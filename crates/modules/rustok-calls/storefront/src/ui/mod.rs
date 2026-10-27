@@ -8,11 +8,11 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-use crate::i18n::t;
 use leptos::prelude::*;
+use crate::i18n::t;
 
 #[component]
-pub fn CallsStorefrontView() -> impl IntoView {
+pub fn CallsView() -> impl IntoView {
     view! {
         <div class="rustok-calls-storefront-widget p-4">
             <h2 class="text-xl font-semibold">{t(None, "calls-storefront-title", "WebRTC Calls & Conferencing")}</h2>

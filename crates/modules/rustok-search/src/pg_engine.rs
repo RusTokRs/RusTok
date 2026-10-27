@@ -147,8 +147,7 @@ impl SearchEngine for PgSearchEngine {
     }
 
     async fn search(&self, query: SearchQuery) -> Result<SearchResult> {
-        self.search_with_storefront_channel(query, None, false)
-            .await
+        self.search_with_storefront_channel(query, None, false).await
     }
 }
 
@@ -180,9 +179,7 @@ fn build_filter_clause(
         }
         if !excluded.is_empty()
             && excluded.len() <= 64
-            && excluded
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+            && excluded.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
         {
             clauses.push(format!("source_module <> '{excluded}'"));
         }
@@ -967,8 +964,7 @@ mod tests {
         let clause = build_filter_clause(&query_with_categories(vec![]), 4, None, true, &[]);
         assert!(clause.clause.contains("source_module <> 'forum'"));
         assert!(clause.values.is_empty());
-        let owner_candidates =
-            build_filter_clause(&query_with_categories(vec![]), 4, None, false, &[]);
+        let owner_candidates = build_filter_clause(&query_with_categories(vec![]), 4, None, false, &[]);
         assert!(!owner_candidates.clause.contains("source_module <> 'forum'"));
     }
 
@@ -986,8 +982,7 @@ mod tests {
     }
 
     #[test]
-    fn filter_clause_excludes_forum_when_passed_in_excluded_modules_even_if_exclude_forum_flag_is_false()
-     {
+    fn filter_clause_excludes_forum_when_passed_in_excluded_modules_even_if_exclude_forum_flag_is_false() {
         let clause = build_filter_clause(
             &query_with_categories(vec![]),
             4,

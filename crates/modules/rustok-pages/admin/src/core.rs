@@ -64,10 +64,7 @@ pub fn build_create_page_draft(
         title: ui_text_or_default(input.title),
         slug: ui_text_or_default(input.slug),
         document: project_data,
-        template: input
-            .template
-            .and_then(optional_ui_text)
-            .or_else(|| Some("default".to_string())),
+        template: input.template.and_then(optional_ui_text).or_else(|| Some("default".to_string())),
         channel_slugs: parse_channel_slugs(input.channel_slugs),
     }
 }
@@ -243,43 +240,24 @@ mod tests {
     fn template_key_validation() {
         assert_eq!(validate_template_key("landing").unwrap(), "landing");
         assert_eq!(validate_template_key("MAIN_PAGE").unwrap(), "main_page");
-        assert_eq!(
-            validate_template_key("with-dash_123").unwrap(),
-            "with-dash_123"
-        );
-        assert_eq!(
-            validate_template_key("").unwrap_err(),
-            TemplateValidationError::EmptyKey
-        );
-        assert_eq!(
-            validate_template_key("bad key!").unwrap_err(),
-            TemplateValidationError::InvalidCharacters
-        );
+        assert_eq!(validate_template_key("with-dash_123").unwrap(), "with-dash_123");
+        assert_eq!(validate_template_key("").unwrap_err(), TemplateValidationError::EmptyKey);
+        assert_eq!(validate_template_key("bad key!").unwrap_err(), TemplateValidationError::InvalidCharacters);
     }
 
     #[test]
     fn parse_symbol_id_list_splits_and_normalizes() {
         assert_eq!(
             parse_symbol_id_list("header, footer, nav-bar "),
-            vec![
-                "header".to_string(),
-                "footer".to_string(),
-                "nav-bar".to_string()
-            ]
+            vec!["header".to_string(), "footer".to_string(), "nav-bar".to_string()]
         );
     }
 
     #[test]
     fn symbol_id_and_content_validation() {
         assert_eq!(validate_symbol_id("site-header").unwrap(), "site-header");
-        assert_eq!(
-            validate_symbol_id("").unwrap_err(),
-            SymbolValidationError::EmptyId
-        );
-        assert_eq!(
-            validate_symbol_id("bad symbol!").unwrap_err(),
-            SymbolValidationError::InvalidCharacters
-        );
+        assert_eq!(validate_symbol_id("").unwrap_err(), SymbolValidationError::EmptyId);
+        assert_eq!(validate_symbol_id("bad symbol!").unwrap_err(), SymbolValidationError::InvalidCharacters);
 
         let valid_json = r#"{"type": "section", "components": []}"#;
         assert!(validate_symbol_content_json(valid_json).is_ok());
@@ -312,31 +290,14 @@ mod tests {
             },
         ];
 
-        let header_usage =
-            compute_symbol_usage("site-header", &templates, vec!["page-uuid-1".to_string()]);
+        let header_usage = compute_symbol_usage("site-header", &templates, vec!["page-uuid-1".to_string()]);
         assert!(header_usage.is_used());
         assert!(!header_usage.can_delete_safely());
         assert_eq!(header_usage.total_dependents(), 3);
-        assert_eq!(
-            header_usage.dependent_templates,
-            vec!["default".to_string(), "landing".to_string()]
-        );
-        assert_eq!(
-            header_usage.dependent_page_ids,
-            vec!["page-uuid-1".to_string()]
-        );
-        assert!(
-            header_usage
-                .deletion_warning()
-                .unwrap()
-                .contains("2 template(s): default, landing")
-        );
-        assert!(
-            header_usage
-                .deletion_warning()
-                .unwrap()
-                .contains("1 page(s)")
-        );
+        assert_eq!(header_usage.dependent_templates, vec!["default".to_string(), "landing".to_string()]);
+        assert_eq!(header_usage.dependent_page_ids, vec!["page-uuid-1".to_string()]);
+        assert!(header_usage.deletion_warning().unwrap().contains("2 template(s): default, landing"));
+        assert!(header_usage.deletion_warning().unwrap().contains("1 page(s)"));
 
         let unused_usage = compute_symbol_usage("promo-banner", &templates, vec![]);
         assert!(!unused_usage.is_used());
@@ -361,10 +322,7 @@ pub fn validate_template_key(key: &str) -> Result<String, TemplateValidationErro
     if trimmed.len() > 64 {
         return Err(TemplateValidationError::KeyTooLong);
     }
-    if !trimmed
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
-    {
+    if !trimmed.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_') {
         return Err(TemplateValidationError::InvalidCharacters);
     }
     Ok(trimmed.to_ascii_lowercase())
@@ -395,10 +353,7 @@ pub fn validate_symbol_id(id: &str) -> Result<String, SymbolValidationError> {
     if trimmed.len() > 64 {
         return Err(SymbolValidationError::IdTooLong);
     }
-    if !trimmed
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
-    {
+    if !trimmed.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_') {
         return Err(SymbolValidationError::InvalidCharacters);
     }
     Ok(trimmed.to_ascii_lowercase())
@@ -458,7 +413,10 @@ impl SiteSymbolUsageInfo {
             ));
         }
         if !self.dependent_page_ids.is_empty() {
-            parts.push(format!("{} page(s)", self.dependent_page_ids.len()));
+            parts.push(format!(
+                "{} page(s)",
+                self.dependent_page_ids.len()
+            ));
         }
         Some(format!(
             "Symbol `{}` is referenced by {}. Deleting it will cause rendering errors or will be rejected by the server.",
@@ -480,8 +438,7 @@ pub fn compute_symbol_usage(
             tpl.header_symbol_ids
                 .iter()
                 .any(|id| id.trim().eq_ignore_ascii_case(&normalized_id))
-                || tpl
-                    .footer_symbol_ids
+                || tpl.footer_symbol_ids
                     .iter()
                     .any(|id| id.trim().eq_ignore_ascii_case(&normalized_id))
         })

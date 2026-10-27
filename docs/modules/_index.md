@@ -74,14 +74,14 @@ Module local documentation lives inside the crates themselves at
 | `rustok-installer` | [docs](../../crates/utils/rustok-installer/docs/README.md) | [plan](../../crates/utils/rustok-installer/docs/implementation-plan.md) |
 | `rustok-build` | [docs](../../crates/utils/rustok-build/docs/README.md) | [plan](../../crates/utils/rustok-build/docs/implementation-plan.md) |
 | `rustok-cli-registry` | [docs](../../crates/utils/rustok-cli-registry/docs/README.md) | [plan](../../crates/utils/rustok-cli-registry/docs/implementation-plan.md) |
-| `rustok-distribution` | [docs](../../crates/utils/rustok-distribution/docs/README.md) | Registry composition and deterministic static-promotion build output are documented locally. |
+| `rustok-distribution` | [docs](../../crates/modules/rustok-distribution/docs/README.md) | Registry composition and deterministic static-promotion build output are documented locally. |
 | `rustok-cli` | [docs](../../crates/utils/rustok-cli/docs/README.md) | [plan](../../crates/utils/rustok-cli/docs/implementation-plan.md) |
 | `rustok-graphql` | [docs](../../crates/ui/rustok-graphql/docs/README.md) | [plan](../../crates/ui/rustok-graphql/docs/implementation-plan.md) |
 | `rustok-ui-i18n` | [docs](../../crates/ui/rustok-ui-i18n/docs/README.md) | [plan](../../crates/ui/rustok-ui-i18n/docs/implementation-plan.md) |
 | `rustok-ui-transport` | [docs](../../crates/ui/rustok-ui-transport/docs/README.md) | [plan](../../crates/ui/rustok-ui-transport/docs/implementation-plan.md) |
 | `rustok-ui-core` | [docs](../../crates/ui/rustok-ui-core/docs/README.md) | [plan](../../crates/ui/rustok-ui-core/docs/implementation-plan.md) |
 | `rustok-test-utils` | [docs](../../crates/utils/rustok-test-utils/docs/README.md) | [plan](../../crates/utils/rustok-test-utils/docs/implementation-plan.md) |
-| `rustok-iggy` | [docs](../../crates/libs/rustok-iggy/docs/README.md) | [plan](../../crates/libs/rustok-iggy/docs/implementation-plan.md) |
+| `rustok-iggy` | [docs](../../crates/modules/rustok-iggy/docs/README.md) | [plan](../../crates/modules/rustok-iggy/docs/implementation-plan.md) |
 | `rustok-iggy-connector` | [docs](../../crates/modules/rustok-iggy-connector/docs/README.md) | [plan](../../crates/modules/rustok-iggy-connector/docs/implementation-plan.md) |
 | `rustok-mcp` | [docs](../../crates/modules/rustok-mcp/docs/README.md) | [plan](../../crates/modules/rustok-mcp/docs/implementation-plan.md) |
 | `rustok-ai` | [docs](../../crates/modules/rustok-ai/docs/README.md) | [plan](../../crates/modules/rustok-ai/docs/implementation-plan.md) |
@@ -93,7 +93,7 @@ Module local documentation lives inside the crates themselves at
 | `rustok-ai-alloy` | [docs](../../crates/modules/rustok-ai-alloy/docs/README.md) | [plan](../../crates/modules/rustok-ai-alloy/docs/implementation-plan.md) |
 | `alloy` | [docs](../../crates/modules/alloy/docs/README.md) | [plan](../../crates/modules/alloy/docs/implementation-plan.md) |
 | `flex` | [docs](../../crates/modules/flex/docs/README.md) | [plan](../../crates/modules/flex/docs/implementation-plan.md) |
-| `rustok-commerce-foundation` | [docs](../../crates/libs/rustok-commerce-foundation/docs/README.md) | [plan](../../crates/libs/rustok-commerce-foundation/docs/implementation-plan.md) |
+| `rustok-commerce-foundation` | [docs](../../crates/modules/rustok-commerce-foundation/docs/README.md) | [plan](../../crates/modules/rustok-commerce-foundation/docs/implementation-plan.md) |
 | `rustok-seo-render` | [docs](../../crates/modules/rustok-seo/render/docs/README.md) | [plan](../../crates/modules/rustok-seo/render/docs/implementation-plan.md) |
 | `rustok-seo-panel` | [docs](../../crates/modules/rustok-seo/panel/docs/README.md) | [plan](../../crates/modules/rustok-seo/panel/docs/implementation-plan.md) |
 
@@ -154,7 +154,6 @@ Module local documentation lives inside the crates themselves at
 | `rustok-calls` | [docs](../../crates/modules/rustok-calls/docs/README.md) | [plan](../../crates/modules/rustok-calls/docs/implementation-plan.md) |
 | `rustok-calendar` | [docs](../../crates/modules/rustok-calendar/docs/README.md) | [plan](../../crates/modules/rustok-calendar/docs/implementation-plan.md) |
 | `rustok-tasks` | [docs](../../crates/modules/rustok-tasks/docs/README.md) | [plan](../../crates/modules/rustok-tasks/docs/implementation-plan.md) |
-| `rustok-security` | [docs](../../crates/modules/rustok-security/docs/README.md) | [plan](../../crates/modules/rustok-security/docs/implementation-plan.md) |
 ## Module UI Packages
 
 ### Optional/Admin Surfaces
@@ -185,7 +184,6 @@ Module local documentation lives inside the crates themselves at
 - `rustok-calls`: [README](../../crates/modules/rustok-calls/admin/README.md)
 - `rustok-calendar`: [README](../../crates/modules/rustok-calendar/admin/README.md)
 - `rustok-tasks`: [README](../../crates/modules/rustok-tasks/admin/README.md)
-- `rustok-security`: [README](../../crates/modules/rustok-security/admin/README.md)
 ### Optional/Storefront Surfaces
 
 - `rustok-groups`: [README](../../crates/modules/rustok-groups/storefront/README.md)
@@ -198,7 +196,6 @@ Module local documentation lives inside the crates themselves at
 
 - `rustok-calls`: [README](../../crates/modules/rustok-calls/storefront/README.md)
 - `rustok-calendar`: [README](../../crates/modules/rustok-calendar/storefront/README.md)
-- `rustok-security`: [README](../../crates/modules/rustok-security/storefront/README.md)
 ## Related Documents
 
 - [Module Platform Overview](./overview.md)

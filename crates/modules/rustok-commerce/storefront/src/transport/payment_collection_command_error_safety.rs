@@ -184,10 +184,7 @@ mod tests {
         };
         match ctx.map_error(err_native) {
             ApiError::ServerFn(msg) => {
-                assert_eq!(
-                    msg,
-                    "Storefront payment collection is temporarily unavailable"
-                );
+                assert_eq!(msg, "Storefront payment collection is temporarily unavailable");
             }
             other => panic!("expected ApiError::ServerFn, got {other:?}"),
         }
@@ -201,10 +198,7 @@ mod tests {
         };
         match ctx.map_error(err_graphql) {
             ApiError::Graphql(msg) => {
-                assert_eq!(
-                    msg,
-                    "Storefront payment collection is temporarily unavailable"
-                );
+                assert_eq!(msg, "Storefront payment collection is temporarily unavailable");
             }
             other => panic!("expected ApiError::Graphql, got {other:?}"),
         }

@@ -84,7 +84,9 @@ impl EmailService {
         } else {
             "?"
         };
-        format!("{trimmed}{separator}token={encoded_token}")
+        format!(
+            "{trimmed}{separator}token={encoded_token}"
+        )
     }
 
     /// Register an additional template provider for transactional email.
@@ -184,9 +186,7 @@ impl SmtpEmailSender {
 
         let host = config.smtp.host.trim();
         if host.is_empty() {
-            return Err(EmailError::SmtpConfig(
-                "SMTP host cannot be empty".to_string(),
-            ));
+            return Err(EmailError::SmtpConfig("SMTP host cannot be empty".to_string()));
         }
 
         if config.smtp.port == 0 {

@@ -1,5 +1,5 @@
-use crate::model::SubscriberStatus;
 use chrono::{DateTime, Utc};
+use crate::model::SubscriberStatus;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;

@@ -24,9 +24,9 @@ pub mod provider;
 pub mod reconciliation;
 
 #[cfg(feature = "server")]
-mod candidate;
-#[cfg(feature = "server")]
 pub mod domain;
+#[cfg(feature = "server")]
+mod candidate;
 #[cfg(feature = "server")]
 pub mod entities;
 #[cfg(feature = "server")]
@@ -78,22 +78,24 @@ pub use keys::{
     NotificationTargetKind, NotificationTargetRoute, NotificationTemplateKey, NotificationTypeKey,
 };
 pub use model::{
+    NotificationAudienceCandidate, NotificationAudiencePage, NotificationContractError,
+    NotificationOpenAuthorization, NotificationPriority, NotificationSemanticDescriptor,
+    NotificationSourceEventRef, NotificationTargetRef, NotificationTemplateData,
     MAX_NOTIFICATION_AUDIENCE_PAGE_SIZE, MAX_NOTIFICATION_TEMPLATE_DATA_BYTES,
     MAX_NOTIFICATION_TEMPLATE_FIELDS, MAX_NOTIFICATION_TEMPLATE_KEY_BYTES,
-    MAX_NOTIFICATION_TEMPLATE_VALUE_BYTES, NotificationAudienceCandidate, NotificationAudiencePage,
-    NotificationContractError, NotificationOpenAuthorization, NotificationPriority,
-    NotificationSemanticDescriptor, NotificationSourceEventRef, NotificationTargetRef,
-    NotificationTemplateData,
+    MAX_NOTIFICATION_TEMPLATE_VALUE_BYTES,
 };
 pub use provider::{
-    AuthorizeNotificationTargetRequest, DescribeNotificationRequest, NotificationProviderError,
-    NotificationProviderResult, NotificationSourceFactoryRegistry, NotificationSourceProvider,
-    NotificationSourceProviderFactory, NotificationSourceRegistry, NotificationSourceRegistryEntry,
-    NotificationSourceRegistryError, ResolveNotificationAudienceRequest,
     ensure_notification_source_factory_registry, ensure_notification_source_registry,
-    materialize_notification_source_registry, notification_source_factory_registry_from_extensions,
+    materialize_notification_source_registry,
+    notification_source_factory_registry_from_extensions,
     notification_source_registry_from_extensions, register_notification_source_provider,
-    register_notification_source_provider_factory,
+    register_notification_source_provider_factory, AuthorizeNotificationTargetRequest,
+    DescribeNotificationRequest, NotificationProviderError, NotificationProviderResult,
+    NotificationSourceFactoryRegistry, NotificationSourceProvider,
+    NotificationSourceProviderFactory, NotificationSourceRegistry,
+    NotificationSourceRegistryEntry, NotificationSourceRegistryError,
+    ResolveNotificationAudienceRequest,
 };
 pub use reconciliation::{
     NotificationInboxReconciliationInspectPage, NotificationInboxReconciliationInspectPort,
@@ -108,23 +110,24 @@ pub mod api {
         NotificationTypeKey,
     };
     pub use crate::model::{
+        NotificationAudienceCandidate, NotificationAudiencePage, NotificationContractError,
+        NotificationOpenAuthorization, NotificationPriority, NotificationSemanticDescriptor,
+        NotificationSourceEventRef, NotificationTargetRef, NotificationTemplateData,
         MAX_NOTIFICATION_AUDIENCE_PAGE_SIZE, MAX_NOTIFICATION_TEMPLATE_DATA_BYTES,
         MAX_NOTIFICATION_TEMPLATE_FIELDS, MAX_NOTIFICATION_TEMPLATE_KEY_BYTES,
-        MAX_NOTIFICATION_TEMPLATE_VALUE_BYTES, NotificationAudienceCandidate,
-        NotificationAudiencePage, NotificationContractError, NotificationOpenAuthorization,
-        NotificationPriority, NotificationSemanticDescriptor, NotificationSourceEventRef,
-        NotificationTargetRef, NotificationTemplateData,
+        MAX_NOTIFICATION_TEMPLATE_VALUE_BYTES,
     };
     pub use crate::provider::{
-        AuthorizeNotificationTargetRequest, DescribeNotificationRequest, NotificationProviderError,
-        NotificationProviderResult, NotificationSourceFactoryRegistry, NotificationSourceProvider,
-        NotificationSourceProviderFactory, NotificationSourceRegistry,
-        NotificationSourceRegistryEntry, NotificationSourceRegistryError,
-        ResolveNotificationAudienceRequest, ensure_notification_source_factory_registry,
-        ensure_notification_source_registry, materialize_notification_source_registry,
+        ensure_notification_source_factory_registry, ensure_notification_source_registry,
+        materialize_notification_source_registry,
         notification_source_factory_registry_from_extensions,
         notification_source_registry_from_extensions, register_notification_source_provider,
-        register_notification_source_provider_factory,
+        register_notification_source_provider_factory, AuthorizeNotificationTargetRequest,
+        DescribeNotificationRequest, NotificationProviderError, NotificationProviderResult,
+        NotificationSourceFactoryRegistry, NotificationSourceProvider,
+        NotificationSourceProviderFactory, NotificationSourceRegistry,
+        NotificationSourceRegistryEntry, NotificationSourceRegistryError,
+        ResolveNotificationAudienceRequest,
     };
     pub use crate::reconciliation::{
         NotificationInboxReconciliationInspectPage, NotificationInboxReconciliationInspectPort,
@@ -133,6 +136,7 @@ pub mod api {
     };
     pub use rustok_api::{PortContext, PortError};
 }
+
 
 #[cfg(feature = "server")]
 pub use candidate::{
@@ -221,8 +225,6 @@ pub use inbox_storefront_port::{
     NotificationInboxStorefrontService, in_process_notification_inbox_storefront_port,
 };
 #[cfg(feature = "server")]
-pub use module::NotificationsModule;
-#[cfg(feature = "server")]
 pub use outbox_intake::{
     DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE, MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE,
     NotificationOutboxEnvelopeDecoder, NotificationOutboxEnvelopeRecord,
@@ -244,3 +246,5 @@ pub use worker::{
     NotificationCandidateBatchResult, NotificationCandidatePolicyDeferral,
     NotificationCandidateWorkItem, NotificationCandidateWorker, NotificationCandidateWorkerFailure,
 };
+#[cfg(feature = "server")]
+pub use module::NotificationsModule;

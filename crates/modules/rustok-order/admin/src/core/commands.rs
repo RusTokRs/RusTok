@@ -222,9 +222,8 @@ mod tests {
         // Exact bound should succeed
         let exact_id = "a".repeat(MAX_PAYMENT_ID_LEN);
         let exact_method = "m".repeat(MAX_PAYMENT_METHOD_LEN);
-        let cmd =
-            prepare_mark_paid_command(exact_id.clone(), exact_method.clone(), "req".to_string())
-                .expect("exact length bound must pass");
+        let cmd = prepare_mark_paid_command(exact_id.clone(), exact_method.clone(), "req".to_string())
+            .expect("exact length bound must pass");
         assert_eq!(cmd.payment_id, exact_id);
         assert_eq!(cmd.payment_method, exact_method);
     }
@@ -276,31 +275,28 @@ mod tests {
 
         let exact_tracking = "t".repeat(MAX_TRACKING_NUMBER_LEN);
         let exact_carrier = "c".repeat(MAX_CARRIER_LEN);
-        let cmd = prepare_ship_order_command(
-            exact_tracking.clone(),
-            exact_carrier.clone(),
-            "req".to_string(),
-        )
-        .expect("exact length bound must pass");
+        let cmd = prepare_ship_order_command(exact_tracking.clone(), exact_carrier.clone(), "req".to_string())
+            .expect("exact length bound must pass");
         assert_eq!(cmd.tracking_number, exact_tracking);
         assert_eq!(cmd.carrier, exact_carrier);
     }
 
     #[test]
     fn deliver_order_command_normalizes_and_validates_bounds() {
-        let command =
-            prepare_deliver_order_command(" signed by Alex ").expect("valid deliver command");
+        let command = prepare_deliver_order_command(" signed by Alex ")
+            .expect("valid deliver command");
         assert_eq!(
             command.delivered_signature.as_deref(),
             Some("signed by Alex")
         );
 
-        let blank = prepare_deliver_order_command(" ").expect("blank signature normalizes to None");
+        let blank = prepare_deliver_order_command(" ")
+            .expect("blank signature normalizes to None");
         assert_eq!(blank.delivered_signature, None);
 
         let long_sig = "s".repeat(MAX_DELIVERED_SIGNATURE_LEN + 1);
-        let err =
-            prepare_deliver_order_command(long_sig).expect_err("long signature must be rejected");
+        let err = prepare_deliver_order_command(long_sig)
+            .expect_err("long signature must be rejected");
         assert_eq!(
             err,
             OrderCommandError::FieldTooLong {
@@ -310,18 +306,19 @@ mod tests {
         );
 
         let exact_sig = "s".repeat(MAX_DELIVERED_SIGNATURE_LEN);
-        let cmd =
-            prepare_deliver_order_command(&exact_sig).expect("exact length signature must pass");
+        let cmd = prepare_deliver_order_command(&exact_sig)
+            .expect("exact length signature must pass");
         assert_eq!(cmd.delivered_signature.as_deref(), Some(exact_sig.as_str()));
     }
 
     #[test]
     fn cancel_order_command_normalizes_and_validates_bounds() {
-        let command =
-            prepare_cancel_order_command(" customer request ").expect("valid cancel command");
+        let command = prepare_cancel_order_command(" customer request ")
+            .expect("valid cancel command");
         assert_eq!(command.reason.as_deref(), Some("customer request"));
 
-        let blank = prepare_cancel_order_command(" ").expect("blank reason normalizes to None");
+        let blank = prepare_cancel_order_command(" ")
+            .expect("blank reason normalizes to None");
         assert_eq!(blank.reason, None);
 
         let long_reason = "r".repeat(MAX_CANCEL_REASON_LEN + 1);
@@ -336,8 +333,8 @@ mod tests {
         );
 
         let exact_reason = "r".repeat(MAX_CANCEL_REASON_LEN);
-        let cmd =
-            prepare_cancel_order_command(&exact_reason).expect("exact length reason must pass");
+        let cmd = prepare_cancel_order_command(&exact_reason)
+            .expect("exact length reason must pass");
         assert_eq!(cmd.reason.as_deref(), Some(exact_reason.as_str()));
     }
 

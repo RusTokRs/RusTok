@@ -29,6 +29,7 @@ pub mod migrations;
 pub mod module;
 pub mod oauth_app_translation;
 pub mod rest;
+pub mod validation;
 
 #[cfg(test)]
 mod contract_tests;
@@ -38,9 +39,10 @@ pub use module::AuthModule;
 
 pub use admin_mutations::{
     AuthAdminMutationContext, AuthAdminMutationError, AuthorizedOAuthAppRecord,
-    CreateOAuthAppCommand, CreateUserCommand, OAuthAdminPort, OAuthAdminRuntime,
-    OAuthAppMutationRecord, OAuthAppSecretResult, UpdateOAuthAppCommand, UpdateUserCommand,
-    UserAdminMutationPort, UserAdminMutationRuntime, UserMutationRecord,
+    CreateOAuthAppCommand, CreateUserCommand, IssueUserInviteCommand, IssuedUserInviteResult,
+    OAuthAdminPort, OAuthAdminRuntime, OAuthAppMutationRecord, OAuthAppSecretResult,
+    UpdateOAuthAppCommand, UpdateUserCommand, UserAdminMutationPort, UserAdminMutationRuntime,
+    UserInviteRecord, UserMutationRecord,
 };
 pub use backfill::AuthUserBackfillDbReader;
 pub use bootstrap::{AuthUserBootstrapDbWriter, AuthUserBootstrapRecord, AuthUserBootstrapRequest};
@@ -48,7 +50,11 @@ pub use config::{
     AuthConfig, AuthSettingsOverrides, JwtAlgorithm, build_auth_config, build_auth_config_with_env,
     validate_auth_config,
 };
-pub use credentials::{generate_refresh_token, hash_password, hash_refresh_token, verify_password};
+pub use credentials::{
+    DEFAULT_MIN_PASSWORD_LENGTH_CHARS, MAX_MIN_PASSWORD_LENGTH_CHARS, MAX_PASSWORD_LENGTH_BYTES,
+    MIN_PASSWORD_LENGTH_FLOOR_CHARS, generate_refresh_token, hash_password, hash_refresh_token,
+    validate_password_policy, verify_password,
+};
 pub use error::AuthError;
 pub use jwt::{
     Claims, EmailVerificationClaims, InviteClaims, OauthAccessTokenInput, PasswordResetClaims,
@@ -73,6 +79,9 @@ pub use rest::{
     ResetRequestResponse, RevokeRequest, SessionItem, SessionListParams, SessionsResponse,
     TokenErrorResponse, TokenRequest, TokenResponse, UpdateProfileParams, UserInfo, UserItem,
     UserResponse, UsersListParams, UsersResponse, VerificationRequestResponse,
+};
+pub use validation::{
+    MAX_DISPLAY_NAME_CHARS, MAX_EMAIL_LENGTH_CHARS, normalize_display_name, normalize_email,
 };
 
 use rustok_api::Permission;

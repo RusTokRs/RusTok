@@ -891,7 +891,7 @@ mod tests {
         use rustok_build::DeploymentProfile;
         use rustok_cache::CacheService;
         use rustok_channel::ChannelService;
-        use rustok_core::{ModuleRuntimeExtensions, UserRole, events::EventTransport};
+        use rustok_core::{UserRole, events::EventTransport};
         use rustok_outbox::{OutboxTransport, SysEventsMigration};
         use rustok_tenant::{
             PortActor, PortContext, TenantLocalePolicyPort, TenantService, entities::tenant_locale,
@@ -936,6 +936,8 @@ mod tests {
                 "m20250101_000004_create_sessions",
                 "m20250101_000005_create_roles_and_permissions",
                 "m20250130_000004_create_tenant_locales",
+                "m20261025_000001_add_user_login_lockout",
+                "m20261025_000003_add_session_reuse_detection",
             ];
             const CHANNEL_MIGRATIONS: &[&str] = &[
                 "m20260325_000001_create_channels",
@@ -1142,10 +1144,36 @@ mod tests {
             let event_transport: Arc<dyn EventTransport> =
                 Arc::new(OutboxTransport::new(database.clone()));
             runtime_context.shared_insert(event_transport);
-            runtime_context.shared_insert(Arc::new(ModuleRuntimeExtensions::default()));
+            runtime_context.shared_insert(
+                crate::services::event_bus::transactional_event_bus_from_context(&runtime_context),
+            );
+            // Production initializes a filesystem/S3 storage backend at
+            // this point (`init_storage`); module routes only need the
+            // handle to exist, so the in-memory backend keeps the
+            // fixture hermetic.
+            runtime_context.shared_insert(rustok_storage::StorageRuntime::in_memory());
 
             let auth_config =
                 AuthConfig::new("translation-router-test-secret-with-32-bytes".to_string());
+            // Mirror production host composition (`app_runtime` bootstrap):
+            // build the real shared runtime extensions for the generated
+            // registry so optional module routers find the provider
+            // handles they hard-require.
+            let registry = build_registry();
+            let runtime_extensions = crate::services::module_event_dispatcher::build_shared_runtime_extensions_with_host_providers(
+                &registry,
+                &settings,
+                runtime_context.clone(),
+                auth_config.clone(),
+            )
+            .expect("build shared runtime extensions");
+            runtime_context.shared_insert(runtime_extensions);
+            // Deliberately unlike production, the registry is not inserted
+            // into the server runtime context: that activates dormant-grant
+            // filtering in the auth extractor, which resolves the tenant's
+            // effective module policy from platform-composition tables this
+            // minimal fixture does not migrate. Route composition uses the
+            // bootstrap registry below directly.
             let access_token = encode_access_token(
                 &auth_config,
                 user.id,
@@ -1169,7 +1197,7 @@ mod tests {
                     embed_admin: false,
                     embed_storefront: false,
                 },
-                registry: build_registry(),
+                registry,
                 graphql_schema: Arc::new(
                     async_graphql::Schema::build(
                         Query::default(),

@@ -20,12 +20,7 @@ export interface FormSubmission {
 }
 
 export async function listFormSubmissions(
-  filter: {
-    formId?: string;
-    state?: FormSubmissionState;
-    page?: number;
-    perPage?: number;
-  } = {},
+  filter: { formId?: string; state?: FormSubmissionState; page?: number; perPage?: number } = {},
   opts: GqlOpts = {}
 ): Promise<FormSubmission[]> {
   const data = await graphqlRequest<

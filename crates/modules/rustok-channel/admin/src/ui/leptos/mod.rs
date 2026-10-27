@@ -468,3 +468,4 @@ fn resolution_outcome_badge_class(outcome: &ChannelResolutionOutcome) -> &'stati
         }
     }
 }
+

@@ -1439,9 +1439,7 @@ mod tests {
     fn ensure_permission_validates_required_permissions() {
         let permissions = vec![Permission::ORDERS_READ];
         assert!(ensure_permission(&permissions, &[Permission::ORDERS_READ], "orders:read").is_ok());
-        assert!(
-            ensure_permission(&permissions, &[Permission::ORDERS_UPDATE], "orders:update").is_err()
-        );
+        assert!(ensure_permission(&permissions, &[Permission::ORDERS_UPDATE], "orders:update").is_err());
     }
 
     #[test]
@@ -1489,23 +1487,19 @@ mod tests {
                 .is_err()
         );
         assert!(
-            parse_optional_line_item_id(
-                &item_id.to_string(),
-                &CommerceCartPromotionScope::Shipping
-            )
-            .is_err()
+            parse_optional_line_item_id(&item_id.to_string(), &CommerceCartPromotionScope::Shipping)
+                .is_err()
         );
 
         // Scope LineItem: must be non-empty valid UUID
         assert_eq!(
-            parse_optional_line_item_id(
-                &item_id.to_string(),
-                &CommerceCartPromotionScope::LineItem
-            )
-            .unwrap(),
+            parse_optional_line_item_id(&item_id.to_string(), &CommerceCartPromotionScope::LineItem)
+                .unwrap(),
             Some(item_id)
         );
-        assert!(parse_optional_line_item_id("", &CommerceCartPromotionScope::LineItem).is_err());
+        assert!(
+            parse_optional_line_item_id("", &CommerceCartPromotionScope::LineItem).is_err()
+        );
         assert!(
             parse_optional_line_item_id("invalid", &CommerceCartPromotionScope::LineItem).is_err()
         );
@@ -1546,7 +1540,10 @@ mod tests {
 
     #[test]
     fn normalize_source_id_trims_and_requires_non_empty() {
-        assert_eq!(normalize_source_id("  operator-1  ").unwrap(), "operator-1");
+        assert_eq!(
+            normalize_source_id("  operator-1  ").unwrap(),
+            "operator-1"
+        );
         assert!(normalize_source_id("   ").is_err());
     }
 
@@ -1587,3 +1584,4 @@ mod tests {
         assert!(err.to_string().contains("not found"));
     }
 }
+

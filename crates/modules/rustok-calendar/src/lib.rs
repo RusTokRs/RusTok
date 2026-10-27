@@ -36,8 +36,8 @@ pub mod migrations;
 pub use domain::CalendarStatus;
 pub use error::{CalendarError, CalendarResult};
 pub use events::{
-    CALENDAR_EVENT_TOPIC, CalendarCreatedEvent, CalendarDeletedEvent, CalendarDomainEvent,
-    CalendarUpdatedEvent,
+    CalendarCreatedEvent, CalendarDeletedEvent, CalendarDomainEvent, CalendarUpdatedEvent,
+    CALENDAR_EVENT_TOPIC,
 };
 pub use module::CalendarModule;
 pub use services::CalendarService;

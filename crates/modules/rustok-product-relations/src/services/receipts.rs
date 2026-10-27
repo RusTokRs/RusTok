@@ -385,7 +385,9 @@ fn decode_unit_receipt(value: serde_json::Value) -> Result<(), ProductRelationCo
 mod tests {
     use super::*;
     use rustok_outbox::SysEventsMigration;
-    use sea_orm::{ConnectionTrait, Database, DatabaseBackend, Statement, TransactionTrait};
+    use sea_orm::{
+        ConnectionTrait, Database, DatabaseBackend, Statement, TransactionTrait,
+    };
     use sea_orm_migration::{MigrationTrait, SchemaManager};
     use uuid::Uuid;
 

@@ -8,7 +8,8 @@ use crate::{
     PgSearchEngine, SLOW_QUERY_THRESHOLD_MS, SearchAnalyticsService, SearchAttributeFilter,
     SearchDiagnosticsService, SearchDictionaryService, SearchEngine, SearchFilterPresetService,
     SearchModule, SearchQuery, SearchQueryLogRecord, SearchRankingProfile, SearchSettingsService,
-    SearchSuggestionQuery, SearchSuggestionService, resolve_trusted_storefront_channel,
+    SearchSuggestionQuery, SearchSuggestionService,
+    resolve_trusted_storefront_channel,
 };
 use rustok_api::{
     AuthContext, Permission, RequestContext, TenantContext, graphql::GraphQLError,
@@ -1077,6 +1078,8 @@ async fn run_search_with_dictionaries(
     let result = engine.search(search_query.clone()).await?;
     SearchDictionaryService::apply_query_rules(db, &search_query, result).await
 }
+
+
 
 fn classify_search_error(error: &rustok_core::Error) -> &'static str {
     match error {

@@ -35,7 +35,7 @@ export function run() {
     require(validation >= 0 && validation < command.indexOf('self.validate_shipping_profiles('), `${field}: length bound before provider IO`);
   }
   require(conversion.includes('Decimal::from_str_exact(&value)'), 'GraphQL weight must not round silently');
-  require(!read('crates/libs/rustok-commerce-foundation/src/dto/variant.rs').includes('pub struct UpdateVariantInput'), 'Product must own the only canonical Variant update DTO');
+  require(!read('crates/modules/rustok-commerce-foundation/src/dto/variant.rs').includes('pub struct UpdateVariantInput'), 'Product must own the only canonical Variant update DTO');
   require(transport.includes('draft: crate::model::VariantUpdateDraft'), 'update must not accept the creation draft');
   const retry = read(`${owner}admin/src/transport/retry.rs`);
   require(retry.includes('draft={draft:?}') && retry.includes('variant_update_intent(&tenant_id, &user_id, &variant_id, &draft)'), 'retry must fingerprint the complete draft and scope');

@@ -292,28 +292,27 @@ pub async fn resolve_current_user_from_access_token(
             // everywhere, while the persisted role grants remain intact and
             // reactivate when the module is enabled again. Availability
             // resolution failures fail closed, like role resolution above.
-            let granted_permissions =
-                match crate::services::rbac_module_availability::permission_availability_for(
-                    ctx.runtime_ctx(),
-                    tenant_id,
-                )
-                .await
-                {
-                    Ok(Some(availability)) => availability.active_permissions(&granted_permissions),
-                    Ok(None) => granted_permissions,
-                    Err(error) => {
-                        tracing::error!(
-                            %error,
-                            tenant_id = %tenant_id,
-                            user_id = %user.id,
-                            "RBAC module availability resolution failed"
-                        );
-                        return Err((
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            "Module policy unavailable",
-                        ));
-                    }
-                };
+            let granted_permissions = match crate::services::rbac_module_availability::permission_availability_for(
+                ctx.runtime_ctx(),
+                tenant_id,
+            )
+            .await
+            {
+                Ok(Some(availability)) => availability.active_permissions(&granted_permissions),
+                Ok(None) => granted_permissions,
+                Err(error) => {
+                    tracing::error!(
+                        %error,
+                        tenant_id = %tenant_id,
+                        user_id = %user.id,
+                        "RBAC module availability resolution failed"
+                    );
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Module policy unavailable",
+                    ));
+                }
+            };
 
             let effective_permissions = if principal_kind == AuthPrincipalKind::DelegatedUser {
                 restrict_permissions_to_scopes(&granted_permissions, &claims.scopes)

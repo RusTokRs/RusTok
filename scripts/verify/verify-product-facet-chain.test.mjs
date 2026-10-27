@@ -56,7 +56,7 @@ const OWNER_TERM_RESOLUTION =
 const OWNER_STOREFRONT_LIST = "crates/modules/rustok-product/src/services/catalog/queries.rs";
 const OWNER_ADMIN_LIST = "crates/modules/rustok-product/src/services/catalog/admin_queries.rs";
 const DISTRIBUTION_SHADOW =
-  "crates/utils/rustok-distribution/src/product_index/storefront_shadow.rs";
+  "crates/modules/rustok-distribution/src/product_index/storefront_shadow.rs";
 const OWNER_FACET_POSTGRES_TEST =
   "crates/modules/rustok-product/tests/postgres_facet_counts.rs";
 

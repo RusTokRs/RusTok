@@ -4,13 +4,6 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Leptos admin UI package for the rustok-seo module"
-readme = "README.md"
-repository.workspace = true
-rust-version.workspace = true
-
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
 
 [lib]
 crate-type = ["rlib"]

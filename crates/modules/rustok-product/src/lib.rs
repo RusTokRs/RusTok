@@ -61,11 +61,10 @@ pub use media_reference::{
 pub use ports::{
     AdminCatalogFacetsRequest, AdminProductsRequest, FilteredPublishedProductsRequest,
     LegacyAdminProductsRequest, LegacyStorefrontProductList, LegacyStorefrontProductListItem,
-    LegacyStorefrontProductsRequest, MAX_ADMIN_PRODUCTS_PER_PAGE, MAX_PUBLISHED_PRODUCTS_PER_PAGE,
-    ProductCatalogReadPort, ProductProjectionRequest, PublishedProductsRequest,
-    StorefrontCatalogFacetsRequest, StorefrontProductProjectionRequest,
+    LegacyStorefrontProductsRequest, ProductCatalogReadPort, ProductProjectionRequest,
+    PublishedProductsRequest, StorefrontCatalogFacetsRequest, StorefrontProductProjectionRequest,
     StorefrontProductProjectionSubject, StorefrontVariantProductProjectionRequest,
-    VariantProductProjectionRequest,
+    VariantProductProjectionRequest, MAX_ADMIN_PRODUCTS_PER_PAGE, MAX_PUBLISHED_PRODUCTS_PER_PAGE,
 };
 pub use public_error::{ProductPublicError, map_product_public_error};
 pub use runtime::{

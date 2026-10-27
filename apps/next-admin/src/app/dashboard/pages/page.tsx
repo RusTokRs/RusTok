@@ -20,14 +20,12 @@ export default async function Page() {
     process.env.STOREFRONT_URL ??
     null;
   const previewSecret =
-    process.env.REVALIDATE_SECRET ?? process.env.PREVIEW_SECRET ?? null;
+    process.env.REVALIDATE_SECRET ??
+    process.env.PREVIEW_SECRET ??
+    null;
 
   return (
-    <PageContainer
-      scrollable
-      pageTitle='Pages'
-      pageDescription='Pages and builder'
-    >
+    <PageContainer scrollable pageTitle="Pages" pageDescription="Pages and builder">
       <Suspense fallback={<p>Loading pages…</p>}>
         <PagesPage
           token={token}

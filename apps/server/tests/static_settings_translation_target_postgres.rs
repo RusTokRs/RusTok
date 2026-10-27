@@ -6,9 +6,6 @@ use std::{
 
 use rustok_api::TenantLocale;
 use rustok_migrations::Migrator;
-use rustok_modules::translation::{
-    StaticSettingsTranslationIdentity, StaticSettingsTranslationPrepareResult,
-};
 use rustok_modules::{
     ModuleCommandContext, ModuleSettingSpec, StaticSettingsLocalizationError,
     StaticSettingsLocalizationRegistry, StaticSettingsLocalizationService,
@@ -18,6 +15,9 @@ use rustok_modules::{
         StaticSettingsChangeReadRequest, StaticSettingsExactLocaleSnapshot,
         StaticSettingsTranslationReadService,
     },
+};
+use rustok_modules::translation::{
+    StaticSettingsTranslationIdentity, StaticSettingsTranslationPrepareResult,
 };
 use rustok_test_utils::{
     assert_postgres_url, connect_postgres, create_postgres_database,

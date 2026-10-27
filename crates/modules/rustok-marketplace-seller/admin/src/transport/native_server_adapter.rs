@@ -465,9 +465,7 @@ fn parse_uuid(value: &str, field: &str) -> Result<uuid::Uuid, ServerFnError> {
     let id = uuid::Uuid::parse_str(value.trim())
         .map_err(|_| ServerFnError::new(format!("Invalid {field}")))?;
     if id.is_nil() {
-        return Err(ServerFnError::new(format!(
-            "Invalid {field}: cannot be nil"
-        )));
+        return Err(ServerFnError::new(format!("Invalid {field}: cannot be nil")));
     }
     Ok(id)
 }
@@ -623,7 +621,10 @@ mod tests {
             parse_seller_status(Some("active")).unwrap(),
             Some(rustok_marketplace_seller::MarketplaceSellerStatus::Active)
         );
-        assert_eq!(parse_seller_status(Some("  ")).unwrap(), None);
+        assert_eq!(
+            parse_seller_status(Some("  ")).unwrap(),
+            None
+        );
         assert!(parse_seller_status(Some("invalid_status")).is_err());
 
         assert_eq!(
@@ -660,3 +661,4 @@ mod tests {
         assert!(object_or_empty(serde_json::json!([1, 2, 3]), "metadata").is_err());
     }
 }
+

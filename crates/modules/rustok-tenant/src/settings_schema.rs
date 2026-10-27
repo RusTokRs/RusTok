@@ -159,8 +159,8 @@ mod tests {
     fn rejects_key_with_null_byte() {
         let settings = json!({"bad\0key": "val"});
 
-        let err =
-            validate_tenant_settings(&settings).expect_err("schema must reject key with null byte");
+        let err = validate_tenant_settings(&settings)
+            .expect_err("schema must reject key with null byte");
         assert!(err.to_string().contains("null byte"));
     }
 
@@ -183,3 +183,4 @@ mod tests {
         assert!(err.to_string().contains("maximum element count"));
     }
 }
+

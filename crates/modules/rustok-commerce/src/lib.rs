@@ -16,6 +16,7 @@
 
 #![allow(clippy::collapsible_if)]
 
+pub mod module;
 mod collection_translation_changes;
 mod collection_translation_progress;
 mod collection_translation_progress_target;
@@ -28,7 +29,6 @@ pub mod fba;
 pub mod graphql;
 pub mod graphql_runtime;
 pub mod migrations;
-pub mod module;
 pub mod openapi;
 mod search;
 pub mod services;

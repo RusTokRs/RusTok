@@ -148,8 +148,7 @@ pub fn build_shipping_selection_plan(
             .as_deref()
             .map(str::trim)
             .filter(|s| !s.is_empty());
-        let group_matches = group.shipping_profile_slug.trim()
-            == request.shipping_profile_slug.trim()
+        let group_matches = group.shipping_profile_slug.trim() == request.shipping_profile_slug.trim()
             && normalized_group_seller == normalized_request_seller;
 
         let normalized_shipping_option_id = request
@@ -324,12 +323,8 @@ mod tests {
             shipping_option_id: Some("ship-1".into()),
         };
 
-        let plan =
-            build_shipping_selection_plan(&request).expect("whitespace seller should match none");
-        assert_eq!(
-            plan[0].selected_shipping_option_id.as_deref(),
-            Some("ship-1")
-        );
+        let plan = build_shipping_selection_plan(&request).expect("whitespace seller should match none");
+        assert_eq!(plan[0].selected_shipping_option_id.as_deref(), Some("ship-1"));
     }
 
     #[test]

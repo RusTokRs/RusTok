@@ -1,18 +1,19 @@
 use chrono::{Duration as ChronoDuration, Utc};
 use rustok_core::{ModuleRuntimeExtensions, RusToKModule};
 use rustok_messenger::entities::{conversation, member, message};
-use rustok_messenger::module::MessengerModule;
 use rustok_messenger::notification_source::{
-    MESSAGE_DISPATCHED_TYPE, MESSENGER_CONVERSATION_TARGET, MESSENGER_SOURCE,
-    MessengerNotificationSourceProvider, message_dispatched_type,
-    messenger_conversation_target_kind, messenger_source_slug,
+    MESSENGER_CONVERSATION_TARGET, MESSENGER_SOURCE, MESSAGE_DISPATCHED_TYPE,
+    MessengerNotificationSourceProvider,
+    message_dispatched_type, messenger_conversation_target_kind, messenger_source_slug,
 };
+use rustok_messenger::module::MessengerModule;
 use rustok_notifications::{
-    AuthorizeNotificationTargetRequest, DescribeNotificationRequest, NotificationOpenAuthorization,
-    NotificationPriority, NotificationSemanticDescriptor, NotificationSourceEventRef,
-    NotificationSourceProvider, NotificationSourceSlug, NotificationTargetKind,
-    NotificationTargetRef, NotificationTemplateData, NotificationTemplateKey,
-    ResolveNotificationAudienceRequest, ensure_notification_source_factory_registry,
+    AuthorizeNotificationTargetRequest, DescribeNotificationRequest,
+    NotificationOpenAuthorization, NotificationPriority, NotificationSemanticDescriptor,
+    NotificationSourceEventRef, NotificationSourceProvider, NotificationSourceSlug,
+    NotificationTargetKind, NotificationTargetRef, NotificationTemplateData,
+    NotificationTemplateKey, ResolveNotificationAudienceRequest,
+    ensure_notification_source_factory_registry,
 };
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ActiveModelTrait, Database, DatabaseConnection};
@@ -59,7 +60,10 @@ async fn test_provider_contract_metadata() {
 
     assert_eq!(provider.slug().as_str(), "messenger");
     assert_eq!(provider.display_name(), "Messenger");
-    assert_eq!(provider.supported_types(), vec![message_dispatched_type()]);
+    assert_eq!(
+        provider.supported_types(),
+        vec![message_dispatched_type()]
+    );
 }
 
 #[tokio::test]
@@ -396,14 +400,8 @@ async fn test_resolve_audience_excludes_sender_and_muted_members() {
     assert_eq!(recipient_ids.len(), 2);
     assert!(recipient_ids.contains(&active_member_1));
     assert!(recipient_ids.contains(&active_member_2));
-    assert!(
-        !recipient_ids.contains(&sender_id),
-        "Sender must be excluded from audience"
-    );
-    assert!(
-        !recipient_ids.contains(&muted_member),
-        "Muted member must be excluded from audience"
-    );
+    assert!(!recipient_ids.contains(&sender_id), "Sender must be excluded from audience");
+    assert!(!recipient_ids.contains(&muted_member), "Muted member must be excluded from audience");
     assert!(audience.is_complete());
 }
 

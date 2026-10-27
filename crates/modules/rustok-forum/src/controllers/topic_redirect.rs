@@ -474,8 +474,11 @@ mod tests {
         assert_eq!(nil_topic_response.status(), StatusCode::BAD_REQUEST);
 
         let nil_tenant_context = tenant_context(Uuid::nil());
-        let nil_tenant_auth =
-            auth_context(Uuid::nil(), actor_id, vec![Permission::FORUM_TOPICS_READ]);
+        let nil_tenant_auth = auth_context(
+            Uuid::nil(),
+            actor_id,
+            vec![Permission::FORUM_TOPICS_READ],
+        );
         let nil_tenant_response = app
             .oneshot(request(
                 format!("/api/forum/topics/{target_topic_id}"),

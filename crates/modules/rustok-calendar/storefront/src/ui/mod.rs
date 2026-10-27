@@ -8,11 +8,11 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-use crate::i18n::t;
 use leptos::prelude::*;
+use crate::i18n::t;
 
 #[component]
-pub fn CalendarStorefrontView() -> impl IntoView {
+pub fn CalendarView() -> impl IntoView {
     view! {
         <div class="rustok-calendar-storefront-widget p-4">
             <h2 class="text-xl font-semibold">{t(None, "calendar-storefront-title", "Calendar & Appointment Scheduling")}</h2>

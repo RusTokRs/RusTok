@@ -487,14 +487,8 @@ impl ProductCatalogSchemaService {
                 ));
             }
             self.apply_product_attribute_values_in_tx(
-                txn,
-                tenant_id,
-                product_id,
-                &locale,
-                &batch.patches,
-                &mut seen_nonlocalized,
-            )
-            .await?;
+                txn, tenant_id, product_id, &locale, &batch.patches, &mut seen_nonlocalized,
+            ).await?;
             changed |= !batch.patches.is_empty();
         }
         Ok(changed)

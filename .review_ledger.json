@@ -376,10 +376,10 @@
       "completed_at": "2026-10-19 13:48",
       "notes": "Audited and cleaned. Enforced FFA separation with framework-agnostic models, aligned PaymentCollection, CheckoutCompletion, and StorefrontCartDeliveryGroup test fixtures, added surface field to UiTransportError initializers across all 4 transport error contexts, ensured completion state resets on retry in Leptos view, verified dual-path transport (GraphQL / ServerFn) and SSR adapter error safety. 32/32 tests passed (client + SSR), 0 clippy warnings, gate passed."
     },
-    "crates/libs/rustok-commerce-foundation": {
+    "crates/modules/rustok-commerce-foundation": {
       "name": "rustok-commerce-foundation",
-      "path": "crates/libs/rustok-commerce-foundation",
-      "category": "libs",
+      "path": "crates/modules/rustok-commerce-foundation",
+      "category": "modules",
       "files": 19,
       "loc": 1810,
       "completed": true,
@@ -426,9 +426,9 @@
       "completed_at": "2026-10-20 21:00",
       "notes": "Audited; enforced non-nil UUID validation on parse_uuid in native server adapter, verified framework-agnostic FFA architecture in core.rs with complete error mapping, form snapshots, and view models, confirmed safe transport error envelope and diagnostic logging, verified FTL i18n parity between en.ftl and ru.ftl; 12/12 unit tests passed (default and ssr features), 0 clippy warnings, gate passed."
     },
-    "crates/utils/rustok-distribution": {
+    "crates/modules/rustok-distribution": {
       "name": "rustok-distribution",
-      "path": "crates/utils/rustok-distribution",
+      "path": "crates/modules/rustok-distribution",
       "category": "modules",
       "files": 34,
       "loc": 15719,
@@ -566,9 +566,9 @@
       "completed_at": "2026-10-22 07:25",
       "notes": "Audited and verified FFA invariants across all 17 source files; enforced non-nil UUID validation in targeted invitation acceptance, application queries, submission policy verification, and native server functions; added comprehensive unit tests for core and application_core; 8/8 unit tests passed across default and SSR features, 0 clippy warnings, gatekeeper passed."
     },
-    "crates/libs/rustok-iggy": {
+    "crates/modules/rustok-iggy": {
       "name": "rustok-iggy",
-      "path": "crates/libs/rustok-iggy",
+      "path": "crates/modules/rustok-iggy",
       "category": "modules",
       "files": 32,
       "loc": 8270,
@@ -612,9 +612,9 @@
       "category": "modules",
       "files": 137,
       "loc": 58160,
-      "completed": true,
-      "completed_at": "2026-10-25 15:40",
-      "notes": "Audited and verified all 6 Universal Logic Dimensions across 137 source files; verified IndexModule with RusToKModule/MigrationSource; standardized CRATE_API.md with ## Public surface and contract_tests.rs; added rust-version, repository, and readme to Cargo.toml; 297/297 tests passed, clean rustdoc, docs.rs compliant, zero defects."
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-index/admin": {
       "name": "admin",
@@ -622,9 +622,9 @@
       "category": "modules",
       "files": 9,
       "loc": 2912,
-      "completed": true,
-      "completed_at": "2026-10-25 15:45",
-      "notes": "Audited Leptos admin FFA package across 9 source files; verified strict FFA separation (pure Rust models and view-model computations in core.rs with zero UI imports); verified dual-path transport and strict tenant scope enforcement in native_server_adapter; added canonical CRATE_API.md, contract_tests.rs, top-level crate docs, docs.rs, readme, and repository metadata; 15/15 unit/contract tests and SSR tests passed, clean rustdoc, zero defects."
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-inventory": {
       "name": "rustok-inventory",
@@ -1332,9 +1332,9 @@
       "category": "modules",
       "files": 15,
       "loc": 4563,
-      "completed": true,
-      "completed_at": "2026-10-25 17:55",
-      "notes": "Audited Leptos admin FFA package across 15 source files; verified strict FFA separation (pure Rust models, intent dispatcher, session state, and property editor with zero UI imports); verified dual-path transport (GraphQL / ServerFn) and tenant scope enforcement; added canonical CRATE_API.md, contract_tests.rs, top-level crate docs, docs.rs, readme, and repository metadata; 18/18 unit and contract tests passed, clean rustdoc, docs.rs compliant, zero defects."
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-seo/render": {
       "name": "render",
@@ -1342,9 +1342,9 @@
       "category": "modules",
       "files": 1,
       "loc": 17,
-      "completed": true,
-      "completed_at": "2026-10-26T08:37:00Z",
-      "notes": "Consolidated into crates/modules/rustok-seo/storefront/src/render.rs in commit cfd1524edf; headless HTML meta rendering engine verified with 8/8 tests under rustok-seo-storefront; no separate crate remains."
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-seo-admin-support": {
       "name": "rustok-seo-admin-support",
@@ -1352,19 +1352,19 @@
       "category": "modules",
       "files": 6,
       "loc": 2627,
-      "completed": true,
-      "completed_at": "2026-10-26T08:38:00Z",
-      "notes": "Renamed and consolidated into crates/modules/rustok-seo/panel in commit b05b0f6c37; audited and verified under rustok-seo/panel with 28/28 tests passed, zero defects."
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-seo-targets": {
       "name": "rustok-seo-targets",
-      "path": "crates/libs/rustok-seo-targets",
-      "category": "libs",
+      "path": "crates/modules/rustok-seo-targets",
+      "category": "modules",
       "files": 1,
       "loc": 1487,
-      "completed": true,
-      "completed_at": "2026-10-26T08:40:00Z",
-      "notes": "Relocated to crates/libs/rustok-seo-targets; standardized with CRATE_API.md and contract_tests.rs; verified capability registry, slug validation, and JSON-LD schema builder with 8/8 tests passed, zero defects."
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-social-graph": {
       "name": "rustok-social-graph",
@@ -2264,9 +2264,9 @@
       "category": "modules",
       "files": 6,
       "loc": 2754,
-      "completed": true,
-      "completed_at": "2026-10-26T08:33:00Z",
-      "notes": "Audited Leptos entity editor panel across 6 source files; enforced non-nil UUID validation in validate_target_id; verified strict FFA separation in model.rs with pure view models; added canonical CRATE_API.md and contract_tests.rs; added repository, readme, and docs.rs metadata; 28/28 tests passed, 0 clippy warnings, zero defects."
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-seo/storefront": {
       "name": "storefront",
@@ -2274,9 +2274,9 @@
       "category": "modules",
       "files": 6,
       "loc": 919,
-      "completed": true,
-      "completed_at": "2026-10-25T19:18:00Z",
-      "notes": "Audited Leptos storefront UI package across 6 source files; verified strict FFA separation (pure Rust view models and meta tag renderers in core.rs with zero UI framework imports); fixed default robots directive assertion in contract tests; added canonical CRATE_API.md and contract_tests.rs; 8/8 tests passed, 0 clippy warnings, zero defects."
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/ui/fly/browser": {
       "name": "browser",

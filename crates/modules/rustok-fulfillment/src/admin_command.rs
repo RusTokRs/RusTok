@@ -173,8 +173,10 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
         require_write_admission(&context, OPERATION)?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
         if request.fulfillment_id.is_nil() {
-            let error =
-                PortError::validation("fulfillment.validation", "fulfillment_id must not be nil");
+            let error = PortError::validation(
+                "fulfillment.validation",
+                "fulfillment_id must not be nil",
+            );
             log_port_error(&context, OPERATION, "fulfillment_id", &error);
             return Err(error);
         }
@@ -304,8 +306,10 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
         require_write_admission(&context, OPERATION)?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
         if request.fulfillment_id.is_nil() {
-            let error =
-                PortError::validation("fulfillment.validation", "fulfillment_id must not be nil");
+            let error = PortError::validation(
+                "fulfillment.validation",
+                "fulfillment_id must not be nil",
+            );
             log_port_error(&context, OPERATION, "fulfillment_id", &error);
             return Err(error);
         }
@@ -338,8 +342,10 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
         require_write_admission(&context, OPERATION)?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
         if request.fulfillment_id.is_nil() {
-            let error =
-                PortError::validation("fulfillment.validation", "fulfillment_id must not be nil");
+            let error = PortError::validation(
+                "fulfillment.validation",
+                "fulfillment_id must not be nil",
+            );
             log_port_error(&context, OPERATION, "fulfillment_id", &error);
             return Err(error);
         }
@@ -366,8 +372,10 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
         require_write_admission(&context, OPERATION)?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
         if request.fulfillment_id.is_nil() {
-            let error =
-                PortError::validation("fulfillment.validation", "fulfillment_id must not be nil");
+            let error = PortError::validation(
+                "fulfillment.validation",
+                "fulfillment_id must not be nil",
+            );
             log_port_error(&context, OPERATION, "fulfillment_id", &error);
             return Err(error);
         }
@@ -504,8 +512,10 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
         require_write_admission(&context, OPERATION)?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
         if request.fulfillment_id.is_nil() {
-            let error =
-                PortError::validation("fulfillment.validation", "fulfillment_id must not be nil");
+            let error = PortError::validation(
+                "fulfillment.validation",
+                "fulfillment_id must not be nil",
+            );
             log_port_error(&context, OPERATION, "fulfillment_id", &error);
             return Err(error);
         }

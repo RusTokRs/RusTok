@@ -240,21 +240,25 @@ pub use marketplace_reversal_operator::{
     MarketplaceReversalOperatorError, MarketplaceReversalOperatorResult,
     MarketplaceReversalOperatorService,
 };
+pub use order_change_orchestration::{
+    OrderChangeOrchestrationError, OrderChangeOrchestrationResult, OrderChangeOrchestrationService,
+};
+pub(crate) use paid_order_create_label::PaidOrderCreateLabelHandler;
+pub use paid_order_create_label_sweep::{
+    PaidOrderCreateLabelSweepReport, PaidOrderCreateLabelSweepService,
+};
 pub use order_cancellation::{
     OrchestratedOrderAdminCommandPort, OrderCancellationOrchestrator,
     orchestrated_order_admin_command_runtime,
 };
-pub use order_change_orchestration::{
-    OrderChangeOrchestrationError, OrderChangeOrchestrationResult, OrderChangeOrchestrationService,
+pub use shipment_stock::{
+    InventoryShipmentStockPort, fulfillment_admin_command_runtime, fulfillment_service,
+    inventory_shipment_stock_port,
 };
 pub use order_shipment_projection::{
     ManualShipmentCommand, OrderShipmentProjector, ProjectingFulfillmentAdminCommandPort,
     ShipmentTruth, manual_command_verdict, projecting_fulfillment_admin_command_runtime,
     shipment_truth,
-};
-pub(crate) use paid_order_create_label::PaidOrderCreateLabelHandler;
-pub use paid_order_create_label_sweep::{
-    PaidOrderCreateLabelSweepReport, PaidOrderCreateLabelSweepService,
 };
 pub use payment_orchestration::{
     PaymentOrchestrationError, PaymentOrchestrationResult, PaymentOrchestrationService,
@@ -287,10 +291,6 @@ pub use return_completion_recovery::{
 pub use return_decision_owner_orchestration::{
     ReturnDecisionOwnerOrchestrationError, ReturnDecisionOwnerOrchestrationResult,
     ReturnDecisionOwnerOrchestrationService,
-};
-pub use shipment_stock::{
-    InventoryShipmentStockPort, fulfillment_admin_command_runtime, fulfillment_service,
-    inventory_shipment_stock_port,
 };
 pub use shipping_profile::ShippingProfileService;
 pub use staged_checkout::{StagedCheckoutError, StagedCheckoutResult, StagedCheckoutService};

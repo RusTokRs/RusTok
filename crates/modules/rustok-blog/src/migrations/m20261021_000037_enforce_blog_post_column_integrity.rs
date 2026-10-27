@@ -102,10 +102,7 @@ async fn validate_existing_posts(manager: &SchemaManager<'_>) -> Result<(), DbEr
 async fn up_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     for (constraint, predicate) in [
-        (
-            STATUS_CONSTRAINT,
-            "status IN ('draft', 'published', 'archived')",
-        ),
+        (STATUS_CONSTRAINT, "status IN ('draft', 'published', 'archived')"),
         (VERSION_CONSTRAINT, "version > 0"),
         (COMMENT_COUNT_CONSTRAINT, "comment_count >= 0"),
         (

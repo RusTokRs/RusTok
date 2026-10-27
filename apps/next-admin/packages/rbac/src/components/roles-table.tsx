@@ -255,10 +255,7 @@ export function RolesTable({
                     </TableCell>
                     <TableCell>
                       <div className='flex items-center gap-1.5'>
-                        <Badge
-                          variant='secondary'
-                          className='font-mono text-xs'
-                        >
+                        <Badge variant='secondary' className='font-mono text-xs'>
                           {t('perms-total', { count: role.permissions.length })}
                         </Badge>
                         {(role.inactivePermissions?.length ?? 0) > 0 && (

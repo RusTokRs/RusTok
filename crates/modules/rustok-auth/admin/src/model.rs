@@ -237,3 +237,37 @@ pub struct RevokeAllSessionsPayload {
     #[serde(rename = "revokedCount")]
     pub revoked_count: i32,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IssueUserInviteInput {
+    pub email: String,
+    pub role: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserInvite {
+    pub id: String,
+    pub email: String,
+    pub role: String,
+    pub issued_by: Option<String>,
+    pub expires_at: String,
+    pub revoked_at: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct IssuedUserInvite {
+    pub invite: UserInvite,
+    pub token: String,
+}
+
+impl std::fmt::Debug for IssuedUserInvite {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("IssuedUserInvite")
+            .field("invite", &self.invite)
+            .field("token", &"<redacted>")
+            .finish()
+    }
+}

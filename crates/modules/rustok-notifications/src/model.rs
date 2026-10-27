@@ -37,9 +37,7 @@ pub enum NotificationContractError {
     AudiencePageTooLarge,
     #[error("notification audience page contains a duplicate recipient")]
     DuplicateAudienceRecipient,
-    #[error(
-        "notification source event revision must be greater than zero and fit within signed 64-bit integer"
-    )]
+    #[error("notification source event revision must be greater than zero and fit within signed 64-bit integer")]
     InvalidSourceRevision,
     #[error("notification tenant id must not be nil")]
     NilTenantId,
@@ -372,3 +370,4 @@ impl From<NotificationContractError> for rustok_core::Error {
 
 #[cfg(feature = "server")]
 pub use crate::domain::*;
+

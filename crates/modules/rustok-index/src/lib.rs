@@ -24,9 +24,6 @@ pub mod migrations;
 pub mod module;
 pub mod replay_dry_run;
 
-pub use application::*;
-pub use domain::*;
-
 pub use application::{
     AggregateOrderValidationError, CompiledManyRelationColumn, CompiledPostgresCell,
     CompiledPostgresCount, CompiledPostgresLocalizedPageQuery, CompiledPostgresPageQuery,
@@ -79,28 +76,28 @@ pub use application::{
     IndexQueryExecutionError, IndexQueryItem, IndexQueryPage, IndexQueryPort,
     IndexRelationIdentity, IndexReplayCheckpoint, IndexReplayCheckpointKey,
     IndexReplayCheckpointStore, IndexReplayError, IndexReplayExecutionSurface, IndexReplayFailure,
-    IndexReplayFailureKind, IndexReplayMode, IndexReplayModeSelection, IndexReplayMutationOutcome,
-    IndexReplayMutationSink, IndexReplayPageOutcome, IndexReplayPageRequest, IndexReplayPageStatus,
-    IndexReplayTargetedError, IndexReplayTargetedExecutor, IndexReplayTargetedOutcome,
-    IndexReplayWorker, IndexSchemaSourceCatalog, IndexSchemaSourceDescriptor,
-    IndexSchemaSourceError, IndexSource, IndexSourceAbsenceCatalog, IndexSourceAbsenceDescriptor,
-    IndexSourceAbsenceError, IndexSourceAbsenceProvider, IndexSourceAbsenceWatermark,
-    IndexSourceCatalog, IndexSourceContinuationCodec, IndexSourceContinuationError,
-    IndexSourceContinuationScope, IndexSourceContinuationToken, IndexSourceCursor,
-    IndexSourceDescriptor, IndexSourceError, IndexSourceEventIdError, IndexSourceFailure,
-    IndexSourceFailureKind, IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage,
-    IndexSourceRefreshEventDelivery, IndexSourceRefreshEventError,
-    IndexSourceRefreshEventProcessError, IndexSourceRefreshEventProcessOutcome,
-    IndexSourceRefreshEventWorker, IndexSourceScanRequest, LinkPathStep, LocalizedCursorCodec,
-    LocalizedCursorCodecError, LocalizedCursorValidationError, LocalizedEntityQueryValidationError,
-    LocalizedIndexCursor, LocalizedQueryPlanFingerprint, PersistedSchemaReadinessFailure,
-    PlannedField, PlannedJoin, PlannedManyProjection, PlannedOrder, PostgresBindValue,
-    PostgresLocalizedQueryBuildError, PostgresLocalizedQueryDecodeError, PostgresQueryBuildError,
-    PostgresQueryCompileError, PostgresQueryDecodeError, PostgresQueryEntityAdmission,
-    PostgresQueryEntityAdmissionApplyError, PostgresQueryEntityAdmissionError,
-    PostgresQueryPageBuildError, QueryPlanError, QueryPlanFingerprint, QueryValidationError,
-    RecordValidationError, RegisteredSchema, RegistrationOutcome, SchemaRegistry,
-    SchemaRegistryError, SharedIndexMutationEventRegistry, SharedIndexQueryRuntime,
+    IndexReplayFailureKind, IndexReplayMode, IndexReplayModeSelection,
+    IndexReplayMutationOutcome, IndexReplayMutationSink, IndexReplayPageOutcome,
+    IndexReplayPageRequest, IndexReplayPageStatus, IndexReplayTargetedError,
+    IndexReplayTargetedExecutor, IndexReplayTargetedOutcome, IndexReplayWorker,
+    IndexSchemaSourceCatalog, IndexSchemaSourceDescriptor, IndexSchemaSourceError, IndexSource,
+    IndexSourceAbsenceCatalog, IndexSourceAbsenceDescriptor, IndexSourceAbsenceError,
+    IndexSourceAbsenceProvider, IndexSourceAbsenceWatermark, IndexSourceCatalog,
+    IndexSourceContinuationCodec, IndexSourceContinuationError, IndexSourceContinuationScope,
+    IndexSourceContinuationToken, IndexSourceCursor, IndexSourceDescriptor, IndexSourceError,
+    IndexSourceEventIdError, IndexSourceFailure, IndexSourceFailureKind, IndexSourceLoadBatch,
+    IndexSourceLoadRequest, IndexSourcePage, IndexSourceRefreshEventDelivery,
+    IndexSourceRefreshEventError, IndexSourceRefreshEventProcessError,
+    IndexSourceRefreshEventProcessOutcome, IndexSourceRefreshEventWorker, IndexSourceScanRequest,
+    LinkPathStep, LocalizedCursorCodec, LocalizedCursorCodecError, LocalizedCursorValidationError,
+    LocalizedEntityQueryValidationError, LocalizedIndexCursor, LocalizedQueryPlanFingerprint,
+    PersistedSchemaReadinessFailure, PlannedField, PlannedJoin, PlannedManyProjection, PlannedOrder,
+    PostgresBindValue, PostgresLocalizedQueryBuildError, PostgresLocalizedQueryDecodeError,
+    PostgresQueryEntityAdmission, PostgresQueryEntityAdmissionApplyError,
+    PostgresQueryEntityAdmissionError, PostgresQueryBuildError, PostgresQueryCompileError,
+    PostgresQueryDecodeError, PostgresQueryPageBuildError, QueryPlanError, QueryPlanFingerprint,
+    QueryValidationError, RecordValidationError, RegisteredSchema, RegistrationOutcome,
+    SchemaRegistry, SchemaRegistryError, SharedIndexMutationEventRegistry, SharedIndexQueryRuntime,
     SharedIndexSchemaRegistry, SharedIndexSourceAbsenceRegistry, SharedIndexSourceRegistry,
     derive_index_schema_source_event_id, derive_index_source_event_id,
     materialize_index_mutation_event_registry, materialize_index_schema_registry,
@@ -177,7 +174,6 @@ pub use infrastructure::postgres::{
     register_postgres_index_reconciliation_work, register_postgres_index_source_factory,
 };
 pub use module::IndexModule;
-// Canonical migrations provided via migrations::migrations()
 pub use replay_dry_run::{
     IndexReplayDryRunError, IndexReplayDryRunOutcome, IndexReplayDryRunRequest,
     IndexReplayDryRunRuntimeCompositionError, IndexReplayDryRunStatus,

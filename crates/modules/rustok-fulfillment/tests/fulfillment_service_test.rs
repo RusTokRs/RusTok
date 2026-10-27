@@ -1,5 +1,4 @@
 use rust_decimal::Decimal;
-use rustok_fulfillment::NoopShipmentStockPort;
 use rustok_fulfillment::dto::{
     CancelFulfillmentInput, CreateFulfillmentInput, CreateFulfillmentItemInput,
     CreateShippingOptionInput, DeliverFulfillmentInput, FulfillmentItemQuantityInput,
@@ -7,6 +6,7 @@ use rustok_fulfillment::dto::{
     ShippingOptionTranslationInput, UpdateShippingOptionInput,
 };
 use rustok_fulfillment::error::FulfillmentError;
+use rustok_fulfillment::NoopShipmentStockPort;
 use rustok_fulfillment::services::FulfillmentService;
 use rustok_test_utils::db::setup_test_db;
 use std::str::FromStr;

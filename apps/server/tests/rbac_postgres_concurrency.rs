@@ -308,6 +308,8 @@ async fn insert_tenant(db: &DatabaseConnection, suffix: &str) -> TestResult<Uuid
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, email: &str) -> TestResult<Uuid> {
     let user_id = Uuid::new_v4();
     users::Entity::insert(users::ActiveModel {
+        failed_login_count: Set(0),
+        locked_until: Set(None),
         id: Set(user_id),
         tenant_id: Set(tenant_id),
         email: Set(email.to_string()),

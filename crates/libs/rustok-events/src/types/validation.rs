@@ -141,8 +141,37 @@ impl ValidateEvent for DomainEvent {
             }
             Self::UserLoggedIn { user_id }
             | Self::UserUpdated { user_id }
-            | Self::UserDeleted { user_id } => {
+            | Self::UserDeleted { user_id }
+            | Self::UserLoggedOut { user_id }
+            | Self::UserPasswordChanged { user_id }
+            | Self::UserPasswordResetCompleted { user_id }
+            | Self::UserEmailVerified { user_id } => {
                 validators::validate_not_nil_uuid("user_id", user_id)?;
+                Ok(())
+            }
+            Self::UserInviteIssued {
+                invite_id,
+                issued_by,
+            } => {
+                validators::validate_not_nil_uuid("invite_id", invite_id)?;
+                if let Some(issued_by) = issued_by {
+                    validators::validate_not_nil_uuid("issued_by", issued_by)?;
+                }
+                Ok(())
+            }
+            Self::UserInviteAccepted { user_id, invite_id } => {
+                validators::validate_not_nil_uuid("user_id", user_id)?;
+                validators::validate_not_nil_uuid("invite_id", invite_id)?;
+                Ok(())
+            }
+            Self::UserInviteRevoked {
+                invite_id,
+                revoked_by,
+            } => {
+                validators::validate_not_nil_uuid("invite_id", invite_id)?;
+                if let Some(revoked_by) = revoked_by {
+                    validators::validate_not_nil_uuid("revoked_by", revoked_by)?;
+                }
                 Ok(())
             }
             Self::ProfileUpdated {

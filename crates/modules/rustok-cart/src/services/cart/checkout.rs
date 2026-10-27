@@ -77,14 +77,10 @@ impl CartService {
         pricing_plan: Option<CartCheckoutPricingPlan>,
     ) -> CartResult<CartResponse> {
         if tenant_id.is_nil() {
-            return Err(CartError::Validation(
-                "tenant_id must not be a nil UUID".to_string(),
-            ));
+            return Err(CartError::Validation("tenant_id must not be a nil UUID".to_string()));
         }
         if request.cart_id.is_nil() {
-            return Err(CartError::Validation(
-                "cart_id must not be a nil UUID".to_string(),
-            ));
+            return Err(CartError::Validation("cart_id must not be a nil UUID".to_string()));
         }
         for selection in request.input.shipping_selections.iter().flatten() {
             selection
@@ -225,14 +221,10 @@ impl CartService {
         mark_completed: bool,
     ) -> CartResult<CartResponse> {
         if tenant_id.is_nil() {
-            return Err(CartError::Validation(
-                "tenant_id must not be a nil UUID".to_string(),
-            ));
+            return Err(CartError::Validation("tenant_id must not be a nil UUID".to_string()));
         }
         if cart_id.is_nil() {
-            return Err(CartError::Validation(
-                "cart_id must not be a nil UUID".to_string(),
-            ));
+            return Err(CartError::Validation("cart_id must not be a nil UUID".to_string()));
         }
         let txn = self.db.begin().await?;
         let now = Utc::now().fixed_offset();

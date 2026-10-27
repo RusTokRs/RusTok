@@ -18,9 +18,7 @@ impl CreatePageDto {
     pub fn validate(&self) -> DocsResult<()> {
         let trimmed_title = self.title.trim();
         if trimmed_title.is_empty() {
-            return Err(DocsError::Validation(
-                "Page title cannot be empty".to_string(),
-            ));
+            return Err(DocsError::Validation("Page title cannot be empty".to_string()));
         }
         if trimmed_title.chars().count() > 255 {
             return Err(DocsError::Validation(
@@ -65,9 +63,7 @@ impl UpdatePageDto {
         if let Some(ref title) = self.title {
             let trimmed_title = title.trim();
             if trimmed_title.is_empty() {
-                return Err(DocsError::Validation(
-                    "Page title cannot be empty".to_string(),
-                ));
+                return Err(DocsError::Validation("Page title cannot be empty".to_string()));
             }
             if trimmed_title.chars().count() > 255 {
                 return Err(DocsError::Validation(
@@ -78,9 +74,7 @@ impl UpdatePageDto {
         if let Some(ref slug) = self.slug {
             let trimmed_slug = slug.trim();
             if trimmed_slug.is_empty() {
-                return Err(DocsError::Validation(
-                    "Page slug cannot be empty".to_string(),
-                ));
+                return Err(DocsError::Validation("Page slug cannot be empty".to_string()));
             }
             if trimmed_slug.chars().count() > 255 {
                 return Err(DocsError::Validation(

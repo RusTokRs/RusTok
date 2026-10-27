@@ -104,14 +104,16 @@ mod tests {
         assert_eq!(draft.locale, "en");
         assert!(prepare_shipping_profile_draft("", "Name", "", "", "en".to_string()).is_none());
         assert!(prepare_shipping_profile_draft("slug", " ", "", "", "en".to_string()).is_none());
-        assert!(
-            prepare_shipping_profile_draft("slug", "Name", "", "{not-json", "en".to_string())
-                .is_none()
-        );
+        assert!(prepare_shipping_profile_draft("slug", "Name", "", "{not-json", "en".to_string()).is_none());
 
-        let draft_empty_locale =
-            prepare_shipping_profile_draft("standard", "Standard", "", "", "   ".to_string())
-                .expect("fallback locale draft");
+        let draft_empty_locale = prepare_shipping_profile_draft(
+            "standard",
+            "Standard",
+            "",
+            "",
+            "   ".to_string(),
+        )
+        .expect("fallback locale draft");
         assert_eq!(draft_empty_locale.locale, "en");
     }
 }

@@ -319,9 +319,7 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
 
     let order_service = OrderService::new(db.clone(), mock_transactional_event_bus());
     let payment_service = PaymentService::new(db.clone());
-    let fulfillment_service = FulfillmentService::new(db.clone()).with_shipment_stock_port(
-        std::sync::Arc::new(rustok_fulfillment::NoopShipmentStockPort),
-    );
+    let fulfillment_service = FulfillmentService::new(db.clone()).with_shipment_stock_port(std::sync::Arc::new(rustok_fulfillment::NoopShipmentStockPort));
 
     let created_order = order_service
         .create_order(
@@ -2453,10 +2451,7 @@ async fn admin_graphql_reopen_fulfillment_restores_shipped_progress() {
         )
         .await
         .expect("fulfillment should be created");
-    FulfillmentService::new(db.clone())
-        .with_shipment_stock_port(std::sync::Arc::new(
-            rustok_fulfillment::NoopShipmentStockPort,
-        ))
+    FulfillmentService::new(db.clone()).with_shipment_stock_port(std::sync::Arc::new(rustok_fulfillment::NoopShipmentStockPort))
         .ship_fulfillment(
             tenant_id,
             fulfillment.id,
@@ -2588,10 +2583,7 @@ async fn admin_graphql_reship_fulfillment_reopens_delivery_with_new_tracking() {
         )
         .await
         .expect("fulfillment should be created");
-    FulfillmentService::new(db.clone())
-        .with_shipment_stock_port(std::sync::Arc::new(
-            rustok_fulfillment::NoopShipmentStockPort,
-        ))
+    FulfillmentService::new(db.clone()).with_shipment_stock_port(std::sync::Arc::new(rustok_fulfillment::NoopShipmentStockPort))
         .ship_fulfillment(
             tenant_id,
             fulfillment.id,
@@ -4011,9 +4003,7 @@ async fn storefront_graphql_checkout_preserves_shipping_total_and_shipping_promo
     let actor_id = Uuid::new_v4();
     seed_tenant_context(&db, tenant_id).await;
     let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
-    let fulfillment = FulfillmentService::new(db.clone()).with_shipment_stock_port(
-        std::sync::Arc::new(rustok_fulfillment::NoopShipmentStockPort),
-    );
+    let fulfillment = FulfillmentService::new(db.clone()).with_shipment_stock_port(std::sync::Arc::new(rustok_fulfillment::NoopShipmentStockPort));
     let created = catalog
         .create_product(tenant_id, actor_id, create_product_input())
         .await

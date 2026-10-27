@@ -36,8 +36,8 @@ pub mod migrations;
 pub use domain::FinanceStatus;
 pub use error::{FinanceError, FinanceResult};
 pub use events::{
-    FINANCE_EVENT_TOPIC, FinanceCreatedEvent, FinanceDeletedEvent, FinanceDomainEvent,
-    FinanceUpdatedEvent,
+    FinanceCreatedEvent, FinanceDeletedEvent, FinanceDomainEvent, FinanceUpdatedEvent,
+    FINANCE_EVENT_TOPIC,
 };
 pub use module::FinanceModule;
 pub use services::FinanceService;

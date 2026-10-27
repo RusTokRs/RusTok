@@ -437,9 +437,7 @@ async fn mcp_native_context()
         .await
         .map_err(ServerFnError::new)?;
     if auth.tenant_id.is_nil() || auth.user_id.is_nil() {
-        return Err(ServerFnError::new(
-            "Unauthorized: tenant_id or user_id is nil",
-        ));
+        return Err(ServerFnError::new("Unauthorized: tenant_id or user_id is nil"));
     }
     let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
     Ok((runtime_ctx.db_clone(), auth))
@@ -483,9 +481,7 @@ async fn mcp_mutation_context() -> Result<
         .await
         .map_err(ServerFnError::new)?;
     if auth.tenant_id.is_nil() || auth.user_id.is_nil() {
-        return Err(ServerFnError::new(
-            "Unauthorized: tenant_id or user_id is nil",
-        ));
+        return Err(ServerFnError::new("Unauthorized: tenant_id or user_id is nil"));
     }
     ensure_mcp_manage(&auth)?;
     let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();

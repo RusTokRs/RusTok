@@ -32,7 +32,8 @@ pub use dto::{
     PrepareUploadSessionInput, PreparedUploadSession, UploadInput, UpsertTranslationInput,
 };
 pub use entities::{
-    asset, asset_reference, blob, media_translation, rendition, translation_change, upload_session,
+    asset, asset_reference, blob, media_translation, rendition, translation_change,
+    upload_session,
 };
 pub use error::{MediaError, Result};
 pub use graphql::{MediaMutation, MediaQuery};

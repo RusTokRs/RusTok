@@ -1,7 +1,9 @@
 //! Default SuperAdmin Initializer
 //!
-//! Automatically ensures a default SuperAdmin user exists on every startup.
-//! Runs before the server accepts requests, so it's safe for all environments.
+//! Creates the default SuperAdmin user on first startup when configured
+//! via environment. An already-existing account is never modified: if an
+//! operator demoted or disabled it (for example during incident
+//! response), a restart must not silently undo that decision.
 //!
 //! ## Configuration (env vars, in priority order)
 //!
@@ -52,19 +54,21 @@ pub async fn ensure_default_superadmin(ctx: &ServerRuntimeContext) -> Result<()>
     let tenant = tenants::find_or_create(ctx.db(), &tenant_name, &tenant_slug, None).await?;
 
     if let Some(user) = users::Entity::find_by_email(ctx.db(), tenant.id, &email).await? {
-        RbacService::replace_user_role_committed(
-            ctx.db(),
-            &user.id,
-            &tenant.id,
-            rustok_core::UserRole::SuperAdmin,
-        )
-        .await?;
-
-        tracing::debug!(
-            email = %email,
-            tenant = %tenant_slug,
-            "Default superadmin already exists - synchronized role permissions"
-        );
+        let role = RbacService::get_user_role(ctx.db(), &tenant.id, &user.id).await?;
+        if role == rustok_core::UserRole::SuperAdmin {
+            tracing::debug!(
+                email = %email,
+                tenant = %tenant_slug,
+                "Default superadmin already exists"
+            );
+        } else {
+            tracing::warn!(
+                email = %email,
+                tenant = %tenant_slug,
+                current_role = %role,
+                "Configured superadmin account exists without the SuperAdmin role; leaving it unchanged (recovery is an explicit admin action)"
+            );
+        }
         return Ok(());
     }
 
@@ -76,6 +80,7 @@ pub async fn ensure_default_superadmin(ctx: &ServerRuntimeContext) -> Result<()>
         Some("Super Admin".to_string()),
         rustok_core::UserRole::SuperAdmin,
         Some(rustok_core::UserStatus::Active),
+        crate::auth::DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
     )
     .await?;
 

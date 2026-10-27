@@ -250,10 +250,7 @@ impl CatalogService {
         if products.is_empty() {
             return Ok(Vec::new());
         }
-        let loaded_ids = products
-            .iter()
-            .map(|product| product.id)
-            .collect::<Vec<_>>();
+        let loaded_ids = products.iter().map(|product| product.id).collect::<Vec<_>>();
         let translations = entities::product_translation::Entity::find()
             .filter(entities::product_translation::Column::TenantId.eq(tenant_id))
             .filter(entities::product_translation::Column::ProductId.is_in(loaded_ids.clone()))
@@ -279,10 +276,7 @@ impl CatalogService {
         let mut images_by_product: HashMap<Uuid, Vec<entities::product_image::Model>> =
             HashMap::new();
         for image in images {
-            images_by_product
-                .entry(image.product_id)
-                .or_default()
-                .push(image);
+            images_by_product.entry(image.product_id).or_default().push(image);
         }
 
         let mut projections = Vec::with_capacity(products.len());
@@ -306,13 +300,18 @@ impl CatalogService {
     async fn load_product_image_translation_map(
         db: &sea_orm::DatabaseConnection,
         images: &[entities::product_image::Model],
-    ) -> CommerceResult<HashMap<Uuid, Vec<entities::product_image_translation::Model>>> {
+    ) -> CommerceResult<
+        HashMap<Uuid, Vec<entities::product_image_translation::Model>>,
+    > {
         if images.is_empty() {
             return Ok(HashMap::new());
         }
         let image_ids = images.iter().map(|image| image.id).collect::<Vec<_>>();
         let translations = entities::product_image_translation::Entity::find()
-            .filter(entities::product_image_translation::Column::ImageId.is_in(image_ids))
+            .filter(
+                entities::product_image_translation::Column::ImageId
+                    .is_in(image_ids),
+            )
             .order_by_asc(entities::product_image_translation::Column::Locale)
             .all(db)
             .await?;
@@ -354,9 +353,10 @@ impl CatalogService {
             images: images
                 .into_iter()
                 .map(|image| {
-                    let translations = image_translations.remove(&image.id).unwrap_or_default();
-                    let alt_text =
-                        resolve_image_alt_text(&translations, locale, Some(fallback_locale));
+                    let translations = image_translations
+                        .remove(&image.id)
+                        .unwrap_or_default();
+                    let alt_text = resolve_image_alt_text(&translations, locale, Some(fallback_locale));
                     ProductImageResponse {
                         id: image.id,
                         media_id: image.media_id,
@@ -485,12 +485,9 @@ impl CatalogService {
                 if variant_ids.is_empty() {
                     Ok::<_, CommerceError>(Vec::new())
                 } else {
-                    PricingBootstrapService::load_catalog_base_prices_for_variants(
-                        conn,
-                        &variant_ids,
-                    )
-                    .await
-                    .map_err(CommerceError::from)
+                    PricingBootstrapService::load_catalog_base_prices_for_variants(conn, &variant_ids)
+                        .await
+                        .map_err(CommerceError::from)
                 }
             },
             async {

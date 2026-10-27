@@ -681,18 +681,40 @@ mod tests {
         let config = crate::auth::AuthConfig::new(
             "test-secret-key-for-auth-context-32bytes-long".to_string(),
         );
-        let token = crate::auth::encode_access_token(
-            &config,
-            Uuid::new_v4(),
-            Uuid::nil(),
-            rustok_core::UserRole::Customer,
-            Uuid::new_v4(),
+        // The canonical encoder refuses nil identifiers, so forge the
+        // token directly to exercise the decode-side guard (a token
+        // could also arrive from a foreign issuer in RS256 setups).
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time")
+            .as_secs();
+        let claims = crate::auth::Claims {
+            sub: Uuid::new_v4(),
+            tenant_id: Uuid::nil(),
+            role: rustok_core::UserRole::Customer,
+            session_id: Uuid::new_v4(),
+            iss: config.issuer.clone(),
+            aud: config.audience.clone(),
+            exp: (now + 3600) as usize,
+            iat: now as usize,
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "direct".to_string(),
+        };
+        let token = jsonwebtoken::encode(
+            &jsonwebtoken::Header::default(),
+            &claims,
+            &jsonwebtoken::EncodingKey::from_secret(config.secret.as_bytes()),
         )
-        .expect("encode access token");
+        .expect("forge access token");
 
+        // The canonical decoder rejects nil tenant claims before the
+        // middleware's own guard runs, so the caller sees the generic
+        // credential failure; the middleware check stays as defense in
+        // depth if decoder policy ever relaxes.
         assert_eq!(
             verified_tenant_id_from_access_token(&config, &token),
-            Err((StatusCode::UNAUTHORIZED, "Token tenant claim is invalid"))
+            Err((StatusCode::UNAUTHORIZED, "Invalid token signature"))
         );
     }
 

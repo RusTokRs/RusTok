@@ -115,11 +115,8 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
     let next_page_writer = posts_query_writer;
     let posts_next_cursor = data.posts.next_cursor.clone();
     let posts_cursor_query = use_route_query_value(core::POSTS_CURSOR_QUERY_KEY);
-    let first_page_label = t(
-        locale.as_deref(),
-        "blog.posts.firstPage",
-        "Back to the first page",
-    );
+    let first_page_label =
+        t(locale.as_deref(), "blog.posts.firstPage", "Back to the first page");
     let selected_post_slug = data.selected_post.as_ref().and_then(|p| p.slug.clone());
     let is_post_selected = data.selected_post.is_some();
 

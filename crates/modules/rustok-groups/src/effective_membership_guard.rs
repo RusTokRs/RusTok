@@ -79,19 +79,13 @@ pub(crate) async fn require_effective_manager_owned(
     capability: GroupManagerCapability,
 ) -> GroupsResult<()> {
     if tenant_id.is_nil() {
-        return Err(GroupsError::Validation(
-            "tenant_id cannot be nil UUID".to_string(),
-        ));
+        return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
     }
     if group_id.is_nil() {
-        return Err(GroupsError::Validation(
-            "group_id cannot be nil UUID".to_string(),
-        ));
+        return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
     }
     if actor_user_id.is_nil() {
-        return Err(GroupsError::Validation(
-            "actor_user_id cannot be nil UUID".to_string(),
-        ));
+        return Err(GroupsError::Validation("actor_user_id cannot be nil UUID".to_string()));
     }
     if has_platform_manage(context) {
         return Ok(());
@@ -120,19 +114,13 @@ pub(crate) async fn require_effective_manager_direct_owned(
     capability: GroupManagerCapability,
 ) -> GroupsResult<()> {
     if tenant_id.is_nil() {
-        return Err(GroupsError::Validation(
-            "tenant_id cannot be nil UUID".to_string(),
-        ));
+        return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
     }
     if group_id.is_nil() {
-        return Err(GroupsError::Validation(
-            "group_id cannot be nil UUID".to_string(),
-        ));
+        return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
     }
     if actor_user_id.is_nil() {
-        return Err(GroupsError::Validation(
-            "actor_user_id cannot be nil UUID".to_string(),
-        ));
+        return Err(GroupsError::Validation("actor_user_id cannot be nil UUID".to_string()));
     }
     if has_platform_manage(context) {
         return Ok(());
@@ -153,19 +141,13 @@ pub(crate) async fn require_user_not_denied_owned(
     reject_active_member: bool,
 ) -> GroupsResult<()> {
     if tenant_id.is_nil() {
-        return Err(GroupsError::Validation(
-            "tenant_id cannot be nil UUID".to_string(),
-        ));
+        return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
     }
     if group_id.is_nil() {
-        return Err(GroupsError::Validation(
-            "group_id cannot be nil UUID".to_string(),
-        ));
+        return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
     }
     if user_id.is_nil() {
-        return Err(GroupsError::Validation(
-            "user_id cannot be nil UUID".to_string(),
-        ));
+        return Err(GroupsError::Validation("user_id cannot be nil UUID".to_string()));
     }
     let effective = resolve_group_membership_enforcement_now_for_update(
         transaction,
@@ -184,10 +166,7 @@ pub(crate) async fn require_effective_manager(
     capability: GroupManagerCapability,
 ) -> Result<(), PortError> {
     if group_id.is_nil() {
-        return Err(PortError::validation(
-            "groups.invalid_group_id",
-            "group_id cannot be nil UUID",
-        ));
+        return Err(PortError::validation("groups.invalid_group_id", "group_id cannot be nil UUID"));
     }
     if has_platform_manage(context) {
         return Ok(());
@@ -211,10 +190,7 @@ pub(crate) async fn require_candidate_not_denied(
     reject_active_member: bool,
 ) -> Result<(), PortError> {
     if group_id.is_nil() {
-        return Err(PortError::validation(
-            "groups.invalid_group_id",
-            "group_id cannot be nil UUID",
-        ));
+        return Err(PortError::validation("groups.invalid_group_id", "group_id cannot be nil UUID"));
     }
     require_user_not_denied(
         db,
@@ -234,22 +210,13 @@ pub(crate) async fn require_user_not_denied(
     reject_active_member: bool,
 ) -> Result<(), PortError> {
     if tenant_id.is_nil() {
-        return Err(PortError::validation(
-            "groups.invalid_tenant",
-            "tenant_id cannot be nil UUID",
-        ));
+        return Err(PortError::validation("groups.invalid_tenant", "tenant_id cannot be nil UUID"));
     }
     if group_id.is_nil() {
-        return Err(PortError::validation(
-            "groups.invalid_group_id",
-            "group_id cannot be nil UUID",
-        ));
+        return Err(PortError::validation("groups.invalid_group_id", "group_id cannot be nil UUID"));
     }
     if user_id.is_nil() {
-        return Err(PortError::validation(
-            "groups.invalid_user_id",
-            "user_id cannot be nil UUID",
-        ));
+        return Err(PortError::validation("groups.invalid_user_id", "user_id cannot be nil UUID"));
     }
     let effective =
         resolve_group_membership_enforcement(db, tenant_id, group_id, user_id, Utc::now())

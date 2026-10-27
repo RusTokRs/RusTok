@@ -392,10 +392,7 @@ impl InventoryService {
         {
             return Err(CommerceError::InsufficientInventory {
                 requested: -target_default_available,
-                available: state
-                    .level
-                    .stocked_quantity
-                    .saturating_sub(state.level.reserved_quantity),
+                available: state.level.stocked_quantity.saturating_sub(state.level.reserved_quantity),
             });
         }
 
@@ -853,11 +850,7 @@ impl InventoryService {
 
         Ok(levels
             .into_iter()
-            .map(|level| {
-                level
-                    .stocked_quantity
-                    .saturating_sub(level.reserved_quantity)
-            })
+            .map(|level| level.stocked_quantity.saturating_sub(level.reserved_quantity))
             .sum())
     }
 }
@@ -963,9 +956,7 @@ fn validate_release_quantity(quantity: i32) -> CommerceResult<()> {
 
 fn validate_non_nil_uuid(id: Uuid, field_name: &'static str) -> CommerceResult<()> {
     if id.is_nil() {
-        return Err(CommerceError::Validation(format!(
-            "{field_name} cannot be nil"
-        )));
+        return Err(CommerceError::Validation(format!("{field_name} cannot be nil")));
     }
     Ok(())
 }

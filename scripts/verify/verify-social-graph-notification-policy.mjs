@@ -50,7 +50,7 @@ const adapter = read(contract.server_composition?.adapter ?? "");
 const runtime = read("crates/modules/rustok-notifications/src/recipient_policy.rs");
 const registry = read(contract.distribution?.registry ?? "");
 const generatedPromotions = read(
-  "crates/utils/rustok-distribution/src/generated_promotions.rs",
+  "crates/modules/rustok-distribution/src/generated_promotions.rs",
 );
 const manifest = read(contract.distribution?.manifest ?? "");
 const test = read("crates/modules/rustok-social-graph/tests/privacy_sqlite.rs");

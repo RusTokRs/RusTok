@@ -153,9 +153,7 @@
     "prettier-plugin-tailwindcss": "^0.8.1",
     "tw-animate-css": "^1.2.4",
     "typescript": "6.0.3",
-    "ajv": "8.20.0",
-    "grapesjs": "^0.23.6",
-    "grapesjs-preset-webpage": "^1.0.3"
+    "ajv": "8.20.0"
   },
   "license": "BUSL-1.1"
 }

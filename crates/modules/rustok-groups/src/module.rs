@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use rustok_api::Permission;
-use rustok_core::ModuleRuntimeExtensions;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
+use rustok_core::ModuleRuntimeExtensions;
 use rustok_moderation::register_moderation_subject_adapter_factory;
 use rustok_notifications::register_notification_source_provider_factory;
 use sea_orm_migration::MigrationTrait;

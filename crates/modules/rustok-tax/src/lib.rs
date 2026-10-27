@@ -5,6 +5,8 @@
 
 #![deny(clippy::float_arithmetic)]
 
+
+
 mod calculation_context;
 pub mod error;
 pub mod ports;
@@ -23,3 +25,4 @@ pub use module::TaxModule;
 
 #[cfg(test)]
 mod contract_tests;
+

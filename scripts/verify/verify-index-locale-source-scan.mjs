@@ -51,7 +51,7 @@ for (const forbidden of [
   }
 }
 
-const productPath = 'crates/utils/rustok-distribution/src/product_index/product.rs';
+const productPath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
 const product = requireMarkers(productPath, [
   'locale_mode: LocaleMode::Required',
   'match (request.locale(), cursor)',

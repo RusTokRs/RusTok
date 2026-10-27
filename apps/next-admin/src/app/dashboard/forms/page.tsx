@@ -10,11 +10,7 @@ export const metadata = {
 export default async function Page() {
   const session = await auth();
   return (
-    <PageContainer
-      scrollable
-      pageTitle='Form submissions'
-      pageDescription='Forms inbox'
-    >
+    <PageContainer scrollable pageTitle="Form submissions" pageDescription="Forms inbox">
       <Suspense fallback={<p>Loading submissions…</p>}>
         <FormsPage
           token={session?.user?.rustokToken ?? null}

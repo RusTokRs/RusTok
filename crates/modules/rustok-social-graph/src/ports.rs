@@ -196,16 +196,16 @@ impl SocialGraphReceiptCleanupCommand {
                 "social graph receipt cleanup limit must be between 1 and 1000",
             ));
         }
-        let completed_before =
-            match DateTime::<Utc>::from_timestamp(self.completed_before_unix_seconds, 0) {
-                Some(value) => value,
-                None => {
-                    return Err(PortError::validation(
-                        "social_graph.receipt_cleanup_cutoff_invalid",
-                        "social graph receipt cleanup cutoff must be a valid Unix timestamp",
-                    ));
-                }
-            };
+        let completed_before = match DateTime::<Utc>::from_timestamp(self.completed_before_unix_seconds, 0)
+        {
+            Some(value) => value,
+            None => {
+                return Err(PortError::validation(
+                    "social_graph.receipt_cleanup_cutoff_invalid",
+                    "social graph receipt cleanup cutoff must be a valid Unix timestamp",
+                ));
+            }
+        };
         if completed_before >= Utc::now() {
             return Err(PortError::validation(
                 "social_graph.receipt_cleanup_cutoff_future",
@@ -596,8 +596,14 @@ mod tests {
 
         // Self relation
         assert!(
-            SetSocialRelationCommand::new(source, source, SocialRelationKind::Follow, true, None,)
-                .is_err()
+            SetSocialRelationCommand::new(
+                source,
+                source,
+                SocialRelationKind::Follow,
+                true,
+                None,
+            )
+            .is_err()
         );
 
         // Non-positive expected revision
@@ -663,9 +669,7 @@ mod tests {
         assert!(SocialGraphRelationEventReplayCommand::new(None, 0, false).is_err());
         assert!(SocialGraphRelationEventReplayCommand::new(None, 1001, false).is_err());
         assert!(SocialGraphRelationEventReplayCommand::new(Some(Uuid::nil()), 10, false).is_err());
-        assert!(
-            SocialGraphRelationEventReplayCommand::new(Some(Uuid::new_v4()), 10, false).is_ok()
-        );
+        assert!(SocialGraphRelationEventReplayCommand::new(Some(Uuid::new_v4()), 10, false).is_ok());
     }
 
     #[test]

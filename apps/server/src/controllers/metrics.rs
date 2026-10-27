@@ -860,12 +860,12 @@ mod tests {
         RateLimitPolicySnapshot, RemoteExecutorGuardrailSnapshot, RuntimeGuardrailRollout,
         RuntimeGuardrailSnapshot, RuntimeGuardrailStatus,
     };
+    use rustok_cache::CacheService;
+    use rustok_outbox::RelayMetricsSnapshot;
     use axum::{
         http::{StatusCode, header::CONTENT_TYPE},
         response::IntoResponse,
     };
-    use rustok_cache::CacheService;
-    use rustok_outbox::RelayMetricsSnapshot;
 
     fn assert_metric_line(payload: &str, metric_name: &str) {
         let has_exact_line = payload.lines().any(|line| {
@@ -874,6 +874,16 @@ mod tests {
         assert!(
             has_exact_line,
             "metric line `{metric_name}` not found in payload: {payload}"
+        );
+    }
+
+    fn assert_no_metric_line(payload: &str, metric_name: &str) {
+        let has_exact_line = payload.lines().any(|line| {
+            line.starts_with(metric_name) && line.as_bytes().get(metric_name.len()) == Some(&b' ')
+        });
+        assert!(
+            !has_exact_line,
+            "non-canonical metric line `{metric_name}` must not be published: {payload}"
         );
     }
 
@@ -982,9 +992,9 @@ mod tests {
         assert_metric_line(&payload, "rustok_outbox_dlq_total");
         assert_metric_line(&payload, "rustok_outbox_retries_total");
         assert_metric_line(&payload, "rustok_outbox_pending_lag_seconds");
-        assert!(!payload.contains("outbox_backlog_size "));
-        assert!(!payload.contains("outbox_dlq_total "));
-        assert!(!payload.contains("outbox_retries_total "));
+        assert_no_metric_line(&payload, "outbox_backlog_size");
+        assert_no_metric_line(&payload, "outbox_dlq_total");
+        assert_no_metric_line(&payload, "outbox_retries_total");
         assert!(payload.contains("rustok_outbox_backlog_size 11"));
         assert!(payload.contains("rustok_outbox_dlq_total 2"));
         assert!(payload.contains("rustok_outbox_retries_total 7"));

@@ -23,7 +23,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const productPath = 'crates/utils/rustok-distribution/src/product_index/product.rs';
+const productPath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
 const product = requireMarkers(productPath, [
   'PRODUCT_EVENT_DOMAIN: &str = "rustok-product.product-replay"',
   'FROM product_index_tombstones tombstone',
@@ -44,7 +44,7 @@ forbidMarkers(productPath, product, [
   'product_v2_schema',
 ]);
 
-const variantPath = 'crates/utils/rustok-distribution/src/product_variant_index.rs';
+const variantPath = 'crates/modules/rustok-distribution/src/product_variant_index.rs';
 const variant = requireMarkers(variantPath, [
   'PRODUCT_VARIANT_EVENT_DOMAIN: &str = "rustok-product.product-variant-replay"',
   'FROM product_variant_index_tombstones tombstone',

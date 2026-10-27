@@ -73,16 +73,14 @@ impl MediaCommandProvider {
             None => "Media reconciliation complete across all tenants".to_string(),
         };
 
-        Ok(
-            CommandOutcome::success(message).with_data(serde_json::json!({
-                "tenant_id": options.tenant_id.map(|id| id.to_string()),
-                "inspected": report.inspected,
-                "healthy": report.healthy,
-                "missing_marked": report.missing_marked,
-                "deletions_completed": report.deletions_completed,
-                "retry_later": report.retry_later,
-            })),
-        )
+        Ok(CommandOutcome::success(message).with_data(serde_json::json!({
+            "tenant_id": options.tenant_id.map(|id| id.to_string()),
+            "inspected": report.inspected,
+            "healthy": report.healthy,
+            "missing_marked": report.missing_marked,
+            "deletions_completed": report.deletions_completed,
+            "retry_later": report.retry_later,
+        })))
     }
 }
 
@@ -121,11 +119,7 @@ pub fn parse_reconcile_options(request: &CommandRequest) -> CliCoreResult<Reconc
         });
     }
 
-    let Some(options) = request
-        .args
-        .get("options")
-        .and_then(serde_json::Value::as_object)
-    else {
+    let Some(options) = request.args.get("options").and_then(serde_json::Value::as_object) else {
         return Err(CliCoreError::InvalidInput {
             message: "media reconcile expects normalized command options".to_string(),
         });

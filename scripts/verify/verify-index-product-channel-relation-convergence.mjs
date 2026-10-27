@@ -130,7 +130,7 @@ requireMarkers('crates/modules/rustok-product/src/lib.rs', [
 ]);
 
 const workerPath =
-  'crates/utils/rustok-distribution/src/product_index/channel_relation_convergence.rs';
+  'crates/modules/rustok-distribution/src/product_index/channel_relation_convergence.rs';
 const worker = requireMarkers(workerPath, [
   'PRODUCT_SALES_CHANNEL_RELATION_CONVERGENCE_WORKER',
   'product_sales_channel_relation_convergence',
@@ -165,7 +165,7 @@ const worker = requireMarkers(workerPath, [
   'owner_rejection_isolated_from_retryable_storage_failures',
 ]);
 
-requireMarkers('crates/utils/rustok-distribution/src/product_index/channel_relation_resolver.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/channel_relation_resolver.rs', [
   'SELECT id FROM products WHERE tenant_id = $1',
   'reconcile_product(tenant_id, product_id)',
   'MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE',
@@ -182,12 +182,12 @@ forbidMarkers(workerPath, worker, [
   'TransactionalEventBus',
 ]);
 
-requireMarkers('crates/utils/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
   'mod channel_relation_convergence;',
   'channel_relation_convergence::register(extensions)',
   'selected_product_and_channel_bridge_registers_channel_admission_and_convergence_work',
 ]);
-requireMarkers('crates/utils/rustok-distribution/Cargo.toml', ['rustok-runtime.workspace = true']);
+requireMarkers('crates/modules/rustok-distribution/Cargo.toml', ['rustok-runtime.workspace = true']);
 
 requireMarkers('crates/modules/rustok-product/docs/index-sales-channel-relation-convergence.md', [
   'Status: `source_complete_runtime_evidence_pending`',

@@ -32,10 +32,10 @@ fn module_metadata_matches_contract() {
 
 #[tokio::test]
 async fn newsletter_service_nil_uuid_guards() {
-    use crate::dto::{CreateCampaignInput, SubscribeInput};
-    use crate::services::{CampaignService, SubscriberService};
     use sea_orm::Database;
     use uuid::Uuid;
+    use crate::dto::{CreateCampaignInput, SubscribeInput};
+    use crate::services::{CampaignService, SubscriberService};
 
     let db = Database::connect("sqlite::memory:").await.unwrap();
     let subscriber_service = SubscriberService::new(db.clone());
@@ -121,3 +121,4 @@ async fn newsletter_service_nil_uuid_guards() {
         .unwrap_err();
     assert!(err.to_string().contains("Tenant ID must not be nil"));
 }
+

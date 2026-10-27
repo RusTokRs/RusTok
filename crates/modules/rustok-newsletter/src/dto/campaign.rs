@@ -1,5 +1,5 @@
-use crate::model::CampaignStatus;
 use chrono::{DateTime, Utc};
+use crate::model::CampaignStatus;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;

@@ -549,16 +549,16 @@ pub(crate) fn fulfillment_command_runtime_from_context(
                     provider_registry,
                     port.clone(),
                 ),
-                None => {
-                    CommerceFulfillmentCommandRuntime::in_process(db.clone(), provider_registry)
-                }
+                None => CommerceFulfillmentCommandRuntime::in_process(db.clone(), provider_registry),
             }
         });
     // Order shipment status follows fulfillment truth. Without an event bus in the request scope
     // the projection is skipped and the manual order commands stay the fallback.
     match ctx.data_opt::<rustok_outbox::TransactionalEventBus>() {
-        Some(event_bus) => runtime
-            .with_shipment_projection(crate::OrderShipmentProjector::new(db, event_bus.clone())),
+        Some(event_bus) => runtime.with_shipment_projection(crate::OrderShipmentProjector::new(
+            db,
+            event_bus.clone(),
+        )),
         None => runtime,
     }
 }

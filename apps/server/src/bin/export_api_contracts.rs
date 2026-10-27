@@ -58,7 +58,9 @@ where
     while let Some(argument) = iter.next() {
         match argument.as_ref() {
             "--output-dir" => {
-                let value = iter.next().ok_or("--output-dir requires a path argument")?;
+                let value = iter
+                    .next()
+                    .ok_or("--output-dir requires a path argument")?;
                 output_dir = PathBuf::from(value.as_ref());
             }
             "--help" | "-h" => {
@@ -109,10 +111,7 @@ mod tests {
     fn errors_on_missing_output_dir_argument() {
         let args = vec!["--output-dir"];
         let err = parse_output_dir_from_args(args).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("--output-dir requires a path argument")
-        );
+        assert!(err.to_string().contains("--output-dir requires a path argument"));
     }
 
     #[test]
@@ -122,3 +121,4 @@ mod tests {
         assert!(err.to_string().contains("unknown argument: --invalid-flag"));
     }
 }
+
