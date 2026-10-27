@@ -101,7 +101,7 @@ async fn d1_replacement_wins_before_stale_d2_preserve_on_postgres() -> TestResul
                     UpdateReplyInput {
                         locale: LOCALE.to_string(),
                         content: Some(rustok_api::RichTextDocument::single_paragraph(
-                            "Stale command body must roll back",
+                            "Stale D2 body must roll back",
                         )),
                     },
                 )

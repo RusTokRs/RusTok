@@ -134,9 +134,10 @@ impl ForumNotificationSourceProvider {
             .with_settings_providers(settings)
     }
 
-    // Invariants enforced via visibility service and domain event ordering:
-    // - SequenceNo.eq(sequence_no)
-    // - forum_topic_channel_access::Entity::find()
+    // Visibility is decided by the richer audience owner: `ForumTopicAudienceVisibilityService`
+    // composes the category and topic audience layers, so this provider never reads channel-access
+    // or audience-policy tables itself. Event ordering is enforced by matching the journal row on
+    // `(tenant, event_id, event_type)` plus the exact sequence number.
     async fn load_event(
         &self,
         event: &NotificationSourceEventRef,

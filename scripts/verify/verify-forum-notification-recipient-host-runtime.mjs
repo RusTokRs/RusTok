@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertCanonicalLedger } from "./lib/forum-source-verification.mjs";
+import { assertCanonicalLedger, requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -188,7 +188,7 @@ for (const marker of [
   "TOPIC_SUBSCRIPTION_AUDIENCE_ACTOR",
   "recipient.into_topic_viewer()",
 ]) {
-  requireText(notificationSource, marker, `notification source consumer is missing ${marker}`);
+  requireProse(failures, notificationSource, marker, "notification source consumer");
 }
 
 if (

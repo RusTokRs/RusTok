@@ -319,7 +319,9 @@ export function requireValidationDisclosure(failures, note, label) {
  * owner actually writes today, never sentence scaffolding such as the article that opens it.
  */
 export function requireProse(failures, source, marker, label) {
-  const haystack = (source ?? "").replace(/\s+/g, " ");
-  const needle = marker.replace(/\s+/g, " ");
-  if (!haystack.includes(needle)) failures.push(`${label}: missing ${marker}`);
+  // Fragment pins mix prose and short code spans, so whitespace is ignored on both sides — including
+  // the whitespace Rust puts between a receiver and the method it calls.
+  const normalize = (text) =>
+    (text ?? "").replace(/\s+/g, " ").replace(/\s*\.\s*/g, ".").trim();
+  if (!normalize(source).includes(normalize(marker))) failures.push(`${label}: missing ${marker}`);
 }

@@ -10,11 +10,18 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   : path.resolve(scriptDir, "../..");
 const failures = [];
 
+// A contract may point at a single file or at a migration directory that splits its backend
+// branches into modules; both are read as one text so the pins stay structural.
 function read(relativePath) {
   const absolute = path.join(repoRoot, relativePath);
   if (!relativePath || !existsSync(absolute)) {
     failures.push(`${relativePath || "<missing path>"}: required file is missing`);
     return "";
+  }
+  if (statSync(absolute).isDirectory()) {
+    return collectRustFiles(absolute)
+      .map((relative) => readFileSync(path.join(absolute, relative), "utf8"))
+      .join("\n");
   }
   return readFileSync(absolute, "utf8");
 }
@@ -87,12 +94,19 @@ reject(
   /email|phone|contact|address|handle_snapshot/,
   "Forum mention event contract must contain target identity, not contact or handle data",
 );
+// The payload enum and its dispatch live in the event crate root; the trait implementation that
+// builds the envelope lives in the typed family module.
 for (const marker of [
-  "ContractEventPayload::ForumMention",
+  "ForumMention(ForumMentionEvent)",
   "Self::ForumMention(event)",
 ]) {
   requireText(eventRegistry, marker, `sealed payload registry is missing ${marker}`);
 }
+requireText(
+  eventFamily,
+  "ContractEventPayload::ForumMention(self)",
+  "typed Forum mention contract must build the sealed payload",
+);
 requireText(eventCrate, "forum_mention_event_schema", "event schema registry must include Forum mentions");
 
 for (const marker of [
@@ -122,7 +136,8 @@ for (const marker of [
   "DatabaseBackend::Postgres",
   "DatabaseBackend::Sqlite",
   "chk_forum_domain_events_event_type",
-  "forum_domain_events_next",
+  "sequence_no BIGSERIAL PRIMARY KEY",
+  "forum_append_domain_event(",
   "forum_domain_events_immutable_update",
   "forum_domain_events_immutable_delete",
 ]) {

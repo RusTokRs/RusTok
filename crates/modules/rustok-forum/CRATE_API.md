@@ -232,7 +232,8 @@ See [the decision](../../../DECISIONS/2026-10-17-forum-topic-feed-selection.md).
 - `forum_relation_revisions` assigns one globally unique immutable identity to each persisted mention/quote projection for a tenant, source target and locale.
 - `forum_user_mentions`, `forum_audience_mentions` and `forum_quotes` are append-only child rows keyed by the complete source identity and relation revision.
 - Quote rows retain the quoted target and globally unique quoted relation revision; PostgreSQL and SQLite reject tenant, kind or target mismatches.
-- Relation revisions are created only by the canonical topic/reply command owner after the source document has been normalized and stored.
+- The canonical topic/reply command owner appends the projection revision after the source document has been normalized and stored; source INSERT seed triggers first record one `legacy` baseline revision for every body written without a relation projection, so bodies from imports, forks, splits, translation applies and pre-FORUM-12B2 data stay readable and reconcilable.
+- A `legacy` baseline carries no mention, audience or quote rows: it states that the body exists and that no projection was derived from it, and mention reconciliation accepts it as a valid fingerprint instead of reporting drift.
 - Migrations do not synthesize empty relation identities or backfill placeholder fingerprints.
 - The crate-private `MentionRelationService` separates profile-dependent `prepare` from transaction-only `persist_in_tx`; it is an owner implementation seam, not public persistence API.
 - `prepare` resolves handles through `ProfilesReader` and computes a SHA-256 fingerprint over the canonical serialized document, resolved targets, and quote identities.

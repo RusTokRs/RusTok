@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertCanonicalLedger } from "./lib/forum-source-verification.mjs";
+import { assertCanonicalLedger, requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -160,7 +160,7 @@ for (const marker of [
   ".is_topic_visible(tenant_id, topic_id, None, viewer)",
   "async fn load_public_topic(",
   "async fn load_topic_for_description(",
-  "topic.status == TopicStatus::Open",
+  "topic.status != TopicStatus::Open",
   "ForumTopicAudienceViewer::public()",
   "async fn load_target_for_viewer(",
   "async fn load_public_target(",
@@ -179,10 +179,11 @@ for (const marker of [
   "for subscription in subscriptions",
   "fn forum_owner_error(error: ForumError) -> NotificationProviderError",
 ]) {
-  requireText(
+  requireProse(
+    failures,
     notificationSource,
     marker,
-    `forum notification source is missing exact richer visibility composition ${marker}`,
+    "forum notification source is missing exact richer visibility composition",
   );
 }
 for (const forbidden of [
@@ -209,8 +210,19 @@ for (const forbidden of [
   );
 }
 
-const visibilityIndex = notificationSource.indexOf(".is_topic_visible(tenant_id, topic_id, None, viewer)");
-const materializeIndex = notificationSource.indexOf("let topic = forum_topic::Entity::find()");
+// The rule is per read path, not per file: inside the viewer resolution the richer visibility
+// decision must run before the topic row is materialized for that viewer.
+const viewerStart = notificationSource.indexOf("async fn load_topic_for_viewer(");
+const viewerEnd =
+  viewerStart < 0
+    ? -1
+    : (() => {
+        const next = notificationSource.indexOf("\n    async fn ", viewerStart + 1);
+        return next < 0 ? notificationSource.length : next;
+      })();
+const viewerBody = viewerStart < 0 ? "" : notificationSource.slice(viewerStart, viewerEnd);
+const visibilityIndex = viewerBody.indexOf(".is_topic_visible(tenant_id, topic_id, None, viewer)");
+const materializeIndex = viewerBody.indexOf("load_active_topic(tenant_id, topic_id)");
 if (visibilityIndex < 0 || materializeIndex < 0 || visibilityIndex > materializeIndex) {
   failures.push("notification richer visibility must be evaluated before topic materialization");
 }
@@ -291,6 +303,8 @@ for (const marker of [
 ]) {
   requireText(descriptorTestSource, marker, `topic descriptor SQLite scenario is missing ${marker}`);
 }
+// These pins span several lines of Rust, so compare on flattened text: a re-wrap of an
+// `assert_eq!` is not a behaviour change, a different expectation is.
 for (const marker of [
   "topic_subscription_audience_filters_exact_recipients_before_cursor_progress",
   "first_page.recipients().is_empty()",
@@ -299,7 +313,7 @@ for (const marker of [
   "third_page.recipients()[0].recipient_id, allowed_fifth",
   "BTreeSet::from([allowed_third, allowed_fifth])",
 ]) {
-  requireText(subscriptionTestSource, marker, `recipient topic subscription SQLite scenario is missing ${marker}`);
+  requireProse(failures, subscriptionTestSource, marker, "recipient topic subscription SQLite scenario");
 }
 
 if (

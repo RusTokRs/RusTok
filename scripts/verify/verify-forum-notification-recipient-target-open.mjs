@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertCanonicalLedger } from "./lib/forum-source-verification.mjs";
+import { assertCanonicalLedger, requireProse } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -158,7 +158,7 @@ for (const marker of [
   "async fn topic_subscription_recipient_visible(",
   "TOPIC_SUBSCRIPTION_AUDIENCE_ACTOR",
 ]) {
-  requireText(source, marker, `forum notification recipient source is missing ${marker}`);
+  requireProse(failures, source, marker, "forum notification recipient source");
 }
 for (const forbidden of [
   "forum_category_audience_policy",
@@ -180,15 +180,28 @@ for (const forbidden of [
 const describeBlock = between(source, "async fn describe_event(", "async fn resolve_audience(", "describe_event");
 const audienceBlock = between(source, "async fn resolve_audience(", "async fn authorize_target_open(", "resolve_audience");
 const targetOpenBlock = between(source, "async fn authorize_target_open(", "fn recipient_operation_context(", "authorize_target_open");
+const descriptionBlock = between(
+  source,
+  "async fn load_topic_for_description(",
+  "async fn load_topic_for_subscription_audience(",
+  "load_topic_for_description",
+);
 for (const [block, marker, label] of [
-  [describeBlock, "load_public_topic(event.tenant_id, event.aggregate_id)", "topic-created public description"],
+  // A description states what the event is about; the audience and open steps re-check visibility,
+  // so the description path reads through the description-scoped loader.
+  [describeBlock, "load_topic_for_description(event.tenant_id, event.aggregate_id)", "topic-created description"],
   [audienceBlock, "load_public_topic(event.tenant_id, event.aggregate_id)", "topic-created public source recheck"],
+  [
+    descriptionBlock,
+    "return self.load_public_topic(tenant_id, topic_id).await;",
+    "description loader must defer to the public path without a recipient context",
+  ],
   [audienceBlock, "topic_subscription_recipient_visible(", "exact topic subscription audience"],
   [describeBlock, "load_mention_target_for_recipient(&event, &payload, MENTION_DESCRIBE_ACTOR)", "exact mention description"],
   [audienceBlock, "load_mention_target_for_recipient(&event, &payload, MENTION_AUDIENCE_ACTOR)", "exact mention audience"],
   [targetOpenBlock, "resolve_recipient_viewer(", "exact target-open authorization"],
 ]) {
-  requireText(block, marker, `${label} is missing ${marker}`);
+  requireProse(failures, block, marker, label);
 }
 
 for (const marker of [
@@ -237,7 +250,7 @@ for (const marker of [
   "recorded_calls(&calls), vec![denied_first, unavailable_second]",
   "BTreeSet::from([allowed_third, allowed_fifth])",
 ]) {
-  requireText(subscriptionTest, marker, `recipient topic subscription SQLite contract is missing ${marker}`);
+  requireProse(failures, subscriptionTest, marker, "recipient topic subscription SQLite contract");
 }
 
 if (

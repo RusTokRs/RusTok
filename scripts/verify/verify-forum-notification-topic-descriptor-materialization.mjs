@@ -84,7 +84,7 @@ for (const marker of [
   "async fn load_topic_for_description(",
   "if self.recipient_context_port.is_some()",
   "self.load_active_topic(tenant_id, topic_id).await?",
-  "topic.status == TopicStatus::Open",
+  "topic.status != TopicStatus::Open",
   "self.load_public_topic(tenant_id, topic_id).await",
   "load_topic_for_description(event.tenant_id, event.aggregate_id)",
   "load_topic_for_subscription_audience(event.tenant_id, event.aggregate_id)",

@@ -225,10 +225,13 @@ for (const marker of [
 ]) {
   requireText(storefrontCargo, marker, `storefront Cargo contract is missing ${marker}`);
 }
+// The adapter declares its bundle through the shared i18n macro, which owns the locale loading;
+// pin the declaration instead of the hand-rolled message table it replaced.
 for (const marker of [
-  "UiMessages::new",
-  "include_str!(\"../locales/en.ftl\")",
-  "include_str!(\"../locales/ru.ftl\")",
+  "declare_module_i18n!",
+  'default = "en"',
+  'locales = ["en", "ru"]',
+  '"notifications.navigation.unread"',
 ]) {
   requireText(i18n, marker, `storefront i18n adapter is missing ${marker}`);
 }
