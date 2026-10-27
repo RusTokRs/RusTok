@@ -31,8 +31,17 @@ impl CacheTtlPolicy {
         Self::None
     }
 
-    pub fn fixed(ttl: Duration) -> Self {
-        Self::Fixed(ttl)
+    /// Fixed TTL policy.
+    ///
+    /// A zero TTL is rejected here for the same reason [`Self::deterministic_jitter`] rejects it:
+    /// backend caches interpret a zero TTL as deletion, so a policy carrying one can only fail at
+    /// use time — after cache I/O has already been attempted. Constructing the policy is the only
+    /// place where that invariant can be enforced once, so every construction path agrees.
+    pub fn fixed(ttl: Duration) -> Result<Self, CachePolicyError> {
+        if ttl.is_zero() {
+            return Err(CachePolicyError::ZeroTtl);
+        }
+        Ok(Self::Fixed(ttl))
     }
 
     pub fn deterministic_jitter(
@@ -355,7 +364,9 @@ mod tests {
             .load_or_fill_with_policy(
                 backend.clone(),
                 "present",
-                CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::ZERO)),
+                // The constructor rejects a zero TTL, so this test builds the policy by hand to
+                // keep the runtime guard covered.
+                CacheLoadPolicy::new(CacheTtlPolicy::Fixed(Duration::ZERO)),
                 || async {
                     calls.fetch_add(1, Ordering::SeqCst);
                     Ok(b"unexpected".to_vec())
@@ -372,13 +383,33 @@ mod tests {
         );
     }
 
+    #[test]
+    fn fixed_policy_rejects_a_zero_ttl_at_construction() {
+        assert_eq!(
+            CacheTtlPolicy::fixed(Duration::ZERO).unwrap_err(),
+            CachePolicyError::ZeroTtl,
+            "a policy that can only fail at use time must not be constructible"
+        );
+        assert_eq!(
+            CacheTtlPolicy::fixed(Duration::from_millis(1)).unwrap(),
+            CacheTtlPolicy::Fixed(Duration::from_millis(1))
+        );
+        assert_eq!(
+            CacheTtlPolicy::deterministic_jitter(Duration::ZERO, 10, "ns").unwrap_err(),
+            CachePolicyError::ZeroTtl,
+            "both constructors must agree on the zero-TTL contract"
+        );
+    }
+
     #[tokio::test]
     async fn loader_timeout_releases_coalescing_gate() {
         let service = CacheService::from_url(None);
         let backend = service.memory_backend(Duration::from_secs(60), 16);
-        let policy = CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60)))
-            .with_loader_timeout(Duration::from_millis(5))
-            .unwrap();
+        let policy = CacheLoadPolicy::new(
+            CacheTtlPolicy::fixed(Duration::from_secs(60)).expect("non-zero ttl"),
+        )
+        .with_loader_timeout(Duration::from_millis(5))
+        .unwrap();
 
         let error = service
             .load_or_fill_with_policy(backend.clone(), "slow", policy, || {

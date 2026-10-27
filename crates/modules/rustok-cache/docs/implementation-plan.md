@@ -285,6 +285,11 @@ None of these are claimed as compiled or live verified until the P0 evidence ste
 - [x] Degenerate backend configuration (zero TTL / zero capacity) is floored, logged at `error`
   level and counted in `rustok_cache_invalid_backend_configuration_total`; `load_or_fill` rejects a
   zero TTL outright.
+- [x] `CacheTtlPolicy::fixed` rejects a zero TTL at construction, like `deterministic_jitter`
+  already did. Previously a zero-TTL policy was constructible and then rejected in three separate
+  places at use time (load, policy load, refresh), so the invariant had three owners instead of
+  one; the runtime checks remain as fail-closed defense for hand-built `CacheTtlPolicy::Fixed`
+  values.
 - [x] Redis readiness distinguishes transport from recovery: `connectivity_healthy`,
   `generation_recovery_pending`, `recovery_error`, `is_connectivity_healthy()`, and the
   `rustok_cache_redis_generation_recovery_{pending,failed}` gauges.

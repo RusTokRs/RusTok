@@ -848,7 +848,9 @@ mod tests {
                 "x".repeat(MAX_CACHE_REFRESH_KEY_BYTES + 1),
                 CacheRefreshLoadOptions {
                     expected_schema_version: 1,
-                    policy: CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                    policy: CacheLoadPolicy::new(
+                        CacheTtlPolicy::fixed(Duration::from_secs(60)).expect("non-zero ttl"),
+                    ),
                     max_encoded_bytes: 1024,
                     now_unix_ms: 2_000,
                     clock: CacheRefreshClock::Fixed(2_000),
@@ -898,12 +900,12 @@ mod tests {
                     "document",
                     CacheRefreshLoadOptions {
                         expected_schema_version,
-                        policy: CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(
-                            60,
-                        ))),
+                        policy: CacheLoadPolicy::new(
+                            CacheTtlPolicy::fixed(Duration::from_secs(60)).expect("non-zero ttl"),
+                        ),
                         max_encoded_bytes,
                         now_unix_ms: 2_000,
-                    clock: CacheRefreshClock::Fixed(2_000),
+                        clock: CacheRefreshClock::Fixed(2_000),
                     },
                     move || {
                         let loader_calls = Arc::clone(&loader_calls);
@@ -956,7 +958,9 @@ mod tests {
                 "document",
                 CacheRefreshLoadOptions {
                     expected_schema_version: 1,
-                    policy: CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                    policy: CacheLoadPolicy::new(
+                        CacheTtlPolicy::fixed(Duration::from_secs(60)).expect("non-zero ttl"),
+                    ),
                     max_encoded_bytes: 1024,
                     now_unix_ms: 2_000,
                     clock: CacheRefreshClock::Fixed(2_000),
@@ -1002,7 +1006,9 @@ mod tests {
                 "document",
                 CacheRefreshLoadOptions {
                     expected_schema_version: 1,
-                    policy: CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                    policy: CacheLoadPolicy::new(
+                        CacheTtlPolicy::fixed(Duration::from_secs(60)).expect("non-zero ttl"),
+                    ),
                     max_encoded_bytes: 1024,
                     now_unix_ms: 2_000,
                     clock: CacheRefreshClock::Fixed(2_000),
@@ -1063,7 +1069,9 @@ mod tests {
                 backend.clone(),
                 "document",
                 1,
-                CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                CacheLoadPolicy::new(
+                    CacheTtlPolicy::fixed(Duration::from_secs(60)).expect("non-zero ttl"),
+                ),
                 move || async move {
                     // The loader waits on the same wall clock the validator reads, so the deadline
                     // is guaranteed to have passed when validation runs. A fixed sleep would make
@@ -1130,7 +1138,9 @@ mod tests {
                 "document",
                 CacheRefreshLoadOptions {
                     expected_schema_version: 1,
-                    policy: CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                    policy: CacheLoadPolicy::new(
+                        CacheTtlPolicy::fixed(Duration::from_secs(60)).expect("non-zero ttl"),
+                    ),
                     max_encoded_bytes: 1024,
                     now_unix_ms: 2_000,
                     clock: CacheRefreshClock::Fixed(2_000),
@@ -1193,7 +1203,9 @@ mod tests {
                 "document",
                 CacheRefreshLoadOptions {
                     expected_schema_version: 1,
-                    policy: CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                    policy: CacheLoadPolicy::new(
+                        CacheTtlPolicy::fixed(Duration::from_secs(60)).expect("non-zero ttl"),
+                    ),
                     max_encoded_bytes: 1024,
                     now_unix_ms: 2_000,
                     clock: CacheRefreshClock::Fixed(2_000),
@@ -1262,7 +1274,9 @@ mod tests {
                 "foreground-stale",
                 CacheRefreshLoadOptions {
                     expected_schema_version: 1,
-                    policy: CacheLoadPolicy::new(CacheTtlPolicy::fixed(Duration::from_secs(60))),
+                    policy: CacheLoadPolicy::new(
+                        CacheTtlPolicy::fixed(Duration::from_secs(60)).expect("non-zero ttl"),
+                    ),
                     max_encoded_bytes: 1024,
                     now_unix_ms: 2_000,
                     clock: CacheRefreshClock::Fixed(2_000),

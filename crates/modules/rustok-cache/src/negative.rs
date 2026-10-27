@@ -31,7 +31,7 @@ impl NegativeCachePolicy {
         validate_schema_and_ttl(schema_version, ttl)?;
         Ok(Self {
             schema_version,
-            ttl: CacheTtlPolicy::fixed(ttl),
+            ttl: CacheTtlPolicy::fixed(ttl).map_err(NegativeCachePolicyError::CachePolicy)?,
             max_encoded_bytes: DEFAULT_MAX_NEGATIVE_CACHE_BYTES,
         })
     }
