@@ -1112,4 +1112,22 @@ mod tests {
         assert_eq!(value["redis_url"], "redis://cache.internal:6380/2");
         assert_eq!(value["redis_password"], "");
     }
+
+    #[tokio::test]
+    async fn cache_settings_read_never_exposes_the_deployment_password() {
+        let ctx = cache_context(Some("redis://:deploy-secret@cache.internal:6380/2")).await;
+        let value = SettingsService::get(&ctx, Uuid::new_v4(), category::CACHE)
+            .await
+            .expect("cache settings read");
+
+        assert_eq!(
+            value["redis_url"], "redis://cache.internal:6380/2",
+            "the deployment target is reported without its credential"
+        );
+        assert_eq!(value["redis_password"], "");
+        assert!(
+            !value.to_string().contains("deploy-secret"),
+            "no field of a settings read may carry the deployment password: {value}"
+        );
+    }
 }
