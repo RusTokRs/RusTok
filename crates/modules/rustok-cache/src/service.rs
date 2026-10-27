@@ -55,6 +55,11 @@ pub(crate) struct SharedBackendKey {
     pub max_capacity: u64,
     pub weighted: bool,
     pub metrics_enabled: bool,
+    /// The breaker policy changes the instance (thresholds, cooldown, probe limit), so it must be
+    /// part of the identity; otherwise a caller that asked for a different policy would be served
+    /// a backend built with someone else's.
+    #[cfg(feature = "redis-cache")]
+    pub redis_circuit_breaker: CircuitBreakerConfig,
 }
 
 struct ConstructionGateLease {
@@ -1659,6 +1664,57 @@ mod tests {
         );
         assert_eq!(service.shared_backend_construction_count(), 1);
         assert_eq!(service.shared_backend_registry_len(), 1);
+    }
+
+    #[cfg(feature = "redis-cache")]
+    #[tokio::test]
+    async fn shared_backend_identity_includes_the_circuit_breaker_policy() {
+        // The breaker policy shapes the instance, so two callers that ask for different policies
+        // must not be served the same backend.
+        let service = CacheService::from_url(None);
+        let default_options = CacheBackendOptions::default();
+        let stricter = CacheBackendOptions {
+            redis_circuit_breaker: CircuitBreakerConfig {
+                failure_threshold: 1,
+                ..CircuitBreakerConfig::default()
+            },
+            ..CacheBackendOptions::default()
+        };
+
+        let first = service
+            .backend_shared_client_with_options(
+                "shared-breaker-key",
+                Duration::from_secs(30),
+                8,
+                default_options.clone(),
+            )
+            .await;
+        let same = service
+            .backend_shared_client_with_options(
+                "shared-breaker-key",
+                Duration::from_secs(30),
+                8,
+                default_options,
+            )
+            .await;
+        let different = service
+            .backend_shared_client_with_options(
+                "shared-breaker-key",
+                Duration::from_secs(30),
+                8,
+                stricter,
+            )
+            .await;
+
+        assert!(
+            Arc::ptr_eq(&first, &same),
+            "the same options must reuse one backend instance"
+        );
+        assert!(
+            !Arc::ptr_eq(&first, &different),
+            "a different breaker policy must produce a different backend"
+        );
+        assert_eq!(service.shared_backend_construction_count(), 2);
     }
 
     #[tokio::test]

@@ -283,6 +283,9 @@ None of these are claimed as compiled or live verified until the P0 evidence ste
 - [x] `publish` / `publish_invalidation` return `Result` (`CacheInvalidationError::{InvalidMessage,
   SharedTransport}`), `publish_durable` propagates `DurableCacheInvalidationError::Transport`, and
   publishing reuses one lazy `ConnectionManager`.
+- [x] A shared backend's identity now includes the Redis circuit-breaker policy, so
+  `backend_with_options` cannot be served a backend built with another caller's breaker settings;
+  the identity doc claim ("every factory option that changes the instance") is finally true.
 - [x] Process-local registries are bounded and prune dead entries (`shared_backends` 4096 with
   `strong_count` pruning; backend-generation registry prunes states that only the registry still
   references). Backend construction is single-flighted per key.

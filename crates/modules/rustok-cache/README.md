@@ -62,6 +62,12 @@ apply documented floors (`MIN_CACHE_BACKEND_TTL` = 1 ms, capacity ≥ 1), increm
 configuration typo is visible instead of silent. `CacheService::load_or_fill` rejects a zero
 TTL outright.
 
+Backends are shared per construction identity: prefix, TTL, capacity, weighted/entry mode,
+instrumentation and the Redis circuit-breaker policy. Every option that changes the resulting
+instance is part of that identity, so two callers get the same backend exactly when they asked for
+the same backend — a caller with a stricter breaker policy is never handed a backend built for
+another one.
+
 ## Atomic compare-and-set
 
 `CacheBackend::compare_and_set(key, expected, value, ttl)` returns an explicit

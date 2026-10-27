@@ -49,6 +49,8 @@ impl CacheService {
             max_capacity: max_weight_bytes,
             weighted: true,
             metrics_enabled: options.metrics_enabled,
+            #[cfg(feature = "redis-cache")]
+            redis_circuit_breaker: options.redis_circuit_breaker.clone(),
         };
 
         self.shared_backend_slot(key, || async {

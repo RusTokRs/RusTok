@@ -36,6 +36,9 @@
   - authority for the admin surface is not owned here: both transports evaluate
     `rustok_api::authorizes_host_or_permission` (`settings:read` for diagnostics and the settings
     document, `settings:manage` for a write, or the matching host-global authority)
+- **Shared backends**: identity = prefix + TTL + capacity + weighted/entry mode + instrumentation +
+  Redis circuit-breaker policy; construction is single-flight per identity and the registry is
+  bounded ([`DEFAULT_MAX_SHARED_CACHE_BACKENDS`])
 - **Generation convergence**:
   - `CacheNamespaceGenerationStore::read` heals a lost shared counter from a trusted local
     observation (`GENERATION_CATCH_UP_SCRIPT`, advance-only) and reports

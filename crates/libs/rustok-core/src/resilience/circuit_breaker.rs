@@ -8,7 +8,10 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
 /// Circuit breaker configuration.
-#[derive(Debug, Clone)]
+///
+/// `Eq`/`Hash` are derived so the configuration can take part in cache-key identity: a backend
+/// built for one breaker policy must never be served to a caller that asked for another.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CircuitBreakerConfig {
     /// Number of consecutive failures before opening the circuit.
     pub failure_threshold: u32,
