@@ -68,11 +68,9 @@ impl Drop for ConstructionGateLease {
             .registry
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if registry
-            .construction_gates
-            .get(&self.key)
-            .is_some_and(|current| Arc::ptr_eq(current, &self.gate) && Arc::strong_count(current) <= 2)
-        {
+        if registry.construction_gates.get(&self.key).is_some_and(|current| {
+            Arc::ptr_eq(current, &self.gate) && Arc::strong_count(current) <= 2
+        }) {
             registry.construction_gates.remove(&self.key);
         }
     }

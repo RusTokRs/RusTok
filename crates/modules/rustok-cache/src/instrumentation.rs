@@ -19,9 +19,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rustok_core::{
-    CacheBackend, CacheCompareAndSetOutcome, CacheStats,
-};
+use rustok_core::{CacheBackend, CacheCompareAndSetOutcome, CacheStats};
 
 /// Instrumentation wrapper shared by every cache backend factory.
 ///
@@ -203,7 +201,8 @@ mod tests {
     #[tokio::test]
     async fn memory_backend_observations_include_capacity_evictions() {
         let inner = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 4));
-        let backend = InstrumentedCacheBackend::new("memory", Arc::clone(&inner) as Arc<dyn CacheBackend>);
+        let inner: Arc<dyn CacheBackend> = inner;
+        let backend = InstrumentedCacheBackend::new("memory", inner);
 
         backend
             .set("key".to_string(), b"value".to_vec())

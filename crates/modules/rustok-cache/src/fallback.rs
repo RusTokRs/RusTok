@@ -880,11 +880,55 @@ mod tests {
         );
     }
 
+    /// Primary that stalls only for one key, so per-key isolation is observable.
+    struct KeyBlockingBackend {
+        blocked_key: &'static str,
+        started: Arc<Notify>,
+        release: Arc<Notify>,
+    }
+
+    #[async_trait]
+    impl CacheBackend for KeyBlockingBackend {
+        async fn health(&self) -> rustok_core::Result<()> {
+            Ok(())
+        }
+
+        async fn get(&self, key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
+            if key == self.blocked_key {
+                self.started.notify_one();
+                self.release.notified().await;
+            }
+            Ok(None)
+        }
+
+        async fn set(&self, _key: String, _value: Vec<u8>) -> rustok_core::Result<()> {
+            Ok(())
+        }
+
+        async fn set_with_ttl(
+            &self,
+            _key: String,
+            _value: Vec<u8>,
+            _ttl: Duration,
+        ) -> rustok_core::Result<()> {
+            Ok(())
+        }
+
+        async fn invalidate(&self, _key: &str) -> rustok_core::Result<()> {
+            Ok(())
+        }
+
+        fn stats(&self) -> CacheStats {
+            CacheStats::default()
+        }
+    }
+
     #[tokio::test]
     async fn a_stalled_primary_call_does_not_block_unrelated_keys() {
         let started = Arc::new(Notify::new());
         let release = Arc::new(Notify::new());
-        let primary = Arc::new(BlockingMissBackend {
+        let primary = Arc::new(KeyBlockingBackend {
+            blocked_key: "slow-key",
             started: Arc::clone(&started),
             release: Arc::clone(&release),
         });
