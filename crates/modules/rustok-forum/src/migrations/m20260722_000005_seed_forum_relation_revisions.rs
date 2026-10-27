@@ -9,6 +9,7 @@ use sea_orm_migration::sea_orm::{ConnectionTrait, DatabaseBackend};
 /// revision that says exactly that: the body exists, no projection was derived from it. The value
 /// matches `valid_projection_fingerprint()` in `mention_reconciliation`, so a baseline is never
 /// reported as drift.
+#[allow(dead_code)]
 const LEGACY_FINGERPRINT: &str = "legacy";
 
 #[derive(DeriveMigrationName)]

@@ -756,7 +756,7 @@ async fn authorize_gated_candidates(
         }
     }
 
-    if items.len() as u64 != total {
+    if items.len() as u64 != expected_total.unwrap_or(0) {
         return Err(Error::Internal(
             "Storefront Search candidate scan did not resolve one unique row per result".to_string(),
         ));
@@ -796,7 +796,7 @@ async fn authorize_gated_candidates(
 fn unique_candidate_descriptors(
     candidates: &[SearchCandidateDescriptor],
 ) -> Result<BTreeMap<Uuid, SearchCandidateDescriptor>, PortError> {
-    let mut unique = BTreeMap::new();
+    let mut unique: BTreeMap<Uuid, SearchCandidateDescriptor> = BTreeMap::new();
     for candidate in candidates {
         if let Some(existing) = unique.get(&candidate.document_id) {
             if existing.source_module != candidate.source_module

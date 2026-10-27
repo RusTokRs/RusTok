@@ -24,6 +24,22 @@ pub struct SearchAudienceDocumentScope {
 }
 
 impl SearchAudienceDocumentScope {
+    pub fn is_unrestricted(&self) -> bool {
+        self.gated_source_modules.is_empty() && self.authorized_document_ids.is_empty()
+    }
+
+    pub fn gated_source_modules(&self) -> &[String] {
+        &self.gated_source_modules
+    }
+
+    pub fn authorized_document_ids(&self) -> &[uuid::Uuid] {
+        &self.authorized_document_ids
+    }
+
+    pub fn unrestricted() -> Self {
+        Self::default()
+    }
+
     /// Builds a validated scope. Invalid module names or nil document ids are
     /// programming errors, because both values originate inside Search.
     pub fn new(

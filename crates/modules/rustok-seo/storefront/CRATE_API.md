@@ -1,9 +1,4 @@
-# Minimum Contract Set
-
-- **Crate**: `rustok-seo-storefront`
-- **Category**: Storefront UI / Module Adapter
-- **Primary Owner**: SEO Module Domain Team
-- **Purpose**: Provides storefront rendering adapters, framework-neutral SEO data structures, dual-path GraphQL transport queries, and HTML `<head>` meta-tag generation for storefront hosts.
+# rustok-seo-storefront / CRATE_API
 
 ## Platform Capability Bindings
 
@@ -16,6 +11,24 @@
 
 - **Upstream Module**: `rustok-seo` domain module (provides `SeoPageContext`, `SeoDocument`, `SeoRouteContext`, and structured data definitions)
 - **UI Hosts**: `apps/storefront` and headless storefront clients consuming page SEO metadata
+
+## Minimum Contract Set
+
+### Input DTOs/Commands
+- `SeoPageContextVariables`: variables struct for page context query
+
+### Domain Invariants
+1. **Deterministic Ordering**: Rendered tags in HTML `<head>` follow strict canonical ordering.
+2. **HTML & Breakout Escaping**: All dynamic content is passed through `rustok_core::html_escape`. Structured data blocks escape script breakout tags.
+3. **CSP Nonce Support**: When a nonce is provided, all JSON-LD `<script>` elements carry the `nonce="..."` attribute.
+4. **Framework Isolation**: Pure rendering logic resides in `core.rs` / `render.rs` with zero UI framework dependencies.
+
+### Events / Outbox Side Effects
+- Storefront head rendering is stateless and side-effect free.
+
+### Errors / Failure Codes
+- Storefront rendering does not panic on missing or empty fields; it safely omits non-present or empty tags.
+- GraphQL query transport failures are modeled at the network/client transport layer via standard Result types.
 
 ## Public surface
 
@@ -45,23 +58,13 @@
 
 ### Transport & Queries
 - `SEO_PAGE_CONTEXT_QUERY`: GraphQL query document for fetching page SEO context
-- `SeoPageContextVariables`: variables struct for page context query
 - `SeoPageContextResponse`: deserialization DTO for page context response
 
 ### Components
 - `SeoView`: hidden SEO view component for Leptos storefront templates
 
-## Domain Invariants
-
-1. **Deterministic Ordering**: Rendered tags in HTML `<head>` follow strict canonical ordering: description meta, canonical link, robots meta, alternate links, OpenGraph tags, Twitter card tags, search engine verification tags, pagination links, structured data (JSON-LD), custom link tags, and custom meta tags.
-2. **HTML & Breakout Escaping**: All dynamic content is passed through `rustok_core::html_escape`. Structured data blocks escape script breakout tags (`</script>` -> `<\/script>`).
-3. **CSP Nonce Support**: When a nonce is provided, all JSON-LD `<script>` elements carry the `nonce="..."` attribute.
-4. **Framework Isolation**: Pure rendering logic resides in `core.rs` / `render.rs` with zero UI framework dependencies.
-
-## Errors/Failure Codes
-
-- Storefront rendering does not panic on missing or empty fields; it safely omits non-present or empty tags.
-- GraphQL query transport failures are modeled at the network/client transport layer via standard Result types.
+## Invariants
+- See `### Domain Invariants`
 
 ## Observability/Trace Context
 

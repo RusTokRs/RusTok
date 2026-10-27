@@ -50,4 +50,9 @@ serde_json.workspace = true
 sea-orm = { workspace = true, optional = true }
 uuid = { workspace = true, features = ["js"] }
 wasm-bindgen = "0.2"
+
 web-sys = { version = "0.3", features = ["CloseEvent", "ErrorEvent", "Event", "MessageEvent", "Storage", "WebSocket", "Window"] }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

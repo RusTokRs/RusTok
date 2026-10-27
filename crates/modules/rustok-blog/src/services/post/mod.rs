@@ -76,8 +76,7 @@ pub use routes::{BLOG_POST_TARGET_TYPE, BLOG_ROUTE_PREFIX, BlogPostRedirect, Blo
 
 pub(crate) use repository::load_post_subject_snapshot;
 pub(crate) use queries::{
-    order_public_post_list, order_published_post_scan, public_post_after_condition,
-    public_post_cursor, published_post_scan_after_condition, published_post_scan_cursor,
+    order_published_post_scan, published_post_scan_after_condition, published_post_scan_cursor,
 };
 
 #[cfg(test)]

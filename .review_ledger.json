@@ -2274,9 +2274,9 @@
       "category": "modules",
       "files": 6,
       "loc": 919,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-27 20:47",
+      "notes": "Audited docs.rs compliance: added Cargo.toml metadata, cleaned up src/lib.rs, structured CRATE_API.md, added missing README link, and asserted contract markers via contract_tests.rs."
     },
     "crates/ui/fly/browser": {
       "name": "browser",

@@ -47,7 +47,6 @@ mod owner_execution_boundary {
     pub(crate) struct BoundaryPortError {
         pub(crate) kind: PortErrorKind,
         pub(crate) code: String,
-        pub(crate) message: String,
         pub(crate) retryable: bool,
     }
 
@@ -174,7 +173,7 @@ mod owner_execution_boundary {
         let diagnostic_context = CheckoutFulfillmentExecutionContextFacts::from(context);
         let owner_message_shape = text_shape(error.message.as_str());
         let owner_message_len = error.message.chars().count();
-        let public_message = public_message(owner, &error.kind);
+        let _public_message = public_message(owner, &error.kind);
         let technical = matches!(
             &error.kind,
             PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation
@@ -238,7 +237,6 @@ mod owner_execution_boundary {
         BoundaryPortError {
             kind: error.kind,
             code: error.code,
-            message: public_message.to_string(),
             retryable: error.retryable,
         }
     }

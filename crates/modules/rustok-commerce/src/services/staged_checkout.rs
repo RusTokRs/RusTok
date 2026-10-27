@@ -14,7 +14,7 @@ use crate::dto::{CompleteCheckoutInput, CompleteCheckoutResponse};
 use super::{
     BeginCheckoutOperation, CheckoutCompletedState, CheckoutError, CheckoutFulfillmentStageError,
     CheckoutOperationCheckpoint, CheckoutOperationError, CheckoutOperationJournal,
-    CheckoutOperationStage, CheckoutOperationStatus, CheckoutOrderStageError,
+    CheckoutOperationStage, CheckoutOperationStatus,
     CheckoutPaymentStageError, CheckoutPlanBuilder, CheckoutStagePipeline,
     CheckoutStagePipelineError, DEFAULT_CHECKOUT_LEASE_SECONDS,
 };
@@ -471,6 +471,7 @@ fn pipeline_failure_stage(error: &CheckoutStagePipelineError) -> &'static str {
         CheckoutStagePipelineError::PaymentStage(_) => "payment",
         CheckoutStagePipelineError::FulfillmentStage(_) => "fulfillment",
         CheckoutStagePipelineError::Finalization(_) => "finalization",
+        CheckoutStagePipelineError::Conflict(_) => "conflict",
     }
 }
 
