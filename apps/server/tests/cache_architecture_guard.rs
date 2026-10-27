@@ -430,3 +430,77 @@ fn cache_values_and_keys_have_bounded_versioned_contracts() {
         "cache envelope limits must not be checked only after allocating the complete output"
     );
 }
+
+#[test]
+fn cache_contracts_have_single_owners() {
+    let service = source("crates/modules/rustok-cache/src/service.rs");
+    let shared = source("crates/modules/rustok-cache/src/shared_backend.rs");
+    let weighted = source("crates/modules/rustok-cache/src/weighted.rs");
+    let instrumentation = source("crates/modules/rustok-cache/src/instrumentation.rs");
+    let invalidation = source("crates/modules/rustok-cache/src/invalidation.rs");
+    let generation = source("crates/modules/rustok-cache/src/generation.rs");
+
+    // One instrumentation wrapper: the factories alias it instead of re-implementing counters.
+    assert!(
+        instrumentation.contains("pub(crate) struct InstrumentedCacheBackend"),
+        "the cache instrumentation wrapper must have exactly one implementation"
+    );
+    for (name, source_text) in [
+        ("service", service.as_str()),
+        ("shared_backend", shared.as_str()),
+        ("weighted", weighted.as_str()),
+    ] {
+        assert!(
+            !source_text.contains("struct Instrumented"),
+            "{name} must not reintroduce a second instrumentation wrapper"
+        );
+        assert!(
+            source_text.contains("crate::instrumentation::InstrumentedCacheBackend"),
+            "{name} must reuse the shared instrumentation wrapper"
+        );
+    }
+    assert!(
+        instrumentation.contains("hits: self.hits.load(Ordering::Relaxed),"),
+        "observed hits must not add inner counters, which double counted every hit"
+    );
+
+    // The transport owns its byte limits; there is no second gap tracker.
+    assert!(
+        invalidation.contains("CacheInvalidationMessage::try_new"),
+        "payload construction must be validated by the transport constructor"
+    );
+    assert!(
+        !invalidation.contains("pub struct CacheInvalidationGapTracker"),
+        "the unbounded gap tracker must stay deleted; BoundedCacheInvalidationGapTracker is canonical"
+    );
+
+    // A lost shared generation is healed, not just reported.
+    assert!(
+        generation.contains("GENERATION_CATCH_UP_SCRIPT"),
+        "shared generation loss must be repaired with an advance-only script"
+    );
+    assert!(
+        generation.contains("SharedBumpAppliedLocalLag"),
+        "a bump after a successful INCR must be distinguishable from a failed bump"
+    );
+}
+
+#[test]
+fn cache_publish_reports_shared_transport_failures() {
+    let service = source("crates/modules/rustok-cache/src/service.rs");
+    let durable = source("crates/modules/rustok-cache/src/durable_invalidation_service.rs");
+
+    assert!(
+        service.contains("pub async fn publish(")
+            && service.contains("Result<CacheInvalidationOutcome, CacheInvalidationError>"),
+        "cache invalidation publication must return a Result"
+    );
+    assert!(
+        service.contains("CacheInvalidationError::SharedTransport"),
+        "a configured-but-failing Redis publish must be reported, not swallowed"
+    );
+    assert!(
+        durable.contains("DurableCacheInvalidationError::Transport"),
+        "durable publication must propagate the shared transport failure"
+    );
+}

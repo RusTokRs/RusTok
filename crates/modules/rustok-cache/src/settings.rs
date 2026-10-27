@@ -133,7 +133,12 @@ fn identity_of_url(url: &str) -> Option<RedisTargetIdentity> {
 /// carries a password.
 pub fn preserve_url_password(incoming_url: &str, existing_url: &str) -> Option<String> {
     let incoming = parse_redis_url(incoming_url).ok()?;
-    if incoming.password().is_some_and(|password| !password.is_empty()) {
+    // A redacted read hands back the mask, not a secret; treat it as "no password" so the real one
+    // can be restored. Any other value is a deliberately supplied new password and wins.
+    if incoming
+        .password()
+        .is_some_and(|password| !password.is_empty() && password != REDACTED_SECRET)
+    {
         return None;
     }
     let existing = parse_redis_url(existing_url).ok()?;
