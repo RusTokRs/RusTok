@@ -207,7 +207,8 @@ async fn local_listener_lag_recovers_readiness_and_remote_resolved_value() {
     for _ in 0..300 {
         let outcome = cache
             .publish_invalidation(invalidation_message(generation))
-            .await;
+            .await
+            .expect("publish invalidation failed");
         assert_eq!(outcome.local_subscribers, 2);
         assert!(!outcome.redis_published);
     }

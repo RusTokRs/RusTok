@@ -22,7 +22,10 @@ invalidation transport and cache health for the host runtime.
   in-flight loaders and invalidation publish/rejection counters;
 - backend-scoped, cancellation-safe `CacheService::load_or_fill` request coalescing;
 - validated invalidation publishing/subscription through Redis pub/sub and local fan-out;
-- absence of module-owned RBAC vocabulary or UI surface.
+- an admin surface (`admin/`) limited to cache diagnostics and the deployment-owned `cache`
+  settings document; it declares no RBAC vocabulary of its own and defers authority to the host
+  contract (`rustok_api::authorizes_host_or_permission`, evaluated identically by GraphQL and the
+  native server functions).
 
 ## Responsibility Zone
 

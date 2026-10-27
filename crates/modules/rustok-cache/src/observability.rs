@@ -32,12 +32,16 @@ pub fn format_cache_generation_prometheus_metrics(stats: &CacheGenerationStats) 
          rustok_cache_generation_shared_bumps_total {shared_bumps}\n\
          rustok_cache_generation_read_failures_total {read_failures}\n\
          rustok_cache_generation_bump_failures_total {bump_failures}\n\
-         rustok_cache_generation_local_fallback_reads_total {local_fallback_reads}\n",
+         rustok_cache_generation_local_fallback_reads_total {local_fallback_reads}\n\
+         rustok_cache_generation_shared_catch_up_writes_total {shared_catch_up_writes}\n\
+         rustok_cache_generation_shared_catch_up_failures_total {shared_catch_up_failures}\n",
         shared_reads = stats.shared_reads,
         shared_bumps = stats.shared_bumps,
         read_failures = stats.read_failures,
         bump_failures = stats.bump_failures,
         local_fallback_reads = stats.local_fallback_reads,
+        shared_catch_up_writes = stats.shared_catch_up_writes,
+        shared_catch_up_failures = stats.shared_catch_up_failures,
     )
 }
 
@@ -73,10 +77,14 @@ mod tests {
             read_failures: 3,
             bump_failures: 1,
             local_fallback_reads: 3,
+            shared_catch_up_writes: 2,
+            shared_catch_up_failures: 1,
         });
 
         assert!(metrics.contains("rustok_cache_generation_shared_reads_total 8"));
         assert!(metrics.contains("rustok_cache_generation_bump_failures_total 1"));
         assert!(metrics.contains("rustok_cache_generation_local_fallback_reads_total 3"));
+        assert!(metrics.contains("rustok_cache_generation_shared_catch_up_writes_total 2"));
+        assert!(metrics.contains("rustok_cache_generation_shared_catch_up_failures_total 1"));
     }
 }

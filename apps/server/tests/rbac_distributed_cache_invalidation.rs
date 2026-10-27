@@ -71,7 +71,10 @@ async fn publish_generation(cache: &CacheService, tenant_id: Uuid, user_id: Uuid
     .expect("build RBAC invalidation")
     .to_message()
     .expect("encode RBAC invalidation");
-    let outcome = cache.publish_invalidation(message).await;
+    let outcome = cache
+        .publish_invalidation(message)
+        .await
+        .expect("publish invalidation failed");
     assert!(outcome.local_subscribers > 0);
 }
 

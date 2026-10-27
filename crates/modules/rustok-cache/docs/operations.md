@@ -33,11 +33,23 @@ Thresholds are starting defaults. Change them only with a recorded workload base
 1. Confirm `rustok_cache_redis_url_present == 1`.
 2. Check `rustok_cache_redis_client_initialized`. A zero value indicates configuration/client construction failure rather than a network outage.
 3. Check `rustok_cache_redis_connectivity_healthy` and `rustok_cache_redis_degraded` on every serving replica.
-4. Correlate with invalidation publish failures, generation read/bump failures and circuit-breaker metrics.
-5. Verify that correctness-sensitive owner caches have durable reconciliation running and visible in readiness.
-6. Restore Redis and observe connectivity recovery before changing cache limits or disabling alerts.
+4. If connectivity is healthy but readiness is not, check `rustok_cache_redis_generation_recovery_pending` and `rustok_cache_redis_generation_recovery_failed`. Redis answered, but backend generations or degraded local state are not yet reconciled; this is not a Redis outage.
+5. Correlate with invalidation publish failures, generation read/bump failures and circuit-breaker metrics.
+6. Verify that correctness-sensitive owner caches have durable reconciliation running and visible in readiness. `CacheService::reconcile_local_state()` runs on the same successful `PING`; it proves primary health, replays retained invalidations and only then lifts a fail-closed degraded state.
+7. Restore Redis and observe connectivity recovery before changing cache limits or disabling alerts.
+8. Do not raise cache limits to mask `rustok_cache_invalid_backend_configuration_total`. A non-zero value means a factory was asked for a zero TTL or zero capacity; the module applied documented floors and logged an error, and the real defect is in the configuration that produced those values.
 
 Do not convert a configured Redis deployment into silent memory-only operation during an incident. That changes cross-replica consistency semantics.
+
+## Changing the cache Redis target
+
+The Redis target is deployment configuration, not a runtime-editable setting. `rustok.cache.redis_url` (or `RUSTOK_REDIS_URL` / `REDIS_URL`) is resolved once when the process starts, and the `cache` settings API reports that resolved document. A settings write that would point the process at a different scheme/host/port/database is rejected with an explicit validation error; the settings service never persists a target that the runtime ignores.
+
+To change the target:
+
+1. update the deployment configuration;
+2. restart every replica;
+3. verify `rustok_cache_redis_url_present`, `..._connectivity_healthy` and `..._generation_recovery_pending` on each replica after the restart.
 
 ## Generation or invalidation incident
 

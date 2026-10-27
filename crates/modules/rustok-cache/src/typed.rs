@@ -226,7 +226,9 @@ mod tests {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     fn policy() -> CacheLoadPolicy {
-        CacheLoadPolicy::new(CacheTtlPolicy::fixed(std::time::Duration::from_secs(60)))
+        CacheLoadPolicy::new(
+            CacheTtlPolicy::fixed(std::time::Duration::from_secs(60)).expect("non-zero ttl"),
+        )
     }
 
     #[tokio::test]

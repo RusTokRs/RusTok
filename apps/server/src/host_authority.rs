@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::future::Future;
 
 use axum::http::HeaderMap;
 use rustok_api::{HostAuthority, HostAuthorityContext};
@@ -16,9 +15,10 @@ const MAX_CREDENTIALS: usize = 64;
 const MIN_TOKEN_BYTES: usize = 32;
 const MAX_TOKEN_BYTES: usize = 512;
 
-tokio::task_local! {
-    static HOST_AUTHORITY_SCOPE: Option<HostAuthorityContext>;
-}
+// The request-scoped host authority is owned by `rustok-api` so that every transport —
+// GraphQL resolvers, HTTP handlers and module server functions — reads the same scope.
+// This module only authenticates the credential and establishes that scope.
+pub use rustok_api::{current_host_authority, with_host_authority_scope};
 
 #[derive(Clone, Debug, Default)]
 pub struct HostAuthorityPolicy {
@@ -140,28 +140,6 @@ pub fn take_host_authority(headers: &mut HeaderMap) -> Result<Option<HostAuthori
     };
     let policy = HostAuthorityPolicy::from_env()?;
     resolve_with_policy(value.to_str(), &policy)
-}
-
-/// Run one HTTP request under the already authenticated typed host authority.
-///
-/// This scope carries no raw credential. It is intentionally request-task-local:
-/// GraphQL WebSocket upgrade tasks do not inherit it and therefore remain
-/// fail-closed for host-global operations.
-pub async fn with_host_authority_scope<F>(
-    authority: Option<HostAuthorityContext>,
-    future: F,
-) -> F::Output
-where
-    F: Future,
-{
-    HOST_AUTHORITY_SCOPE.scope(authority, future).await
-}
-
-pub fn current_host_authority() -> Option<HostAuthorityContext> {
-    HOST_AUTHORITY_SCOPE
-        .try_with(|authority| *authority)
-        .ok()
-        .flatten()
 }
 
 fn take_presented_token(headers: &mut HeaderMap) -> Result<Option<axum::http::HeaderValue>> {

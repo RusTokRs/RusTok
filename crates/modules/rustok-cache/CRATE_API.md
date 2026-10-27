@@ -14,9 +14,37 @@
   - Leases: `DistributedCacheLease`, `CacheLeaseOptions`, `CacheLeaseOutcome`
 - **Invalidation & Anti-Stampede**:
   - `CacheRefreshCoordinator`, `StaleWhileRevalidateResult`
+  - `CacheTtlPolicy::{none, fixed, deterministic_jitter}` — an opaque policy: the representation is
+    private, so these constructors are the only entry point, and both TTL constructors reject a zero
+    TTL with `CachePolicyError::ZeroTtl`. No policy that only fails at use time can be built.
   - `CacheNamespaceGenerationStore`, `CacheInvalidationService`
   - `DurableCacheInvalidationConsumer`, `DurableInvalidationProcessOutcome`
-  - `BoundedCacheInvalidationGapTracker`, `BoundedCacheEventDedupe`
+  - `BoundedCacheInvalidationGapTracker` (canonical; no unbounded variant), `BoundedCacheEventDedupe`
+  - `CacheInvalidationError` (`InvalidMessage`, `SharedTransport`), `DurableCacheInvalidationError::Transport`
+- **Settings & Admin Seam**:
+  - `CacheSettings` (resolved target, validation, redaction, merge-back), `preserve_url_password`
+  - `redis_url_has_password` — the predicate that decides whether a URL needs redaction at all
+  - `redis_url_without_password` / `redis_url_without_credentials` — the only credential removal
+    policy for a Redis URL; both fail closed (empty URL) instead of returning a URL that still
+    carries the password
+  - `same_redis_target` / `REDACTED_SECRET` (a password is scoped to a target; a mask is never a
+    credential), `resolve_redis_url`, `REDIS_URL_ENV_NAMES`
+  - `CacheSettingsAdminPort`, `SharedCacheSettingsAdmin`
+  - `CacheHealthReport` (`is_connected()` = transport, `is_healthy()` = reachable **and** fully
+    recovered, plus `redis_recovery_pending` / `redis_recovery_error`)
+  - `resolve_redis_url` (deployment precedence: settings file → `RUSTOK_REDIS_URL` → `REDIS_URL`)
+  - authority for the admin surface is not owned here: both transports evaluate
+    `rustok_api::authorizes_host_or_permission` (`settings:read` for diagnostics and the settings
+    document, `settings:manage` for a write, or the matching host-global authority)
+- **Shared backends**: identity = prefix + TTL + capacity + weighted/entry mode + instrumentation +
+  Redis circuit-breaker policy; construction is single-flight per identity and the registry is
+  bounded ([`DEFAULT_MAX_SHARED_CACHE_BACKENDS`])
+- **Generation convergence**:
+  - `CacheNamespaceGenerationStore::read` heals a lost shared counter from a trusted local
+    observation (`GENERATION_CATCH_UP_SCRIPT`, advance-only) and reports
+    `rustok_cache_generation_shared_catch_up_{writes,failures}_total`;
+  - `CacheGenerationError::SharedBumpAppliedLocalLag` marks a bump whose shared counter moved but
+    whose local snapshot did not.
 - **Metrics & Observability**:
   - `format_cache_service_prometheus_metrics`
   - `format_cache_generation_prometheus_metrics`
@@ -32,6 +60,9 @@
 - `pub struct CacheModule`
 - `pub struct CacheService`
 - `pub struct CacheSettings`
+- `pub trait CacheSettingsAdminPort` / `pub struct SharedCacheSettingsAdmin`
+- `pub struct RedisCacheStatus` (`connectivity_healthy`, `generation_recovery_pending`, `recovery_error`)
+- `pub enum CacheRefreshClock` (`System`, `Fixed`)
 - `pub enum CacheError`
 - `pub struct CacheKeyBuilder`
 - `pub struct CacheEnvelope<T>`
@@ -48,7 +79,7 @@
 ## Minimum Contract Set
 
 ### Input DTOs/Commands
-- `CacheBackendOptions` (`memory_capacity`, `default_ttl`, `max_ttl`)
+- `CacheBackendOptions` (`metrics_enabled`, `redis_circuit_breaker`)
 - `CacheLeaseOptions` (`lease_duration`, `acquire_timeout`)
 - `CacheRefreshLoadOptions`
 - `TypedCacheLoadOptions`
@@ -56,7 +87,8 @@
 ### Domain Invariants
 - Bounded payload size: Values exceeding `DEFAULT_MAX_CACHE_ENVELOPE_BYTES` are rejected to prevent memory exhaustion.
 - Bounded key size: Keys exceeding `MAX_CACHE_KEY_INPUT_BYTES` are rejected or hashed deterministically.
-- Fallback resilience: If Redis connection drops, the service degrades gracefully to local in-memory caching without panicking.
+- Fallback resilience: If Redis connection drops, the service degrades gracefully to local in-memory caching without panicking; degraded reads serve only locally confirmed degraded writes and fail-closed saturation is exited only through `CacheBackend::reconcile_local_state()`.
+- Correctness over acknowledgement: `publish`, `publish_invalidation` and `publish_durable` return an error when Redis is configured but the fan-out failed, and the Redis target is deployment configuration rather than an editable runtime setting.
 - Invalidation idempotency: Replayed invalidation events with identical sequence or generation do not cause spurious cache evictions.
 
 ### Events / Outbox Side Effects

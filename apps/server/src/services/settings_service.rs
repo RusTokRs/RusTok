@@ -242,6 +242,16 @@ impl SettingsService {
         );
 
         // 1. DB row
+        //
+        // The `cache` category is the one exception: its Redis target is deployment
+        // configuration (`rustok.cache.redis_url` / `RUSTOK_REDIS_URL` / `REDIS_URL`) that the
+        // runtime resolved at startup, and the runtime never reads this table. Reporting a stored
+        // row would therefore describe a target the process does not use, so the deployment
+        // document is the only truthful answer (see `prepare_cache_settings_for_write`).
+        if cat == category::CACHE {
+            return Ok(redact_secrets(cat, Self::yaml_defaults_for(ctx, cat)));
+        }
+
         if let Some(row) = Entity::find_by_category(ctx.db(), tenant_id, cat).await? {
             return Ok(redact_secrets(cat, row.settings));
         }
@@ -296,6 +306,15 @@ impl SettingsService {
             }
         }
 
+        // Keep the aggregate view consistent with `get`: the `cache` target is deployment-owned,
+        // so a stored row must not be presented as the effective configuration.
+        for entry in result.iter_mut() {
+            if entry.0 == category::CACHE {
+                entry.1 =
+                    redact_secrets(category::CACHE, Self::yaml_defaults_for(ctx, category::CACHE));
+            }
+        }
+
         result.sort_by(|a, b| a.0.cmp(&b.0));
         Ok(result)
     }
@@ -334,6 +353,12 @@ impl SettingsService {
         validators
             .validate(cat, &settings)
             .map_err(SettingsError::ValidationFailed)?;
+
+        let settings = if cat == category::CACHE {
+            prepare_cache_settings_for_write(ctx, settings)?
+        } else {
+            settings
+        };
 
         let tx = ctx.db().begin().await?;
 
@@ -381,21 +406,10 @@ impl SettingsService {
             category::EMAIL => serde_json::to_value(&rs.email).unwrap_or(Value::Null),
             category::RATE_LIMIT => serde_json::to_value(&rs.rate_limit).unwrap_or(Value::Null),
             category::FEATURES => serde_json::to_value(&rs.features).unwrap_or(Value::Null),
-            category::CACHE => {
-                let default_mode = if rs.cache.redis_url.is_some() {
-                    "redis"
-                } else {
-                    "in-memory"
-                };
-                serde_json::json!({
-                    "mode": default_mode,
-                    "redis_url": rs.cache.redis_url.clone().unwrap_or_default(),
-                    "redis_host": "127.0.0.1",
-                    "redis_port": 6379,
-                    "redis_password": "",
-                    "redis_db": 0
-                })
-            }
+            category::CACHE => serde_json::to_value(rustok_cache::CacheSettings::for_deployment(
+                rs.cache.redis_url.as_deref(),
+            ))
+            .unwrap_or(Value::Null),
             _ => Value::Null,
         }
     }
@@ -427,11 +441,13 @@ fn redact_secrets(cat: &str, mut settings: Value) -> Value {
                     object.insert("redisPassword".to_string(), Value::String(String::new()));
                 }
                 if let Some(redis_url) = object.get("redis_url").and_then(Value::as_str)
-                    && let Ok(mut parsed) = url::Url::parse(redis_url)
-                    && parsed.password().is_some()
+                    && rustok_cache::redis_url_has_password(redis_url)
                 {
-                    let _ = parsed.set_password(Some(""));
-                    object.insert("redis_url".to_string(), Value::String(parsed.to_string()));
+                    // The crate owns both the decision and the stripping: a URL that still carries
+                    // the password is rewritten, and a failed rewrite yields an empty URL rather
+                    // than the original secret.
+                    let redacted = rustok_cache::redis_url_without_password(redis_url);
+                    object.insert("redis_url".to_string(), Value::String(redacted));
                 }
             }
         }
@@ -469,31 +485,159 @@ fn preserve_cache_secret_fields(existing: Value, mut incoming: Value) -> Value {
         return incoming;
     };
 
-    if incoming_object
-        .get("redis_password")
+    // Secrets belong to a *target*, not to a document. `rustok_cache::same_redis_target` is the
+    // canonical identity (the password is excluded, scheme/host/port/database/username are not), so
+    // a save that redirects the cache to another target can never inherit the stored password and a
+    // redaction mask is never persisted as if it were the credential.
+    let existing_url = existing_object
+        .get("redis_url")
         .and_then(Value::as_str)
-        .is_some_and(str::is_empty)
-        && let Some(existing_password) = existing_object
-            .get("redis_password")
-            .or_else(|| existing_object.get("redisPassword"))
-            .filter(|value| !value.as_str().unwrap_or_default().is_empty())
-    {
-        incoming_object.insert("redis_password".to_string(), existing_password.clone());
+        .unwrap_or_default();
+    let incoming_url = incoming_object
+        .get("redis_url")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let same_target = !existing_url.is_empty()
+        && !incoming_url.is_empty()
+        && rustok_cache::same_redis_target(incoming_url, existing_url);
+
+    if !same_target {
+        let masked = Value::String(rustok_cache::REDACTED_SECRET.to_string());
+        for key in ["redis_password", "redisPassword"] {
+            if incoming_object.get(key) == Some(&masked) {
+                incoming_object.insert(key.to_string(), Value::String(String::new()));
+            }
+        }
+        return incoming;
     }
 
-    if incoming_object
-        .get("redisPassword")
+    // Reads redact the password inside `redis_url` (see `redact_secrets`). Without this step a
+    // save that only touches another field would persist the redacted URL and destroy the secret.
+    let restored_url = existing_object
+        .get("redis_url")
         .and_then(Value::as_str)
-        .is_some_and(str::is_empty)
-        && let Some(existing_password) = existing_object
-            .get("redis_password")
-            .or_else(|| existing_object.get("redisPassword"))
-            .filter(|value| !value.as_str().unwrap_or_default().is_empty())
-    {
-        incoming_object.insert("redisPassword".to_string(), existing_password.clone());
+        .and_then(|existing_url| {
+            incoming_object
+                .get("redis_url")
+                .and_then(Value::as_str)
+                .and_then(|incoming_url| {
+                    rustok_cache::preserve_url_password(incoming_url, existing_url)
+                })
+        });
+    if let Some(restored_url) = restored_url {
+        incoming_object.insert("redis_url".to_string(), Value::String(restored_url));
+    }
+
+    let existing_password = existing_object
+        .get("redis_password")
+        .or_else(|| existing_object.get("redisPassword"))
+        .filter(|value| !value.as_str().unwrap_or_default().is_empty())
+        .filter(|value| value.as_str() != Some(rustok_cache::REDACTED_SECRET))
+        .cloned();
+
+    if let Some(existing_password) = existing_password {
+        for key in ["redis_password", "redisPassword"] {
+            let is_unset = incoming_object
+                .get(key)
+                .and_then(Value::as_str)
+                .is_some_and(|value| {
+                    value.is_empty() || value == rustok_cache::REDACTED_SECRET
+                });
+            if is_unset {
+                incoming_object.insert(key.to_string(), existing_password.clone());
+            }
+        }
+    } else {
+        // Nothing to restore: clear a mask so it is not stored as a credential.
+        for key in ["redis_password", "redisPassword"] {
+            if incoming_object
+                .get(key)
+                .and_then(Value::as_str)
+                .is_some_and(|value| value == rustok_cache::REDACTED_SECRET)
+            {
+                incoming_object.insert(key.to_string(), Value::String(String::new()));
+            }
+        }
     }
 
     incoming
+}
+
+/// Deployment-resolved cache settings: the only truthful description of the runtime target.
+fn deployment_cache_settings(ctx: &ServerRuntimeContext) -> rustok_cache::CacheSettings {
+    rustok_cache::CacheSettings::for_deployment(ctx.settings().cache.redis_url.as_deref())
+}
+
+/// Redis target of a settings document, with the password stripped.
+///
+/// Passwords are secrets, not identity: a document that keeps pointing at the same target may
+/// carry a rotated password, but anything that changes scheme/host/port/database/mode is a
+/// different target and must be rejected for the deployment-owned cache category.
+fn cache_target_signature(settings: &rustok_cache::CacheSettings) -> (String, Option<String>) {
+    let target = settings
+        .resolved_url()
+        .map(|url| rustok_cache::redis_url_without_credentials(&url));
+    (settings.mode.clone(), target)
+}
+
+/// Restore the deployment password and refuse to redirect a running process.
+///
+/// The runtime resolves its Redis client once, at startup, from deployment configuration. A
+/// `cache` settings write therefore may only mirror that target; anything else would be a silent
+/// no-op, which is exactly the bug this helper removes.
+fn prepare_cache_settings_for_write(
+    ctx: &ServerRuntimeContext,
+    mut incoming: Value,
+) -> Result<Value, SettingsError> {
+    let deployment = deployment_cache_settings(ctx);
+    let deployment_value = serde_json::to_value(&deployment).ok();
+
+    if let Some(incoming_object) = incoming.as_object_mut() {
+        let deployment_url = deployment_value
+            .as_ref()
+            .and_then(|value| value.get("redis_url"))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let restored = incoming_object
+            .get("redis_url")
+            .and_then(Value::as_str)
+            .and_then(|incoming_url| {
+                rustok_cache::preserve_url_password(incoming_url, &deployment_url)
+            });
+        if let Some(restored) = restored {
+            incoming_object.insert("redis_url".to_string(), Value::String(restored));
+        }
+    }
+
+    let parsed: rustok_cache::CacheSettings = serde_json::from_value(incoming.clone())
+        .map_err(|error| {
+            SettingsError::ValidationFailed(vec![format!(
+                "Invalid cache settings schema: {error}"
+            )])
+        })?;
+
+    if cache_target_signature(&parsed) != cache_target_signature(&deployment) {
+        return Err(SettingsError::ValidationFailed(vec![
+            "cache Redis target is deployment configuration (rustok.cache.redis_url / \
+             RUSTOK_REDIS_URL / REDIS_URL): change it there and restart, the settings API cannot \
+             redirect a running cache runtime"
+                .to_string(),
+        ]));
+    }
+
+    // The stored row is an audit mirror that the runtime never reads, so it must not become a
+    // second copy of the deployment secret. The response is redacted by `redact_secrets` anyway;
+    // this keeps the *stored* document free of credentials.
+    let mut storable = parsed;
+    storable.redis_password.clear();
+    let storable_url = rustok_cache::redis_url_without_credentials(storable.redis_url.trim());
+    storable.redis_url = storable_url;
+    serde_json::to_value(&storable).map_err(|error| {
+        SettingsError::ValidationFailed(vec![format!(
+            "Invalid cache settings schema: {error}"
+        )])
+    })
 }
 
 fn preserve_email_secret_fields(existing: Value, mut incoming: Value) -> Value {
@@ -567,6 +711,68 @@ mod tests {
             ensure_supported_category("search"),
             Err(SettingsError::InvalidCategory(category)) if category == "search"
         ));
+    }
+
+    fn stored_cache_row(url: &str, password: &str) -> Value {
+        json!({
+            "mode": "redis",
+            "redis_host": "cache.internal",
+            "redis_port": 6379,
+            "redis_db": 0,
+            "redis_password": password,
+            "redis_url": url,
+        })
+    }
+
+    #[test]
+    fn cache_save_restores_the_password_for_the_same_target() {
+        let existing =
+            stored_cache_row("redis://:url-secret@cache.internal:6379/0", "field-secret");
+        // A read returns a redacted document: blank field, URL without the password.
+        let incoming = stored_cache_row("redis://cache.internal:6379/0", "");
+
+        let merged = preserve_cache_secret_fields(existing, incoming);
+
+        assert_eq!(merged["redis_password"], json!("field-secret"));
+        assert_eq!(
+            merged["redis_url"],
+            json!("redis://:url-secret@cache.internal:6379/0")
+        );
+    }
+
+    #[test]
+    fn cache_save_does_not_carry_a_password_to_another_target() {
+        let existing =
+            stored_cache_row("redis://:url-secret@cache.internal:6379/0", "field-secret");
+        // The client edited the target and left the (masked) secret fields untouched.
+        let incoming =
+            stored_cache_row("redis://other.internal:6379/0", rustok_cache::REDACTED_SECRET);
+
+        let merged = preserve_cache_secret_fields(existing, incoming);
+
+        assert_eq!(
+            merged["redis_password"],
+            json!(""),
+            "a password must not follow the document to another target"
+        );
+        assert_eq!(merged["redis_url"], json!("redis://other.internal:6379/0"));
+        assert!(
+            !merged.to_string().contains(rustok_cache::REDACTED_SECRET),
+            "a redaction mask must never be stored as a credential: {merged}"
+        );
+    }
+
+    #[test]
+    fn cache_save_clears_a_mask_when_there_is_nothing_to_restore() {
+        let existing = stored_cache_row("redis://cache.internal:6379/0", "");
+        let incoming = stored_cache_row(
+            "redis://cache.internal:6379/0",
+            rustok_cache::REDACTED_SECRET,
+        );
+
+        let merged = preserve_cache_secret_fields(existing, incoming);
+
+        assert_eq!(merged["redis_password"], json!(""));
     }
 
     #[test]
@@ -796,6 +1002,46 @@ mod tests {
     }
 
     #[test]
+    fn cache_secrets_preserve_the_url_password_on_save() {
+        let existing = json!({
+            "mode": "redis",
+            "redis_url": "redis://:super-secret@cache.internal:6379/0",
+            "redis_host": "cache.internal",
+            "redis_port": 6379,
+            "redis_db": 0
+        });
+        // What the client submits after a redacted read: no password inside the URL.
+        let incoming = json!({
+            "mode": "redis",
+            "redis_url": "redis://cache.internal:6379/0",
+            "redis_host": "cache.internal",
+            "redis_port": 6379,
+            "redis_db": 0
+        });
+
+        let merged = preserve_cache_secret_fields(existing, incoming);
+        assert_eq!(
+            merged["redis_url"], "redis://:super-secret@cache.internal:6379/0",
+            "a save that does not touch the URL must keep its password"
+        );
+    }
+
+    #[test]
+    fn cache_secrets_do_not_move_a_password_to_another_host() {
+        let existing = json!({
+            "mode": "redis",
+            "redis_url": "redis://:super-secret@cache.internal:6379/0"
+        });
+        let incoming = json!({
+            "mode": "redis",
+            "redis_url": "redis://other.internal:6379/0"
+        });
+
+        let merged = preserve_cache_secret_fields(existing, incoming);
+        assert_eq!(merged["redis_url"], "redis://other.internal:6379/0");
+    }
+
+    #[test]
     fn cache_secrets_redacts_redis_url_password() {
         let value = redact_secrets(
             category::CACHE,
@@ -805,5 +1051,84 @@ mod tests {
             }),
         );
         assert_eq!(value["redis_url"], "redis://127.0.0.1:6379/0");
+    }
+
+    async fn cache_context(deployment_url: Option<&str>) -> ServerRuntimeContext {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite connects");
+        let mut settings = crate::common::settings::RustokSettings::default();
+        settings.cache.redis_url = deployment_url.map(str::to_string);
+        ServerRuntimeContext::new(db, settings)
+    }
+
+    #[tokio::test]
+    async fn cache_settings_write_must_mirror_the_deployment_target() {
+        let ctx = cache_context(Some("redis://:deploy-secret@cache.internal:6379/0")).await;
+
+        let deployment_document = json!({
+            "mode": "redis",
+            "redis_host": "cache.internal",
+            "redis_port": 6379,
+            "redis_db": 0,
+            "redis_url": "redis://cache.internal:6379/0"
+        });
+        let accepted = prepare_cache_settings_for_write(&ctx, deployment_document.clone())
+            .expect("mirroring the deployment target is allowed");
+        let parsed: rustok_cache::CacheSettings =
+            serde_json::from_value(accepted).expect("settings parse");
+        assert_eq!(
+            parsed.resolved_url().as_deref(),
+            Some("redis://cache.internal:6379/0"),
+            "the stored mirror keeps the target but never the deployment password"
+        );
+        assert!(parsed.redis_password.is_empty());
+
+        let redirected = json!({
+            "mode": "redis",
+            "redis_host": "other.internal",
+            "redis_port": 6379,
+            "redis_db": 0,
+            "redis_url": "redis://other.internal:6379/0"
+        });
+        let error = prepare_cache_settings_for_write(&ctx, redirected)
+            .expect_err("a different target must not be persisted");
+        assert!(
+            error.to_string().contains("deployment configuration"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn cache_settings_read_reports_the_deployment_target() {
+        let ctx = cache_context(Some("redis://cache.internal:6380/2")).await;
+        let value = SettingsService::get(&ctx, Uuid::new_v4(), category::CACHE)
+            .await
+            .expect("cache settings read");
+
+        assert_eq!(value["mode"], "redis");
+        assert_eq!(value["redis_host"], "cache.internal");
+        assert_eq!(value["redis_port"], 6380);
+        assert_eq!(value["redis_db"], 2);
+        assert_eq!(value["redis_url"], "redis://cache.internal:6380/2");
+        assert_eq!(value["redis_password"], "");
+    }
+
+    #[tokio::test]
+    async fn cache_settings_read_never_exposes_the_deployment_password() {
+        let ctx = cache_context(Some("redis://:deploy-secret@cache.internal:6380/2")).await;
+        let value = SettingsService::get(&ctx, Uuid::new_v4(), category::CACHE)
+            .await
+            .expect("cache settings read");
+
+        assert_eq!(
+            value["redis_url"], "redis://cache.internal:6380/2",
+            "the deployment target is reported without its credential"
+        );
+        assert_eq!(value["redis_password"], "");
+        assert!(
+            !value.to_string().contains("deploy-secret"),
+            "no field of a settings read may carry the deployment password: {value}"
+        );
     }
 }

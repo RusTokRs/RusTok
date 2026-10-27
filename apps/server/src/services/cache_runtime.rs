@@ -42,7 +42,8 @@ mod tests {
                 "cache-runtime-test",
                 "cache-runtime-test-key",
             ))
-            .await;
+            .await
+            .expect("publish invalidation failed");
         assert_eq!(outcome.local_subscribers, 1);
         assert_eq!(
             subscriber.recv().await.unwrap().key,

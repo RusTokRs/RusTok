@@ -430,3 +430,253 @@ fn cache_values_and_keys_have_bounded_versioned_contracts() {
         "cache envelope limits must not be checked only after allocating the complete output"
     );
 }
+
+#[test]
+fn cache_contracts_have_single_owners() {
+    let service = source("crates/modules/rustok-cache/src/service.rs");
+    let shared = source("crates/modules/rustok-cache/src/shared_backend.rs");
+    let weighted = source("crates/modules/rustok-cache/src/weighted.rs");
+    let instrumentation = source("crates/modules/rustok-cache/src/instrumentation.rs");
+    let invalidation = source("crates/modules/rustok-cache/src/invalidation.rs");
+    let generation = source("crates/modules/rustok-cache/src/generation.rs");
+
+    // One instrumentation wrapper: the factories alias it instead of re-implementing counters.
+    assert!(
+        instrumentation.contains("pub(crate) struct InstrumentedCacheBackend"),
+        "the cache instrumentation wrapper must have exactly one implementation"
+    );
+    for (name, source_text) in [
+        ("service", service.as_str()),
+        ("shared_backend", shared.as_str()),
+        ("weighted", weighted.as_str()),
+    ] {
+        assert!(
+            !source_text.contains("struct Instrumented"),
+            "{name} must not reintroduce a second instrumentation wrapper"
+        );
+        assert!(
+            source_text.contains("crate::instrumentation::InstrumentedCacheBackend"),
+            "{name} must reuse the shared instrumentation wrapper"
+        );
+    }
+    assert!(
+        instrumentation.contains("hits: self.hits.load(Ordering::Relaxed),"),
+        "observed hits must not add inner counters, which double counted every hit"
+    );
+
+    // The transport owns its byte limits; there is no second gap tracker.
+    assert!(
+        invalidation.contains("CacheInvalidationMessage::try_new"),
+        "payload construction must be validated by the transport constructor"
+    );
+    assert!(
+        !invalidation.contains("pub struct CacheInvalidationGapTracker"),
+        "the unbounded gap tracker must stay deleted; BoundedCacheInvalidationGapTracker is canonical"
+    );
+
+    // A lost shared generation is healed, not just reported.
+    assert!(
+        generation.contains("GENERATION_CATCH_UP_SCRIPT"),
+        "shared generation loss must be repaired with an advance-only script"
+    );
+    assert!(
+        generation.contains("SharedBumpAppliedLocalLag"),
+        "a bump after a successful INCR must be distinguishable from a failed bump"
+    );
+}
+
+#[test]
+fn cache_publish_reports_shared_transport_failures() {
+    let service = source("crates/modules/rustok-cache/src/service.rs");
+    let durable = source("crates/modules/rustok-cache/src/durable_invalidation_service.rs");
+
+    assert!(
+        service.contains("pub async fn publish(")
+            && service.contains("Result<CacheInvalidationOutcome, CacheInvalidationError>"),
+        "cache invalidation publication must return a Result"
+    );
+    assert!(
+        service.contains("CacheInvalidationError::SharedTransport"),
+        "a configured-but-failing Redis publish must be reported, not swallowed"
+    );
+    assert!(
+        durable.contains("DurableCacheInvalidationError::Transport"),
+        "durable publication must propagate the shared transport failure"
+    );
+}
+
+#[test]
+fn cache_admin_authority_has_one_rule_for_both_transports() {
+    let system = source("apps/server/src/graphql/system.rs");
+    let transport = source("crates/modules/rustok-cache/admin/src/transport.rs");
+    let api = source("crates/libs/rustok-api/src/context/host_authority.rs");
+    let host = source("apps/server/src/host_authority.rs");
+
+    // One owner for the rule itself.
+    assert!(
+        api.contains("pub fn authorizes_host_or_permission("),
+        "the cache admin authority rule must be owned by the shared host contract"
+    );
+    // ... and one owner for the request scope that the rule reads.
+    assert!(
+        host.contains("pub use rustok_api::{current_host_authority, with_host_authority_scope};")
+            && !host.contains("task_local!"),
+        "the host must not define a second host-authority task-local scope"
+    );
+
+    // GraphQL cache diagnostics accept a tenant settings administrator, not only a host operator.
+    assert!(
+        system.contains("fn require_cache_read_authority(")
+            && system.contains("rustok_api::authorizes_host_or_permission("),
+        "cacheHealth must evaluate the shared authority rule"
+    );
+    let cache_health = system
+        .split("async fn cache_health(")
+        .nth(1)
+        .expect("cache_health resolver must exist");
+    assert!(
+        !cache_health
+            .lines()
+            .take(6)
+            .any(|line| line.contains("require_host_read()")),
+        "cacheHealth must not be limited to host-global authority while the admin UI uses it"
+    );
+
+    // The native transport evaluates the same rule with the same required authority per operation.
+    let normalized = transport.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        normalized.contains(
+            "rustok_api::authorizes_host_or_permission(Some(auth), required, host_authority)"
+        ),
+        "the native cache admin transport must reuse the shared authority rule"
+    );
+    assert!(
+        !transport.contains("fn ensure_cache_admin_permission("),
+        "the native transport must not keep a second, hardcoded permission check"
+    );
+    for (required, level, operation) in [
+        ("SETTINGS_READ", "Read", "cache health and cache settings reads"),
+        ("SETTINGS_MANAGE", "Manage", "cache settings writes"),
+    ] {
+        let expected = format!(
+            "native_scope( &rustok_api::Permission::{required}, \
+             rustok_api::HostAuthority::{level}, )"
+        );
+        assert!(
+            normalized.contains(&expected),
+            "{operation} must require the {level} level"
+        );
+    }
+}
+
+#[test]
+fn cache_readiness_has_one_predicate_for_every_consumer() {
+    let service = source("crates/modules/rustok-cache/src/service.rs");
+    let redis_status = source("crates/modules/rustok-cache/src/redis_status.rs");
+    let health = source("apps/server/src/controllers/health.rs");
+
+    // Both readiness surfaces must consult recovery, not just connectivity.
+    assert!(
+        redis_status.contains("&& self.generation_recovery_pending == 0"),
+        "RedisCacheStatus::is_healthy must require completed recovery"
+    );
+    let report = service
+        .split("impl CacheHealthReport {")
+        .nth(1)
+        .expect("CacheHealthReport must expose its readiness views");
+    assert!(
+        report.contains("pub fn is_connected(") && report.contains("pub fn is_healthy("),
+        "CacheHealthReport must keep the transport and readiness views separate"
+    );
+    assert!(
+        report.contains("self.redis_recovery_pending == 0")
+            && report.contains("self.redis_recovery_error.is_none()"),
+        "CacheHealthReport::is_healthy must require completed recovery, like RedisCacheStatus"
+    );
+
+    // The host readiness probe must not collapse the two causes into one message.
+    assert!(
+        health.contains("report.is_connected()")
+            && health.contains("cache recovery is incomplete"),
+        "readiness must report incomplete recovery instead of a transport outage"
+    );
+}
+
+#[test]
+fn cache_ttl_policy_cannot_be_built_without_its_constructor() {
+    let policy = source("crates/modules/rustok-cache/src/policy.rs");
+
+    // An exposed enum let a caller build `Fixed(Duration::ZERO)`, which every backend reads as a
+    // deletion. The policy must stay opaque so the constructors are the only entry point.
+    assert!(
+        policy.contains("pub struct CacheTtlPolicy"),
+        "CacheTtlPolicy must stay an opaque struct"
+    );
+    assert!(
+        !policy.contains("pub enum CacheTtlPolicy"),
+        "an exposed CacheTtlPolicy enum re-opens zero-TTL construction"
+    );
+    assert!(
+        policy.contains("enum CacheTtlPolicyKind"),
+        "the private representation must be named CacheTtlPolicyKind"
+    );
+    let kind = policy
+        .split("enum CacheTtlPolicyKind {")
+        .nth(1)
+        .expect("private policy representation must exist");
+    assert!(
+        !kind.split("}\n").next().unwrap_or_default().contains("pub "),
+        "the policy representation must not expose its variants"
+    );
+
+    // Both TTL constructors own the zero-TTL rule.
+    for constructor in ["pub fn fixed(", "pub fn deterministic_jitter("] {
+        let body = policy
+            .split(constructor)
+            .nth(1)
+            .unwrap_or_else(|| panic!("{constructor} must exist"));
+        assert!(
+            body.split("pub fn ").next().unwrap_or_default().contains("CachePolicyError::ZeroTtl"),
+            "{constructor} must reject a zero TTL"
+        );
+    }
+}
+
+#[test]
+fn every_cache_backend_wrapper_forwards_state_reconciliation() {
+    // The fail-closed fallback state can only be lifted through `reconcile_local_state`; a wrapper
+    // that forgets to forward it leaves every caller behind that wrapper permanently suspended.
+    for (file, wrapper) in [
+        (
+            "crates/modules/rustok-cache/src/backend_generation.rs",
+            "GenerationAwareCacheBackend",
+        ),
+        (
+            "crates/modules/rustok-cache/src/backend_generation_recovery.rs",
+            "GenerationRecoveryHealthBackend",
+        ),
+        (
+            "crates/modules/rustok-cache/src/cas_observability.rs",
+            "ObservedCacheBackend",
+        ),
+        (
+            "crates/modules/rustok-cache/src/fallback.rs",
+            "DegradationAwareFallbackBackend",
+        ),
+        (
+            "crates/modules/rustok-cache/src/instrumentation.rs",
+            "InstrumentedCacheBackend",
+        ),
+    ] {
+        let text = source(file);
+        let impl_block = text
+            .split(&format!("impl CacheBackend for {wrapper} {{"))
+            .nth(1)
+            .unwrap_or_else(|| panic!("{wrapper} must implement CacheBackend"));
+        let body = impl_block.split("\n}\n").next().unwrap_or(impl_block);
+        assert!(
+            body.contains("reconcile_local_state"),
+            "{wrapper} must forward reconcile_local_state instead of ignoring the recovery contract"
+        );
+    }
+}

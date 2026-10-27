@@ -22,12 +22,32 @@ static REDIS_STATUS_COLLECTOR: OnceLock<Mutex<Option<RedisStatusCollector>>> = O
 pub struct RedisCacheStatus {
     pub url_present: bool,
     pub client_initialized: bool,
+    /// Pure transport reachability: a connection and a `PONG` succeeded.
     pub connectivity_healthy: bool,
     pub last_error: Option<String>,
+    /// Backend generations that still need a trusted shared snapshot.
+    pub generation_recovery_pending: usize,
+    /// Why generation or local fallback reconciliation failed even though Redis answered.
+    ///
+    /// Kept separate from `connectivity_healthy` so an operator can tell "Redis is down" from
+    /// "Redis is up but recovery is incomplete" instead of chasing a network incident.
+    pub recovery_error: Option<String>,
 }
 
 impl RedisCacheStatus {
+    /// Readiness view: configured Redis must be reachable *and* fully recovered.
     pub fn is_healthy(&self) -> bool {
+        if !self.url_present {
+            return true;
+        }
+        self.client_initialized
+            && self.connectivity_healthy
+            && self.recovery_error.is_none()
+            && self.generation_recovery_pending == 0
+    }
+
+    /// Diagnostic view that ignores recovery backlog and reports transport reachability only.
+    pub fn is_connectivity_healthy(&self) -> bool {
         !self.url_present || (self.client_initialized && self.connectivity_healthy)
     }
 
@@ -42,11 +62,15 @@ pub fn format_redis_cache_status_prometheus_metrics(status: &RedisCacheStatus) -
         "rustok_cache_redis_url_present {url_present}\n\
          rustok_cache_redis_client_initialized {client_initialized}\n\
          rustok_cache_redis_connectivity_healthy {connectivity_healthy}\n\
-         rustok_cache_redis_degraded {degraded}\n",
+         rustok_cache_redis_degraded {degraded}\n\
+         rustok_cache_redis_generation_recovery_pending {recovery_pending}\n\
+         rustok_cache_redis_generation_recovery_failed {recovery_failed}\n",
         url_present = u8::from(status.url_present),
         client_initialized = u8::from(status.client_initialized),
         connectivity_healthy = u8::from(status.connectivity_healthy),
         degraded = u8::from(status.is_degraded()),
+        recovery_pending = status.generation_recovery_pending,
+        recovery_failed = u8::from(status.recovery_error.is_some()),
     )
 }
 
@@ -74,6 +98,8 @@ impl CacheService {
                 client_initialized: false,
                 connectivity_healthy: false,
                 last_error: None,
+                generation_recovery_pending: 0,
+                recovery_error: None,
             };
         }
         if !client_initialized {
@@ -87,6 +113,8 @@ impl CacheService {
                 client_initialized: false,
                 connectivity_healthy: false,
                 last_error: Some(last_error),
+                generation_recovery_pending: 0,
+                recovery_error: None,
             };
         }
 
@@ -98,6 +126,8 @@ impl CacheService {
                     client_initialized: false,
                     connectivity_healthy: false,
                     last_error: Some("Redis client disappeared after initialization".to_string()),
+                    generation_recovery_pending: 0,
+                    recovery_error: None,
                 };
             };
             let connection = tokio::time::timeout(
@@ -124,17 +154,10 @@ impl CacheService {
             .await
             {
                 Ok(Ok(response)) if response == "PONG" => {
-                    match self.recover_registered_backend_generations().await {
-                        Ok(_) => RedisCacheStatus {
-                            url_present: true,
-                            client_initialized: true,
-                            connectivity_healthy: true,
-                            last_error: None,
-                        },
-                        Err(error) => degraded_status(format!(
-                            "Redis connected but cache generation recovery failed: {error}"
-                        )),
-                    }
+                    // Redis answered, so transport connectivity is healthy. Recovery and local-state
+                    // reconciliation are separate outcomes: a failure there must degrade readiness
+                    // without pretending the transport is down.
+                    self.verify_recovered_state().await
                 }
                 Ok(Ok(response)) => degraded_status(format!(
                     "Redis PING returned an unexpected response: {}",
@@ -158,7 +181,51 @@ impl CacheService {
                     "Redis URL is configured but rustok-cache was built without redis-cache"
                         .to_string(),
                 ),
+                generation_recovery_pending: 0,
+                recovery_error: None,
             }
+        }
+    }
+
+    /// Reconcile degradation-aware local state and recover untrusted backend generations.
+    ///
+    /// Runs only after a successful `PING`: clearing local fail-closed state or trusting a shared
+    /// generation is safe exactly then. Both outcomes are reported separately from connectivity.
+    #[cfg(feature = "redis-cache")]
+    async fn verify_recovered_state(&self) -> RedisCacheStatus {
+        let mut recovery_errors: Vec<String> = Vec::new();
+        let mut reconciled = true;
+
+        if let Err(error) = self.reconcile_local_state().await {
+            reconciled = false;
+            recovery_errors.push(format!("local fallback reconciliation failed: {error}"));
+        }
+
+        let report = self.recover_registered_backend_generations().await;
+        if let Some(error) = &report.error {
+            recovery_errors.push(error.clone());
+        }
+
+        let recovery_error = if recovery_errors.is_empty() {
+            None
+        } else {
+            Some(bounded_error(recovery_errors.join("; ")))
+        };
+        tracing::debug!(
+            reconciled,
+            recovered = report.recovered,
+            pending = report.pending,
+            ?recovery_error,
+            "Verified cache recovery state after a successful Redis PING"
+        );
+
+        RedisCacheStatus {
+            url_present: true,
+            client_initialized: true,
+            connectivity_healthy: true,
+            last_error: recovery_error.clone(),
+            generation_recovery_pending: report.pending,
+            recovery_error,
         }
     }
 
@@ -173,6 +240,8 @@ struct RedisStatusCollector {
     client_initialized: IntGauge,
     connectivity_healthy: IntGauge,
     degraded: IntGauge,
+    generation_recovery_pending: IntGauge,
+    generation_recovery_failed: IntGauge,
 }
 
 impl RedisStatusCollector {
@@ -194,6 +263,14 @@ impl RedisStatusCollector {
                 "rustok_cache_redis_degraded",
                 "Whether Redis is configured but unavailable or unhealthy",
             )?,
+            generation_recovery_pending: IntGauge::new(
+                "rustok_cache_redis_generation_recovery_pending",
+                "Backend generations that still need a trusted shared Redis snapshot",
+            )?,
+            generation_recovery_failed: IntGauge::new(
+                "rustok_cache_redis_generation_recovery_failed",
+                "Whether generation or local state recovery failed although Redis answered",
+            )?,
         })
     }
 
@@ -204,6 +281,10 @@ impl RedisStatusCollector {
         self.connectivity_healthy
             .set(status.connectivity_healthy as i64);
         self.degraded.set(status.is_degraded() as i64);
+        self.generation_recovery_pending
+            .set(status.generation_recovery_pending as i64);
+        self.generation_recovery_failed
+            .set(status.recovery_error.is_some() as i64);
     }
 }
 
@@ -214,6 +295,8 @@ impl Collector for RedisStatusCollector {
         descriptions.extend(self.client_initialized.desc());
         descriptions.extend(self.connectivity_healthy.desc());
         descriptions.extend(self.degraded.desc());
+        descriptions.extend(self.generation_recovery_pending.desc());
+        descriptions.extend(self.generation_recovery_failed.desc());
         descriptions
     }
 
@@ -223,6 +306,8 @@ impl Collector for RedisStatusCollector {
         metrics.extend(self.client_initialized.collect());
         metrics.extend(self.connectivity_healthy.collect());
         metrics.extend(self.degraded.collect());
+        metrics.extend(self.generation_recovery_pending.collect());
+        metrics.extend(self.generation_recovery_failed.collect());
         metrics
     }
 }
@@ -252,6 +337,8 @@ fn degraded_status(error: String) -> RedisCacheStatus {
         client_initialized: true,
         connectivity_healthy: false,
         last_error: Some(bounded_error(error)),
+        generation_recovery_pending: 0,
+        recovery_error: None,
     }
 }
 
@@ -300,12 +387,51 @@ mod tests {
     }
 
     #[test]
+    fn recovery_backlog_degrades_readiness_not_connectivity() {
+        let status = RedisCacheStatus {
+            url_present: true,
+            client_initialized: true,
+            connectivity_healthy: true,
+            last_error: None,
+            generation_recovery_pending: 2,
+            recovery_error: None,
+        };
+        assert!(
+            status.is_connectivity_healthy(),
+            "a successful PING is a transport fact"
+        );
+        assert!(!status.is_healthy(), "recovery backlog must degrade readiness");
+        assert!(status.is_degraded());
+
+        let metrics = format_redis_cache_status_prometheus_metrics(&status);
+        assert!(
+            metrics.contains("rustok_cache_redis_generation_recovery_pending 2"),
+            "operators must see the backlog without chasing a network incident: {metrics}"
+        );
+        assert!(metrics.contains("rustok_cache_redis_connectivity_healthy 1"));
+
+        let failed = RedisCacheStatus {
+            recovery_error: Some("generation recovery rejected".to_string()),
+            generation_recovery_pending: 0,
+            ..status
+        };
+        assert!(!failed.is_healthy());
+        assert!(failed.is_connectivity_healthy());
+        assert!(
+            format_redis_cache_status_prometheus_metrics(&failed)
+                .contains("rustok_cache_redis_generation_recovery_failed 1")
+        );
+    }
+
+    #[test]
     fn redis_metrics_are_label_free_and_separate_lifecycle_phases() {
         let metrics = format_redis_cache_status_prometheus_metrics(&RedisCacheStatus {
             url_present: true,
             client_initialized: false,
             connectivity_healthy: false,
             last_error: Some("redacted".to_string()),
+            generation_recovery_pending: 0,
+            recovery_error: None,
         });
         assert!(metrics.contains("rustok_cache_redis_url_present 1"));
         assert!(metrics.contains("rustok_cache_redis_client_initialized 0"));
@@ -323,6 +449,8 @@ mod tests {
             client_initialized: false,
             connectivity_healthy: false,
             last_error: Some("must not be exported".to_string()),
+            generation_recovery_pending: 0,
+            recovery_error: None,
         });
         let metrics = rustok_telemetry::render_metrics().unwrap();
         assert!(metrics.contains("rustok_cache_redis_url_present 1"));

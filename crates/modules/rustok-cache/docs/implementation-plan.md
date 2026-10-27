@@ -256,6 +256,113 @@ The detailed active-cache contract is maintained in
 - [x] Add regression coverage proving that a second failed invalidation at capacity cannot become a
   stale Redis hit after the primary recovers.
 
+### P2. Logical-consistency pass (2026-10-27)
+
+Source-complete; every item is covered by a regression test in this crate or `apps/server`.
+None of these are claimed as compiled or live verified until the P0 evidence steps pass.
+
+- [x] Fail-closed fallback state has an owner-provided exit: `CacheBackend::reconcile_local_state`
+  (defaulted on the trait), forwarded by every wrapper (`GenerationAwareCacheBackend`,
+  `GenerationRecoveryHealthBackend`, `ObservedCacheBackend`, `DegradationAwareFallbackBackend`,
+  `InstrumentedCacheBackend`), aggregated by
+  `CacheService::reconcile_local_state()` and executed on the same successful `PING` that drives
+  `redis_status()`. Saturation now fails closed on the write path as well as the read path.
+  `cache_architecture_guard::every_cache_backend_wrapper_forwards_state_reconciliation` fails if a
+  wrapper stops forwarding it.
+- [x] Degraded reads serve only locally confirmed degraded writes; a primary miss discards local
+  bytes so a later outage cannot resurrect them.
+- [x] Same-key operations are serialized end to end by a per-key lease (`fallback.rs`
+  `KeyLockLease`), which restores strict per-key ordering without the 256-stripe collateral
+  blocking that made one stalled Redis call stall ~256 unrelated keys. The lock map drops an entry
+  as soon as its last holder releases it, so it cannot grow with key cardinality.
+- [x] `CacheInvalidationMessage` is the single owner of transport limits;
+  `VersionedCacheInvalidation::to_message` validates through `try_new` and returns
+  `CacheInvalidationPayloadError::TransportRejected` instead of an `Ok` that publish would drop.
+  The duplicate unbounded `CacheInvalidationGapTracker` was deleted;
+  `BoundedCacheInvalidationGapTracker` is canonical.
+- [x] `publish` / `publish_invalidation` return `Result` (`CacheInvalidationError::{InvalidMessage,
+  SharedTransport}`), `publish_durable` propagates `DurableCacheInvalidationError::Transport`, and
+  publishing reuses one lazy `ConnectionManager`.
+- [x] A shared backend's identity now includes the Redis circuit-breaker policy, so
+  `backend_with_options` cannot be served a backend built with another caller's breaker settings;
+  the identity doc claim ("every factory option that changes the instance") is finally true.
+- [x] Process-local registries are bounded and prune dead entries (`shared_backends` 4096 with
+  `strong_count` pruning; backend-generation registry prunes states that only the registry still
+  references). Backend construction is single-flighted per key.
+- [x] Degenerate backend configuration (zero TTL / zero capacity) is floored, logged at `error`
+  level and counted in `rustok_cache_invalid_backend_configuration_total`; `load_or_fill` rejects a
+  zero TTL outright.
+- [x] `CacheTtlPolicy::fixed` rejects a zero TTL at construction, like `deterministic_jitter`
+  already did. Previously a zero-TTL policy was constructible and then rejected in three separate
+  places at use time (load, policy load, refresh), so the invariant had three owners instead of
+  one.
+- [x] The structured Redis target (`redis_host`/`redis_port`/`redis_db`) is validated as a target:
+  an unusable host is rejected by `validate()` and leaves `resolved_url()` empty, instead of falling
+  back to the `redis://localhost` composition base and pointing the runtime at a different Redis.
+- [x] Removing credentials from a Redis URL has one owner: `redis_url_has_password` decides whether
+  a document needs rewriting, `redis_url_without_password` / `redis_url_without_credentials` do the
+  removal, and both removals fail closed. The host settings service no longer manipulates URLs
+  itself with ignored `set_password`/`set_username` results, which could have returned the password
+  while claiming to have redacted it.
+- [x] `CacheTtlPolicy` is opaque (`CacheTtlPolicyKind` is private), so the rejecting constructors are
+  the only entry point and the invariant cannot be bypassed by building `Fixed(Duration::ZERO)`.
+  The use-time checks stay as fail-closed defense for values built inside the crate.
+- [x] Redis readiness distinguishes transport from recovery: `connectivity_healthy`,
+  `generation_recovery_pending`, `recovery_error`, `is_connectivity_healthy()`, and the
+  `rustok_cache_redis_generation_recovery_{pending,failed}` gauges.
+- [x] One readiness answer for one process: `CacheHealthReport` now carries
+  `redis_recovery_pending`/`redis_recovery_error`, `is_connected()` is the transport view and
+  `is_healthy()` the same predicate as `RedisCacheStatus::is_healthy`. Previously the report
+  answered connectivity only, so a recovery backlog was healthy at the HTTP readiness probe and
+  unhealthy in `CacheModule::health()`; the probe now names the recovery cause instead of claiming
+  a transport outage.
+- [x] Refresh validates the envelope against a clock read after the loader returns
+  (`CacheRefreshClock::{System, Fixed}`) and clamps the stored TTL to the envelope hard expiry.
+- [x] `CacheEnvelope::decode` rejects trailing bytes instead of accepting a plausible prefix
+  (regression test covers appended junk and a truncated record).
+- [x] Deployment Redis-URL precedence has one owner: `rustok_cache::resolve_redis_url`
+  (`explicit url` → `RUSTOK_REDIS_URL` → `REDIS_URL`, blank values treated as absent) with a pure,
+  testable helper. Before, the rules existed twice — a private copy in the crate's `service.rs` and
+  an independent copy in the host's `redis_runtime.rs` — so the two could drift; the host now
+  re-exports the crate's function.
+- [x] Cache settings have one owner: `CacheSettings` resolves/validates/redacts/merges, the host
+  settings service reports the deployment-resolved document and rejects a write that would
+  redirect the running process, and a redacted read preserves the password inside `redis_url`.
+- [x] A password is scoped to a target, not to a document: `same_redis_target` (scheme, host, port,
+  database, username; the password is excluded) gates every restore in both merge paths, a
+  read-modify-write that moves to another target is merged with no secret, and `REDACTED_SECRET` is
+  never treated as a credential (`has_password` ignores the mask in the URL too, and a mask that
+  cannot be replaced by a real secret is stripped instead of stored).
+- [x] The cache admin form builder mirrors the document contract: `in-memory` with a Redis target and
+  a Redis mode without any target are rejected with a field-level error instead of being submitted
+  for the server to refuse, and target fields are trimmed rather than stored with whitespace.
+- [x] The cache admin server functions are real adapters: runtime `CacheService` health and a
+  host-provided `CacheSettingsAdminPort` for settings, and the form builder returns a validation
+  error instead of substituting defaults.
+- [x] One authority rule for the cache admin surface: `rustok_api::authorizes_host_or_permission`
+  accepts a permission snapshot with the required settings permission **or** the matching
+  host-global authority, and the request-scoped host authority itself now lives in `rustok-api`
+  (`with_host_authority_scope`/`current_host_authority`) instead of the host binary. GraphQL
+  `cacheHealth` and all three native server functions evaluate it; previously the native read
+  paths demanded `settings:manage` while the GraphQL read path was host-only, so neither
+  transport admitted a tenant administrator reading diagnostics.
+- [x] One instrumentation wrapper (`src/instrumentation.rs`): the three near-identical copies
+  reported different `stats()`. Counting is now defined once — `hits`/`misses` are the calls the
+  wrapper observed (no adding inner counters, which double counted every hit), `evictions` are
+  inner capacity evictions plus successful invalidations, `entries` is delegated.
+- [x] Shared generation loss converges the fleet instead of splitting it: a shared counter below a
+  trusted local observation is restored with an atomic "advance only" script
+  (`GENERATION_CATCH_UP_SCRIPT`) and served as `SharedRedis`; the catch-up outcome is exported as
+  `rustok_cache_generation_shared_catch_up_{writes,failures}_total`, and a divergence that could
+  not be healed still degrades to `LocalFallback` with an explicit warning.
+- [x] `CacheRefreshSchedule` no longer overloads one variant: `Fresh` (fresh hit) and `Filled`
+  (synchronous load) are separate from the scheduled outcomes, so hosts can measure refresh hits.
+- [x] `LocalCacheInvalidationSubscription::recv` documents the `Lagged` recovery contract
+  (clear/rebuild the owned namespace before resuming fast-path processing).
+- [x] A bump whose `INCR` succeeded but whose local snapshot could not be updated returns
+  `CacheGenerationError::SharedBumpAppliedLocalLag { generation, detail }` instead of a generic
+  error, so callers re-read the generation instead of retrying and rotating twice.
+
 ### P1. Load, chaos and tuning evidence
 
 - [ ] Exercise synchronized expiry, oversized payloads, hot-key contention, refresh saturation,
@@ -378,11 +485,11 @@ RUSTOK_CACHE_REDIS_SERVER_BIN=/usr/bin/redis-server \
 
 - Cycle: `cycle-001`
 - Status: `blocked`
-- Last verified at (UTC): `2026-07-29`
-- Scope inspected: `cache ownership and documentation; Redis and in-memory backend contracts; degraded fallback and pending invalidation behavior; atomic CAS; durable invalidation and generation recovery; permanent workflow coverage`
-- Findings: `P0=0, P1=1, P2=0, P3=2`
-- Fixed in this pass: `added the missing current-cycle handoff and reconciled the plan date with main`
-- Remaining risks or blockers: `P1 a failed Redis invalidation is not retained when PendingInvalidationTracker is at capacity, so a recovered primary can serve stale shared bytes for the untracked key; Cache hardening run 30489244186 and Cache feature matrix run 30489244207 remain queued and therefore provide no compiled/live evidence; the empty rustok-core redis-cache compatibility feature remains P3 removal debt and requires an explicitly authorized workflow edit`
-- Evidence: `crates/modules/rustok-cache/src/fallback.rs invalidation failure path logs tracker insertion failure but leaves the key untracked; the existing pending_invalidation_tracker_is_bounded_and_never_evicts_live_tombstones test asserts that the second key is absent at capacity; source inspection confirms CAS, generation regression, service-owner and durable acknowledgement paths fail closed in their covered states; PR #2466 triggered both mandatory cache workflows on commit 2b797144e69186cfd8be0684d98b70f4878c4126, but both were still queued at the handoff`
-- Next action: `implement a bounded global fail-closed saturation/recovery state with regression coverage, then rerun the permanent cache workflows and live Redis evidence before revisiting this item in the closing gate`
-- Resume command: `cargo test -p rustok-cache pending_invalidation_tracker_is_bounded_and_never_evicts_live_tombstones --lib && cargo xtask module validate cache && cargo xtask module test cache`
+- Last verified at (UTC): `2026-10-27`
+- Scope inspected: `cache ownership and documentation; Redis and in-memory backend contracts; degraded fallback and pending invalidation behavior; atomic CAS; durable invalidation and generation recovery; settings/target resolution and secret handling; TTL, refresh, lease and envelope policy; permanent workflow coverage`
+- Findings: `P0=0, P1=0 at source level, P2=0, P3=2`
+- Fixed in this pass: `the P2. Logical-consistency pass (2026-10-27) list above: fail-closed fallback and recovery reconciliation, single invalidated-transport owner with a bounded gap tracker, one credential-removal policy for Redis URLs, structured-target validation, opaque zero-TTL policy, single instrumentation wrapper, generation catch-up after a lost shared counter, recovery-aware readiness in every consumer, and the shell-script, host and settings-service parity items`
+- Remaining risks or blockers: `no compiled or live evidence exists on this revision: the review environment has no Rust toolchain and no Redis, so every command in the Verification block below is still outstanding; the empty rustok-core redis-cache compatibility feature remains P3 removal debt and its workflow edit needs explicit CI/CD authorization (AGENTS.md rule 7); the P1 load/chaos/tuning evidence items and every P0 evidence item remain open until those runs happen`
+- Evidence: `a tree-sitter Rust parse of all 6149 tracked .rs files reports no syntax errors (the single reported failure, apps/server/src/graphql/schema.rs, is the parser's missing support for attributes on struct-literal fields and is pre-existing); each fix above carries a regression test or an architecture guard, but none of them were executed`
+- Next action: `run the Verification block on this revision, then the live Redis evidence, then close the remaining P0/P1 items and update this handoff with the actual job results`
+- Resume command: `cargo fmt --all -- --check && cargo check -p rustok-cache --lib && cargo test -p rustok-cache --lib && cargo clippy -p rustok-cache --lib -- -D warnings && cargo xtask module validate cache && cargo xtask module test cache`

@@ -5,7 +5,7 @@ server/runtime request path. It complements the canonical
 [`implementation-plan.md`](./implementation-plan.md): the plan owns priorities and completion
 state, while this inventory records the concrete cache contract and the owner of remaining work.
 
-Last reconciled with `main`: 2026-07-16.
+Last reconciled with `main`: 2026-10-27.
 
 ## Classification rules
 
@@ -65,6 +65,28 @@ capacity. Fixed-size counters may use entry-count capacity.
 - Exercise marketplace hot-key contention, channel token rollover and RBAC epoch rotation.
 - Run isolated Redis latency/repeated-restart/CAS evidence before promoting cache hardening to live
   verified.
+
+## Runtime and settings surfaces (2026-10-27)
+
+- The Redis target is resolved once per process from deployment configuration
+  (`settings` file → `RUSTOK_REDIS_URL` → `REDIS_URL`) by `rustok_cache::resolve_redis_url`. The
+  host settings service reports that resolved document for the `cache` category and rejects a
+  write that would redirect the process; the stored row is a redacted audit mirror that the
+  runtime never reads. Secret merge-back uses the crate's target identity
+  (`rustok_cache::same_redis_target`), so a password is restored only for the same target and a
+  redaction mask is never stored.
+- The cache admin server functions consume two host-published handles: the runtime `CacheService`
+  (health) and `SharedCacheSettingsAdmin` (a `CacheSettingsAdminPort` implementation backed by the
+  host settings service). Reads require `settings:read` (or host read authority) and the write
+  requires `settings:manage` (or host manage authority) — the same
+  `rustok_api::authorizes_host_or_permission` rule the GraphQL `cacheHealth` resolver and the
+  `platformSettings` resolvers evaluate, so the two transports cannot grant different access.
+- Recovery reconciliation (`CacheBackend::reconcile_local_state`) runs on the same successful Redis
+  `PING` that drives `redis_status()`; readiness therefore reports "reachable **and** recovered",
+  while `connectivity_healthy` stays a pure transport signal. `CacheHealthReport` (the snapshot the
+  host readiness probe and `cacheHealth` use) exposes the same pair: `is_connected()` is transport,
+  `is_healthy()` additionally requires `redis_recovery_pending == 0` and no `redis_recovery_error`,
+  so readiness cannot be healthy in one place and degraded in another.
 
 ## Maintenance rule
 

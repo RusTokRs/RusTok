@@ -74,9 +74,25 @@ impl RusToKModule for CacheModule {
     async fn health(&self) -> HealthStatus {
         let status = self.service.redis_status().await;
         if status.is_healthy() {
-            HealthStatus::Healthy
-        } else {
-            HealthStatus::Degraded
+            return HealthStatus::Healthy;
         }
+
+        // Readiness degrades on two distinct causes; logging them separately keeps an operator from
+        // treating a recovery backlog as a network outage.
+        if status.is_connectivity_healthy() {
+            tracing::warn!(
+                generation_recovery_pending = status.generation_recovery_pending,
+                recovery_error = ?status.recovery_error,
+                "CacheModule: Redis reachable but cache recovery is incomplete"
+            );
+        } else {
+            tracing::warn!(
+                redis_url_present = status.url_present,
+                redis_client_initialized = status.client_initialized,
+                error = ?status.last_error,
+                "CacheModule: Redis lifecycle is degraded"
+            );
+        }
+        HealthStatus::Degraded
     }
 }

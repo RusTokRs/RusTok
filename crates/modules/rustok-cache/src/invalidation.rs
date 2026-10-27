@@ -1,12 +1,13 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-
-use crate::CacheInvalidationMessage;
+use crate::service::MAX_CACHE_INVALIDATION_KEY_BYTES;
+use crate::{CacheInvalidationMessage, CacheInvalidationMessageError};
 
 const INVALIDATION_PAYLOAD_VERSION: &str = "v1";
-const MAX_INVALIDATION_CHANNEL_BYTES: usize = 256;
-const MAX_INVALIDATION_KEY_BYTES: usize = 4 * 1024;
-const MAX_ENCODED_INVALIDATION_PAYLOAD_BYTES: usize = 16 * 1024;
+/// Transport bounds are owned by the invalidation transport (`CacheInvalidationMessage`). A separate
+/// local copy previously allowed a payload that this module accepted but the transport rejected.
+const MAX_INVALIDATION_CHANNEL_BYTES: usize = crate::service::MAX_CACHE_INVALIDATION_CHANNEL_BYTES;
+const MAX_INVALIDATION_KEY_BYTES: usize = MAX_CACHE_INVALIDATION_KEY_BYTES;
+/// Hex-encoded keys double in size; the compact payload must still fit the transport key bound.
+const MAX_ENCODED_INVALIDATION_PAYLOAD_BYTES: usize = MAX_CACHE_INVALIDATION_KEY_BYTES;
 
 /// Invalidation payload carrying a monotonic generation from a durable domain sequence.
 ///
@@ -55,7 +56,19 @@ impl VersionedCacheInvalidation {
             hex::encode(self.key.as_bytes())
         );
         validate_payload_length(payload.len())?;
-        Ok(CacheInvalidationMessage::new(self.channel.clone(), payload))
+        // Validate through the transport constructor: a payload that `publish` would silently reject
+        // must be reported here instead of returning `Ok` and losing the invalidation later.
+        CacheInvalidationMessage::try_new(self.channel.clone(), payload.clone()).map_err(|error| {
+            match error {
+                CacheInvalidationMessageError::KeyTooLong { .. } => {
+                    CacheInvalidationPayloadError::PayloadTooLarge {
+                        length: payload.len(),
+                        maximum: MAX_ENCODED_INVALIDATION_PAYLOAD_BYTES,
+                    }
+                }
+                other => CacheInvalidationPayloadError::TransportRejected(format!("{other:?}")),
+            }
+        })
     }
 
     pub fn from_message(
@@ -134,6 +147,8 @@ pub enum CacheInvalidationPayloadError {
     OffsetRegressed { current: u64, proposed: u64 },
     AcknowledgementNotContiguous { current: Option<u64>, proposed: u64 },
     MalformedPayload,
+    /// The compact payload violates a transport bound and could never be published.
+    TransportRejected(String),
     UnsupportedVersion(String),
     InvalidGeneration,
     InvalidTimestamp,
@@ -177,6 +192,9 @@ impl std::fmt::Display for CacheInvalidationPayloadError {
                 "applied invalidation acknowledgement {proposed} requires a seeded offset or acknowledged recovery"
             ),
             Self::MalformedPayload => write!(formatter, "malformed versioned invalidation payload"),
+            Self::TransportRejected(detail) => {
+                write!(formatter, "invalidation payload rejected by the transport: {detail}")
+            }
             Self::UnsupportedVersion(version) => {
                 write!(
                     formatter,
@@ -192,164 +210,10 @@ impl std::fmt::Display for CacheInvalidationPayloadError {
 
 impl std::error::Error for CacheInvalidationPayloadError {}
 
-/// Process-local observer for a durable monotonic invalidation generation.
-///
-/// Consumers seed the tracker from their persisted durable offset before observing live events.
-/// Observation never advances the acknowledged offset. A caller must invoke `acknowledge_applied`
-/// after an in-order handler succeeds, or `acknowledge_recovery` after rebuilding through an
-/// unverified/gapped generation. This prevents failed work from being hidden by a later delivery.
-#[derive(Clone, Default)]
-pub struct CacheInvalidationGapTracker {
-    last_by_channel: Arc<Mutex<HashMap<String, u64>>>,
-}
-
-impl CacheInvalidationGapTracker {
-    /// Restore the last durably acknowledged generation for a channel.
-    ///
-    /// Seeding with zero is valid when the durable sequence is known to begin at one. A seed may
-    /// advance or repeat the current offset, but never lower it.
-    pub fn seed(
-        &self,
-        channel: impl Into<String>,
-        last_generation: u64,
-    ) -> Result<Option<u64>, CacheInvalidationPayloadError> {
-        let channel = channel.into();
-        validate_channel(&channel)?;
-        self.advance_monotonically(channel, last_generation)
-    }
-
-    /// Confirm that an in-order invalidation handler completed successfully.
-    ///
-    /// Repeating the current offset is idempotent. Any forward jump larger than one is rejected;
-    /// callers must use `acknowledge_recovery` after rebuilding through a gap.
-    pub fn acknowledge_applied(
-        &self,
-        channel: impl Into<String>,
-        applied_generation: u64,
-    ) -> Result<Option<u64>, CacheInvalidationPayloadError> {
-        let channel = channel.into();
-        validate_channel(&channel)?;
-        self.acknowledge_contiguous(channel, applied_generation)
-    }
-
-    /// Confirm that fail-safe recovery for an unverified/gapped event completed successfully.
-    pub fn acknowledge_recovery(
-        &self,
-        channel: impl Into<String>,
-        recovered_through_generation: u64,
-    ) -> Result<Option<u64>, CacheInvalidationPayloadError> {
-        let channel = channel.into();
-        validate_channel(&channel)?;
-        self.advance_monotonically(channel, recovered_through_generation)
-    }
-
-    pub fn observe(&self, event: &VersionedCacheInvalidation) -> CacheInvalidationObservation {
-        let generations = self
-            .last_by_channel
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        let Some(previous) = generations.get(&event.channel).copied() else {
-            return CacheInvalidationObservation::UnverifiedFirst {
-                generation: event.generation,
-            };
-        };
-
-        if event.generation == previous {
-            return CacheInvalidationObservation::Duplicate {
-                generation: event.generation,
-            };
-        }
-        if event.generation < previous {
-            return CacheInvalidationObservation::Stale {
-                last: previous,
-                received: event.generation,
-            };
-        }
-
-        match previous.checked_add(1) {
-            Some(expected) if event.generation == expected => {
-                CacheInvalidationObservation::InOrder {
-                    generation: event.generation,
-                }
-            }
-            Some(expected) => CacheInvalidationObservation::Gap {
-                previous,
-                expected,
-                received: event.generation,
-            },
-            None => CacheInvalidationObservation::Stale {
-                last: previous,
-                received: event.generation,
-            },
-        }
-    }
-
-    pub fn last_generation(&self, channel: &str) -> Option<u64> {
-        self.last_by_channel
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .get(channel)
-            .copied()
-    }
-
-    pub fn reset(&self, channel: &str) -> Option<u64> {
-        self.last_by_channel
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .remove(channel)
-    }
-
-    fn acknowledge_contiguous(
-        &self,
-        channel: String,
-        proposed: u64,
-    ) -> Result<Option<u64>, CacheInvalidationPayloadError> {
-        let mut generations = self
-            .last_by_channel
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let Some(current) = generations.get(&channel).copied() else {
-            return Err(
-                CacheInvalidationPayloadError::AcknowledgementNotContiguous {
-                    current: None,
-                    proposed,
-                },
-            );
-        };
-        if proposed == current {
-            return Ok(Some(current));
-        }
-        if current.checked_add(1) != Some(proposed) {
-            return Err(
-                CacheInvalidationPayloadError::AcknowledgementNotContiguous {
-                    current: Some(current),
-                    proposed,
-                },
-            );
-        }
-        Ok(generations.insert(channel, proposed))
-    }
-
-    fn advance_monotonically(
-        &self,
-        channel: String,
-        proposed: u64,
-    ) -> Result<Option<u64>, CacheInvalidationPayloadError> {
-        let mut generations = self
-            .last_by_channel
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(current) = generations
-            .get(&channel)
-            .copied()
-            .filter(|&current| proposed < current)
-        {
-            return Err(CacheInvalidationPayloadError::OffsetRegressed { current, proposed });
-        }
-        Ok(generations.insert(channel, proposed))
-    }
-}
+// The process-local offset observer has exactly one canonical owner:
+// `crate::bounded_invalidation::BoundedCacheInvalidationGapTracker`. It enforces the same ordering
+// protocol plus a hard channel bound, so keeping a second unbounded implementation here duplicated
+// the invariant and drifted (different error codes for a regressed acknowledgement).
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CacheInvalidationObservation {
@@ -441,7 +305,7 @@ mod tests {
 
     #[test]
     fn unseeded_first_event_requires_acknowledged_recovery() {
-        let tracker = CacheInvalidationGapTracker::default();
+        let tracker = crate::BoundedCacheInvalidationGapTracker::default();
         let observation = tracker.observe(&event(10));
 
         assert_eq!(
@@ -469,7 +333,7 @@ mod tests {
 
     #[test]
     fn in_order_event_remains_retryable_until_acknowledged() {
-        let tracker = CacheInvalidationGapTracker::default();
+        let tracker = crate::BoundedCacheInvalidationGapTracker::default();
         tracker.seed("tenant.invalidate", 9).unwrap();
 
         let expected = CacheInvalidationObservation::InOrder { generation: 10 };
@@ -488,15 +352,17 @@ mod tests {
 
     #[test]
     fn applied_acknowledgement_rejects_unseeded_or_skipped_offsets() {
-        let tracker = CacheInvalidationGapTracker::default();
+        let tracker = crate::BoundedCacheInvalidationGapTracker::default();
         assert_eq!(
             tracker
                 .acknowledge_applied("tenant.invalidate", 1)
                 .unwrap_err(),
-            CacheInvalidationPayloadError::AcknowledgementNotContiguous {
-                current: None,
-                proposed: 1,
-            }
+            crate::BoundedInvalidationTrackerError::Payload(
+                CacheInvalidationPayloadError::AcknowledgementNotContiguous {
+                    current: None,
+                    proposed: 1,
+                }
+            )
         );
 
         tracker.seed("tenant.invalidate", 10).unwrap();
@@ -504,10 +370,12 @@ mod tests {
             tracker
                 .acknowledge_applied("tenant.invalidate", 12)
                 .unwrap_err(),
-            CacheInvalidationPayloadError::AcknowledgementNotContiguous {
-                current: Some(10),
-                proposed: 12,
-            }
+            crate::BoundedInvalidationTrackerError::Payload(
+                CacheInvalidationPayloadError::AcknowledgementNotContiguous {
+                    current: Some(10),
+                    proposed: 12,
+                }
+            )
         );
         assert_eq!(tracker.last_generation("tenant.invalidate"), Some(10));
         assert_eq!(
@@ -527,7 +395,7 @@ mod tests {
 
     #[test]
     fn gap_does_not_advance_until_recovery_is_acknowledged() {
-        let tracker = CacheInvalidationGapTracker::default();
+        let tracker = crate::BoundedCacheInvalidationGapTracker::default();
         tracker.seed("tenant.invalidate", 9).unwrap();
         assert_eq!(
             tracker.observe(&event(10)),
@@ -563,7 +431,7 @@ mod tests {
 
     #[test]
     fn duplicate_stale_and_offset_regression_are_rejected_safely() {
-        let tracker = CacheInvalidationGapTracker::default();
+        let tracker = crate::BoundedCacheInvalidationGapTracker::default();
         tracker.seed("tenant.invalidate", 11).unwrap();
         assert_eq!(
             tracker.observe(&event(11)),
@@ -578,10 +446,12 @@ mod tests {
         );
         assert_eq!(
             tracker.seed("tenant.invalidate", 10).unwrap_err(),
-            CacheInvalidationPayloadError::OffsetRegressed {
-                current: 11,
-                proposed: 10,
-            }
+            crate::BoundedInvalidationTrackerError::Payload(
+                CacheInvalidationPayloadError::OffsetRegressed {
+                    current: 11,
+                    proposed: 10,
+                }
+            )
         );
     }
 
@@ -612,6 +482,43 @@ mod tests {
             .unwrap_err(),
             CacheInvalidationPayloadError::KeyTooLarge { .. }
         ));
+    }
+
+    #[test]
+    fn to_message_never_returns_a_payload_the_transport_would_reject() {
+        // Hex encoding doubles the key, so a key above half the transport bound cannot be published
+        // as a compact payload. That must be an error here, not an `Ok` that `publish` then drops.
+        let publishable_key = "k".repeat(MAX_INVALIDATION_KEY_BYTES / 2 - 64);
+        assert!(
+            VersionedCacheInvalidation::new(
+                "tenant.invalidate",
+                publishable_key.clone(),
+                7,
+                1_700_000_000_000,
+            )
+            .unwrap()
+            .to_message()
+            .is_ok()
+        );
+
+        let unpublishable_key = "k".repeat(MAX_INVALIDATION_KEY_BYTES);
+        let unpublishable = VersionedCacheInvalidation::new(
+            "tenant.invalidate",
+            unpublishable_key.clone(),
+            7,
+            1_700_000_000_000,
+        )
+        .unwrap();
+        let expected_length =
+            format!("v1:7:1700000000000:{}", hex::encode(unpublishable_key.as_bytes())).len();
+
+        assert_eq!(
+            unpublishable.to_message().unwrap_err(),
+            CacheInvalidationPayloadError::PayloadTooLarge {
+                length: expected_length,
+                maximum: MAX_ENCODED_INVALIDATION_PAYLOAD_BYTES,
+            }
+        );
     }
 
     #[test]

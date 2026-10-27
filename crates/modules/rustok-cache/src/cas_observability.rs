@@ -120,6 +120,10 @@ impl CacheBackend for ObservedCacheBackend {
         self.backend.set_with_ttl(key, value, ttl).await
     }
 
+    async fn reconcile_local_state(&self) -> CoreResult<()> {
+        self.backend.reconcile_local_state().await
+    }
+
     async fn compare_and_set(
         &self,
         key: &str,

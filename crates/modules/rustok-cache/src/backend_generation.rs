@@ -180,6 +180,27 @@ fn validate_prefix(prefix: &str) -> Result<(), CacheBackendGenerationError> {
     Ok(())
 }
 
+/// Drop generation states that no backend or alias references any more.
+///
+/// The registry holds one strong reference per entry (aliases share the same allocation), so a state
+/// whose `strong_count` equals the number of registry keys pointing at it is dead. Without this
+/// reclaim the registry acted as a permanent process-local limit: after enough distinct prefixes —
+/// which are commonly per tenant or per test — every new namespace failed closed until restart.
+pub(crate) fn prune_unreferenced_generation_states(
+    registry: &mut HashMap<String, Arc<BackendGenerationState>>,
+) {
+    let mut registry_references: HashMap<usize, usize> = HashMap::new();
+    for state in registry.values() {
+        let identity = Arc::as_ptr(state) as *const () as usize;
+        *registry_references.entry(identity).or_default() += 1;
+    }
+    registry.retain(|_, state| {
+        let identity = Arc::as_ptr(state) as *const () as usize;
+        let registry_refs = registry_references.get(&identity).copied().unwrap_or(1);
+        Arc::strong_count(state) > registry_refs
+    });
+}
+
 pub(crate) fn generation_state(
     prefix: &str,
 ) -> Result<Arc<BackendGenerationState>, CacheBackendGenerationError> {
@@ -189,6 +210,9 @@ pub(crate) fn generation_state(
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(state) = registry.get(prefix) {
         return Ok(Arc::clone(state));
+    }
+    if registry.len() >= DEFAULT_MAX_CACHE_BACKEND_GENERATIONS {
+        prune_unreferenced_generation_states(&mut registry);
     }
     if registry.len() >= DEFAULT_MAX_CACHE_BACKEND_GENERATIONS {
         return Err(CacheBackendGenerationError::RegistryCapacityExceeded {
@@ -242,6 +266,10 @@ pub fn bind_cache_backend_generation_aliases(
                 alias: (*alias).to_string(),
             });
         }
+    }
+
+    if registry.len() >= DEFAULT_MAX_CACHE_BACKEND_GENERATIONS {
+        prune_unreferenced_generation_states(&mut registry);
     }
 
     let missing_canonical = usize::from(existing_canonical.is_none());
@@ -471,6 +499,12 @@ impl CacheBackend for GenerationAwareCacheBackend {
             }
         }
         Err(Self::generation_changed_error())
+    }
+
+    async fn reconcile_local_state(&self) -> rustok_core::Result<()> {
+        // Generation-scoped keys do not affect whether degraded local state is trustworthy.
+        self.ensure_available()?;
+        self.inner.reconcile_local_state().await
     }
 
     async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {

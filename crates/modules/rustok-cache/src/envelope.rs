@@ -221,8 +221,17 @@ where
             });
         }
 
-        let envelope: Self = postcard::from_bytes(bytes)
+        // `from_bytes` accepts trailing data; a concatenated or corrupted tail would decode as a
+        // valid envelope. Consumption must be exact so a mangled entry is a hard decode error
+        // instead of a plausible-looking value.
+        let (envelope, remainder): (Self, &[u8]) = postcard::take_from_bytes(bytes)
             .map_err(|error| CacheEnvelopeError::Decode(error.to_string()))?;
+        if !remainder.is_empty() {
+            return Err(CacheEnvelopeError::Decode(format!(
+                "cache envelope has {} trailing bytes after a complete record",
+                remainder.len()
+            )));
+        }
         envelope.validate_metadata(expected_schema_version)?;
         Ok(envelope)
     }
@@ -465,6 +474,44 @@ mod tests {
                 maximum: 64,
             }
         );
+    }
+
+    #[test]
+    fn decode_rejects_trailing_bytes_after_a_complete_record() {
+        let encoded = CacheEnvelope::new(1, 1_000, "value".to_string())
+            .unwrap()
+            .encode()
+            .unwrap();
+
+        for tail in [&b"j"[..], b"junk", &[0_u8; 33][..]] {
+            let mut corrupted = encoded.clone();
+            corrupted.extend_from_slice(tail);
+            let error = CacheEnvelope::<String>::decode(&corrupted, 1)
+                .expect_err("a record with trailing bytes must not decode as a valid envelope");
+            assert!(
+                matches!(
+                    &error,
+                    CacheEnvelopeError::Decode(message) if message.contains("trailing bytes")
+                ),
+                "expected a trailing-bytes decode error, got {error:?}"
+            );
+        }
+
+        // The untampered encoding still decodes, so the check above is not passing by accident.
+        assert!(CacheEnvelope::<String>::decode(&encoded, 1).is_ok());
+    }
+
+    #[test]
+    fn decode_rejects_truncated_records() {
+        let encoded = CacheEnvelope::new(1, 1_000, "value".to_string())
+            .unwrap()
+            .encode()
+            .unwrap();
+
+        assert!(matches!(
+            CacheEnvelope::<String>::decode(&encoded[..encoded.len() - 1], 1),
+            Err(CacheEnvelopeError::Decode(_))
+        ));
     }
 
     #[test]

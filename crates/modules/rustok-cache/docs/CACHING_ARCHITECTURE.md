@@ -38,6 +38,18 @@ Invalidation is distributed through validated Redis pub/sub and mirrored to a lo
 broadcast channel. Pub/sub is at-most-once and therefore an acceleration mechanism rather
 than the sole correctness mechanism.
 
+Configuration has exactly one owner per layer:
+
+- the deployment (`settings` file → `RUSTOK_REDIS_URL` → `REDIS_URL`) owns the Redis target.
+  `CacheService::from_url` resolves it once at startup, `CacheSettings::for_deployment` renders
+  the same document for the settings API, and the settings service rejects a write that would
+  redirect a running process;
+- `CacheSettings` owns the effective-target resolution, validation, redaction and merge-back of
+  redacted documents (including the password inside `redis_url`);
+- `CacheInvalidationMessage` owns transport limits for channels and keys, so no producer can
+  build a payload that the transport would silently drop;
+- `CacheBackend::reconcile_local_state` owns the exit from a fail-closed degraded state.
+
 ## Cache key contract
 
 Every new cache namespace should follow:
@@ -81,7 +93,10 @@ Recommended defaults:
 
 To prevent cache avalanche, high-volume namespaces should add deterministic TTL jitter.
 Jitter should be stable for `(namespace, key)` to keep tests reproducible and avoid changing
-the TTL on retries. A suggested range is ±5-15%, capped so TTL remains positive.
+the TTL on retries. The implementation only ever *shortens* the configured TTL: with a jitter
+percentage `p` (bounded to 50%), the effective TTL stays inside `[ttl · (1 - p), ttl]`. A
+suggested range is 5-15%, which keeps the effective TTL positive because the configured TTL
+must itself be positive.
 
 ## Read strategy
 
@@ -281,9 +296,10 @@ namespace and operation labels.
 2. **Resource bounds** — Redis deadlines and byte-weighted local capacity.
 3. **Contract centralization** — all backend construction through `CacheService`, common key
    and envelope helpers.
-4. **Avalanche control** — deterministic TTL jitter and per-namespace loader deadlines.
-5. **Recoverable invalidation** — generation tokens, then durable outbox/stream for critical
-   domains.
+4. **Avalanche control** — deterministic TTL jitter that only shortens the configured TTL, and
+   per-namespace loader deadlines.
+5. **Recoverable invalidation** — generation tokens (with fleet convergence after shared state
+   loss), then durable outbox/stream for critical domains.
 6. **Advanced freshness** — optional stale-while-revalidate and distributed hot-key lease.
 7. **Operational proof** — compiled suite, live Redis integration, load and chaos gates.
 

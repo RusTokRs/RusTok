@@ -39,6 +39,18 @@ pub trait CacheBackend: Send + Sync {
     }
 
     async fn invalidate(&self, key: &str) -> Result<()>;
+
+    /// Reconcile degradation-aware local state with the shared primary.
+    ///
+    /// Default: backends without local degraded state have nothing to reconcile. A backend that
+    /// fails closed after losing track of a local invalidation (see the cache module's
+    /// degradation-aware fallback) implements this to prove primary health and replay retained
+    /// work, which is the only sanctioned way out of that state. Callers must only invoke it when
+    /// the shared primary has just been confirmed reachable.
+    async fn reconcile_local_state(&self) -> Result<()> {
+        Ok(())
+    }
+
     fn stats(&self) -> CacheStats;
 }
 
