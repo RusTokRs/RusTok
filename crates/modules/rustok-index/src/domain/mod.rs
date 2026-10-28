@@ -14,6 +14,7 @@ pub use identifiers::{
 };
 pub use localized_query::LocalizedEntityQuery;
 pub use mutation::IndexMutation;
+pub(crate) use query::MAX_QUERY_CURSOR_BYTES;
 pub use query::{
     FilterExpr, IndexQuery, IndexQueryScope, ManyOrderAggregate, OrderDirection, OrderExpr,
     Pagination,

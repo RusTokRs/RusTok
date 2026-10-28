@@ -138,6 +138,12 @@ mod tests {
         let mut mixed = key(11, None);
         mixed.tenant_id = Uuid::from_u128(2);
         assert!(IndexReplayModeSelection::targeted(vec![key(10, None), mixed]).is_err());
+
+        let nil_entity = key(0, None);
+        assert!(matches!(
+            IndexReplayModeSelection::targeted(vec![nil_entity]),
+            Err(IndexSourceError::NilLoadEntityId { position: 0 })
+        ));
     }
 
     #[test]

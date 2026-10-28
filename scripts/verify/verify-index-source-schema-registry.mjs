@@ -60,6 +60,10 @@ requireMarkers('crates/modules/rustok-index/src/application/mod.rs', [
   'register_index_schema_source',
 ]);
 requireMarkers('crates/modules/rustok-index/src/lib.rs', [
+  'pub mod module;',
+]);
+requireMarkers('crates/modules/rustok-index/src/module.rs', [
+  'impl RusToKModule for IndexModule',
   'fn register_runtime_extensions(',
   'get_or_insert_with::<IndexSchemaSourceCatalog',
 ]);
@@ -68,8 +72,12 @@ const socialGraph = requireMarkers('crates/modules/rustok-social-graph/src/lib.r
   '#[cfg(feature = "index")]',
   '&["index", "outbox"]',
   'social_graph_relation_index_schema()',
-  'register_index_schema_source(extensions, self.slug(), schema)',
   'module_publishes_complete_index_source_contracts',
+]);
+requireMarkers('crates/modules/rustok-social-graph/src/module.rs', [
+  'fn register_runtime_extensions(',
+  'index::social_graph_relation_index_schema()',
+  'rustok_index::register_index_schema_source(extensions, self.slug(), schema)',
 ]);
 if (socialGraph.includes('PostgresIndexQueryPort::new')) {
   fail('Social Graph module composition must not construct the query port');

@@ -203,7 +203,10 @@ impl PostgresIndexDriftOrphanLinkEvidenceReader {
                 Ok(value)
             }
             Err(error) => {
-                let _ = transaction.rollback().await;
+                transaction
+                    .rollback()
+                    .await
+                    .map_err(|_| retryable_failure(MATERIALIZED_UNAVAILABLE))?;
                 Err(error)
             }
         }
@@ -358,7 +361,10 @@ impl PostgresIndexOrphanLinkMutationStore {
                 Ok(outcome)
             }
             Err(error) => {
-                let _ = transaction.rollback().await;
+                transaction
+                    .rollback()
+                    .await
+                    .map_err(|_| retryable_failure(OWNER_UNAVAILABLE))?;
                 Err(error)
             }
         }

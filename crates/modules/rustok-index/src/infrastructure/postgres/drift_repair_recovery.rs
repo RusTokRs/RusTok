@@ -191,7 +191,10 @@ impl IndexDriftRepairRecoveryStore for PostgresIndexDriftRepairRecoveryStore {
                 Ok(outcome)
             }
             Err(error) => {
-                let _ = transaction.rollback().await;
+                transaction
+                    .rollback()
+                    .await
+                    .map_err(|_| retryable_recovery_failure(STORAGE_UNAVAILABLE))?;
                 Err(error)
             }
         }
@@ -477,7 +480,10 @@ impl IndexDriftRepairOwner for RecoveryAwareIndexDriftRepairOwner {
                 Ok(outcome)
             }
             Err(error) => {
-                let _ = transaction.rollback().await;
+                transaction
+                    .rollback()
+                    .await
+                    .map_err(|_| retryable_repair_failure(STORAGE_UNAVAILABLE))?;
                 Err(error)
             }
         }
@@ -586,7 +592,10 @@ async fn finish_repair_transaction(
             Ok(())
         }
         Err(error) => {
-            let _ = transaction.rollback().await;
+            transaction
+                .rollback()
+                .await
+                .map_err(|_| retryable_repair_failure(STORAGE_UNAVAILABLE))?;
             Err(error)
         }
     }

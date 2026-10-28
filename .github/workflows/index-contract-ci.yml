@@ -167,6 +167,10 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           shared-key: index-contract-ci
+      - name: Verify Index crate compilation
+        run: cargo check --locked -p rustok-index --lib
+      - name: Verify complete Index crate unit tests
+        run: cargo test --locked -p rustok-index --lib
       - name: Check Events Product and Index targets
         run: cargo check --locked -p rustok-events -p rustok-product -p rustok-index --all-targets
       - name: Check selected Product distribution bridge

@@ -9,6 +9,7 @@ const fail = (message) => {
 };
 
 const lib = read('crates/modules/rustok-index/src/lib.rs');
+const indexModule = read('crates/modules/rustok-index/src/module.rs');
 const migrationModule = read('crates/modules/rustok-index/src/migrations/mod.rs');
 const records = read('crates/modules/rustok-index/src/migrations/m20260727_000001_create_index_records.rs');
 const delivery = read('crates/modules/rustok-index/src/migrations/m20260727_000002_create_index_delivery_state.rs');
@@ -25,12 +26,17 @@ const crateReadme = read('crates/modules/rustok-index/README.md');
 const moduleDocs = read('crates/modules/rustok-index/docs/README.md');
 const databaseDocs = read('docs/architecture/database.md');
 
+if (!lib.includes('pub mod migrations;') || !lib.includes('pub mod module;')) {
+  fail('Index migration and module entrypoints must be exported by lib.rs');
+}
 for (const marker of [
-  'pub mod migrations;',
+  'impl MigrationSource for IndexModule',
+  'fn migrations(&self)',
   'migrations::migrations()',
+  'fn migration_dependencies(&self)',
   'migrations::migration_dependencies()',
 ]) {
-  if (!lib.includes(marker)) fail(`IndexModule migration source missing ${marker}`);
+  if (!indexModule.includes(marker)) fail(`IndexModule migration source missing ${marker}`);
 }
 
 for (const marker of [

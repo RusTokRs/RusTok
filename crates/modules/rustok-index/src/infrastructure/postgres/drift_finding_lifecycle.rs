@@ -146,7 +146,10 @@ impl IndexDriftFindingLifecycleStore for PostgresIndexDriftFindingLifecycleStore
                 Ok(IndexDriftFindingLifecycleStoreOutcome::NotApplied(reason))
             }
             Err(error) => {
-                let _ = transaction.rollback().await;
+                transaction
+                    .rollback()
+                    .await
+                    .map_err(|_| retryable_failure(STORAGE_UNAVAILABLE))?;
                 Err(error)
             }
         }

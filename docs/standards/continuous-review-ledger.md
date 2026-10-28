@@ -1,5 +1,108 @@
 # Continuous Full-Stack Review & Architecture Audit Ledger
 
+## FS-07 `rustok-index` audit finding — 2026-10-28 (in progress)
+
+### Additional FS-07 findings and cross-boundary evidence (2026-10-28)
+
+- IDX-TEST-GAP (open): `crates/modules/rustok-index/tests/integration.rs`
+  contains an ignored `test_index_rebuild_flow` with a nil test tenant and
+  a an unimplemented rebuild-status placeholder index status lookup. It does not establish rebuild readiness.
+  Replacing it with a real database/rebuild contract test requires runtime
+  fixtures and owner verification; no test was deleted or falsely marked passed.
+- Additional inspection covered the Index admin adapter and integration-test
+  sources; the separate FS-07 Index admin checkbox also stays unchecked.
+
+- Static inventory sweep: 116 Rust files under `crates/modules/rustok-index/src/`
+  were retrieved and checked for error suppression, unchecked conversions,
+  panics, casts and blocking I/O. This is **not** an exhaustive behavioral
+  six-dimension audit; the crate remains open. Related Index bridges in
+  `apps/server`, `rustok-distribution` and `rustok-social-graph` were
+  inspected for interface usage. Their complete owner-level audits are
+  not claimed.
+- IDX-ROLLBACK-ERROR: 11 error branches across seven Index PostgreSQL
+  adapters silently discarded failed transaction rollbacks. Changed these
+  to propagate the corresponding typed retryable storage error when rollback
+  fails; a successful rollback continues to preserve the original failure.
+  Runtime database/fault-injection evidence remains open.
+- IDX-CI-GATE: the `verify-index-storage-migrations.mjs` guard falsely
+  required the `IndexModule` migration dispatch to live in `lib.rs`.
+  Canonical `src/module.rs` owns `impl MigrationSource`, while `lib.rs`
+  exports both entrypoints. The guard now verifies the actual owner and
+  its dispatch methods. A source-level marker recheck passed; CLI rerun
+  and CI confirmation remain pending.
+- Initial CI evidence on the earlier head: Index Storage Scale Evidence
+  stopped at that obsolete `lib.rs` marker. The unrelated Next-admin
+  browser workflow stopped on missing `grapesjs/dist/grapes.min.js`.
+  Neither failure is evidence that this PR passed; current head checks
+  must be independently evaluated.
+- `main` advanced after initial base; the immediately subsequent main
+  diff did not overlap the Index source, Index migration verifier or
+  Index ledger paths, but further main refresh and full scope reconciliation
+  remain required before integration.
+
+
+
+Base `main`: `dde4b1e2b505139529b8b789aecc0683ad825a9a`; work branch
+`audit/fs07-index-cursor-bounds-20261028`. **Open / source-only, not a component or phase completion.**
+
+Finding IDX-CURSOR-BOUNDS: `domain/query.rs` accepts an arbitrary-length
+`Pagination::Cursor.after` string; `application/cursor.rs` and
+`application/localized_cursor.rs` decode that untrusted Base64 text before
+enforcing any byte budget. Source replay cursors already have independent bounded
+admission in `application/source_registry.rs`. An oversized query token can
+force avoidable decode allocation and hashing on public query paths.
+
+Remediation under review: a shared, documented query-continuation byte budget
+enforced at query shape admission and both codec encode/decode boundaries, with
+ordinary/localized regression tests and no cursor wire-version change.
+Verification remains pending: scoped Rust compile/tests, remediation gate,
+broader full-crate inspection, runtime evidence and maintainer review. Keep the
+FS-07 `rustok-index` checkbox and component status unchecked.
+
+
+### Continued FS-07 discovery / CI evidence — 2026-10-28
+
+A source-pattern pass over the 116 `rustok-index/src/**/*.rs` files and
+selected server/Distribution consumer surfaces found additional unverified
+rollback, persistence, job recovery and source-key admission paths; that pass
+is **not** six-dimensional behavioral proof. The subsequent bounded
+source contract correction rejects nil targeted entity ids in
+`IndexSourceLoadRequest::new` before they can reach any source adapter.
+Both canonical request and mode-selection tests now cover the rejection;
+the GraphQL adapter still classifies the invalid `targets` input as
+`BAD_USER_INPUT`. Crate compilation and scenario execution remain open.
+
+GitHub Actions on the current draft PR reproduced one stale repository verifier:
+`verify-index-storage-migrations.mjs` erroneously looked for
+`migrations::migrations()` inside `src/lib.rs`, while the actual
+`MigrationSource for IndexModule` is in `src/module.rs`.
+The verifier was corrected on the draft branch to check the owner
+implementation and its public module entrypoint. This has **not yet**
+been re-run with a passing CI result. Separately, the Next admin browser
+run failed to resolve `grapesjs/dist/grapes.min.js` (not evidence of an Index
+cursor regression). Remaining CI and comprehensive verification are open.
+
+### Additional FS-07 scoped fixes and main synchronization barrier (2026-10-28)
+
+- Reject nil entity ids at construction of the canonical targeted source load
+  request, not only at the subsequent executor; update requester/mode/executor
+  regression tests. This does not bypass schema-specific locale admission.
+- Correct source-schema verifier ownership to `src/module.rs` and update
+  mutation-storage verifier's SQLite allowance to match the actual SQLite
+  contract-test adapter (no database support behavior was changed).
+- Extend Index Contract CI with crate-scoped `cargo check --locked -p rustok-index --lib`
+  and `cargo test --locked -p rustok-index --lib` to establish real CI
+  evidence instead of relying on source markers.
+- Latest compared `main` is `097aa2a31a6a9b950c49802f1758dd2e59b93575`.
+  It changes **21 Index source/test files** since the recorded base,
+  including `application/cursor.rs`, `application/localized_cursor.rs`
+  and `domain/error.rs`. These overlaps **must be reconciled** before
+  integration; the earlier non-overlap statement applies to a truncated
+  compare response and must not be used for merge authorization.
+- Source-only changes are not complete audit evidence; maintain the FS-07
+  checkbox as open. Full invariant/transactional assessment and CI validation
+  are still required before any merge.
+
 ## Bounded Product/Pricing remediation — 2026-10-18
 
 User-requested continuation on `arena/8161797f-rustok`, main snapshot

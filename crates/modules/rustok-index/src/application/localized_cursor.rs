@@ -2,6 +2,8 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
+
+use crate::domain::MAX_QUERY_CURSOR_BYTES;
 use uuid::Uuid;
 
 use crate::domain::{
@@ -51,6 +53,9 @@ pub enum LocalizedCursorCodecError {
     Base64(#[from] base64::DecodeError),
     #[error("localized cursor payload is too short")]
     TooShort,
+    #[error("cursor token exceeds {max} encoded bytes: {actual}")]
+    TooLarge { actual: usize, max: usize },
+
     #[error("unsupported localized cursor version: {0}")]
     UnsupportedVersion(u8),
     #[error("localized cursor checksum is invalid")]
@@ -140,13 +145,26 @@ fn encode_payload<T: Serialize>(
     envelope.push(version);
     envelope.extend_from_slice(&payload);
     envelope.extend_from_slice(&checksum[..CHECKSUM_LEN]);
-    Ok(URL_SAFE_NO_PAD.encode(envelope))
+    let encoded = URL_SAFE_NO_PAD.encode(envelope);
+    if encoded.len() > MAX_QUERY_CURSOR_BYTES {
+        return Err(LocalizedCursorCodecError::TooLarge {
+            actual: encoded.len(),
+            max: MAX_QUERY_CURSOR_BYTES,
+        });
+    }
+    Ok(encoded)
 }
 
 fn decode_payload<T: DeserializeOwned>(
     encoded: &str,
     expected_version: u8,
 ) -> Result<T, LocalizedCursorCodecError> {
+    if encoded.len() > MAX_QUERY_CURSOR_BYTES {
+        return Err(LocalizedCursorCodecError::TooLarge {
+            actual: encoded.len(),
+            max: MAX_QUERY_CURSOR_BYTES,
+        });
+    }
     let envelope = URL_SAFE_NO_PAD.decode(encoded)?;
     if envelope.len() < 1 + CHECKSUM_LEN {
         return Err(LocalizedCursorCodecError::TooShort);
@@ -421,6 +439,24 @@ mod tests {
                 &registry
             ),
             Err(LocalizedCursorValidationError::QueryFingerprintMismatch)
+        ));
+    }
+    #[test]
+    fn rejects_oversized_wire_tokens_before_base64_decode() {
+        let oversized = "A".repeat(MAX_QUERY_CURSOR_BYTES + 1);
+        assert!(matches!(
+            decode_payload::<Vec<u8>>(&oversized, LOCALIZED_SCOPED_CURSOR_VERSION),
+            Err(LocalizedCursorCodecError::TooLarge { actual, max })
+                if actual == MAX_QUERY_CURSOR_BYTES + 1 && max == MAX_QUERY_CURSOR_BYTES
+        ));
+    }
+
+    #[test]
+    fn refuses_to_emit_a_continuation_that_query_admission_would_reject() {
+        let oversized_payload = vec![0u8; MAX_QUERY_CURSOR_BYTES];
+        assert!(matches!(
+            encode_payload(LOCALIZED_SCOPED_CURSOR_VERSION, &oversized_payload),
+            Err(LocalizedCursorCodecError::TooLarge { .. })
         ));
     }
 }

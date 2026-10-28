@@ -191,6 +191,9 @@ impl IndexSourceLoadRequest {
             if key.tenant_id != tenant_id || key.schema != schema {
                 return Err(IndexSourceError::MixedLoadScope { position });
             }
+            if key.entity_id.is_nil() {
+                return Err(IndexSourceError::NilLoadEntityId { position });
+            }
             if !unique.insert(key.clone()) {
                 return Err(IndexSourceError::DuplicateLoadKey { position });
             }
@@ -671,6 +674,8 @@ pub enum IndexSourceError {
     CursorTooLarge { actual: usize, max: usize },
     #[error("Index source request tenant cannot be nil")]
     NilTenantId,
+    #[error("Index source targeted load key at position {position} has a nil entity id")]
+    NilLoadEntityId { position: usize },
     #[error("Index source scan limit is invalid: actual={actual}, max={max}")]
     InvalidScanLimit { actual: usize, max: usize },
     #[error("Index source targeted load requires at least one entity key")]
@@ -961,6 +966,21 @@ mod tests {
             locale: None,
         };
         assert!(IndexSourceLoadRequest::new(vec![key.clone()]).is_ok());
-        assert!(IndexSourceLoadRequest::new(vec![key.clone(), key]).is_err());
+        assert!(IndexSourceLoadRequest::new(vec![key.clone(), key.clone()]).is_err());
+
+        let mut nil_first = key.clone();
+        nil_first.entity_id = Uuid::nil();
+        assert!(matches!(
+            IndexSourceLoadRequest::new(vec![nil_first.clone()]),
+            Err(IndexSourceError::NilLoadEntityId { position: 0 })
+        ));
+        assert!(matches!(
+            IndexSourceLoadRequest::new(vec![key.clone(), nil_first]),
+            Err(IndexSourceError::NilLoadEntityId { position: 1 })
+        ));
+        assert!(matches!(
+            IndexSourceLoadRequest::new(vec![key.clone(), key]),
+            Err(IndexSourceError::DuplicateLoadKey { position: 1 })
+        ));
     }
 }

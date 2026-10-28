@@ -35,7 +35,7 @@ const store = requireMarkers(storePath, [
   'WHERE excluded.source_version > index_entities.source_version',
   'DELETE FROM index_links WHERE tenant_id =',
   'INSERT INTO index_links',
-  'DbBackend::Sqlite if cfg!(test) => Ok(())',
+  'DbBackend::Postgres | DbBackend::Sqlite => Ok(())',
   'Decimal::from(source_version)',
   'SqliteSourceVersionOutOfRange',
   'ConcurrentMutationConflict',
