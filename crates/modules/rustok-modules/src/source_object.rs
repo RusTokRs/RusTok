@@ -197,7 +197,7 @@ impl SourceObjectStore {
 
     /// Publishes a source file from an existing path into the source CAS,
     /// streaming it in bounded chunks (the file is never loaded whole into
-    /// memory) and rejecting files above [`MAX_SOURCE_OBJECT_BYTES`].
+    /// memory) and rejecting files above `MAX_SOURCE_OBJECT_BYTES`.
     pub async fn publish_source_file(
         &self,
         preparation_id: Uuid,
@@ -646,7 +646,7 @@ impl SourceObjectStore {
     }
 
     /// Reads back full content bytes of a source object after streamed
-    /// digest verification. Objects above [`MAX_SOURCE_OBJECT_BYTES`] are
+    /// digest verification. Objects above `MAX_SOURCE_OBJECT_BYTES` are
     /// rejected before buffering.
     pub async fn get_source_blob(&self, source_digest: &str) -> Result<Vec<u8>, SourceObjectError> {
         let path = self.destination_path(source_digest)?;

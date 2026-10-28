@@ -1358,7 +1358,7 @@ async fn insert_stale_topic_documents(
 async fn assert_storefront_exact(
     db: &DatabaseConnection,
     category_scope: SharedStorefrontSearchCategoryScopePort,
-    eligibility: Arc<RealForumPublicEligibilityPort>,
+    eligibility: Arc<ExactForumEligibilityPort>,
     fixture: ForumFixture,
     category_id: Uuid,
     channel_slug: Option<&str>,
@@ -1428,18 +1428,12 @@ async fn assert_storefront_exact(
     )
     .await
     .map_err(|error| test_error(error.to_string()))?;
-    let visible_facet_buckets = execution
-        .result
+    let visible_facet_buckets = result
         .facets
         .iter()
         .map(|facet| facet.buckets.len())
         .sum::<usize>();
-    let item_ids = execution
-        .result
-        .items
-        .iter()
-        .map(|item| item.id)
-        .collect::<Vec<_>>();
+    let item_ids = result.items.iter().map(|item| item.id).collect::<Vec<_>>();
     if result.total != expected_total {
         return Err(test_error(format!(
             "D15 storefront `{label}` returned total {}, expected {expected_total}",

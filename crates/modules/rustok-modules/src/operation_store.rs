@@ -242,7 +242,7 @@ impl ModuleOperationJournal {
     /// Lists operations needing operator attention for one tenant: hard
     /// failures plus state-committed operations whose post-hook is still
     /// outstanding. Bounded to the most recent
-    /// [`MAX_FAILED_OPERATIONS_FOR_TENANT`] rows.
+    /// `MAX_FAILED_OPERATIONS_FOR_TENANT` rows.
     pub async fn failed_for_tenant<C: ConnectionTrait>(
         db: &C,
         tenant_id: Uuid,
@@ -1164,7 +1164,7 @@ impl StaticTenantLifecycleStore {
     /// Admits one command only when its reviewed aggregate revision is current.
     /// The claim is durable and is cleared by its owner at a terminal
     /// lifecycle boundary. As a crash-safety net the claim also carries a
-    /// lease ([`STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS`]): once it expires, a
+    /// lease (`STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS`): once it expires, a
     /// later command at the same expected revision may CAS-reclaim the
     /// aggregate, fencing out the previous holder (its advance/release match
     /// on its own idempotency key and will fail).

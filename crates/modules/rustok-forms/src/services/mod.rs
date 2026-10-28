@@ -87,10 +87,8 @@ impl FormsService {
         if tenant_id.is_nil() {
             return Err(FormsError::validation("tenant_id must not be nil"));
         }
-        if let Some(pid) = page_id {
-            if pid.is_nil() {
-                return Err(FormsError::validation("page_id must not be nil"));
-            }
+        if page_id.is_some_and(|pid| pid.is_nil()) {
+            return Err(FormsError::validation("page_id must not be nil"));
         }
         validate_form_id(form_id)?;
         validate_payload(&fields)?;

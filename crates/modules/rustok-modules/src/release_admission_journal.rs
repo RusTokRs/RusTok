@@ -326,7 +326,7 @@ impl ReleaseAdmissionIntentJournal {
 
     /// Queries unfinished admission reservations older than the grace
     /// period, oldest first, bounded to
-    /// [`MAX_STALE_UNFINISHED_INTENTS_PER_SCAN`] rows per scan.
+    /// `MAX_STALE_UNFINISHED_INTENTS_PER_SCAN` rows per scan.
     pub async fn scan_stale_unfinished_intents<C: ConnectionTrait>(
         db: &C,
         grace_period: Duration,
