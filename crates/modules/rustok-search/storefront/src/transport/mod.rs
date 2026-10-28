@@ -92,6 +92,30 @@ pub async fn fetch_search(
     .await
 }
 
+/// Canonical Search transport for paged, server-filtered Blog results.
+/// Filters are applied by PostgreSQL before total/count and page offset.
+pub async fn fetch_search_page(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    tag: Option<String>,
+    limit: usize,
+    offset: usize,
+) -> Result<SearchPreviewPayload, SearchTransportError> {
+    let native = (query.clone(), locale.clone(), preset_key.clone(), filters.clone(), tag.clone());
+    execute_selected_transport(
+        "search",
+        selected_transport_path(),
+        move || native_server_adapter::fetch_search_page(
+            native.0, native.1, native.2, native.3, native.4, limit, offset,
+        ),
+        move || graphql_adapter::fetch_search_page(
+            query, locale, preset_key, filters, tag, limit, offset,
+        ),
+    ).await
+}
+
 pub async fn fetch_suggestions(
     query: String,
     locale: Option<String>,
