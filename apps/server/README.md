@@ -65,6 +65,10 @@ blindly passes through client-supplied forwarding headers without appending
 its observed peer cannot supply verifiable client identity. Keep the trusted
 CIDRs narrow, including only proxies under operator control.
 
+In production, refresh-session cookies are always marked `Secure`, even
+when forwarded-protocol headers are absent or not trusted. Outside production,
+the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
+
 ## Docs
 
 - [App docs](./docs/README.md)
