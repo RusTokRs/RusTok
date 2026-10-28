@@ -14,7 +14,7 @@ use rustok_comments::{
     SetCommentStatusRequest as ApiSetCommentStatusRequest,
     UpdateCommentInput as ApiUpdateCommentInput,
 };
-use rustok_core::{SecurityActorKind, SecurityContext};
+use rustok_core::{PermissionScope, SecurityActorKind, SecurityContext};
 use std::sync::Arc;
 
 use crate::BlogPostStatus;
@@ -559,10 +559,15 @@ impl CommentService {
         fallback_locale: Option<&str>,
         public_channel_slug: Option<&str>,
     ) -> BlogResult<(Vec<CommentListItem>, u64)> {
-        if !security.is_public_read() {
+        // COMMENTS_LIST is not a moderation grant. Without COMMENTS_MODERATE
+        // an authenticated customer must use exactly the same approved-only,
+        // published/channel-visible Comments projection as an anonymous reader.
+        let owner_read = may_moderate_comments(&security);
+        if owner_read {
             enforce_scope(&security, Resource::Comments, Action::List)?;
             self.ensure_post_exists(tenant_id, post_id).await?;
         } else {
+            enforce_scope(&security, Resource::Comments, Action::List)?;
             if self.public_comments_mode(tenant_id).await? == BlogCommentsMode::Disabled {
                 return Err(BlogError::CommentsDisabled);
             }
@@ -586,7 +591,7 @@ impl CommentService {
             per_page,
         };
 
-        let result = if security.is_public_read() {
+        let result = if !owner_read {
             self.require_comments_thread_port()?
                 .list_public_comments_for_target(
                     comments_public_read_port_context(tenant_id, locale.as_str(), post_id),
@@ -609,7 +614,7 @@ impl CommentService {
         };
 
         let (items, total) = result.map_err(comments_port_error_to_blog_error)?;
-        if security.is_public_read() {
+        if !owner_read {
             // A post can be unpublished, moved to another channel or have its
             // comments disabled while the Comments owner request is in flight.
             // Do not return a once-authorized thread after the owner read
@@ -780,6 +785,15 @@ impl CommentService {
             created_at: item.created_at,
         }
     }
+}
+
+/// Only a moderation grant permits reading the owner queue (including
+/// pending, spam and trash). Generic read/list grants are not escalation.
+fn may_moderate_comments(security: &SecurityContext) -> bool {
+    !matches!(
+        security.get_scope(Resource::Comments, Action::Moderate),
+        PermissionScope::None
+    )
 }
 
 fn is_public_comment_target(
