@@ -380,6 +380,14 @@ export default async function BlogListingPage({
                   ? "В данный момент статьи отсутствуют или не соответствуют фильтру."
                   : "Check back later or clear the selected filter."}
             </p>
+            {searchQuery && searchTotal > 0 && searchPage > 1 && (
+              <Link
+                href={searchPageHref(1)}
+                className="mt-4 inline-flex rounded-full border px-4 py-2 text-sm"
+              >
+                {isRu ? "Вернуться к первым результатам" : "Back to first results"}
+              </Link>
+            )}
             {(searchQuery || selectedCategory || selectedTag) && (
               <div className="mt-4">
                 <Link
