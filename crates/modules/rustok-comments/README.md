@@ -34,7 +34,7 @@
 
 ## Durable port idempotency
 
-All write operations exposed through CommentsThreadPort use a durable owner-operation receipt. The receipt remains scoped to the tenant, Comments owner, operation and caller idempotency key, and its request identity additionally includes the authenticated PortContext.actor plus the exact request payload. A terminal replay therefore cannot cross users or service actors inside the same tenant, while retries from the same principal replay the original committed result.
+All write operations exposed through CommentsThreadPort use a durable owner-operation receipt. The receipt remains scoped to the tenant, Comments owner, operation and caller idempotency key, and its request identity additionally includes the authenticated PortContext.actor plus the exact request payload. A terminal replay therefore cannot cross users or service actors inside the same tenant, while retries from the same principal replay the original committed result. Only non-retryable domain failures become terminal error receipts. For retryable failures (including temporary unavailability and an uncertain commit), the Comments port uses Outbox's lease- and status-fenced `release_retryable` command: a command can be retried with the original key, and no already-completed receipt may be removed.
 
 ## Thread write invariants
 
