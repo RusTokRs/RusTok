@@ -107,19 +107,9 @@ fn browser_route_context() -> (
 
 #[cfg(feature = "csr")]
 fn parse_query_params(search: &str) -> std::collections::HashMap<String, String> {
-    search
-        .trim_start_matches('?')
-        .split('&')
-        .filter(|item| !item.is_empty())
-        .filter_map(|item| {
-            let (key, value) = item.split_once('=').unwrap_or((item, ""));
-            if key.is_empty() {
-                None
-            } else {
-                Some((key.to_string(), value.to_string()))
-            }
-        })
-        .collect()
+    // Match Axum's SSR query parsing: decode percent-encoded Unicode and '+'
+    // before the module passes category, tag and slug filters to GraphQL.
+    serde_urlencoded::from_str(search.trim_start_matches('?')).unwrap_or_default()
 }
 
 #[cfg(feature = "csr")]
@@ -158,3 +148,15 @@ fn debug_enabled_modules() -> Vec<String> {
 
 #[cfg(not(any(feature = "ssr", feature = "csr")))]
 fn main() {}
+
+#[cfg(all(test, feature = "csr"))]
+mod csr_query_parity_tests {
+    use super::parse_query_params;
+
+    #[test]
+    fn decodes_unicode_and_form_encoded_query_values() {
+        let query = parse_query_params("?tag=%D0%BD%D0%BE%D0%B2%D0%BE%D1%81%D1%82%D0%B8&q=hello+world");
+        assert_eq!(query.get("tag").map(String::as_str), Some("новости"));
+        assert_eq!(query.get("q").map(String::as_str), Some("hello world"));
+    }
+}
