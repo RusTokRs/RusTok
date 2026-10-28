@@ -16,6 +16,8 @@ use crate::model::{
 use rustok_search_storefront::model::{SearchPreviewFilters, SearchPreviewPayload};
 use crate::{comments_pagination, core, transport};
 
+const BLOG_SEARCH_PAGE_SIZE: usize = 9;
+
 #[component]
 pub fn BlogView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -75,15 +77,14 @@ pub fn BlogView() -> impl IntoView {
             if let Some(category_id) = request.category_id {
                 filters.category_ids.push(category_id);
             }
-            const SEARCH_PAGE_SIZE: usize = 6;
             let result = rustok_search_storefront::transport::fetch_search_page(
                 query,
                 request.locale,
                 None,
                 filters,
                 request.tag,
-                SEARCH_PAGE_SIZE,
-                (search_page - 1) * SEARCH_PAGE_SIZE,
+                BLOG_SEARCH_PAGE_SIZE,
+                (search_page - 1) * BLOG_SEARCH_PAGE_SIZE,
             ).await.map_err(|error| error.to_string())?;
             let total = result.total;
             data.posts = map_blog_search_results(result)?;
@@ -415,7 +416,7 @@ fn BlogShowcase(
             })}
             {search_total.map(|total| {
                 let has_previous = search_page > 1;
-                let has_next = (search_page as u64) * 6 < total;
+                let has_next = (search_page as u64) * (BLOG_SEARCH_PAGE_SIZE as u64) < total;
                 let previous_writer = search_previous_writer.clone();
                 let next_writer = search_next_writer.clone();
                 view! {
