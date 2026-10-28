@@ -15,8 +15,9 @@ pub fn BlogStatusBadge(status: String, unknown_label: String) -> impl IntoView {
 
 #[component]
 pub fn BlogShareButtons(title: String, slug: String) -> impl IntoView {
-    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let is_ru = locale.as_deref() == Some("ru");
+    let route = use_context::<UiRouteContext>().unwrap_or_default();
+    let locale = route.locale.clone();
+    let is_ru = locale.as_deref().is_some_and(|value| value.starts_with("ru"));
     let share_label = if is_ru {
         "Поделиться"
     } else {
@@ -26,7 +27,14 @@ pub fn BlogShareButtons(title: String, slug: String) -> impl IntoView {
     let vk_label = "VK";
     let twitter_label = "X (Twitter)";
 
-    let article_url = format!("/blog?slug={}", core::percent_encode(&slug));
+    // Build the link from the host route contract; Leptos is served under
+    // /modules/blog (with an optional locale prefix), not /blog.
+    let route_segment = core::route_segment_or_default(
+        route.route_segment.as_ref().cloned(),
+        core::DEFAULT_ROUTE_SEGMENT,
+    );
+    let route_base = route.module_route_base(route_segment.as_str());
+    let article_url = core::module_href(&route_base, &core::percent_encode(&slug));
     let tg_url = core::telegram_share_url(&article_url, &title);
     let vk_url = core::vk_share_url(&article_url, &title);
     let tw_url = core::twitter_share_url(&article_url, &title);
