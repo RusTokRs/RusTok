@@ -286,6 +286,46 @@ where
     Ok(())
 }
 
+/// Releases a retryable failure's processing lease instead of recording it as
+/// a permanent error. An outage, timeout or ambiguous commit must be retried
+/// with the *same* request key: persisting it as a terminal failure would make
+/// the outage permanent for the caller.
+///
+/// The lease token and processing state guard are essential. If an uncertain
+/// transaction actually committed, its receipt is already completed and cannot
+/// be deleted. If another worker reclaimed the lease, we cannot release it.
+/// Call only after the command transaction has been rolled back or commit has
+/// returned, never while a write transaction is still live.
+pub async fn release_retryable<C>(
+    connection: &C,
+    lease: Lease,
+    error: &PortError,
+) -> Result<(), PortError>
+where
+    C: ConnectionTrait,
+{
+    if !error.retryable {
+        return Err(PortError::validation(
+            "outbox.operation_receipt_release_terminal",
+            "only retryable owner-operation failures may release a receipt",
+        ));
+    }
+    let removed = entity::Entity::delete_many()
+        .filter(entity::Column::Id.eq(lease.operation_id))
+        .filter(entity::Column::LeaseToken.eq(lease.token))
+        .filter(entity::Column::Status.eq(STATUS_PROCESSING))
+        .exec(connection)
+        .await
+        .map_err(database_error)?;
+    if removed.rows_affected != 1 {
+        return Err(PortError::unavailable(
+            "outbox.operation_receipt_release_uncertain",
+            "receipt was completed or reclaimed before retryable release",
+        ));
+    }
+    Ok(())
+}
+
 async fn inspect_or_reclaim(
     database: &DatabaseConnection,
     existing: entity::Model,
