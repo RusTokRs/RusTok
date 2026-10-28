@@ -109,20 +109,27 @@ export async function searchPublishedPosts(
     if (!slug) {
       throw new Error("Blog Search returned a post without its canonical slug");
     }
+    const authorId = str(payload.author_id);
+    // The public Profiles owner already decides whether author_name may
+    // be projected into Search. Render only that approved label, never
+    // resolve private Profiles data directly from a search result.
+    const authorName = str(payload.author_name);
     return {
       id: item.id,
       title: item.title,
       slug,
       excerpt: str(payload.excerpt),
       featuredImageUrl: str(payload.featured_image_url),
-      authorId: str(payload.author_id),
+      authorId,
       categoryId: str(payload.category_id),
       categoryName: str(payload.category_name),
       tags: Array.isArray(payload.tags)
         ? payload.tags.filter((value): value is string => typeof value === "string")
         : [],
       publishedAt: str(payload.published_at),
-      authorProfile: null,
+      authorProfile: authorId && authorName
+        ? { userId: authorId, handle: "", displayName: authorName, tags: [], avatarMediaId: null }
+        : null,
     };
   });
   return {
