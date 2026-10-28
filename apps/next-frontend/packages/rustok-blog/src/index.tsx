@@ -15,6 +15,7 @@ export {
   fetchPublishedPost,
   fetchPublishedPosts,
   fetchBlogCategories,
+  fetchBlogTags,
 } from "./api/posts";
 export { BlogSection } from "./components/blog-section";
 export { PostCard } from "./components/post-card";
