@@ -1456,19 +1456,19 @@ impl CommentsService {
         requested: crate::dto::CommentStatus,
     ) -> CommentsResult<crate::dto::CommentStatus> {
         match requested {
-            crate::dto::CommentStatus::Pending | crate::dto::CommentStatus::Approved => {
-                Ok(requested)
-            }
-            crate::dto::CommentStatus::Spam | crate::dto::CommentStatus::Trash
+            crate::dto::CommentStatus::Pending => Ok(requested),
+            crate::dto::CommentStatus::Approved
+            | crate::dto::CommentStatus::Spam
+            | crate::dto::CommentStatus::Trash
                 if self.can_moderate(security) =>
             {
                 Ok(requested)
             }
-            crate::dto::CommentStatus::Spam | crate::dto::CommentStatus::Trash => {
-                Err(CommentsError::Forbidden(
-                    "Only moderators can create comments with spam/trash status".to_string(),
-                ))
-            }
+            crate::dto::CommentStatus::Approved
+            | crate::dto::CommentStatus::Spam
+            | crate::dto::CommentStatus::Trash => Err(CommentsError::Forbidden(
+                "Only moderators may bypass pending comment moderation".to_string(),
+            )),
         }
     }
 
