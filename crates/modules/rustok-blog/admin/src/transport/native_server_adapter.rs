@@ -56,6 +56,20 @@ pub(super) async fn unpublish_post(
     blog_admin_unpublish_post_native(id, locale).await
 }
 
+pub(super) async fn pin_post(
+    id: String,
+    locale: Option<String>,
+) -> Result<BlogPostDetail, ServerFnError> {
+    blog_admin_pin_post_native(id, locale).await
+}
+
+pub(super) async fn unpin_post(
+    id: String,
+    locale: Option<String>,
+) -> Result<BlogPostDetail, ServerFnError> {
+    blog_admin_unpin_post_native(id, locale).await
+}
+
 pub(super) async fn archive_post(
     id: String,
     locale: Option<String>,
@@ -519,6 +533,38 @@ async fn blog_admin_unpublish_post_native(
     }
 }
 
+#[server(prefix = "/api/fn", endpoint = "blog/admin/pin-post")]
+async fn blog_admin_pin_post_native(
+    id: String,
+    locale: Option<String>,
+) -> Result<BlogPostDetail, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        update_status_and_reload(id, locale, StatusMutation::Pin).await
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (id, locale);
+        Err(ServerFnError::new("blog/admin/pin-post requires the `ssr` feature"))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "blog/admin/unpin-post")]
+async fn blog_admin_unpin_post_native(
+    id: String,
+    locale: Option<String>,
+) -> Result<BlogPostDetail, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        update_status_and_reload(id, locale, StatusMutation::Unpin).await
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (id, locale);
+        Err(ServerFnError::new("blog/admin/unpin-post requires the `ssr` feature"))
+    }
+}
+
 #[server(prefix = "/api/fn", endpoint = "blog/admin/archive-post")]
 async fn blog_admin_archive_post_native(
     id: String,
@@ -559,6 +605,8 @@ async fn blog_admin_restore_post_native(
 enum StatusMutation {
     Publish,
     Unpublish,
+    Pin,
+    Unpin,
     Archive,
     Restore,
 }
@@ -585,6 +633,16 @@ async fn update_status_and_reload(
         StatusMutation::Unpublish => {
             service
                 .unpublish_post(context.tenant.id, post_id, security)
+                .await
+        }
+        StatusMutation::Pin => {
+            service
+                .pin_post(context.tenant.id, post_id, security)
+                .await
+        }
+        StatusMutation::Unpin => {
+            service
+                .unpin_post(context.tenant.id, post_id, security)
                 .await
         }
         StatusMutation::Archive => {
