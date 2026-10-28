@@ -91,6 +91,11 @@ fn blog_post_draft_builder_normalizes_form_state_without_ui_runtime() {
         content: &content,
         publish: true,
         tags: " news, launch ,, release ",
+        category_id: "",
+        channel_slugs: "",
+        featured_image_url: "",
+        seo_title: "",
+        seo_description: "",
     });
 
     assert_eq!(draft.locale, "ru");
@@ -136,6 +141,8 @@ fn editor_form_state_maps_empty_and_loaded_post_without_ui_runtime() {
         is_pinned: false,
         pinned_at: None,
         tags: vec!["news".to_string(), "release".to_string()],
+        category_id: None,
+        channel_slugs: Vec::new(),
         featured_image_url: None,
         seo_title: None,
         seo_description: None,
@@ -165,6 +172,11 @@ fn prepare_save_command_rejects_missing_required_fields() {
         content: &content,
         publish: false,
         tags: "",
+        category_id: "",
+        channel_slugs: "",
+        featured_image_url: "",
+        seo_title: "",
+        seo_description: "",
     });
 
     let issue =
@@ -186,6 +198,11 @@ fn prepare_save_command_selects_create_operation() {
         content: &content,
         publish: true,
         tags: "news",
+        category_id: "",
+        channel_slugs: "",
+        featured_image_url: "",
+        seo_title: "",
+        seo_description: "",
     });
 
     let command = prepare_blog_post_save_command(None, draft, "required".to_string())
@@ -209,6 +226,11 @@ fn prepare_save_command_selects_update_operation() {
         content: &content,
         publish: false,
         tags: "news",
+        category_id: "",
+        channel_slugs: "",
+        featured_image_url: "",
+        seo_title: "",
+        seo_description: "",
     });
 
     let command =
