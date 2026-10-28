@@ -32,7 +32,7 @@ allow_user_content_deletion = { type = "boolean", default = false, description =
 # Pagination & Display
 topics_per_page = { type = "integer", default = 20, description = "Default number of topics displayed per category page." }
 replies_per_page = { type = "integer", default = 20, description = "Default number of replies displayed per topic page." }
-default_topic_sort = { type = "string", default = "latest_reply", options = ["latest_reply", "created_at", "votes", "views"], description = "Default sort order for topic listing pages." }
+default_topic_sort = { type = "string", default = "latest_reply", options = ["latest_reply", "top"], description = "Default topic listing order when the request omits order: latest reply activity or the canonical Top ranking." }
 show_locked_topics_in_lists = { type = "boolean", default = true, description = "Show locked topics in storefront topic lists. Archived topics are never listed there." }
 
 # Voting, Reactions & Engagement

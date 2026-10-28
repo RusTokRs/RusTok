@@ -242,8 +242,9 @@ wrappers. Each one has an owner decision or a follow-up task in
   this distinction; per-viewer listing still comes from the exact audience owner.
 - `default_topic_sort` now selects `latest_reply` (default) or `top`
   for REST, GraphQL owner, storefront and unread topic lists when `order`
-  is omitted. Explicit `order` wins; unsupported saved values fail with a
-  typed configuration error. `allow_user_topic_closing` remains unwired:
+  is omitted. Explicit `order` wins; unsupported saved values (including
+  former manifest choices `created_at`, `votes`, and `views`) fail with a
+  typed configuration error. The manifest now exposes only executable modes. `allow_user_topic_closing` remains unwired:
   authors cannot close or lock their own topics through this setting. The unread settings removed by
   `DECISIONS/2026-10-09-forum-remove-unwired-module-settings.md` are no longer declared.
 - `topics_per_page` and `replies_per_page` are the default page size for REST and GraphQL list requests that omit

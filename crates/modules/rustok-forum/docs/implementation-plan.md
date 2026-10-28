@@ -102,7 +102,9 @@ Findings are ordered by risk and by dependency (owner correctness before transpo
 9. **P2, partially source-ready:** `default_topic_sort` now resolves
    omitted REST, GraphQL owner, storefront and unread sort orders from
    tenant settings (`latest_reply` or `top`). Explicit ordering wins;
-   invalid stored values produce a typed validation error.
+   invalid stored values produce a typed validation error. The module
+   manifest now lists only `latest_reply` and `top`; any previously saved
+   unsupported value needs explicit operator correction, not a silent remap.
    `allow_user_topic_closing` remains unwired pending its separate
    write-authorization and UI decision.
 10. **P2/P3, outstanding:** Separate faithful owner widget preview from live

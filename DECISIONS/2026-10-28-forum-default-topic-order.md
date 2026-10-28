@@ -15,8 +15,11 @@ The canonical list filter supports only `ForumTopicListOrder::Latest`
 
 The tenant settings owner reads `default_topic_sort` through the existing
 static settings port. It accepts `latest_reply` (default, maps to `Latest`)
-and `top` (maps to `Top`). Unsupported stored values return a typed
-validation error; they are not silently mapped to another ranking.
+and `top` (maps to `Top`). The canonical module manifest exposes exactly
+those two choices. Its previous `created_at`, `votes` and `views` values
+were never implemented as list orders; stored values from those options
+are not silently remapped or destroyed and instead fail with a typed
+validation error until the operator selects a supported mode.
 
 REST `GET /api/forum/topics` treats omitted `order` as an optional query
 parameter. GraphQL `forumTopics`, `forumStorefrontAudienceTopics`, and

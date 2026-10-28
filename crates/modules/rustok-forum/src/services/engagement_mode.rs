@@ -141,9 +141,22 @@ mod topic_sort_tests {
 
     #[test]
     fn unsupported_sort_is_not_silently_accepted() {
-        for bad in ["oldest", "popular", "", "TOP"] {
+        for bad in ["oldest", "popular", "created_at", "votes", "views", "", "TOP"] {
             assert!(parse_topic_order(bad).is_err(), "unexpected sort: {bad}");
         }
+    }
+
+    #[test]
+    fn manifest_options_match_executable_sort_orders() {
+        let manifest = include_str!("../../rustok-module.toml");
+        let entry = manifest
+            .lines()
+            .find(|line| line.starts_with("default_topic_sort = "))
+            .expect("default_topic_sort setting must be declared");
+        assert!(
+            entry.contains("options = [\"latest_reply\", \"top\"]"),
+            "manifest sort choices must match the canonical list orders"
+        );
     }
 }
 
