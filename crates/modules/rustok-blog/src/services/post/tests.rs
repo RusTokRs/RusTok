@@ -990,3 +990,120 @@ async fn public_keyset_skips_untranslated_pinned_post_before_limit() {
         "the sole renderable post must not produce a phantom next page"
     );
 }
+
+/// The authenticated post endpoints used to expose channel-restricted posts to
+/// non-editor readers, even though the public Blog list hid them.
+#[tokio::test]
+async fn customer_channel_scope_applies_before_post_list_keyset() {
+    let db = setup_test_db().await;
+    ensure_blog_schema(&db).await;
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    let service = PostService::new(db.clone(), event_bus);
+    let tenant_id = Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+    seed_channel(&db, tenant_id, "web").await;
+    seed_channel(&db, tenant_id, "mobile").await;
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let customer = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+
+    let mut restricted = crate::tests::hardening::post_input("mobile-secret");
+    restricted.publish = true;
+    restricted.channel_slugs = Some(vec!["mobile".to_string()]);
+    let mobile_id = service
+        .create_post(tenant_id, admin.clone(), restricted)
+        .await
+        .expect("mobile published post should be created");
+
+    let mut global = crate::tests::hardening::post_input("public-global");
+    global.publish = true;
+    let global_id = service
+        .create_post(tenant_id, admin.clone(), global)
+        .await
+        .expect("global published post should be created");
+
+    assert!(
+        service
+            .get_post_with_locale_fallback_on_channel(
+                tenant_id,
+                customer.clone(),
+                mobile_id,
+                "en",
+                Some("en"),
+                Some("web"),
+            )
+            .await
+            .is_err(),
+        "a web reader must not read a mobile-only post by id"
+    );
+    assert!(
+        service
+            .get_post_with_locale_fallback(tenant_id, customer.clone(), mobile_id, "en", Some("en"))
+            .await
+            .is_err(),
+        "an unscoped public reader may only see globally visible posts"
+    );
+    assert_eq!(
+        service
+            .get_post_with_locale_fallback_on_channel(
+                tenant_id,
+                admin.clone(),
+                mobile_id,
+                "en",
+                Some("en"),
+                Some("web"),
+            )
+            .await
+            .expect("editor can inspect any channel")
+            .id,
+        mobile_id
+    );
+
+    let first = service
+        .list_posts_with_locale_fallback_on_channel(
+            tenant_id,
+            customer.clone(),
+            PostListQuery {
+                locale: Some("en".to_string()),
+                per_page: Some(1),
+                ..Default::default()
+            },
+            Some("en"),
+            Some("web"),
+        )
+        .await
+        .expect("customer list should succeed");
+    assert_eq!(first.items.len(), 1);
+    assert_eq!(first.items[0].id, global_id);
+    assert!(
+        first.next_cursor.is_none(),
+        "hidden rows cannot create a phantom next page"
+    );
+
+    let mobile = service
+        .list_posts_with_locale_fallback_on_channel(
+            tenant_id,
+            customer,
+            PostListQuery {
+                locale: Some("en".to_string()),
+                per_page: Some(10),
+                ..Default::default()
+            },
+            Some("en"),
+            Some("mobile"),
+        )
+        .await
+        .expect("mobile scoped list should succeed");
+    assert_eq!(mobile.items.len(), 2);
+
+    let all_for_admin = service
+        .list_posts_with_locale_fallback_on_channel(
+            tenant_id,
+            admin,
+            PostListQuery::default(),
+            Some("en"),
+            Some("web"),
+        )
+        .await
+        .expect("editor list should succeed");
+    assert_eq!(all_for_admin.items.len(), 2);
+}
