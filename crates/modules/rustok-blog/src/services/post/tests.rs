@@ -1108,3 +1108,52 @@ async fn customer_channel_scope_applies_before_post_list_keyset() {
         .expect("editor list should succeed");
     assert_eq!(all_for_admin.items.len(), 2);
 }
+
+/// Comments and post listings must agree on a canonical channel slug. A route
+/// carrying an uppercase/space-padded slug must not turn a visible post into a
+/// false 404 or mask a Channel owner failure as missing content.
+#[tokio::test]
+async fn public_comment_target_uses_same_normalized_channel_as_post_listing() {
+    let db = setup_test_db().await;
+    ensure_blog_schema(&db).await;
+    let events = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    let posts = PostService::new(db.clone(), events);
+    let tenant_id = Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+    seed_channel(&db, tenant_id, "web").await;
+    let mut input = crate::tests::hardening::post_input("channel-comments");
+    input.publish = true;
+    input.channel_slugs = Some(vec!["web".to_string()]);
+    let post_id = posts
+        .create_post(
+            tenant_id,
+            SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4())),
+            input,
+        )
+        .await
+        .expect("channel restricted post should publish");
+
+    let comments = crate::CommentService::from_runtime_capabilities(db, None, None);
+    comments
+        .ensure_public_post_visible(tenant_id, post_id, Some(" WEB "))
+        .await
+        .expect("normalized channel permits the published post");
+    assert!(
+        matches!(
+            comments
+                .ensure_public_post_visible(tenant_id, post_id, Some("other"))
+                .await,
+            Err(BlogError::PostNotFound(_))
+        ),
+        "unmatched channel must fail closed"
+    );
+    assert!(
+        matches!(
+            comments
+                .ensure_public_post_visible(tenant_id, post_id, Some("  "))
+                .await,
+            Err(BlogError::PostNotFound(_))
+        ),
+        "empty channel does not inherit another channel's authorization"
+    );
+}
