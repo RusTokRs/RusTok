@@ -174,10 +174,14 @@ requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs',
   'PostgresIndexReplayJobStore',
 ]);
 requireMarkers('crates/modules/rustok-index/src/lib.rs', [
-  'get_or_insert_with::<IndexSchemaSourceCatalog',
-  'get_or_insert_with::<IndexSourceCatalog',
+  'pub mod module;',
   'PostgresIndexReplayCheckpointStore',
   'PostgresIndexReplayJobStore',
+]);
+requireMarkers('crates/modules/rustok-index/src/module.rs', [
+  'impl RusToKModule for IndexModule',
+  'get_or_insert_with::<IndexSchemaSourceCatalog',
+  'get_or_insert_with::<IndexSourceCatalog',
 ]);
 requireMarkers('crates/modules/rustok-index/Cargo.toml', [
   'tracing.workspace = true',
