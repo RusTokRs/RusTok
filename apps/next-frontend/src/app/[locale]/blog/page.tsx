@@ -370,6 +370,11 @@ export default async function BlogListingPage({
                   key={post.id}
                   post={post}
                   locale={locale}
+                  filters={{
+                    tag: selectedTag,
+                    category: selectedCategory,
+                    q: searchQuery
+                  }}
                   href={
                     post.slug
                       ? `/${locale}/blog/${encodeURIComponent(post.slug)}`
