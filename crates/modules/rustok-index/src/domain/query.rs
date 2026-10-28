@@ -320,5 +320,4 @@ mod tests {
         };
         assert!(bounded.validate().is_ok());
     }
-
 }
