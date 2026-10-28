@@ -20,7 +20,10 @@ impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         match manager.get_database_backend() {
             DatabaseBackend::Postgres | DatabaseBackend::Sqlite => {
-                manager.get_connection().execute_unprepared(CREATE_INDEX).await?;
+                manager
+                    .get_connection()
+                    .execute_unprepared(CREATE_INDEX)
+                    .await?;
                 Ok(())
             }
             backend => Err(DbErr::Custom(format!(
@@ -32,7 +35,10 @@ impl MigrationTrait for Migration {
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         match manager.get_database_backend() {
             DatabaseBackend::Postgres | DatabaseBackend::Sqlite => {
-                manager.get_connection().execute_unprepared(DROP_INDEX).await?;
+                manager
+                    .get_connection()
+                    .execute_unprepared(DROP_INDEX)
+                    .await?;
                 Ok(())
             }
             backend => Err(DbErr::Custom(format!(
@@ -49,7 +55,9 @@ mod tests {
 
     #[tokio::test]
     async fn migration_rejects_duplicate_running_jobs_without_discarding_history() {
-        let db = Database::connect("sqlite::memory:").await.expect("sqlite database");
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite database");
         let manager = SchemaManager::new(&db);
         super::super::m20260928_000001_create_install_http_jobs::Migration
             .up(&manager)
@@ -76,7 +84,8 @@ mod tests {
         let count = db
             .query_one(sea_orm_migration::sea_orm::Statement::from_string(
                 DatabaseBackend::Sqlite,
-                "SELECT count(*) AS count FROM install_http_jobs WHERE status = 'running'".to_string(),
+                "SELECT count(*) AS count FROM install_http_jobs WHERE status = 'running'"
+                    .to_string(),
             ))
             .await
             .expect("read retained job history")
@@ -88,7 +97,9 @@ mod tests {
 
     #[tokio::test]
     async fn a_second_running_job_is_rejected_while_finished_history_is_unbounded() {
-        let db = Database::connect("sqlite::memory:").await.expect("sqlite database");
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite database");
         let manager = SchemaManager::new(&db);
         super::super::m20260928_000001_create_install_http_jobs::Migration
             .up(&manager)

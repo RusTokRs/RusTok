@@ -1256,9 +1256,11 @@ mod tests {
             .into_iter()
             .map(|migration| migration.name().to_string())
             .collect::<Vec<_>>();
-        assert!(names.iter().any(|name| {
-            name == "m20261028_000001_enforce_single_running_install_http_job"
-        }));
+        assert!(
+            names
+                .iter()
+                .any(|name| { name == "m20261028_000001_enforce_single_running_install_http_job" })
+        );
     }
 
     #[test]

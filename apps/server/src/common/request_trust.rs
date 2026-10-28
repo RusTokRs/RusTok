@@ -109,13 +109,7 @@ fn parse_forwarded_for_ip(value: &str) -> Option<IpAddr> {
     IpAddr::from_str(candidate)
         .ok()
         .or_else(|| SocketAddr::from_str(candidate).ok().map(|addr| addr.ip()))
-        .or_else(|| {
-            candidate
-                .strip_prefix('[')?
-                .strip_suffix(']')?
-                .parse()
-                .ok()
-        })
+        .or_else(|| candidate.strip_prefix('[')?.strip_suffix(']')?.parse().ok())
 }
 
 /// Resolve client identity from the nearest hop towards the caller. A trusted
@@ -295,10 +289,7 @@ mod tests {
             "x-forwarded-host",
             HeaderValue::from_static("evil.example.test, tenant.example.test"),
         );
-        headers.insert(
-            "x-forwarded-proto",
-            HeaderValue::from_static("http, https"),
-        );
+        headers.insert("x-forwarded-proto", HeaderValue::from_static("http, https"));
         let peer = Some(IpAddr::from([10, 1, 2, 3]));
         let settings = trusted_settings();
 
@@ -337,10 +328,7 @@ mod tests {
     #[test]
     fn forwarded_proto_rejects_non_http_schemes() {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            "x-forwarded-proto",
-            HeaderValue::from_static("javascript"),
-        );
+        headers.insert("x-forwarded-proto", HeaderValue::from_static("javascript"));
         assert_eq!(
             extract_effective_proto(
                 &headers,
@@ -373,10 +361,7 @@ mod tests {
             "x-forwarded-for",
             HeaderValue::from_static("198.51.100.66, 203.0.113.8"),
         );
-        headers.append(
-            "x-forwarded-for",
-            HeaderValue::from_static("10.0.0.4"),
-        );
+        headers.append("x-forwarded-for", HeaderValue::from_static("10.0.0.4"));
 
         assert_eq!(
             extract_effective_client_ip(
@@ -427,9 +412,7 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             FORWARDED,
-            HeaderValue::from_static(
-                "for=198.51.100.66;proto=http, for=\"[2001:db8::1234]:1234\"",
-            ),
+            HeaderValue::from_static("for=198.51.100.66;proto=http, for=\"[2001:db8::1234]:1234\""),
         );
 
         assert_eq!(

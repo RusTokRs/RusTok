@@ -615,10 +615,7 @@ fn not_found_error(description: impl Into<String>) -> Error {
 
 /// Log operational diagnostics server-side without exposing backend connection
 /// details, filesystem paths or SQL fragments in the public installer response.
-fn installer_storage_failure(
-    operation: &'static str,
-    error: impl std::fmt::Display,
-) -> Error {
+fn installer_storage_failure(operation: &'static str, error: impl std::fmt::Display) -> Error {
     tracing::error!(%error, operation, "Installer storage/host operation failed");
     internal_error("Installer state is temporarily unavailable")
 }

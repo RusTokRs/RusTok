@@ -5,11 +5,18 @@
 //! Provider Configuration document because this server does not implement the
 //! complete OIDC ID-token/JWKS surface.
 
-use axum::{Json, extract::{Request, State}, http::HeaderMap, routing::get};
+use axum::{
+    Json,
+    extract::{Request, State},
+    http::HeaderMap,
+    routing::get,
+};
 use reqwest::Url;
 use serde::Serialize;
 
-use crate::common::{RustokSettings, extract_effective_host, extract_effective_proto, peer_ip_from_extensions};
+use crate::common::{
+    RustokSettings, extract_effective_host, extract_effective_proto, peer_ip_from_extensions,
+};
 use crate::error::Error;
 use crate::services::server_runtime_context::ServerAuthRuntime;
 
@@ -204,10 +211,7 @@ mod tests {
             "x-forwarded-host",
             "evil.example.test, api.example.test".parse().unwrap(),
         );
-        headers.insert(
-            "x-forwarded-proto",
-            "http, https".parse().unwrap(),
-        );
+        headers.insert("x-forwarded-proto", "http, https".parse().unwrap());
 
         assert_eq!(
             resolve_metadata_issuer(

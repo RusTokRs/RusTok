@@ -30,7 +30,10 @@ impl PaginationParams {
     /// The offset must use the same normalized page size as the query limit.
     /// Saturation avoids arithmetic overflow for hostile page numbers.
     pub fn offset(&self) -> u64 {
-        self.page.max(1).saturating_sub(1).saturating_mul(self.limit())
+        self.page
+            .max(1)
+            .saturating_sub(1)
+            .saturating_mul(self.limit())
     }
 
     pub fn limit(&self) -> u64 {

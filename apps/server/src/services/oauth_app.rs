@@ -2218,7 +2218,10 @@ mod tests {
             .await
             .expect("read orphan token")
             .expect("orphan token remains as revoked evidence");
-        assert!(token.revoked_at.is_some(), "removed managed app must revoke its tokens");
+        assert!(
+            token.revoked_at.is_some(),
+            "removed managed app must revoke its tokens"
+        );
     }
 
     #[tokio::test]
@@ -2262,6 +2265,9 @@ mod tests {
             .await
             .expect("load app after failed sync")
             .expect("app remains persisted");
-        assert!(still_active.is_active, "failed transaction must preserve prior app state");
+        assert!(
+            still_active.is_active,
+            "failed transaction must preserve prior app state"
+        );
     }
 }

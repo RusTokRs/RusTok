@@ -1010,18 +1010,21 @@ mod tests {
             trusted_proxy_cidrs: vec!["10.0.0.0/8".to_string()],
         };
         let mut headers = axum::http::HeaderMap::new();
-        headers.insert(
-            "x-forwarded-proto",
-            "http, https".parse().unwrap(),
-        );
+        headers.insert("x-forwarded-proto", "http, https".parse().unwrap());
         let trusted_peer = std::net::IpAddr::from([10, 0, 0, 4]);
         let untrusted_peer = std::net::IpAddr::from([192, 0, 2, 4]);
 
         assert!(super::session_cookie_is_secure_for_environment(
-            &headers, trusted_peer, &settings, false,
+            &headers,
+            trusted_peer,
+            &settings,
+            false,
         ));
         assert!(!super::session_cookie_is_secure_for_environment(
-            &headers, untrusted_peer, &settings, false,
+            &headers,
+            untrusted_peer,
+            &settings,
+            false,
         ));
     }
 
