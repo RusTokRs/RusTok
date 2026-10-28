@@ -12,6 +12,7 @@
     "typecheck": "npm run typegen:i18n && next typegen && tsc --noEmit",
     "test:forum": "node --experimental-strip-types --test packages/rustok-forum/src/api/category-pages.test.mjs packages/rustok-forum/src/api/forum-unread.test.mjs packages/rustok-forum/src/api/forum-selection.test.mjs packages/rustok-forum/src/components/category-overview-hierarchy.test.mjs packages/rustok-forum/src/components/quote-tooltip.test.mjs packages/rustok-forum/src/components/composer-preview.test.mjs packages/rustok-forum/src/components/topic-recovery.test.mjs packages/rustok-forum/src/components/thread-navigation.test.mjs packages/rustok-forum/src/components/topic-feed-selection.test.mjs packages/rustok-forum/src/components/thread-paging.test.mjs packages/rustok-forum/src/components/use-thread-navigation.test.mjs packages/rustok-forum/src/components/topic-reply-availability.test.mjs packages/rustok-forum/src/context/draft-storage.test.mjs src/shared/lib/graphql.test.mjs",
     "test:pages": "node --experimental-strip-types --test packages/rustok-pages/src/pages-frontend.test.mjs",
+    "test:blog": "node --experimental-strip-types --test packages/rustok-blog/src/utils/comments-order.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:install": "playwright install chromium",
