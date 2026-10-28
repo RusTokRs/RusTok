@@ -33,7 +33,6 @@ pub(crate) async fn topic_write_audience_allows(
         .await
 }
 
-
 /// Re-evaluates the canonical owner audience with transaction-scoped Forum
 /// policy rows. The caller must first acquire the category-tree writer lock,
 /// then keep the transaction open through the actual vote/subscription write.
