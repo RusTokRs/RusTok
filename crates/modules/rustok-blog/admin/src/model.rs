@@ -134,6 +134,12 @@ pub struct BlogPostDetail {
     pub version: i32,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct BlogCategoryOption {
+    pub id: String,
+    pub name: String,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct BlogModerationCommentList {
     pub items: Vec<BlogModerationComment>,
