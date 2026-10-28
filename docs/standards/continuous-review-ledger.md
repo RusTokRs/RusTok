@@ -2,6 +2,38 @@
 
 ## FS-07 `rustok-index` audit finding — 2026-10-28 (in progress)
 
+### Additional FS-07 findings and cross-boundary evidence (2026-10-28)
+
+- Static inventory sweep: 116 Rust files under `crates/modules/rustok-index/src/`
+  were retrieved and checked for error suppression, unchecked conversions,
+  panics, casts and blocking I/O. This is **not** an exhaustive behavioral
+  six-dimension audit; the crate remains open. Related Index bridges in
+  `apps/server`, `rustok-distribution` and `rustok-social-graph` were
+  inspected for interface usage. Their complete owner-level audits are
+  not claimed.
+- IDX-ROLLBACK-ERROR: 11 error branches across seven Index PostgreSQL
+  adapters silently discarded failed transaction rollbacks. Changed these
+  to propagate the corresponding typed retryable storage error when rollback
+  fails; a successful rollback continues to preserve the original failure.
+  Runtime database/fault-injection evidence remains open.
+- IDX-CI-GATE: the `verify-index-storage-migrations.mjs` guard falsely
+  required the `IndexModule` migration dispatch to live in `lib.rs`.
+  Canonical `src/module.rs` owns `impl MigrationSource`, while `lib.rs`
+  exports both entrypoints. The guard now verifies the actual owner and
+  its dispatch methods. A source-level marker recheck passed; CLI rerun
+  and CI confirmation remain pending.
+- Initial CI evidence on the earlier head: Index Storage Scale Evidence
+  stopped at that obsolete `lib.rs` marker. The unrelated Next-admin
+  browser workflow stopped on missing `grapesjs/dist/grapes.min.js`.
+  Neither failure is evidence that this PR passed; current head checks
+  must be independently evaluated.
+- `main` advanced after initial base; the immediately subsequent main
+  diff did not overlap the Index source, Index migration verifier or
+  Index ledger paths, but further main refresh and full scope reconciliation
+  remain required before integration.
+
+
+
 Base `main`: `dde4b1e2b505139529b8b789aecc0683ad825a9a`; work branch
 `audit/fs07-index-cursor-bounds-20261028`. **Open / source-only, not a component or phase completion.**
 
