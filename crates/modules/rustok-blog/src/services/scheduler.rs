@@ -701,6 +701,42 @@ mod scheduled_publish_worker_tests {
         );
     }
 
+    /// The oldest due draft can be permanently invalid. The command must walk
+    /// beyond the first fixed-size page rather than retrying that row forever.
+    #[tokio::test]
+    async fn failed_due_draft_does_not_starve_a_later_healthy_draft() {
+        let (db, events) = setup_hardening_schema().await;
+        let tenant_id = Uuid::new_v4();
+        let invalid = create_draft_post(&db, &events, tenant_id, "poison-due").await;
+        let healthy = create_draft_post(&db, &events, tenant_id, "healthy-due").await;
+        make_post_due(&db, invalid, 3).await;
+        make_post_due(&db, healthy, 1).await;
+
+        // A legacy/corrupt exhausted revision cannot be published: the owner
+        // transition uses checked arithmetic, and must not wrap the version.
+        blog_post::Entity::update_many()
+            .col_expr(blog_post::Column::Version, Expr::value(i32::MAX))
+            .filter(blog_post::Column::Id.eq(invalid))
+            .exec(&db)
+            .await
+            .expect("invalid post revision fixture should be stored");
+
+        let published = PostService::new(db.clone(), events.clone())
+            .publish_scheduled_posts(tenant_id, 1)
+            .await
+            .expect("a failed row must not abort the batch");
+        assert_eq!(published, vec![healthy]);
+        assert_eq!(
+            post_status(&db, healthy).await,
+            status_to_storage(BlogPostStatus::Published)
+        );
+        assert_eq!(
+            post_status(&db, invalid).await,
+            status_to_storage(BlogPostStatus::Draft),
+            "the poisoned post stays due for explicit repair/retry"
+        );
+    }
+
     /// A schedule in the future is not due work, and another Blog worker's slug is not this
     /// adapter's source.
     #[tokio::test]
