@@ -141,7 +141,7 @@ impl BlogScheduledPublishWorkAdapter {
             blog_post::Entity::find()
                 .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Draft)))
                 .filter(blog_post::Column::ScheduledAt.is_not_null())
-                .filter(blog_post::Column::ScheduledAt.lte(now))
+                .filter(blog_post::Column::ScheduledAt.lte(now.to_owned()))
         };
 
         let next = if let Some(last_tenant) = *last {
