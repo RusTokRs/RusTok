@@ -70,6 +70,7 @@ export interface PostSummary {
   createdAt: string;
   publishedAt: string | null;
   scheduledAt: string | null;
+  isPinned: boolean;
 }
 
 export interface PostResponse {
@@ -90,6 +91,7 @@ export interface PostResponse {
   createdAt: string;
   publishedAt: string | null;
   scheduledAt: string | null;
+  isPinned: boolean;
   tags: string[];
   featuredImageUrl: string | null;
   seoTitle: string | null;
@@ -162,6 +164,7 @@ query Posts($tenantId: UUID!, $filter: PostsFilter) {
       createdAt
       publishedAt
       scheduledAt
+      isPinned
     }
     nextCursor
   }
@@ -191,6 +194,7 @@ query Post($tenantId: UUID!, $id: UUID!) {
     createdAt
     publishedAt
     scheduledAt
+    isPinned
     tags
     featuredImageUrl
     seoTitle
@@ -241,6 +245,18 @@ mutation UnpublishPost($id: UUID!, $tenantId: UUID!) {
 }
 `;
 
+const PIN_POST_MUTATION = `
+mutation PinPost($id: UUID!, $tenantId: UUID!) {
+  pinPost(id: $id, tenantId: $tenantId)
+}
+`;
+
+const UNPIN_POST_MUTATION = `
+mutation UnpinPost($id: UUID!, $tenantId: UUID!) {
+  unpinPost(id: $id, tenantId: $tenantId)
+}
+`;
+
 // ---------- Response types ----------
 
 interface PostsQueryResponse {
@@ -277,6 +293,14 @@ interface PublishPostResponse {
 
 interface UnpublishPostResponse {
   unpublishPost: boolean;
+}
+
+interface PinPostResponse {
+  pinPost: boolean;
+}
+
+interface UnpinPostResponse {
+  unpinPost: boolean;
 }
 
 // ---------- API functions ----------
@@ -412,4 +436,25 @@ export async function restorePost(id: string, opts: GqlOpts): Promise<void> {
     opts.tenantSlug
   );
   if (!data.restorePost) throw new Error('Restore post rejected by the Blog owner');
+}
+
+/** Pin state is owned by Blog and is independent of the post edit version. */
+export async function pinPost(id: string, opts: GqlOpts): Promise<void> {
+  const data = await graphqlRequest<{ id: string; tenantId: string }, PinPostResponse>(
+    PIN_POST_MUTATION,
+    { id, tenantId: opts.tenantId! },
+    opts.token,
+    opts.tenantSlug
+  );
+  if (!data.pinPost) throw new Error('Pin post rejected by the Blog owner');
+}
+
+export async function unpinPost(id: string, opts: GqlOpts): Promise<void> {
+  const data = await graphqlRequest<{ id: string; tenantId: string }, UnpinPostResponse>(
+    UNPIN_POST_MUTATION,
+    { id, tenantId: opts.tenantId! },
+    opts.token,
+    opts.tenantSlug
+  );
+  if (!data.unpinPost) throw new Error('Unpin post rejected by the Blog owner');
 }
