@@ -1,5 +1,25 @@
 # Continuous Full-Stack Review & Architecture Audit Ledger
 
+## FS-07 `rustok-index` audit finding — 2026-10-28 (in progress)
+
+Base `main`: `dde4b1e2b505139529b8b789aecc0683ad825a9a`; work branch
+`audit/fs07-index-cursor-bounds-20261028`. **Open / source-only, not a component or phase completion.**
+
+Finding IDX-CURSOR-BOUNDS: `domain/query.rs` accepts an arbitrary-length
+`Pagination::Cursor.after` string; `application/cursor.rs` and
+`application/localized_cursor.rs` decode that untrusted Base64 text before
+enforcing any byte budget. Source replay cursors already have independent bounded
+admission in `application/source_registry.rs`. An oversized query token can
+force avoidable decode allocation and hashing on public query paths.
+
+Remediation under review: a shared, documented query-continuation byte budget
+enforced at query shape admission and both codec encode/decode boundaries, with
+ordinary/localized regression tests and no cursor wire-version change.
+Verification remains pending: scoped Rust compile/tests, remediation gate,
+broader full-crate inspection, runtime evidence and maintainer review. Keep the
+FS-07 `rustok-index` checkbox and component status unchecked.
+
+
 ## Bounded Product/Pricing remediation — 2026-10-18
 
 User-requested continuation on `arena/8161797f-rustok`, main snapshot
