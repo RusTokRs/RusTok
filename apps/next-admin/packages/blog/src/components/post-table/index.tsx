@@ -1,33 +1,28 @@
 'use client';
 
-import type {
-  CellData,
-  ColumnDef,
-  RowData,
-  StockFeatures
-} from '@tanstack/react-table';
 import Link from 'next/link';
 import { DataTableShell } from '@/widgets/data-table/data-table-shell';
 import { PostSortSelect } from './sort-select';
+import { createColumns } from './columns';
+import type { GqlOpts, PostSummary } from '../../api/posts';
+import { useMemo } from 'react';
 
 export interface PostTablePager {
   previousHref: string | null;
   nextHref: string | null;
 }
 
-interface PostTableParams<
-  TData extends RowData = any,
-  TValue extends CellData = any
-> {
-  data: TData[];
+interface PostTableParams {
+  data: PostSummary[];
   pager: PostTablePager;
-  columns: ColumnDef<StockFeatures, TData, TValue>[];
+  gqlOpts: GqlOpts;
 }
 
-export function PostTable<
-  TData extends RowData = any,
-  TValue extends CellData = any
->({ data, pager, columns }: PostTableParams<TData, TValue>) {
+export function PostTable({ data, pager, gqlOpts }: PostTableParams) {
+  const columns = useMemo(
+    () => createColumns(gqlOpts),
+    [gqlOpts.tenantId, gqlOpts.tenantSlug, gqlOpts.token]
+  );
   return (
     <DataTableShell
       data={data}
