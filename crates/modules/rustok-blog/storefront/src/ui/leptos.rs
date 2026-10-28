@@ -452,9 +452,11 @@ fn BlogShowcase(
                             let writer = next_writer.clone();
                             view! {
                                 <button type="button" class="rounded-full border px-4 py-2 text-sm"
-                                    on:click=move |_| writer.apply_query_intent(UiRouteQueryIntent::replace(
-                                        "page", (search_page + 1).to_string(),
-                                    ))>
+                                    on:click=move |_| {
+                                        writer.apply_query_intent(UiRouteQueryIntent::replace(
+                                            "page", (search_page + 1).to_string(),
+                                        ));
+                                    }>
                                     {t(locale.as_deref(), "blog.posts.nextPage", "Next page")}
                                 </button>
                             }
