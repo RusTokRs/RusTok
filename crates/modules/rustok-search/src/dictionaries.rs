@@ -816,6 +816,31 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
+    fn pinned_query_rules_must_not_bypass_blog_tag_filter() {
+        let query = crate::SearchQuery {
+            tenant_id: Some(Uuid::new_v4()),
+            locale: Some("ru".to_string()),
+            channel_id: None,
+            original_query: "search".to_string(),
+            query: "search".to_string(),
+            ranking_profile: crate::SearchRankingProfile::Balanced,
+            preset_key: None,
+            limit: 9,
+            offset: 0,
+            published_only: true,
+            entity_types: vec!["blog_post".to_string()],
+            source_modules: vec!["blog".to_string()],
+            statuses: vec!["published".to_string()],
+            category_ids: Vec::new(),
+            tag: Some("новости".to_string()),
+            attribute_filters: Vec::new(),
+            sort_attribute_code: None,
+            sort_desc: false,
+        };
+        assert!(super::has_catalog_filters(&query));
+    }
+
+    #[test]
     fn normalize_query_text_collapses_whitespace_and_case() {
         assert_eq!(
             normalize_query_text("  Summer   Sale "),
