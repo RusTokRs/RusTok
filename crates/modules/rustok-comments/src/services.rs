@@ -1627,7 +1627,7 @@ mod richtext_validation_tests {
             assert!(matches!(error, CommentsError::Forbidden(_)));
         }
 
-        let moderator = SecurityContext::system();
+        let moderator = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
         let approved = service
             .create_comment(
                 tenant_id,
