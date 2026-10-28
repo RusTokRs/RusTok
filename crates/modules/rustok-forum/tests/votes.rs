@@ -964,6 +964,67 @@ async fn vote_and_subscription_writes_require_owner_audience_and_reject_self_vot
         .clear_topic_subscription(tenant_id, topic.id, low.clone())
         .await
         .expect("clearing a subscription must not require audience access");
+
+    // A committed Forum policy revocation takes effect on all subsequent
+    // write attempts, including replacement of existing vote/subscription rows.
+    ForumCategoryAudiencePolicyService::new(db.clone())
+        .set(
+            tenant_id,
+            category.id,
+            admin.clone(),
+            SetForumCategoryAudiencePolicyInput {
+                constraints: ForumAudienceConstraints {
+                    minimum_trust_level: Some(9),
+                    ..ForumAudienceConstraints::default()
+                },
+            },
+        )
+        .await
+        .expect("category policy revocation must commit");
+
+    let denied_topic = vote_service
+        .set_topic_vote(
+            tenant_id,
+            topic.id,
+            trusted.clone(),
+            write_context(tenant_id, &trusted),
+            -1,
+        )
+        .await;
+    assert!(
+        matches!(denied_topic, Err(ForumError::TopicNotFound(id)) if id == topic.id),
+        "revoked topic writer must not change a vote"
+    );
+    let denied_reply = vote_service
+        .set_reply_vote(
+            tenant_id,
+            reply.id,
+            trusted.clone(),
+            write_context(tenant_id, &trusted),
+            -1,
+        )
+        .await;
+    assert!(
+        matches!(denied_reply, Err(ForumError::ReplyNotFound(id)) if id == reply.id),
+        "revoked reply writer must not change a vote"
+    );
+    let denied_subscription = subscription_service
+        .update_topic_subscription(
+            tenant_id,
+            topic.id,
+            trusted.clone(),
+            write_context(tenant_id, &trusted),
+            UpdateForumSubscriptionInput::watching(),
+        )
+        .await;
+    assert!(
+        matches!(denied_subscription, Err(ForumError::TopicNotFound(id)) if id == topic.id),
+        "revoked subscriber must not update a subscription"
+    );
+    subscription_service
+        .clear_topic_subscription(tenant_id, topic.id, trusted)
+        .await
+        .expect("revoked subscriber may still clear its own subscription");
 }
 
 /// Writes the Forum module settings row that the vote policy reads for this tenant.
