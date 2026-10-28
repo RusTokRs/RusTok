@@ -100,3 +100,11 @@ richText-strike = Strike
 richText-undo = Undo
 blog-error-restorePost = Failed to restore post
 blog-table-restore = Restore
+
+blog-form-category = Category
+blog-form-uncategorized = Uncategorized
+blog-form-channels = Channels (comma separated; empty = all channels)
+blog-form-featuredImage = Featured image URL
+blog-form-seoTitle = SEO title (Blog default)
+blog-form-seoDescription = SEO description (Blog default)
+blog-error-categories = Categories unavailable
