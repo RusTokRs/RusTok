@@ -54,7 +54,10 @@ rightmost `X-Forwarded-For` / RFC `Forwarded` hop towards the caller, stopping
 at the first untrusted address. This identity is also used for API rate-limit
 keys. Missing or malformed trusted-side hops fall back to the actual peer;
 an untrusted peer cannot supply an authoritative forwarding header. If both
-header formats are present, `X-Forwarded-For` takes precedence.
+header formats are present, `X-Forwarded-For` takes precedence. For
+forwarded host and scheme, the host consumes the most recently appended
+(rightmost) value instead of trusting a potentially spoofed first value;
+forwarded schemes other than `http` and `https` are ignored.
 
 **Ingress requirement:** the edge proxy must discard untrusted incoming
 forwarded headers or append the actual observed client IP. A proxy that
