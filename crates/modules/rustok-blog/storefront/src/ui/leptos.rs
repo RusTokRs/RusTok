@@ -300,7 +300,7 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                     />
                 </form>
                 <a
-                    href="/blog/feed.xml"
+                    href=core::feed_href(locale.as_deref())
                     target="_blank"
                     rel="noopener noreferrer"
                     class="inline-flex items-center gap-1.5 self-start sm:self-auto rounded-full border border-border bg-background px-3.5 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors shadow-sm"
