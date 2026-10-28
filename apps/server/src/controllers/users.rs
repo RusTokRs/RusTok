@@ -61,7 +61,10 @@ async fn list_users(
 
     let mut query = users::Entity::find()
         .filter(UserColumn::TenantId.eq(tenant.id))
-        .order_by_asc(UserColumn::CreatedAt);
+        // A stable tie-breaker is required: timestamp collisions must not
+        // reorder users between offset-based pagination requests.
+        .order_by_asc(UserColumn::CreatedAt)
+        .order_by_asc(UserColumn::Id);
 
     if let Some(search) = params
         .search
