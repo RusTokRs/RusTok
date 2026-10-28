@@ -66,11 +66,12 @@ pub async fn list_posts(
     let service = PostService::new(runtime.db_clone(), runtime.event_bus());
     let list_started_at = Instant::now();
     let result = service
-        .list_posts_with_locale_fallback(
+        .list_posts_with_locale_fallback_on_channel(
             tenant.id,
             security_context(&auth),
             query,
             Some(tenant.default_locale.as_str()),
+            request_context.channel_slug.as_deref(),
         )
         .await
         .map_err(crate::error::public::to_http_error)?;
@@ -142,12 +143,13 @@ pub async fn get_post(
         .unwrap_or(request_context.locale.as_str());
     let service = PostService::new(runtime.db_clone(), runtime.event_bus());
     let post = service
-        .get_post_with_locale_fallback(
+        .get_post_with_locale_fallback_on_channel(
             tenant.id,
             security_context(&auth),
             id,
             locale,
             Some(tenant.default_locale.as_str()),
+            request_context.channel_slug.as_deref(),
         )
         .await
         .map_err(crate::error::public::to_http_error)?;
