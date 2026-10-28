@@ -117,6 +117,7 @@ pub(super) fn BlogPostsTable(
     busy_key: Option<String>,
     on_edit: Callback<(String, String)>,
     on_toggle_publish: Callback<(String, bool, String)>,
+    on_toggle_pin: Callback<(String, bool, String)>,
     on_archive: Callback<(String, String)>,
     on_restore: Callback<(String, String)>,
     on_delete: Callback<String>,
@@ -156,6 +157,8 @@ pub(super) fn BlogPostsTable(
     // Rows arrive page by page; the effect below sets the total from the rows on screen.
     let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
     let load_more_label = t(locale.as_deref(), "blog.table.loadMore", "Load more");
+    let pin_label = t(locale.as_deref(), "blog.table.pin", "Pin");
+    let unpin_label = t(locale.as_deref(), "blog.table.unpin", "Unpin");
     let is_ru = locale
         .as_deref()
         .map(|l| l.starts_with("ru"))
@@ -222,11 +225,13 @@ pub(super) fn BlogPostsTable(
             move |(row, col_id): (core::BlogPostAdminTableRowViewModel, String)| {
                 let post_id_edit = row.post_id.clone();
                 let post_id_publish = row.post_id.clone();
+                let post_id_pin = row.post_id.clone();
                 let post_id_archive = row.post_id.clone();
                 let post_id_restore = row.post_id.clone();
                 let post_id_delete = row.post_id.clone();
                 let post_locale_edit = row.locale.clone();
                 let post_locale_publish = row.locale.clone();
+                let post_locale_pin = row.locale.clone();
                 let post_locale_archive = row.locale.clone();
                 let post_locale_restore = row.locale.clone();
 
@@ -276,6 +281,24 @@ pub(super) fn BlogPostsTable(
                                 </button>
                             }
                             .into_any()
+                        } else {
+                            ().into_any()
+                        }}
+                        {if row.show_pin_action {
+                            view! {
+                                <button
+                                    type="button"
+                                    class=tc.primary_action_button
+                                    disabled=row.is_busy
+                                    on:click={move |_| on_toggle_pin.run((
+                                        post_id_pin.clone(),
+                                        row.next_pin_state,
+                                        post_locale_pin.clone(),
+                                    ))}
+                                >
+                                    {if row.is_pinned { unpin_label.clone() } else { pin_label.clone() }}
+                                </button>
+                            }.into_any()
                         } else {
                             ().into_any()
                         }}
@@ -506,6 +529,7 @@ pub(super) fn BlogPostsList(
     on_sort_change: Callback<core::BlogPostAdminSort>,
     on_edit: Callback<(String, String)>,
     on_toggle_publish: Callback<(String, bool, String)>,
+    on_toggle_pin: Callback<(String, bool, String)>,
     on_archive: Callback<(String, String)>,
     on_restore: Callback<(String, String)>,
     on_delete: Callback<String>,
@@ -526,6 +550,7 @@ pub(super) fn BlogPostsList(
             busy_key=busy_key
             on_edit=on_edit
             on_toggle_publish=on_toggle_publish
+            on_toggle_pin=on_toggle_pin
             on_archive=on_archive
             on_restore=on_restore
             on_delete=on_delete
