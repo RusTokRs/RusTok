@@ -183,7 +183,7 @@ async fn exercise(database: &PostgresForumTestDb) -> TestResult<()> {
     holder.commit().await?;
     let vote_result = timeout(Duration::from_secs(5), vote).await??;
     assert!(
-        matches!(vote_result, Err(ForumError::TopicNotFound(id)) if id == topic.id),
+        matches!(&vote_result, Err(ForumError::TopicNotFound(id)) if *id == topic.id),
         "the vote must be denied against the newly committed policy: {vote_result:?}"
     );
     assert_eq!(
@@ -227,7 +227,7 @@ async fn exercise(database: &PostgresForumTestDb) -> TestResult<()> {
     holder.commit().await?;
     let result = timeout(Duration::from_secs(5), subscription).await??;
     assert!(
-        matches!(result, Err(ForumError::TopicNotFound(id)) if id == topic.id),
+        matches!(&result, Err(ForumError::TopicNotFound(id)) if *id == topic.id),
         "subscription must use the committed restrictive policy: {result:?}"
     );
     assert_eq!(
