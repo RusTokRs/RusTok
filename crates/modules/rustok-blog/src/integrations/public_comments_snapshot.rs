@@ -469,6 +469,24 @@ mod tests {
     }
 
     #[test]
+    fn disabled_or_unavailable_discussion_never_replays_a_snapshot() {
+        let disabled = disabled_comments();
+        assert_eq!(disabled.availability, PublicCommentsAvailability::Disabled);
+        assert!(!disabled.cached_snapshot);
+        assert!(disabled.items.is_empty());
+        assert_eq!(disabled.total, 0);
+
+        let unavailable = unavailable_comments();
+        assert_eq!(
+            unavailable.availability,
+            PublicCommentsAvailability::Unavailable
+        );
+        assert!(!unavailable.cached_snapshot);
+        assert!(unavailable.items.is_empty());
+        assert_eq!(unavailable.total, 0);
+    }
+
+    #[test]
     fn missing_comments_capability_is_a_degraded_unavailable_state() {
         assert_eq!(
             degraded_availability(&BlogError::CommentsUnavailable),
