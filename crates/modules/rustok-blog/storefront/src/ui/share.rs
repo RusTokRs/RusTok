@@ -3,6 +3,34 @@ use rustok_ui_core::UiRouteContext;
 
 use crate::core;
 
+fn public_origin() -> Option<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        return web_sys::window()?.location().origin().ok();
+    }
+
+    #[cfg(all(feature = "ssr", not(target_arch = "wasm32")))]
+    {
+        let configured = std::env::var("NEXT_PUBLIC_STOREFRONT_URL")
+            .or_else(|_| std::env::var("NEXT_PUBLIC_SITE_URL"))
+            .ok()?;
+        let parsed = url::Url::parse(&configured).ok()?;
+        if !matches!(parsed.scheme(), "http" | "https")
+            || parsed.host_str().is_none()
+            || !parsed.username().is_empty()
+            || parsed.password().is_some()
+        {
+            return None;
+        }
+        return Some(parsed.origin().ascii_serialization());
+    }
+
+    #[cfg(all(not(feature = "ssr"), not(target_arch = "wasm32")))]
+    {
+        None
+    }
+}
+
 #[component]
 pub fn BlogStatusBadge(status: String, unknown_label: String) -> impl IntoView {
     let badge_view = core::status_badge_typed_view(status, unknown_label.as_str());
@@ -34,7 +62,13 @@ pub fn BlogShareButtons(title: String, slug: String) -> impl IntoView {
         core::DEFAULT_ROUTE_SEGMENT,
     );
     let route_base = route.module_route_base(route_segment.as_str());
-    let article_url = core::module_href(&route_base, &core::percent_encode(&slug));
+    let article_path = core::module_href(&route_base, &core::percent_encode(&slug));
+    // External sharing APIs require a fully qualified URL. Missing public
+    // origin is not a reason to publish a broken relative share target.
+    let Some(origin) = public_origin() else {
+        return ().into_any();
+    };
+    let article_url = format!("{}{}", origin.trim_end_matches('/'), article_path);
     let tg_url = core::telegram_share_url(&article_url, &title);
     let vk_url = core::vk_share_url(&article_url, &title);
     let tw_url = core::twitter_share_url(&article_url, &title);
@@ -69,5 +103,5 @@ pub fn BlogShareButtons(title: String, slug: String) -> impl IntoView {
                 {twitter_label}
             </a>
         </div>
-    }
+    }.into_any()
 }
