@@ -244,7 +244,7 @@ impl IndexDriftRepairStore for PostgresIndexDriftRepairStore {
                 Ok(outcome)
             }
             Err(error) => {
-                let _ = transaction.rollback().await;
+                transaction.rollback().await.map_err(|_| retryable_failure(STORAGE_UNAVAILABLE))?;
                 Err(error)
             }
         }
@@ -276,7 +276,7 @@ impl IndexDriftRepairStore for PostgresIndexDriftRepairStore {
                 Ok(outcome)
             }
             Err(error) => {
-                let _ = transaction.rollback().await;
+                transaction.rollback().await.map_err(|_| retryable_failure(STORAGE_UNAVAILABLE))?;
                 Err(error)
             }
         }
