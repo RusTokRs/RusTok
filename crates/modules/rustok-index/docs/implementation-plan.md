@@ -2,6 +2,24 @@
 
 ## FS-07 audit continuation — query cursor bounds (2026-10-28)
 
+### Additional bounded remediation evidence
+
+- Reviewed the source tree for suspicious error-handling constructs
+  (116 `src/**/*.rs` files, static pass only), and inspected Index-related
+  entrypoints in Server, Distribution and Social Graph.
+- Propagated 11 transaction rollback failures as retryable/storage errors
+  across seven Index PostgreSQL adapters; retained the original error only
+  after a successful rollback. Transaction failure-injection tests are pending.
+- Updated the Index migration contract guard to follow `IndexModule` in
+  `src/module.rs`, rather than incorrectly requiring migration functions in
+  `lib.rs`. This addresses an observed source-check failure on an earlier
+  CI run but does not establish success for the current head.
+- Verification remains **source-only** without `cargo check -p rustok-index`,
+  `cargo test -p rustok-index --lib`, fault-injection coverage, remediation
+  gate and full behavioral audit. The component checkbox remains unchecked.
+
+
+
 - Finding: ordinary/localized query continuation Base64 decode had no input byte
   limit, whereas source replay cursors have a separate 8 KiB cap.
 - Bounded source remediation: cap encoded query continuations at 64 KiB in query
