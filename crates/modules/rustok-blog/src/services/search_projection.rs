@@ -16,6 +16,8 @@ use rustok_profiles::{ProfileSummaryAudience, ProfileSummaryReader};
 
 use crate::dto::PublishedPostCursor;
 use crate::entities::{blog_post, blog_post_channel_visibility, blog_post_translation};
+use crate::error::{BlogError, BlogResult};
+use crate::services::post::{is_post_visible_for_channel, normalize_public_channel_slug};
 use crate::services::category_name_projection::{
     BlogCategoryProjectionInfo, load_category_projections_map,
 };
@@ -26,6 +28,77 @@ use crate::services::tag::load_post_tags_map;
 
 pub const BLOG_SOURCE_MODULE: &str = "blog";
 pub const BLOG_POST_ENTITY_TYPE: &str = "blog_post";
+
+/// The Blog owner's live Search audience gate.
+///
+/// Search owns the indexed document and ranking, but only Blog can authorize a
+/// stored candidate against *current* publication, post/channel allowlists and
+/// the Channel owner's active Blog-module binding. This is a bounded batch read
+/// and never trusts `search_documents.payload` as the authorization source.
+///
+/// The host adapter checks the tenant module lifecycle before invoking this
+/// method. A missing channel means the unscoped public corpus, so only posts
+/// with no explicit channel allowlist are eligible.
+pub async fn filter_public_search_post_ids(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    channel_slug: Option<&str>,
+    candidate_ids: &[Uuid],
+) -> BlogResult<Vec<Uuid>> {
+    if tenant_id.is_nil() {
+        return Err(BlogError::validation("Tenant ID must not be nil"));
+    }
+    if candidate_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let normalized_channel = normalize_public_channel_slug(channel_slug);
+    if let Some(slug) = normalized_channel.as_deref() {
+        let channels = rustok_channel::ChannelService::new(db.clone());
+        let Some(channel) = channels.get_channel_by_slug(tenant_id, slug)
+            .await.map_err(BlogError::from)?
+        else {
+            return Ok(Vec::new());
+        };
+        if !channel.is_active
+            || !channels.is_module_enabled_for_tenant(tenant_id, channel.id, BLOG_SOURCE_MODULE)
+                .await.map_err(BlogError::from)?
+        {
+            return Ok(Vec::new());
+        }
+    }
+
+    let published = blog_post::Entity::find()
+        .filter(blog_post::Column::TenantId.eq(tenant_id))
+        .filter(blog_post::Column::Id.is_in(candidate_ids.to_vec()))
+        .filter(blog_post::Column::Status.eq("published"))
+        .filter(blog_post::Column::PublishedAt.is_not_null())
+        .all(db).await.map_err(BlogError::from)?;
+    if published.is_empty() {
+        return Ok(Vec::new());
+    }
+    let published_ids = published.iter().map(|post| post.id)
+        .collect::<std::collections::HashSet<_>>();
+    let visibility = blog_post_channel_visibility::Entity::find()
+        .filter(blog_post_channel_visibility::Column::TenantId.eq(tenant_id))
+        .filter(blog_post_channel_visibility::Column::PostId.is_in(
+            published_ids.iter().copied().collect::<Vec<_>>()
+        ))
+        .all(db).await.map_err(BlogError::from)?;
+    let mut channels_by_post = HashMap::<Uuid, Vec<String>>::new();
+    for visibility_row in visibility {
+        channels_by_post.entry(visibility_row.post_id)
+            .or_default().push(visibility_row.channel_slug);
+    }
+    // Return only IDs that were actually requested; the Search SPI verifies
+    // this invariant too, independently of Blog.
+    Ok(candidate_ids.iter().copied().filter(|id| {
+        published_ids.contains(id) && is_post_visible_for_channel(
+            channels_by_post.get(id).map(Vec::as_slice).unwrap_or(&[]),
+            normalized_channel.as_deref(),
+        )
+    }).collect())
+}
+
 
 #[derive(Clone, Default)]
 pub struct BlogSearchProjectionSourceFactory;
