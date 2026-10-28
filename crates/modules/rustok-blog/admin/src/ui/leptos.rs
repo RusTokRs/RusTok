@@ -59,6 +59,8 @@ pub fn BlogAdmin() -> impl IntoView {
     let (featured_image_url, set_featured_image_url) = signal(String::new());
     let (seo_title, set_seo_title) = signal(String::new());
     let (seo_description, set_seo_description) = signal(String::new());
+    let (scheduled_at, set_scheduled_at) = signal(String::new());
+    let (schedule_editable, set_schedule_editable) = signal(true);
     let (publish_now, set_publish_now) = signal(false);
     let (busy_key, set_busy_key) = signal(Option::<String>::None);
     let (submit_error, set_submit_error) = signal(Option::<WritePathIssue>::None);
@@ -80,6 +82,8 @@ pub fn BlogAdmin() -> impl IntoView {
                     featured_image_url: set_featured_image_url,
                     seo_title: set_seo_title,
                     seo_description: set_seo_description,
+                    scheduled_at: set_scheduled_at,
+                    schedule_editable: set_schedule_editable,
                     publish_now: set_publish_now,
                 },
                 default_locale.as_str(),
@@ -259,6 +263,8 @@ pub fn BlogAdmin() -> impl IntoView {
                     featured_image_url: set_featured_image_url,
                     seo_title: set_seo_title,
                     seo_description: set_seo_description,
+                    scheduled_at: set_scheduled_at,
+                    schedule_editable: set_schedule_editable,
                                         publish_now: set_publish_now,
                                     },
                                     &post,
@@ -324,6 +330,7 @@ pub fn BlogAdmin() -> impl IntoView {
         let featured_image_value = featured_image_url.get_untracked();
         let seo_title_value = seo_title.get_untracked();
         let seo_description_value = seo_description.get_untracked();
+        let scheduled_at_value = scheduled_at.get_untracked();
         let draft = core::build_blog_post_draft(core::BlogPostFormInput {
             locale: &locale_value,
             version: editing_version.get_untracked(),
@@ -338,6 +345,8 @@ pub fn BlogAdmin() -> impl IntoView {
             featured_image_url: &featured_image_value,
             seo_title: &seo_title_value,
             seo_description: &seo_description_value,
+            scheduled_at: &scheduled_at_value,
+            schedule_editable: schedule_editable.get_untracked(),
         });
 
         let required_fields_message = t(
@@ -390,6 +399,8 @@ pub fn BlogAdmin() -> impl IntoView {
                     featured_image_url: set_featured_image_url,
                     seo_title: set_seo_title,
                     seo_description: set_seo_description,
+                    scheduled_at: set_scheduled_at,
+                    schedule_editable: set_schedule_editable,
                                 publish_now: set_publish_now,
                             },
                             &post,
@@ -473,6 +484,8 @@ pub fn BlogAdmin() -> impl IntoView {
                     featured_image_url: set_featured_image_url,
                     seo_title: set_seo_title,
                     seo_description: set_seo_description,
+                    scheduled_at: set_scheduled_at,
+                    schedule_editable: set_schedule_editable,
                                     publish_now: set_publish_now,
                                 },
                                 &post,
@@ -538,6 +551,8 @@ pub fn BlogAdmin() -> impl IntoView {
                     featured_image_url: set_featured_image_url,
                     seo_title: set_seo_title,
                     seo_description: set_seo_description,
+                    scheduled_at: set_scheduled_at,
+                    schedule_editable: set_schedule_editable,
                                 publish_now: set_publish_now,
                             },
                             &post,
@@ -602,6 +617,8 @@ pub fn BlogAdmin() -> impl IntoView {
                     featured_image_url: set_featured_image_url,
                     seo_title: set_seo_title,
                     seo_description: set_seo_description,
+                    scheduled_at: set_scheduled_at,
+                    schedule_editable: set_schedule_editable,
                                 publish_now: set_publish_now,
                             },
                             &post,
@@ -928,12 +945,37 @@ pub fn BlogAdmin() -> impl IntoView {
                                 />
                             </label>
 
+                            <Show when=move || schedule_editable.get()>
+                                <label class=shell_classes.locale_filter_label>
+                                    <span class=form_field_classes.label_text>
+                                        {t(ui_locale.as_deref(), "blog.form.scheduledAt", "Schedule (RFC 3339 with timezone)")}
+                                    </span>
+                                    <input type="text" class=form_field_classes.text_input
+                                        placeholder="2026-11-01T10:00:00+01:00"
+                                        prop:value=scheduled_at
+                                        on:input=move |ev| {
+                                            let value = event_target_value(&ev);
+                                            if !value.trim().is_empty() {
+                                                set_publish_now.set(false);
+                                            }
+                                            set_scheduled_at.set(value);
+                                        }
+                                    />
+                                </label>
+                            </Show>
+
                             <Show when=move || editing_post_id.get().is_none()>
                                 <label class=form_field_classes.checkbox_label>
                                     <input
                                         type="checkbox"
                                         prop:checked=publish_now
-                                        on:change=move |ev| set_publish_now.set(event_target_checked(&ev))
+                                        on:change=move |ev| {
+                                            let checked = event_target_checked(&ev);
+                                            if checked {
+                                                set_scheduled_at.set(String::new());
+                                            }
+                                            set_publish_now.set(checked);
+                                        }
                                     />
                                     {form_copy_view.publish_now_label.clone()}
                                 </label>
