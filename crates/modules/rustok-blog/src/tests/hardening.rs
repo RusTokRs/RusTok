@@ -460,3 +460,56 @@ async fn nil_uuid_validation_guards_reject_invalid_identifiers() {
         .unwrap_err();
     assert!(err.to_string().contains("Token ID must not be nil"));
 }
+
+/// The REST preview is intentionally an unscoped bearer-token read, while
+/// GraphQL is tenant-bound. A valid token from tenant A must never make a
+/// tenant B GraphQL request return A's draft or its localized content.
+#[tokio::test]
+async fn graphql_preview_read_refuses_a_token_from_another_tenant() {
+    let (db, events) = setup_hardening_schema().await;
+    let owner_tenant = Uuid::new_v4();
+    let other_tenant = Uuid::new_v4();
+    set_blog_module_enabled(&db, owner_tenant, true).await;
+    set_blog_module_enabled(&db, other_tenant, true).await;
+    let post_id = create_draft_post(&db, &events, owner_tenant, "tenant-preview").await;
+
+    let preview = crate::services::PreviewTokenService::new(db.clone(), events.clone());
+    let minted = preview
+        .create_token(owner_tenant, post_id, admin(), Some(1))
+        .await
+        .expect("authorized draft owner may mint a token");
+    let token = minted.token.expect("plaintext is returned exactly once");
+
+    assert_eq!(
+        preview
+            .get_post_by_token_for_tenant(owner_tenant, &token, "en", Some("en"))
+            .await
+            .expect("owner-tenant preview read must succeed")
+            .map(|post| post.id),
+        Some(post_id)
+    );
+    assert!(
+        preview
+            .get_post_by_token_for_tenant(other_tenant, &token, "en", Some("en"))
+            .await
+            .expect("foreign-tenant preview lookup must not error")
+            .is_none(),
+        "GraphQL may not resolve a foreign tenant's bearer token"
+    );
+    assert_eq!(
+        preview
+            .get_post_by_token(&token, "en", Some("en"))
+            .await
+            .expect("REST bearer-token read is intentionally unscoped")
+            .map(|post| post.id),
+        Some(post_id),
+        "preserve the existing REST preview contract"
+    );
+    assert!(
+        preview
+            .get_post_by_token_for_tenant(Uuid::nil(), &token, "en", Some("en"))
+            .await
+            .is_err(),
+        "nil request tenant is invalid"
+    );
+}
