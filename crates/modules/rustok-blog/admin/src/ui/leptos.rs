@@ -106,6 +106,11 @@ pub fn BlogAdmin() -> impl IntoView {
     let form_field_classes = core::blog_post_admin_editor_field_classes_view();
     let shell_classes = core::blog_post_admin_shell_classes_view();
 
+    let categories_unavailable_label = t(
+        ui_locale.as_deref(),
+        "blog.error.categories",
+        "Categories unavailable",
+    );
     let form_view_locale = ui_locale.clone();
     let form_view_model = Memo::new(move |_| {
         blog_form_view_model(
@@ -886,7 +891,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                     }}
                                 </select>
                                 {move || categories_resource.get().and_then(|result| result.err()).map(|error| {
-                                    view! { <span class="text-xs text-destructive">{format!("{}: {error}", t(ui_locale.as_deref(), "blog.error.categories", "Categories unavailable"))}</span> }
+                                    view! { <span class="text-xs text-destructive">{format!("{}: {error}", categories_unavailable_label.clone())}</span> }
                                 })}
                             </label>
 
