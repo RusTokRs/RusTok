@@ -4,4 +4,10 @@
 ignore = [
   "RUSTSEC-2026-0253", # lru 0.16.4 panic safety in LruCache::pop(); constrained by async-graphql and tantivy
   "RUSTSEC-2026-0249", # smartstring unmaintained; only reached via rhai, compact_str feature already active; removal tracked with rhai 2.0
+  "RUSTSEC-2026-0367", # zip 8.6.0 SUID/SGID preservation; constrained by playwright-rs build script in tests/e2e-rust
+  "RUSTSEC-2026-0368", # zip 8.6.0 symlink extraction; constrained by playwright-rs build script in tests/e2e-rust
+  "RUSTSEC-2026-0369", # zip 8.6.0 symlink permissions; constrained by playwright-rs build script in tests/e2e-rust
+  "RUSTSEC-2026-0391", # zstd 0.13.3 context reuse leak; constrained by tantivy-sstable in athanor-search-tantivy
+  "RUSTSEC-2026-0398", # zstd 0.13.3 Seekable::decompress vec length; constrained by tantivy-sstable in athanor-search-tantivy
+  "RUSTSEC-2026-0403", # zstd 0.13.3 uninitialized memory in legacy decompression; constrained by tantivy-sstable in athanor-search-tantivy
 ]

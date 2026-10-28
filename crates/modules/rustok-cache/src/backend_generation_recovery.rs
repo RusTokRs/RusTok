@@ -267,6 +267,7 @@ impl CacheService {
 }
 
 /// Outcome of one bounded backend-generation recovery probe.
+#[cfg(feature = "redis-cache")]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct CacheGenerationRecoveryReport {
     pub recovered: usize,
@@ -381,9 +382,11 @@ impl CacheBackend for GenerationRecoveryHealthBackend {
 #[cfg(test)]
 mod recovery_tests {
     use super::*;
+    #[cfg(feature = "redis-cache")]
     use crate::backend_generation::{
         bind_cache_backend_generation_aliases, cache_backend_generation_snapshot,
     };
+    #[cfg(feature = "redis-cache")]
     use uuid::Uuid;
 
     #[cfg(feature = "redis-cache")]
@@ -431,12 +434,10 @@ mod recovery_tests {
 
         assert!(error.contains("another CacheService"));
         assert!(second.get("key").await.is_err());
-        assert!(
-            second
-                .set("key".to_string(), b"value".to_vec())
-                .await
-                .is_err()
-        );
+        assert!(second
+            .set("key".to_string(), b"value".to_vec())
+            .await
+            .is_err());
     }
 
     #[cfg(feature = "redis-cache")]

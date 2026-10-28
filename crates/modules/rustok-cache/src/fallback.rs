@@ -117,11 +117,6 @@ impl PendingInvalidationTracker {
         self.keys.lock().await.remove(key);
     }
 
-    #[cfg(test)]
-    async fn clear(&self) {
-        self.keys.lock().await.clear();
-    }
-
     async fn snapshot(&self) -> Vec<String> {
         self.keys.lock().await.iter().cloned().collect()
     }
@@ -176,7 +171,7 @@ fn validate_degraded_key(key: &str, operation: &str) -> rustok_core::Result<()> 
 /// concurrent invalidation cannot be reordered behind a slower write. Locks are per key: the
 /// stripe array this used to share across 256 keys meant one stalled Redis call blocked every key
 /// that happened to hash into the same stripe. Registry entries exist only while an operation is in
-/// flight and are removed by [`KeyLockLease`], so the lock map cannot grow with key cardinality.
+/// flight and are removed by `KeyLockLease`, so the lock map cannot grow with key cardinality.
 pub struct DegradationAwareFallbackBackend {
     primary: Arc<dyn CacheBackend>,
     fallback: Arc<InMemoryCacheBackend>,
@@ -480,6 +475,12 @@ impl CacheBackend for DegradationAwareFallbackBackend {
         // Re-check after the network call: saturation is process-wide and can be raised by another
         // key while this read was in flight.
         self.ensure_operation_allowed()?;
+        if self.pending_invalidation_active(key).await {
+            return Ok(None);
+        }
+        if let Some(value) = self.read_degraded_write(key).await? {
+            return Ok(Some(value));
+        }
 
         match primary_result {
             Ok(Some(value)) => Ok(Some(value)),
@@ -616,6 +617,7 @@ impl CacheBackend for DegradationAwareFallbackBackend {
         self.degraded_writes.clear().await;
 
         if replay_failures > 0 {
+            self.tombstone_saturation.store(true, Ordering::Release);
             return Err(rustok_core::Error::Cache(format!(
                 "cache fallback reconciliation replayed {} retained invalidation(s) unsuccessfully; \
                  fail-closed state is retained",
@@ -801,6 +803,11 @@ mod tests {
         }
 
         async fn get(&self, _key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
+            if self.fail_writes.load(Ordering::SeqCst) {
+                return Err(rustok_core::Error::Cache(
+                    "shared primary unavailable".to_string(),
+                ));
+            }
             Ok(self
                 .value
                 .lock()
@@ -861,18 +868,37 @@ mod tests {
             healthy: AtomicBool::new(false),
         });
         let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 16));
-        let backend = backend(primary, fallback);
+        let backend = Arc::new(backend(primary, fallback));
 
         let first = backend.key_lock("same-key").await;
-        let second = backend.key_lock("same-key").await;
-        assert!(Arc::ptr_eq(&first.lock, &second.lock));
-        let other = backend.key_lock("other-key").await;
-        assert!(!Arc::ptr_eq(&first.lock, &other.lock));
+        let same_lock_ptr = Arc::as_ptr(&first.lock);
+        {
+            let registry = backend
+                .key_locks
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            assert!(std::ptr::eq(
+                Arc::as_ptr(registry.get("same-key").unwrap()),
+                same_lock_ptr
+            ));
+        }
 
-        // Entries exist only while an operation is in flight: after the last lease is released the
-        // map is empty again, so key cardinality cannot grow it.
+        let other = backend.key_lock("other-key").await;
+        assert_ne!(Arc::as_ptr(&other.lock), same_lock_ptr);
+
+        let backend_clone = Arc::clone(&backend);
+        let mut second = tokio::spawn(async move { backend_clone.key_lock("same-key").await });
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), &mut second)
+                .await
+                .is_err(),
+            "second lock on the same key must wait for the first to release"
+        );
+
         drop(first);
-        drop(second);
+        let second_lease = second.await.unwrap();
+        assert_eq!(Arc::as_ptr(&second_lease.lock), same_lock_ptr);
+        drop(second_lease);
         drop(other);
         assert_eq!(
             backend
@@ -1075,12 +1101,10 @@ mod tests {
             .unwrap();
         let backend = backend(primary, Arc::clone(&fallback));
 
-        assert!(
-            backend
-                .compare_and_set("key", b"local", b"new".to_vec(), None)
-                .await
-                .is_err()
-        );
+        assert!(backend
+            .compare_and_set("key", b"local", b"new".to_vec(), None)
+            .await
+            .is_err());
         assert_eq!(fallback.get("key").await.unwrap(), Some(b"local".to_vec()));
     }
 
@@ -1245,13 +1269,11 @@ mod tests {
 
         backend.invalidate("key").await.unwrap();
         assert!(!backend.pending_invalidations.contains("key").await);
-        assert!(
-            primary
-                .value
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .is_none()
-        );
+        assert!(primary
+            .value
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_none());
     }
 
     #[tokio::test]
@@ -1332,19 +1354,17 @@ mod tests {
         let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 16));
         let backend = backend(primary, fallback);
 
-        assert!(
-            backend
-                .set_with_ttl("key".to_string(), Vec::new(), Duration::ZERO)
-                .await
-                .is_err()
-        );
+        assert!(backend
+            .set_with_ttl("key".to_string(), Vec::new(), Duration::ZERO)
+            .await
+            .is_err());
         assert!(backend.pending_invalidations.contains("key").await);
         assert_eq!(backend.get("key").await.unwrap(), None);
     }
 
     #[tokio::test]
-    async fn tombstone_tracker_saturation_fails_closed_and_prevents_stale_primary_hits_until_reconciled()
-     {
+    async fn tombstone_tracker_saturation_fails_closed_and_prevents_stale_primary_hits_until_reconciled(
+    ) {
         let primary = Arc::new(RecoveringStaleBackend {
             fail_writes: AtomicBool::new(true),
             value: StdMutex::new(Some(b"stale".to_vec())),
@@ -1368,12 +1388,10 @@ mod tests {
         // untracked invalidation means both shared bytes and local bytes may be stale.
         assert!(backend.get("key-2").await.is_err());
         assert!(backend.get("key-1").await.is_err());
-        assert!(
-            backend
-                .set("key-3".to_string(), b"v".to_vec())
-                .await
-                .is_err()
-        );
+        assert!(backend
+            .set("key-3".to_string(), b"v".to_vec())
+            .await
+            .is_err());
 
         // Reconciliation while the primary is still unhealthy must be rejected...
         assert!(backend.reconcile_local_state().await.is_err());

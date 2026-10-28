@@ -2,12 +2,12 @@ use std::future::Future;
 
 use axum::{
     extract::FromRequestParts,
-    http::{StatusCode, request::Parts},
+    http::{request::Parts, StatusCode},
 };
 use uuid::Uuid;
 
 use super::auth::AuthContext;
-use crate::permissions::{Permission, has_effective_permission};
+use crate::permissions::{has_effective_permission, Permission};
 
 pub const HOST_AUTHORITY_REQUIRED: &str = "Host-global authority required";
 
@@ -111,7 +111,7 @@ pub fn current_host_authority() -> Option<HostAuthorityContext> {
 /// - the authenticated permission snapshot contains `permission` (a tenant
 ///   administrator acting inside its own resolved tenant).
 ///
-/// Both transports of the same surface must evaluate this one rule, so a browseable
+/// Both transports of the same surface must evaluate this one rule, so a browsable
 /// admin page and an operator CLI cannot disagree about who may read or change the
 /// same cache configuration. Tenant scoping is *not* covered here: callers that act
 /// on tenant data must still reject a snapshot whose tenant differs from the
@@ -146,8 +146,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        HostAuthority, HostAuthorityContext, authorizes_host_or_permission, current_host_authority,
-        with_host_authority_scope,
+        authorizes_host_or_permission, current_host_authority, with_host_authority_scope,
+        HostAuthority, HostAuthorityContext,
     };
     use crate::context::AuthContext;
     use crate::permissions::Permission;

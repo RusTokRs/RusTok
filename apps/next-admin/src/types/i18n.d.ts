@@ -592,8 +592,12 @@ export type AppMessageKey =
   | 'rbac.metrics.total.roles'
   | 'rbac-metrics-total-roles-desc'
   | 'rbac.metrics.total.roles.desc'
+  | 'rbac-module-disabled-badge'
+  | 'rbac.module.disabled.badge'
   | 'rbac-perms-granted-for'
   | 'rbac.perms.granted.for'
+  | 'rbac-perms-inactive'
+  | 'rbac.perms.inactive'
   | 'rbac-perms-total'
   | 'rbac.perms.total'
   | 'rbac-role-desc-admin'
@@ -2182,8 +2186,12 @@ export interface AppMessageArgs {
   'rbac-metrics-total-roles'?: Record<string, never>;
   'rbac.metrics.total.roles.desc'?: Record<string, never>;
   'rbac-metrics-total-roles-desc'?: Record<string, never>;
+  'rbac.module.disabled.badge'?: Record<string, never>;
+  'rbac-module-disabled-badge'?: Record<string, never>;
   'rbac.perms.granted.for': { 'name': string | number | Date };
   'rbac-perms-granted-for': { 'name': string | number | Date };
+  'rbac.perms.inactive': { 'count': string | number | Date };
+  'rbac-perms-inactive': { 'count': string | number | Date };
   'rbac.perms.total': { 'count': string | number | Date };
   'rbac-perms-total': { 'count': string | number | Date };
   'rbac.role.desc.admin'?: Record<string, never>;

@@ -52,8 +52,7 @@ export function TransitionControlCard({
   const [showHolds, setShowHolds] = useState(false);
 
   const isObserving = checkpoint.state === 'OBSERVING';
-  const isInterventionRequired =
-    checkpoint.state === 'INTERVENTION_REQUIRED';
+  const isInterventionRequired = checkpoint.state === 'INTERVENTION_REQUIRED';
   const isConverged = checkpoint.state === 'CONVERGED';
   const recoveryLimitReached = checkpoint.recoveryAttemptCount >= 1;
 
@@ -174,11 +173,9 @@ export function TransitionControlCard({
           <div className='border-destructive/30 bg-destructive/10 text-destructive flex items-start gap-2 rounded-md border p-3 text-xs'>
             <IconShieldLock className='mt-0.5 h-4 w-4 shrink-0' />
             <div>
-              <span className='font-semibold'>
-                Intervention Required:{' '}
-              </span>
-              Automatic transition action stopped, but serving selection was
-              not changed. Explicitly roll back or deactivate the candidate if
+              <span className='font-semibold'>Intervention Required: </span>
+              Automatic transition action stopped, but serving selection was not
+              changed. Explicitly roll back or deactivate the candidate if
               traffic must move.
             </div>
           </div>

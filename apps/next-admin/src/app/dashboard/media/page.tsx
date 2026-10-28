@@ -10,7 +10,7 @@ export const metadata = {
 export default async function Page() {
   const session = await auth();
   return (
-    <PageContainer scrollable pageTitle="Media" pageDescription="Media library">
+    <PageContainer scrollable pageTitle='Media' pageDescription='Media library'>
       <Suspense fallback={<p>Loading media…</p>}>
         <MediaPage
           token={session?.user?.rustokToken ?? null}

@@ -26,7 +26,7 @@ export function SubmissionActions({
       {NEXT_STATES.filter((next) => next !== state).map((next) => (
         <button
           key={next}
-          type="button"
+          type='button'
           disabled={pending}
           onClick={() => {
             setError(null);
@@ -35,7 +35,9 @@ export function SubmissionActions({
                 await updateFormSubmissionState(submissionId, next, opts);
                 router.refresh();
               } catch (cause) {
-                setError(cause instanceof Error ? cause.message : 'Update failed');
+                setError(
+                  cause instanceof Error ? cause.message : 'Update failed'
+                );
               }
             });
           }}
@@ -43,7 +45,7 @@ export function SubmissionActions({
           Mark {next}
         </button>
       ))}
-      {error ? <span role="alert"> {error}</span> : null}
+      {error ? <span role='alert'> {error}</span> : null}
     </span>
   );
 }

@@ -65,6 +65,114 @@ waiver must also fail the gate.
 | Evidence required | `cargo audit` and `cargo deny check` output, inverse dependency tree via `cargo tree -i smartstring`, and feature-edge confirmation via `cargo tree -e features -i compact_str` |
 | Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2026-0249.html> |
 
+### RUSTSEC-2026-0367 — `zip` SUID/SGID preservation during extraction
+
+| Field | Value |
+|---|---|
+| Severity | Medium |
+| Risk | Insecure preservation of SUID/SGID bits during ZIP extraction leading to potential privilege escalation if run as root |
+| Patched version | `zip >= 9.0.0`; constrained to `zip 8.6.0` by `playwright-rs 0.19.0` |
+| Repository policy location | `deny.toml, .cargo/audit.toml` |
+| Accountable owner | Platform security / dependency maintainers |
+| Dependency path | Transitive build dependency via `playwright-rs 0.19.0` in `tests/e2e-rust` |
+| Reachability | Unreachable in production code; `playwright-rs` is a dev-dependency of `tests/e2e-rust` used only for browser integration tests, never executed in production environments or as root |
+| Compensating controls | E2E tests run in unprivileged CI/local test environments with non-root execution; no archive extraction is exposed to external users |
+| Remediation | Track `playwright-rs` releases for upgrade to `zip >= 9.0.0` |
+| Approved | 2026-10-28, test build dependency exception |
+| Expires | 2027-01-28 |
+| Evidence required | `cargo audit` and `cargo deny check` output, inverse dependency tree via `cargo tree -i zip` |
+| Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2026-0367.html> |
+
+### RUSTSEC-2026-0368 — `zip` symbolic links outside destination directory
+
+| Field | Value |
+|---|---|
+| Severity | High |
+| Risk | `ZipArchive::extract` creates symbolic links without confining targets within destination directory |
+| Patched version | `zip >= 9.0.0`; constrained to `zip 8.6.0` by `playwright-rs 0.19.0` |
+| Repository policy location | `deny.toml, .cargo/audit.toml` |
+| Accountable owner | Platform security / dependency maintainers |
+| Dependency path | Transitive build dependency via `playwright-rs 0.19.0` in `tests/e2e-rust` |
+| Reachability | Unreachable in production code; `playwright-rs` is a dev-dependency of `tests/e2e-rust` used only for browser integration tests, never processing untrusted archives |
+| Compensating controls | Playwright archives are downloaded exclusively from official Microsoft CDN over HTTPS; no untrusted zip files are extracted |
+| Remediation | Upgrade `playwright-rs` when a version using `zip >= 9.0.0` is published |
+| Approved | 2026-10-28, test build dependency exception |
+| Expires | 2027-01-28 |
+| Evidence required | `cargo audit` and `cargo deny check` output, inverse dependency tree via `cargo tree -i zip` |
+| Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2026-0368.html> |
+
+### RUSTSEC-2026-0369 — `zip` Unix permissions applied through symlinks without confinement
+
+| Field | Value |
+|---|---|
+| Severity | Medium |
+| Risk | `ZipStreamReader::extract()` and `ZipArchive::extract()` apply Unix permissions through symlinks without confining target |
+| Patched version | `zip >= 9.0.0`; constrained to `zip 8.6.0` by `playwright-rs 0.19.0` |
+| Repository policy location | `deny.toml, .cargo/audit.toml` |
+| Accountable owner | Platform security / dependency maintainers |
+| Dependency path | Transitive build dependency via `playwright-rs 0.19.0` in `tests/e2e-rust` |
+| Reachability | Unreachable in production code; `playwright-rs` is a dev-dependency of `tests/e2e-rust` used only for browser integration tests |
+| Compensating controls | Only official browser binaries from verified sources are downloaded during E2E test setup |
+| Remediation | Upgrade `playwright-rs` when a version using `zip >= 9.0.0` is published |
+| Approved | 2026-10-28, test build dependency exception |
+| Expires | 2027-01-28 |
+| Evidence required | `cargo audit` and `cargo deny check` output, inverse dependency tree via `cargo tree -i zip` |
+| Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2026-0369.html> |
+
+### RUSTSEC-2026-0391 — `zstd` context reuse data leak with `with_context`
+
+| Field | Value |
+|---|---|
+| Severity | Medium |
+| Risk | Input/output data from an abandoned stream can leak into the next stream on a reused context |
+| Patched version | `zstd >= 0.14.3`; constrained to `zstd 0.13.3` by `tantivy-sstable 0.7.0` |
+| Repository policy location | `deny.toml, .cargo/audit.toml` |
+| Accountable owner | Platform security / dependency maintainers |
+| Dependency path | Transitive dependency via `tantivy-sstable 0.7.0` -> `tantivy-columnar` -> `tantivy 0.26.2` in `athanor-search-tantivy` |
+| Reachability | RusToK and `tantivy-sstable` do not use `with_context` to reuse zstd contexts across different sessions or user boundaries; tantivy creates dedicated reader/writer structures |
+| Compensating controls | Search index compression is handled through tantivy internal sstable writers with distinct lifecycles; no cross-tenant context reuse |
+| Remediation | Upgrade `tantivy` and `tantivy-sstable` when upstream updates to `zstd >= 0.14.3` |
+| Approved | 2026-10-28, transitive dependency exception |
+| Expires | 2027-01-28 |
+| Evidence required | `cargo audit` and `cargo deny check` output, inverse dependency tree via `cargo tree -i zstd` |
+| Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2026-0391.html> |
+
+### RUSTSEC-2026-0398 — `zstd` `Seekable::decompress` vector length extension beyond capacity
+
+| Field | Value |
+|---|---|
+| Severity | Medium |
+| Risk | `Seekable::decompress` sets vector length beyond capacity on offsets past end |
+| Patched version | `zstd >= 0.14.3`; constrained to `zstd 0.13.3` by `tantivy-sstable 0.7.0` |
+| Repository policy location | `deny.toml, .cargo/audit.toml` |
+| Accountable owner | Platform security / dependency maintainers |
+| Dependency path | Transitive dependency via `tantivy-sstable 0.7.0` -> `tantivy-columnar` -> `tantivy 0.26.2` in `athanor-search-tantivy` |
+| Reachability | `tantivy-sstable` does not call `Seekable::decompress`; it uses block-level streaming decompression with verified segment sizes |
+| Compensating controls | Tantivy index segments are verified with internal checksums before decompression |
+| Remediation | Upgrade `tantivy` and `tantivy-sstable` when upstream updates to `zstd >= 0.14.3` |
+| Approved | 2026-10-28, transitive dependency exception |
+| Expires | 2027-01-28 |
+| Evidence required | `cargo audit` and `cargo deny check` output, inverse dependency tree via `cargo tree -i zstd` |
+| Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2026-0398.html> |
+
+### RUSTSEC-2026-0403 — `zstd` uninitialized memory exposed during legacy frame decompression
+
+| Field | Value |
+|---|---|
+| Severity | Medium |
+| Risk | Stale heap memory exposed if streaming decompression of a legacy frame fails |
+| Patched version | `zstd >= 0.14.3`; constrained to `zstd 0.13.3` by `tantivy-sstable 0.7.0` |
+| Repository policy location | `deny.toml, .cargo/audit.toml` |
+| Accountable owner | Platform security / dependency maintainers |
+| Dependency path | Transitive dependency via `tantivy-sstable 0.7.0` -> `tantivy-columnar` -> `tantivy 0.26.2` in `athanor-search-tantivy` |
+| Reachability | Tantivy writes only modern zstd frames using standard frame headers; legacy zstd v0.x frames are never generated or processed |
+| Compensating controls | All index files are created and read by the same tantivy engine version; untrusted raw zstd frames are not accepted from external requests |
+| Remediation | Upgrade `tantivy` and `tantivy-sstable` when upstream updates to `zstd >= 0.14.3` |
+| Approved | 2026-10-28, transitive dependency exception |
+| Expires | 2027-01-28 |
+| Evidence required | `cargo audit` and `cargo deny check` output, inverse dependency tree via `cargo tree -i zstd` |
+| Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2026-0403.html> |
+
 ## Closed Exceptions
 
 ### RUSTSEC-2026-0257 — `webbrowser` Unix `BROWSER` handling argument injection

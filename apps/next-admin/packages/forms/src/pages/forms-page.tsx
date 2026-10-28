@@ -13,21 +13,26 @@ interface FormsPageProps {
  * builder/front-end forms, triaged through the same rustok-forms GraphQL state
  * machine (new → read → handled / spam) the Rust FFA admin uses.
  */
-export default async function FormsPage({ token, tenantSlug, tenantId }: FormsPageProps) {
+export default async function FormsPage({
+  token,
+  tenantSlug,
+  tenantId
+}: FormsPageProps) {
   const opts: GqlOpts = { token, tenantSlug, tenantId };
   let items: FormSubmission[] = [];
   let loadError: string | null = null;
   try {
     items = await listFormSubmissions({ page: 1, perPage: 50 }, opts);
   } catch (cause) {
-    loadError = cause instanceof Error ? cause.message : 'Failed to load submissions';
+    loadError =
+      cause instanceof Error ? cause.message : 'Failed to load submissions';
   }
 
   return (
     <section>
       <h1>Form submissions</h1>
       {loadError ? (
-        <p role="alert">Submissions could not be loaded: {loadError}</p>
+        <p role='alert'>Submissions could not be loaded: {loadError}</p>
       ) : items.length === 0 ? (
         <p>No submissions yet.</p>
       ) : (

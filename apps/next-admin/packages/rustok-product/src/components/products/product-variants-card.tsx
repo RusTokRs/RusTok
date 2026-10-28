@@ -80,10 +80,7 @@ const SUPPORTED_CURRENCIES = [
 interface ProductVariantsCardProps {
   variants: ProductVariant[];
   onAddVariant?: (variant: Omit<ProductVariant, 'id'>) => Promise<void>;
-  onUpdateVariant?: (
-    id: string,
-    variant: UpdateVariantInput
-  ) => Promise<void>;
+  onUpdateVariant?: (id: string, variant: UpdateVariantInput) => Promise<void>;
   onDeleteVariant?: (id: string) => Promise<void>;
   isNew: boolean;
   onNewVariantDraftChange?: (draft: {

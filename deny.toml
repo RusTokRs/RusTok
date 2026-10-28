@@ -11,6 +11,14 @@ ignore = [
     # 1.27 already runs the RusToK data plane on compact_str. Removal is
     # scheduled with rhai 2.0. Time-bounded in docs/security/advisory-exceptions.md.
     "RUSTSEC-2026-0249",
+    # zip transitive dependency via playwright-rs in tests/e2e-rust
+    "RUSTSEC-2026-0367",
+    "RUSTSEC-2026-0368",
+    "RUSTSEC-2026-0369",
+    # zstd transitive dependency via tantivy-sstable in athanor-search-tantivy
+    "RUSTSEC-2026-0391",
+    "RUSTSEC-2026-0398",
+    "RUSTSEC-2026-0403",
 ]
 
 [licenses]

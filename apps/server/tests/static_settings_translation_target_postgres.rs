@@ -6,25 +6,25 @@ use std::{
 
 use rustok_api::TenantLocale;
 use rustok_migrations::Migrator;
+use rustok_modules::translation::{
+    StaticSettingsTranslationIdentity, StaticSettingsTranslationPrepareResult,
+};
 use rustok_modules::{
-    ModuleCommandContext, ModuleSettingSpec, StaticSettingsLocalizationError,
-    StaticSettingsLocalizationRegistry, StaticSettingsLocalizationService,
-    StaticSettingsSourceLocaleAssignCommand, StaticSettingsSourceLocaleService,
-    StaticTenantLifecycleStore,
     static_settings_translation_read::{
         StaticSettingsChangeReadRequest, StaticSettingsExactLocaleSnapshot,
         StaticSettingsTranslationReadService,
     },
-};
-use rustok_modules::translation::{
-    StaticSettingsTranslationIdentity, StaticSettingsTranslationPrepareResult,
+    ModuleCommandContext, ModuleSettingSpec, StaticSettingsLocalizationError,
+    StaticSettingsLocalizationRegistry, StaticSettingsLocalizationService,
+    StaticSettingsSourceLocaleAssignCommand, StaticSettingsSourceLocaleService,
+    StaticTenantLifecycleStore,
 };
 use rustok_test_utils::{
     assert_postgres_url, connect_postgres, create_postgres_database,
     drop_postgres_database_if_exists, postgres_database_url, unique_postgres_database_name,
 };
 use rustok_translation_targets::{
-    TranslationFieldPatch, TranslationPatchRequest, provider_support::field_hash,
+    provider_support::field_hash, TranslationFieldPatch, TranslationPatchRequest,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;

@@ -1,8 +1,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+#[cfg(any(feature = "redis-cache", test))]
 use async_trait::async_trait;
-use rustok_core::{CacheBackend, CacheCompareAndSetOutcome, CacheStats, InMemoryCacheBackend};
+use rustok_core::{CacheBackend, InMemoryCacheBackend};
+#[cfg(any(feature = "redis-cache", test))]
+use rustok_core::{CacheCompareAndSetOutcome, CacheStats};
 
 #[cfg(feature = "redis-cache")]
 use rustok_core::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError};

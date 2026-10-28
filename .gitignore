@@ -162,6 +162,8 @@ modules.local.toml
 .codex/
 .codegraph/
 .playwright-cli/
+playwright-report/
+test-results/
 /output/
 
 # Athanor local store and outputs
