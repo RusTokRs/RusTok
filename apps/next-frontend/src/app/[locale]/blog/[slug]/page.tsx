@@ -343,7 +343,7 @@ export default async function BlogPostPage({
               />
               <BlogShareButtons
                 title={post.title}
-                url={articleUrl}
+                url={`${getSiteUrl()}${articleUrl}`}
                 locale={locale}
               />
             </div>
