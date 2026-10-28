@@ -3,6 +3,8 @@ use uuid::Uuid;
 
 use super::{DomainError, FieldPath, IndexValue, LocaleKey, SchemaRef};
 
+// Encoded request continuation tokens are bounded before Base64 decoding.
+pub(crate) const MAX_QUERY_CURSOR_BYTES: usize = 64 * 1024;
 const MAX_CURSOR_PAGE_SIZE: u32 = 500;
 const MAX_OFFSET_LIMIT: u32 = 100;
 const MAX_OFFSET_DEPTH: u64 = 10_000;
@@ -119,11 +121,16 @@ pub enum Pagination {
 impl Pagination {
     pub fn validate(&self) -> Result<(), DomainError> {
         match self {
-            Self::Cursor { first, .. } => {
+            Self::Cursor { first, after } => {
                 if *first == 0 {
                     Err(DomainError::EmptyPage)
                 } else if *first > MAX_CURSOR_PAGE_SIZE {
                     Err(DomainError::PageTooLarge)
+                } else if after
+                    .as_ref()
+                    .is_some_and(|cursor| cursor.len() > MAX_QUERY_CURSOR_BYTES)
+                {
+                    Err(DomainError::CursorTooLarge)
                 } else {
                     Ok(())
                 }
@@ -300,4 +307,18 @@ mod tests {
         assert!(query.validate_shape().is_ok());
         assert_eq!(query.referenced_paths().len(), 2);
     }
+    #[test]
+    fn rejects_oversized_continuation_before_decoding() {
+        let oversized = Pagination::Cursor {
+            first: 20,
+            after: Some("A".repeat(MAX_QUERY_CURSOR_BYTES + 1)),
+        };
+        assert_eq!(oversized.validate(), Err(DomainError::CursorTooLarge));
+        let bounded = Pagination::Cursor {
+            first: 20,
+            after: Some("A".repeat(MAX_QUERY_CURSOR_BYTES)),
+        };
+        assert!(bounded.validate().is_ok());
+    }
+
 }
