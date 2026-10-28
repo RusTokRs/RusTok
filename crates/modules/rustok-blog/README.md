@@ -134,6 +134,10 @@ copy must use the canonical Taxonomy owner contract.
 - The static `blog -> comments` lifecycle edge is removed. Blog owns comment-surface
   policy; Comments owns threads, bodies, moderation, and retention. Provider absence
   fails comment operations closed while Blog publication serving remains available.
+  Public comment reads revalidate post/channel visibility and the current Blog
+  discussion mode after the Comments owner response. Cached approved-comment
+  snapshots are never returned after the discussion becomes disabled, even if
+  the mode changes during an upstream timeout.
 - The projected `comment_count` on a post counts **approved comments only** — the
   number a public reader can actually see. Creation is moderation-pending and does
   not move the counter; approval moves it exactly once; moving a comment to
