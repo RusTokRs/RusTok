@@ -232,6 +232,18 @@ async fn apply(
     let executor = ServerInstallExecutor::new(registry);
     if let Err(error) = persistence.create_http_job(job_id, submitted_at).await {
         ctx.shared_take::<ActiveInstallerJobHandle>();
+        if matches!(
+            error.sql_err(),
+            Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+        ) {
+            // The database (not a process-local precheck) arbitrates the
+            // single running claim across concurrent installer replicas.
+            return Err(http_error(HttpError::new(
+                StatusCode::CONFLICT,
+                "installer_running",
+                "An installation job is already running",
+            )));
+        }
         tracing::error!(%error, %job_id, "Failed to create durable installer HTTP job");
         return Err(internal_error("failed to create installer job"));
     }
