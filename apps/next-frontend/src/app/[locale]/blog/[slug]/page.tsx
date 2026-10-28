@@ -54,22 +54,20 @@ export async function generateMetadata({
   const tenantSlug = getStorefrontTenantSlug();
   const tenantId = getStorefrontTenantId();
 
-  let post = null;
-  if (tenantId) {
-    try {
-      post = await fetchPublishedPost(
+  // Metadata must not mistake a failed owner read for a missing article.
+  // A retired slug resolves to the live post, whose current slug owns the
+  // canonical metadata route just as it does the permanent page redirect.
+  const post = tenantId
+    ? await fetchPublishedPost(
         storefrontGraphql,
         tenantId,
         tenantSlug,
         slug,
         locale
-      );
-    } catch {
-      post = null;
-    }
-  }
+      )
+    : null;
 
-  const path = `/blog/${slug}`;
+  const path = `/blog/${encodeURIComponent(post?.slug ?? slug)}`;
   const seoResolution = await resolveSeoPageContextForRoute({
     locale,
     route: path,
