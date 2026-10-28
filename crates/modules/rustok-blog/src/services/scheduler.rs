@@ -97,18 +97,26 @@ fn work_item_tenant(item: &ModuleWorkItem, expected_slug: &str) -> Result<Uuid, 
 
 /// Blog-owned bridge between scheduled drafts and the generic scheduler.
 ///
-/// One claim serves one tenant: the tenant owning the earliest due schedule is
-/// drained up to [`MAX_SCHEDULED_PUBLISH_BATCH`] posts. Published posts leave the due
-/// set, so each iteration advances every tenant's earliest schedule in turn.
+/// Each claim serves one tenant. The first claim selects the oldest due schedule;
+/// subsequent claims rotate over due tenant ids, so a tenant with an
+/// unpublishable draft does not monopolize every later worker iteration.
 #[derive(Clone)]
 pub struct BlogScheduledPublishWorkAdapter {
     database: DatabaseConnection,
     events: TransactionalEventBus,
+    // Fairness hint only: due drafts remain the durable source of work. Share
+    // the cursor across adapter clones and serialize local claims; another host
+    // can still claim the same tenant, which the owner version CAS tolerates.
+    last_claimed_tenant: Arc<tokio::sync::Mutex<Option<Uuid>>>,
 }
 
 impl BlogScheduledPublishWorkAdapter {
     pub fn new(database: DatabaseConnection, events: TransactionalEventBus) -> Self {
-        Self { database, events }
+        Self {
+            database,
+            events,
+            last_claimed_tenant: Arc::new(tokio::sync::Mutex::new(None)),
+        }
     }
 
     /// Publishes this worker through the generic scheduler. The host only composes
@@ -121,20 +129,51 @@ impl BlogScheduledPublishWorkAdapter {
         scheduler.register(adapter.clone(), adapter).await
     }
 
-    /// Tenant with the earliest due schedule. Read-only: the CAS in the owner command
-    /// re-checks the due predicate before publishing anything.
+    /// Rotate due tenants instead of re-claiming the earliest poisoned draft
+    /// forever. The cursor does not replace the durable due-post predicate,
+    /// and an instance restart simply begins a new fair cycle.
     async fn next_due_tenant(&self) -> Result<Option<Uuid>, ModuleWorkError> {
+        // An async mutex is held over discovery to prevent concurrent local
+        // claims from advancing the fairness cursor based on the same state.
+        let mut last = self.last_claimed_tenant.lock().await;
         let now = chrono::Utc::now().fixed_offset();
-        blog_post::Entity::find()
-            .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Draft)))
-            .filter(blog_post::Column::ScheduledAt.is_not_null())
-            .filter(blog_post::Column::ScheduledAt.lte(now))
-            .order_by_asc(blog_post::Column::ScheduledAt)
-            .order_by_asc(blog_post::Column::Id)
-            .one(&self.database)
-            .await
-            .map(|post| post.map(|post| post.tenant_id))
-            .map_err(|error| ModuleWorkError::Source(error.to_string()))
+        let due_posts = || {
+            blog_post::Entity::find()
+                .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Draft)))
+                .filter(blog_post::Column::ScheduledAt.is_not_null())
+                .filter(blog_post::Column::ScheduledAt.lte(now))
+        };
+
+        let next = if let Some(last_tenant) = *last {
+            let higher = due_posts()
+                .filter(blog_post::Column::TenantId.gt(last_tenant))
+                .order_by_asc(blog_post::Column::TenantId)
+                .one(&self.database)
+                .await
+                .map_err(|error| ModuleWorkError::Source(error.to_string()))?;
+            match higher {
+                Some(post) => Some(post.tenant_id),
+                None => due_posts()
+                    .order_by_asc(blog_post::Column::TenantId)
+                    .one(&self.database)
+                    .await
+                    .map(|post| post.map(|post| post.tenant_id))
+                    .map_err(|error| ModuleWorkError::Source(error.to_string()))?,
+            }
+        } else {
+            due_posts()
+                .order_by_asc(blog_post::Column::ScheduledAt)
+                .order_by_asc(blog_post::Column::Id)
+                .one(&self.database)
+                .await
+                .map(|post| post.map(|post| post.tenant_id))
+                .map_err(|error| ModuleWorkError::Source(error.to_string()))?
+        };
+
+        if let Some(tenant_id) = next {
+            *last = Some(tenant_id);
+        }
+        Ok(next)
     }
 }
 
