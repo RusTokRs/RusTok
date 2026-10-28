@@ -623,8 +623,9 @@ async fn seo_scan_skips_a_published_row_without_a_publication_timestamp() {
         .await
         .expect("a published post should be created");
 
-    // Simulate pre-existing corruption the write path no longer permits: the
-    // row is published but carries no publication timestamp.
+    // Simulate legacy corruption that production integrity constraints
+    // prevent from being created in a migrated database.
+    super::hardening::allow_legacy_invalid_post_fixture(&db).await;
     blog_post::Entity::update_many()
         .col_expr(
             blog_post::Column::PublishedAt,
