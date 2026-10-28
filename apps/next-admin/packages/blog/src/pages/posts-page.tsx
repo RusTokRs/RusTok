@@ -11,7 +11,6 @@ import {
   parsePostSortOrder
 } from '../api/posts';
 import { PostTable, type PostTablePager } from '../components/post-table';
-import { columns } from '../components/post-table/columns';
 
 interface PostsPageProps {
   searchParams: {
@@ -99,5 +98,5 @@ export default async function PostsPage({
       : null
   };
 
-  return <PostTable data={posts} pager={pager} columns={columns} />;
+  return <PostTable data={posts} pager={pager} gqlOpts={opts} />;
 }
