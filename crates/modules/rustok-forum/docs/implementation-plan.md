@@ -113,6 +113,8 @@ Maintainer verification before merge:
 - `cargo test --locked -p rustok-forum --test moderation_semantics_sqlite`
 - `cargo test --locked -p rustok-forum --test moderation_semantics_postgres`
 - `cargo test --locked -p rustok-forum --test moderation_revision_concurrency_postgres`
+- `cargo test --locked -p rustok-forum --test votes`
+- `cargo test --locked -p rustok-forum --test graphql_stats_and_vote_tenant_scope_sqlite`
 - `cargo test --locked -p rustok-forum --test counter_reconciliation_sqlite`
 - `cargo test --locked -p rustok-forum --test category_taxonomy_read_cutover`
 - `node scripts/verify/verify-forum-taxonomy-category-binding.mjs`
