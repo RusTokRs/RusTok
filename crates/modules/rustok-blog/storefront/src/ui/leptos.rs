@@ -25,7 +25,7 @@ pub fn BlogView() -> impl IntoView {
     let comments_page_query = use_route_query_value(comments_pagination::COMMENTS_PAGE_QUERY_KEY);
     let posts_cursor_query = use_route_query_value(core::POSTS_CURSOR_QUERY_KEY);
     let search_query = use_route_query_value("q");
-    let search_page_query = use_route_query_value("searchPage");
+    let search_page_query = use_route_query_value("page");
     let tag_query = use_route_query_value("tag");
     let category_query = use_route_query_value("category");
     let shell_view = core::build_storefront_shell_view_model(selected_locale.as_deref());
@@ -433,10 +433,10 @@ fn BlogShowcase(
                                 <button type="button" class="rounded-full border px-4 py-2 text-sm"
                                     on:click=move |_| {
                                         if search_page <= 2 {
-                                            writer.apply_query_intent(UiRouteQueryIntent::clear("searchPage"));
+                                            writer.apply_query_intent(UiRouteQueryIntent::clear("page"));
                                         } else {
                                             writer.apply_query_intent(UiRouteQueryIntent::replace(
-                                                "searchPage", (search_page - 1).to_string(),
+                                                "page", (search_page - 1).to_string(),
                                             ));
                                         }
                                     }>
@@ -452,7 +452,7 @@ fn BlogShowcase(
                             view! {
                                 <button type="button" class="rounded-full border px-4 py-2 text-sm"
                                     on:click=move |_| writer.apply_query_intent(UiRouteQueryIntent::replace(
-                                        "searchPage", (search_page + 1).to_string(),
+                                        "page", (search_page + 1).to_string(),
                                     ))>
                                     {t(locale.as_deref(), "blog.posts.nextPage", "Next page")}
                                 </button>
