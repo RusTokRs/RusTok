@@ -107,7 +107,7 @@ async fn stats_and_vote_clears_reject_foreign_tenants_before_read_or_write() {
     ] {
         let response = schema
             .execute(format!(
-                "mutation {{ {mutation}(tenantId: \"{foreign_id}\", {target}: \"{}\") {{ id }} }}",
+                "mutation {{ {mutation}(tenantId: \"{foreign_id}\", {target}: \"{}\")  }}",
                 Uuid::new_v4(),
             ))
             .await;

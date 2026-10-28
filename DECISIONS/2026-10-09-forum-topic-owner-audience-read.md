@@ -6,7 +6,7 @@
 - Owners: `rustok-forum` (topic read services, GraphQL runtime, REST controllers, SEO target provider); `rustok-api` (`PortContext` and read-transport operations); consumers: `apps/next-admin`, `crates/modules/rustok-forum/admin`, `apps/next-frontend`, `crates/modules/rustok-forum/storefront`
 - Extends: `DECISIONS/2026-09-29-cross-module-owner-diagnostic-ports.md`, `crates/modules/rustok-forum/docs/forum-20bc-topic-audience-transport-composition.md`
 - Supersedes: None
-- Superseded by: None
+- Superseded by: [2026-10-28 Forum write acknowledgements](./2026-10-28-forum-write-acknowledgements.md) (moderation solution write-response section only; reads remain current).
 
 ## Context
 

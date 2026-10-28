@@ -213,10 +213,11 @@ wrappers. Each one has an owner decision or a follow-up task in
   Selective policies can require scanning more raw candidates than the page size.
   The `Authoring` SEO scope keeps the system context and does not apply the
   audience contract.
-- Moderation solution write responses (REST and GraphQL mark/clear) read the topic through
-  the owner path after the write. The moderation gate exempts the exact topic author, so an
-  author who has lost audience access gets `TopicNotFound` (404) after a committed write.
-  See [`DECISIONS/2026-10-09-forum-topic-owner-audience-read.md`](../../../DECISIONS/2026-10-09-forum-topic-owner-audience-read.md).
+- Topic/reply vote set/clear and topic solution mark/clear return only
+  command acknowledgements: REST `204 No Content`, GraphQL `Boolean!`.
+  There is no post-commit object read that could turn success into a 404 or
+  disclose restricted content. Clients needing updated details must call a
+  separately authorized owner read. See the write acknowledgement ADR.
 - `ForumOwnerExportReader` is an operator-scope library reader. It is not
   audience-filtered and has no CLI or API transport.
 - Among the `ForumModuleSettings` values, `use_reactions`, `allow_downvotes`, and

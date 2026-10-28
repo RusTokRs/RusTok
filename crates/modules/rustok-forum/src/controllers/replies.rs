@@ -324,7 +324,7 @@ pub async fn restore_reply(
         ("value" = i32, Path, description = "Vote value (-1 or 1)")
     ),
     responses(
-        (status = 200, description = "Reply vote updated", body = ReplyResponse),
+        (status = 204, description = "set reply vote acknowledged"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden")
     )
@@ -335,7 +335,7 @@ pub async fn set_reply_vote(
     auth: AuthContext,
     request_context: RequestContext,
     Path((reply_id, value)): Path<(Uuid, i32)>,
-) -> HttpResult<Json<ReplyResponse>> {
+) -> HttpResult<StatusCode> {
     if tenant.id.is_nil() {
         return Err(HttpError::bad_request(
             "invalid_tenant_id",
@@ -356,7 +356,6 @@ pub async fn set_reply_vote(
         "Permission denied: forum_replies:read required",
     )?;
 
-    let read_service = reply_audience_read_service(&runtime);
     // The vote service gates the parent topic audience and rejects missing or denied
     // replies with `ReplyNotFound`, so no separate read preflight is needed here.
     let write_context = topic_read_audience_port_context(
@@ -380,26 +379,7 @@ pub async fn set_reply_vote(
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let response_context = reply_read_audience_port_context(
-        ForumReplyReadTransport::Rest,
-        ForumReplyReadOperation::SelectedReply,
-        tenant.id,
-        &auth,
-        Some(&request_context),
-        request_context.locale.as_str(),
-    )
-    .map_err(crate::controllers::map_forum_error)?;
-    let reply = read_service
-        .get_authenticated_owner_visible_with_audience_context(
-            tenant.id,
-            forum_security(&auth),
-            response_context,
-            reply_id,
-            Some(tenant.default_locale.as_str()),
-        )
-        .await
-        .map_err(crate::controllers::map_forum_error)?;
-    Ok(Json(reply))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[utoipa::path(
@@ -408,7 +388,7 @@ pub async fn set_reply_vote(
     tag = "forum",
     params(("reply_id" = Uuid, Path, description = "Reply ID")),
     responses(
-        (status = 200, description = "Reply vote cleared", body = ReplyResponse),
+        (status = 204, description = "clear reply vote acknowledged"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden")
     )
@@ -417,9 +397,8 @@ pub async fn clear_reply_vote(
     State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-    request_context: RequestContext,
     Path(reply_id): Path<Uuid>,
-) -> HttpResult<Json<ReplyResponse>> {
+) -> HttpResult<StatusCode> {
     if tenant.id.is_nil() {
         return Err(HttpError::bad_request(
             "invalid_tenant_id",
@@ -440,34 +419,13 @@ pub async fn clear_reply_vote(
         "Permission denied: forum_replies:read required",
     )?;
 
-    let read_service = reply_audience_read_service(&runtime);
-
     runtime
         .vote_service()
         .clear_reply_vote(tenant.id, reply_id, forum_security(&auth))
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let response_context = reply_read_audience_port_context(
-        ForumReplyReadTransport::Rest,
-        ForumReplyReadOperation::SelectedReply,
-        tenant.id,
-        &auth,
-        Some(&request_context),
-        request_context.locale.as_str(),
-    )
-    .map_err(crate::controllers::map_forum_error)?;
-    let reply = read_service
-        .get_authenticated_owner_visible_with_audience_context(
-            tenant.id,
-            forum_security(&auth),
-            response_context,
-            reply_id,
-            Some(tenant.default_locale.as_str()),
-        )
-        .await
-        .map_err(crate::controllers::map_forum_error)?;
-    Ok(Json(reply))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 fn reply_audience_read_service(

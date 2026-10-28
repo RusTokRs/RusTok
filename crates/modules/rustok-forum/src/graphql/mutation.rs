@@ -883,16 +883,16 @@ impl ForumContentMutation {
         topic_id: Uuid,
         value: i32,
         locale: Option<String>,
-    ) -> Result<GqlForumTopic> {
+    ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = require_forum_permission(
             ctx,
             &[Permission::FORUM_TOPICS_READ],
             "Permission denied: forum_topics:read required",
         )?;
         let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, Some(tenant_id))?;
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
         let write_context = topic_read_audience_port_context(
@@ -919,37 +919,7 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let read_context = topic_read_audience_port_context(
-            ForumTopicReadTransport::Graphql,
-            ForumTopicReadOperation::SelectedTopic,
-            tenant_id,
-            auth,
-            ctx.data_opt::<RequestContext>(),
-            resolved_locale.as_str(),
-        )?;
-        let topic = super::forum_graphql_runtime(ctx)
-            .topic_audience_read_service(db.clone(), event_bus.clone())
-            .get_authenticated_owner_visible_with_audience_context(
-                tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
-                read_context,
-                topic_id,
-                Some(tenant.default_locale.as_str()),
-            )
-            .await?;
-        let author_profile = load_author_profile(
-            ctx,
-            db,
-            tenant_id,
-            topic.author_id,
-            topic.effective_locale.as_str(),
-        )
-        .await?;
-
-        Ok(map_topic(topic, author_profile))
+        Ok(true)
     }
 
     async fn clear_forum_topic_vote(
@@ -957,21 +927,16 @@ impl ForumContentMutation {
         ctx: &Context<'_>,
         tenant_id: Uuid,
         topic_id: Uuid,
-        locale: Option<String>,
-    ) -> Result<GqlForumTopic> {
+    ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = require_forum_permission(
             ctx,
             &[Permission::FORUM_TOPICS_READ],
             "Permission denied: forum_topics:read required",
         )?;
         let tenant = ctx.data::<rustok_api::TenantContext>()?;
-        // Check the request tenant BEFORE deleting a vote, not only when
-        // materializing the post-write topic response.
         let tenant_id = resolve_tenant_scope(tenant, Some(tenant_id))?;
-        let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
         ctx.data_opt::<ForumGraphqlRuntimeData>()
             .cloned()
@@ -987,37 +952,7 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let read_context = topic_read_audience_port_context(
-            ForumTopicReadTransport::Graphql,
-            ForumTopicReadOperation::SelectedTopic,
-            tenant_id,
-            auth,
-            ctx.data_opt::<RequestContext>(),
-            resolved_locale.as_str(),
-        )?;
-        let topic = super::forum_graphql_runtime(ctx)
-            .topic_audience_read_service(db.clone(), event_bus.clone())
-            .get_authenticated_owner_visible_with_audience_context(
-                tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
-                read_context,
-                topic_id,
-                Some(tenant.default_locale.as_str()),
-            )
-            .await?;
-        let author_profile = load_author_profile(
-            ctx,
-            db,
-            tenant_id,
-            topic.author_id,
-            topic.effective_locale.as_str(),
-        )
-        .await?;
-
-        Ok(map_topic(topic, author_profile))
+        Ok(true)
     }
 
     async fn set_forum_reply_vote(
@@ -1027,16 +962,16 @@ impl ForumContentMutation {
         reply_id: Uuid,
         value: i32,
         locale: Option<String>,
-    ) -> Result<GqlForumReply> {
+    ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = require_forum_permission(
             ctx,
             &[Permission::FORUM_REPLIES_READ],
             "Permission denied: forum_replies:read required",
         )?;
         let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, Some(tenant_id))?;
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
         let write_context = topic_read_audience_port_context(
@@ -1063,56 +998,7 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let read_context = reply_read_audience_port_context(
-            ForumReplyReadTransport::Graphql,
-            ForumReplyReadOperation::SelectedReply,
-            tenant_id,
-            auth,
-            ctx.data_opt::<RequestContext>(),
-            resolved_locale.as_str(),
-        )?;
-        let reply = super::forum_graphql_runtime(ctx)
-            .reply_audience_read_service(db.clone(), event_bus.clone())
-            .get_authenticated_owner_visible_with_audience_context(
-                tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
-                read_context,
-                reply_id,
-                Some(tenant.default_locale.as_str()),
-            )
-            .await?;
-        let author_profile = load_author_profile(
-            ctx,
-            db,
-            tenant_id,
-            reply.author_id,
-            reply.effective_locale.as_str(),
-        )
-        .await?;
-
-        Ok(GqlForumReply {
-            id: reply.id,
-            requested_locale: reply.requested_locale,
-            locale: reply.locale,
-            effective_locale: reply.effective_locale,
-            available_locales: reply.available_locales,
-            topic_id: reply.topic_id,
-            author_id: reply.author_id,
-            author_profile,
-            content: reply.content,
-            content_plain_text: reply.content_plain_text,
-            is_deleted: reply.is_deleted,
-            status: reply.status,
-            vote_score: reply.vote_score,
-            current_user_vote: reply.current_user_vote,
-            is_solution: reply.is_solution,
-            parent_reply_id: reply.parent_reply_id,
-            created_at: reply.created_at,
-            updated_at: reply.updated_at,
-        })
+        Ok(true)
     }
 
     async fn clear_forum_reply_vote(
@@ -1120,20 +1006,16 @@ impl ForumContentMutation {
         ctx: &Context<'_>,
         tenant_id: Uuid,
         reply_id: Uuid,
-        locale: Option<String>,
-    ) -> Result<GqlForumReply> {
+    ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = require_forum_permission(
             ctx,
             &[Permission::FORUM_REPLIES_READ],
             "Permission denied: forum_replies:read required",
         )?;
         let tenant = ctx.data::<rustok_api::TenantContext>()?;
-        // A response-time audience check cannot undo a foreign-tenant delete.
         let tenant_id = resolve_tenant_scope(tenant, Some(tenant_id))?;
-        let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
         ctx.data_opt::<ForumGraphqlRuntimeData>()
             .cloned()
@@ -1149,56 +1031,7 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let read_context = reply_read_audience_port_context(
-            ForumReplyReadTransport::Graphql,
-            ForumReplyReadOperation::SelectedReply,
-            tenant_id,
-            auth,
-            ctx.data_opt::<RequestContext>(),
-            resolved_locale.as_str(),
-        )?;
-        let reply = super::forum_graphql_runtime(ctx)
-            .reply_audience_read_service(db.clone(), event_bus.clone())
-            .get_authenticated_owner_visible_with_audience_context(
-                tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
-                read_context,
-                reply_id,
-                Some(tenant.default_locale.as_str()),
-            )
-            .await?;
-        let author_profile = load_author_profile(
-            ctx,
-            db,
-            tenant_id,
-            reply.author_id,
-            reply.effective_locale.as_str(),
-        )
-        .await?;
-
-        Ok(GqlForumReply {
-            id: reply.id,
-            requested_locale: reply.requested_locale,
-            locale: reply.locale,
-            effective_locale: reply.effective_locale,
-            available_locales: reply.available_locales,
-            topic_id: reply.topic_id,
-            author_id: reply.author_id,
-            author_profile,
-            content: reply.content,
-            content_plain_text: reply.content_plain_text,
-            is_deleted: reply.is_deleted,
-            status: reply.status,
-            vote_score: reply.vote_score,
-            current_user_vote: reply.current_user_vote,
-            is_solution: reply.is_solution,
-            parent_reply_id: reply.parent_reply_id,
-            created_at: reply.created_at,
-            updated_at: reply.updated_at,
-        })
+        Ok(true)
     }
 
     async fn mark_forum_topic_solution(
@@ -1207,8 +1040,7 @@ impl ForumContentMutation {
         tenant_id: Uuid,
         topic_id: Uuid,
         reply_id: Uuid,
-        locale: Option<String>,
-    ) -> Result<GqlForumTopic> {
+    ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
@@ -1225,7 +1057,6 @@ impl ForumContentMutation {
             ctx.data_opt::<rustok_api::RequestContext>(),
             tenant.default_locale.as_str(),
         )?;
-        let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
         let runtime = ctx
             .data_opt::<ForumGraphqlRuntimeData>()
             .cloned()
@@ -1245,37 +1076,7 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let read_context = topic_read_audience_port_context(
-            ForumTopicReadTransport::Graphql,
-            ForumTopicReadOperation::SelectedTopic,
-            tenant_id,
-            &auth,
-            ctx.data_opt::<RequestContext>(),
-            resolved_locale.as_str(),
-        )?;
-        let topic = super::forum_graphql_runtime(ctx)
-            .topic_audience_read_service(db.clone(), event_bus.clone())
-            .get_authenticated_owner_visible_with_audience_context(
-                tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
-                read_context,
-                topic_id,
-                Some(tenant.default_locale.as_str()),
-            )
-            .await?;
-        let author_profile = load_author_profile(
-            ctx,
-            db,
-            tenant_id,
-            topic.author_id,
-            topic.effective_locale.as_str(),
-        )
-        .await?;
-
-        Ok(map_topic(topic, author_profile))
+        Ok(true)
     }
 
     async fn clear_forum_topic_solution(
@@ -1283,8 +1084,7 @@ impl ForumContentMutation {
         ctx: &Context<'_>,
         tenant_id: Uuid,
         topic_id: Uuid,
-        locale: Option<String>,
-    ) -> Result<GqlForumTopic> {
+    ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
@@ -1301,7 +1101,6 @@ impl ForumContentMutation {
             ctx.data_opt::<rustok_api::RequestContext>(),
             tenant.default_locale.as_str(),
         )?;
-        let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
         let runtime = ctx
             .data_opt::<ForumGraphqlRuntimeData>()
             .cloned()
@@ -1320,37 +1119,7 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let read_context = topic_read_audience_port_context(
-            ForumTopicReadTransport::Graphql,
-            ForumTopicReadOperation::SelectedTopic,
-            tenant_id,
-            &auth,
-            ctx.data_opt::<RequestContext>(),
-            resolved_locale.as_str(),
-        )?;
-        let topic = super::forum_graphql_runtime(ctx)
-            .topic_audience_read_service(db.clone(), event_bus.clone())
-            .get_authenticated_owner_visible_with_audience_context(
-                tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
-                read_context,
-                topic_id,
-                Some(tenant.default_locale.as_str()),
-            )
-            .await?;
-        let author_profile = load_author_profile(
-            ctx,
-            db,
-            tenant_id,
-            topic.author_id,
-            topic.effective_locale.as_str(),
-        )
-        .await?;
-
-        Ok(map_topic(topic, author_profile))
+        Ok(true)
     }
 
     async fn create_forum_category(

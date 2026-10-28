@@ -6,7 +6,7 @@
 - Owners: `rustok-forum` (`VoteService`, `SubscriptionService`, write audience gate, GraphQL runtime, REST controllers); `rustok-api` (`PortContext`, `ForumTopicReadTransport` and `ForumReplyReadTransport` operations)
 - Extends: `DECISIONS/2026-10-09-forum-topic-owner-audience-read.md`
 - Supersedes: None
-- Superseded by: `2026-10-15-forum-anonymous-discovery-and-category-counts.md` (subscription transport response semantics only; vote and service write gates remain current)
+- Superseded by: `2026-10-15-forum-anonymous-discovery-and-category-counts.md` (subscription responses), and [2026-10-28 Forum write acknowledgements](./2026-10-28-forum-write-acknowledgements.md) (vote responses only; service write gates remain current)
 
 ## Context
 
