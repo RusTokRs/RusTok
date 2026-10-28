@@ -51,6 +51,8 @@ pub fn BlogAdmin() -> impl IntoView {
     let (excerpt, set_excerpt) = signal(String::new());
     let (content, set_content) = signal(RichTextDocument::empty());
     let (locale, set_locale) = signal(default_locale.clone());
+    // Keep the owner translation locale independent of admin list filters.
+    let (list_locale, set_list_locale) = signal(default_locale.clone());
     let (tags_input, set_tags_input) = signal(String::new());
     let (publish_now, set_publish_now) = signal(false);
     let (busy_key, set_busy_key) = signal(Option::<String>::None);
@@ -123,7 +125,7 @@ pub fn BlogAdmin() -> impl IntoView {
                 token.get(),
                 tenant.get(),
                 refresh_nonce.get(),
-                locale.get(),
+                list_locale.get(),
                 posts_sort.get(),
             )
         },
@@ -149,7 +151,7 @@ pub fn BlogAdmin() -> impl IntoView {
     let load_more_posts = Callback::new(move |cursor: String| {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
-        let locale_value = locale.get_untracked();
+        let locale_value = list_locale.get_untracked();
         let sort_value = posts_sort.get_untracked();
         let error_label = load_more_error_label.clone();
         posts_load_more_error.set(None);
@@ -632,8 +634,8 @@ pub fn BlogAdmin() -> impl IntoView {
                 <section class=shell_classes.layout>
                     <div class=shell_classes.list_card>
                         <BlogPostsListHeader
-                            locale=locale
-                            set_locale=set_locale
+                            locale=list_locale
+                            set_locale=set_list_locale
                             locale_filter_label=form_copy_view.locale_label.clone()
                         />
 
@@ -767,6 +769,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                         type="text"
                                         class=form_field_classes.text_input
                                         prop:value=locale
+                                        disabled=move || editing_post_id.get().is_some()
                                         on:input=move |ev| set_locale.set(event_target_value(&ev))
                                     />
                                 </label>
