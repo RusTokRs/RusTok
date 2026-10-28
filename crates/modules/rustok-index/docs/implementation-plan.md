@@ -54,6 +54,22 @@
   `grapesjs/dist/grapes.min.js`. This is not claimed fixed here.
 - No FS-07 completion, readiness, or runtime/test-success assertion.
 
+### Scope and real verification gate (2026-10-28)
+
+Canonical `IndexSourceLoadRequest::new` now rejects nil entity identities
+at every targeted position before source invocation. The replay-mode and
+targeted-executor regression tests were aligned with the earlier fail-closed
+request boundary. Owner-specific locale admission remains downstream.
+CI source guards now inspect `IndexModule` ownership in `src/module.rs`
+and use the runtime's explicit Postgres/SQLite test-adapter contract rather
+than obsolete marker assumptions. The Index Contract CI focused job has new
+crate-only compile and full lib-test steps. **Results are not yet established.**
+
+The refreshed `main` changed 21 Index source/test files since
+`dde4b1e2`, overlapping the cursor and domain-error patch. Integration
+needs a main refresh and semantic diff reconciliation plus passing tests;
+a historical 'no overlap' note is not current evidence. FS-07 remains open.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`
