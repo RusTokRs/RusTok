@@ -213,9 +213,13 @@ pub async fn reorder_module_category_siblings_in_tx(
         .map(|row| row.term_id)
         .collect::<HashSet<_>>();
     let ordered_ids = ordered_term_ids.iter().copied().collect::<HashSet<_>>();
-    if !sibling_ids.is_subset(&ordered_ids) {
+    // This is an *ordering* command, not a move. A superset of the current
+    // sibling ids silently reparents the extra terms below, bypassing the
+    // canonical move command's cycle/depth validation and affecting another
+    // sibling set. Both directions of the set comparison are mandatory.
+    if sibling_ids != ordered_ids {
         return Err(TaxonomyError::conflict(
-            "Module Category sibling order does not cover the complete canonical sibling set",
+            "Module Category sibling order must match the canonical sibling set exactly",
         ));
     }
 
@@ -281,8 +285,22 @@ pub async fn shift_module_category_siblings_for_insert_in_tx(
             "Module Category insertion placement changed before sibling normalization",
         ));
     }
+    // Roots from every module share parent_id = NULL. Scope the shift to
+    // this module's Taxonomy identities before touching any sibling position;
+    // otherwise adding one Blog root can reorder unrelated module roots.
+    let scoped_ids = taxonomy_term::Entity::find()
+        .select_only()
+        .column(taxonomy_term::Column::Id)
+        .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category))
+        .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
+        .filter(taxonomy_term::Column::ScopeValue.eq(&module_scope))
+        .into_tuple::<Uuid>()
+        .all(txn)
+        .await?;
     let siblings = taxonomy_category_hierarchy::Entity::find()
         .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_category_hierarchy::Column::TermId.is_in(scoped_ids))
         .filter(match parent_id {
             Some(parent_id) => taxonomy_category_hierarchy::Column::ParentTermId.eq(parent_id),
             None => taxonomy_category_hierarchy::Column::ParentTermId.is_null(),
