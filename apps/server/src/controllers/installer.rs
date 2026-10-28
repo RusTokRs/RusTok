@@ -506,7 +506,10 @@ fn extract_setup_token(headers: &HeaderMap) -> Result<Option<String>> {
         return Err(forbidden_error("duplicate x-rustok-setup-token header"));
     }
 
-    let auth_count = headers.get_all(axum::http::header::AUTHORIZATION).iter().count();
+    let auth_count = headers
+        .get_all(axum::http::header::AUTHORIZATION)
+        .iter()
+        .count();
     if auth_count > 1 {
         return Err(forbidden_error("duplicate authorization header"));
     }
@@ -545,9 +548,7 @@ fn validate_setup_token_value(provided: Option<&str>, expected: &str) -> bool {
     if expected_trimmed.is_empty() {
         return false;
     }
-    provided.is_some_and(|value| {
-        bool::from(value.as_bytes().ct_eq(expected_trimmed.as_bytes()))
-    })
+    provided.is_some_and(|value| bool::from(value.as_bytes().ct_eq(expected_trimmed.as_bytes())))
 }
 
 fn require_setup_token(headers: &HeaderMap) -> Result<()> {
@@ -775,7 +776,10 @@ mod tests {
     #[test]
     fn validate_setup_token_value_compares_constant_time() {
         assert!(validate_setup_token_value(Some("secret123"), "secret123"));
-        assert!(validate_setup_token_value(Some("secret123"), "  secret123  "));
+        assert!(validate_setup_token_value(
+            Some("secret123"),
+            "  secret123  "
+        ));
         assert!(!validate_setup_token_value(Some("wrong"), "secret123"));
         assert!(!validate_setup_token_value(None, "secret123"));
         assert!(!validate_setup_token_value(Some("secret123"), "   "));

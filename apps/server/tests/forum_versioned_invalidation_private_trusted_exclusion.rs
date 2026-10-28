@@ -24,11 +24,10 @@ use rustok_events::{
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumAudienceConstraints,
     ForumAudienceFacts, ForumAudienceFactsPort, ForumAudienceFactsRequest,
-    ForumCategoryAudiencePolicyService, ForumModule,
-    ForumSearchResultCandidate, ForumSearchResultCandidateKind,
-    ForumSearchResultEligibilityService, ForumTopicAudiencePolicyService,
-    SetForumCategoryAudiencePolicyInput, SetForumTopicAudiencePolicyInput,
-    SharedForumAudienceFactsPort, TopicService,
+    ForumCategoryAudiencePolicyService, ForumModule, ForumSearchResultCandidate,
+    ForumSearchResultCandidateKind, ForumSearchResultEligibilityService,
+    ForumTopicAudiencePolicyService, SetForumCategoryAudiencePolicyInput,
+    SetForumTopicAudiencePolicyInput, SharedForumAudienceFactsPort, TopicService,
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_search::{
@@ -36,9 +35,8 @@ use rustok_search::{
     PgSearchEngine, SearchAudiencePolicyPort, SearchAudienceRegistry, SearchAudienceRequest,
     SearchModule, SearchQuery, SearchRankingProfile, SharedStorefrontSearchCategoryScopePort,
     StorefrontSearchAudienceContext, StorefrontSearchCategoryScopePort,
-    StorefrontSearchCategoryScopeRequest,
-    StorefrontSearchTransport, execute_audience_eligible_search,
-    resolve_trusted_storefront_channel,
+    StorefrontSearchCategoryScopeRequest, StorefrontSearchTransport,
+    execute_audience_eligible_search, resolve_trusted_storefront_channel,
 };
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
@@ -337,10 +335,12 @@ impl SearchAudiencePolicyPort for ExactForumEligibilityPort {
         forum_public_settings::default_settings()
             .anonymous_reading_allowed(tenant_id)
             .await
-            .map_err(|_| PortError::unavailable(
-                "forum.search_result_eligibility.public_discovery_unavailable",
-                "Forum public discovery is temporarily unavailable",
-            ))
+            .map_err(|_| {
+                PortError::unavailable(
+                    "forum.search_result_eligibility.public_discovery_unavailable",
+                    "Forum public discovery is temporarily unavailable",
+                )
+            })
     }
 
     async fn filter_eligible_candidates(
@@ -1358,7 +1358,7 @@ async fn insert_stale_topic_documents(
 async fn assert_storefront_exact(
     db: &DatabaseConnection,
     category_scope: SharedStorefrontSearchCategoryScopePort,
-    eligibility: Arc<RealForumPublicEligibilityPort>,
+    eligibility: Arc<ExactForumEligibilityPort>,
     fixture: ForumFixture,
     category_id: Uuid,
     channel_slug: Option<&str>,
@@ -1378,11 +1378,11 @@ async fn assert_storefront_exact(
         None => None,
     };
     let mut registry = SearchAudienceRegistry::new();
-    registry
-        .register_shared(eligibility)
-        .map_err(|error| {
-            test_error(format!("Forum audience policy registration failed: {error}"))
-        })?;
+    registry.register_shared(eligibility).map_err(|error| {
+        test_error(format!(
+            "Forum audience policy registration failed: {error}"
+        ))
+    })?;
     let engine = PgSearchEngine::new(db.clone());
     let request_context = RequestContext {
         tenant_id: fixture.tenant_id,
@@ -1428,18 +1428,12 @@ async fn assert_storefront_exact(
     )
     .await
     .map_err(|error| test_error(error.to_string()))?;
-    let visible_facet_buckets = execution
-        .result
+    let visible_facet_buckets = result
         .facets
         .iter()
         .map(|facet| facet.buckets.len())
         .sum::<usize>();
-    let item_ids = execution
-        .result
-        .items
-        .iter()
-        .map(|item| item.id)
-        .collect::<Vec<_>>();
+    let item_ids = result.items.iter().map(|item| item.id).collect::<Vec<_>>();
     if result.total != expected_total {
         return Err(test_error(format!(
             "D15 storefront `{label}` returned total {}, expected {expected_total}",

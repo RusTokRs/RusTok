@@ -1101,10 +1101,12 @@ mod tests {
             .unwrap();
         let backend = backend(primary, Arc::clone(&fallback));
 
-        assert!(backend
-            .compare_and_set("key", b"local", b"new".to_vec(), None)
-            .await
-            .is_err());
+        assert!(
+            backend
+                .compare_and_set("key", b"local", b"new".to_vec(), None)
+                .await
+                .is_err()
+        );
         assert_eq!(fallback.get("key").await.unwrap(), Some(b"local".to_vec()));
     }
 
@@ -1269,11 +1271,13 @@ mod tests {
 
         backend.invalidate("key").await.unwrap();
         assert!(!backend.pending_invalidations.contains("key").await);
-        assert!(primary
-            .value
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .is_none());
+        assert!(
+            primary
+                .value
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -1354,17 +1358,19 @@ mod tests {
         let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 16));
         let backend = backend(primary, fallback);
 
-        assert!(backend
-            .set_with_ttl("key".to_string(), Vec::new(), Duration::ZERO)
-            .await
-            .is_err());
+        assert!(
+            backend
+                .set_with_ttl("key".to_string(), Vec::new(), Duration::ZERO)
+                .await
+                .is_err()
+        );
         assert!(backend.pending_invalidations.contains("key").await);
         assert_eq!(backend.get("key").await.unwrap(), None);
     }
 
     #[tokio::test]
-    async fn tombstone_tracker_saturation_fails_closed_and_prevents_stale_primary_hits_until_reconciled(
-    ) {
+    async fn tombstone_tracker_saturation_fails_closed_and_prevents_stale_primary_hits_until_reconciled()
+     {
         let primary = Arc::new(RecoveringStaleBackend {
             fail_writes: AtomicBool::new(true),
             value: StdMutex::new(Some(b"stale".to_vec())),
@@ -1388,10 +1394,12 @@ mod tests {
         // untracked invalidation means both shared bytes and local bytes may be stale.
         assert!(backend.get("key-2").await.is_err());
         assert!(backend.get("key-1").await.is_err());
-        assert!(backend
-            .set("key-3".to_string(), b"v".to_vec())
-            .await
-            .is_err());
+        assert!(
+            backend
+                .set("key-3".to_string(), b"v".to_vec())
+                .await
+                .is_err()
+        );
 
         // Reconciliation while the primary is still unhealthy must be rejected...
         assert!(backend.reconcile_local_state().await.is_err());

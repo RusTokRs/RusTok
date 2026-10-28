@@ -59,7 +59,7 @@ mod tests {
     use rustok_sandbox::{RhaiWorkspace, RhaiWorkspaceFile, RhaiWorkspaceFileKind};
 
     use super::{
-        prepare_rhai_module_descriptor, AlloyArtifactError, RHAI_MODULE_SOURCE_MANIFEST_PATH,
+        AlloyArtifactError, RHAI_MODULE_SOURCE_MANIFEST_PATH, prepare_rhai_module_descriptor,
     };
 
     fn workspace(source: &str, capabilities: serde_json::Value) -> RhaiWorkspace {

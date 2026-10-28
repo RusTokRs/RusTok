@@ -6,8 +6,8 @@ use std::rc::Rc;
 use dioxus::prelude::*;
 
 use rustok_grid::{
-    visible_column_count, ColumnFilters, ColumnWidths, FilterValue, GridColumnDef, GridPagination,
-    PaginationMode, RowSelection, SortState,
+    ColumnFilters, ColumnWidths, FilterValue, GridColumnDef, GridPagination, PaginationMode,
+    RowSelection, SortState, visible_column_count,
 };
 
 use crate::filter_inputs::FilterCommitMode;

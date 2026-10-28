@@ -29,7 +29,6 @@ impl SeoModule {
     }
 }
 
-
 #[async_trait]
 impl RusToKModule for SeoModule {
     fn slug(&self) -> &'static str {

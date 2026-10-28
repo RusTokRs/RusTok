@@ -1,5 +1,5 @@
 use super::domain_event::DomainEvent;
-use crate::validation::{validators, EventValidationError, ValidateEvent};
+use crate::validation::{EventValidationError, ValidateEvent, validators};
 
 impl ValidateEvent for DomainEvent {
     /// Validates the event data according to business rules using the validation framework.

@@ -17,10 +17,10 @@ use rustok_modules::{
     ModuleGovernanceAutomatedCheck, ModulePlatformPublicationEvidenceCommand,
     ModulePlatformPublicationEvidenceProducer, ModulePublicationArtifactOrigin,
     ModulePublicationArtifactRegistryProvider, ModulePublicationRegistryError,
-    ModulePublishBundleValidation,
-    ModuleValidationJobResultCommand, ModuleValidationJobResultOutcome,
-    ModuleValidationJobRetryCommand, OciArtifactPublicationBundle, OciArtifactPublicationTarget,
-    OciArtifactReference, OciDistributionArtifactRegistry, OciRhaiWorkspacePublicationProvenance,
+    ModulePublishBundleValidation, ModuleValidationJobResultCommand,
+    ModuleValidationJobResultOutcome, ModuleValidationJobRetryCommand,
+    OciArtifactPublicationBundle, OciArtifactPublicationTarget, OciArtifactReference,
+    OciDistributionArtifactRegistry, OciRhaiWorkspacePublicationProvenance,
     SeaOrmModuleGovernanceService, validate_module_publish_artifact,
 };
 use rustok_storage::StorageRuntime;
@@ -244,11 +244,9 @@ impl ModulePublicationArtifactRegistryProvider for CredentialedOciRegistryProvid
                 RegistryCredentialError::Rejected => ModulePublicationRegistryError::Denied(
                     "registry credential request was rejected".to_string(),
                 ),
-                RegistryCredentialError::TimedOut => {
-                    ModulePublicationRegistryError::Unavailable(
-                        "registry credential request timed out".to_string(),
-                    )
-                }
+                RegistryCredentialError::TimedOut => ModulePublicationRegistryError::Unavailable(
+                    "registry credential request timed out".to_string(),
+                ),
                 RegistryCredentialError::Unavailable(_) => {
                     ModulePublicationRegistryError::Unavailable(
                         "registry credential broker is unavailable".to_string(),

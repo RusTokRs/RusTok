@@ -589,12 +589,16 @@ mod tests {
             effective_until: None,
         })
         .expect("valid effect");
-        assert!(effect
-            .validate_for_decision_kind(ModerationDecisionKind::SuspendSubject)
-            .is_ok());
-        assert!(effect
-            .validate_for_decision_kind(ModerationDecisionKind::Warning)
-            .is_err());
+        assert!(
+            effect
+                .validate_for_decision_kind(ModerationDecisionKind::SuspendSubject)
+                .is_ok()
+        );
+        assert!(
+            effect
+                .validate_for_decision_kind(ModerationDecisionKind::Warning)
+                .is_err()
+        );
     }
 
     #[test]
@@ -661,13 +665,15 @@ mod tests {
             ),
             Err(ModerationCommandValidationError::InvalidSubjectRevision)
         );
-        assert!(ModerationSubjectRef::new(
-            "forum",
-            ModerationSubjectKind::ForumTopic,
-            Uuid::new_v4(),
-            1
-        )
-        .is_ok());
+        assert!(
+            ModerationSubjectRef::new(
+                "forum",
+                ModerationSubjectKind::ForumTopic,
+                Uuid::new_v4(),
+                1
+            )
+            .is_ok()
+        );
     }
 
     #[test]

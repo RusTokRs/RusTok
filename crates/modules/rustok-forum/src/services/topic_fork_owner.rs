@@ -20,10 +20,10 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::entities::{
-    forum_audience_mention, forum_category, forum_domain_event,
-    forum_quote, forum_relation_revision, forum_reply, forum_reply_body, forum_reply_revision,
-    forum_solution, forum_topic, forum_topic_channel_access, forum_topic_tag,
-    forum_topic_translation, forum_user_mention,
+    forum_audience_mention, forum_category, forum_domain_event, forum_quote,
+    forum_relation_revision, forum_reply, forum_reply_body, forum_reply_revision, forum_solution,
+    forum_topic, forum_topic_channel_access, forum_topic_tag, forum_topic_translation,
+    forum_user_mention,
 };
 use crate::error::{ForumError, ForumResult};
 use crate::richtext::serialize_discussion;
@@ -422,13 +422,7 @@ impl ForumTopicForkService {
         .insert(&txn)
         .await?;
 
-        insert_fork_operation_in_tx(
-            &txn,
-            tenant_id,
-            &fork_params,
-            now,
-        )
-        .await?;
+        insert_fork_operation_in_tx(&txn, tenant_id, &fork_params, now).await?;
         insert_fork_reply_audit_in_tx(&txn, tenant_id, prepared.operation_id, &reply_audit, now)
             .await?;
         insert_fork_revision_audit_in_tx(
@@ -747,7 +741,10 @@ async fn load_fork_snapshot_in_tx(
     if !branch_ids.contains(&root_reply_id) {
         return Err(ForumError::ReplyNotFound(root_reply_id));
     }
-    if replies.iter().any(|reply| reply.status == ReplyStatus::Deleted) {
+    if replies
+        .iter()
+        .any(|reply| reply.status == ReplyStatus::Deleted)
+    {
         return Err(ForumError::Validation(
             "Forum topic fork cannot copy a deleted reply branch".to_string(),
         ));

@@ -14,7 +14,6 @@ impl NewsletterModule {
     }
 }
 
-
 impl MigrationSource for NewsletterModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
         migrations::all()

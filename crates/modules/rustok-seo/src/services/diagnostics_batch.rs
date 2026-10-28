@@ -11,10 +11,10 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::dto::{
-    SeoAlternateLink, SeoDiagnosticCountRecord, SeoDiagnosticIssueRecord,
-    SeoDiagnosticSeverity, SeoDiagnosticsSummaryRecord, SeoDocumentEffectiveState,
-    SeoFieldSource, SeoFieldState, SeoImageAsset, SeoMetaRecord, SeoMetaTranslationRecord,
-    SeoModuleSettings, SeoPageContext, SeoRedirectMatchType,
+    SeoAlternateLink, SeoDiagnosticCountRecord, SeoDiagnosticIssueRecord, SeoDiagnosticSeverity,
+    SeoDiagnosticsSummaryRecord, SeoDocumentEffectiveState, SeoFieldSource, SeoFieldState,
+    SeoImageAsset, SeoMetaRecord, SeoMetaTranslationRecord, SeoModuleSettings, SeoPageContext,
+    SeoRedirectMatchType,
 };
 use crate::entities::{self as seo_meta, meta_translation};
 use crate::{SeoError, SeoResult};
@@ -179,10 +179,7 @@ impl SeoService {
                     // Share the render formula: diagnostics must report exactly
                     // what the public page would emit (canonical normalization,
                     // suffix/limits, OG settings, hreflang/rich-snippet gates).
-                    Some(state) => Some(
-                        self.merge_page_context(tenant, state, explicit)
-                            .await?,
-                    ),
+                    Some(state) => Some(self.merge_page_context(tenant, state, explicit).await?),
                     None => None,
                 };
                 let effective_canonical = page_context
@@ -639,7 +636,11 @@ fn build_diagnostics_meta_record(
                 || explicit_og_desc.is_some()
                 || explicit_og_image.is_some()
             {
-                (explicit_og_title, explicit_og_desc, SeoFieldSource::Explicit)
+                (
+                    explicit_og_title,
+                    explicit_og_desc,
+                    SeoFieldSource::Explicit,
+                )
             } else if generated.og_title.is_some() || generated.og_description.is_some() {
                 (
                     generated.og_title.clone(),
@@ -876,13 +877,12 @@ fn build_diagnostics_meta_record(
             } else {
                 SeoFieldSource::Fallback
             };
-            let twitter_source = if generated.twitter_title.is_some()
-                || generated.twitter_description.is_some()
-            {
-                SeoFieldSource::Generated
-            } else {
-                SeoFieldSource::Fallback
-            };
+            let twitter_source =
+                if generated.twitter_title.is_some() || generated.twitter_description.is_some() {
+                    SeoFieldSource::Generated
+                } else {
+                    SeoFieldSource::Fallback
+                };
 
             let generated_source = title_source == SeoFieldSource::Generated
                 || desc_source == SeoFieldSource::Generated

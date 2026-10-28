@@ -256,7 +256,7 @@ impl SeaOrmSecurityEpochStore {
         let result = db
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
-                &format!(
+                format!(
                     "UPDATE module_security_epoch \
                      SET epoch = epoch + 1, last_reason = {p1}, updated_at = {p2} \
                      WHERE singleton_id = 1"

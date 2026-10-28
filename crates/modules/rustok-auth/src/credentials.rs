@@ -1,6 +1,6 @@
 use argon2::{
-    password_hash::{phc::PasswordHash, PasswordHasher, PasswordVerifier},
     Argon2,
+    password_hash::{PasswordHasher, PasswordVerifier, phc::PasswordHash},
 };
 use rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
@@ -179,11 +179,10 @@ mod tests {
 
     #[test]
     fn password_policy_accepts_passwords_meeting_configured_minimum() {
-        assert!(validate_password_policy(
-            "correct horse battery",
-            DEFAULT_MIN_PASSWORD_LENGTH_CHARS
-        )
-        .is_ok());
+        assert!(
+            validate_password_policy("correct horse battery", DEFAULT_MIN_PASSWORD_LENGTH_CHARS)
+                .is_ok()
+        );
         assert!(validate_password_policy("12345678", MIN_PASSWORD_LENGTH_FLOOR_CHARS).is_ok());
     }
 

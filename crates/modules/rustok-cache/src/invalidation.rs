@@ -208,7 +208,10 @@ impl std::fmt::Display for CacheInvalidationPayloadError {
             ),
             Self::MalformedPayload => write!(formatter, "malformed versioned invalidation payload"),
             Self::TransportRejected(detail) => {
-                write!(formatter, "invalidation payload rejected by the transport: {detail}")
+                write!(
+                    formatter,
+                    "invalidation payload rejected by the transport: {detail}"
+                )
             }
             Self::UnsupportedVersion(version) => {
                 write!(
@@ -504,15 +507,17 @@ mod tests {
         // Hex encoding doubles the key, so a key above half the transport bound cannot be published
         // as a compact payload. That must be an error here, not an `Ok` that `publish` then drops.
         let publishable_key = "k".repeat(MAX_INVALIDATION_KEY_BYTES / 2 - 64);
-        assert!(VersionedCacheInvalidation::new(
-            "tenant.invalidate",
-            publishable_key.clone(),
-            7,
-            1_700_000_000_000,
-        )
-        .unwrap()
-        .to_message()
-        .is_ok());
+        assert!(
+            VersionedCacheInvalidation::new(
+                "tenant.invalidate",
+                publishable_key.clone(),
+                7,
+                1_700_000_000_000,
+            )
+            .unwrap()
+            .to_message()
+            .is_ok()
+        );
 
         let unpublishable_key = "k".repeat(MAX_INVALIDATION_KEY_BYTES);
         let unpublishable = VersionedCacheInvalidation::new(

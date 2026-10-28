@@ -1,4 +1,3 @@
-
 /// Transactional owner facade for canonical Forum Category mutations.
 ///
 /// Forum owns membership, policy/counters and command authorization; Taxonomy
@@ -43,9 +42,7 @@ impl CategoryProjectionOwnerService {
         if let Some(parent_id) = input.parent_id {
             CategoryService::find_category_in_tx(&txn, tenant_id, parent_id).await?;
             super::category_lifecycle::ensure_category_tree_target_is_active_in_tx(
-                &txn,
-                tenant_id,
-                parent_id,
+                &txn, tenant_id, parent_id,
             )
             .await
             .map_err(|_| {
@@ -128,9 +125,13 @@ impl CategoryProjectionOwnerService {
         }
         active.update(&txn).await?;
 
-        let taxonomy_category =
-            taxonomy_sync::load_category_owner_snapshot_in_tx(&txn, tenant_id, category_id, &locale)
-                .await?;
+        let taxonomy_category = taxonomy_sync::load_category_owner_snapshot_in_tx(
+            &txn,
+            tenant_id,
+            category_id,
+            &locale,
+        )
+        .await?;
         let parent_id = taxonomy_category.parent_id;
         let position = taxonomy_category.position;
         let requested_icon = input.icon.clone();

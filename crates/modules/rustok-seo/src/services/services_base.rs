@@ -24,6 +24,9 @@ use once_cell::sync::Lazy;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
+use crate::dto::{SeoAlternateLink, SeoModuleSettings, SeoOpenGraph};
+use crate::entities::{self as seo_meta, meta_translation, seo_redirect};
+use crate::{SeoError, SeoResult};
 use rustok_api::{
     PortError, PortErrorKind, SharedStaticModuleSettingsReader, normalize_locale_tag,
 };
@@ -37,9 +40,6 @@ use rustok_seo_targets::{
     SeoTargetCapabilityKind, SeoTargetRegistry, SeoTargetRegistryEntry, SeoTargetSlug,
     seo_target_registry_from_extensions,
 };
-use crate::dto::{SeoAlternateLink, SeoModuleSettings, SeoOpenGraph};
-use crate::entities::{self as seo_meta, meta_translation, seo_redirect};
-use crate::{SeoError, SeoResult};
 
 pub use applications::{
     SeoApplicationServices, SeoBulkService, SeoMetadataService, SeoOperationsService,
@@ -111,10 +111,7 @@ static REDIRECT_CACHE: Lazy<Cache<Uuid, Arc<RedirectCacheEntry>>> = Lazy::new(||
         .build()
 });
 
-fn redirect_cache_entry_weight(
-    _tenant_id: &Uuid,
-    entry: &Arc<RedirectCacheEntry>,
-) -> u32 {
+fn redirect_cache_entry_weight(_tenant_id: &Uuid, entry: &Arc<RedirectCacheEntry>) -> u32 {
     let redirects = &entry.redirects;
     let mut weight = std::mem::size_of::<Uuid>()
         .saturating_add(std::mem::size_of::<Arc<Vec<seo_redirect::Model>>>())
@@ -191,10 +188,7 @@ impl SeoService {
         }
     }
 
-    pub fn with_static_settings_reader(
-        mut self,
-        reader: SharedStaticModuleSettingsReader,
-    ) -> Self {
+    pub fn with_static_settings_reader(mut self, reader: SharedStaticModuleSettingsReader) -> Self {
         self.static_settings_reader = Some(reader);
         self
     }
@@ -256,12 +250,10 @@ impl SeoService {
         db: DatabaseConnection,
         event_bus: TransactionalEventBus,
     ) -> Self {
-        let reader = SharedStaticModuleSettingsReader(Arc::new(TestStaticSettingsReader {
-            db: db.clone(),
-        }));
-        let resolver = Arc::new(rustok_content_orchestration::OwnerCanonicalRouteResolver::new(
-            db.clone(),
-        ));
+        let reader =
+            SharedStaticModuleSettingsReader(Arc::new(TestStaticSettingsReader { db: db.clone() }));
+        let resolver =
+            Arc::new(rustok_content_orchestration::OwnerCanonicalRouteResolver::new(db.clone()));
         Self::new(db, event_bus, built_in_target_registry())
             .with_static_settings_reader(reader)
             .with_canonical_route_resolver(resolver)
@@ -277,7 +269,9 @@ impl SeoService {
 
     pub async fn is_enabled(&self, tenant_id: Uuid) -> SeoResult<bool> {
         let snapshot = self.static_settings_snapshot(tenant_id).await?;
-        Ok(snapshot.and_then(|snapshot| snapshot.enabled).unwrap_or(false))
+        Ok(snapshot
+            .and_then(|snapshot| snapshot.enabled)
+            .unwrap_or(false))
     }
 
     /// Standalone library/test services have no host settings reader and historically treat the
@@ -374,7 +368,8 @@ impl SeoService {
             .filter(|s| !s.is_empty());
         settings.meta_title_max_length = settings.meta_title_max_length.clamp(10, 200);
         settings.meta_description_max_length = settings.meta_description_max_length.clamp(20, 500);
-        settings.sitemap_max_entries_per_file = settings.sitemap_max_entries_per_file.clamp(1, 50000);
+        settings.sitemap_max_entries_per_file =
+            settings.sitemap_max_entries_per_file.clamp(1, 50000);
         settings.redirect_cache_ttl_seconds = settings.redirect_cache_ttl_seconds.clamp(0, 86400);
         settings.crawl_delay = settings.crawl_delay.map(|delay| delay.clamp(0, 3600));
         settings.robots_txt_custom_content = settings
@@ -418,7 +413,10 @@ impl SeoService {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
         settings.canonical_trailing_slash_mode = {
-            let mode = settings.canonical_trailing_slash_mode.trim().to_ascii_lowercase();
+            let mode = settings
+                .canonical_trailing_slash_mode
+                .trim()
+                .to_ascii_lowercase();
             match mode.as_str() {
                 "always" | "never" | "preserve" => mode,
                 _ => "never".to_string(),
@@ -525,15 +523,11 @@ impl rustok_api::StaticModuleSettingsReader for TestStaticSettingsReader {
     }
 }
 
-
-
 fn map_settings_port_error(error: PortError) -> SeoError {
     match error.kind {
-        PortErrorKind::Unavailable | PortErrorKind::Timeout => {
-            SeoError::Database(sea_orm::DbErr::Custom(
-                "static module settings reader unavailable".to_string(),
-            ))
-        }
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => SeoError::Database(
+            sea_orm::DbErr::Custom("static module settings reader unavailable".to_string()),
+        ),
         PortErrorKind::InvariantViolation => {
             SeoError::configuration("static module settings state is invalid")
         }

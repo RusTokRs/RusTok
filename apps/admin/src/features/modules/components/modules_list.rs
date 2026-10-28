@@ -501,9 +501,8 @@ pub fn ModulesList(
                         checkpoint.state == ModuleTransitionStateView::InterventionRequired
                     })
                     .cloned();
-                set_active_transition.set(
-                    intervention_required.or_else(|| active.into_iter().next()),
-                );
+                set_active_transition
+                    .set(intervention_required.or_else(|| active.into_iter().next()));
             }
 
             if let Ok(holds) = transport::fetch_retention_holds(token_val, tenant_val).await {

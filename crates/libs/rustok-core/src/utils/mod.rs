@@ -170,13 +170,13 @@ pub fn random_string(len: usize) -> String {
 
 /// Encode bytes to base64
 pub fn base64_encode(input: &[u8]) -> String {
-    use base64::{engine::general_purpose::STANDARD, Engine};
+    use base64::{Engine, engine::general_purpose::STANDARD};
     STANDARD.encode(input)
 }
 
 /// Decode base64 string
 pub fn base64_decode(input: &str) -> Result<Vec<u8>, base64::DecodeError> {
-    use base64::{engine::general_purpose::STANDARD, Engine};
+    use base64::{Engine, engine::general_purpose::STANDARD};
     STANDARD.decode(input)
 }
 

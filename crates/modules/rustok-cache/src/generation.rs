@@ -366,10 +366,7 @@ impl CacheNamespaceGenerationStore {
             read_failures: self.metrics.read_failures.load(Ordering::Relaxed),
             bump_failures: self.metrics.bump_failures.load(Ordering::Relaxed),
             local_fallback_reads: self.metrics.local_fallback_reads.load(Ordering::Relaxed),
-            shared_catch_up_writes: self
-                .metrics
-                .shared_catch_up_writes
-                .load(Ordering::Relaxed),
+            shared_catch_up_writes: self.metrics.shared_catch_up_writes.load(Ordering::Relaxed),
             shared_catch_up_failures: self
                 .metrics
                 .shared_catch_up_failures

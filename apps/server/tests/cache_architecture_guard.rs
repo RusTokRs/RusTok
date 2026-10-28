@@ -555,7 +555,11 @@ fn cache_admin_authority_has_one_rule_for_both_transports() {
         "the native transport must not keep a second, hardcoded permission check"
     );
     for (required, level, operation) in [
-        ("SETTINGS_READ", "Read", "cache health and cache settings reads"),
+        (
+            "SETTINGS_READ",
+            "Read",
+            "cache health and cache settings reads",
+        ),
         ("SETTINGS_MANAGE", "Manage", "cache settings writes"),
     ] {
         let expected = format!(
@@ -596,8 +600,7 @@ fn cache_readiness_has_one_predicate_for_every_consumer() {
 
     // The host readiness probe must not collapse the two causes into one message.
     assert!(
-        health.contains("report.is_connected()")
-            && health.contains("cache recovery is incomplete"),
+        health.contains("report.is_connected()") && health.contains("cache recovery is incomplete"),
         "readiness must report incomplete recovery instead of a transport outage"
     );
 }
@@ -625,7 +628,11 @@ fn cache_ttl_policy_cannot_be_built_without_its_constructor() {
         .nth(1)
         .expect("private policy representation must exist");
     assert!(
-        !kind.split("}\n").next().unwrap_or_default().contains("pub "),
+        !kind
+            .split("}\n")
+            .next()
+            .unwrap_or_default()
+            .contains("pub "),
         "the policy representation must not expose its variants"
     );
 
@@ -636,7 +643,10 @@ fn cache_ttl_policy_cannot_be_built_without_its_constructor() {
             .nth(1)
             .unwrap_or_else(|| panic!("{constructor} must exist"));
         assert!(
-            body.split("pub fn ").next().unwrap_or_default().contains("CachePolicyError::ZeroTtl"),
+            body.split("pub fn ")
+                .next()
+                .unwrap_or_default()
+                .contains("CachePolicyError::ZeroTtl"),
             "{constructor} must reject a zero TTL"
         );
     }

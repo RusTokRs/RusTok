@@ -375,10 +375,11 @@ mod tests {
             "token-two-with-at-least-32-bytes-long".parse().unwrap(),
         );
 
-        let err = take_with_policy(&mut headers, &policy)
-            .expect_err("multiple headers must fail");
-        assert!(err.to_string().contains("Multiple host authority credential headers"));
+        let err = take_with_policy(&mut headers, &policy).expect_err("multiple headers must fail");
+        assert!(
+            err.to_string()
+                .contains("Multiple host authority credential headers")
+        );
         assert!(!headers.contains_key(HOST_AUTHORITY_TOKEN_HEADER));
     }
 }
-

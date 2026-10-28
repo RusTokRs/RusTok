@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use rustok_api::Permission;
-use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
 use rustok_core::MigrationDependencyDescriptor;
+use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 use crate::migrations;

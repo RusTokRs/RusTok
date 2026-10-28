@@ -5,9 +5,9 @@ use super::ssr_actions_forms::{
 use super::ssr_assets::{SsrAssetApplyRequest, SsrAssetRemoveRequest, SsrAssetUpsertRequest};
 use crate::AdminCanvasController;
 use fly::{
-    blank_page, BindingCatalog, BindingCommand, BindingTarget, BindingTransform, ComponentPatch,
-    EditorCommand, PageCommand, PageLocator, PageMetadata, PagePatch, RuntimeBinding,
-    TranslationCommand, TranslationEntry, FLY_PAGE_METADATA_FIELD,
+    BindingCatalog, BindingCommand, BindingTarget, BindingTransform, ComponentPatch, EditorCommand,
+    FLY_PAGE_METADATA_FIELD, PageCommand, PageLocator, PageMetadata, PagePatch, RuntimeBinding,
+    TranslationCommand, TranslationEntry, blank_page,
 };
 use fly_ui::UiIntent;
 use serde::{Deserialize, Serialize};

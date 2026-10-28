@@ -11,10 +11,10 @@ pub use rustok_distribution::build_registry;
 #[cfg(test)]
 mod contract_tests {
     use super::{ManifestManager, build_registry};
-    use serial_test::serial;
     use rustok_api::Permission;
     use rustok_api::{Action, Resource};
     use rustok_auth::AUTH_USER_PERMISSIONS;
+    use serial_test::serial;
 
     const AUTH_README: &str = include_str!("../../../../crates/modules/rustok-auth/README.md");
     const CACHE_README: &str = include_str!("../../../../crates/modules/rustok-cache/README.md");

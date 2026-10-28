@@ -17,12 +17,12 @@ pub mod contract;
 pub mod party;
 pub mod tax_details;
 
-pub use bank_account::{validate_account_number, validate_bik, BankAccount};
+pub use bank_account::{BankAccount, validate_account_number, validate_bik};
 pub use contract::{Contract, ContractStatus};
 pub use party::{Party, PartyKind, PartyStatus};
 pub use tax_details::{
-    validate_inn_10, validate_inn_12, validate_kpp, validate_ogrn_13, validate_ogrnip_15,
-    TaxDetails,
+    TaxDetails, validate_inn_10, validate_inn_12, validate_kpp, validate_ogrn_13,
+    validate_ogrnip_15,
 };
 
 #[cfg(test)]

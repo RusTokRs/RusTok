@@ -548,7 +548,7 @@ fn due_slots(
 const MAX_MISFIRE_COUNT_SCAN: u32 = 10_000;
 
 /// Counts occurrences in `(after, through_inclusive]`, saturating at
-/// [`MAX_MISFIRE_COUNT_SCAN`].
+/// `MAX_MISFIRE_COUNT_SCAN`.
 fn count_due_between(
     schedule: &Schedule,
     timezone: Tz,
@@ -567,7 +567,7 @@ fn count_due_between(
 
 /// Finds the latest occurrence in `(after, now]` and how many occurrences
 /// the bounded scan saw. `exhausted` is false when the scan stopped at
-/// [`MAX_MISFIRE_COUNT_SCAN`] before reaching `now`.
+/// `MAX_MISFIRE_COUNT_SCAN` before reaching `now`.
 fn latest_due(
     schedule: &Schedule,
     timezone: Tz,

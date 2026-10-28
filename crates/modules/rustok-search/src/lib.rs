@@ -40,7 +40,6 @@ mod contract_tests;
 
 pub use module::SearchModule;
 
-
 pub use analytics::{
     SLOW_QUERY_THRESHOLD_MS, SearchAnalyticsInsightRow, SearchAnalyticsQueryRow,
     SearchAnalyticsService, SearchAnalyticsSnapshot, SearchAnalyticsSummary, SearchClickRecord,

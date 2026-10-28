@@ -479,20 +479,24 @@ mod tests {
         let a = line(3, dec!(10));
         let order = order(vec![a.clone()], vec![], vec![], false);
         let shipped = [fulfillment(a.id, 1)];
-        assert!(validate_return_quantities_were_shipped(
-            &order,
-            &order_return(&[(a.id, 1)]),
-            &[],
-            &shipped
-        )
-        .is_ok());
-        assert!(validate_return_quantities_were_shipped(
-            &order,
-            &order_return(&[(a.id, 2)]),
-            &[],
-            &shipped
-        )
-        .is_err());
+        assert!(
+            validate_return_quantities_were_shipped(
+                &order,
+                &order_return(&[(a.id, 1)]),
+                &[],
+                &shipped
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_return_quantities_were_shipped(
+                &order,
+                &order_return(&[(a.id, 2)]),
+                &[],
+                &shipped
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -502,13 +506,15 @@ mod tests {
         let order = order(vec![digital.clone()], vec![], vec![], false);
         let ret = order_return(&[(digital.id, 1)]);
         assert!(validate_return_quantities_were_shipped(&order, &ret, &[], &[]).is_ok());
-        assert!(validate_return_quantities_were_shipped(
-            &order,
-            &ret,
-            &[],
-            &[fulfillment(Uuid::new_v4(), 1)]
-        )
-        .is_ok());
+        assert!(
+            validate_return_quantities_were_shipped(
+                &order,
+                &ret,
+                &[],
+                &[fulfillment(Uuid::new_v4(), 1)]
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -521,20 +527,24 @@ mod tests {
         cancelled.status = "cancelled".to_string();
 
         // 1 earlier + 1 now = 2 <= 2 shipped; the cancelled return does not count.
-        assert!(validate_return_quantities_were_shipped(
-            &order,
-            &order_return(&[(a.id, 1)]),
-            &[earlier.clone(), cancelled],
-            &shipped
-        )
-        .is_ok());
+        assert!(
+            validate_return_quantities_were_shipped(
+                &order,
+                &order_return(&[(a.id, 1)]),
+                &[earlier.clone(), cancelled],
+                &shipped
+            )
+            .is_ok()
+        );
         // 1 earlier + 2 now = 3 > 2 shipped.
-        assert!(validate_return_quantities_were_shipped(
-            &order,
-            &order_return(&[(a.id, 2)]),
-            &[earlier],
-            &shipped
-        )
-        .is_err());
+        assert!(
+            validate_return_quantities_were_shipped(
+                &order,
+                &order_return(&[(a.id, 2)]),
+                &[earlier],
+                &shipped
+            )
+            .is_err()
+        );
     }
 }

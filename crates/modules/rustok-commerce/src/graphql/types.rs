@@ -3211,7 +3211,7 @@ pub struct BundleItemInputGql {
 
 #[cfg(test)]
 mod revision_tests {
-    use super::{graphql_patch, GqlRelationType, UpdateProductInput};
+    use super::{GqlRelationType, UpdateProductInput, graphql_patch};
     use async_graphql::MaybeUndefined;
     use rustok_api::Patch;
     use rustok_product_relations::dto::RelationType;

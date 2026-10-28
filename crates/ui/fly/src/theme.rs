@@ -311,8 +311,8 @@ pub fn apply_theme_command(
 mod command_tests {
     use super::*;
     use crate::{
-        render_page, EditorCommand, FlyEditor, GrapesJsCodec, PageSelection, RegistrySet,
-        RenderPolicy,
+        EditorCommand, FlyEditor, GrapesJsCodec, PageSelection, RegistrySet, RenderPolicy,
+        render_page,
     };
     use serde_json::json;
 
@@ -359,9 +359,11 @@ mod command_tests {
                 },
             })
             .expect("remove");
-        assert!(decode_theme_tokens(editor.document())
-            .expect("tokens")
-            .is_empty());
+        assert!(
+            decode_theme_tokens(editor.document())
+                .expect("tokens")
+                .is_empty()
+        );
         assert!(
             editor
                 .apply(EditorCommand::Theme {

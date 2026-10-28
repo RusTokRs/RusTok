@@ -93,7 +93,10 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
 
         if matches!(request.scope, SeoTargetLoadScope::PublicRoute)
             && (post.status != BlogPostStatus::Published
-                || !is_post_visible_for_channel(post.channel_slugs.as_slice(), request.channel_slug))
+                || !is_post_visible_for_channel(
+                    post.channel_slugs.as_slice(),
+                    request.channel_slug,
+                ))
         {
             return Ok(None);
         }
@@ -124,7 +127,10 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
         Ok(post
             .filter(|post| {
                 post.status == BlogPostStatus::Published
-                    && is_post_visible_for_channel(post.channel_slugs.as_slice(), request.channel_slug)
+                    && is_post_visible_for_channel(
+                        post.channel_slugs.as_slice(),
+                        request.channel_slug,
+                    )
             })
             .map(|post| SeoRouteMatchRecord {
                 // Cloned because the closure borrows the outer binding; the slug is a

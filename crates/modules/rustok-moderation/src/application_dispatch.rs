@@ -1,10 +1,10 @@
 use std::time::Duration as StdDuration;
 
-use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use crate::{
     ApplyModerationDecisionCommand, ModerationDecisionApplication,
     ModerationSubjectAdapterRegistry, moderation_scope_claim,
 };
+use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use uuid::Uuid;
 
 use crate::application::DEFAULT_APPLICATION_LEASE_SECONDS;
@@ -261,8 +261,8 @@ pub fn application_retry_delay_seconds(attempt_count: i32) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustok_api::PortActorKind;
     use crate::ModerationScopeRef;
+    use rustok_api::PortActorKind;
 
     #[test]
     fn retry_delay_is_bounded_exponential() {

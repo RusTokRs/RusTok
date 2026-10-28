@@ -157,7 +157,10 @@ async fn user_stat(
     user: Uuid,
     field: &str,
 ) -> TestResult<i64> {
-    assert!(matches!(field, "topic_count" | "reply_count" | "solution_count"));
+    assert!(matches!(
+        field,
+        "topic_count" | "reply_count" | "solution_count"
+    ));
     scalar(
         db,
         format!(
@@ -179,16 +182,25 @@ async fn pending_approval_emits_creation_only_at_first_publication() -> TestResu
     let moderation = ModerationService::new(db.clone(), events);
 
     assert_eq!(created_events(&db).await?, 0);
-    assert_eq!(category_count(&db, tenant, category_id, "topic_count").await?, 1);
+    assert_eq!(
+        category_count(&db, tenant, category_id, "topic_count").await?,
+        1
+    );
 
     moderation.reopen_topic(tenant, id, author.clone()).await?;
     assert_eq!(created_events(&db).await?, 1);
 
     moderation.archive_topic(tenant, id, author.clone()).await?;
-    assert_eq!(category_count(&db, tenant, category_id, "topic_count").await?, 0);
+    assert_eq!(
+        category_count(&db, tenant, category_id, "topic_count").await?,
+        0
+    );
 
     moderation.reopen_topic(tenant, id, author).await?;
-    assert_eq!(category_count(&db, tenant, category_id, "topic_count").await?, 1);
+    assert_eq!(
+        category_count(&db, tenant, category_id, "topic_count").await?,
+        1
+    );
     assert_eq!(created_events(&db).await?, 1);
     Ok(())
 }
@@ -216,31 +228,78 @@ async fn archived_thread_releases_and_restores_category_and_author_counters() ->
         )
         .await?;
     let moderation = ModerationService::new(db.clone(), events);
-    moderation.mark_solution(tenant, topic_id, reply.id, author.clone()).await?;
+    moderation
+        .mark_solution(tenant, topic_id, reply.id, author.clone())
+        .await?;
 
     assert_eq!(created_events(&db).await?, 1);
-    assert_eq!(category_count(&db, tenant, category_id, "reply_count").await?, 1);
-    assert_eq!(user_stat(&db, tenant, reply_author_id, "reply_count").await?, 1);
-    assert_eq!(user_stat(&db, tenant, reply_author_id, "solution_count").await?, 1);
+    assert_eq!(
+        category_count(&db, tenant, category_id, "reply_count").await?,
+        1
+    );
+    assert_eq!(
+        user_stat(&db, tenant, reply_author_id, "reply_count").await?,
+        1
+    );
+    assert_eq!(
+        user_stat(&db, tenant, reply_author_id, "solution_count").await?,
+        1
+    );
 
-    moderation.archive_topic(tenant, topic_id, author.clone()).await?;
+    moderation
+        .archive_topic(tenant, topic_id, author.clone())
+        .await?;
     // Solution writes are forbidden on archived topics and cannot move
     // statistics while the topic is hidden.
-    assert!(moderation.mark_solution(tenant, topic_id, reply.id, author.clone()).await.is_err());
-    assert!(moderation.clear_solution(tenant, topic_id, author.clone()).await.is_err());
-    assert_eq!(category_count(&db, tenant, category_id, "topic_count").await?, 0);
-    assert_eq!(category_count(&db, tenant, category_id, "reply_count").await?, 0);
+    assert!(
+        moderation
+            .mark_solution(tenant, topic_id, reply.id, author.clone())
+            .await
+            .is_err()
+    );
+    assert!(
+        moderation
+            .clear_solution(tenant, topic_id, author.clone())
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        category_count(&db, tenant, category_id, "topic_count").await?,
+        0
+    );
+    assert_eq!(
+        category_count(&db, tenant, category_id, "reply_count").await?,
+        0
+    );
     assert_eq!(user_stat(&db, tenant, author_id, "topic_count").await?, 0);
-    assert_eq!(user_stat(&db, tenant, reply_author_id, "reply_count").await?, 0);
-    assert_eq!(user_stat(&db, tenant, reply_author_id, "solution_count").await?, 0);
+    assert_eq!(
+        user_stat(&db, tenant, reply_author_id, "reply_count").await?,
+        0
+    );
+    assert_eq!(
+        user_stat(&db, tenant, reply_author_id, "solution_count").await?,
+        0
+    );
 
     moderation.reopen_topic(tenant, topic_id, author).await?;
     assert_eq!(created_events(&db).await?, 1);
-    assert_eq!(category_count(&db, tenant, category_id, "topic_count").await?, 1);
-    assert_eq!(category_count(&db, tenant, category_id, "reply_count").await?, 1);
+    assert_eq!(
+        category_count(&db, tenant, category_id, "topic_count").await?,
+        1
+    );
+    assert_eq!(
+        category_count(&db, tenant, category_id, "reply_count").await?,
+        1
+    );
     assert_eq!(user_stat(&db, tenant, author_id, "topic_count").await?, 1);
-    assert_eq!(user_stat(&db, tenant, reply_author_id, "reply_count").await?, 1);
-    assert_eq!(user_stat(&db, tenant, reply_author_id, "solution_count").await?, 1);
+    assert_eq!(
+        user_stat(&db, tenant, reply_author_id, "reply_count").await?,
+        1
+    );
+    assert_eq!(
+        user_stat(&db, tenant, reply_author_id, "solution_count").await?,
+        1
+    );
     Ok(())
 }
 
@@ -253,11 +312,17 @@ async fn rejected_pending_topic_publishes_once_after_first_archive_restore() -> 
     let topic_id = topic(&db, &events, tenant, admin.clone(), category_id, true).await?;
     let moderation = ModerationService::new(db.clone(), events);
 
-    moderation.archive_topic(tenant, topic_id, admin.clone()).await?;
+    moderation
+        .archive_topic(tenant, topic_id, admin.clone())
+        .await?;
     assert_eq!(created_events(&db).await?, 0);
-    moderation.reopen_topic(tenant, topic_id, admin.clone()).await?;
+    moderation
+        .reopen_topic(tenant, topic_id, admin.clone())
+        .await?;
     assert_eq!(created_events(&db).await?, 1);
-    moderation.archive_topic(tenant, topic_id, admin.clone()).await?;
+    moderation
+        .archive_topic(tenant, topic_id, admin.clone())
+        .await?;
     moderation.reopen_topic(tenant, topic_id, admin).await?;
     assert_eq!(created_events(&db).await?, 1);
     Ok(())
@@ -287,16 +352,31 @@ async fn reapproved_reply_does_not_emit_another_first_publication() -> TestResul
 
     let moderation = ModerationService::new(db.clone(), events);
     assert_eq!(replied_events(&db).await?, 0);
-    moderation.reject_reply(tenant, reply.id, topic_id, admin.clone()).await?;
-    moderation.approve_reply(tenant, reply.id, topic_id, admin.clone()).await?;
+    moderation
+        .reject_reply(tenant, reply.id, topic_id, admin.clone())
+        .await?;
+    moderation
+        .approve_reply(tenant, reply.id, topic_id, admin.clone())
+        .await?;
     assert_eq!(replied_events(&db).await?, 1);
-    moderation.reject_reply(tenant, reply.id, topic_id, admin.clone()).await?;
-    moderation.approve_reply(tenant, reply.id, topic_id, admin.clone()).await?;
+    moderation
+        .reject_reply(tenant, reply.id, topic_id, admin.clone())
+        .await?;
+    moderation
+        .approve_reply(tenant, reply.id, topic_id, admin.clone())
+        .await?;
     assert_eq!(replied_events(&db).await?, 1);
-    moderation.hide_reply(tenant, reply.id, topic_id, admin.clone()).await?;
-    moderation.approve_reply(tenant, reply.id, topic_id, admin).await?;
+    moderation
+        .hide_reply(tenant, reply.id, topic_id, admin.clone())
+        .await?;
+    moderation
+        .approve_reply(tenant, reply.id, topic_id, admin)
+        .await?;
     assert_eq!(replied_events(&db).await?, 1);
-    assert_eq!(category_count(&db, tenant, category_id, "reply_count").await?, 1);
+    assert_eq!(
+        category_count(&db, tenant, category_id, "reply_count").await?,
+        1
+    );
     Ok(())
 }
 
@@ -324,12 +404,20 @@ async fn hidden_before_first_approval_notifies_once() -> TestResult<()> {
     assert_eq!(reply.status, "pending");
 
     let moderation = ModerationService::new(db.clone(), events);
-    moderation.hide_reply(tenant, reply.id, topic_id, admin.clone()).await?;
+    moderation
+        .hide_reply(tenant, reply.id, topic_id, admin.clone())
+        .await?;
     assert_eq!(replied_events(&db).await?, 0);
-    moderation.approve_reply(tenant, reply.id, topic_id, admin.clone()).await?;
+    moderation
+        .approve_reply(tenant, reply.id, topic_id, admin.clone())
+        .await?;
     assert_eq!(replied_events(&db).await?, 1);
-    moderation.hide_reply(tenant, reply.id, topic_id, admin.clone()).await?;
-    moderation.approve_reply(tenant, reply.id, topic_id, admin).await?;
+    moderation
+        .hide_reply(tenant, reply.id, topic_id, admin.clone())
+        .await?;
+    moderation
+        .approve_reply(tenant, reply.id, topic_id, admin)
+        .await?;
     assert_eq!(replied_events(&db).await?, 1);
     Ok(())
 }

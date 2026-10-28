@@ -744,7 +744,9 @@ mod tests {
             })
             .await
             .unwrap_err();
-        assert!(matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("tenant_id")));
+        assert!(
+            matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("tenant_id"))
+        );
 
         let err = journal
             .begin(BeginReturnCompletionOperation {
@@ -754,25 +756,35 @@ mod tests {
             })
             .await
             .unwrap_err();
-        assert!(matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("return_id")));
+        assert!(
+            matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("return_id"))
+        );
 
         let err = journal.get(Uuid::nil(), Uuid::new_v4()).await.unwrap_err();
-        assert!(matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("tenant_id")));
+        assert!(
+            matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("tenant_id"))
+        );
 
         let err = journal.get(Uuid::new_v4(), Uuid::nil()).await.unwrap_err();
-        assert!(matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("operation_id")));
+        assert!(
+            matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("operation_id"))
+        );
 
         let err = journal
             .claim_execution(Uuid::nil(), Uuid::new_v4(), "owner", 60)
             .await
             .unwrap_err();
-        assert!(matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("tenant_id")));
+        assert!(
+            matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("tenant_id"))
+        );
 
         let err = journal
             .claim_execution(Uuid::new_v4(), Uuid::nil(), "owner", 60)
             .await
             .unwrap_err();
-        assert!(matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("operation_id")));
+        assert!(
+            matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("operation_id"))
+        );
 
         let err = journal
             .checkpoint(ReturnCompletionOperationCheckpoint {
@@ -787,7 +799,9 @@ mod tests {
             })
             .await
             .unwrap_err();
-        assert!(matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("tenant_id")));
+        assert!(
+            matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("tenant_id"))
+        );
 
         let err = journal
             .checkpoint(ReturnCompletionOperationCheckpoint {
@@ -802,6 +816,8 @@ mod tests {
             })
             .await
             .unwrap_err();
-        assert!(matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("operation_id")));
+        assert!(
+            matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("operation_id"))
+        );
     }
 }

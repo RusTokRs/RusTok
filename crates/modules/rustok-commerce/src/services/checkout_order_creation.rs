@@ -58,7 +58,9 @@ impl CheckoutOrderCreationError {
     /// The bounded code and retryability carried by a sanitized owner failure.
     pub fn bounded_failure(&self) -> Option<(&str, bool)> {
         match self {
-            Self::OrderBoundary { code, retryable, .. } => Some((code.as_str(), *retryable)),
+            Self::OrderBoundary {
+                code, retryable, ..
+            } => Some((code.as_str(), *retryable)),
             _ => None,
         }
     }

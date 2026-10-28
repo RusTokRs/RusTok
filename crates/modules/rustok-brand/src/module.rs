@@ -82,7 +82,7 @@ mod tests {
 
     #[tokio::test]
     async fn brand_module_health_reports_healthy() {
-        let module = BrandModule::default();
+        let module = BrandModule;
         assert_eq!(module.health().await, HealthStatus::Healthy);
     }
 

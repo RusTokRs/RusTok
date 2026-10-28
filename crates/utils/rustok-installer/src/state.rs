@@ -118,9 +118,11 @@ mod tests {
 
     #[test]
     fn schema_applied_requires_recovery_instead_of_claiming_rollback() {
-        assert!(InstallState::SchemaApplied
-            .transition_to(InstallState::RecoveryRequired)
-            .is_ok());
+        assert!(
+            InstallState::SchemaApplied
+                .transition_to(InstallState::RecoveryRequired)
+                .is_ok()
+        );
     }
 
     #[test]

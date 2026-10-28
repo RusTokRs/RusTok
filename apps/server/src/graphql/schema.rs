@@ -1,5 +1,5 @@
 use async_graphql::{
-    dataloader::DataLoader, extensions::Analyzer, MergedObject, MergedSubscription, Schema,
+    MergedObject, MergedSubscription, Schema, dataloader::DataLoader, extensions::Analyzer,
 };
 use rustok_core::ModuleRuntimeExtensions;
 use sea_orm::DatabaseConnection;

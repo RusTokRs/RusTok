@@ -2,9 +2,9 @@ use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    build_select_shipping_option_request, delivery_group_key, format_line_items_label,
-    format_provider_label, format_shipping_option_price, is_shipping_option_selected,
-    selection_action_label, SelectShippingOptionRequest, ShippingSelectionLabels,
+    SelectShippingOptionRequest, ShippingSelectionLabels, build_select_shipping_option_request,
+    delivery_group_key, format_line_items_label, format_provider_label,
+    format_shipping_option_price, is_shipping_option_selected, selection_action_label,
 };
 use crate::model::{StorefrontDeliveryGroup, StorefrontShippingOption};
 

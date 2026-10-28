@@ -9,11 +9,11 @@
  */
 
 use rustok_api::RichTextDocument;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::{
-    all_profile_manifests, canonical_json, parse_json, plain_text, project, render_html,
-    validate_and_normalize, RichTextError, RichTextErrorCode, RichTextProfile,
+    RichTextError, RichTextErrorCode, RichTextProfile, all_profile_manifests, canonical_json,
+    parse_json, plain_text, project, render_html, validate_and_normalize,
 };
 
 fn document(value: Value) -> RichTextDocument {

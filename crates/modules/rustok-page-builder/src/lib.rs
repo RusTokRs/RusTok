@@ -119,7 +119,6 @@ mod tests {
         BuilderRolloutError, BuilderToggleProfile, ensure_capability, fallback_matrix,
     };
 
-
     #[test]
     fn dto_contract_roundtrip_is_stable() {
         let input =

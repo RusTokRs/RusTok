@@ -335,10 +335,11 @@ mod tests {
 
     #[test]
     fn localhost_subdomain_is_recognized_as_loopback() {
-        let accepted = GrpcMediaPublicImageConnectionConfig::new("http://media.dev.localhost:50051")
-            .allow_insecure_loopback(true)
-            .validated()
-            .expect("localhost subdomain should be treated as loopback development transport");
+        let accepted =
+            GrpcMediaPublicImageConnectionConfig::new("http://media.dev.localhost:50051")
+                .allow_insecure_loopback(true)
+                .validated()
+                .expect("localhost subdomain should be treated as loopback development transport");
         assert!(!accepted.endpoint_uses_tls);
     }
 

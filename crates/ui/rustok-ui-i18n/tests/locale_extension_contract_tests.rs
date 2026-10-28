@@ -9,8 +9,8 @@
  */
 
 use rustok_ui_i18n::{
-    build_fluent_bundle, locale_candidates, normalize_locale_tag, normalize_unicode_locale,
-    BundleBuildError,
+    BundleBuildError, build_fluent_bundle, locale_candidates, normalize_locale_tag,
+    normalize_unicode_locale,
 };
 
 const UNICODE_EXTENSION: &str = "en-US-u-ca-gregory";

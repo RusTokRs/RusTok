@@ -175,7 +175,7 @@ impl AgentUsageEvidence {
 #[cfg(test)]
 mod provider_usage_tests {
     use super::{
-        default_provider_capabilities, AgentUsageEvidence, ProviderCapability, ProviderUsage,
+        AgentUsageEvidence, ProviderCapability, ProviderUsage, default_provider_capabilities,
     };
     use crate::ProviderSlug;
 

@@ -236,8 +236,8 @@ impl ForumProjectionReconciler {
         mut self,
         blog_source: Option<Arc<dyn SearchProjectionSource>>,
     ) -> Self {
-        self.blog_driver = blog_source
-            .map(|source| SearchProjectionDriver::new(self.db.clone(), source));
+        self.blog_driver =
+            blog_source.map(|source| SearchProjectionDriver::new(self.db.clone(), source));
         self
     }
 
@@ -379,7 +379,9 @@ impl ForumProjectionReconciler {
                         .rebuild_tenant(envelope.tenant_id)
                         .await
                 } else {
-                    self.projection_driver.delete_tenant(envelope.tenant_id).await
+                    self.projection_driver
+                        .delete_tenant(envelope.tenant_id)
+                        .await
                 }
             }
             DomainEvent::LocaleEnabled { .. }

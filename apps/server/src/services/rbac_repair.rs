@@ -217,11 +217,7 @@ mod tests {
             .expect("load system roles before repair");
         let missing_before = ["super_admin", "admin", "manager", "customer"]
             .iter()
-            .filter(|slug| {
-                !system_roles_before
-                    .iter()
-                    .any(|role| role.slug == **slug)
-            })
+            .filter(|slug| !system_roles_before.iter().any(|role| role.slug == **slug))
             .count() as u64;
         assert!(
             missing_before > 0,

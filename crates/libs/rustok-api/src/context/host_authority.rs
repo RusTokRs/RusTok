@@ -2,12 +2,12 @@ use std::future::Future;
 
 use axum::{
     extract::FromRequestParts,
-    http::{request::Parts, StatusCode},
+    http::{StatusCode, request::Parts},
 };
 use uuid::Uuid;
 
 use super::auth::AuthContext;
-use crate::permissions::{has_effective_permission, Permission};
+use crate::permissions::{Permission, has_effective_permission};
 
 pub const HOST_AUTHORITY_REQUIRED: &str = "Host-global authority required";
 
@@ -146,8 +146,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        authorizes_host_or_permission, current_host_authority, with_host_authority_scope,
-        HostAuthority, HostAuthorityContext,
+        HostAuthority, HostAuthorityContext, authorizes_host_or_permission, current_host_authority,
+        with_host_authority_scope,
     };
     use crate::context::AuthContext;
     use crate::permissions::Permission;

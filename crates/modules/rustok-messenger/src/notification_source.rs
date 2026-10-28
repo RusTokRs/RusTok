@@ -159,7 +159,11 @@ impl NotificationSourceProvider for MessengerNotificationSourceProvider {
         data.insert("message_id".to_string(), message.id.to_string());
         data.insert("sender_id".to_string(), message.sender_id.to_string());
         data.insert("message_preview".to_string(), preview);
-        if let Some(title) = conversation.title.as_deref().filter(|t| !t.trim().is_empty()) {
+        if let Some(title) = conversation
+            .title
+            .as_deref()
+            .filter(|t| !t.trim().is_empty())
+        {
             data.insert("conversation_title".to_string(), title.trim().to_string());
         }
 

@@ -29,7 +29,9 @@ pub struct AcceptTargetedGroupInvitationRequest {
 impl AcceptTargetedGroupInvitationRequest {
     pub fn validate(&self) -> GroupsResult<()> {
         if self.invitation_id.is_nil() {
-            return Err(GroupsError::Validation("invitation_id cannot be nil UUID".to_string()));
+            return Err(GroupsError::Validation(
+                "invitation_id cannot be nil UUID".to_string(),
+            ));
         }
         Ok(())
     }
@@ -411,12 +413,16 @@ fn require_write(context: &PortContext) -> GroupsResult<()> {
 fn context_tenant_id(context: &PortContext) -> GroupsResult<Uuid> {
     let trimmed = context.tenant_id.trim();
     if trimmed.is_empty() {
-        return Err(GroupsError::Validation("tenant_id cannot be empty".to_string()));
+        return Err(GroupsError::Validation(
+            "tenant_id cannot be empty".to_string(),
+        ));
     }
     let parsed = Uuid::parse_str(trimmed)
         .map_err(|_| GroupsError::Validation("tenant_id must be a UUID".to_string()))?;
     if parsed.is_nil() {
-        return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+        return Err(GroupsError::Validation(
+            "tenant_id cannot be nil UUID".to_string(),
+        ));
     }
     Ok(parsed)
 }
@@ -429,12 +435,16 @@ fn actor_user_id(context: &PortContext) -> GroupsResult<Uuid> {
     }
     let trimmed = context.actor.id.trim();
     if trimmed.is_empty() {
-        return Err(GroupsError::Validation("actor.id cannot be empty".to_string()));
+        return Err(GroupsError::Validation(
+            "actor.id cannot be empty".to_string(),
+        ));
     }
     let parsed = Uuid::parse_str(trimmed)
         .map_err(|_| GroupsError::Validation("actor.id must be a UUID".to_string()))?;
     if parsed.is_nil() {
-        return Err(GroupsError::Validation("actor.id cannot be nil UUID".to_string()));
+        return Err(GroupsError::Validation(
+            "actor.id cannot be nil UUID".to_string(),
+        ));
     }
     Ok(parsed)
 }

@@ -13,15 +13,21 @@ pub struct ModuleWorkItem {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ModuleWorkOutcome {
     Completed,
-    Retryable { message: String },
-    Rejected { message: String },
+    Retryable {
+        message: String,
+    },
+    Rejected {
+        message: String,
+    },
     Cancelled,
     /// The handler could not attempt the work because a policy or state
     /// gate denied it before any execution. The item made zero progress
     /// and must not consume its failure-attempt budget: the source parks
     /// it in an eligible state so it can proceed once the gate opens.
     /// This is not a failure and must never be recorded as completed.
-    Held { message: String },
+    Held {
+        message: String,
+    },
 }
 
 #[derive(Clone, Debug, thiserror::Error, Eq, PartialEq)]

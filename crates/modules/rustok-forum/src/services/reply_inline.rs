@@ -121,7 +121,9 @@ impl ReplyService {
             let document = crate::richtext::normalize_discussion(content)?;
             ForumContentLimits::resolve(&self.settings, tenant_id)
                 .await?
-                .validate_body(&crate::richtext::project_discussion(document.clone())?.plain_text)?;
+                .validate_body(
+                    &crate::richtext::project_discussion(document.clone())?.plain_text,
+                )?;
             let stored_body = crate::richtext::serialize_discussion(document.clone())?;
             (document, Some(stored_body))
         } else {
@@ -163,13 +165,12 @@ impl ReplyService {
 
         let initial_topic_id = existing.topic_id;
         let txn = self.db.begin().await?;
-        let _locked_topic =
-            super::topic_facade::TopicService::find_topic_for_update_in_tx(
-                &txn,
-                tenant_id,
-                initial_topic_id,
-            )
-            .await?;
+        let _locked_topic = super::topic_facade::TopicService::find_topic_for_update_in_tx(
+            &txn,
+            tenant_id,
+            initial_topic_id,
+        )
+        .await?;
         super::relation_quote_input::lock_source_and_assert_latest_in_tx(
             &txn,
             tenant_id,

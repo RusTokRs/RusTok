@@ -1,6 +1,6 @@
 //! Benchmarks for rustok-revisions.
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use rustok_revisions::{
     ChangeSource, RetentionPolicy, RevisionConfig, RevisionEvent, RevisionService, RevisionTracker,
     Revisionable, SeaOrmBackend,

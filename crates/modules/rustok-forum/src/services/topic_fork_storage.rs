@@ -930,8 +930,7 @@ async fn validate_existing_semantic_event_in_tx(
                 "Forum topic fork immutable semantic event is missing".to_string(),
             )
         })?;
-    let expected_payload =
-        topic_fork_payload(&TopicForkOperationParams::from_stored(operation));
+    let expected_payload = topic_fork_payload(&TopicForkOperationParams::from_stored(operation));
     if event.aggregate_type != FORUM_TOPIC_FORK_AGGREGATE_TYPE
         || event.aggregate_id != operation.target_topic_id
         || event.event_type != FORUM_TOPIC_FORK_EVENT_TYPE

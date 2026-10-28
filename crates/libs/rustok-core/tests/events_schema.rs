@@ -1,4 +1,4 @@
-use rustok_core::{event_schema, EVENT_SCHEMAS};
+use rustok_core::{EVENT_SCHEMAS, event_schema};
 
 #[test]
 fn event_schema_lookup_returns_known_schema() {

@@ -4,11 +4,11 @@ use rustok_modules::{
     ModuleExternalPrebuiltStageResult, ModuleGovernancePublishRequestStatusSnapshot,
     ModuleGovernanceRequestSnapshot, ModuleMarketplaceApprovalEvidenceCommand,
     ModulePublicationArtifactOrigin, ModulePublishApprovalOverride,
-    ModulePublishArtifactAttachCommand,
-    ModulePublishPlatformBuildStageCommand, ModulePublishPlatformBuildStageResult,
-    ModulePublishRequestChangesCommand, ModulePublishRequestCreateCommand,
-    ModulePublishRequestHoldCommand, ModulePublishRequestPublicationCommand,
-    ModulePublishRequestRejectCommand, ModulePublishRequestResumeCommand,
+    ModulePublishArtifactAttachCommand, ModulePublishPlatformBuildStageCommand,
+    ModulePublishPlatformBuildStageResult, ModulePublishRequestChangesCommand,
+    ModulePublishRequestCreateCommand, ModulePublishRequestHoldCommand,
+    ModulePublishRequestPublicationCommand, ModulePublishRequestRejectCommand,
+    ModulePublishRequestResumeCommand,
 };
 
 impl RegistryGovernanceService {

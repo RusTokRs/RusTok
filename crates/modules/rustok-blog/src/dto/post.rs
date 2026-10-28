@@ -1,4 +1,4 @@
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, FixedOffset, SecondsFormat, Utc};
 use rustok_api::{Patch, RichTextDocument, RichTextView};
 use serde::{Deserialize, Serialize};
@@ -129,7 +129,7 @@ pub struct PostResponse {
 #[cfg(test)]
 mod tests {
     use super::{CreatePostInput, PublishedPostCursor};
-    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
     use rustok_api::RichTextDocument;
     use uuid::Uuid;
 

@@ -4,9 +4,9 @@
 use std::time::Duration;
 
 use rustok_modules::{
-    evaluate_data_upgrade_decision, ConflictKeyKind, DataUpgradeEvidence, DataUpgradePhase,
-    MigrationPreflightReceipt, ModuleTransitionCoordinator, ModuleTransitionState,
-    SecurityEpochRegistry, StartTransitionInput, TransitionCoordinatorError, UpdateMode,
+    ConflictKeyKind, DataUpgradeEvidence, DataUpgradePhase, MigrationPreflightReceipt,
+    ModuleTransitionCoordinator, ModuleTransitionState, SecurityEpochRegistry,
+    StartTransitionInput, TransitionCoordinatorError, UpdateMode, evaluate_data_upgrade_decision,
 };
 use uuid::Uuid;
 

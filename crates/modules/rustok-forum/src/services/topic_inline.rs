@@ -15,17 +15,9 @@ impl TopicService {
         input: CreateTopicCommandInput,
     ) -> ForumResult<TopicResponse> {
         let create_audience =
-            ForumTopicCreateAudienceAuthorizationService::without_facts_provider(
-                self.db.clone(),
-            );
-        self.create_with_audience_authorization(
-            tenant_id,
-            security,
-            None,
-            input,
-            &create_audience,
-        )
-        .await
+            ForumTopicCreateAudienceAuthorizationService::without_facts_provider(self.db.clone());
+        self.create_with_audience_authorization(tenant_id, security, None, input, &create_audience)
+            .await
     }
 
     pub(crate) async fn create_with_audience_authorization(
@@ -296,13 +288,8 @@ impl TopicService {
             };
 
         let txn = self.db.begin().await?;
-        let claimed_updated_at = Self::claim_topic_update_in_tx(
-            &txn,
-            tenant_id,
-            topic_id,
-            expected_updated_at,
-        )
-        .await?;
+        let claimed_updated_at =
+            Self::claim_topic_update_in_tx(&txn, tenant_id, topic_id, expected_updated_at).await?;
         if let Some(expectation) = quote_expectation {
             super::relation_quote_input::lock_source_and_assert_latest_in_tx(
                 &txn,
@@ -333,16 +320,9 @@ impl TopicService {
                 prepared_custom_fields.localized_values.as_ref(),
             )
         {
-            persist_localized_values(
-                &txn,
-                tenant_id,
-                "topic",
-                topic_id,
-                persist_locale,
-                values,
-            )
-            .await
-            .map_err(|error| ForumError::Validation(error.to_string()))?;
+            persist_localized_values(&txn, tenant_id, "topic", topic_id, persist_locale, values)
+                .await
+                .map_err(|error| ForumError::Validation(error.to_string()))?;
         }
 
         self.upsert_translation_in_tx(

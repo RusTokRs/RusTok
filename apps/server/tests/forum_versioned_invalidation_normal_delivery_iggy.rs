@@ -37,12 +37,11 @@ use rustok_search::{
     ForumProjectionOwnerRevisionImpact as SearchOwnerRevisionImpact,
     ForumProjectionOwnerRevisionRecord, ForumProjectionOwnerRevisionRequest,
     ForumProjectionOwnerRevisionSourcePort, ForumProjectionOwnerTenantHead,
-    ForumProjectionOwnerTenantPageRequest, ForumProjectionReconciler,
-    ForumSearchContractIngress, ForumSearchContractIngressOutcome, PgSearchEngine,
-    SearchAudiencePolicyPort, SearchAudienceRegistry, SearchAudienceRequest, SearchModule,
-    SearchQuery, SearchRankingProfile, SharedStorefrontSearchCategoryScopePort,
-    StorefrontSearchAudienceContext, StorefrontSearchCategoryScopePort,
-    StorefrontSearchCategoryScopeRequest,
+    ForumProjectionOwnerTenantPageRequest, ForumProjectionReconciler, ForumSearchContractIngress,
+    ForumSearchContractIngressOutcome, PgSearchEngine, SearchAudiencePolicyPort,
+    SearchAudienceRegistry, SearchAudienceRequest, SearchModule, SearchQuery, SearchRankingProfile,
+    SharedStorefrontSearchCategoryScopePort, StorefrontSearchAudienceContext,
+    StorefrontSearchCategoryScopePort, StorefrontSearchCategoryScopeRequest,
     StorefrontSearchTransport, execute_audience_eligible_search,
     resolve_trusted_storefront_channel,
 };
@@ -238,10 +237,12 @@ impl SearchAudiencePolicyPort for RealForumPublicEligibilityPort {
         forum_public_settings::default_settings()
             .anonymous_reading_allowed(tenant_id)
             .await
-            .map_err(|_| PortError::unavailable(
-                "forum.search_result_eligibility.public_discovery_unavailable",
-                "Forum public discovery is temporarily unavailable",
-            ))
+            .map_err(|_| {
+                PortError::unavailable(
+                    "forum.search_result_eligibility.public_discovery_unavailable",
+                    "Forum public discovery is temporarily unavailable",
+                )
+            })
     }
 
     async fn filter_eligible_candidates(
@@ -1104,11 +1105,11 @@ async fn assert_storefront_topic(
     let eligibility: Arc<RealForumPublicEligibilityPort> =
         Arc::new(RealForumPublicEligibilityPort { db: db.clone() });
     let mut registry = SearchAudienceRegistry::new();
-    registry
-        .register_shared(eligibility)
-        .map_err(|error| {
-            test_error(format!("Forum audience policy registration failed: {error}"))
-        })?;
+    registry.register_shared(eligibility).map_err(|error| {
+        test_error(format!(
+            "Forum audience policy registration failed: {error}"
+        ))
+    })?;
     let engine = PgSearchEngine::new(db.clone());
     let request_context = RequestContext {
         tenant_id: fixture.tenant_id,
@@ -1154,10 +1155,7 @@ async fn assert_storefront_topic(
     )
     .await
     .map_err(|error| test_error(error.to_string()))?;
-    if result.total != 1
-        || result.items.len() != 1
-        || result.items[0].id != fixture.topic_id
-    {
+    if result.total != 1 || result.items.len() != 1 || result.items[0].id != fixture.topic_id {
         return Err(test_error(format!(
             "normal delivery storefront Search did not return the exact topic: {:?}",
             result

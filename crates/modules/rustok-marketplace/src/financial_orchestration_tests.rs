@@ -251,38 +251,48 @@ async fn directory_services_reject_nil_identifiers_and_invalid_currency() {
     // Allocation directory
     let allocation_dir =
         crate::MarketplaceAllocationDirectoryService::new(Arc::new(DummyAllocationReader));
-    assert!(allocation_dir
-        .read_by_order_line(ctx.clone(), Uuid::nil())
-        .await
-        .is_err());
-    assert!(allocation_dir
-        .list_by_order(ctx.clone(), Uuid::nil())
-        .await
-        .is_err());
-    assert!(allocation_dir
-        .list_by_seller(
-            ctx.clone(),
-            rustok_marketplace_allocation::ListMarketplaceAllocationsBySellerRequest {
-                seller_id: Uuid::nil(),
-                page: 1,
-                per_page: 10,
-                status: None,
-            }
-        )
-        .await
-        .is_err());
+    assert!(
+        allocation_dir
+            .read_by_order_line(ctx.clone(), Uuid::nil())
+            .await
+            .is_err()
+    );
+    assert!(
+        allocation_dir
+            .list_by_order(ctx.clone(), Uuid::nil())
+            .await
+            .is_err()
+    );
+    assert!(
+        allocation_dir
+            .list_by_seller(
+                ctx.clone(),
+                rustok_marketplace_allocation::ListMarketplaceAllocationsBySellerRequest {
+                    seller_id: Uuid::nil(),
+                    page: 1,
+                    per_page: 10,
+                    status: None,
+                }
+            )
+            .await
+            .is_err()
+    );
 
     // Commission directory
     let commission_dir =
         crate::MarketplaceCommissionDirectoryService::new(Arc::new(DummyCommissionReader));
-    assert!(commission_dir
-        .read_by_allocation(ctx.clone(), Uuid::nil())
-        .await
-        .is_err());
-    assert!(commission_dir
-        .list_by_order(ctx.clone(), Uuid::nil())
-        .await
-        .is_err());
+    assert!(
+        commission_dir
+            .read_by_allocation(ctx.clone(), Uuid::nil())
+            .await
+            .is_err()
+    );
+    assert!(
+        commission_dir
+            .list_by_order(ctx.clone(), Uuid::nil())
+            .await
+            .is_err()
+    );
     assert!(commission_dir
         .list_by_seller(
             ctx.clone(),
@@ -298,30 +308,38 @@ async fn directory_services_reject_nil_identifiers_and_invalid_currency() {
 
     // Ledger directory
     let ledger_dir = crate::MarketplaceLedgerDirectoryService::new(Arc::new(DummyLedgerReader));
-    assert!(ledger_dir
-        .read_by_order(ctx.clone(), Uuid::nil())
-        .await
-        .is_err());
-    assert!(ledger_dir
-        .list_seller_entries(
-            ctx.clone(),
-            rustok_marketplace_balance::ListMarketplaceSellerLedgerEntriesRequest {
-                seller_id: Uuid::nil(),
-                currency_code: None,
-                page: 1,
-                per_page: 10,
-            }
-        )
-        .await
-        .is_err());
-    assert!(ledger_dir
-        .read_seller_balance(ctx.clone(), Uuid::nil(), "USD")
-        .await
-        .is_err());
-    assert!(ledger_dir
-        .read_seller_balance(ctx.clone(), Uuid::new_v4(), "INVALID")
-        .await
-        .is_err());
+    assert!(
+        ledger_dir
+            .read_by_order(ctx.clone(), Uuid::nil())
+            .await
+            .is_err()
+    );
+    assert!(
+        ledger_dir
+            .list_seller_entries(
+                ctx.clone(),
+                rustok_marketplace_balance::ListMarketplaceSellerLedgerEntriesRequest {
+                    seller_id: Uuid::nil(),
+                    currency_code: None,
+                    page: 1,
+                    per_page: 10,
+                }
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        ledger_dir
+            .read_seller_balance(ctx.clone(), Uuid::nil(), "USD")
+            .await
+            .is_err()
+    );
+    assert!(
+        ledger_dir
+            .read_seller_balance(ctx.clone(), Uuid::new_v4(), "INVALID")
+            .await
+            .is_err()
+    );
     let normalized = ledger_dir
         .read_seller_balance(ctx.clone(), Uuid::new_v4(), " usd ")
         .await
@@ -330,37 +348,45 @@ async fn directory_services_reject_nil_identifiers_and_invalid_currency() {
 
     // Listing directory
     let listing_dir = crate::MarketplaceListingDirectoryService::new(Arc::new(DummyListingReader));
-    assert!(listing_dir
-        .read_listing(ctx.clone(), Uuid::nil())
-        .await
-        .is_err());
+    assert!(
+        listing_dir
+            .read_listing(ctx.clone(), Uuid::nil())
+            .await
+            .is_err()
+    );
 
     // Payout directory
     let payout_dir = crate::MarketplacePayoutDirectoryService::new(Arc::new(DummyPayoutReader));
-    assert!(payout_dir
-        .read_payout(ctx.clone(), Uuid::nil())
-        .await
-        .is_err());
-    assert!(payout_dir
-        .list_seller_payouts(
-            ctx.clone(),
-            rustok_marketplace_payout::ListMarketplaceSellerPayoutsRequest {
-                seller_id: Uuid::nil(),
-                currency_code: None,
-                status: None,
-                page: 1,
-                per_page: 10,
-            }
-        )
-        .await
-        .is_err());
+    assert!(
+        payout_dir
+            .read_payout(ctx.clone(), Uuid::nil())
+            .await
+            .is_err()
+    );
+    assert!(
+        payout_dir
+            .list_seller_payouts(
+                ctx.clone(),
+                rustok_marketplace_payout::ListMarketplaceSellerPayoutsRequest {
+                    seller_id: Uuid::nil(),
+                    currency_code: None,
+                    status: None,
+                    page: 1,
+                    per_page: 10,
+                }
+            )
+            .await
+            .is_err()
+    );
 
     // Seller directory
     let seller_dir = crate::MarketplaceSellerDirectoryService::new(Arc::new(DummySellerReader));
-    assert!(seller_dir
-        .read_seller(ctx.clone(), Uuid::nil())
-        .await
-        .is_err());
+    assert!(
+        seller_dir
+            .read_seller(ctx.clone(), Uuid::nil())
+            .await
+            .is_err()
+    );
 }
 
 struct DummyAllocationReader;
@@ -377,7 +403,8 @@ impl rustok_marketplace_allocation::MarketplaceAllocationReadPort for DummyAlloc
         &self,
         _: PortContext,
         _: rustok_marketplace_allocation::ListMarketplaceAllocationsByOrderRequest,
-    ) -> Result<Vec<rustok_marketplace_allocation::MarketplaceOrderAllocationResponse>, PortError> {
+    ) -> Result<Vec<rustok_marketplace_allocation::MarketplaceOrderAllocationResponse>, PortError>
+    {
         unreachable!()
     }
     async fn list_allocations_by_seller(
@@ -396,28 +423,34 @@ impl rustok_marketplace_commission::MarketplaceCommissionReadPort for DummyCommi
         &self,
         _: PortContext,
         _: rustok_marketplace_commission::ReadMarketplaceCommissionAssessmentRequest,
-    ) -> Result<rustok_marketplace_commission::MarketplaceCommissionAssessmentResponse, PortError> {
+    ) -> Result<rustok_marketplace_commission::MarketplaceCommissionAssessmentResponse, PortError>
+    {
         unreachable!()
     }
     async fn list_assessments_by_order(
         &self,
         _: PortContext,
         _: rustok_marketplace_commission::ListMarketplaceCommissionAssessmentsByOrderRequest,
-    ) -> Result<Vec<rustok_marketplace_commission::MarketplaceCommissionAssessmentResponse>, PortError> {
+    ) -> Result<
+        Vec<rustok_marketplace_commission::MarketplaceCommissionAssessmentResponse>,
+        PortError,
+    > {
         unreachable!()
     }
     async fn list_assessments_by_seller(
         &self,
         _: PortContext,
         _: rustok_marketplace_commission::ListMarketplaceCommissionAssessmentsBySellerRequest,
-    ) -> Result<rustok_marketplace_commission::MarketplaceCommissionAssessmentListResponse, PortError> {
+    ) -> Result<rustok_marketplace_commission::MarketplaceCommissionAssessmentListResponse, PortError>
+    {
         unreachable!()
     }
     async fn list_rules(
         &self,
         _: PortContext,
         _: rustok_marketplace_commission::ListMarketplaceCommissionRulesRequest,
-    ) -> Result<rustok_marketplace_commission::MarketplaceCommissionRuleListResponse, PortError> {
+    ) -> Result<rustok_marketplace_commission::MarketplaceCommissionRuleListResponse, PortError>
+    {
         unreachable!()
     }
 }
@@ -445,22 +478,24 @@ impl rustok_marketplace_balance::MarketplaceLedgerReadPort for DummyLedgerReader
         req: rustok_marketplace_balance::ReadMarketplaceSellerBalanceRequest,
     ) -> Result<rustok_marketplace_balance::MarketplaceSellerBalanceResponse, PortError> {
         let now = chrono::Utc::now().fixed_offset();
-        Ok(rustok_marketplace_balance::MarketplaceSellerBalanceResponse {
-            id: Uuid::new_v4(),
-            tenant_id: Uuid::new_v4(),
-            seller_id: req.seller_id,
-            currency_code: req.currency_code,
-            pending_amount: 0,
-            available_amount: 0,
-            reserved_amount: 0,
-            paid_amount: 0,
-            negative_amount: 0,
-            source_entry_count: 0,
-            last_entry_id: None,
-            last_entry_created_at: None,
-            rebuilt_at: now,
-            updated_at: now,
-        })
+        Ok(
+            rustok_marketplace_balance::MarketplaceSellerBalanceResponse {
+                id: Uuid::new_v4(),
+                tenant_id: Uuid::new_v4(),
+                seller_id: req.seller_id,
+                currency_code: req.currency_code,
+                pending_amount: 0,
+                available_amount: 0,
+                reserved_amount: 0,
+                paid_amount: 0,
+                negative_amount: 0,
+                source_entry_count: 0,
+                last_entry_id: None,
+                last_entry_created_at: None,
+                rebuilt_at: now,
+                updated_at: now,
+            },
+        )
     }
 }
 
@@ -485,7 +520,8 @@ impl rustok_marketplace_listing::MarketplaceListingReadPort for DummyListingRead
         &self,
         _: PortContext,
         _: rustok_marketplace_listing::MarketplaceListingEligibilityRequest,
-    ) -> Result<Vec<rustok_marketplace_listing::MarketplaceListingEligibilityProjection>, PortError> {
+    ) -> Result<Vec<rustok_marketplace_listing::MarketplaceListingEligibilityProjection>, PortError>
+    {
         unreachable!()
     }
     async fn list_listing_events(

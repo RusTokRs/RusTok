@@ -77,15 +77,30 @@ async fn postgres_enforces_locked_and_moderated_reply_semantics() -> TestResult<
         assert_public_state(&context.db, &moderated, 0, 1).await?;
         // Reappearances repair counters without re-emitting the notification event.
         moderation
-            .approve_reply(moderated.tenant_id, reply.id, moderated.topic_id, admin_security())
+            .approve_reply(
+                moderated.tenant_id,
+                reply.id,
+                moderated.topic_id,
+                admin_security(),
+            )
             .await?;
         assert_public_state(&context.db, &moderated, 1, 1).await?;
         moderation
-            .reject_reply(moderated.tenant_id, reply.id, moderated.topic_id, admin_security())
+            .reject_reply(
+                moderated.tenant_id,
+                reply.id,
+                moderated.topic_id,
+                admin_security(),
+            )
             .await?;
         assert_public_state(&context.db, &moderated, 0, 1).await?;
         moderation
-            .approve_reply(moderated.tenant_id, reply.id, moderated.topic_id, admin_security())
+            .approve_reply(
+                moderated.tenant_id,
+                reply.id,
+                moderated.topic_id,
+                admin_security(),
+            )
             .await?;
         assert_public_state(&context.db, &moderated, 1, 1).await?;
 

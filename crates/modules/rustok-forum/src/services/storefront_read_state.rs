@@ -115,7 +115,14 @@ impl ForumStorefrontReadStateService {
         .with_settings_providers(self.settings.clone());
         if unread_only {
             return self
-                .list_unread_topics(tenant_id, security, context, filter, fallback_locale, &service)
+                .list_unread_topics(
+                    tenant_id,
+                    security,
+                    context,
+                    filter,
+                    fallback_locale,
+                    &service,
+                )
                 .await;
         }
         let page = service
@@ -172,7 +179,8 @@ impl ForumStorefrontReadStateService {
                         .map(|key| key.encode())
                         .ok_or_else(|| {
                             ForumError::Validation(
-                                "Forum unread topic page is missing its keyset position".to_string(),
+                                "Forum unread topic page is missing its keyset position"
+                                    .to_string(),
                             )
                         })?;
                     return Ok(ForumStorefrontUnreadTopicPage {
@@ -187,7 +195,12 @@ impl ForumStorefrontReadStateService {
                     filter.after = Some(after);
                     filter.per_page = MAX_FORUM_READ_LIMIT;
                 }
-                None => return Ok(ForumStorefrontUnreadTopicPage { items, next_cursor: None }),
+                None => {
+                    return Ok(ForumStorefrontUnreadTopicPage {
+                        items,
+                        next_cursor: None,
+                    });
+                }
             }
         }
     }

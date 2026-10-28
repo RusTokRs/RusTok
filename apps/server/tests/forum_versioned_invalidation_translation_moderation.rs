@@ -22,9 +22,8 @@ use rustok_events::{
 };
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumModule,
-    ForumSearchResultCandidate, ForumSearchResultCandidateKind,
-    ModerationService, ReplyService, TopicService,
-    UpdateCategoryInput, UpdateTopicInput,
+    ForumSearchResultCandidate, ForumSearchResultCandidateKind, ModerationService, ReplyService,
+    TopicService, UpdateCategoryInput, UpdateTopicInput,
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_search::{
@@ -32,9 +31,8 @@ use rustok_search::{
     PgSearchEngine, SearchAudiencePolicyPort, SearchAudienceRegistry, SearchAudienceRequest,
     SearchModule, SearchQuery, SearchRankingProfile, SharedStorefrontSearchCategoryScopePort,
     StorefrontSearchAudienceContext, StorefrontSearchCategoryScopePort,
-    StorefrontSearchCategoryScopeRequest,
-    StorefrontSearchTransport, execute_audience_eligible_search,
-    resolve_trusted_storefront_channel,
+    StorefrontSearchCategoryScopeRequest, StorefrontSearchTransport,
+    execute_audience_eligible_search, resolve_trusted_storefront_channel,
 };
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
@@ -234,10 +232,12 @@ impl SearchAudiencePolicyPort for RealForumPublicEligibilityPort {
         forum_public_settings::default_settings()
             .anonymous_reading_allowed(tenant_id)
             .await
-            .map_err(|_| PortError::unavailable(
-                "forum.search_result_eligibility.public_discovery_unavailable",
-                "Forum public discovery is temporarily unavailable",
-            ))
+            .map_err(|_| {
+                PortError::unavailable(
+                    "forum.search_result_eligibility.public_discovery_unavailable",
+                    "Forum public discovery is temporarily unavailable",
+                )
+            })
     }
 
     async fn filter_eligible_candidates(
@@ -1226,11 +1226,11 @@ async fn assert_storefront_exact(
     let eligibility: Arc<RealForumPublicEligibilityPort> =
         Arc::new(RealForumPublicEligibilityPort { db: db.clone() });
     let mut registry = SearchAudienceRegistry::new();
-    registry
-        .register_shared(eligibility)
-        .map_err(|error| {
-            test_error(format!("Forum audience policy registration failed: {error}"))
-        })?;
+    registry.register_shared(eligibility).map_err(|error| {
+        test_error(format!(
+            "Forum audience policy registration failed: {error}"
+        ))
+    })?;
     let engine = PgSearchEngine::new(db.clone());
     let request_context = RequestContext {
         tenant_id: fixture.tenant_id,
@@ -1290,11 +1290,7 @@ async fn assert_storefront_exact(
             )));
         }
     } else if !result.items.is_empty()
-        || execution
-            .result
-            .facets
-            .iter()
-            .any(|facet| !facet.buckets.is_empty())
+        || result.facets.iter().any(|facet| !facet.buckets.is_empty())
     {
         return Err(test_error(format!(
             "D14 storefront marker `{marker}` leaked items or visible facets"

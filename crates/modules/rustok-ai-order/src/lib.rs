@@ -145,10 +145,10 @@ pub fn validate_order_ops_assistant_payload(
 #[cfg(test)]
 mod tests {
     use super::{
-        order_ai_execution_policy, order_ai_verticals, validate_order_analytics_payload,
-        validate_order_ops_assistant_confidence, validate_order_ops_assistant_payload,
         GeneratedOrderAnalytics, GeneratedOrderOpsAssistant, ORDER_ANALYTICS_TASK_SLUG,
-        ORDER_OPS_ASSISTANT_TASK_SLUG,
+        ORDER_OPS_ASSISTANT_TASK_SLUG, order_ai_execution_policy, order_ai_verticals,
+        validate_order_analytics_payload, validate_order_ops_assistant_confidence,
+        validate_order_ops_assistant_payload,
     };
 
     #[test]

@@ -84,8 +84,10 @@ fn snapshot_reuses_visibility_and_lock_owners_and_seals_exact_channel_scope() {
         );
     }
     assert!(CATEGORY_VISIBILITY.contains("pub(crate) async fn is_category_public_to_anonymous"));
-    assert!(CATEGORY_VISIBILITY
-        .contains("super::category_audience::lock_category_tree_in_tx(&txn, tenant_id).await?"));
+    assert!(
+        CATEGORY_VISIBILITY
+            .contains("super::category_audience::lock_category_tree_in_tx(&txn, tenant_id).await?")
+    );
 
     for forbidden in [
         "forum_category_policy::",

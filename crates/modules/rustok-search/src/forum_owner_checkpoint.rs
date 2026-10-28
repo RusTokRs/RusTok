@@ -274,7 +274,9 @@ impl ForumOwnerCheckpointReconciler {
         }
 
         if rebuild_required {
-            self.projection_driver.rebuild_tenant(head.tenant_id).await?;
+            self.projection_driver
+                .rebuild_tenant(head.tenant_id)
+                .await?;
         }
 
         let outcome = if rebuild_required {

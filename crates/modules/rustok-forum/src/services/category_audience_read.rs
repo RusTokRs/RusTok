@@ -259,8 +259,13 @@ impl ForumCategoryAudienceReadService {
     ) -> ForumResult<ForumCategoryAudiencePage> {
         enforce_scope(&security, Resource::ForumCategories, Action::List)?;
         validate_page(page, per_page)?;
-        if !viewer.is_authenticated() && !self.visibility.anonymous_reading_allowed(tenant_id).await? {
-            return Ok(ForumCategoryAudiencePage { items: Vec::new(), total: 0 });
+        if !viewer.is_authenticated()
+            && !self.visibility.anonymous_reading_allowed(tenant_id).await?
+        {
+            return Ok(ForumCategoryAudiencePage {
+                items: Vec::new(),
+                total: 0,
+            });
         }
 
         let requested_start = page

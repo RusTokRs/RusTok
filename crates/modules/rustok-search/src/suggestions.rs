@@ -313,12 +313,14 @@ async fn authorize_suggestion_documents(
 
     Ok(suggestions
         .into_iter()
-        .filter(|suggestion| match (&suggestion.source_module, suggestion.document_id) {
-            (Some(module), Some(document_id)) => allowed_by_module
-                .get(module.as_str())
-                .is_some_and(|ids| ids.contains(&document_id)),
-            _ => false,
-        })
+        .filter(
+            |suggestion| match (&suggestion.source_module, suggestion.document_id) {
+                (Some(module), Some(document_id)) => allowed_by_module
+                    .get(module.as_str())
+                    .is_some_and(|ids| ids.contains(&document_id)),
+                _ => false,
+            },
+        )
         .collect())
 }
 

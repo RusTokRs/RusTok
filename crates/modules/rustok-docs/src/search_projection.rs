@@ -157,7 +157,9 @@ impl SearchProjectionSource for DocsSearchProjectionSource {
         limit: usize,
     ) -> Result<SearchProjectionPage> {
         if tenant_id.is_nil() {
-            return Err(Error::Validation("Tenant ID cannot be a nil UUID".to_string()));
+            return Err(Error::Validation(
+                "Tenant ID cannot be a nil UUID".to_string(),
+            ));
         }
 
         let bounded_limit = limit.clamp(1, MAX_SEARCH_PROJECTION_PAGE_SIZE);
@@ -169,7 +171,9 @@ impl SearchProjectionSource for DocsSearchProjectionSource {
 
         if let Some(cursor_str) = after.as_deref() {
             let cursor = DocPageCursor::parse(cursor_str).ok_or_else(|| {
-                Error::Validation(format!("Invalid Docs Search projection cursor `{cursor_str}`"))
+                Error::Validation(format!(
+                    "Invalid Docs Search projection cursor `{cursor_str}`"
+                ))
             })?;
 
             let cursor_created_at: chrono::DateTime<chrono::FixedOffset> = cursor.created_at.into();
@@ -228,10 +232,14 @@ impl SearchProjectionSource for DocsSearchProjectionSource {
         entity_id: Uuid,
     ) -> Result<Vec<SearchProjectionDocument>> {
         if tenant_id.is_nil() {
-            return Err(Error::Validation("Tenant ID cannot be a nil UUID".to_string()));
+            return Err(Error::Validation(
+                "Tenant ID cannot be a nil UUID".to_string(),
+            ));
         }
         if entity_id.is_nil() {
-            return Err(Error::Validation("Entity ID cannot be a nil UUID".to_string()));
+            return Err(Error::Validation(
+                "Entity ID cannot be a nil UUID".to_string(),
+            ));
         }
         if entity_type != DOC_PAGE_ENTITY_TYPE {
             return Ok(Vec::new());

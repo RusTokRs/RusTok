@@ -2,11 +2,11 @@ use super::submission_aggregation::{
     SITEMAP_SUBMIT_MAX_ERROR_LEN, SITEMAP_SUBMIT_MAX_ERRORS, SITEMAP_SUBMIT_MAX_TIMEOUT_DETAILS,
 };
 use super::{
-    SitemapSubmissionAdapter, SitemapSubmissionSummary, SitemapSubmitEndpoint,
+    SitemapSubmissionAdapter, SitemapSubmissionSummary, SitemapSubmitEndpoint, SitemapUrlRecord,
     normalize_sitemap_submission_endpoints, record_invalid_endpoint, record_submission_failure,
-    record_submission_success, render_robots_body, resolve_public_origin_from_values,
-    sitemap_event_key, sitemap_file_count, sitemap_locale_path, sitemap_public_url,
-    sitemap_route_excluded, render_live_public_sitemap, SitemapUrlRecord,
+    record_submission_success, render_live_public_sitemap, render_robots_body,
+    resolve_public_origin_from_values, sitemap_event_key, sitemap_file_count, sitemap_locale_path,
+    sitemap_public_url, sitemap_route_excluded,
 };
 use crate::dto::SeoModuleSettings;
 use crate::services::SeoService;
@@ -131,8 +131,8 @@ fn tenant_context(tenant_id: Uuid) -> TenantContext {
 
 #[test]
 fn live_sitemap_renders_only_current_owner_candidates_and_valid_paged_paths() {
-    let origin = resolve_public_origin_from_values(Some("store.example.com"), None, None)
-        .expect("origin");
+    let origin =
+        resolve_public_origin_from_values(Some("store.example.com"), None, None).expect("origin");
     let settings = SeoModuleSettings {
         sitemap_max_entries_per_file: 1,
         ..Default::default()
@@ -152,13 +152,16 @@ fn live_sitemap_renders_only_current_owner_candidates_and_valid_paged_paths() {
     assert!(file.contains("/en/catalog"));
     assert!(!file.contains("/forum/"));
     for path in [
-        "sitemap-0.xml", "sitemap-01.xml", "sitemap-2.xml",
-        "sitemap-1000001.xml", "../sitemap-1.xml",
+        "sitemap-0.xml",
+        "sitemap-01.xml",
+        "sitemap-2.xml",
+        "sitemap-1000001.xml",
+        "../sitemap-1.xml",
     ] {
         assert!(render_live_public_sitemap(&current, &origin, &settings, path).is_none());
     }
-    let empty_index = render_live_public_sitemap(&[], &origin, &settings, "sitemap.xml")
-        .expect("empty index");
+    let empty_index =
+        render_live_public_sitemap(&[], &origin, &settings, "sitemap.xml").expect("empty index");
     assert!(!empty_index.contains("sitemap-1.xml"));
 }
 

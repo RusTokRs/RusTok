@@ -48,7 +48,13 @@ macro_rules! string_identity {
                 // Tighten revision/cursor to an explicit safe charset to prevent injection
                 // and to make owner-supplied revisions opaque-but-validatable.
                 if $label == "revision" || $label == "cursor" {
-                    if !normalized.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'_' || b == b'-' || b == b':') {
+                    if !normalized.bytes().all(|b| {
+                        b.is_ascii_alphanumeric()
+                            || b == b'.'
+                            || b == b'_'
+                            || b == b'-'
+                            || b == b':'
+                    }) {
                         return Err(TranslationTargetContractError::InvalidIdentity {
                             field: $label,
                             max: $max,

@@ -197,9 +197,8 @@ mod native_server_adapter {
             );
             return Err(ServerFnError::new("Cache admin access is denied"));
         }
-        let host = leptos::prelude::use_context::<rustok_api::HostRuntimeContext>().ok_or_else(|| {
-            ServerFnError::new("cache admin runtime context is not available")
-        })?;
+        let host = leptos::prelude::use_context::<rustok_api::HostRuntimeContext>()
+            .ok_or_else(|| ServerFnError::new("cache admin runtime context is not available"))?;
         Ok((host, auth, tenant))
     }
 
@@ -212,9 +211,11 @@ mod native_server_adapter {
                 rustok_api::HostAuthority::Read,
             )
             .await?;
-            let cache = host.shared_get::<rustok_cache::CacheService>().ok_or_else(|| {
-                ServerFnError::new("cache runtime is not published in the host context")
-            })?;
+            let cache = host
+                .shared_get::<rustok_cache::CacheService>()
+                .ok_or_else(|| {
+                    ServerFnError::new("cache runtime is not published in the host context")
+                })?;
 
             let report = cache.health().await;
             let backend = if report.redis_configured {
@@ -303,9 +304,8 @@ mod native_server_adapter {
                 .update(tenant.id, Some(auth.user_id), draft)
                 .await
                 .map_err(ServerFnError::new)?;
-            let stored = serde_json::to_string(&stored).map_err(|error| {
-                ServerFnError::new(format!("cache settings encoding: {error}"))
-            })?;
+            let stored = serde_json::to_string(&stored)
+                .map_err(|error| ServerFnError::new(format!("cache settings encoding: {error}")))?;
 
             Ok(GraphqlUpdatePlatformSettingsResponse {
                 update_platform_settings: UpdatePlatformSettingsPayload {

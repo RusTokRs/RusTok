@@ -1,16 +1,16 @@
 #![cfg(feature = "server")]
 
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use once_cell::sync::Lazy;
 use rustok_api::{locale_tags_match, normalize_locale_tag};
 use rustok_telemetry::metrics as telemetry_metrics;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{AiRunDecisionTrace, ExecutionMode};
 use crate::ProviderSlug;
+use crate::model::{AiRunDecisionTrace, ExecutionMode};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct AiMetricBucket {
@@ -264,21 +264,29 @@ mod tests {
         assert_eq!(snapshot.locale_fallback_total, 1);
         assert_eq!(snapshot.run_latency_ms_total, 165);
         assert_eq!(snapshot.run_latency_samples, 2);
-        assert!(snapshot
-            .provider_slug_totals
-            .iter()
-            .any(|bucket| bucket.label == "gemini" && bucket.total == 2));
-        assert!(snapshot
-            .execution_target_totals
-            .iter()
-            .any(|bucket| bucket.label == "direct:media" && bucket.total == 1));
-        assert!(snapshot
-            .task_profile_totals
-            .iter()
-            .any(|bucket| bucket.label == "image_asset" && bucket.total == 1));
-        assert!(snapshot
-            .resolved_locale_totals
-            .iter()
-            .any(|bucket| bucket.label == "fr" && bucket.total == 1));
+        assert!(
+            snapshot
+                .provider_slug_totals
+                .iter()
+                .any(|bucket| bucket.label == "gemini" && bucket.total == 2)
+        );
+        assert!(
+            snapshot
+                .execution_target_totals
+                .iter()
+                .any(|bucket| bucket.label == "direct:media" && bucket.total == 1)
+        );
+        assert!(
+            snapshot
+                .task_profile_totals
+                .iter()
+                .any(|bucket| bucket.label == "image_asset" && bucket.total == 1)
+        );
+        assert!(
+            snapshot
+                .resolved_locale_totals
+                .iter()
+                .any(|bucket| bucket.label == "fr" && bucket.total == 1)
+        );
     }
 }

@@ -491,25 +491,29 @@ mod tests {
 
     #[test]
     fn storefront_list_query_rejects_invalid_transport_values() {
-        assert!(StorefrontProductListQuery::try_from_transport(
-            None,
-            Some("invalid".to_string()),
-            None,
-            None,
-        )
-        .is_err());
+        assert!(
+            StorefrontProductListQuery::try_from_transport(
+                None,
+                Some("invalid".to_string()),
+                None,
+                None,
+            )
+            .is_err()
+        );
         assert!(
             StorefrontProductListQuery::try_new(None, None, Some("title".to_string()), None,)
                 .is_err()
         );
-        assert!(StorefrontProductListQuery::try_new_with_attribute_filters(
-            None,
-            None,
-            None,
-            None,
-            vec!["color".to_string()],
-        )
-        .is_err());
+        assert!(
+            StorefrontProductListQuery::try_new_with_attribute_filters(
+                None,
+                None,
+                None,
+                None,
+                vec!["color".to_string()],
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -522,24 +526,28 @@ mod tests {
                 .as_deref(),
             Some(ascii.as_str())
         );
-        assert!(StorefrontProductListQuery::try_new(
-            Some("a".repeat(MAX_STOREFRONT_PRODUCT_SEARCH_BYTES + 1)),
-            None,
-            None,
-            None,
-        )
-        .is_err());
+        assert!(
+            StorefrontProductListQuery::try_new(
+                Some("a".repeat(MAX_STOREFRONT_PRODUCT_SEARCH_BYTES + 1)),
+                None,
+                None,
+                None,
+            )
+            .is_err()
+        );
 
         let multibyte = "é".repeat(MAX_STOREFRONT_PRODUCT_SEARCH_BYTES / 2);
         assert_eq!(multibyte.len(), MAX_STOREFRONT_PRODUCT_SEARCH_BYTES);
         assert!(StorefrontProductListQuery::try_new(Some(multibyte), None, None, None).is_ok());
-        assert!(StorefrontProductListQuery::try_new(
-            Some("é".repeat(MAX_STOREFRONT_PRODUCT_SEARCH_BYTES / 2 + 1)),
-            None,
-            None,
-            None,
-        )
-        .is_err());
+        assert!(
+            StorefrontProductListQuery::try_new(
+                Some("é".repeat(MAX_STOREFRONT_PRODUCT_SEARCH_BYTES / 2 + 1)),
+                None,
+                None,
+                None,
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -596,13 +604,15 @@ mod tests {
         assert_eq!(query.sort_direction, StorefrontProductSortDirection::Asc);
         assert_eq!(query.attribute_filters.len(), 1);
 
-        assert!(AdminProductListQuery::try_from_transport(
-            None,
-            Some("deleted".to_string()),
-            None,
-            None,
-            None,
-        )
-        .is_err());
+        assert!(
+            AdminProductListQuery::try_from_transport(
+                None,
+                Some("deleted".to_string()),
+                None,
+                None,
+                None,
+            )
+            .is_err()
+        );
     }
 }

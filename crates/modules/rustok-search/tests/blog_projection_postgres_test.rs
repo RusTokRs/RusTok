@@ -205,10 +205,8 @@ impl ProfileSummaryReader for StubProfiles {
 
 fn blog_handler(db: &DatabaseConnection, profiles: Option<StubProfiles>) -> SearchIngestionHandler {
     let profiles_reader = profiles.map(|stub| Arc::new(stub) as Arc<dyn ProfileSummaryReader>);
-    let source: Arc<dyn SearchProjectionSource> = Arc::new(BlogSearchProjectionSource::new(
-        db.clone(),
-        profiles_reader,
-    ));
+    let source: Arc<dyn SearchProjectionSource> =
+        Arc::new(BlogSearchProjectionSource::new(db.clone(), profiles_reader));
     SearchIngestionHandler::with_all_projection_sources(db.clone(), Some(source), None, None, None)
 }
 
@@ -310,7 +308,10 @@ async fn blog_events_upsert_publish_archive_and_delete_search_document() -> Test
         published.payload["tags"],
         serde_json::json!(["rust", "cms"])
     );
-    assert_eq!(published.payload["channel_slugs"], serde_json::json!(["web"]));
+    assert_eq!(
+        published.payload["channel_slugs"],
+        serde_json::json!(["web"])
+    );
     assert_eq!(published.payload["version"], 2);
     assert!(!published.payload["published_at"].is_null());
 
@@ -501,10 +502,7 @@ async fn blog_projection_uses_the_profiles_port_not_the_account_row() -> TestRes
         .await?
         .expect("public-author post should be projected");
     assert_eq!(public.payload["author_name"], "Public Author");
-    assert_eq!(
-        public.payload["author_id"],
-        public_author_id.to_string()
-    );
+    assert_eq!(public.payload["author_id"], public_author_id.to_string());
 
     let private = load_blog_document(&test_db.db, tenant_id, private_post_id)
         .await?
@@ -1141,10 +1139,7 @@ async fn connect_in_schema(
 ///
 /// Without this check a pool that silently ignored the option fails much later, as a
 /// confusing "relation blog_posts does not exist" inside the owner source.
-async fn assert_schema_resolves(
-    db: &DatabaseConnection,
-    schema_name: &str,
-) -> TestResult<()> {
+async fn assert_schema_resolves(db: &DatabaseConnection, schema_name: &str) -> TestResult<()> {
     let row = db
         .query_one_raw(Statement::from_string(
             DbBackend::Postgres,

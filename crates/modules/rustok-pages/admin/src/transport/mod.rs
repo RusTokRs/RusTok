@@ -322,7 +322,8 @@ pub async fn save_site_symbol(
     name: Option<String>,
     content_json: String,
 ) -> Result<crate::model::SiteSymbolSummary, TransportError> {
-    graphql_adapter::save_site_symbol(token, tenant_slug, symbol_id, locale, name, content_json).await
+    graphql_adapter::save_site_symbol(token, tenant_slug, symbol_id, locale, name, content_json)
+        .await
 }
 
 pub async fn delete_site_symbol(

@@ -313,10 +313,7 @@ fn current_exe_digest() -> Option<String> {
             const MAX_EXECUTABLE_BYTES: u64 = 512 * 1024 * 1024;
             let exe = std::env::current_exe().ok()?;
             let metadata = std::fs::metadata(&exe).ok()?;
-            if !metadata.is_file()
-                || metadata.len() == 0
-                || metadata.len() > MAX_EXECUTABLE_BYTES
-            {
+            if !metadata.is_file() || metadata.len() == 0 || metadata.len() > MAX_EXECUTABLE_BYTES {
                 return None;
             }
             let mut file = std::fs::File::open(&exe).ok()?;
@@ -348,11 +345,11 @@ impl SandboxWorkerReadiness for IsolationPolicy {
         // any envelope change advances the host-side pool generation.
         let attestation_bytes = read_attestation_bytes(&self.attestation_path).ok()?;
         let attestation: IsolationAttestation = serde_json::from_slice(&attestation_bytes).ok()?;
-        attestation.validate(self.runtime, &self.image_digest).ok()?;
-        let engine_config_digest = format!(
-            "sha256:{}",
-            hex::encode(Sha256::digest(&attestation_bytes))
-        );
+        attestation
+            .validate(self.runtime, &self.image_digest)
+            .ok()?;
+        let engine_config_digest =
+            format!("sha256:{}", hex::encode(Sha256::digest(&attestation_bytes)));
         Some(SandboxWorkerIdentity {
             executor_binary_digest: binary_digest.clone(),
             engine_build_digest: binary_digest,

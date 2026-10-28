@@ -133,7 +133,6 @@ mod tests {
         assert_eq!(module.kind(), ModuleKind::Optional);
         assert!(module.dependencies().is_empty());
         assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
-        assert_eq!(module, TranslationModule::default());
         assert_eq!(module, TranslationModule);
     }
 
@@ -149,6 +148,9 @@ mod tests {
         let perms = module.permissions();
         assert!(perms.contains(&Permission::new(Resource::Translations, Action::Create)));
         assert!(perms.contains(&Permission::new(Resource::TranslationMemory, Action::Read)));
-        assert!(perms.contains(&Permission::new(Resource::TranslationGlossaries, Action::Manage)));
+        assert!(perms.contains(&Permission::new(
+            Resource::TranslationGlossaries,
+            Action::Manage
+        )));
     }
 }

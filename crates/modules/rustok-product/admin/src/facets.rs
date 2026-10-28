@@ -14,13 +14,13 @@
 //!   contract.
 
 use rustok_grid::facet_panel::{
-    count_label, has_selection_for_key, selection_after_clear_key, selection_after_toggle,
-    FacetPanel, FacetPanelLabels,
+    FacetPanel, FacetPanelLabels, count_label, has_selection_for_key, selection_after_clear_key,
+    selection_after_toggle,
 };
 use rustok_grid::{FacetDomain, FacetValue, GridFacet};
 use rustok_ui_core::apply_ui_query_pairs;
 
-use crate::catalog_controls::{serialize_attribute_filters, ProductAdminListInput};
+use crate::catalog_controls::{ProductAdminListInput, serialize_attribute_filters};
 use crate::i18n::t;
 use crate::model::AdminCatalogFacet;
 

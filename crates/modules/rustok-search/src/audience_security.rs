@@ -304,7 +304,10 @@ pub async fn resolve_audience_eligible_candidates(
         locale.trim()
     };
 
-    if candidates.iter().any(|candidate| candidate.document_id.is_nil()) {
+    if candidates
+        .iter()
+        .any(|candidate| candidate.document_id.is_nil())
+    {
         return Err(PortError::validation(
             "search.audience.document_id_required",
             "Search audience candidate resolution requires non-nil document identifiers",
@@ -325,7 +328,11 @@ pub async fn resolve_audience_eligible_candidates(
     for (source_module, module_candidates) in partitioned {
         match registry.audience_class(source_module) {
             Some(SearchAudienceClass::Public) => {
-                allowed_ids.extend(module_candidates.iter().map(|candidate| candidate.document_id));
+                allowed_ids.extend(
+                    module_candidates
+                        .iter()
+                        .map(|candidate| candidate.document_id),
+                );
             }
             Some(SearchAudienceClass::Gated) => {
                 let Some(policy) = registry.get(source_module) else {
@@ -335,7 +342,9 @@ pub async fn resolve_audience_eligible_candidates(
                     );
                     return Err(PortError::invariant_violation(
                         "search.audience.registry_inconsistent",
-                        format!("Search audience policy `{source_module}` disappeared from the registry"),
+                        format!(
+                            "Search audience policy `{source_module}` disappeared from the registry"
+                        ),
                     ));
                 };
 
@@ -456,9 +465,12 @@ pub async fn execute_audience_eligible_search(
         transport,
     } = context;
     let started_at = Instant::now();
-    let tenant_id = search_query.tenant_id.filter(|tenant| !tenant.is_nil()).ok_or_else(|| {
-        Error::Validation("storefront search requires a valid tenant ID".to_string())
-    })?;
+    let tenant_id = search_query
+        .tenant_id
+        .filter(|tenant| !tenant.is_nil())
+        .ok_or_else(|| {
+            Error::Validation("storefront search requires a valid tenant ID".to_string())
+        })?;
 
     if search_query.query.trim().is_empty() {
         return Ok(empty_storefront_result(
@@ -481,7 +493,12 @@ pub async fn execute_audience_eligible_search(
 
     // 1. Resolve the request scope against the declared corpus. Undeclared modules are
     //    denied rather than assumed public.
-    let mut scope_modules = resolve_scope_modules(registry, &search_query.source_modules, &declared_modules, tenant_id);
+    let mut scope_modules = resolve_scope_modules(
+        registry,
+        &search_query.source_modules,
+        &declared_modules,
+        tenant_id,
+    );
     if scope_modules.is_empty() {
         return Ok(empty_storefront_result(
             search_query.ranking_profile,
@@ -548,24 +565,25 @@ pub async fn execute_audience_eligible_search(
                     .filter(|locale| !locale.is_empty())
             });
         if let Some(effective_locale) = effective_locale {
-            search_query.category_ids = crate::storefront_category_scope::resolve_storefront_search_category_ids(
-                category_scope,
-                crate::storefront_category_scope::StorefrontSearchCategoryScopeRequest {
-                    tenant_id,
-                    locale: effective_locale,
-                    // The generic storefront request carries no separate fallback locale;
-                    // the host resolved `effective_locale` from the request context, so the
-                    // owner sees the same locale the result rows will be read in.
-                    fallback_locale: None,
-                    source_modules: scope_modules.clone(),
-                    category_ids: search_query.category_ids.clone(),
-                    auth: auth.clone(),
-                    request_context: request_context.clone(),
-                    transport,
-                },
-            )
-            .await
-            .map_err(|error| search_audience_error(error, "category scope resolution"))?;
+            search_query.category_ids =
+                crate::storefront_category_scope::resolve_storefront_search_category_ids(
+                    category_scope,
+                    crate::storefront_category_scope::StorefrontSearchCategoryScopeRequest {
+                        tenant_id,
+                        locale: effective_locale,
+                        // The generic storefront request carries no separate fallback locale;
+                        // the host resolved `effective_locale` from the request context, so the
+                        // owner sees the same locale the result rows will be read in.
+                        fallback_locale: None,
+                        source_modules: scope_modules.clone(),
+                        category_ids: search_query.category_ids.clone(),
+                        auth: auth.clone(),
+                        request_context: request_context.clone(),
+                        transport,
+                    },
+                )
+                .await
+                .map_err(|error| search_audience_error(error, "category scope resolution"))?;
 
             // An owner that resolved a requested category root to nothing has authorized
             // no category. Returning the unfiltered scope here would turn "this category
@@ -707,7 +725,9 @@ async fn authorize_gated_candidates(
 
     loop {
         scan_query.offset = items.len();
-        let page = engine.search_storefront(scan_query.clone(), channel).await?;
+        let page = engine
+            .search_storefront(scan_query.clone(), channel)
+            .await?;
 
         let total = match expected_total {
             Some(expected) if expected != page.total => {
@@ -758,15 +778,14 @@ async fn authorize_gated_candidates(
 
     if items.len() as u64 != expected_total.unwrap_or(0) {
         return Err(Error::Internal(
-            "Storefront Search candidate scan did not resolve one unique row per result".to_string(),
+            "Storefront Search candidate scan did not resolve one unique row per result"
+                .to_string(),
         ));
     }
 
     let descriptors = items
         .iter()
-        .map(|item| {
-            SearchCandidateDescriptor::new(item.id, &item.source_module, &item.entity_type)
-        })
+        .map(|item| SearchCandidateDescriptor::new(item.id, &item.source_module, &item.entity_type))
         .collect::<Vec<_>>();
 
     let effective_locale = scan_query
@@ -953,7 +972,11 @@ mod tests {
             &registry,
             Uuid::new_v4(),
             "en",
-            &[SearchCandidateDescriptor::new(candidate, "secret_lab", "note")],
+            &[SearchCandidateDescriptor::new(
+                candidate,
+                "secret_lab",
+                "note",
+            )],
             None,
             None,
             StorefrontSearchTransport::Graphql,
@@ -970,7 +993,12 @@ mod tests {
             None,
             "undeclared modules have no audience class"
         );
-        assert!(!registry.public_discovery_allowed("secret_lab", Uuid::new_v4()).await.unwrap());
+        assert!(
+            !registry
+                .public_discovery_allowed("secret_lab", Uuid::new_v4())
+                .await
+                .unwrap()
+        );
     }
 
     struct CountingEventsPolicy {
@@ -1016,9 +1044,7 @@ mod tests {
             .expect("gated module registration");
 
         let candidates = (0..(MAX_SEARCH_AUDIENCE_CANDIDATES * 2 + 5))
-            .map(|_| {
-                SearchCandidateDescriptor::new(Uuid::new_v4(), "events", "event_announcement")
-            })
+            .map(|_| SearchCandidateDescriptor::new(Uuid::new_v4(), "events", "event_announcement"))
             .collect::<Vec<_>>();
 
         let allowed = resolve_audience_eligible_candidates(
@@ -1036,7 +1062,11 @@ mod tests {
         assert_eq!(allowed.len(), candidates.len());
         assert_eq!(
             batch_sizes.lock().expect("batch size recorder").clone(),
-            vec![MAX_SEARCH_AUDIENCE_CANDIDATES, MAX_SEARCH_AUDIENCE_CANDIDATES, 5],
+            vec![
+                MAX_SEARCH_AUDIENCE_CANDIDATES,
+                MAX_SEARCH_AUDIENCE_CANDIDATES,
+                5
+            ],
             "every policy call must stay within the documented batch bound"
         );
     }
@@ -1229,9 +1259,7 @@ mod tests {
             .unwrap();
 
         let candidates = (0..(MAX_SEARCH_AUDIENCE_CANDIDATES * 2 + 7))
-            .map(|_| {
-                SearchCandidateDescriptor::new(Uuid::new_v4(), "events", "event_announcement")
-            })
+            .map(|_| SearchCandidateDescriptor::new(Uuid::new_v4(), "events", "event_announcement"))
             .collect::<Vec<_>>();
 
         let allowed = resolve_audience_eligible_candidates(
@@ -1341,7 +1369,11 @@ mod tests {
             &registry,
             Uuid::new_v4(),
             "en",
-            &[SearchCandidateDescriptor::new(blog_post, "blog", "blog_post")],
+            &[SearchCandidateDescriptor::new(
+                blog_post,
+                "blog",
+                "blog_post",
+            )],
             None,
             None,
             StorefrontSearchTransport::Graphql,
@@ -1613,7 +1645,9 @@ mod tests {
     struct EmptyCategoryScopePort;
 
     #[async_trait]
-    impl crate::storefront_category_scope::StorefrontSearchCategoryScopePort for EmptyCategoryScopePort {
+    impl crate::storefront_category_scope::StorefrontSearchCategoryScopePort
+        for EmptyCategoryScopePort
+    {
         fn source_module(&self) -> &'static str {
             "forum"
         }

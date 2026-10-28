@@ -10,8 +10,8 @@
 
 use leptos::prelude::*;
 use rustok_ui::{
-    normalize_progress_max, normalize_progress_value_for_max, progress_classes,
-    progress_value_percentage, Orientation,
+    Orientation, normalize_progress_max, normalize_progress_value_for_max, progress_classes,
+    progress_value_percentage,
 };
 
 /// Accessible progress primitive with Radix-compatible range and state props.

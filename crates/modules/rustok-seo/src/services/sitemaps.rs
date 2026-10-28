@@ -415,7 +415,8 @@ impl SeoService {
         tenant: &TenantContext,
     ) -> SeoResult<SeoSitemapStatusRecord> {
         let settings = self.load_settings(tenant.id).await?;
-        if !sitemaps_enabled(&settings) || !self.any_public_sitemap_owner_enabled(tenant.id).await? {
+        if !sitemaps_enabled(&settings) || !self.any_public_sitemap_owner_enabled(tenant.id).await?
+        {
             return Ok(disabled_sitemap_status());
         }
 
@@ -494,7 +495,8 @@ impl SeoService {
 
     pub async fn render_robots(&self, tenant: &TenantContext) -> SeoResult<String> {
         let settings = self.load_settings(tenant.id).await?;
-        if !sitemaps_enabled(&settings) || !self.any_public_sitemap_owner_enabled(tenant.id).await? {
+        if !sitemaps_enabled(&settings) || !self.any_public_sitemap_owner_enabled(tenant.id).await?
+        {
             return Ok(render_robots_body_with_settings("", &settings));
         }
         let public_origin = PublicOrigin::resolve(tenant)?;
@@ -532,7 +534,10 @@ impl SeoService {
     /// owner's routes. The previous all-or-nothing gate let a single disabled
     /// module 404 all public sitemap/robots entries, including routes the
     /// enabled owners still expose. Fails closed when no capable owner exists.
-    pub(super) async fn any_public_sitemap_owner_enabled(&self, tenant_id: Uuid) -> SeoResult<bool> {
+    pub(super) async fn any_public_sitemap_owner_enabled(
+        &self,
+        tenant_id: Uuid,
+    ) -> SeoResult<bool> {
         for provider in self
             .registry
             .providers_with_capability(SeoTargetCapabilityKind::Sitemaps)
@@ -579,7 +584,10 @@ impl SeoService {
             }
             return self.render_current_public_sitemap(tenant, path).await;
         }
-        Ok(self.sitemap_file(tenant.id, path).await?.map(|file| file.content))
+        Ok(self
+            .sitemap_file(tenant.id, path)
+            .await?
+            .map(|file| file.content))
     }
 
     async fn public_sitemap_requires_refresh(&self, tenant_id: Uuid) -> SeoResult<bool> {
@@ -637,7 +645,8 @@ impl SeoService {
         tenant_id: Uuid,
     ) -> SeoResult<Option<seo_sitemap_file::Model>> {
         let settings = self.load_settings(tenant_id).await?;
-        if !sitemaps_enabled(&settings) || !self.any_public_sitemap_owner_enabled(tenant_id).await? {
+        if !sitemaps_enabled(&settings) || !self.any_public_sitemap_owner_enabled(tenant_id).await?
+        {
             return Ok(None);
         }
         seo_sitemap_file::Entity::find()
@@ -655,7 +664,8 @@ impl SeoService {
         path: &str,
     ) -> SeoResult<Option<seo_sitemap_file::Model>> {
         let settings = self.load_settings(tenant_id).await?;
-        if !sitemaps_enabled(&settings) || !self.any_public_sitemap_owner_enabled(tenant_id).await? {
+        if !sitemaps_enabled(&settings) || !self.any_public_sitemap_owner_enabled(tenant_id).await?
+        {
             return Ok(None);
         }
         seo_sitemap_file::Entity::find()

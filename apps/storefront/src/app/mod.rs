@@ -1,8 +1,8 @@
 use crate::modules::{
-    components_for_slot, init_modules, page_for_route_segment, StorefrontPageLookup, StorefrontSlot,
+    StorefrontPageLookup, StorefrontSlot, components_for_slot, init_modules, page_for_route_segment,
 };
 use crate::pages::home::HomePage;
-use crate::shared::context::enabled_modules::{use_enabled_modules, EnabledModulesProvider};
+use crate::shared::context::enabled_modules::{EnabledModulesProvider, use_enabled_modules};
 use crate::shared::context::module_request::ModuleRequestProvider;
 use crate::shared::local::{featured_products, locale_strings};
 use crate::widgets::footer::Footer;

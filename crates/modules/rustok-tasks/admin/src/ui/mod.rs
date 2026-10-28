@@ -16,7 +16,7 @@ use rustok_grid::filter::GridFilterType;
 use rustok_grid::pagination::GridPagination;
 use rustok_grid_leptos::prelude::*;
 
-use crate::core::{filter_rows, TasksAdminTableRow};
+use crate::core::{TasksAdminTableRow, filter_rows};
 use crate::i18n::t;
 
 pub use TasksAdminPage as TasksAdmin;

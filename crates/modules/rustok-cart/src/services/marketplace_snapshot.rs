@@ -67,10 +67,14 @@ impl CartMarketplaceSnapshotService {
         input: AddMarketplaceCartLineItemInput,
     ) -> CartResult<AddMarketplaceCartLineItemResponse> {
         if tenant_id.is_nil() {
-            return Err(CartError::Validation("tenant_id must not be a nil UUID".to_string()));
+            return Err(CartError::Validation(
+                "tenant_id must not be a nil UUID".to_string(),
+            ));
         }
         if cart_id.is_nil() {
-            return Err(CartError::Validation("cart_id must not be a nil UUID".to_string()));
+            return Err(CartError::Validation(
+                "cart_id must not be a nil UUID".to_string(),
+            ));
         }
         input
             .validate()
@@ -176,13 +180,19 @@ impl CartMarketplaceSnapshotService {
         input: MarketplaceCartLineSnapshotInput,
     ) -> CartResult<CartMarketplaceLineSnapshot> {
         if tenant_id.is_nil() {
-            return Err(CartError::Validation("tenant_id must not be a nil UUID".to_string()));
+            return Err(CartError::Validation(
+                "tenant_id must not be a nil UUID".to_string(),
+            ));
         }
         if cart_id.is_nil() {
-            return Err(CartError::Validation("cart_id must not be a nil UUID".to_string()));
+            return Err(CartError::Validation(
+                "cart_id must not be a nil UUID".to_string(),
+            ));
         }
         if cart_line_item_id.is_nil() {
-            return Err(CartError::Validation("cart_line_item_id must not be a nil UUID".to_string()));
+            return Err(CartError::Validation(
+                "cart_line_item_id must not be a nil UUID".to_string(),
+            ));
         }
         let mut input = normalize_snapshot_input(input)?;
 
@@ -245,10 +255,14 @@ impl CartMarketplaceSnapshotService {
         cart_id: Uuid,
     ) -> CartResult<Vec<CartMarketplaceLineSnapshot>> {
         if tenant_id.is_nil() {
-            return Err(CartError::Validation("tenant_id must not be a nil UUID".to_string()));
+            return Err(CartError::Validation(
+                "tenant_id must not be a nil UUID".to_string(),
+            ));
         }
         if cart_id.is_nil() {
-            return Err(CartError::Validation("cart_id must not be a nil UUID".to_string()));
+            return Err(CartError::Validation(
+                "cart_id must not be a nil UUID".to_string(),
+            ));
         }
         let transaction = self.db.begin().await?;
         load_cart_in_tx(&transaction, tenant_id, cart_id).await?;

@@ -1,7 +1,6 @@
 use crate::{
     CacheInvalidationError, CacheInvalidationOutcome, CacheInvalidationService,
-    DurableCacheInvalidationError, DurableCacheInvalidationRecord,
-    durable_invalidation_to_message,
+    DurableCacheInvalidationError, DurableCacheInvalidationRecord, durable_invalidation_to_message,
 };
 
 impl CacheInvalidationService {

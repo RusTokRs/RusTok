@@ -252,10 +252,7 @@ mod tests {
     fn healthy_memory_only_state_is_not_degraded() {
         let status = RedisCacheStatus::default();
         assert!(!status.is_degraded());
-        assert_eq!(
-            state_tuple(&status),
-            (false, false, false, 0, false)
-        );
+        assert_eq!(state_tuple(&status), (false, false, false, 0, false));
     }
 
     #[tokio::test]

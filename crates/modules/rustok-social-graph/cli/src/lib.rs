@@ -226,9 +226,11 @@ fn required_u32(
                     message: format!("--{key} is required"),
                 });
             }
-            trimmed.parse::<u32>().map_err(|_| CliCoreError::InvalidInput {
-                message: format!("--{key} must be a positive integer"),
-            })
+            trimmed
+                .parse::<u32>()
+                .map_err(|_| CliCoreError::InvalidInput {
+                    message: format!("--{key} must be a positive integer"),
+                })
         }
         Some(_) => Err(CliCoreError::InvalidInput {
             message: format!("--{key} must be a positive integer"),
@@ -256,9 +258,11 @@ fn optional_u32(
             if trimmed.is_empty() {
                 return Ok(None);
             }
-            let parsed = trimmed.parse::<u32>().map_err(|_| CliCoreError::InvalidInput {
-                message: format!("--{key} must be a positive integer"),
-            })?;
+            let parsed = trimmed
+                .parse::<u32>()
+                .map_err(|_| CliCoreError::InvalidInput {
+                    message: format!("--{key} must be a positive integer"),
+                })?;
             Ok(Some(parsed))
         }
         Some(_) => Err(CliCoreError::InvalidInput {

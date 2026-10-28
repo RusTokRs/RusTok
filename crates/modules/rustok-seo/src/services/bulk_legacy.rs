@@ -27,8 +27,8 @@ use crate::dto::{
 use crate::entities::{seo_bulk_job, seo_bulk_job_artifact, seo_bulk_job_item};
 use crate::{SeoError, SeoResult};
 
-use super::{SeoService, trimmed_option};
 use super::robots::is_valid_structured_data_payload;
+use super::{SeoService, trimmed_option};
 
 const CSV_MIME_TYPE: &str = "text/csv; charset=utf-8";
 const CSV_HEADERS: [&str; 13] = [
@@ -1209,8 +1209,7 @@ fn plan_bulk_field(
             // Operator-authored values survive every safe mode: preserve this field only.
             return Ok(BulkFieldPlan::Preserve);
         }
-        if mode == SeoBulkApplyMode::OverwriteGeneratedOnly && source != SeoFieldSource::Generated
-        {
+        if mode == SeoBulkApplyMode::OverwriteGeneratedOnly && source != SeoFieldSource::Generated {
             return Err(SeoError::validation(format!(
                 "bulk apply mode `overwrite_generated_only` field `{field_name}` requires generated SEO, got `{}`",
                 source.as_str()
@@ -1775,7 +1774,7 @@ impl SeoService {
             artifacts,
             None,
         )
-            .await
+        .await
     }
 
     async fn execute_export_job(&self, job: &seo_bulk_job::Model) -> SeoResult<()> {
@@ -1910,7 +1909,7 @@ impl SeoService {
             artifacts,
             None,
         )
-            .await
+        .await
     }
 
     async fn execute_import_job(&self, job: &seo_bulk_job::Model) -> SeoResult<()> {
@@ -1986,7 +1985,7 @@ impl SeoService {
             artifacts,
             None,
         )
-            .await
+        .await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2393,8 +2392,14 @@ impl SeoService {
         } else {
             "completed"
         };
-        self.insert_bulk_job_item_with_status(job, target_id, status, error_message, published_revision)
-            .await
+        self.insert_bulk_job_item_with_status(
+            job,
+            target_id,
+            status,
+            error_message,
+            published_revision,
+        )
+        .await
     }
 
     async fn insert_bulk_skipped_job_item(

@@ -81,13 +81,19 @@ pub struct ListGroupInvitationsRequest {
 impl ListGroupInvitationsRequest {
     pub fn validate(&self) -> GroupsResult<()> {
         if self.group_id.is_nil() {
-            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+            return Err(GroupsError::Validation(
+                "group_id cannot be nil UUID".to_string(),
+            ));
         }
         if self.page == 0 {
-            return Err(GroupsError::Validation("page must be greater than zero".to_string()));
+            return Err(GroupsError::Validation(
+                "page must be greater than zero".to_string(),
+            ));
         }
         if self.per_page == 0 || self.per_page > 100 {
-            return Err(GroupsError::Validation("per_page must be between 1 and 100".to_string()));
+            return Err(GroupsError::Validation(
+                "per_page must be between 1 and 100".to_string(),
+            ));
         }
         Ok(())
     }
@@ -104,10 +110,17 @@ pub struct CreateGroupInvitationRequest {
 impl CreateGroupInvitationRequest {
     pub fn validate(&self) -> GroupsResult<()> {
         if self.group_id.is_nil() {
-            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+            return Err(GroupsError::Validation(
+                "group_id cannot be nil UUID".to_string(),
+            ));
         }
-        if self.target_user_id.is_some_and(|target_user_id| target_user_id.is_nil()) {
-            return Err(GroupsError::Validation("target_user_id cannot be nil UUID".to_string()));
+        if self
+            .target_user_id
+            .is_some_and(|target_user_id| target_user_id.is_nil())
+        {
+            return Err(GroupsError::Validation(
+                "target_user_id cannot be nil UUID".to_string(),
+            ));
         }
         if !(MIN_EXPIRY_SECONDS..=MAX_EXPIRY_SECONDS).contains(&self.expires_in_seconds) {
             return Err(GroupsError::Validation(format!(
@@ -144,7 +157,9 @@ pub struct RevokeGroupInvitationRequest {
 impl RevokeGroupInvitationRequest {
     pub fn validate(&self) -> GroupsResult<()> {
         if self.invitation_id.is_nil() {
-            return Err(GroupsError::Validation("invitation_id cannot be nil UUID".to_string()));
+            return Err(GroupsError::Validation(
+                "invitation_id cannot be nil UUID".to_string(),
+            ));
         }
         Ok(())
     }
@@ -989,12 +1004,16 @@ fn require_write(context: &PortContext) -> GroupsResult<()> {
 fn context_tenant_id(context: &PortContext) -> GroupsResult<Uuid> {
     let trimmed = context.tenant_id.trim();
     if trimmed.is_empty() {
-        return Err(GroupsError::Validation("tenant_id cannot be empty".to_string()));
+        return Err(GroupsError::Validation(
+            "tenant_id cannot be empty".to_string(),
+        ));
     }
     let parsed = Uuid::parse_str(trimmed)
         .map_err(|_| GroupsError::Validation("tenant_id must be a UUID".to_string()))?;
     if parsed.is_nil() {
-        return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+        return Err(GroupsError::Validation(
+            "tenant_id cannot be nil UUID".to_string(),
+        ));
     }
     Ok(parsed)
 }
@@ -1007,12 +1026,16 @@ fn actor_user_id(context: &PortContext) -> GroupsResult<Uuid> {
     }
     let trimmed = context.actor.id.trim();
     if trimmed.is_empty() {
-        return Err(GroupsError::Validation("actor.id cannot be empty".to_string()));
+        return Err(GroupsError::Validation(
+            "actor.id cannot be empty".to_string(),
+        ));
     }
     let parsed = Uuid::parse_str(trimmed)
         .map_err(|_| GroupsError::Validation("actor.id must be a UUID".to_string()))?;
     if parsed.is_nil() {
-        return Err(GroupsError::Validation("actor.id cannot be nil UUID".to_string()));
+        return Err(GroupsError::Validation(
+            "actor.id cannot be nil UUID".to_string(),
+        ));
     }
     Ok(parsed)
 }

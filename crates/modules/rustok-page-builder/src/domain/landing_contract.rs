@@ -1,10 +1,10 @@
 use crate::{
-    domain::landing_readiness::materialize_landing_structural_document, evaluate_landing_readiness,
     LandingPropertyValidationReport, LandingReadinessPolicy, LandingReadinessReport,
+    domain::landing_readiness::materialize_landing_structural_document, evaluate_landing_readiness,
 };
 use fly::{
-    render_page, ComponentNode, ComponentObject, FlyError, FlyResult, PageHead, PageSelection,
-    ProjectDocument, RegistrySet, RenderPolicy,
+    ComponentNode, ComponentObject, FlyError, FlyResult, PageHead, PageSelection, ProjectDocument,
+    RegistrySet, RenderPolicy, render_page,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -771,10 +771,12 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["heading", "wrapper"]
         );
-        assert!(manifest
-            .components
-            .iter()
-            .all(|component| component.provider.is_some()));
+        assert!(
+            manifest
+                .components
+                .iter()
+                .all(|component| component.provider.is_some())
+        );
     }
 
     #[test]
@@ -918,9 +920,11 @@ mod tests {
         .artifact
         .expect("artifact");
         assert!(artifact.pages[0].body_html.contains("href=\"/about\""));
-        assert!(artifact.pages[0]
-            .body_html
-            .contains("data-fly-action-kind=\"navigate_page\""));
+        assert!(
+            artifact.pages[0]
+                .body_html
+                .contains("data-fly-action-kind=\"navigate_page\"")
+        );
     }
 
     #[test]
@@ -960,9 +964,11 @@ mod tests {
             artifact.pages[0].landing_sections[0].kind,
             LandingSectionKind::Hero
         );
-        assert!(!artifact.pages[0].landing_sections[0]
-            .content_hash
-            .is_empty());
+        assert!(
+            !artifact.pages[0].landing_sections[0]
+                .content_hash
+                .is_empty()
+        );
     }
 
     #[test]

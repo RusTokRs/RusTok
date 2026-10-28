@@ -36,8 +36,7 @@ pub mod migrations;
 pub use domain::DealStatus;
 pub use error::{DealError, DealResult};
 pub use events::{
-    DealCreatedEvent, DealDeletedEvent, DealDomainEvent, DealUpdatedEvent,
-    DEAL_EVENT_TOPIC,
+    DEAL_EVENT_TOPIC, DealCreatedEvent, DealDeletedEvent, DealDomainEvent, DealUpdatedEvent,
 };
 pub use module::DealModule;
 pub use services::DealService;

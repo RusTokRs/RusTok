@@ -67,8 +67,7 @@ fn admission_reverification_config_from_env()
         Err(std::env::VarError::NotPresent) => return None,
         Err(std::env::VarError::NotUnicode(_)) => {
             return Some(Err(
-                "RUSTOK_MODULE_MAINTENANCE_VERIFICATION_ENDPOINT must be valid Unicode"
-                    .to_string(),
+                "RUSTOK_MODULE_MAINTENANCE_VERIFICATION_ENDPOINT must be valid Unicode".to_string(),
             ));
         }
     };

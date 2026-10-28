@@ -1,6 +1,4 @@
-use crate::core::{
-    self, TemplateValidationError, SymbolValidationError,
-};
+use crate::core::{self, SymbolValidationError, TemplateValidationError};
 use crate::transport;
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
@@ -36,7 +34,8 @@ pub fn TemplatesAdmin(default_locale: String) -> impl IntoView {
     let symbol_content_json = RwSignal::new(core::default_symbol_content_json("Header"));
     let symbol_is_editing = RwSignal::new(false);
     let symbol_busy = RwSignal::new(false);
-    let delete_dialog_target = RwSignal::new(None::<(String, Option<core::SiteSymbolUsageInfo>, bool)>);
+    let delete_dialog_target =
+        RwSignal::new(None::<(String, Option<core::SiteSymbolUsageInfo>, bool)>);
     let delete_busy = RwSignal::new(false);
 
     let templates_token = token;
@@ -97,7 +96,10 @@ pub fn TemplatesAdmin(default_locale: String) -> impl IntoView {
                 return;
             }
             Err(TemplateValidationError::KeyTooLong) => {
-                feedback.set(Some((true, "Template key must not exceed 64 characters".to_string())));
+                feedback.set(Some((
+                    true,
+                    "Template key must not exceed 64 characters".to_string(),
+                )));
                 return;
             }
         };
@@ -127,7 +129,10 @@ pub fn TemplatesAdmin(default_locale: String) -> impl IntoView {
                 Ok(saved) => {
                     feedback.set(Some((
                         false,
-                        format!("Template `{}` saved successfully (revision {})", saved.key, saved.revision),
+                        format!(
+                            "Template `{}` saved successfully (revision {})",
+                            saved.key, saved.revision
+                        ),
                     )));
                     reset_template_form();
                     refresh_generation.update(|g| *g = g.wrapping_add(1));
@@ -156,12 +161,16 @@ pub fn TemplatesAdmin(default_locale: String) -> impl IntoView {
             Err(SymbolValidationError::InvalidCharacters) => {
                 feedback.set(Some((
                     true,
-                    "Symbol ID must contain only alphanumeric characters, dashes, and underscores".to_string(),
+                    "Symbol ID must contain only alphanumeric characters, dashes, and underscores"
+                        .to_string(),
                 )));
                 return;
             }
             Err(SymbolValidationError::IdTooLong) => {
-                feedback.set(Some((true, "Symbol ID must not exceed 64 characters".to_string())));
+                feedback.set(Some((
+                    true,
+                    "Symbol ID must not exceed 64 characters".to_string(),
+                )));
                 return;
             }
             Err(_) => {
@@ -174,7 +183,9 @@ pub fn TemplatesAdmin(default_locale: String) -> impl IntoView {
         if let Err(err) = core::validate_symbol_content_json(&raw_json) {
             let msg = match err {
                 SymbolValidationError::InvalidJson(msg) => format!("Invalid JSON: {msg}"),
-                SymbolValidationError::RootNotObject => "Symbol content JSON root must be an object".to_string(),
+                SymbolValidationError::RootNotObject => {
+                    "Symbol content JSON root must be an object".to_string()
+                }
                 _ => "Invalid symbol content".to_string(),
             };
             feedback.set(Some((true, msg)));

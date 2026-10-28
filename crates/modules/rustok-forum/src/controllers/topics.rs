@@ -227,14 +227,11 @@ mod tests {
     fn omitted_rest_topic_sort_is_not_a_synthetic_latest_order() {
         let omitted: ListTopicsQuery = serde_json::from_value(json!({})).unwrap();
         assert_eq!(omitted.order, None);
-        let latest: ListTopicsQuery =
-            serde_json::from_value(json!({"order": "latest"})).unwrap();
+        let latest: ListTopicsQuery = serde_json::from_value(json!({"order": "latest"})).unwrap();
         assert_eq!(latest.order, Some(ForumTopicListOrder::Latest));
         let top: ListTopicsQuery = serde_json::from_value(json!({"order": "top"})).unwrap();
         assert_eq!(top.order, Some(ForumTopicListOrder::Top));
-        assert!(
-            serde_json::from_value::<ListTopicsQuery>(json!({"order": "votes"})).is_err()
-        );
+        assert!(serde_json::from_value::<ListTopicsQuery>(json!({"order": "votes"})).is_err());
     }
 
     #[test]

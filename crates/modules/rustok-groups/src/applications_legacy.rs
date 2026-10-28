@@ -112,10 +112,14 @@ pub struct UpsertGroupApplicationPolicyRequest {
 impl UpsertGroupApplicationPolicyRequest {
     pub fn validate(&self) -> GroupsResult<()> {
         if self.group_id.is_nil() {
-            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+            return Err(GroupsError::Validation(
+                "group_id cannot be nil UUID".to_string(),
+            ));
         }
         if self.locale.trim().is_empty() || normalize_locale_tag(&self.locale).is_none() {
-            return Err(GroupsError::Validation("invalid application policy locale".to_string()));
+            return Err(GroupsError::Validation(
+                "invalid application policy locale".to_string(),
+            ));
         }
         if self.questions.len() > MAX_POLICY_QUESTIONS {
             return Err(GroupsError::Validation(format!(
@@ -147,7 +151,9 @@ pub struct ReadGroupApplicationPolicyRequest {
 impl ReadGroupApplicationPolicyRequest {
     pub fn validate(&self) -> GroupsResult<()> {
         if self.group_id.is_nil() {
-            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+            return Err(GroupsError::Validation(
+                "group_id cannot be nil UUID".to_string(),
+            ));
         }
         Ok(())
     }
@@ -163,7 +169,9 @@ pub struct SubmitGroupMembershipApplicationRequest {
 impl SubmitGroupMembershipApplicationRequest {
     pub fn validate(&self) -> GroupsResult<()> {
         if self.group_id.is_nil() {
-            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+            return Err(GroupsError::Validation(
+                "group_id cannot be nil UUID".to_string(),
+            ));
         }
         if self.answers.len() > MAX_POLICY_QUESTIONS {
             return Err(GroupsError::Validation(format!(
@@ -217,13 +225,19 @@ pub struct ListGroupMembershipApplicationsRequest {
 impl ListGroupMembershipApplicationsRequest {
     pub fn validate(&self) -> GroupsResult<()> {
         if self.group_id.is_nil() {
-            return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+            return Err(GroupsError::Validation(
+                "group_id cannot be nil UUID".to_string(),
+            ));
         }
         if self.page == 0 {
-            return Err(GroupsError::Validation("page must be greater than zero".to_string()));
+            return Err(GroupsError::Validation(
+                "page must be greater than zero".to_string(),
+            ));
         }
         if self.per_page == 0 || self.per_page > 100 {
-            return Err(GroupsError::Validation("per_page must be between 1 and 100".to_string()));
+            return Err(GroupsError::Validation(
+                "per_page must be between 1 and 100".to_string(),
+            ));
         }
         Ok(())
     }
@@ -247,9 +261,15 @@ pub struct ReviewGroupMembershipApplicationRequest {
 impl ReviewGroupMembershipApplicationRequest {
     pub fn validate(&self) -> GroupsResult<()> {
         if self.application_id.is_nil() {
-            return Err(GroupsError::Validation("application_id cannot be nil UUID".to_string()));
+            return Err(GroupsError::Validation(
+                "application_id cannot be nil UUID".to_string(),
+            ));
         }
-        if self.note.as_ref().is_some_and(|note| note.chars().count() > MAX_REVIEW_NOTE_CHARS) {
+        if self
+            .note
+            .as_ref()
+            .is_some_and(|note| note.chars().count() > MAX_REVIEW_NOTE_CHARS)
+        {
             return Err(GroupsError::Validation(format!(
                 "application review note must not exceed {MAX_REVIEW_NOTE_CHARS} characters"
             )));
@@ -1502,7 +1522,9 @@ fn context_tenant_id(context: &PortContext) -> GroupsResult<Uuid> {
     let id = Uuid::parse_str(context.tenant_id.trim())
         .map_err(|_| GroupsError::Validation("tenant_id must be a UUID".to_string()))?;
     if id.is_nil() {
-        return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+        return Err(GroupsError::Validation(
+            "tenant_id cannot be nil UUID".to_string(),
+        ));
     }
     Ok(id)
 }
@@ -1516,7 +1538,9 @@ fn actor_user_id(context: &PortContext) -> GroupsResult<Uuid> {
     let id = Uuid::parse_str(context.actor.id.trim())
         .map_err(|_| GroupsError::Validation("actor.id must be a UUID".to_string()))?;
     if id.is_nil() {
-        return Err(GroupsError::Validation("actor.id cannot be nil UUID".to_string()));
+        return Err(GroupsError::Validation(
+            "actor.id cannot be nil UUID".to_string(),
+        ));
     }
     Ok(id)
 }
@@ -1554,7 +1578,9 @@ mod tests {
         let valid_app_id = Uuid::new_v4();
 
         // Nil group_id checks
-        let read_req = ReadGroupApplicationPolicyRequest { group_id: Uuid::nil() };
+        let read_req = ReadGroupApplicationPolicyRequest {
+            group_id: Uuid::nil(),
+        };
         assert!(read_req.validate().is_err());
 
         let upsert_req = UpsertGroupApplicationPolicyRequest {

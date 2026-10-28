@@ -1441,9 +1441,10 @@ mod tests {
 
         let err = RustokSettings::from_settings(&Some(serde_json::json!({ "rustok": {} })))
             .expect_err("delivery profile should fail");
-        assert!(err
-            .to_string()
-            .contains("Invalid RUSTOK_EVENT_DELIVERY_PROFILE='broken'"));
+        assert!(
+            err.to_string()
+                .contains("Invalid RUSTOK_EVENT_DELIVERY_PROFILE='broken'")
+        );
     }
 
     #[test]
@@ -1491,9 +1492,10 @@ mod tests {
 
         let err =
             RustokSettings::from_settings(&Some(bad_retry)).expect_err("retry validation expected");
-        assert!(err
-            .to_string()
-            .contains("relay_retry_policy.max_attempts must be > 0"));
+        assert!(
+            err.to_string()
+                .contains("relay_retry_policy.max_attempts must be > 0")
+        );
 
         let bad_dlq = serde_json::json!({
             "rustok": {
@@ -1528,9 +1530,10 @@ mod tests {
         });
 
         let err = RustokSettings::from_settings(&Some(raw)).expect_err("email validation");
-        assert!(err
-            .to_string()
-            .contains("rustok.email is disabled in production"));
+        assert!(
+            err.to_string()
+                .contains("rustok.email is disabled in production")
+        );
     }
 
     #[test]
@@ -1552,9 +1555,10 @@ mod tests {
         });
 
         let err = RustokSettings::from_settings(&Some(raw)).expect_err("email validation");
-        assert!(err
-            .to_string()
-            .contains("rustok.email is disabled in production"));
+        assert!(
+            err.to_string()
+                .contains("rustok.email is disabled in production")
+        );
     }
 
     #[test]
@@ -1645,9 +1649,10 @@ mod tests {
         });
 
         let err = RustokSettings::from_settings(&Some(raw)).expect_err("capacity validation");
-        assert!(err
-            .to_string()
-            .contains("rustok.events.channel_capacity must be > 0"));
+        assert!(
+            err.to_string()
+                .contains("rustok.events.channel_capacity must be > 0")
+        );
     }
 
     #[test]
@@ -1748,9 +1753,10 @@ mod tests {
 
         let err =
             RustokSettings::from_settings(&Some(raw)).expect_err("readiness validation expected");
-        assert!(err
-            .to_string()
-            .contains("rustok.readiness.outbox_max_pending_lag_seconds must be > 0"));
+        assert!(
+            err.to_string()
+                .contains("rustok.readiness.outbox_max_pending_lag_seconds must be > 0")
+        );
 
         let raw = serde_json::json!({
             "rustok": {
@@ -1762,9 +1768,10 @@ mod tests {
 
         let err =
             RustokSettings::from_settings(&Some(raw)).expect_err("readiness validation expected");
-        assert!(err
-            .to_string()
-            .contains("rustok.readiness.search_max_lag_seconds must be > 0"));
+        assert!(
+            err.to_string()
+                .contains("rustok.readiness.search_max_lag_seconds must be > 0")
+        );
     }
 
     #[test]
@@ -1785,9 +1792,10 @@ mod tests {
         });
 
         let err = RustokSettings::from_settings(&Some(raw)).expect_err("search reindex validation");
-        assert!(err
-            .to_string()
-            .contains("rustok.search.reindex.parallelism must be > 0"));
+        assert!(
+            err.to_string()
+                .contains("rustok.search.reindex.parallelism must be > 0")
+        );
     }
 
     #[test]
@@ -1924,9 +1932,10 @@ mod tests {
 
         let err =
             RustokSettings::from_settings(&Some(raw)).expect_err("redis URL validation expected");
-        assert!(err
-            .to_string()
-            .contains("rustok.rate_limit.backend=redis requires RUSTOK_REDIS_URL or REDIS_URL"));
+        assert!(
+            err.to_string()
+                .contains("rustok.rate_limit.backend=redis requires RUSTOK_REDIS_URL or REDIS_URL")
+        );
     }
 
     #[test]

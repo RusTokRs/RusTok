@@ -2,8 +2,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::contract::{sealed, ContractEventPayload, EventContract};
-use crate::validation::{validators, EventValidationError, ValidateEvent};
+use crate::contract::{ContractEventPayload, EventContract, sealed};
+use crate::validation::{EventValidationError, ValidateEvent, validators};
 use crate::{EventSchema, FieldSchema};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
@@ -49,8 +49,7 @@ const INVALIDATION_ISSUED_FIELDS: &[FieldSchema] = &[
 pub const FORUM_SEARCH_PROJECTION_EVENT_SCHEMAS: &[EventSchema] = &[EventSchema {
     event_type: "forum.search_projection.invalidation_issued",
     version: 1,
-    description:
-        "Forum issued one monotonic owner revision that invalidates a Search projection scope.",
+    description: "Forum issued one monotonic owner revision that invalidates a Search projection scope.",
     fields: INVALIDATION_ISSUED_FIELDS,
 }];
 
@@ -111,22 +110,26 @@ mod tests {
 
     #[test]
     fn validates_each_supported_projection_scope() {
-        assert!(ForumSearchProjectionEvent::InvalidationIssued {
-            owner_revision: 1,
-            target_type: "forum".to_string(),
-            target_id: None,
-        }
-        .validate()
-        .is_ok());
-
-        for target_type in ["forum_category", "forum_topic"] {
-            assert!(ForumSearchProjectionEvent::InvalidationIssued {
-                owner_revision: 2,
-                target_type: target_type.to_string(),
-                target_id: Some(Uuid::new_v4()),
+        assert!(
+            ForumSearchProjectionEvent::InvalidationIssued {
+                owner_revision: 1,
+                target_type: "forum".to_string(),
+                target_id: None,
             }
             .validate()
-            .is_ok());
+            .is_ok()
+        );
+
+        for target_type in ["forum_category", "forum_topic"] {
+            assert!(
+                ForumSearchProjectionEvent::InvalidationIssued {
+                    owner_revision: 2,
+                    target_type: target_type.to_string(),
+                    target_id: Some(Uuid::new_v4()),
+                }
+                .validate()
+                .is_ok()
+            );
         }
     }
 

@@ -28,7 +28,9 @@ pub fn MessengerAdmin() -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let labels = StoredValue::new(MessengerAdminLabels::resolve(route_context.locale.as_deref()));
+    let labels = StoredValue::new(MessengerAdminLabels::resolve(
+        route_context.locale.as_deref(),
+    ));
 
     let (active_tab, set_active_tab) = signal(MessengerAdminTab::Overview);
 

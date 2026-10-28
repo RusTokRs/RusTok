@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 
-use super::{register_component, AdminComponentRegistration, AdminSlot};
+use super::{AdminComponentRegistration, AdminSlot, register_component};
 
 pub fn register_components() {
     register_component(AdminComponentRegistration {

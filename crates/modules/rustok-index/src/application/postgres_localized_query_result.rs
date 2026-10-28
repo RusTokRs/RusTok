@@ -5,12 +5,11 @@ use thiserror::Error;
 use crate::domain::{FieldCardinality, IndexValue, LocalizedEntityQuery, Pagination};
 
 use super::{
-    postgres_localized_query::localized_plan_fingerprint, CompiledPostgresCell,
-    CompiledPostgresLocalizedPageQuery, CompiledPostgresRow, CompiledQueryColumn,
-    IndexProjectedValue, IndexQueryItem, IndexQueryPage, LocalizedCursorCodec,
+    CompiledPostgresCell, CompiledPostgresLocalizedPageQuery, CompiledPostgresRow,
+    CompiledQueryColumn, IndexProjectedValue, IndexQueryItem, IndexQueryPage, LocalizedCursorCodec,
     LocalizedCursorValidationError, LocalizedEntityQueryValidationError, LocalizedIndexCursor,
     PostgresQueryCompileError, PostgresQueryDecodeError, QueryPlanError, SchemaRegistry,
-    SchemaRegistryError,
+    SchemaRegistryError, postgres_localized_query::localized_plan_fingerprint,
 };
 
 const EXACT_COUNT_ALIAS: &str = "__exact_count";

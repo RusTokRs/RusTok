@@ -4,7 +4,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use clap::{Parser, Subcommand};
 use colored::*;
-use flate2::{read::GzDecoder, write::GzEncoder, Compression};
+use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use indicatif::{ProgressBar, ProgressStyle};
 use rustok_revisions::{Revision, RevisionService, SeaOrmBackend};
 use sea_orm::Database;

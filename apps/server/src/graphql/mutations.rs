@@ -14,8 +14,7 @@ use crate::graphql::types::{
     ArtifactSettingsPurgeReceipt, ArtifactSettingsRecoveryPointReceipt,
     ArtifactSettingsRestoreReceipt, ArtifactTenantLifecycle, ArtifactUninstall, BuildJob,
     CreateUserInput, DeleteUserPayload, GovernedArtifactTransition, IssueUserInviteInput,
-    IssuedUserInvite, ModuleOperationRecoveryPlan, TenantModule, UpdateUserInput, User,
-    UserInvite,
+    IssuedUserInvite, ModuleOperationRecoveryPlan, TenantModule, UpdateUserInput, User, UserInvite,
 };
 use crate::modules::ManifestError;
 use crate::services::artifact_purge_recovery_host::{
@@ -1973,15 +1972,14 @@ impl RootMutation {
                 "Governed readiness composition is unavailable on this node",
             )
         })?;
-        let governed =
-            crate::services::artifact_runtime::governed_readiness(runtime_ctx)
-                .await
-                .map_err(|error| {
-                    graphql_mutation_internal_error(
-                        "Governed readiness composition is unavailable on this node",
-                        error,
-                    )
-                })?;
+        let governed = crate::services::artifact_runtime::governed_readiness(runtime_ctx)
+            .await
+            .map_err(|error| {
+                graphql_mutation_internal_error(
+                    "Governed readiness composition is unavailable on this node",
+                    error,
+                )
+            })?;
         let db = ctx.data::<DatabaseConnection>()?;
         let receipt = ModuleControlPlane::new(db.clone())
             .transitions()
@@ -1990,11 +1988,7 @@ impl RootMutation {
                     candidate_installation_id: installation_id,
                     scope: tenant_artifact_scope(tenant.id),
                     expected_candidate_revision: expected_revision,
-                    context: module_command_context(
-                        auth.user_id,
-                        Some(tenant.id),
-                        idempotency_key,
-                    ),
+                    context: module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
                     reason,
                     actor_can_manage_modules: true,
                     placement_policy: governed.placement_policy.clone(),

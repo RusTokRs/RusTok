@@ -1,5 +1,5 @@
 use crate::i18n::t;
-use crate::ui::leptos::{direct_transport_summary, session_transport_summary, Card, TextField};
+use crate::ui::leptos::{Card, TextField, direct_transport_summary, session_transport_summary};
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 

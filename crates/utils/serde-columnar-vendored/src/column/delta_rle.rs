@@ -1,9 +1,9 @@
 use crate::{
-    strategy::{DeltaRleDecoder, DeltaRleEncoder},
     ColumnAttr, ColumnarError,
+    strategy::{DeltaRleDecoder, DeltaRleEncoder},
 };
 
-use super::{rle::Rleable, ColumnTrait};
+use super::{ColumnTrait, rle::Rleable};
 
 pub trait DeltaRleable: Rleable + Copy + TryFrom<i128> + TryInto<i128> {}
 

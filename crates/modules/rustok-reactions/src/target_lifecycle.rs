@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
+use crate::ReactionSubjectRegistry;
 use async_trait::async_trait;
 use rustok_core::events::{EventEnvelope, EventHandler, HandlerResult};
 use rustok_events::DomainEvent;
-use crate::ReactionSubjectRegistry;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait};
 
 use crate::entities::subject;

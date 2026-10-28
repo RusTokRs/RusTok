@@ -19,11 +19,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(ContentRevisions::TenantId)
-                            .uuid()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(ContentRevisions::TenantId).uuid().not_null())
                     .col(
                         ColumnDef::new(ContentRevisions::ContentId)
                             .uuid()
@@ -34,11 +30,7 @@ impl MigrationTrait for Migration {
                             .string()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(ContentRevisions::Locale)
-                            .string()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(ContentRevisions::Locale).string().not_null())
                     .col(
                         ColumnDef::new(ContentRevisions::RevisionNumber)
                             .big_integer()
@@ -49,41 +41,17 @@ impl MigrationTrait for Migration {
                             .uuid()
                             .null(),
                     )
-                    .col(
-                        ColumnDef::new(ContentRevisions::Event)
-                            .string()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(ContentRevisions::Event).string().not_null())
                     .col(
                         ColumnDef::new(ContentRevisions::Content)
                             .json_binary()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(ContentRevisions::UserId)
-                            .uuid()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(ContentRevisions::Source)
-                            .string()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(ContentRevisions::Summary)
-                            .string()
-                            .null(),
-                    )
-                    .col(
-                        ColumnDef::new(ContentRevisions::IpAddress)
-                            .string()
-                            .null(),
-                    )
-                    .col(
-                        ColumnDef::new(ContentRevisions::UserAgent)
-                            .string()
-                            .null(),
-                    )
+                    .col(ColumnDef::new(ContentRevisions::UserId).uuid().not_null())
+                    .col(ColumnDef::new(ContentRevisions::Source).string().not_null())
+                    .col(ColumnDef::new(ContentRevisions::Summary).string().null())
+                    .col(ColumnDef::new(ContentRevisions::IpAddress).string().null())
+                    .col(ColumnDef::new(ContentRevisions::UserAgent).string().null())
                     .col(
                         ColumnDef::new(ContentRevisions::CustomMetadata)
                             .json_binary()

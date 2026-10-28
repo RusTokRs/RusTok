@@ -37,7 +37,9 @@ pub(crate) async fn demote_post_to_topic(
         return Err(ContentError::validation("post_id must not be nil"));
     }
     if input.forum_category_id.is_nil() {
-        return Err(ContentError::validation("forum_category_id must not be nil"));
+        return Err(ContentError::validation(
+            "forum_category_id must not be nil",
+        ));
     }
     if let Some(actor_id) = actor_id
         && actor_id.is_nil()

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
+use crate::provider::ModerationSubjectAdapterRegistry;
 use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::{
     ModuleWorkError, ModuleWorkHandler, ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource,
 };
-use crate::provider::ModerationSubjectAdapterRegistry;
 use rustok_runtime::{HostRuntimeContext, ModuleWorkRegistration, ModuleWorkScheduler};
 use sea_orm::{ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;

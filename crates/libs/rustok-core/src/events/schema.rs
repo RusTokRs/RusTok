@@ -1,1 +1,1 @@
-pub use rustok_events::{event_schema, EventSchema, FieldSchema, EVENT_SCHEMAS};
+pub use rustok_events::{EVENT_SCHEMAS, EventSchema, FieldSchema, event_schema};

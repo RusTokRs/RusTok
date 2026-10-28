@@ -1,9 +1,9 @@
 /// Reference automerge implementation:
 /// https://github.com/automerge/automerge-rs/blob/d7d2916acb17d23d02ae249763aa0cf2f293d880/rust/automerge/src/columnar/encoding/rle.rs
 use crate::{
+    ColumnarError, DeltaRleable,
     column::{delta_of_delta::DeltaOfDeltable, rle::Rleable},
     columnar_internal::{ColumnarDecoder, ColumnarEncoder},
-    ColumnarError, DeltaRleable,
 };
 use serde::{Deserialize, Serialize};
 
@@ -580,7 +580,7 @@ impl<'de, T: DeltaOfDeltable> DeltaOfDeltaDecoder<'de, T> {
                 _ => {
                     return Err(ColumnarError::RleDecodeError(
                         "delta of delta read flag should be 0 or 1".to_string(),
-                    ))
+                    ));
                 }
             };
         }

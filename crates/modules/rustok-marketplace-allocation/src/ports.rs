@@ -220,22 +220,13 @@ mod tests {
         let err = parse_tenant_id(&nil_context).unwrap_err();
         assert_eq!(err.code, "marketplace_allocation.tenant_id_invalid");
 
-        let invalid_context = PortContext::new(
-            "not-a-uuid",
-            PortActor::system(),
-            "en",
-            "contract",
-        );
+        let invalid_context = PortContext::new("not-a-uuid", PortActor::system(), "en", "contract");
         let err2 = parse_tenant_id(&invalid_context).unwrap_err();
         assert_eq!(err2.code, "marketplace_allocation.tenant_id_invalid");
 
         let valid_id = Uuid::new_v4();
-        let valid_context = PortContext::new(
-            valid_id.to_string(),
-            PortActor::system(),
-            "en",
-            "contract",
-        );
+        let valid_context =
+            PortContext::new(valid_id.to_string(), PortActor::system(), "en", "contract");
         assert_eq!(parse_tenant_id(&valid_context).unwrap(), valid_id);
     }
 

@@ -5,10 +5,10 @@ use std::time::Duration;
 use async_trait::async_trait;
 use rustok_core::{CacheBackend, CacheCompareAndSetOutcome, CacheStats};
 
-use crate::backend_generation::{
-    backend_generations, generation_state, BackendGenerationState, CacheBackendGenerationError,
-};
 use crate::CacheService;
+use crate::backend_generation::{
+    BackendGenerationState, CacheBackendGenerationError, backend_generations, generation_state,
+};
 
 #[cfg(feature = "redis-cache")]
 const MAX_GENERATION_RECOVERIES_PER_PROBE: usize = 16;
@@ -434,10 +434,12 @@ mod recovery_tests {
 
         assert!(error.contains("another CacheService"));
         assert!(second.get("key").await.is_err());
-        assert!(second
-            .set("key".to_string(), b"value".to_vec())
-            .await
-            .is_err());
+        assert!(
+            second
+                .set("key".to_string(), b"value".to_vec())
+                .await
+                .is_err()
+        );
     }
 
     #[cfg(feature = "redis-cache")]

@@ -147,14 +147,15 @@ impl CommerceHttpRuntime {
         mut self,
         port: std::sync::Arc<dyn rustok_fulfillment::ShipmentStockPort>,
     ) -> Self {
-        self.fulfillment_admin_command_runtime = crate::projecting_fulfillment_admin_command_runtime(
-            rustok_fulfillment::FulfillmentAdminCommandRuntime::in_process_with_shipment_stock(
-                self.db.clone(),
-                self.fulfillment_provider_registry.clone(),
-                port,
-            ),
-            crate::OrderShipmentProjector::new(self.db.clone(), self.event_bus.clone()),
-        );
+        self.fulfillment_admin_command_runtime =
+            crate::projecting_fulfillment_admin_command_runtime(
+                rustok_fulfillment::FulfillmentAdminCommandRuntime::in_process_with_shipment_stock(
+                    self.db.clone(),
+                    self.fulfillment_provider_registry.clone(),
+                    port,
+                ),
+                crate::OrderShipmentProjector::new(self.db.clone(), self.event_bus.clone()),
+            );
         self
     }
 

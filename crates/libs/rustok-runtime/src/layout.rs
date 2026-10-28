@@ -743,8 +743,8 @@ fn io_error(path: impl AsRef<Path>, source: std::io::Error) -> InstanceLayoutErr
 #[cfg(test)]
 mod tests {
     use super::{
-        bind_instance_placement, prepare_instance_layout, InstanceLayout, InstanceLayoutError,
-        InstancePlacement,
+        InstanceLayout, InstanceLayoutError, InstancePlacement, bind_instance_placement,
+        prepare_instance_layout,
     };
 
     #[test]

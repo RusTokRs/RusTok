@@ -230,7 +230,9 @@ impl WorkflowEngine {
                             let mut succeeded = false;
 
                             for attempt in 1..=max_retries {
-                                let multiplier = 2u64.checked_pow(attempt.saturating_sub(1)).unwrap_or(u64::MAX);
+                                let multiplier = 2u64
+                                    .checked_pow(attempt.saturating_sub(1))
+                                    .unwrap_or(u64::MAX);
                                 let backoff = retry_base_ms.saturating_mul(multiplier).min(300_000);
                                 warn!(
                                     step_id = %step.id,

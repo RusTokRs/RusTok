@@ -12,8 +12,8 @@ use std::sync::Arc;
 use std::thread;
 
 use rustok_ui_i18n::{
-    build_fluent_bundle, fluent_args, locale_candidates, normalize_admin_locale,
-    normalize_locale_tag, BundleBuildError, UiMessages,
+    BundleBuildError, UiMessages, build_fluent_bundle, fluent_args, locale_candidates,
+    normalize_admin_locale, normalize_locale_tag,
 };
 
 fn assert_send_sync<T: Send + Sync>() {}

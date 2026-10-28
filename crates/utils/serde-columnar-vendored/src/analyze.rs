@@ -10,7 +10,10 @@ pub struct AnalyzeResults(pub Vec<AnalyzeResult>);
 
 impl Display for AnalyzeResults {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "`Analyze Field Size` is a simple feature that assists in analyzing the size of each field after encoding them into binary. Please use only in a **DEBUG** environment. And as its results may not be precise.")?;
+        writeln!(
+            f,
+            "`Analyze Field Size` is a simple feature that assists in analyzing the size of each field after encoding them into binary. Please use only in a **DEBUG** environment. And as its results may not be precise."
+        )?;
         writeln!(f, "Binary data size of each field:")?;
         for result in &self.0 {
             writeln!(f, "{}: {} bytes", result.field_name, result.binary_size)?;

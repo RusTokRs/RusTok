@@ -9,7 +9,7 @@
  */
 
 use dioxus::prelude::*;
-use rustok_ui::{badge_classes, BadgeVariant, Size};
+use rustok_ui::{BadgeVariant, Size, badge_classes};
 
 #[component]
 pub fn Badge(

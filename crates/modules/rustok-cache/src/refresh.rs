@@ -1314,12 +1314,8 @@ mod tests {
             .unwrap();
 
         // Policy TTL longer than the remaining hard lifetime is clamped.
-        let clamped = clamp_ttl_to_hard_expiry(
-            Some(Duration::from_secs(60)),
-            &envelope,
-            1_900,
-        )
-        .unwrap();
+        let clamped =
+            clamp_ttl_to_hard_expiry(Some(Duration::from_secs(60)), &envelope, 1_900).unwrap();
         assert_eq!(clamped, Some(Duration::from_millis(100)));
 
         // A policy without a TTL inherits the hard-expiry bound instead of the backend default.

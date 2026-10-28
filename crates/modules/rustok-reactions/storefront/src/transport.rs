@@ -239,10 +239,7 @@ mod tests {
             value.get("reaction").and_then(|v| v.as_str()),
             Some("heart")
         );
-        assert_eq!(
-            value.get("action").and_then(|v| v.as_str()),
-            Some("ADD")
-        );
+        assert_eq!(value.get("action").and_then(|v| v.as_str()), Some("ADD"));
         assert!(value.get("subject").is_some());
     }
 }

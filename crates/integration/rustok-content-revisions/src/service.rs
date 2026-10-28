@@ -3,8 +3,8 @@ use crate::config::ContentRevisionConfig;
 use crate::error::ContentRevisionError;
 use async_trait::async_trait;
 use rustok_revisions::{
-    ChangeSource, Revision, RevisionDiff, RevisionEvent, RevisionService,
-    RevisionTracker, Revisionable, SeaOrmBackend,
+    ChangeSource, Revision, RevisionDiff, RevisionEvent, RevisionService, RevisionTracker,
+    Revisionable, SeaOrmBackend,
 };
 use sea_orm::DatabaseConnection;
 use serde::de::DeserializeOwned;
@@ -303,13 +303,7 @@ impl ContentRevisionService {
             })?;
 
         self.revision_service
-            .create_named_version(
-                tenant_id,
-                content_id,
-                locale,
-                latest.id,
-                version_name,
-            )
+            .create_named_version(tenant_id, content_id, locale, latest.id, version_name)
             .await?;
 
         let mut named = latest;

@@ -225,8 +225,14 @@ impl TopicService {
         // guards could admit historical replies. A topic imported straight into
         // `Archived` must not keep that contribution to the public aggregates.
         if prepared.record.status == crate::state_machine::TopicStatus::Archived {
-            CategoryService::adjust_counters_in_tx(txn, tenant_id, prepared.record.category_id, -1, 0)
-                .await?;
+            CategoryService::adjust_counters_in_tx(
+                txn,
+                tenant_id,
+                prepared.record.category_id,
+                -1,
+                0,
+            )
+            .await?;
             UserStatsService::adjust_topic_count_in_tx(txn, tenant_id, prepared.author_id(), -1)
                 .await?;
         }

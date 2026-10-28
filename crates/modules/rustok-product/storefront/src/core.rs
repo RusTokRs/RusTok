@@ -4,12 +4,12 @@ use rustok_ui_core::apply_ui_query_pairs;
 #[cfg(feature = "ssr")]
 use rustok_ui_core::normalize_optional_ui_text;
 
-use rustok_grid::facet_panel::{count_label as grid_count_label, FacetPanel};
+use rustok_grid::facet_panel::{FacetPanel, count_label as grid_count_label};
 use rustok_grid::{FacetDomain, FacetValue, GridFacet};
 
 use crate::catalog_controls::{
-    clear_attribute_filter_code, serialize_attribute_filters, toggle_attribute_filter,
-    CatalogFacetLabels, CatalogListInput,
+    CatalogFacetLabels, CatalogListInput, clear_attribute_filter_code, serialize_attribute_filters,
+    toggle_attribute_filter,
 };
 use crate::i18n::t;
 use crate::model::{

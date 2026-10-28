@@ -279,9 +279,13 @@ mod tests {
         assert_eq!(parse_cart_id(&valid.to_string()).unwrap(), valid);
 
         let err_invalid = parse_cart_id("not-a-uuid").unwrap_err();
-        assert!(matches!(err_invalid, PaymentTransportError::Validation(msg) if msg.contains("must be a valid UUID")));
+        assert!(
+            matches!(err_invalid, PaymentTransportError::Validation(msg) if msg.contains("must be a valid UUID"))
+        );
 
         let err_nil = parse_cart_id(&Uuid::nil().to_string()).unwrap_err();
-        assert!(matches!(err_nil, PaymentTransportError::Validation(msg) if msg.contains("must not be a nil UUID")));
+        assert!(
+            matches!(err_nil, PaymentTransportError::Validation(msg) if msg.contains("must not be a nil UUID"))
+        );
     }
 }

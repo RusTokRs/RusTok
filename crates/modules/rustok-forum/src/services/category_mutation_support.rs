@@ -1,10 +1,10 @@
 use chrono::Utc;
 use sea_orm::{
-    sea_query::{Expr, ExprTrait},
     ActiveModelTrait,
     ActiveValue::Set,
     ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
     EntityTrait, QueryFilter, QueryOrder, QuerySelect, Statement, TransactionTrait,
+    sea_query::{Expr, ExprTrait},
 };
 use tracing::instrument;
 use uuid::Uuid;

@@ -3,7 +3,7 @@ use crate::model::{
     AiCredentialRefPayload, AiProviderCatalogEntryPayload, AiProviderProfilePayload,
     AiProviderTargetPayload,
 };
-use crate::ui::leptos::{provider_profile_summary, Card, TextField};
+use crate::ui::leptos::{Card, TextField, provider_profile_summary};
 use leptos::ev::{MouseEvent, SubmitEvent};
 use leptos::prelude::*;
 use rustok_ui_core::AdminQueryKey;

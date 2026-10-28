@@ -534,8 +534,8 @@ impl AdminCanvasController {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fly::{blank_page, ComponentPatch, EditorCommand, PageCommand};
-    use serde_json::{json, Map};
+    use fly::{ComponentPatch, EditorCommand, PageCommand, blank_page};
+    use serde_json::{Map, json};
 
     fn controller() -> AdminCanvasController {
         AdminCanvasController::new(
@@ -586,8 +586,7 @@ mod tests {
         };
         assert_eq!(input.page_id, "home");
         assert_eq!(
-            input.project_data["pages"][0]["component"]["components"][0]["attributes"]
-                ["aria-label"],
+            input.project_data["pages"][0]["component"]["components"][0]["attributes"]["aria-label"],
             "Hero"
         );
     }
@@ -600,12 +599,14 @@ mod tests {
             .expect("select");
         controller.dispatch(UiIntent::CopySelection).expect("copy");
         let snapshot = controller.clone();
-        assert!(controller
-            .dispatch(UiIntent::execute(EditorCommand::Patch {
-                component_id: "missing".to_string(),
-                patch: ComponentPatch::default(),
-            }))
-            .is_err());
+        assert!(
+            controller
+                .dispatch(UiIntent::execute(EditorCommand::Patch {
+                    component_id: "missing".to_string(),
+                    patch: ComponentPatch::default(),
+                }))
+                .is_err()
+        );
         assert_eq!(controller.ui(), snapshot.ui());
         assert_eq!(controller.editor(), snapshot.editor());
         assert_eq!(controller.has_clipboard(), snapshot.has_clipboard());

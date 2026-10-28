@@ -87,10 +87,8 @@ impl FormsService {
         if tenant_id.is_nil() {
             return Err(FormsError::validation("tenant_id must not be nil"));
         }
-        if let Some(pid) = page_id {
-            if pid.is_nil() {
-                return Err(FormsError::validation("page_id must not be nil"));
-            }
+        if page_id.is_some_and(|pid| pid.is_nil()) {
+            return Err(FormsError::validation("page_id must not be nil"));
         }
         validate_form_id(form_id)?;
         validate_payload(&fields)?;
@@ -336,8 +334,7 @@ fn submission_response_from_model(model: form_submission::Model) -> FormSubmissi
         locale: model.locale,
         page_id: model.page_id,
         payload: model.payload,
-        state: FormSubmissionState::parse(&model.state)
-            .unwrap_or(FormSubmissionState::New),
+        state: FormSubmissionState::parse(&model.state).unwrap_or(FormSubmissionState::New),
         created_at: model.created_at.to_string(),
         handled_at: model.handled_at.map(|value| value.to_string()),
         handled_by: model.handled_by,

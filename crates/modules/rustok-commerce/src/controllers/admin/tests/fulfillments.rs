@@ -28,7 +28,9 @@ async fn admin_fulfillments_transport_lists_fulfillments_with_pagination_and_fil
         grant_type: "direct".to_string(),
     };
     let order_service = OrderService::new(db.clone(), mock_transactional_event_bus());
-    let fulfillment_service = FulfillmentService::new(db.clone()).with_shipment_stock_port(std::sync::Arc::new(rustok_fulfillment::NoopShipmentStockPort));
+    let fulfillment_service = FulfillmentService::new(db.clone()).with_shipment_stock_port(
+        std::sync::Arc::new(rustok_fulfillment::NoopShipmentStockPort),
+    );
     let first_order = order_service
         .create_order(
             tenant_id,
@@ -820,7 +822,10 @@ async fn admin_fulfillment_transport_supports_reopen_and_reship() {
     let app = admin_transport_router(test_app_context(db.clone()), tenant, auth);
     let item_id = fulfillment.items[0].id;
 
-    FulfillmentService::new(db.clone()).with_shipment_stock_port(std::sync::Arc::new(rustok_fulfillment::NoopShipmentStockPort))
+    FulfillmentService::new(db.clone())
+        .with_shipment_stock_port(std::sync::Arc::new(
+            rustok_fulfillment::NoopShipmentStockPort,
+        ))
         .ship_fulfillment(
             tenant_id,
             fulfillment.id,

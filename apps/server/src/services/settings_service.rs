@@ -310,8 +310,10 @@ impl SettingsService {
         // so a stored row must not be presented as the effective configuration.
         for entry in result.iter_mut() {
             if entry.0 == category::CACHE {
-                entry.1 =
-                    redact_secrets(category::CACHE, Self::yaml_defaults_for(ctx, category::CACHE));
+                entry.1 = redact_secrets(
+                    category::CACHE,
+                    Self::yaml_defaults_for(ctx, category::CACHE),
+                );
             }
         }
 
@@ -540,9 +542,7 @@ fn preserve_cache_secret_fields(existing: Value, mut incoming: Value) -> Value {
             let is_unset = incoming_object
                 .get(key)
                 .and_then(Value::as_str)
-                .is_some_and(|value| {
-                    value.is_empty() || value == rustok_cache::REDACTED_SECRET
-                });
+                .is_some_and(|value| value.is_empty() || value == rustok_cache::REDACTED_SECRET);
             if is_unset {
                 incoming_object.insert(key.to_string(), existing_password.clone());
             }
@@ -610,11 +610,9 @@ fn prepare_cache_settings_for_write(
         }
     }
 
-    let parsed: rustok_cache::CacheSettings = serde_json::from_value(incoming.clone())
-        .map_err(|error| {
-            SettingsError::ValidationFailed(vec![format!(
-                "Invalid cache settings schema: {error}"
-            )])
+    let parsed: rustok_cache::CacheSettings =
+        serde_json::from_value(incoming.clone()).map_err(|error| {
+            SettingsError::ValidationFailed(vec![format!("Invalid cache settings schema: {error}")])
         })?;
 
     if cache_target_signature(&parsed) != cache_target_signature(&deployment) {
@@ -634,9 +632,7 @@ fn prepare_cache_settings_for_write(
     let storable_url = rustok_cache::redis_url_without_credentials(storable.redis_url.trim());
     storable.redis_url = storable_url;
     serde_json::to_value(&storable).map_err(|error| {
-        SettingsError::ValidationFailed(vec![format!(
-            "Invalid cache settings schema: {error}"
-        )])
+        SettingsError::ValidationFailed(vec![format!("Invalid cache settings schema: {error}")])
     })
 }
 
@@ -745,8 +741,10 @@ mod tests {
         let existing =
             stored_cache_row("redis://:url-secret@cache.internal:6379/0", "field-secret");
         // The client edited the target and left the (masked) secret fields untouched.
-        let incoming =
-            stored_cache_row("redis://other.internal:6379/0", rustok_cache::REDACTED_SECRET);
+        let incoming = stored_cache_row(
+            "redis://other.internal:6379/0",
+            rustok_cache::REDACTED_SECRET,
+        );
 
         let merged = preserve_cache_secret_fields(existing, incoming);
 

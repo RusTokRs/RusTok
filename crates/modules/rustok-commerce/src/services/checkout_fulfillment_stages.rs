@@ -3,9 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext};
-use rustok_fulfillment::{
-    CheckoutFulfillmentExecutionPort as CanonicalCheckoutFulfillmentExecutionPort,
-};
+use rustok_fulfillment::CheckoutFulfillmentExecutionPort as CanonicalCheckoutFulfillmentExecutionPort;
 use rustok_order::{
     CheckoutOrderPaymentSettlementPort as CanonicalCheckoutOrderPaymentSettlementPort,
     OrderResponse,
@@ -29,8 +27,7 @@ use fulfillment_execution_port::{
 };
 use order_payment_settlement_port::{
     CheckoutOrderPaymentSettlementPort, OrderLineItemResponse, SettleCheckoutOrderPaymentRequest,
-    in_process_checkout_order_payment_settlement_port,
-    wrap_checkout_order_payment_settlement_port,
+    in_process_checkout_order_payment_settlement_port, wrap_checkout_order_payment_settlement_port,
 };
 use owner_execution_boundary::{BoundaryPortError, public_message};
 

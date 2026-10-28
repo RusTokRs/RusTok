@@ -1,4 +1,4 @@
-use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
+use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::Deserialize;
 
 use crate::model::*;
@@ -44,11 +44,15 @@ query MessengerOverview {
 "#;
 
 fn sanitize_token(token: Option<String>) -> Option<String> {
-    token.map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+    token
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
 }
 
 fn sanitize_tenant_slug(tenant_slug: Option<String>) -> Option<String> {
-    tenant_slug.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    tenant_slug
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 #[derive(Deserialize)]
@@ -70,7 +74,9 @@ pub async fn fetch_overview(
     )
     .await?;
 
-    Ok(response.overview.unwrap_or_else(crate::core::default_overview_payload))
+    Ok(response
+        .overview
+        .unwrap_or_else(crate::core::default_overview_payload))
 }
 
 const LIST_CHANNELS_QUERY: &str = r#"

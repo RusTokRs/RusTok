@@ -37,9 +37,8 @@ use crate::services::marketplace_catalog::{
     RegistryPlatformBuildStageResponse, RegistryPublishDecisionRequest, RegistryPublishRequest,
     RegistryPublishStatusResponse, RegistryPublishValidationRequest, RegistryRunnerClaimPayload,
     RegistryRunnerClaimRequest, RegistryRunnerClaimResponse, RegistryRunnerCompletionRequest,
-    RegistryRunnerHeartbeatRequest, RegistryRunnerMutationResponse,
-    RegistryUnyankRequest, RegistryValidationStageReportRequest, RegistryYankRequest,
-    registry_catalog_from_modules,
+    RegistryRunnerHeartbeatRequest, RegistryRunnerMutationResponse, RegistryUnyankRequest,
+    RegistryValidationStageReportRequest, RegistryYankRequest, registry_catalog_from_modules,
     registry_catalog_module_path, registry_catalog_path, registry_owner_transfer_path,
     registry_publish_approve_path, registry_publish_artifact_path,
     registry_publish_author_signature_path, registry_publish_external_stage_path,
@@ -48,8 +47,7 @@ use crate::services::marketplace_catalog::{
     registry_publish_resume_path, registry_publish_stage_report_path, registry_publish_status_path,
     registry_publish_validate_path, registry_runner_claim_path, registry_runner_complete_path,
     registry_runner_fail_path, registry_runner_heartbeat_path, registry_unyank_path,
-    registry_yank_path,
-    validate_registry_mutation_schema_version,
+    registry_yank_path, validate_registry_mutation_schema_version,
 };
 use crate::services::marketplace_catalog_adapter::{
     map_registry_follow_up_gate, map_registry_governance_action, map_registry_validation_stage,
@@ -60,10 +58,9 @@ use crate::services::registry_governance::{
     REGISTRY_OWNER_TRANSFER_REASON_CODES, REGISTRY_REJECT_REASON_CODES,
     REGISTRY_REQUEST_CHANGES_REASON_CODES, REGISTRY_RESUME_REASON_CODES,
     REGISTRY_UNYANK_REASON_CODES, REGISTRY_VALIDATION_STAGE_REASON_CODES,
-    REGISTRY_YANK_REASON_CODES, RegistryArtifactUpload,
-    RegistryAuthorSignatureEvidenceInput, RegistryExternalPrebuiltStageInput,
-    RegistryGovernanceError, RegistryGovernanceService, RegistryPlatformBuildStageInput,
-    RegistryPublishRequestPermission,
+    REGISTRY_YANK_REASON_CODES, RegistryArtifactUpload, RegistryAuthorSignatureEvidenceInput,
+    RegistryExternalPrebuiltStageInput, RegistryGovernanceError, RegistryGovernanceService,
+    RegistryPlatformBuildStageInput, RegistryPublishRequestPermission,
 };
 use crate::services::registry_principal::RegistryAuthority;
 use crate::services::registry_remote_runner::claim_remote_validation_stage_atomic;
@@ -3257,9 +3254,9 @@ fn require_remote_executor_access(
         ));
     }
     let mut values = headers.get_all("x-rustok-runner-token").iter();
-    let first = values.next().ok_or_else(|| {
-        Error::Unauthorized("Missing x-rustok-runner-token header".to_string())
-    })?;
+    let first = values
+        .next()
+        .ok_or_else(|| Error::Unauthorized("Missing x-rustok-runner-token header".to_string()))?;
     for duplicate in values {
         if duplicate != first {
             tracing::warn!("Conflicting duplicate x-rustok-runner-token headers rejected");
@@ -3509,9 +3506,9 @@ fn map_remote_validation_transition_error(error: RegistryRemoteTransitionError) 
 
 fn required_non_nil_idempotency_key(headers: &HeaderMap) -> Result<Uuid, Error> {
     let mut values = headers.get_all("idempotency-key").iter();
-    let first = values.next().ok_or_else(|| {
-        Error::BadRequest("Idempotency-Key header is required".to_string())
-    })?;
+    let first = values
+        .next()
+        .ok_or_else(|| Error::BadRequest("Idempotency-Key header is required".to_string()))?;
     if values.next().is_some() {
         return Err(Error::BadRequest(
             "Duplicate Idempotency-Key headers are forbidden".to_string(),

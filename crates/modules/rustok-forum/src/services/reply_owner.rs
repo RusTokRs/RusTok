@@ -15,26 +15,24 @@ use rustok_outbox::TransactionalEventBus;
 use crate::dto::{
     ListRepliesFilter, ReplyListItem, ReplyPage, ReplyResponse, bounded_forum_read_limit,
 };
-use crate::entities::{
-    forum_reply, forum_reply_body, forum_solution, forum_topic_merge_operation,
-};
+use crate::entities::{forum_reply, forum_reply_body, forum_solution, forum_topic_merge_operation};
 use crate::error::{ForumError, ForumResult};
 use crate::mentions::ForumContentTarget;
-use crate::state_machine::{ReplyStatus, TopicStatus};
 use crate::services::engagement_mode::ForumSettingsProviders;
+use crate::state_machine::{ReplyStatus, TopicStatus};
 
 use super::category::CategoryService;
 use super::category_audience::lock_category_tree_in_tx;
 use super::category_lifecycle::ensure_category_restore_target_is_active_in_tx;
-use super::reply_create_audience_authorization::ForumReplyCreateAudienceAuthorizationService;
-use super::topic_reply_create_audience::lock_topic_reply_create_audience_in_tx;
 use super::mention_relation::MentionRelationService;
 use super::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
 };
 use super::rbac::{enforce_author_deletion_policy, enforce_owned_scope, enforce_scope};
 use super::reply;
+use super::reply_create_audience_authorization::ForumReplyCreateAudienceAuthorizationService;
 use super::topic_owner::TopicService;
+use super::topic_reply_create_audience::lock_topic_reply_create_audience_in_tx;
 use super::user_stats::UserStatsService;
 
 /// Exact Forum-owned facts produced by the transactional reply removal path.
@@ -245,8 +243,7 @@ impl ReplyService {
         lock_category_tree_in_tx(&txn, tenant_id).await?;
         let topic =
             TopicService::find_topic_for_update_in_tx(&txn, tenant_id, initial_topic_id).await?;
-        let reply =
-            Self::find_reply_for_update_in_tx(&txn, tenant_id, reply_id).await?;
+        let reply = Self::find_reply_for_update_in_tx(&txn, tenant_id, reply_id).await?;
         if reply.topic_id != initial_topic_id {
             return Err(ForumError::TopicUpdateConflict(initial_topic_id));
         }
@@ -283,21 +280,10 @@ impl ReplyService {
 
         if snapshot.previous_status == ReplyStatus::Approved {
             TopicService::adjust_reply_count_in_tx(&txn, tenant_id, reply.topic_id, 1).await?;
-            CategoryService::adjust_counters_in_tx(
-                &txn,
-                tenant_id,
-                topic.category_id,
-                0,
-                1,
-            )
-            .await?;
-            UserStatsService::adjust_reply_count_in_tx(
-                &txn,
-                tenant_id,
-                snapshot.author_id,
-                1,
-            )
-            .await?;
+            CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, 0, 1)
+                .await?;
+            UserStatsService::adjust_reply_count_in_tx(&txn, tenant_id, snapshot.author_id, 1)
+                .await?;
         }
 
         if let Some(marked_at) = snapshot.solution_marked_at.as_deref() {
@@ -313,13 +299,8 @@ impl ReplyService {
                 marked_at,
             )
             .await?;
-            UserStatsService::adjust_solution_count_in_tx(
-                &txn,
-                tenant_id,
-                snapshot.author_id,
-                1,
-            )
-            .await?;
+            UserStatsService::adjust_solution_count_in_tx(&txn, tenant_id, snapshot.author_id, 1)
+                .await?;
         }
 
         self.event_bus
@@ -347,7 +328,9 @@ impl ReplyService {
             )
             .await?;
         }
-        if snapshot.previous_status == ReplyStatus::Approved || snapshot.solution_marked_at.is_some() {
+        if snapshot.previous_status == ReplyStatus::Approved
+            || snapshot.solution_marked_at.is_some()
+        {
             publish_forum_topic_projection_in_tx(
                 &self.event_bus,
                 &txn,
@@ -387,8 +370,10 @@ impl ReplyService {
         // All reply-moving owners lock the topic before reply rows. Keep deletion in
         // the same topic -> reply order so concurrent lifecycle mutations cannot
         // deadlock on inverted row-lock acquisition.
-        let topic = TopicService::find_topic_for_update_in_tx(txn, tenant_id, initial_topic_id).await?;
-        let reply = reply::ReplyService::find_reply_for_update_in_tx(txn, tenant_id, reply_id).await?;
+        let topic =
+            TopicService::find_topic_for_update_in_tx(txn, tenant_id, initial_topic_id).await?;
+        let reply =
+            reply::ReplyService::find_reply_for_update_in_tx(txn, tenant_id, reply_id).await?;
         if reply.topic_id != initial_topic_id {
             return Err(ForumError::TopicUpdateConflict(initial_topic_id));
         }
@@ -406,13 +391,7 @@ impl ReplyService {
             .filter(|solution| solution.reply_id == reply_id);
         let solution_removed = solution_for_snapshot.is_some();
 
-        record_reply_delete_snapshot_in_tx(
-            txn,
-            tenant_id,
-            &reply,
-            solution_for_snapshot,
-        )
-        .await?;
+        record_reply_delete_snapshot_in_tx(txn, tenant_id, &reply, solution_for_snapshot).await?;
 
         forum_solution::Entity::delete_many()
             .filter(forum_solution::Column::TenantId.eq(tenant_id))
@@ -569,7 +548,7 @@ async fn record_reply_delete_snapshot_in_tx(
         backend => {
             return Err(ForumError::Validation(format!(
                 "Forum reply delete snapshots do not support database backend {backend:?}"
-            )))
+            )));
         }
     };
     txn.execute_raw(statement).await?;
@@ -605,7 +584,7 @@ async fn load_reply_delete_snapshot_in_tx(
         backend => {
             return Err(ForumError::Validation(format!(
                 "Forum reply restore does not support database backend {backend:?}"
-            )))
+            )));
         }
     };
     let Some(row) = txn.query_one_raw(statement).await? else {
@@ -662,7 +641,7 @@ async fn restore_reply_from_delete_snapshot_in_tx(
         backend => {
             return Err(ForumError::Validation(format!(
                 "Forum reply restore does not support database backend {backend:?}"
-            )))
+            )));
         }
     };
     let result = txn.execute_raw(statement).await?;
@@ -716,7 +695,7 @@ async fn restore_reply_solution_in_tx(
         backend => {
             return Err(ForumError::Validation(format!(
                 "Forum reply restore does not support database backend {backend:?}"
-            )))
+            )));
         }
     };
     txn.execute_raw(statement).await?;
@@ -742,7 +721,7 @@ async fn clear_reply_delete_snapshot_in_tx(
         backend => {
             return Err(ForumError::Validation(format!(
                 "Forum reply restore does not support database backend {backend:?}"
-            )))
+            )));
         }
     };
     txn.execute_raw(statement).await?;

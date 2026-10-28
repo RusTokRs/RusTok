@@ -1,5 +1,5 @@
 use super::{
-    decrement_quantity_command, identifiers::normalize_cart_id, CartLineItemQuantityCommand,
+    CartLineItemQuantityCommand, decrement_quantity_command, identifiers::normalize_cart_id,
 };
 use rustok_ui_core::{normalize_optional_ui_text, normalize_required_ui_text};
 

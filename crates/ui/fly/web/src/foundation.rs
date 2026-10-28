@@ -111,11 +111,7 @@ impl Default for CoordinateTransform {
 /// were left unguarded, so a single bad value from the bridge turned every converted coordinate
 /// into NaN.
 fn finite_or_zero(value: f64) -> f64 {
-    if value.is_finite() {
-        value
-    } else {
-        0.0
-    }
+    if value.is_finite() { value } else { 0.0 }
 }
 
 impl CoordinateTransform {
@@ -284,11 +280,7 @@ pub fn normalize_hit_targets(
 /// non-transitive, and `slice::sort_by` is entitled to panic when it detects that the ordering is
 /// not total.
 fn finite_score(score: f32) -> f32 {
-    if score.is_finite() {
-        score
-    } else {
-        f32::MIN
-    }
+    if score.is_finite() { score } else { f32::MIN }
 }
 
 /// Rank candidates by descending score under a total order.
@@ -826,9 +818,11 @@ mod tests {
         // Both share a rectangle, so proximity is equal and only the priority separates them.
         assert_eq!(candidates[0].target_component_id, "c1");
         assert!(candidates[0].score > candidates[1].score);
-        assert!(candidates
-            .iter()
-            .all(|candidate| candidate.score.is_finite()));
+        assert!(
+            candidates
+                .iter()
+                .all(|candidate| candidate.score.is_finite())
+        );
     }
 
     #[test]

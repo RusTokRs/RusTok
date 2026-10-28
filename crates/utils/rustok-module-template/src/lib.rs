@@ -1,10 +1,10 @@
 //! Pure renderer for the canonical Rust module component source tree.
 
 use rustok_modules::{
-    ModuleArtifactSourceManifest, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
-    MODULE_ARTIFACT_SOURCE_MANIFEST_FILE, MODULE_BUILD_COMPONENT_TARGET, MODULE_BUILD_RUNTIME_ABI,
+    MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, MODULE_ARTIFACT_SOURCE_MANIFEST_FILE,
+    MODULE_BUILD_COMPONENT_TARGET, MODULE_BUILD_RUNTIME_ABI, ModuleArtifactSourceManifest,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use thiserror::Error;
 
 const JSON_SCHEMA_DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";

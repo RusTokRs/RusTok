@@ -20,8 +20,8 @@ use crate::{
     SeoBulkImportInput, SeoBulkJobRecord, SeoBulkJobStatus, SeoBulkListInput, SeoBulkPage,
     SeoCrossLinkSuggestionRecord, SeoDiagnosticsSummaryRecord, SeoError,
     SeoIndexDeliveryStatusRecord, SeoIndexRepairReplayInput, SeoIndexRepairReplayResultRecord,
-    SeoMetaInput, SeoMetaRecord, SeoPageContext, SeoRedirectInput,
-    SeoRedirectRecord, SeoRevisionRecord, SeoSitemapJobRecord, SeoSitemapStatusRecord,
+    SeoMetaInput, SeoMetaRecord, SeoPageContext, SeoRedirectInput, SeoRedirectRecord,
+    SeoRevisionRecord, SeoSitemapJobRecord, SeoSitemapStatusRecord,
 };
 
 const MODULE_SLUG: &str = "seo";

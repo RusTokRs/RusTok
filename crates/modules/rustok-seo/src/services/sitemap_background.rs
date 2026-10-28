@@ -94,10 +94,10 @@ impl SeoService {
         // A fresh running/submitting job for one tenant must not stall queued work for every
         // other tenant. Only stale leases are resumed; the conditional update is the claim.
         let stale_active = crate::entities::seo_sitemap_job::Entity::find()
-            .filter(crate::entities::seo_sitemap_job::Column::Status.is_in([
-                SITEMAP_JOB_RUNNING,
-                SITEMAP_JOB_SUBMITTING,
-            ]))
+            .filter(
+                crate::entities::seo_sitemap_job::Column::Status
+                    .is_in([SITEMAP_JOB_RUNNING, SITEMAP_JOB_SUBMITTING]),
+            )
             .filter(crate::entities::seo_sitemap_job::Column::UpdatedAt.lte(stale_before))
             .order_by_asc(crate::entities::seo_sitemap_job::Column::UpdatedAt)
             .one(&self.db)
@@ -110,10 +110,10 @@ impl SeoService {
                     sea_orm::sea_query::Expr::value(now),
                 )
                 .filter(crate::entities::seo_sitemap_job::Column::Id.eq(job.id))
-                .filter(crate::entities::seo_sitemap_job::Column::Status.is_in([
-                    SITEMAP_JOB_RUNNING,
-                    SITEMAP_JOB_SUBMITTING,
-                ]))
+                .filter(
+                    crate::entities::seo_sitemap_job::Column::Status
+                        .is_in([SITEMAP_JOB_RUNNING, SITEMAP_JOB_SUBMITTING]),
+                )
                 .filter(crate::entities::seo_sitemap_job::Column::UpdatedAt.lte(stale_before))
                 .exec(&self.db)
                 .await?;
@@ -188,10 +188,10 @@ impl SeoService {
             - chrono::Duration::days(super::SEO_HISTORY_RETENTION_DAYS);
         let old_jobs = crate::entities::seo_sitemap_job::Entity::find()
             .filter(crate::entities::seo_sitemap_job::Column::TenantId.eq(tenant_id))
-            .filter(crate::entities::seo_sitemap_job::Column::Status.is_in([
-                SITEMAP_JOB_COMPLETED,
-                SITEMAP_JOB_FAILED,
-            ]))
+            .filter(
+                crate::entities::seo_sitemap_job::Column::Status
+                    .is_in([SITEMAP_JOB_COMPLETED, SITEMAP_JOB_FAILED]),
+            )
             .filter(crate::entities::seo_sitemap_job::Column::CreatedAt.lt(cutoff))
             .order_by_asc(crate::entities::seo_sitemap_job::Column::CreatedAt)
             .limit(super::SEO_HISTORY_PRUNE_BATCH_SIZE as u64)
@@ -264,8 +264,7 @@ impl SeoService {
     ) -> SeoResult<()> {
         let tenant = self.load_background_sitemap_tenant(job.tenant_id).await?;
         let settings = self.load_settings(tenant.id).await?;
-        if !sitemaps_enabled(&settings)
-            || !self.any_public_sitemap_owner_enabled(tenant.id).await?
+        if !sitemaps_enabled(&settings) || !self.any_public_sitemap_owner_enabled(tenant.id).await?
         {
             return Err(SeoError::configuration(
                 "sitemap submission was disabled after the job was queued",
@@ -368,10 +367,8 @@ impl SeoService {
                     candidate.locale.as_str(),
                     tenant.default_locale.as_str(),
                 )?;
-                let route = super::sitemaps::sitemap_locale_path(
-                    locale.as_str(),
-                    candidate.route.as_str(),
-                );
+                let route =
+                    super::sitemaps::sitemap_locale_path(locale.as_str(), candidate.route.as_str());
                 if !super::sitemaps::sitemap_route_excluded(
                     candidate.route.as_str(),
                     exclude_patterns,
@@ -381,12 +378,11 @@ impl SeoService {
                         .alternates
                         .into_iter()
                         .filter_map(|alternate| {
-                            let alternate_locale =
-                                super::normalize_effective_locale(
-                                    alternate.locale.as_str(),
-                                    tenant.default_locale.as_str(),
-                                )
-                                .ok()?;
+                            let alternate_locale = super::normalize_effective_locale(
+                                alternate.locale.as_str(),
+                                tenant.default_locale.as_str(),
+                            )
+                            .ok()?;
                             let alternate_route = super::sitemaps::sitemap_locale_path(
                                 alternate_locale.as_str(),
                                 alternate.route.as_str(),
@@ -523,7 +519,8 @@ impl SeoService {
     ) -> SeoResult<()> {
         let mut files = Vec::new();
         let chunks = if chunk_size == crate::services::SITEMAP_CHUNK_SIZE {
-            urls.chunks(crate::services::SITEMAP_CHUNK_SIZE).collect::<Vec<_>>()
+            urls.chunks(crate::services::SITEMAP_CHUNK_SIZE)
+                .collect::<Vec<_>>()
         } else {
             urls.chunks(chunk_size.max(1)).collect::<Vec<_>>()
         };
@@ -808,7 +805,10 @@ mod sitemap_background_tests {
     fn background_file_count_keeps_the_index_and_chunks() {
         assert_eq!(background_sitemap_file_count(0, SITEMAP_CHUNK_SIZE), 1);
         assert_eq!(background_sitemap_file_count(1, SITEMAP_CHUNK_SIZE), 2);
-        assert_eq!(background_sitemap_file_count(SITEMAP_CHUNK_SIZE + 1, SITEMAP_CHUNK_SIZE), 3);
+        assert_eq!(
+            background_sitemap_file_count(SITEMAP_CHUNK_SIZE + 1, SITEMAP_CHUNK_SIZE),
+            3
+        );
     }
 
     #[test]

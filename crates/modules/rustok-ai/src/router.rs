@@ -1,7 +1,7 @@
 use uuid::Uuid;
 
 use crate::{
-    engine::{provider_catalog_entry, ProviderFeature, ProviderSlug},
+    engine::{ProviderFeature, ProviderSlug, provider_catalog_entry},
     error::{AiError, AiResult},
     model::{
         AiRunDecisionTrace, ExecutionMode, ExecutionOverride, ProviderCapability,
@@ -467,11 +467,13 @@ mod tests {
 
         assert_eq!(resolved.provider_profile_id, preferred.id);
         assert_eq!(resolved.model, preferred.model);
-        assert!(resolved
-            .decision_trace
-            .reasons
-            .iter()
-            .any(|reason| reason.contains("Selected preferred provider")));
+        assert!(
+            resolved
+                .decision_trace
+                .reasons
+                .iter()
+                .any(|reason| reason.contains("Selected preferred provider"))
+        );
     }
 
     #[test]
@@ -615,9 +617,11 @@ mod tests {
         )
         .expect_err("denied provider must not be selected");
 
-        assert!(error
-            .to_string()
-            .contains("provider `gemini-image` is not allowed for task profile `image_asset`"));
+        assert!(
+            error
+                .to_string()
+                .contains("provider `gemini-image` is not allowed for task profile `image_asset`")
+        );
     }
 
     #[test]
@@ -750,11 +754,11 @@ mod tests {
         assert!(resolved.decision_trace.reasons.iter().any(|reason| {
             reason.contains("Provider candidate `restricted` status `missing_required_actor_role`")
         }));
-        assert!(resolved
-            .decision_trace
-            .reasons
-            .iter()
-            .any(|reason| { reason.contains("Provider candidate `fallback` status `selected`") }));
+        assert!(
+            resolved.decision_trace.reasons.iter().any(|reason| {
+                reason.contains("Provider candidate `fallback` status `selected`")
+            })
+        );
     }
 
     #[test]

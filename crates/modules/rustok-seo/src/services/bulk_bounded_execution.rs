@@ -437,10 +437,7 @@ impl SeoService {
             .filter(|item| item.status == "completed")
             .count() as i32;
         let failed = items.iter().filter(|item| item.status == "failed").count() as i32;
-        let skipped = items
-            .iter()
-            .filter(|item| item.status == "skipped")
-            .count() as i32;
+        let skipped = items.iter().filter(|item| item.status == "skipped").count() as i32;
         let artifacts = seo_bulk_job_artifact::Entity::find()
             .filter(seo_bulk_job_artifact::Column::JobId.eq(job_id))
             .all(&self.db)

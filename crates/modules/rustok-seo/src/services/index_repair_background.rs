@@ -93,10 +93,10 @@ mod index_repair_background_impl {
                     // database conflict.
                     if let Some(active) = job_entity::Entity::find()
                         .filter(job_entity::Column::TenantId.eq(tenant_id))
-                        .filter(job_entity::Column::Status.is_in([
-                            INDEX_REPAIR_JOB_QUEUED,
-                            INDEX_REPAIR_JOB_RUNNING,
-                        ]))
+                        .filter(
+                            job_entity::Column::Status
+                                .is_in([INDEX_REPAIR_JOB_QUEUED, INDEX_REPAIR_JOB_RUNNING]),
+                        )
                         .order_by_asc(job_entity::Column::CreatedAt)
                         .one(&self.db)
                         .await?
@@ -243,10 +243,10 @@ mod index_repair_background_impl {
                 - chrono::Duration::days(super::super::SEO_HISTORY_RETENTION_DAYS);
             let old_jobs = job_entity::Entity::find()
                 .filter(job_entity::Column::TenantId.eq(tenant_id))
-                .filter(job_entity::Column::Status.is_in([
-                    INDEX_REPAIR_JOB_COMPLETED,
-                    INDEX_REPAIR_JOB_FAILED,
-                ]))
+                .filter(
+                    job_entity::Column::Status
+                        .is_in([INDEX_REPAIR_JOB_COMPLETED, INDEX_REPAIR_JOB_FAILED]),
+                )
                 .filter(job_entity::Column::CreatedAt.lt(cutoff))
                 .order_by_asc(job_entity::Column::CreatedAt)
                 .limit(super::super::SEO_HISTORY_PRUNE_BATCH_SIZE as u64)

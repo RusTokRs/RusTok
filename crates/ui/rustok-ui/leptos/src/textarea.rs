@@ -9,7 +9,7 @@
  */
 
 use leptos::prelude::*;
-use rustok_ui::{textarea_classes, Size};
+use rustok_ui::{Size, textarea_classes};
 
 /// Multiline text control.
 ///

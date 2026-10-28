@@ -42,13 +42,19 @@ async fn storefront_topic_route_native(
             .await
             .map_err(ServerFnError::new)?;
         let db = runtime_ctx.db_clone();
-        let settings_providers = super::native_server_adapter::forum_settings_providers(&runtime_ctx);
+        let settings_providers =
+            super::native_server_adapter::forum_settings_providers(&runtime_ctx);
         if auth.is_none()
-            && !settings_providers.anonymous_reading_allowed(tenant.id).await.map_err(server_error)?
+            && !settings_providers
+                .anonymous_reading_allowed(tenant.id)
+                .await
+                .map_err(server_error)?
         {
             return Ok(None);
         }
-        if !super::native_server_adapter::forum_channel_enabled(&runtime_ctx, tenant.id, &request).await? {
+        if !super::native_server_adapter::forum_channel_enabled(&runtime_ctx, tenant.id, &request)
+            .await?
+        {
             return Ok(None);
         }
 
@@ -92,7 +98,8 @@ async fn storefront_topic_route_native(
         let service = match runtime_ctx.shared_get::<SharedForumAudienceFactsPort>() {
             Some(facts) => ForumTopicAudienceReadService::with_audience_facts(db, event_bus, facts),
             None => ForumTopicAudienceReadService::new(db, event_bus),
-        }.with_settings_providers(settings_providers);
+        }
+        .with_settings_providers(settings_providers);
         let visible = if let Some(auth) = auth.as_ref() {
             let security =
                 SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);

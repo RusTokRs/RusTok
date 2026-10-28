@@ -18,7 +18,10 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::{
-    dto::{CursorOutput, FastSyncRequest, FastSyncResponse, MessageOutput, SendMessageInput, UpdateCursorInput},
+    dto::{
+        CursorOutput, FastSyncRequest, FastSyncResponse, MessageOutput, SendMessageInput,
+        UpdateCursorInput,
+    },
     services::MessengerService,
 };
 
@@ -42,10 +45,7 @@ pub enum MessengerClientMessage {
     /// Ephemeral typing indicator.
     Typing { is_typing: bool },
     /// Edit an existing message in this conversation.
-    EditMessage {
-        message_id: i64,
-        content: String,
-    },
+    EditMessage { message_id: i64, content: String },
     /// Soft-delete a message in this conversation.
     DeleteMessage { message_id: i64 },
 }
@@ -67,20 +67,14 @@ pub enum MessengerServerMessage {
     /// Broadcast of member read cursor advancement.
     CursorAdvanced(CursorOutput),
     /// Ephemeral typing notification from a room participant.
-    TypingIndicator {
-        user_id: Uuid,
-        is_typing: bool,
-    },
+    TypingIndicator { user_id: Uuid, is_typing: bool },
     /// Acknowledgment of message persistence.
     Ack {
         client_msg_id: Option<String>,
         message_id: i64,
     },
     /// Protocol or domain error.
-    Error {
-        code: String,
-        message: String,
-    },
+    Error { code: String, message: String },
 }
 
 /// In-memory pub-sub room manager grouping real-time sessions by (tenant_id, conversation_id).
@@ -118,12 +112,7 @@ impl MessengerRoomHub {
     }
 
     /// Broadcasts a server message to all active peers subscribed to the conversation room.
-    pub fn broadcast(
-        &self,
-        tenant_id: Uuid,
-        conversation_id: Uuid,
-        msg: MessengerServerMessage,
-    ) {
+    pub fn broadcast(&self, tenant_id: Uuid, conversation_id: Uuid, msg: MessengerServerMessage) {
         let key = (tenant_id, conversation_id);
         let read_guard = self.rooms.read().unwrap_or_else(|e| e.into_inner());
         if let Some(sender) = read_guard.get(&key) {
@@ -142,14 +131,23 @@ pub async fn ws_handler(
 ) -> HttpResult<Response> {
     let tenant_id = tenant.id;
     if tenant_id.is_nil() {
-        return Err(HttpError::bad_request("INVALID_TENANT", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "INVALID_TENANT",
+            "Tenant ID must not be nil",
+        ));
     }
     let actor_id = auth.user_id;
     if actor_id.is_nil() {
-        return Err(HttpError::unauthorized("UNAUTHORIZED", "Authenticated non-nil user required"));
+        return Err(HttpError::unauthorized(
+            "UNAUTHORIZED",
+            "Authenticated non-nil user required",
+        ));
     }
     if conversation_id.is_nil() {
-        return Err(HttpError::bad_request("INVALID_CONVERSATION", "Conversation ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "INVALID_CONVERSATION",
+            "Conversation ID must not be nil",
+        ));
     }
 
     // 1. Ensure messenger module is enabled for tenant
@@ -164,7 +162,11 @@ pub async fn ws_handler(
     }
 
     // 3. Ensure actor is an active member of the conversation
-    if let Err(err) = runtime.service.ensure_membership(conversation_id, actor_id).await {
+    if let Err(err) = runtime
+        .service
+        .ensure_membership(conversation_id, actor_id)
+        .await
+    {
         return Err(HttpError::forbidden(
             "NOT_A_MEMBER",
             format!("Actor is not an active member of conversation: {err}"),
@@ -276,11 +278,15 @@ async fn handle_socket(
                             reply_to_id,
                             client_msg_id,
                         }) => {
-                            if !has_any_effective_permission(&permissions, &[Permission::MESSAGES_CREATE]) {
+                            if !has_any_effective_permission(
+                                &permissions,
+                                &[Permission::MESSAGES_CREATE],
+                            ) {
                                 let _ = client_tx
                                     .send(MessengerServerMessage::Error {
                                         code: "FORBIDDEN".to_string(),
-                                        message: "Permission denied: messages:create required".to_string(),
+                                        message: "Permission denied: messages:create required"
+                                            .to_string(),
                                     })
                                     .await;
                                 continue;
@@ -395,8 +401,9 @@ async fn handle_socket(
                                 .await
                             {
                                 Ok(_) => {
-                                    let _ = room_sender_for_recv
-                                        .send(MessengerServerMessage::MessageDeleted { message_id });
+                                    let _ = room_sender_for_recv.send(
+                                        MessengerServerMessage::MessageDeleted { message_id },
+                                    );
                                 }
                                 Err(err) => {
                                     let _ = client_tx

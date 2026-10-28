@@ -14,7 +14,9 @@ pub enum ManifestError {
     #[error("Unsupported manifest schema version: {0} (expected 2)")]
     UnsupportedSchema(u32),
 
-    #[error("Invalid module slug '{0}': slugs must be 1-48 chars of lowercase ascii, digits, or underscore, and not start/end with underscore")]
+    #[error(
+        "Invalid module slug '{0}': slugs must be 1-48 chars of lowercase ascii, digits, or underscore, and not start/end with underscore"
+    )]
     InvalidSlug(String),
 
     #[error("Unknown module slug '{0}' referenced in settings or dependencies")]
@@ -34,7 +36,9 @@ pub enum ManifestError {
     )]
     InvalidOwnership(String, String),
 
-    #[error("Invalid trust level '{0}' for module '{1}': must be 'core', 'verified', 'unverified', or 'private'")]
+    #[error(
+        "Invalid trust level '{0}' for module '{1}': must be 'core', 'verified', 'unverified', or 'private'"
+    )]
     InvalidTrustLevel(String, String),
 
     #[error("Manifest validation error: {0}")]

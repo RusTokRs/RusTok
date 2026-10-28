@@ -14,8 +14,6 @@ mod ui;
 #[cfg(test)]
 mod contract_tests;
 
-pub use transport::{
-    SearchTransportError, fetch_filter_presets, fetch_search, fetch_suggestions,
-};
+pub use transport::{SearchTransportError, fetch_filter_presets, fetch_search, fetch_suggestions};
 pub use ui::leptos::SearchCatalogFilterOption;
 pub use ui::leptos::SearchView;

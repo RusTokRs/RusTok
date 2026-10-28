@@ -955,11 +955,7 @@ async fn was_published_before_in_tx(
                   )
             ) THEN 1 ELSE 0 END)::BIGINT AS value
             "#,
-            vec![
-                tenant_id.into(),
-                aggregate_type.into(),
-                aggregate_id.into(),
-            ],
+            vec![tenant_id.into(), aggregate_type.into(), aggregate_id.into()],
         ),
         DatabaseBackend::Sqlite => Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
@@ -982,11 +978,7 @@ async fn was_published_before_in_tx(
                   )
             ) THEN 1 ELSE 0 END AS INTEGER) AS value
             "#,
-            vec![
-                tenant_id.into(),
-                aggregate_type.into(),
-                aggregate_id.into(),
-            ],
+            vec![tenant_id.into(), aggregate_type.into(), aggregate_id.into()],
         ),
         backend => {
             return Err(ForumError::Validation(format!(

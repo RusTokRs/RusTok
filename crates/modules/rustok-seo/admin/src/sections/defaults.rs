@@ -2,7 +2,7 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use rustok_seo::SeoModuleSettings;
 
-use crate::core::{build_seo_settings_snapshot_items, SeoSettingsForm, ROBOT_DIRECTIVE_PRESETS};
+use crate::core::{ROBOT_DIRECTIVE_PRESETS, SeoSettingsForm, build_seo_settings_snapshot_items};
 use crate::i18n::t;
 use crate::transport::ApiError;
 

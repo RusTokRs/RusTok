@@ -21,8 +21,8 @@ use uuid::Uuid;
 use rustok_core::search_projection::SearchProjectionSource;
 
 use super::hardening::{admin, create_draft_post, post_service, setup_hardening_schema};
-use crate::entities::blog_post;
 use crate::BlogSearchProjectionSource;
+use crate::entities::blog_post;
 
 /// Publishes a draft and returns its id.
 async fn publish(
@@ -54,11 +54,7 @@ async fn pin(
 }
 
 /// Walks the public corpus page by page, exactly as the Search indexer does.
-async fn walk(
-    source: &BlogSearchProjectionSource,
-    tenant_id: Uuid,
-    page_size: usize,
-) -> Vec<Uuid> {
+async fn walk(source: &BlogSearchProjectionSource, tenant_id: Uuid, page_size: usize) -> Vec<Uuid> {
     let mut seen = Vec::new();
     let mut after: Option<String> = None;
     loop {

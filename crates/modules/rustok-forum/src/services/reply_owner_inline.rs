@@ -25,9 +25,7 @@ impl ReplyService {
         input: CreateReplyCommandInput,
     ) -> ForumResult<ReplyResponse> {
         let create_audience =
-            ForumReplyCreateAudienceAuthorizationService::without_facts_provider(
-                self.db.clone(),
-            );
+            ForumReplyCreateAudienceAuthorizationService::without_facts_provider(self.db.clone());
         self.create_command_with_audience_authorization(
             tenant_id,
             security,

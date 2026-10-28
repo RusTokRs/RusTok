@@ -133,11 +133,7 @@ pub async fn run_provider_event_recovery(
     );
     let limit = query.limit.map(|limit| limit.clamp(1, 100));
     let report = service
-        .run(
-            tenant.id,
-            "payment-provider-event-http-recovery",
-            limit,
-        )
+        .run(tenant.id, "payment-provider-event-http-recovery", limit)
         .await
         .map_err(map_recovery_error)?;
     Ok(Json(report.into()))

@@ -218,7 +218,9 @@ async fn handle_socket(
                                 continue;
                             }
 
-                            let delta_dto = crate::dto::ApplyDeltaDto { deltas: deltas.clone() };
+                            let delta_dto = crate::dto::ApplyDeltaDto {
+                                deltas: deltas.clone(),
+                            };
                             if let Err(err) = delta_dto.validate() {
                                 let _ = room_sender_for_recv.send(ServerMessage::Error {
                                     code: "validation_error".to_string(),
