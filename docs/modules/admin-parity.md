@@ -24,7 +24,7 @@ owner/shape (noted).
 | AI | ✅ | ✅ | |
 | Auth (users/roles UI) | ✅ host features | ✅ host features | Shell-level, both |
 | Billing | — | ✅ host route | No Rust module crate; platform surface |
-| Blog | ✅ | ✅ | Both implement post CRUD, lifecycle, channel scoping, image/SEO, scheduling and comment moderation. Category CRUD is currently Next-only; preview/pin and localization parity still require work. |
+| Blog | ✅ | ✅ | Both implement post CRUD, lifecycle, channel scoping, image/SEO, scheduling and comment moderation. Category CRUD is currently Next-only; preview-token UI and localization parity still require work. |
 | Brand | ✅ | ❌ | |
 | Cache | ✅ | ✅ | |
 | Channel | ✅ | ❌ | |
@@ -87,7 +87,8 @@ that every feature has equivalent controls.
 | Featured image | Editable URL | Editable URL | Absolute HTTP(S) or safe root-relative URLs |
 | SEO | Blog-localized fields plus explicit owner SEO panel | Blog-localized SEO fields | Effective SEO composes base copy and explicit overrides |
 | Comments moderation | Yes | Yes | Comments owner gates permissions, availability, retention |
-| Preview tokens / pinned posts | No direct controls | No direct controls | Canonical Blog owner operations exist |
+| Pin / unpin published posts | Yes | Yes | Only published posts may be pinned; pinned draft/archive rows may be unpinned |
+| Preview tokens | No direct controls | No direct controls | Canonical Blog owner create/revoke operations exist |
 
 The remaining gaps should not be concealed by parallel client-specific
 defaults. Changes must exercise the same canonical owner API under both the
