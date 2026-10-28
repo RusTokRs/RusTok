@@ -39,6 +39,7 @@ mod m20261007_000016_drop_sys_events_superseded_indexes;
 mod m20261025_000001_add_user_login_lockout;
 mod m20261025_000003_add_session_reuse_detection;
 mod m20261025_000005_add_oauth_token_family;
+mod m20261028_000001_enforce_single_running_install_http_job;
 
 pub mod schema_diff;
 pub use schema_diff::*;
@@ -540,6 +541,9 @@ impl MigratorTrait for Migrator {
             m20261025_000003_add_session_reuse_detection::Migration,
         ));
         all.push(Box::new(m20261025_000005_add_oauth_token_family::Migration));
+        all.push(Box::new(
+            m20261028_000001_enforce_single_running_install_http_job::Migration,
+        ));
         let dependencies = collect_migration_descriptors();
 
         all.sort_by(|a, b| a.name().cmp(b.name()));
@@ -1246,6 +1250,17 @@ mod tests {
             "server migrator must include search typo-tolerance indexes migration"
         );
     }
+    #[test]
+    fn migrator_includes_single_running_installer_job_constraint() {
+        let names = Migrator::migrations()
+            .into_iter()
+            .map(|migration| migration.name().to_string())
+            .collect::<Vec<_>>();
+        assert!(names.iter().any(|name| {
+            name == "m20261028_000001_enforce_single_running_install_http_job"
+        }));
+    }
+
     #[test]
     fn migrator_includes_durable_http_installer_jobs() {
         let names = Migrator::migrations()
