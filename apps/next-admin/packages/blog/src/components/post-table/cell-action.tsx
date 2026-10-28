@@ -15,22 +15,24 @@ import {
   IconEdit,
   IconTrash,
   IconWorldUpload,
-  IconWorldOff
+  IconWorldOff,
+  IconArchive,
+  IconRestore
 } from '@tabler/icons-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import type { PostSummary, GqlOpts } from '../../api/posts';
-import { deletePost, publishPost, unpublishPost } from '../../api/posts';
+import { archivePost, deletePost, publishPost, restorePost, unpublishPost } from '../../api/posts';
 
 interface CellActionProps {
   data: PostSummary;
-  gqlOpts?: GqlOpts;
+  gqlOpts: GqlOpts;
 }
 
 export const CellAction: React.FC<CellActionProps> = ({
   data,
-  gqlOpts = {}
+  gqlOpts
 }) => {
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -52,7 +54,10 @@ export const CellAction: React.FC<CellActionProps> = ({
 
   const onTogglePublish = async () => {
     try {
-      if (data.status === 'PUBLISHED') {
+      if (data.status === 'ARCHIVED') {
+        await restorePost(data.id, gqlOpts);
+        toast.success('Post restored to draft');
+      } else if (data.status === 'PUBLISHED') {
         await unpublishPost(data.id, gqlOpts);
         toast.success('Post unpublished');
       } else {
@@ -62,6 +67,16 @@ export const CellAction: React.FC<CellActionProps> = ({
       router.refresh();
     } catch {
       toast.error('Failed to change post status');
+    }
+  };
+
+  const onArchive = async () => {
+    try {
+      await archivePost(data.id, gqlOpts);
+      toast.success('Post archived');
+      router.refresh();
+    } catch {
+      toast.error('Failed to archive post');
     }
   };
 
@@ -88,7 +103,11 @@ export const CellAction: React.FC<CellActionProps> = ({
             <IconEdit className='mr-2 h-4 w-4' /> Edit
           </DropdownMenuItem>
           <DropdownMenuItem onClick={onTogglePublish}>
-            {data.status === 'PUBLISHED' ? (
+            {data.status === 'ARCHIVED' ? (
+              <>
+                <IconRestore className='mr-2 h-4 w-4' /> Restore to draft
+              </>
+            ) : data.status === 'PUBLISHED' ? (
               <>
                 <IconWorldOff className='mr-2 h-4 w-4' /> Unpublish
               </>
@@ -98,6 +117,11 @@ export const CellAction: React.FC<CellActionProps> = ({
               </>
             )}
           </DropdownMenuItem>
+          {data.status === 'PUBLISHED' && (
+            <DropdownMenuItem onClick={onArchive}>
+              <IconArchive className='mr-2 h-4 w-4' /> Archive
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setOpen(true)}>
             <IconTrash className='mr-2 h-4 w-4' /> Delete
