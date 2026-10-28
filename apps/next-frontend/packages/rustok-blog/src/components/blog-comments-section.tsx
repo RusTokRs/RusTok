@@ -13,7 +13,8 @@ interface BlogCommentsSectionProps {
   postId: string;
   contentLocale: string;
   comments: {
-    availability: string;
+    availability: 'AVAILABLE' | 'DISABLED' | 'READ_ONLY' | 'UNAVAILABLE' | 'TIMEOUT';
+    cachedSnapshot: boolean;
     total: number;
     items: BlogPublicComment[];
   };
@@ -33,6 +34,10 @@ export function BlogCommentsSection({
   const router = useRouter();
   const [replyToId, setReplyToId] = useState<string | null>(null);
   const isRu = locale === 'ru';
+  const disabled = comments.availability === 'DISABLED';
+  const outageWithoutSnapshot =
+    (comments.availability === 'UNAVAILABLE' || comments.availability === 'TIMEOUT') &&
+    !comments.cachedSnapshot;
 
   const handleReply = (commentId: string) => {
     setReplyToId(commentId);
@@ -46,6 +51,9 @@ export function BlogCommentsSection({
     setReplyToId(null);
     router.refresh();
   };
+
+  // Disabled means the entire public discussion surface is absent in both storefronts.
+  if (disabled) return null;
 
   return (
     <section id='comments' className='mt-12 border-t border-border pt-8 space-y-6'>
@@ -87,11 +95,13 @@ export function BlogCommentsSection({
         </div>
       )}
 
-      <ThreadedCommentsList
-        items={comments.items}
-        locale={locale}
-        onReply={comments.availability === 'AVAILABLE' ? handleReply : undefined}
-      />
+      {!outageWithoutSnapshot && (
+        <ThreadedCommentsList
+          items={comments.items}
+          locale={locale}
+          onReply={comments.availability === 'AVAILABLE' ? handleReply : undefined}
+        />
+      )}
     </section>
   );
 }
