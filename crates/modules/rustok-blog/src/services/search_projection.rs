@@ -301,6 +301,10 @@ impl BlogSearchProjectionSource {
                     body: body_text,
                     keywords_text,
                     facets: json!({
+                        // Search's category filter reads facets.category_id,
+                        // not payload.category_id. Omitting it made every
+                        // Blog post vanish under a category-scoped FTS query.
+                        "category_id": post.category_id,
                         "has_category": post.category_id.is_some(),
                         "has_tags": !post_tags.is_empty(),
                         "has_channels": !post_channels.is_empty(),
