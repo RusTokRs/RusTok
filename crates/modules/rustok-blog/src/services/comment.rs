@@ -168,6 +168,10 @@ impl CommentService {
         post_id: Uuid,
         input: CreateCommentInput,
     ) -> BlogResult<CommentResponse> {
+        // Owner writes bypass the public publication and comments-mode gates.
+        // Only comment moderators may use that exception; COMMENT_CREATE alone
+        // never authorizes writing to drafts, archived or channel-hidden posts.
+        enforce_scope(&security, Resource::Comments, Action::Moderate)?;
         self.create_comment_internal(
             tenant_id,
             security,
