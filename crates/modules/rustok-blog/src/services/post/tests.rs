@@ -875,6 +875,28 @@ async fn customer_list_hides_a_published_post_without_a_publication_timestamp() 
         "only the intact published post belongs in the customer list"
     );
 
+    let denied_detail = post_service
+        .get_post(tenant_id, customer.clone(), damaged, "en")
+        .await
+        .expect_err("unstamped published detail is not public");
+    assert!(matches!(denied_detail, BlogError::Forbidden(_)));
+    assert!(
+        post_service
+            .get_post_by_slug(tenant_id, customer.clone(), "en", "damaged")
+            .await
+            .expect("slug lookup should succeed")
+            .is_none(),
+        "unstamped published post must not be exposed through the slug lookup"
+    );
+    assert_eq!(
+        post_service
+            .get_post(tenant_id, admin.clone(), damaged, "en")
+            .await
+            .expect("an editor may repair the broken post")
+            .id,
+        damaged
+    );
+
     // The explicit `status: Published` request takes the other branch and must
     // apply the same rule.
     let explicit = post_service
