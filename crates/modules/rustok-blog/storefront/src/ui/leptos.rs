@@ -716,6 +716,10 @@ fn PublishedPostsList(
         core::DEFAULT_ROUTE_SEGMENT,
     );
     let module_route_base = route_context.module_route_base(route_segment.as_str());
+    let list_slug_filter = use_route_query_value("slug").get();
+    let list_tag_filter = use_route_query_value("tag").get();
+    let list_category_filter = use_route_query_value("category").get();
+    let list_search_filter = use_route_query_value("q").get();
     let unknown_status_label = t(locale.as_deref(), "blog.list.unknownStatus", "unknown");
     let default_title = t(locale.as_deref(), "blog.list.title", "Published posts");
     let header_title = list_title.unwrap_or(default_title);
@@ -807,7 +811,12 @@ fn PublishedPostsList(
                                         if let Some(cat_id) = post.category_id.as_deref() {
                                             view! {
                                                 <a
-                                                    href=core::filter_query_href(None, None, Some(cat_id), None)
+                                                    href=core::filter_query_href(
+                                                        list_slug_filter.as_deref(),
+                                                        list_tag_filter.as_deref(),
+                                                        Some(cat_id),
+                                                        list_search_filter.as_deref(),
+                                                    )
                                                     class="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
                                                 >
                                                     {cat.to_string()}
@@ -844,7 +853,12 @@ fn PublishedPostsList(
                                             {post.tags
                                                 .iter()
                                                 .map(|tag| {
-                                                    let tag_link = format!("?tag={}", core::percent_encode(tag));
+                                                    let tag_link = core::filter_query_href(
+                                                        list_slug_filter.as_deref(),
+                                                        Some(tag),
+                                                        list_category_filter.as_deref(),
+                                                        list_search_filter.as_deref(),
+                                                    );
                                                     view! {
                                                         <a
                                                             href=tag_link
