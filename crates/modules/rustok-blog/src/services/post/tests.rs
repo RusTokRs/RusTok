@@ -844,6 +844,7 @@ async fn customer_list_hides_a_published_post_without_a_publication_timestamp() 
         .await
         .expect("published post should be created");
 
+    crate::tests::hardening::allow_legacy_invalid_post_fixture(&db).await;
     let row = blog_post::Entity::find_by_id(damaged)
         .one(&db)
         .await
