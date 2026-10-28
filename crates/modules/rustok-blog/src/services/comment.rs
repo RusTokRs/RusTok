@@ -996,3 +996,89 @@ mod rich_content_tests;
 
 #[cfg(test)]
 mod public_target_tests;
+
+#[cfg(test)]
+mod comment_access_tests {
+    use super::*;
+    use rustok_api::Permission;
+    use rustok_core::UserRole;
+
+    #[test]
+    fn ordinary_comment_grants_do_not_enable_mod_queue() {
+        let commenter = Uuid::new_v4();
+        let other_author = Uuid::new_v4();
+        let reader = SecurityContext::from_permissions(
+            UserRole::Customer,
+            Some(commenter),
+            [Permission::COMMENTS_READ, Permission::COMMENTS_LIST, Permission::COMMENTS_CREATE],
+        );
+        assert!(!may_moderate_comments(&reader));
+        assert_eq!(
+            comment_detail_read_policy(&reader, other_author, ApiCommentStatus::Pending),
+            CommentDetailReadPolicy::Denied
+        );
+        assert_eq!(
+            comment_detail_read_policy(&reader, other_author, ApiCommentStatus::Spam),
+            CommentDetailReadPolicy::Denied
+        );
+        assert_eq!(
+            comment_detail_read_policy(&reader, other_author, ApiCommentStatus::Trash),
+            CommentDetailReadPolicy::Denied
+        );
+        assert_eq!(
+            comment_detail_read_policy(&reader, other_author, ApiCommentStatus::Approved),
+            CommentDetailReadPolicy::Public,
+            "approved comments still require the live Blog post/channel check"
+        );
+        assert_eq!(
+            comment_detail_read_policy(&reader, commenter, ApiCommentStatus::Pending),
+            CommentDetailReadPolicy::Owner,
+            "an author retains access to their own moderation-pending reply"
+        );
+    }
+
+    #[test]
+    fn moderator_can_read_the_owner_queue() {
+        let moderator = SecurityContext::from_permissions(
+            UserRole::Manager,
+            Some(Uuid::new_v4()),
+            [Permission::COMMENTS_READ, Permission::COMMENTS_LIST, Permission::COMMENTS_MODERATE],
+        );
+        assert!(may_moderate_comments(&moderator));
+        assert_eq!(
+            comment_detail_read_policy(&moderator, Uuid::new_v4(), ApiCommentStatus::Trash),
+            CommentDetailReadPolicy::Owner
+        );
+    }
+
+    #[tokio::test]
+    async fn comment_create_grant_cannot_bypass_owner_draft_policy() {
+        let (db, events) = crate::tests::hardening::setup_hardening_schema().await;
+        let tenant_id = Uuid::new_v4();
+        let post_id =
+            crate::tests::hardening::create_draft_post(&db, &events, tenant_id, "private-comment")
+                .await;
+        let commenter = SecurityContext::from_permissions(
+            UserRole::Customer,
+            Some(Uuid::new_v4()),
+            [Permission::COMMENTS_CREATE],
+        );
+        let service = CommentService::from_runtime_capabilities(db, None, None);
+
+        let error = service
+            .create_comment(
+                tenant_id,
+                commenter,
+                post_id,
+                CreateCommentInput {
+                    command_id: Uuid::new_v4(),
+                    locale: "en".to_string(),
+                    content: crate::richtext::article_document_from_plain_text("private"),
+                    parent_comment_id: None,
+                },
+            )
+            .await
+            .expect_err("owner-only comment create needs moderation authority");
+        assert!(matches!(error, BlogError::Forbidden(_)));
+    }
+}
