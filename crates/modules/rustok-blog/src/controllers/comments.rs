@@ -4,7 +4,7 @@ use axum::{
     http::StatusCode,
 };
 use rustok_api::Permission;
-use rustok_api::{AuthContext, RequestContext, TenantContext};
+use rustok_api::{AuthContext, RequestContext, TenantContext, has_any_effective_permission};
 use rustok_web::{HttpError, HttpResult};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -104,7 +104,7 @@ pub async fn create_comment(
     State(runtime): State<BlogHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-    _request_context: RequestContext,
+    request_context: RequestContext,
     Path(post_id): Path<Uuid>,
     Json(input): Json<CreateCommentInput>,
 ) -> HttpResult<(StatusCode, Json<CommentResponse>)> {
@@ -122,15 +122,29 @@ pub async fn create_comment(
         "Permission denied: comments:create required",
     )?;
 
-    // This is the authenticated owner surface (like the other comment
-    // handlers here), so creation follows the owner command: the target post
-    // must exist in the tenant, without the public publication/channel
-    // boundary that `create_public_comment` applies to storefront callers.
-    let comment = runtime
-        .comment_service()
-        .create_comment(tenant.id, security_context(&auth), post_id, input)
-        .await
-        .map_err(crate::error::public::to_http_error)?;
+    // Authentication alone does not give the caller permission to comment on
+    // draft/archived/channel-hidden posts or bypass a disabled/read-only Blog
+    // discussion. The canonical public command enforces those policies.
+    // Only a Comments moderator may take the owner-only exception.
+    let service = runtime.comment_service();
+    let security = security_context(&auth);
+    let comment = if has_any_effective_permission(
+        &auth.permissions,
+        &[Permission::COMMENTS_MODERATE],
+    ) {
+        service.create_comment(tenant.id, security, post_id, input).await
+    } else {
+        service
+            .create_public_comment(
+                tenant.id,
+                security,
+                post_id,
+                request_context.channel_slug.as_deref(),
+                input,
+            )
+            .await
+    }
+    .map_err(crate::error::public::to_http_error)?;
     Ok((StatusCode::CREATED, Json(comment)))
 }
 
