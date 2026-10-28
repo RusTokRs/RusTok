@@ -698,7 +698,9 @@ fn map_pinned_item_row(row: QueryResult) -> Result<SearchResultItem> {
 }
 
 fn has_catalog_filters(query: &SearchQuery) -> bool {
-    !query.category_ids.is_empty() || !query.attribute_filters.is_empty()
+    !query.category_ids.is_empty()
+        || !query.attribute_filters.is_empty()
+        || query.tag.is_some()
 }
 
 fn pinned_item_matches_query(
