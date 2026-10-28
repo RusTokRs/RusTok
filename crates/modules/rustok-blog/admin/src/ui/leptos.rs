@@ -122,6 +122,20 @@ pub fn BlogAdmin() -> impl IntoView {
         }
     });
 
+    // Categories are loaded from the same selected owner transport as post edits.
+    // A failed lookup remains visible; the editor never silently replaces a category.
+    let categories_resource = local_resource(
+        move || (token.get(), tenant.get(), locale.get(), refresh_nonce.get()),
+        move |(token_value, tenant_value, locale_value, _)| async move {
+            transport::fetch_categories(
+                token_value,
+                tenant_value,
+                core::locale_arg(locale_value.as_str()),
+            )
+            .await
+        },
+    );
+
     // Admin posts are cursor-paged. The resource loads the first page; later pages are appended to `posts_rows`.
     let posts_rows = RwSignal::new(Vec::<crate::model::BlogPostListItem>::new());
     let posts_next_cursor = RwSignal::new(None::<String>);
@@ -851,6 +865,29 @@ pub fn BlogAdmin() -> impl IntoView {
                                     prop:value=tags_input
                                     on:input=move |ev| set_tags_input.set(event_target_value(&ev))
                                 />
+                            </label>
+
+                            <label class=shell_classes.locale_filter_label>
+                                <span class=form_field_classes.label_text>
+                                    {t(ui_locale.as_deref(), "blog.form.category", "Category")}
+                                </span>
+                                <select class=form_field_classes.text_input
+                                    prop:value=category_id
+                                    on:change=move |ev| set_category_id.set(event_target_value(&ev))
+                                >
+                                    <option value="">{t(ui_locale.as_deref(), "blog.form.uncategorized", "Uncategorized")}</option>
+                                    {move || {
+                                        match categories_resource.get() {
+                                            Some(Ok(items)) => items.into_iter().map(|item| {
+                                                view! { <option value=item.id>{item.name}</option> }
+                                            }).collect_view().into_any(),
+                                            _ => ().into_any(),
+                                        }
+                                    }}
+                                </select>
+                                {move || categories_resource.get().and_then(|result| result.err()).map(|error| {
+                                    view! { <span class="text-xs text-destructive">{format!("Categories unavailable: {error}")}</span> }
+                                })}
                             </label>
 
                             <label class=shell_classes.locale_filter_label>
