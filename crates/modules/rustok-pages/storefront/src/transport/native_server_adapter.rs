@@ -311,14 +311,14 @@ fn resolve_artifact_body_html(body_html: &str, document_html: &str) -> String {
     if !body_html.is_empty() {
         return body_html.to_string();
     }
-    if let Some(start) = document_html.find("<body") {
-        if let Some(open_tag_end) = document_html[start..].find('>') {
-            let content_start = start + open_tag_end + 1;
-            if let Some(end) = document_html[content_start..].rfind("</body>") {
-                return document_html[content_start..content_start + end]
-                    .trim()
-                    .to_string();
-            }
+    if let Some(start) = document_html.find("<body")
+        && let Some(open_tag_end) = document_html[start..].find('>')
+    {
+        let content_start = start + open_tag_end + 1;
+        if let Some(end) = document_html[content_start..].rfind("</body>") {
+            return document_html[content_start..content_start + end]
+                .trim()
+                .to_string();
         }
     }
     document_html.to_string()

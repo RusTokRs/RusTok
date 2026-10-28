@@ -39,15 +39,19 @@ impl SubscriberService {
         if email.is_empty() || !email.contains('@') || email.len() > 255 {
             return Err(NewsletterError::validation("Invalid email address"));
         }
-        if let Some(ref name) = input.name {
-            if name.trim().len() > 255 {
-                return Err(NewsletterError::validation("Name exceeds 255 characters"));
-            }
+        if input
+            .name
+            .as_ref()
+            .is_some_and(|name| name.trim().len() > 255)
+        {
+            return Err(NewsletterError::validation("Name exceeds 255 characters"));
         }
-        if let Some(ref locale) = input.locale {
-            if locale.trim().len() > 35 {
-                return Err(NewsletterError::validation("Locale exceeds 35 characters"));
-            }
+        if input
+            .locale
+            .as_ref()
+            .is_some_and(|locale| locale.trim().len() > 35)
+        {
+            return Err(NewsletterError::validation("Locale exceeds 35 characters"));
         }
 
         // Check for existing subscriber
@@ -166,15 +170,19 @@ impl SubscriberService {
         if subscriber_id.is_nil() {
             return Err(NewsletterError::validation("Subscriber ID must not be nil"));
         }
-        if let Some(ref name) = input.name {
-            if name.trim().len() > 255 {
-                return Err(NewsletterError::validation("Name exceeds 255 characters"));
-            }
+        if input
+            .name
+            .as_ref()
+            .is_some_and(|name| name.trim().len() > 255)
+        {
+            return Err(NewsletterError::validation("Name exceeds 255 characters"));
         }
-        if let Some(ref locale) = input.locale {
-            if locale.trim().len() > 35 {
-                return Err(NewsletterError::validation("Locale exceeds 35 characters"));
-            }
+        if input
+            .locale
+            .as_ref()
+            .is_some_and(|locale| locale.trim().len() > 35)
+        {
+            return Err(NewsletterError::validation("Locale exceeds 35 characters"));
         }
         let subscriber = self.find_subscriber(tenant_id, subscriber_id).await?;
         let now = Utc::now();
