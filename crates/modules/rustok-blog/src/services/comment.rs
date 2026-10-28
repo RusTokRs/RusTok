@@ -348,7 +348,16 @@ impl CommentService {
         let record = self
             .require_comments_thread_port()?
             .get_comment(
-                comments_read_port_context(tenant_id, &security, locale, comment_id)?,
+                // The Comments owner deliberately restricts direct reads of
+                // someone else's entry. Blog loads with system authority,
+                // then applies its own author/moderator/approved-post policy
+                // before returning a byte to the caller.
+                comments_read_port_context(
+                    tenant_id,
+                    &SecurityContext::system(),
+                    locale,
+                    comment_id,
+                )?,
                 comment_id,
                 fallback_locale.map(str::to_owned),
             )
