@@ -7,8 +7,8 @@ use crate::model::StorefrontBlogData;
 use crate::model::{BlogCommentCreateRequest, BlogCommentDetail};
 #[cfg(feature = "ssr")]
 use crate::model::{
-    BlogCommentList, BlogCommentListItem, BlogCommentsAvailability, BlogPostDetail, BlogPostList,
-    BlogPostListItem,
+    BlogCommentList, BlogCommentListItem, BlogCommentsAvailability, BlogPostAuthorProfile,
+    BlogPostDetail, BlogPostList, BlogPostListItem,
 };
 use leptos::prelude::*;
 #[cfg(feature = "ssr")]
@@ -246,6 +246,12 @@ async fn storefront_blog_native(
         let auth_context = leptos_axum::extract::<rustok_api::AuthContext>().await.ok();
         ensure_storefront_tenant_binding(auth_context.as_ref(), tenant_id)?;
         let is_authenticated = auth_context.is_some();
+        let profile_audience = auth_context
+            .as_ref()
+            .map(|auth| rustok_profiles::ProfileSummaryAudience::Authenticated {
+                actor_id: auth.user_id,
+            })
+            .unwrap_or(rustok_profiles::ProfileSummaryAudience::Anonymous);
 
         require_blog_channel_enabled(
             &runtime_ctx,
@@ -308,7 +314,17 @@ async fn storefront_blog_native(
                     .collect(),
                 total: public_comments.total,
             };
-            Some(map_post_detail(post, public_comments))
+            let mut author_profiles = load_author_profiles(
+                &runtime_ctx,
+                tenant_id,
+                &[post.author_id],
+                requested_locale.as_str(),
+                fallback_locale.as_str(),
+                profile_audience,
+            )
+            .await;
+            let author_profile = author_profiles.remove(&post.author_id);
+            Some(map_post_detail(post, public_comments, author_profile))
         } else {
             None
         };
@@ -353,10 +369,24 @@ async fn storefront_blog_native(
             .await
             .map_err(public_blog_error)?;
 
+        let author_ids = page.items.iter().map(|post| post.author_id).collect::<Vec<_>>();
+        let author_profiles = load_author_profiles(
+            &runtime_ctx,
+            tenant_id,
+            author_ids.as_slice(),
+            requested_locale.as_str(),
+            fallback_locale.as_str(),
+            profile_audience,
+        )
+        .await;
+
         Ok(StorefrontBlogData {
             selected_post,
             posts: BlogPostList {
-                items: page.items.into_iter().map(map_post_list_item).collect(),
+                items: page.items.into_iter().map(|post| {
+                    let author_profile = author_profiles.get(&post.author_id).cloned();
+                    map_post_list_item(post, author_profile)
+                }).collect(),
                 next_cursor: page.next_cursor.map(|cursor| cursor.encode()),
             },
         })
@@ -376,6 +406,56 @@ async fn storefront_blog_native(
             "blog/storefront-data requires the `ssr` feature",
         ))
     }
+}
+
+#[cfg(feature = "ssr")]
+async fn load_author_profiles(
+    runtime: &rustok_api::HostRuntimeContext,
+    tenant_id: uuid::Uuid,
+    authors: &[uuid::Uuid],
+    locale: &str,
+    fallback_locale: &str,
+    audience: rustok_profiles::ProfileSummaryAudience,
+) -> std::collections::HashMap<uuid::Uuid, BlogPostAuthorProfile> {
+    use std::collections::HashMap;
+
+    if authors.is_empty() {
+        return HashMap::new();
+    }
+    // Profiles is optional; missing presentation cannot hide a published post.
+    let Some(reader) = runtime.shared_get::<Arc<dyn rustok_profiles::ProfileSummaryReader>>() else {
+        return HashMap::new();
+    };
+
+    let summaries = match reader
+        .find_profile_summaries(
+            tenant_id,
+            authors,
+            Some(locale),
+            Some(fallback_locale),
+            audience,
+        )
+        .await
+    {
+        Ok(summaries) => summaries,
+        Err(error) => {
+            eprintln!(
+                "Blog author profile presentation unavailable for tenant {tenant_id}: {}",
+                error.code()
+            );
+            return HashMap::new();
+        }
+    };
+
+    summaries.into_iter().map(|(id, profile)| {
+        (id, BlogPostAuthorProfile {
+            user_id: profile.user_id.to_string(),
+            handle: profile.handle,
+            display_name: profile.display_name,
+            tags: profile.tags,
+            avatar_media_id: profile.avatar_media_id.map(|id| id.to_string()),
+        })
+    }).collect()
 }
 
 #[cfg(feature = "ssr")]
@@ -519,6 +599,7 @@ fn is_visible_for_public_channel(
 fn map_post_detail(
     post: rustok_blog::PostResponse,
     public_comments: BlogCommentList,
+    author_profile: Option<BlogPostAuthorProfile>,
 ) -> BlogPostDetail {
     BlogPostDetail {
         id: post.id.to_string(),
@@ -537,7 +618,7 @@ fn map_post_detail(
         published_at: post.published_at.map(|value| value.to_string()),
         tags: post.tags,
         featured_image_url: post.featured_image_url,
-        author_profile: None,
+        author_profile,
         category_id: post.category_id.map(|v| v.to_string()),
         category_name: post.category_name,
         public_comments,
@@ -557,7 +638,7 @@ fn map_comment_list_item(comment: rustok_blog::CommentListItem) -> BlogCommentLi
 }
 
 #[cfg(feature = "ssr")]
-fn map_post_list_item(post: rustok_blog::PostSummary) -> BlogPostListItem {
+fn map_post_list_item(post: rustok_blog::PostSummary, author_profile: Option<BlogPostAuthorProfile>) -> BlogPostListItem {
     BlogPostListItem {
         id: post.id.to_string(),
         title: post.title,
@@ -573,7 +654,7 @@ fn map_post_list_item(post: rustok_blog::PostSummary) -> BlogPostListItem {
         published_at: post.published_at.map(|value| value.to_string()),
         tags: post.tags,
         featured_image_url: post.featured_image_url,
-        author_profile: None,
+        author_profile,
         category_id: post.category_id.map(|v| v.to_string()),
         category_name: post.category_name,
     }
