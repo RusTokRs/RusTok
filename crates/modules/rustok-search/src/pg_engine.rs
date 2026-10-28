@@ -296,6 +296,17 @@ fn build_filter_clause(
             )"
         ));
     }
+    if let Some(tag) = query.tag.as_deref() {
+        // A locale-aware Blog tag is an exact owner-supplied facet key,
+        // not a substring test on the already paged search result. Bind the
+        // text and apply the condition to count, facets and result selection.
+        let tag_param = next_param;
+        values.push(tag.to_owned().into());
+        next_param += 1;
+        clauses.push(format!(
+            "source_module = 'blog' AND entity_type = 'blog_post' AND (facets -> 'tag_keys') ? ${tag_param}"
+        ));
+    }
     for filter in &query.attribute_filters {
         let attribute_param = next_param;
         values.push(filter.attribute_code.clone().into());
@@ -943,6 +954,7 @@ mod tests {
             source_modules: Vec::new(),
             statuses: Vec::new(),
             category_ids,
+            tag: None,
             attribute_filters: Vec::new(),
             sort_attribute_code: None,
             sort_desc: false,
@@ -967,6 +979,7 @@ mod tests {
                 source_modules: vec!["commerce".to_string()],
                 statuses: vec!["active".to_string()],
                 category_ids: Vec::new(),
+            tag: None,
                 attribute_filters: Vec::new(),
                 sort_attribute_code: None,
                 sort_desc: false,
@@ -981,6 +994,17 @@ mod tests {
             "is_public = TRUE AND entity_type IN ($4) AND source_module IN ($5) AND status IN ($6)"
         );
         assert_eq!(filters.values.len(), 3);
+    }
+
+    #[test]
+    fn exact_blog_tag_filter_is_applied_before_pagination() {
+        let mut query = query_with_categories(Vec::new());
+        query.tag = Some("новости".to_string());
+        let filter = build_filter_clause(&query, 4, None, None);
+        assert!(filter.clause.contains(
+            "source_module = 'blog' AND entity_type = 'blog_post' AND (facets -> 'tag_keys') ? $4"
+        ));
+        assert_eq!(filter.values.len(), 1, "tag must be a bound value");
     }
 
     #[test]
