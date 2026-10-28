@@ -666,12 +666,22 @@ mod in_process {
         lease: idempotency::Lease,
         error: &PortError,
     ) {
-        if let Err(receipt_error) = idempotency::fail(database, lease, error).await {
+        // Only deterministic failures may be replayed as terminal receipts.
+        // A transient DB/provider outage, timeout or uncertain commit must
+        // release its *processing* lease so that the same command_id can retry.
+        // The Outbox release checks both status and lease token, so it cannot
+        // erase a concurrently completed write or another worker's claim.
+        let result = if error.retryable {
+            idempotency::release_retryable(database, lease, error).await
+        } else {
+            idempotency::fail(database, lease, error).await
+        };
+        if let Err(receipt_error) = result {
             tracing::error!(
                 operation_id = %lease.operation_id,
                 %error,
                 %receipt_error,
-                "Failed to persist durable Comments failure receipt"
+                "Failed to finalize Comments failure receipt safely"
             );
         }
     }
