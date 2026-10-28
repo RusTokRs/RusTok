@@ -312,6 +312,7 @@ export default async function BlogPostPage({
               <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-border shadow-sm">
                 <Image
                   src={post.featuredImageUrl}
+                  unoptimized
                   alt={post.title}
                   fill
                   className="object-cover"
