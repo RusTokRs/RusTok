@@ -359,13 +359,18 @@ impl CommentService {
             if record.status != ApiCommentStatus::Approved {
                 return Err(BlogError::comment_not_found(comment_id));
             }
-            if self.public_comments_mode(tenant_id).await? == BlogCommentsMode::Disabled
-                || self
-                    .ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
-                    .await
-                    .is_err()
-            {
+            if self.public_comments_mode(tenant_id).await? == BlogCommentsMode::Disabled {
                 return Err(BlogError::comment_not_found(comment_id));
+            }
+            match self
+                .ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
+                .await
+            {
+                Ok(()) => {}
+                Err(BlogError::PostNotFound(_)) => {
+                    return Err(BlogError::comment_not_found(comment_id));
+                }
+                Err(error) => return Err(error),
             }
         }
         Self::map_comment_record(record)
