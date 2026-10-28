@@ -227,19 +227,10 @@ impl SearchDictionaryService {
             FROM search_documents
             WHERE tenant_id = $1
               AND document_id = $2
-              AND source_module = $3
-              AND entity_type = $4
-              AND ($5 = '' OR locale = $5)
             ORDER BY indexed_at DESC
             LIMIT 1
             "#,
-            vec![
-                tenant_id.into(),
-                document_id.into(),
-                source_module.to_string().into(),
-                entity_type.to_string().into(),
-                query.locale.clone().unwrap_or_default().into(),
-            ],
+            vec![tenant_id.into(), document_id.into()],
         );
         let document_row = db
             .query_one_raw(document_stmt)
@@ -507,10 +498,19 @@ impl SearchDictionaryService {
             FROM search_documents
             WHERE tenant_id = $1
               AND document_id = $2
+              AND source_module = $3
+              AND entity_type = $4
+              AND ($5 = '' OR locale = $5)
             ORDER BY indexed_at DESC
             LIMIT 1
             "#,
-            vec![tenant_id.into(), document_id.into()],
+            vec![
+                tenant_id.into(),
+                document_id.into(),
+                source_module.to_string().into(),
+                entity_type.to_string().into(),
+                query.locale.clone().unwrap_or_default().into(),
+            ],
         );
 
         let row = db.query_one_raw(stmt).await.map_err(Error::Database)?;
