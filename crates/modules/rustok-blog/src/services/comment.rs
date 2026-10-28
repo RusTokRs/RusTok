@@ -155,11 +155,11 @@ impl CommentService {
     /// Creates a comment for an owner-facing actor.
     ///
     /// The target only has to be a Blog post of the tenant: a draft, an archived
-    /// post and a post that is hidden from the storefront channels are valid
-    /// targets here. The public publication/channel boundary and the public
-    /// comments mode belong to [`Self::create_public_comment`]; applying them here
-    /// would write the comment to the Comments owner and then compensate it away,
-    /// so the comment would never survive the command.
+    /// post and a channel-hidden post are valid targets. The public
+    /// publication/channel policy is not applied to owner writes, but target
+    /// existence is rechecked after the external Comments commit. If the post
+    /// disappeared while the port call was in flight, the comment is deleted
+    /// with the existing idempotent compensation command.
     #[instrument(skip(self, security, input))]
     pub async fn create_comment(
         &self,
@@ -237,27 +237,29 @@ impl CommentService {
         // fresh idempotent delete command. The terminal TargetDeleted event remains the
         // durable cross-owner cleanup backstop for the deletion case.
         //
-        // An owner-facing write has no public boundary to revalidate: its target is
-        // the Blog post itself, which was checked for existence before the write.
-        if target_policy == CommentTargetPolicy::Owner {
-            return Self::map_comment_record(record);
-        }
-
-        match self
-            .ensure_public_comment_creation_allowed(tenant_id, post_id, public_channel_slug)
-            .await
-        {
+        // Both write profiles must confirm the target still exists after the
+        // external Comments commit. The owner profile does not require public
+        // visibility, but a post deleted during the port call must not leave
+        // an orphan comment after its TargetDeleted cleanup was delivered.
+        let revalidated = match target_policy {
+            CommentTargetPolicy::Owner => self.ensure_post_exists(tenant_id, post_id).await,
+            CommentTargetPolicy::Public => {
+                self.ensure_public_comment_creation_allowed(tenant_id, post_id, public_channel_slug)
+                    .await
+            }
+        };
+        match revalidated {
             Ok(()) => {}
             Err(revalidation_error) => {
                 // The Comments write already crossed an owner boundary. Any failure in
-                // the final Blog visibility check means the create command cannot report
+                // the final Blog target check means the create command cannot report
                 // success without leaving a committed foreign-side effect behind.
                 if let Err(compensation_error) = self
-                    .compensate_created_public_comment(tenant_id, record.id)
+                    .compensate_created_comment(tenant_id, record.id)
                     .await
                 {
                     return Err(BlogError::invariant(format!(
-                        "Blog post {post_id} public visibility could not be confirmed after comment creation and the compensating comment delete failed: {compensation_error}"
+                        "Blog post {post_id} target policy could not be confirmed after comment creation and the compensating comment delete failed: {compensation_error}"
                     )));
                 }
 
@@ -268,7 +270,7 @@ impl CommentService {
         Self::map_comment_record(record)
     }
 
-    async fn compensate_created_public_comment(
+    async fn compensate_created_comment(
         &self,
         tenant_id: Uuid,
         comment_id: Uuid,
