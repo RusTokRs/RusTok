@@ -400,19 +400,13 @@ fn table_row_view_model_composes_row_policy_without_ui_runtime() {
 }
 
 #[test]
-fn title_input_view_model_keeps_autoslug_policy_without_ui_runtime() {
-    let generated = blog_post_admin_title_input_view("Hello RusTok".to_string(), "   ");
-    assert_eq!(generated.title, "Hello RusTok");
-    assert_eq!(generated.slug_update, Some("hello-rustok".to_string()));
+fn title_input_does_not_invent_slug_policy() {
+    let english = blog_post_admin_title_input_view("Hello RusTok".to_string());
+    assert_eq!(english.title, "Hello RusTok");
 
-    let preserved = blog_post_admin_title_input_view("Changed title".to_string(), "custom-slug");
-    assert_eq!(preserved.title, "Changed title");
-    assert_eq!(preserved.slug_update, None);
-}
-
-#[test]
-fn slugify_normalizes_text() {
-    assert_eq!(slugify("Hello, Rustok UI!"), "hello-rustok-ui");
+    // The Blog owner applies the same canonical Taxonomy transliteration in both UIs.
+    let russian = blog_post_admin_title_input_view("Привет мир".to_string());
+    assert_eq!(russian.title, "Привет мир");
 }
 
 #[test]
@@ -475,8 +469,6 @@ fn label_count_and_status_helpers_work() {
     );
     assert!(has_non_empty_text(" x "));
     assert!(!has_non_empty_text("   "));
-    assert!(should_autofill_slug("   "));
-    assert!(!should_autofill_slug("existing-slug"));
     assert_eq!(
         loadable_post_id(Some(" post-1 ")),
         Some("post-1".to_string())
