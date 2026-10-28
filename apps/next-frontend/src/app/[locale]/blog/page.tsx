@@ -90,23 +90,20 @@ export default async function BlogListingPage({
 
   let posts: BlogPostSummary[] = [];
   let nextCursor: string | null = null;
-  try {
-    if (tenantId) {
-      const res = await fetchPublishedPosts(
-        storefrontGraphql,
-        tenantId,
-        tenantSlug,
-        currentCursor,
-        pageSize,
-        selectedTag,
-        selectedCategory,
-        locale
-      );
-      posts = res.items;
-      nextCursor = res.nextCursor;
-    }
-  } catch {
-    posts = [];
+  if (tenantId) {
+    // Preserve failures as errors, not a misleading "no published posts" state.
+    const res = await fetchPublishedPosts(
+      storefrontGraphql,
+      tenantId,
+      tenantSlug,
+      currentCursor,
+      pageSize,
+      selectedTag,
+      selectedCategory,
+      locale
+    );
+    posts = res.items;
+    nextCursor = res.nextCursor;
   }
 
   // Filter posts by keyword if search query is provided
