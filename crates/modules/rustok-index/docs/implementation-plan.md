@@ -6,7 +6,7 @@
 
 - IDX-TEST-GAP (open): `crates/modules/rustok-index/tests/integration.rs`
   contains an ignored `test_index_rebuild_flow` with a nil test tenant and
-  a `todo!(...)` index status lookup. It does not establish rebuild readiness.
+  a an unimplemented rebuild-status placeholder index status lookup. It does not establish rebuild readiness.
   Replacing it with a real database/rebuild contract test requires runtime
   fixtures and owner verification; no test was deleted or falsely marked passed.
 - Additional inspection covered the Index admin adapter and integration-test
