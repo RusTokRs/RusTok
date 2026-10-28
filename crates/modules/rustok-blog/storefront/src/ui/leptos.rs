@@ -11,8 +11,9 @@ use super::share::{BlogShareButtons, BlogStatusBadge};
 
 use crate::i18n::{comment_composer_copy, t};
 use crate::model::{
-    BlogCommentsAvailability, BlogPostDetail, BlogPostListItem, StorefrontBlogData,
+    BlogCommentsAvailability, BlogPostDetail, BlogPostList, BlogPostListItem, StorefrontBlogData,
 };
+use rustok_search_storefront::model::{SearchPreviewFilters, SearchPreviewPayload};
 use crate::{comments_pagination, core, transport};
 
 #[component]
@@ -21,6 +22,8 @@ pub fn BlogView() -> impl IntoView {
     let selected_locale = route_context.locale.clone();
     let comments_page_query = use_route_query_value(comments_pagination::COMMENTS_PAGE_QUERY_KEY);
     let posts_cursor_query = use_route_query_value(core::POSTS_CURSOR_QUERY_KEY);
+    let search_query = use_route_query_value("q");
+    let search_page_query = use_route_query_value("searchPage");
     let tag_query = use_route_query_value("tag");
     let category_query = use_route_query_value("category");
     let shell_view = core::build_storefront_shell_view_model(selected_locale.as_deref());
@@ -46,13 +49,45 @@ pub fn BlogView() -> impl IntoView {
                 .get()
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty());
+            let q = search_query.get().map(|q| q.trim().to_owned())
+                .filter(|q| !q.is_empty());
+            let search_page = search_page_query.get()
+                .and_then(|value| value.parse::<usize>().ok())
+                .unwrap_or(1)
+                .clamp(1, 100);
             (
                 fetch_request,
                 comments_pagination::comments_page_from_query(comments_page_query.get()),
+                q,
+                search_page,
             )
         },
-        move |(request, comments_page)| async move {
-            transport::fetch_blog(request, comments_page).await
+        move |(request, comments_page, query, search_page)| async move {
+            let mut data = transport::fetch_blog(request.clone(), comments_page)
+                .await.map_err(|error| error.to_string())?;
+            let Some(query) = query else {
+                return Ok::<_, String>((data, None, search_page));
+            };
+            let mut filters = SearchPreviewFilters::default();
+            filters.entity_types.push("blog_post".to_owned());
+            filters.source_modules.push("blog".to_owned());
+            filters.statuses.push("published".to_owned());
+            if let Some(category_id) = request.category_id {
+                filters.category_ids.push(category_id);
+            }
+            const SEARCH_PAGE_SIZE: usize = 6;
+            let result = rustok_search_storefront::transport::fetch_search_page(
+                query,
+                request.locale,
+                None,
+                filters,
+                request.tag,
+                SEARCH_PAGE_SIZE,
+                (search_page - 1) * SEARCH_PAGE_SIZE,
+            ).await.map_err(|error| error.to_string())?;
+            let total = result.total;
+            data.posts = map_blog_search_results(result)?;
+            Ok((data, Some(total), search_page))
         },
     );
 
@@ -88,8 +123,8 @@ pub fn BlogView() -> impl IntoView {
                         );
                         Suspend::new(async move {
                             match posts_resource.await {
-                                Ok(data) => view! {
-                                    <BlogShowcase data comments_page />
+                                Ok((data, search_total, search_page)) => view! {
+                                    <BlogShowcase data comments_page search_total search_page />
                                 }
                                 .into_any(),
                                 Err(err) => view! {
@@ -108,11 +143,18 @@ pub fn BlogView() -> impl IntoView {
 }
 
 #[component]
-fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
+fn BlogShowcase(
+    data: StorefrontBlogData,
+    comments_page: u64,
+    search_total: Option<u64>,
+    search_page: usize,
+) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let posts_query_writer = use_route_query_writer();
     let first_page_writer = posts_query_writer.clone();
-    let next_page_writer = posts_query_writer;
+    let next_page_writer = posts_query_writer.clone();
+    let search_previous_writer = posts_query_writer.clone();
+    let search_next_writer = posts_query_writer;
     let posts_next_cursor = data.posts.next_cursor.clone();
     let posts_cursor_query = use_route_query_value(core::POSTS_CURSOR_QUERY_KEY);
     let first_page_label = t(
@@ -177,30 +219,9 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
     let category_for_form = active_category.clone();
     let slug_for_form = selected_post_slug.clone();
 
-    let other_posts = if let Some(q) = active_search
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        let q_lower = q.to_lowercase();
-        other_posts
-            .into_iter()
-            .filter(|p| {
-                p.title.to_lowercase().contains(&q_lower)
-                    || p.excerpt
-                        .as_deref()
-                        .map(|e| e.to_lowercase().contains(&q_lower))
-                        .unwrap_or(false)
-                    || p.tags.iter().any(|t| t.to_lowercase().contains(&q_lower))
-                    || p.category_name
-                        .as_deref()
-                        .map(|c| c.to_lowercase().contains(&q_lower))
-                        .unwrap_or(false)
-            })
-            .collect()
-    } else {
-        other_posts
-    };
+    // Query results already passed full-text ranking, tenant/channel and
+    // exact category/tag filters *before* Search applied the page offset.
+    // Never locally filter the returned page again.
 
     let has_active_filter =
         active_tag.is_some() || active_category.is_some() || active_search.is_some();
@@ -354,7 +375,8 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                 }
                 .into_any()
             }}
-            {move || posts_cursor_query.get().filter(|value| !value.trim().is_empty()).map(|_| {
+            {move || (search_total.is_none()).then(|| ())
+                .and_then(|_| posts_cursor_query.get().filter(|value| !value.trim().is_empty())).map(|_| {
                 let writer = first_page_writer.clone();
                 view! {
                     <div class="mt-6 flex justify-center">
@@ -372,7 +394,7 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                     </div>
                 }
             })}
-            {posts_next_cursor.map(|cursor| {
+            {posts_next_cursor.filter(|_| search_total.is_none()).map(|cursor| {
                 let writer = next_page_writer.clone();
                 view! {
                     <div class="mt-6 flex justify-center">
@@ -391,8 +413,88 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                     </div>
                 }
             })}
+            {search_total.map(|total| {
+                let has_previous = search_page > 1;
+                let has_next = (search_page as u64) * 6 < total;
+                let previous_writer = search_previous_writer.clone();
+                let next_writer = search_next_writer.clone();
+                view! {
+                    <nav aria-label="Blog search pages" class="mt-6 flex items-center justify-center gap-4">
+                        {has_previous.then(|| {
+                            let writer = previous_writer.clone();
+                            view! {
+                                <button type="button" class="rounded-full border px-4 py-2 text-sm"
+                                    on:click=move |_| {
+                                        if search_page <= 2 {
+                                            writer.apply_query_intent(UiRouteQueryIntent::clear("searchPage"));
+                                        } else {
+                                            writer.apply_query_intent(UiRouteQueryIntent::replace(
+                                                "searchPage", (search_page - 1).to_string(),
+                                            ));
+                                        }
+                                    }>
+                                    {t(locale.as_deref(), "blog.posts.previousPage", "Previous")}
+                                </button>
+                            }
+                        })}
+                        <span class="text-sm text-muted-foreground">
+                            {format!("Page {search_page} · {total} results")}
+                        </span>
+                        {has_next.then(|| {
+                            let writer = next_writer.clone();
+                            view! {
+                                <button type="button" class="rounded-full border px-4 py-2 text-sm"
+                                    on:click=move |_| writer.apply_query_intent(UiRouteQueryIntent::replace(
+                                        "searchPage", (search_page + 1).to_string(),
+                                    ))>
+                                    {t(locale.as_deref(), "blog.posts.nextPage", "Next page")}
+                                </button>
+                            }
+                        })}
+                    </nav>
+                }
+            })}
         </div>
     }
+}
+
+/// Convert Search's public projection into Blog's canonical presentation
+/// model without requerying/locally filtering a limited Blog page. An invalid
+/// owner projection is an error, never silently shown as zero matches.
+fn map_blog_search_results(result: SearchPreviewPayload) -> Result<BlogPostList, String> {
+    let mut items = Vec::with_capacity(result.items.len());
+    for item in result.items {
+        if item.source_module != "blog" || item.entity_type != "blog_post" {
+            return Err("Search returned an unrelated Blog result".to_owned());
+        }
+        let payload: serde_json::Value = serde_json::from_str(&item.payload)
+            .map_err(|_| "Search returned malformed Blog metadata".to_owned())?;
+        let get_string = |key: &str| payload.get(key)
+            .and_then(serde_json::Value::as_str)
+            .map(ToOwned::to_owned);
+        let slug = get_string("slug")
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| "Search result has no canonical Blog slug".to_owned())?;
+        let tags = payload.get("tags").and_then(serde_json::Value::as_array)
+            .map(|values| values.iter().filter_map(|value| value.as_str().map(ToOwned::to_owned))
+                .collect::<Vec<_>>())
+            .unwrap_or_default();
+        items.push(BlogPostListItem {
+            id: item.id,
+            title: item.title,
+            effective_locale: item.locale.unwrap_or_else(|| "en".to_string()),
+            slug: Some(slug),
+            excerpt: get_string("excerpt"),
+            status: "published".to_string(),
+            published_at: get_string("published_at"),
+            tags,
+            featured_image_url: get_string("featured_image_url"),
+            author_profile: None,
+            category_id: get_string("category_id"),
+            category_name: get_string("category_name"),
+        });
+    }
+    Ok(BlogPostList { items, next_cursor: None })
 }
 
 #[component]
