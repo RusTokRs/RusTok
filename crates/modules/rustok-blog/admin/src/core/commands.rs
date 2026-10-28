@@ -53,6 +53,10 @@ pub fn busy_key_for_publish(post_id: &str) -> String {
     ui_busy_key_with_id("publish", post_id)
 }
 
+pub fn busy_key_for_pin(post_id: &str) -> String {
+    ui_busy_key_with_id("pin", post_id)
+}
+
 pub fn busy_key_for_archive(post_id: &str) -> String {
     ui_busy_key_with_id("archive", post_id)
 }
