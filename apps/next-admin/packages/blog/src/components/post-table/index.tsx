@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { DataTableShell } from '@/widgets/data-table/data-table-shell';
-import { PostSortSelect } from './sort-select';
+import { PostSortSelect, PostStatusSelect } from './sort-select';
 import { createColumns } from './columns';
 import type { GqlOpts, PostSummary } from '../../api/posts';
 import { useMemo } from 'react';
@@ -29,6 +29,7 @@ export function PostTable({ data, pager, gqlOpts }: PostTableParams) {
       columns={columns}
       pagination={<CursorPagination pager={pager} />}
     >
+      <PostStatusSelect />
       <PostSortSelect />
     </DataTableShell>
   );
