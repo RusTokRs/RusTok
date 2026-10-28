@@ -4,6 +4,62 @@
 
 Strengthen `apps/server` as the central backend runtime with formal API contracts, predictable operational diagnostics, and hardened security gates.
 
+## Server Engineering Audit Continuation (2026-10-28)
+
+This is **bounded remediation**, not completion of the exhaustive FS-01
+six-dimension audit. The reviewed baseline was
+`999c9b2804febfe67a3bef7ef937e891d6aa8657` on `main`.
+
+### Confirmed changes under review
+
+- HTTP installer admission fails closed on a durable-job lookup error.
+  A new append-only migration enforces at most one `running`
+  `install_http_jobs` record across replicas through a database
+  partial unique index on PostgreSQL/SQLite. Concurrent losers receive
+  a stable HTTP 409. Existing duplicate `running` rows intentionally
+  block migration until their side effects and receipts are reconciled.
+  Public installer read errors no longer expose SQL/host paths.
+- Manifest OAuth synchronization no longer silently ignores orphan-app
+  deactivation failures. Each tenant's orphan deactivations and matching
+  refresh-token revocations commit atomically; SQL failures roll back
+  those deactivations. Newly created/updated desired apps still execute
+  before the orphan transaction and **the complete reconciliation is
+  not yet all-or-nothing**.
+- REST user listing now has a deterministic tie-breaker for equal
+  `created_at` values.
+
+### Unclosed architectural and runtime gates
+
+- **Installer:** the HTTP job still uses an in-process `tokio::spawn`.
+  A process crash can strand a `running` job. A safe recovery/fencing
+  design must reconcile immutable receipts and actual side effects
+  before taking over a lease; do not automatically delete or expire
+  `running` rows. Add a multi-replica PostgreSQL contention test and
+  crash/restart recovery evidence. PostgreSQL support for the new
+  index must be verified before deployment.
+- **OAuth:** implement a single versioned, serialized per-tenant
+  reconciliation transaction that covers all upserts and deactivations,
+  with explicit revocation fences for previously minted access tokens.
+  Owner/transport authorization semantics must be preserved.
+- **Build visibility:** platform-wide build history and unscoped
+  `BuildEventHub` broadcasts are currently exposed behind tenant
+  `modules:read/list/manage` grants; decide and document the
+  authoritative host-global-vs-tenant visibility contract in an ADR
+  before altering clients, event schemas and WebSocket behavior.
+- **Email:** replace detached password-reset/verification send tasks
+  with confidential, durable, idempotent delivery and retry evidence
+  without enabling user enumeration.
+- **GraphQL:** convert fallible string UUID owner-view projections
+  into typed/fallible mappings rather than panicking on malformed data.
+
+Required scoped verification before accepting these changes:
+`cargo fmt --all -- --check`,
+`cargo check -p rustok-server --lib`,
+`cargo test -p rustok-server --lib`,
+`cargo test -p rustok-migrations --lib`, and targeted PostgreSQL
+schema/admission and OAuth failure-injection tests. None is claimed
+passed without execution evidence.
+
 ## Module Platform Handoff
 
 The server is the host and transport composition layer for the module platform;

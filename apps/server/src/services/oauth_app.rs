@@ -699,15 +699,56 @@ pub async fn sync_app_connections(
         active_slugs.insert(slug);
     }
 
-    // 4. Deactivate orphaned auto-created apps
-    for app in &existing {
-        if app.auto_created && app.is_active() && !active_slugs.contains(&app.slug) {
-            let mut active: OAuthAppActiveModel = app.clone().into();
-            active.is_active = Set(false);
-            active.revoked_at = Set(Some(Utc::now().into()));
-            active.updated_at = Set(Utc::now().into());
-            let _ = active.update(db).await;
+    // 4. Deactivate orphaned auto-created apps and revoke their outstanding
+    // refresh credentials in one database transaction. A failed write must
+    // never produce a successful sync response while orphaned clients remain
+    // active, and a token revocation failure must roll back deactivation.
+    let orphaned = existing
+        .iter()
+        .filter(|app| app.auto_created && app.is_active() && !active_slugs.contains(&app.slug))
+        .collect::<Vec<_>>();
+    if !orphaned.is_empty() {
+        let tx = db.begin().await.map_err(|error| {
+            tracing::error!(%error, %tenant_id, "Failed to start orphan OAuth app deactivation");
+            Error::InternalServerError
+        })?;
+        let now = Utc::now();
+        for app in orphaned {
+            let result = oauth_apps::Entity::update_many()
+                .col_expr(oauth_apps::Column::IsActive, Expr::value(false))
+                .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Some(now)))
+                .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now))
+                .filter(oauth_apps::Column::Id.eq(app.id))
+                .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+                .filter(oauth_apps::Column::AutoCreated.eq(true))
+                .filter(oauth_apps::Column::IsActive.eq(true))
+                .exec(&tx)
+                .await
+                .map_err(|error| {
+                    tracing::error!(%error, %tenant_id, app_id = %app.id, "Failed to deactivate orphan OAuth app");
+                    Error::InternalServerError
+                })?;
+            if result.rows_affected != 1 {
+                tracing::error!(%tenant_id, app_id = %app.id, "Orphan OAuth app state changed during manifest sync");
+                return Err(Error::InternalServerError);
+            }
+
+            oauth_tokens::Entity::update_many()
+                .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
+                .filter(oauth_tokens::Column::AppId.eq(app.id))
+                .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
+                .filter(oauth_tokens::Column::RevokedAt.is_null())
+                .exec(&tx)
+                .await
+                .map_err(|error| {
+                    tracing::error!(%error, %tenant_id, app_id = %app.id, "Failed to revoke orphan OAuth app tokens");
+                    Error::InternalServerError
+                })?;
         }
+        tx.commit().await.map_err(|error| {
+            tracing::error!(%error, %tenant_id, "Failed to commit orphan OAuth app deactivation");
+            Error::InternalServerError
+        })?;
     }
 
     Ok(())
@@ -2051,7 +2092,7 @@ mod tests {
     async fn sync_app_connections_creates_manifest_managed_apps_and_deactivates_orphans() {
         let (db, tenant) = test_db_with_tenant().await;
 
-        OAuthAppActiveModel {
+        let orphan_app = OAuthAppActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant.id),
             name: Set("old-storefront".to_string()),
@@ -2080,6 +2121,25 @@ mod tests {
         .insert(&db)
         .await
         .expect("insert orphan app");
+
+        let old_token = oauth_tokens::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            app_id: Set(orphan_app.id),
+            user_id: Set(None),
+            tenant_id: Set(tenant.id),
+            token_hash: Set("orphan-token-hash".to_string()),
+            family_id: Set(None),
+            grant_type: Set("client_credentials".to_string()),
+            scopes: Set(serde_json::json!(["storefront:*"])),
+            expires_at: Set((Utc::now() + chrono::Duration::days(1)).into()),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert orphan OAuth token");
 
         let mut manifest = crate::modules::ModulesManifest::default();
         manifest.build.server.embed_admin = false;
@@ -2152,5 +2212,56 @@ mod tests {
             .expect("orphan app still queryable");
         assert!(!orphan.is_active);
         assert!(orphan.revoked_at.is_some());
+
+        let token = oauth_tokens::Entity::find_by_id(old_token.id)
+            .one(&db)
+            .await
+            .expect("read orphan token")
+            .expect("orphan token remains as revoked evidence");
+        assert!(token.revoked_at.is_some(), "removed managed app must revoke its tokens");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn orphan_deactivation_database_failure_is_not_silently_ignored() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let mut manifest = crate::modules::ModulesManifest::default();
+        manifest.build.server.embed_admin = true;
+        manifest.build.server.embed_storefront = false;
+        manifest.build.admin.stack.clear();
+        manifest.build.storefront.clear();
+
+        sync_app_connections(&db, tenant.id, &manifest)
+            .await
+            .expect("create an active managed admin app");
+
+        let managed = OAuthAppsEntity::find_by_tenant(&db, tenant.id)
+            .await
+            .expect("load manifest-managed app")
+            .into_iter()
+            .find(|app| app.slug == "leptos-admin")
+            .expect("embedded admin app was created");
+        assert!(managed.is_active);
+
+        db.execute(sea_orm::Statement::from_string(
+            DbBackend::Sqlite,
+            "CREATE TRIGGER abort_managed_app_deactivation BEFORE UPDATE OF is_active ON oauth_apps WHEN NEW.is_active = 0 BEGIN SELECT RAISE(ABORT, 'simulated deactivation failure'); END".to_string(),
+        ))
+        .await
+        .expect("install fault injection trigger");
+
+        manifest.build.server.embed_admin = false;
+        assert!(
+            sync_app_connections(&db, tenant.id, &manifest)
+                .await
+                .is_err(),
+            "manifest sync must fail when an orphan cannot be deactivated"
+        );
+        let still_active = OAuthAppsEntity::find_by_id(managed.id)
+            .one(&db)
+            .await
+            .expect("load app after failed sync")
+            .expect("app remains persisted");
+        assert!(still_active.is_active, "failed transaction must preserve prior app state");
     }
 }

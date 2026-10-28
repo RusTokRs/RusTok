@@ -30,6 +30,14 @@ pub fn normalize_page_params(page: Option<u64>, page_size: Option<u64>) -> (u64,
     (page, page_size)
 }
 
+fn ordered_tenant_users_query(tenant_id: Uuid) -> sea_orm::Select<users::Entity> {
+    users::Entity::find()
+        .filter(UserColumn::TenantId.eq(tenant_id))
+        // Timestamps need a unique tie-breaker for stable offset pagination.
+        .order_by_asc(UserColumn::CreatedAt)
+        .order_by_asc(UserColumn::Id)
+}
+
 #[utoipa::path(get, path = "/api/users", tag = "users", security(("bearer_auth" = [])),
     params(UsersListParams),
     responses(
@@ -59,9 +67,7 @@ async fn list_users(
         "Handling users list request"
     );
 
-    let mut query = users::Entity::find()
-        .filter(UserColumn::TenantId.eq(tenant.id))
-        .order_by_asc(UserColumn::CreatedAt);
+    let mut query = ordered_tenant_users_query(tenant.id);
 
     if let Some(search) = params
         .search
@@ -147,6 +153,19 @@ fn forbidden_error(description: impl Into<String>) -> Error {
 mod tests {
     use super::*;
     use rustok_core::generate_id;
+
+    #[test]
+    fn user_list_query_orders_by_timestamp_then_unique_id() {
+        use sea_orm::{DbBackend, QueryTrait};
+
+        let statement = ordered_tenant_users_query(Uuid::new_v4()).build(DbBackend::Sqlite);
+        let sql = statement.to_string();
+        let order_by = sql.split("ORDER BY").nth(1).expect("query has ordering");
+        let timestamp_position = order_by.find("created_at").expect("timestamp order");
+        let id_position = order_by.find("id").expect("unique tie-breaker");
+        assert!(timestamp_position < id_position);
+        assert_eq!(order_by.matches("ASC").count(), 2);
+    }
 
     #[test]
     fn test_normalize_page_params_defaults() {
