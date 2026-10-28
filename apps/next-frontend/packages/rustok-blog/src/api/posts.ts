@@ -259,28 +259,39 @@ const BLOG_CATEGORIES_QUERY = `
   }
 `;
 
+/** Load the full category dictionary, not just the first GraphQL page. */
 export async function fetchBlogCategories(
   graphql: BlogGraphqlExecutor,
   tenantId?: string | null,
   tenantSlug?: string | null,
   locale?: string,
 ): Promise<BlogCategorySummary[]> {
-  const response = await graphql<{
-    blogCategories: { items: BlogCategorySummary[]; total: number };
-  }, {
-    tenantId?: string | null;
-    filter?: { locale?: string };
-  }>({
-    query: BLOG_CATEGORIES_QUERY,
-    variables: {
-      tenantId,
-      filter: { locale },
-    },
-    tenant: tenantSlug ?? undefined,
-  });
-  if (response.errors?.length || !response.data) {
-    throw new Error(response.errors?.[0]?.message ?? "Blog categories payload is missing");
-  }
-  return response.data.blogCategories.items;
-}
+  const items: BlogCategorySummary[] = [];
+  const pageSize = 100;
+  for (let page = 1; ; page += 1) {
+    const response = await graphql<{
+      blogCategories: { items: BlogCategorySummary[]; total: number };
+    }, {
+      tenantId?: string | null;
+      filter: { locale?: string; page: number; perPage: number };
+    }>({
+      query: BLOG_CATEGORIES_QUERY,
+      variables: {
+        tenantId,
+        filter: { locale, page, perPage: pageSize },
+      },
+      tenant: tenantSlug ?? undefined,
+    });
+    if (response.errors?.length || !response.data) {
+      throw new Error(response.errors?.[0]?.message ?? "Blog categories payload is missing");
+    }
 
+    const batch = response.data.blogCategories;
+    items.push(...batch.items);
+    if (items.length >= batch.total) return items;
+    // Do not spin forever on a broken or inconsistent server pagination response.
+    if (batch.items.length === 0) {
+      throw new Error("Blog category pagination returned an incomplete result");
+    }
+  }
+}
