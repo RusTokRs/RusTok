@@ -226,6 +226,16 @@ async fn storefront_blog_native(
             (tenant.id, tenant.default_locale)
         };
 
+        // Native server functions are callable independently of the host UI
+        // registry. Enforce the same tenant module gate as the GraphQL query.
+        match rustok_api::is_tenant_module_enabled(runtime_ctx.db(), tenant_id, MODULE_SLUG).await {
+            Ok(true) => {}
+            Ok(false) => return Err(ServerFnError::new("Blog module is not enabled")),
+            Err(_) => return Err(ServerFnError::new(
+                "Blog module state is temporarily unavailable",
+            )),
+        }
+
         if request_context
             .as_ref()
             .is_some_and(|context| context.tenant_id != tenant_id)
