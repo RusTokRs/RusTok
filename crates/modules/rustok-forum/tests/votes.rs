@@ -403,6 +403,16 @@ async fn topic_and_reply_votes_round_trip_through_read_paths() {
         )
         .await
         .expect("topic can be voted again before archival");
+    let subscription_service = SubscriptionService::new(db.clone());
+    subscription_service
+        .set_topic_subscription(
+            tenant_id,
+            topic.id,
+            voter.clone(),
+            write_context(tenant_id, &voter),
+        )
+        .await
+        .expect("viewer can subscribe before archival");
     let moderation = rustok_forum::ModerationService::new(db.clone(), event_bus);
     moderation
         .archive_topic(
@@ -413,9 +423,13 @@ async fn topic_and_reply_votes_round_trip_through_read_paths() {
         .await
         .expect("topic should archive");
     vote_service
-        .clear_topic_vote(tenant_id, topic.id, voter)
+        .clear_topic_vote(tenant_id, topic.id, voter.clone())
         .await
         .expect("archived topic must still allow removing the caller's vote");
+    subscription_service
+        .clear_topic_subscription(tenant_id, topic.id, voter)
+        .await
+        .expect("archived topic must still allow clearing its subscription");
 }
 
 #[tokio::test]
