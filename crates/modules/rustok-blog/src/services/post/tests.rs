@@ -930,3 +930,63 @@ async fn customer_list_hides_a_published_post_without_a_publication_timestamp() 
         "an authorized editor still sees the damaged row they have to repair"
     );
 }
+
+/// The public cursor must be calculated over renderable posts, not a page
+/// containing posts whose translations have been lost.
+#[tokio::test]
+async fn public_keyset_skips_untranslated_pinned_post_before_limit() {
+    let db = setup_test_db().await;
+    ensure_blog_schema(&db).await;
+    let transport = OutboxTransport::new(db.clone());
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let post_service = PostService::new(db.clone(), event_bus);
+    let tenant_id = Uuid::new_v4();
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+    let mut broken_input = crate::tests::hardening::post_input("missing-translation");
+    broken_input.publish = true;
+    let broken = post_service
+        .create_post(tenant_id, admin.clone(), broken_input)
+        .await
+        .expect("published post should be created");
+    let mut healthy_input = crate::tests::hardening::post_input("healthy-translation");
+    healthy_input.publish = true;
+    let healthy = post_service
+        .create_post(tenant_id, admin.clone(), healthy_input)
+        .await
+        .expect("second published post should be created");
+    post_service
+        .pin_post(tenant_id, broken, admin)
+        .await
+        .expect("the future damaged post is pinnable");
+
+    blog_post_translation::Entity::delete_many()
+        .filter(blog_post_translation::Column::PostId.eq(broken))
+        .exec(&db)
+        .await
+        .expect("remove the damaged post's translation fixture");
+
+    let page = post_service
+        .list_public_visible_keyset(
+            tenant_id,
+            PublicPostsPageQuery {
+                locale: Some("en".to_string()),
+                per_page: Some(1),
+                ..Default::default()
+            },
+            Some("en"),
+            None,
+        )
+        .await
+        .expect("public listing should succeed");
+
+    assert_eq!(
+        page.items.iter().map(|post| post.id).collect::<Vec<_>>(),
+        vec![healthy],
+        "damaged pinned post cannot consume the only slot of the first page"
+    );
+    assert!(
+        page.next_cursor.is_none(),
+        "the sole renderable post must not produce a phantom next page"
+    );
+}
