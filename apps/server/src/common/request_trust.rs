@@ -97,20 +97,51 @@ fn forwarded_value<'a>(headers: &'a HeaderMap, key: &str) -> Option<&'a str> {
 
 fn parse_forwarded_for_ip(value: &str) -> Option<IpAddr> {
     let candidate = value.trim();
-    if let Some(inner) = candidate
-        .strip_prefix('[')
-        .and_then(|inner| inner.split(']').next())
-    {
-        return IpAddr::from_str(inner).ok();
+    IpAddr::from_str(candidate)
+        .ok()
+        .or_else(|| SocketAddr::from_str(candidate).ok().map(|addr| addr.ip()))
+        .or_else(|| {
+            candidate
+                .strip_prefix('[')?
+                .strip_suffix(']')?
+                .parse()
+                .ok()
+        })
+}
+
+/// Resolve client identity from the nearest hop towards the caller. A trusted
+/// reverse proxy may append to a header supplied by an untrusted client; the
+/// leftmost value is therefore not necessarily the client's real address.
+/// Stop at the first untrusted hop instead of trusting earlier claims.
+///
+/// Malformed hops on the trusted side of the boundary invalidate the chain.
+fn client_ip_from_forwarded_chain(
+    headers: &HeaderMap,
+    header_name: &str,
+    peer_ip: IpAddr,
+    settings: &RequestTrustSettings,
+    parse_hop: fn(&str) -> Option<IpAddr>,
+) -> Option<IpAddr> {
+    let fields: Vec<_> = headers.get_all(header_name).iter().collect();
+    if fields.is_empty() {
+        return None;
     }
 
-    if let Ok(ip) = IpAddr::from_str(candidate) {
-        return Some(ip);
+    let trusted_nets = trusted_proxy_nets(settings);
+    let mut current = peer_ip;
+    for field in fields.into_iter().rev() {
+        for entry in field.to_str().ok()?.rsplit(',') {
+            if !trusted_nets.iter().any(|net| net.contains(&current)) {
+                return Some(current);
+            }
+            current = parse_hop(entry.trim())?;
+        }
     }
+    Some(current)
+}
 
-    candidate
-        .rsplit_once(':')
-        .and_then(|(host, _)| IpAddr::from_str(host).ok())
+fn parse_forwarded_element_ip(element: &str) -> Option<IpAddr> {
+    parse_forwarded_pair(element, "for").and_then(parse_forwarded_for_ip)
 }
 
 pub fn extract_effective_host(
@@ -142,14 +173,28 @@ pub fn extract_effective_client_ip(
     settings: &RequestTrustSettings,
 ) -> Option<IpAddr> {
     if forwarded_headers_trusted(peer_ip, settings) {
-        if let Some(forwarded_for) = first_header_value(headers, "x-forwarded-for")
-            .and_then(|value| IpAddr::from_str(value).ok())
-        {
-            return Some(forwarded_for);
+        let peer = peer_ip?;
+        // A malformed X-Forwarded-For must not fall through to a potentially
+        // conflicting Forwarded header supplied by the same caller.
+        if headers.contains_key("x-forwarded-for") {
+            return client_ip_from_forwarded_chain(
+                headers,
+                "x-forwarded-for",
+                peer,
+                settings,
+                |entry| IpAddr::from_str(entry).ok(),
+            )
+            .or(Some(peer));
         }
-
-        if let Some(forwarded) = forwarded_value(headers, "for").and_then(parse_forwarded_for_ip) {
-            return Some(forwarded);
+        if headers.contains_key(FORWARDED) {
+            return client_ip_from_forwarded_chain(
+                headers,
+                "forwarded",
+                peer,
+                settings,
+                parse_forwarded_element_ip,
+            )
+            .or(Some(peer));
         }
     } else {
         warn_ignored_forwarded_headers(headers, peer_ip, "untrusted_or_ignored_forwarded_for");
@@ -226,6 +271,99 @@ mod tests {
             extract_effective_proto(&headers, peer_ip, &settings).as_deref(),
             Some("https")
         );
+    }
+
+    #[test]
+    fn trusted_proxy_ignores_spoofed_leftmost_forwarded_ip() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("198.51.100.66, 203.0.113.8"),
+        );
+        let peer = Some(IpAddr::from([10, 1, 2, 3]));
+
+        assert_eq!(
+            extract_effective_client_ip(&headers, peer, &trusted_settings()),
+            Some(IpAddr::from([203, 0, 113, 8])),
+        );
+    }
+
+    #[test]
+    fn trusted_proxy_chain_skips_only_verified_intermediaries() {
+        let mut headers = HeaderMap::new();
+        headers.append(
+            "x-forwarded-for",
+            HeaderValue::from_static("198.51.100.66, 203.0.113.8"),
+        );
+        headers.append(
+            "x-forwarded-for",
+            HeaderValue::from_static("10.0.0.4"),
+        );
+
+        assert_eq!(
+            extract_effective_client_ip(
+                &headers,
+                Some(IpAddr::from([10, 1, 2, 3])),
+                &trusted_settings(),
+            ),
+            Some(IpAddr::from([203, 0, 113, 8])),
+        );
+    }
+
+    #[test]
+    fn untrusted_leftmost_garbage_does_not_poison_client_identity() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("not-an-ip, 203.0.113.8"),
+        );
+
+        assert_eq!(
+            extract_effective_client_ip(
+                &headers,
+                Some(IpAddr::from([10, 1, 2, 3])),
+                &trusted_settings(),
+            ),
+            Some(IpAddr::from([203, 0, 113, 8])),
+        );
+    }
+
+    #[test]
+    fn malformed_nearest_hop_falls_back_to_peer_not_other_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("198.51.100.5, invalid"),
+        );
+        headers.insert(FORWARDED, HeaderValue::from_static("for=198.51.100.6"));
+        let peer = IpAddr::from([10, 1, 2, 3]);
+
+        assert_eq!(
+            extract_effective_client_ip(&headers, Some(peer), &trusted_settings()),
+            Some(peer),
+        );
+    }
+
+    #[test]
+    fn forwarded_header_respects_nearest_untrusted_hop_and_ipv6_port() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            FORWARDED,
+            HeaderValue::from_static(
+                "for=198.51.100.66;proto=http, for=\"[2001:db8::1234]:1234\"",
+            ),
+        );
+
+        assert_eq!(
+            extract_effective_client_ip(
+                &headers,
+                Some(IpAddr::from([10, 1, 2, 3])),
+                &trusted_settings(),
+            ),
+            Some(IpAddr::from_str("2001:db8::1234").unwrap()),
+        );
+        assert_eq!(parse_forwarded_for_ip("[2001:db8::1234]garbage"), None);
+        assert_eq!(parse_forwarded_for_ip("198.51.100.1:not-a-port"), None);
     }
 
     #[test]
