@@ -31,6 +31,108 @@ export interface BlogPostListResponse {
   nextCursor: string | null;
 }
 
+export interface BlogSearchPage {
+  items: BlogPostSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+type IndexedBlogPost = {
+  id: string;
+  entityType: string;
+  sourceModule: string;
+  title: string;
+  locale: string | null;
+  payload: string;
+};
+
+/**
+ * Search owns full-text ranking and offset pagination. Blog owns the live
+ * publication/channel gate and the projected presentation fields. Never
+ * post-filter a keyset page of publicBlogPosts for q: doing so loses matches
+ * on later pages and returns incorrect counts.
+ */
+export async function searchPublishedPosts(
+  graphql: BlogGraphqlExecutor,
+  tenantSlug: string | null,
+  query: string,
+  locale: string,
+  page: number,
+  pageSize: number,
+  categoryId?: string,
+  tag?: string,
+): Promise<BlogSearchPage> {
+  const safePageSize = Math.max(1, Math.min(50, Math.trunc(pageSize)));
+  const safePage = Math.max(1, Math.min(100, Math.trunc(page)));
+  const input = {
+    query,
+    locale,
+    entityTypes: ["blog_post"],
+    sourceModules: ["blog"],
+    statuses: ["published"],
+    categoryIds: categoryId ? [categoryId] : undefined,
+    tag: tag || undefined,
+    limit: safePageSize,
+    offset: (safePage - 1) * safePageSize,
+  };
+  const response = await graphql<{
+    storefrontSearch: { total: number; items: IndexedBlogPost[] };
+  }, { input: typeof input }>({
+    query: `
+      query BlogFullTextSearch($input: SearchPreviewInput!) {
+        storefrontSearch(input: $input) {
+          total
+          items { id entityType sourceModule title locale payload }
+        }
+      }
+    `,
+    variables: { input },
+    tenant: tenantSlug ?? undefined,
+  });
+  if (response.errors?.length || !response.data) {
+    throw new Error(response.errors?.[0]?.message ?? "Blog Search payload is missing");
+  }
+  const items = response.data.storefrontSearch.items.map((item): BlogPostSummary => {
+    if (item.sourceModule !== "blog" || item.entityType !== "blog_post") {
+      throw new Error("Blog Search returned a document from another source");
+    }
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(item.payload) as Record<string, unknown>;
+    } catch {
+      throw new Error("Blog Search returned an invalid document payload");
+    }
+    const str = (value: unknown): string | null =>
+      typeof value === "string" ? value : null;
+    const slug = str(payload.slug);
+    if (!slug) {
+      throw new Error("Blog Search returned a post without its canonical slug");
+    }
+    return {
+      id: item.id,
+      title: item.title,
+      slug,
+      excerpt: str(payload.excerpt),
+      featuredImageUrl: str(payload.featured_image_url),
+      authorId: str(payload.author_id),
+      categoryId: str(payload.category_id),
+      categoryName: str(payload.category_name),
+      tags: Array.isArray(payload.tags)
+        ? payload.tags.filter((value): value is string => typeof value === "string")
+        : [],
+      publishedAt: str(payload.published_at),
+      authorProfile: null,
+    };
+  });
+  return {
+    items,
+    total: response.data.storefrontSearch.total,
+    page: safePage,
+    pageSize: safePageSize,
+  };
+}
+
 export interface BlogPublicComment {
   id: string;
   effectiveLocale: string;
