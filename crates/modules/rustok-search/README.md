@@ -21,6 +21,12 @@ RusToK.
 - Consume product-owned high-load projections from `rustok-index` without
   exposing index runtime types to Search consumers.
 - Consume Blog lifecycle and scoped rebuild events into Search-owned documents.
+- Accept an optional exact Blog `tag` filter in the canonical SearchQuery and
+  GraphQL SearchPreviewInput. Blog supplies normalized canonical/localized tag
+  keys in `facets.tag_keys` through the Taxonomy owner; Search applies the
+  PostgreSQL JSONB membership predicate alongside text/category predicates
+  **before** total, facets and offset pagination. Existing projections must
+  be reindexed to add `facets.tag_keys` and `facets.category_id`.
 - Own canonical application URLs for normalized `SearchResultItem` values through
   `canonical_search_result_url`.
 - Serve storefront Search, admin preview, and host global-search capabilities.
