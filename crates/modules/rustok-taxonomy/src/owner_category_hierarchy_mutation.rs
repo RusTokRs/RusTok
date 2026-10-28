@@ -517,7 +517,7 @@ mod scope_isolation_tests {
             scope_value: Set(scope.to_string()),
             canonical_key: Set(format!("category-{id}")),
             revision: Set(1),
-            created_at: Set(now),
+            created_at: Set(now.to_owned()),
             updated_at: Set(now),
         }
         .insert(db)
