@@ -32,6 +32,14 @@ RusToK.
   declares each source module as public or gated, gated modules answer a real-time
   discovery preflight and per-candidate authorization, and modules that were never
   declared are denied. Admin Search is unaffected.
+- Blog storefront documents use **gated** search audience discovery, not unconditional
+  public declaration. The server host composes a thin adapter to Blog's batch
+  `filter_public_search_post_ids` owner read; the Blog owner checks the live
+  published timestamp, tenant, channel allowlist, active channel and Channel
+  module binding before an indexed candidate becomes visible. The Search engine
+  still owns ranking and SQL storage. Each grant and SQL predicate is keyed by
+  `(source_module, document_id)` to avoid cross-owner UUID collisions.
+  Generic storefront autocompletion uses the same owner-qualified gate.
 - Provide the generic `SearchAudiencePolicyPort` and `SearchAudienceRegistry` SPI for
   domain-owned real-time audience discovery preflights and batch candidate
   authorization across dynamic access-controlled source modules, without any
