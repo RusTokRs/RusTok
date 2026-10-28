@@ -95,7 +95,7 @@ export default function PostForm({
   }, [defaultLocale, gqlOpts]);
 
   const categoryOptions: FormOption[] = useMemo(() => {
-    const opts: FormOption[] = [{ label: 'None (Uncategorized)', value: '' }];
+    const opts: FormOption[] = [{ label: 'None (Uncategorized)', value: '__none__' }];
     categories.forEach((cat) => {
       opts.push({ label: cat.name, value: cat.id });
     });
@@ -106,7 +106,7 @@ export default function PostForm({
     title: initialData?.title ?? '',
     slug: initialData?.slug ?? '',
     locale: defaultLocale,
-    categoryId: initialData?.categoryId ?? '',
+    categoryId: initialData?.categoryId ?? '__none__',
     channelSlugs: initialData?.channelSlugs?.join(', ') ?? '',
     excerpt: initialData?.excerpt ?? '',
     tags: initialData?.tags?.join(', ') ?? '',
@@ -183,7 +183,7 @@ export default function PostForm({
             content,
             excerpt: values.excerpt?.trim() || null,
             tags,
-            categoryId: values.categoryId ? values.categoryId : null,
+            categoryId: values.categoryId && values.categoryId !== '__none__' ? values.categoryId : null,
             channelSlugs,
             featuredImageUrl: values.featuredImageUrl?.trim() || null,
             seoTitle: values.seoTitle?.trim() || null,
@@ -204,7 +204,7 @@ export default function PostForm({
             excerpt: values.excerpt || undefined,
             publish: values.publish,
             tags,
-            categoryId: values.categoryId ? values.categoryId : undefined,
+            categoryId: values.categoryId && values.categoryId !== '__none__' ? values.categoryId : undefined,
             channelSlugs: channelSlugs.length > 0 ? channelSlugs : undefined,
             featuredImageUrl: values.featuredImageUrl || undefined,
             seoTitle: values.seoTitle || undefined,
