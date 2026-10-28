@@ -100,6 +100,10 @@ async fn created_events(db: &DatabaseConnection) -> TestResult<i64> {
     scalar(db, "SELECT COUNT(*) AS value FROM sys_events WHERE event_type = 'forum.topic.created'".to_owned()).await
 }
 
+async fn replied_events(db: &DatabaseConnection) -> TestResult<i64> {
+    scalar(db, "SELECT COUNT(*) AS value FROM sys_events WHERE event_type = 'forum.topic.replied'".to_owned()).await
+}
+
 async fn category_count(db: &DatabaseConnection, tenant: Uuid, category_id: Uuid, field: &str) -> TestResult<i64> {
     assert!(matches!(field, "topic_count" | "reply_count"));
     scalar(db, format!("SELECT {field} AS value FROM forum_categories WHERE tenant_id = X'{}' AND id = X'{}'",
@@ -223,19 +227,46 @@ async fn reapproved_reply_does_not_emit_another_first_publication() -> TestResul
     assert_eq!(reply.status, "pending");
 
     let moderation = ModerationService::new(db.clone(), events);
-    let count = || scalar(&db,
-        "SELECT COUNT(*) AS value FROM sys_events WHERE event_type = 'forum.topic.replied'".to_owned()
-    );
-    assert_eq!(count().await?, 0);
+    assert_eq!(replied_events(&db).await?, 0);
     moderation.reject_reply(tenant, reply.id, topic_id, admin.clone()).await?;
     moderation.approve_reply(tenant, reply.id, topic_id, admin.clone()).await?;
-    assert_eq!(count().await?, 1);
+    assert_eq!(replied_events(&db).await?, 1);
     moderation.reject_reply(tenant, reply.id, topic_id, admin.clone()).await?;
     moderation.approve_reply(tenant, reply.id, topic_id, admin.clone()).await?;
-    assert_eq!(count().await?, 1);
+    assert_eq!(replied_events(&db).await?, 1);
     moderation.hide_reply(tenant, reply.id, topic_id, admin.clone()).await?;
     moderation.approve_reply(tenant, reply.id, topic_id, admin).await?;
-    assert_eq!(count().await?, 1);
+    assert_eq!(replied_events(&db).await?, 1);
     assert_eq!(category_count(&db, tenant, category_id, "reply_count").await?, 1);
+    Ok(())
+}
+
+
+#[tokio::test]
+async fn hidden_before_first_approval_notifies_once() -> TestResult<()> {
+    let (db, events) = setup().await?;
+    let tenant = Uuid::new_v4();
+    let admin = security(UserRole::Admin, Uuid::new_v4());
+    let replier = security(UserRole::Customer, Uuid::new_v4());
+    let category_id = category(&db, tenant, admin.clone(), true).await?;
+    let topic_id = topic(&db, &events, tenant, admin.clone(), category_id, false).await?;
+    let reply = ReplyService::new(db.clone(), events.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
+        .create(tenant, replier, topic_id, CreateReplyInput {
+            locale: "en".to_owned(),
+            content: rustok_api::RichTextDocument::single_paragraph("Held then hidden"),
+            parent_reply_id: None,
+        })
+        .await?;
+    assert_eq!(reply.status, "pending");
+
+    let moderation = ModerationService::new(db.clone(), events);
+    moderation.hide_reply(tenant, reply.id, topic_id, admin.clone()).await?;
+    assert_eq!(replied_events(&db).await?, 0);
+    moderation.approve_reply(tenant, reply.id, topic_id, admin.clone()).await?;
+    assert_eq!(replied_events(&db).await?, 1);
+    moderation.hide_reply(tenant, reply.id, topic_id, admin.clone()).await?;
+    moderation.approve_reply(tenant, reply.id, topic_id, admin).await?;
+    assert_eq!(replied_events(&db).await?, 1);
     Ok(())
 }

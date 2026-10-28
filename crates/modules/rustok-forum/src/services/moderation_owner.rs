@@ -257,12 +257,11 @@ impl ModerationService {
         let current = topic.status;
         current.validate_transition(&target)?;
 
-        // Pending topics already contribute to authored/category topic counts,
-        // but have never been published to subscribers. Restoring an archived
-        // topic re-enters the counters without creating a second topic event.
-        // A rejected pending topic may be archived before ever becoming
-        // public. The append-only owner journal distinguishes that case from
-        // restoration of a previously published topic.
+        // Pending topics already contribute to authored/category topic counts
+        // while their first publication is withheld. Restoring an archived
+        // topic re-enters the counters. The append-only owner journal
+        // distinguishes a rejected pending topic from a previously published
+        // archived topic, so only the first-ever public appearance notifies.
         let first_publication = target == TopicStatus::Open
             && !was_published_before_in_tx(&txn, tenant_id, "topic", topic_id).await?;
         let restores_counted_topic =
@@ -313,12 +312,10 @@ impl ModerationService {
             )
             .await?;
         if first_publication {
-            // A pending topic was created without `ForumTopicCreated` (held
-            // for pre-moderation). Approving it through `Pending` -> `Open`
-            // publishes the exact creation event now, so category watchers
-            // are notified once the topic actually becomes public. The event
-            // locale mirrors topic creation: the primary translation row is
-            // written in the same transaction as the topic, so it exists.
+            // Held topics do not emit `ForumTopicCreated` until their first
+            // public transition, including an archive restore after rejection.
+            // The primary translation was created with the topic and provides
+            // the same locale as direct publication.
             let locale = forum_topic_translation::Entity::find()
                 .filter(forum_topic_translation::Column::TenantId.eq(tenant_id))
                 .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
@@ -920,7 +917,6 @@ impl ModerationService {
 fn is_exact_topic_author(security: &SecurityContext, topic_author_id: Option<Uuid>) -> bool {
     topic_author_id.is_some() && security.user_id == topic_author_id
 }
-
 
 /// Checks immutable Forum-owned creation/status events, not the prunable host
 /// delivery outbox. Called while the parent topic row is locked, before the
