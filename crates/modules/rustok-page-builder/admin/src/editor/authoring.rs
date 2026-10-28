@@ -180,17 +180,14 @@ impl AdminCanvasController {
             }
         };
 
-        if let Some(parent_id_str) = parent_id.as_deref() {
-            if let Some(parent_comp) = document.component(parent_id_str) {
-                if parent_comp
-                    .attributes
-                    .get("data-fly-locked")
-                    .and_then(Value::as_str)
-                    == Some("true")
-                {
-                    return Err("cannot insert into a locked layout component".to_string());
-                }
-            }
+        if parent_id
+            .as_deref()
+            .and_then(|id| document.component(id))
+            .and_then(|comp| comp.attributes.get("data-fly-locked"))
+            .and_then(Value::as_str)
+            == Some("true")
+        {
+            return Err("cannot insert into a locked layout component".to_string());
         }
 
         let decision = registries.evaluate_placement(
@@ -266,15 +263,13 @@ impl AdminCanvasController {
                 if location.page_index != active_page_index {
                     return None;
                 }
-                if let Some(target_comp) = document.component(&geometry.component_id) {
-                    if target_comp
-                        .attributes
-                        .get("data-fly-locked")
-                        .and_then(Value::as_str)
-                        == Some("true")
-                    {
-                        return None;
-                    }
+                if document
+                    .component(&geometry.component_id)
+                    .and_then(|comp| comp.attributes.get("data-fly-locked"))
+                    .and_then(Value::as_str)
+                    == Some("true")
+                {
+                    return None;
                 }
                 let target_type = document.component_type_for_id(&geometry.component_id)?;
                 let allow_inside = registries.accepts_child_type(Some(target_type), &child_type);

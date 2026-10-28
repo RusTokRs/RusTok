@@ -527,42 +527,41 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
         controller: AdminCanvasController,
         runtime_context: Value,
     ) -> Result<SsrDraftSessionSnapshot, SsrDraftSessionError> {
-        let trimmed_token = token.map(str::trim).filter(|t| !t.is_empty());
+        let trimmed_token = token
+            .map(str::trim)
+            .filter(|t| !t.is_empty() && Self::is_safe_token(t));
         if let Some(token) = trimmed_token {
-            if Self::is_safe_token(token) {
-                let file_path = self.dir.join(format!("{token}.json"));
-                if file_path.is_file() {
-                    let content = fs::read_to_string(&file_path)
-                        .map_err(|e| SsrDraftSessionError::Io(e.to_string()))?;
-                    let mut record: PersistentDraftSessionRecord =
-                        serde_json::from_str(&content)
-                            .map_err(|e| SsrDraftSessionError::Serialization(e.to_string()))?;
-                    if record.controller.page_id() != controller.page_id() {
-                        return Err(SsrDraftSessionError::PageMismatch {
-                            expected: record.controller.page_id().to_string(),
-                            actual: controller.page_id().to_string(),
-                        });
-                    }
-                    if expected_generation.is_some_and(|expected| expected != record.generation) {
-                        return Err(SsrDraftSessionError::GenerationConflict {
-                            expected: record.generation,
-                            actual: expected_generation.unwrap_or_default(),
-                        });
-                    }
-                    record.generation = record.generation.saturating_add(1);
-                    record.controller = controller;
-                    record.runtime_context = runtime_context;
-                    record.expires_at_unix_secs =
-                        current_unix_secs().saturating_add(self.ttl.as_secs());
-                    let snapshot = SsrDraftSessionSnapshot {
-                        token: record.token.clone(),
-                        generation: record.generation,
-                        controller: record.controller.clone(),
-                        runtime_context: record.runtime_context.clone(),
-                    };
-                    self.save_snapshot(&snapshot)?;
-                    return Ok(snapshot);
+            let file_path = self.dir.join(format!("{token}.json"));
+            if file_path.is_file() {
+                let content = fs::read_to_string(&file_path)
+                    .map_err(|e| SsrDraftSessionError::Io(e.to_string()))?;
+                let mut record: PersistentDraftSessionRecord = serde_json::from_str(&content)
+                    .map_err(|e| SsrDraftSessionError::Serialization(e.to_string()))?;
+                if record.controller.page_id() != controller.page_id() {
+                    return Err(SsrDraftSessionError::PageMismatch {
+                        expected: record.controller.page_id().to_string(),
+                        actual: controller.page_id().to_string(),
+                    });
                 }
+                if expected_generation.is_some_and(|expected| expected != record.generation) {
+                    return Err(SsrDraftSessionError::GenerationConflict {
+                        expected: record.generation,
+                        actual: expected_generation.unwrap_or_default(),
+                    });
+                }
+                record.generation = record.generation.saturating_add(1);
+                record.controller = controller;
+                record.runtime_context = runtime_context;
+                record.expires_at_unix_secs =
+                    current_unix_secs().saturating_add(self.ttl.as_secs());
+                let snapshot = SsrDraftSessionSnapshot {
+                    token: record.token.clone(),
+                    generation: record.generation,
+                    controller: record.controller.clone(),
+                    runtime_context: record.runtime_context.clone(),
+                };
+                self.save_snapshot(&snapshot)?;
+                return Ok(snapshot);
             }
         }
 
@@ -607,16 +606,15 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
                     continue;
                 }
                 if file_name.ends_with(".json") {
-                    if let Ok(content) = fs::read_to_string(&path) {
-                        if let Ok(record) =
-                            serde_json::from_str::<PersistentDraftSessionRecord>(&content)
-                        {
-                            if record.expires_at_unix_secs <= now {
-                                let _ = fs::remove_file(&path);
-                                pruned += 1;
-                            } else {
-                                surviving.push((path, record.expires_at_unix_secs));
-                            }
+                    let record = fs::read_to_string(&path).ok().and_then(|c| {
+                        serde_json::from_str::<PersistentDraftSessionRecord>(&c).ok()
+                    });
+                    if let Some(record) = record {
+                        if record.expires_at_unix_secs <= now {
+                            let _ = fs::remove_file(&path);
+                            pruned += 1;
+                        } else {
+                            surviving.push((path, record.expires_at_unix_secs));
                         }
                     }
                 }
@@ -761,14 +759,15 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
         let mut surviving = Vec::new();
 
         for key in keys {
-            if let Ok(Some(bytes)) = self.driver.get(&key) {
-                if let Ok(record) = serde_json::from_slice::<PersistentDraftSessionRecord>(&bytes) {
-                    if record.expires_at_unix_secs <= now_unix_secs {
-                        let _ = self.driver.delete(&key);
-                        pruned += 1;
-                    } else {
-                        surviving.push((key, record.expires_at_unix_secs));
-                    }
+            let record = self.driver.get(&key).ok().flatten().and_then(|bytes| {
+                serde_json::from_slice::<PersistentDraftSessionRecord>(&bytes).ok()
+            });
+            if let Some(record) = record {
+                if record.expires_at_unix_secs <= now_unix_secs {
+                    let _ = self.driver.delete(&key);
+                    pruned += 1;
+                } else {
+                    surviving.push((key, record.expires_at_unix_secs));
                 }
             }
         }
@@ -813,10 +812,8 @@ impl DraftSessionKvDriver for MemoryKvDriver {
             .read()
             .map_err(|_| SsrDraftSessionError::Poisoned)?;
         let now = current_unix_secs();
-        if let Some((bytes, expires)) = entries.get(key) {
-            if *expires > now {
-                return Ok(Some(bytes.clone()));
-            }
+        if let Some((bytes, _)) = entries.get(key).filter(|(_, expires)| *expires > now) {
+            return Ok(Some(bytes.clone()));
         }
         Ok(None)
     }
@@ -994,35 +991,37 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         controller: AdminCanvasController,
         runtime_context: Value,
     ) -> Result<SsrDraftSessionSnapshot, SsrDraftSessionError> {
-        if let Some(tok) = token.map(str::trim).filter(|t| !t.is_empty()) {
-            if let Some(persistent_record) = self.backend.load_record(tok)? {
-                if persistent_record.controller.page_id() != controller.page_id() {
-                    return Err(SsrDraftSessionError::PageMismatch {
-                        expected: persistent_record.controller.page_id().to_string(),
-                        actual: controller.page_id().to_string(),
-                    });
-                }
-                if expected_generation
-                    .is_some_and(|expected| expected != persistent_record.generation)
-                {
-                    return Err(SsrDraftSessionError::GenerationConflict {
-                        expected: persistent_record.generation,
-                        actual: expected_generation.unwrap_or_default(),
-                    });
-                }
-                let is_stale = self
-                    .memory
-                    .load(tok, controller.page_id())?
-                    .map(|s| s.generation < persistent_record.generation)
-                    .unwrap_or(true);
-                if is_stale {
-                    self.memory.insert_snapshot(SsrDraftSessionSnapshot {
-                        token: persistent_record.token,
-                        generation: persistent_record.generation,
-                        controller: persistent_record.controller,
-                        runtime_context: persistent_record.runtime_context,
-                    })?;
-                }
+        let persistent_record = if let Some(tok) = token.map(str::trim).filter(|t| !t.is_empty()) {
+            self.backend.load_record(tok)?
+        } else {
+            None
+        };
+        if let Some(persistent_record) = persistent_record {
+            if persistent_record.controller.page_id() != controller.page_id() {
+                return Err(SsrDraftSessionError::PageMismatch {
+                    expected: persistent_record.controller.page_id().to_string(),
+                    actual: controller.page_id().to_string(),
+                });
+            }
+            if expected_generation.is_some_and(|expected| expected != persistent_record.generation)
+            {
+                return Err(SsrDraftSessionError::GenerationConflict {
+                    expected: persistent_record.generation,
+                    actual: expected_generation.unwrap_or_default(),
+                });
+            }
+            let is_stale = self
+                .memory
+                .load(&persistent_record.token, controller.page_id())?
+                .map(|s| s.generation < persistent_record.generation)
+                .unwrap_or(true);
+            if is_stale {
+                self.memory.insert_snapshot(SsrDraftSessionSnapshot {
+                    token: persistent_record.token,
+                    generation: persistent_record.generation,
+                    controller: persistent_record.controller,
+                    runtime_context: persistent_record.runtime_context,
+                })?;
             }
         }
         let committed = self.memory.commit_with_context(

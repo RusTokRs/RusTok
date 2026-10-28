@@ -116,15 +116,11 @@ pub async fn fetch_messages(
             "conversation_id cannot be nil UUID".into(),
         ));
     }
-    if let Some(seq) = since_seq {
-        if seq < 0 {
-            return Err(ApiError::Graphql("since_seq cannot be negative".into()));
-        }
+    if since_seq.is_some_and(|seq| seq < 0) {
+        return Err(ApiError::Graphql("since_seq cannot be negative".into()));
     }
-    if let Some(l) = limit {
-        if l <= 0 {
-            return Err(ApiError::Graphql("limit must be positive".into()));
-        }
+    if limit.is_some_and(|l| l <= 0) {
+        return Err(ApiError::Graphql("limit must be positive".into()));
     }
 
     let variables = serde_json::json!({
