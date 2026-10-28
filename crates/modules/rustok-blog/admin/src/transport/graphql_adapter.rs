@@ -17,6 +17,8 @@ const UPDATE_POST_MUTATION: &str = "mutation UpdatePost($id: UUID!, $input: Upda
 const PUBLISH_POST_MUTATION: &str = "mutation PublishPost($id: UUID!) { publishPost(id: $id) }";
 const UNPUBLISH_POST_MUTATION: &str =
     "mutation UnpublishPost($id: UUID!) { unpublishPost(id: $id) }";
+const PIN_POST_MUTATION: &str = "mutation PinPost($id: UUID!) { pinPost(id: $id) }";
+const UNPIN_POST_MUTATION: &str = "mutation UnpinPost($id: UUID!) { unpinPost(id: $id) }";
 const ARCHIVE_POST_MUTATION: &str =
     "mutation ArchivePost($id: UUID!, $reason: String) { archivePost(id: $id, reason: $reason) }";
 const RESTORE_POST_MUTATION: &str = "mutation RestorePost($id: UUID!) { restorePost(id: $id) }";
@@ -68,6 +70,10 @@ struct BoolMutationResponse {
     publish_post: bool,
     #[serde(default, rename = "unpublishPost")]
     unpublish_post: bool,
+    #[serde(default, rename = "pinPost")]
+    pin_post: bool,
+    #[serde(default, rename = "unpinPost")]
+    unpin_post: bool,
     #[serde(default, rename = "archivePost")]
     archive_post: bool,
     #[serde(default, rename = "restorePost")]
@@ -399,6 +405,48 @@ pub async fn unpublish_post(
     fetch_post(token, tenant_slug, id, locale)
         .await?
         .ok_or_else(|| GraphqlHttpError::Graphql("Unpublished post could not be reloaded".into()))
+}
+
+pub async fn pin_post(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    locale: Option<String>,
+) -> Result<BlogPostDetail, ApiError> {
+    let response: BoolMutationResponse = request(
+        PIN_POST_MUTATION,
+        PostIdVariables { id: id.clone() },
+        token.clone(),
+        tenant_slug.clone(),
+    )
+    .await?;
+    if !response.pin_post {
+        return Err(GraphqlHttpError::Graphql("Pin post returned false".into()));
+    }
+    fetch_post(token, tenant_slug, id, locale)
+        .await?
+        .ok_or_else(|| GraphqlHttpError::Graphql("Pinned post could not be reloaded".into()))
+}
+
+pub async fn unpin_post(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    locale: Option<String>,
+) -> Result<BlogPostDetail, ApiError> {
+    let response: BoolMutationResponse = request(
+        UNPIN_POST_MUTATION,
+        PostIdVariables { id: id.clone() },
+        token.clone(),
+        tenant_slug.clone(),
+    )
+    .await?;
+    if !response.unpin_post {
+        return Err(GraphqlHttpError::Graphql("Unpin post returned false".into()));
+    }
+    fetch_post(token, tenant_slug, id, locale)
+        .await?
+        .ok_or_else(|| GraphqlHttpError::Graphql("Unpinned post could not be reloaded".into()))
 }
 
 pub async fn archive_post(
