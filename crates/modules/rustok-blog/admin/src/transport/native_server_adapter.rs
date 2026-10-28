@@ -6,8 +6,15 @@ use std::sync::Arc;
 #[cfg(feature = "ssr")]
 use crate::model::{BlogModerationComment, BlogPostListItem};
 use crate::model::{
-    BlogModerationCommentList, BlogModerationStatus, BlogPostDetail, BlogPostDraft, BlogPostList,
+    BlogCategoryOption, BlogModerationCommentList, BlogModerationStatus, BlogPostDetail,
+    BlogPostDraft, BlogPostList,
 };
+
+pub(super) async fn fetch_categories(
+    locale: Option<String>,
+) -> Result<Vec<BlogCategoryOption>, ServerFnError> {
+    blog_admin_categories_native(locale).await
+}
 
 pub(super) async fn fetch_posts(
     locale: Option<String>,
@@ -191,6 +198,51 @@ fn requested_locale(locale: Option<String>, fallback: &str) -> String {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| fallback.to_string())
+}
+
+#[server(prefix = "/api/fn", endpoint = "blog/admin/categories")]
+async fn blog_admin_categories_native(
+    locale: Option<String>,
+) -> Result<Vec<BlogCategoryOption>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rustok_blog::{CategoryService, ListCategoriesFilter};
+
+        let context = native_context().await?;
+        let locale = requested_locale(locale, context.tenant.default_locale.as_str());
+        let service = CategoryService::new(context.db, context.event_bus);
+        let mut items = Vec::new();
+        for page in 1.. {
+            let (rows, total) = service
+                .list(
+                    context.tenant.id,
+                    security_context(&context.auth),
+                    ListCategoriesFilter {
+                        locale: Some(locale.clone()),
+                        page,
+                        per_page: 100,
+                    },
+                )
+                .await
+                .map_err(public_blog_error)?;
+            items.extend(rows.into_iter().map(|row| BlogCategoryOption {
+                id: row.id.to_string(),
+                name: row.name,
+            }));
+            if items.len() as u64 >= total {
+                return Ok(items);
+            }
+            if (items.len() as u64) < page * 100 {
+                return Err(ServerFnError::new("Incomplete Blog categories projection"));
+            }
+        }
+        unreachable!("Blog categories are bounded by the Taxonomy owner")
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = locale;
+        Err(ServerFnError::new("blog/admin/categories requires ssr"))
+    }
 }
 
 #[server(prefix = "/api/fn", endpoint = "blog/admin/posts")]
