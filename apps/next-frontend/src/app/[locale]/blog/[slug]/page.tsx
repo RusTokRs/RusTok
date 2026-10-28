@@ -117,20 +117,17 @@ export default async function BlogPostPage({
   const rawCommentsPage = typeof query.commentsPage === "string" ? parseInt(query.commentsPage, 10) : 1;
   const commentsPage = Number.isFinite(rawCommentsPage) && rawCommentsPage > 0 ? rawCommentsPage : 1;
 
-  let post;
-  try {
-    post = await fetchPublishedPost(
-      storefrontGraphql,
-      tenantId,
-      tenantSlug,
-      slug,
-      locale,
-      commentsPage,
-      20
-    );
-  } catch {
-    notFound();
-  }
+  // A failed GraphQL request is not a missing article. Let the route error
+  // boundary report backend failure; only an actual null post is a 404.
+  const post = await fetchPublishedPost(
+    storefrontGraphql,
+    tenantId,
+    tenantSlug,
+    slug,
+    locale,
+    commentsPage,
+    20
+  );
 
   if (!post) {
     notFound();
