@@ -23,8 +23,7 @@ use crate::{
 #[derive(Debug, Clone, Deserialize, IntoParams)]
 pub struct ListTopicsQuery {
     pub search: Option<String>,
-    #[serde(default)]
-    pub order: crate::ForumTopicListOrder,
+    pub order: Option<crate::ForumTopicListOrder>,
     #[serde(default)]
     pub solved_only: bool,
     pub category_id: Option<uuid::Uuid>,
@@ -129,9 +128,17 @@ pub async fn list_topics(
             .await
             .map_err(crate::controllers::map_forum_error)?,
     };
+    let order = match query.order {
+        Some(order) => order,
+        None => runtime
+            .settings_providers
+            .default_topic_order(tenant.id)
+            .await
+            .map_err(crate::controllers::map_forum_error)?,
+    };
     let filter = ListTopicsFilter {
         search: query.search,
-        order: query.order,
+        order,
         solved_only: query.solved_only,
         category_id: query.category_id,
         status: query.status,

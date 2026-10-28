@@ -99,9 +99,12 @@ Findings are ordered by risk and by dependency (owner correctness before transpo
 8. **P2, outstanding:** Add report rate limits through the Moderation owner,
    category/topic/reply report UI, and operator-friendly feedback. Avoid
    duplicating automatic Moderation policy in Forum.
-9. **P2, outstanding:** The `default_topic_sort` and
-   `allow_user_topic_closing` settings have no effect; resolve the contract
-   against the current feed-selection ADR and wire or remove them atomically.
+9. **P2, partially source-ready:** `default_topic_sort` now resolves
+   omitted REST, GraphQL owner, storefront and unread sort orders from
+   tenant settings (`latest_reply` or `top`). Explicit ordering wins;
+   invalid stored values produce a typed validation error.
+   `allow_user_topic_closing` remains unwired pending its separate
+   write-authorization and UI decision.
 10. **P2/P3, outstanding:** Separate faithful owner widget preview from live
     storefront preview, batch audience checks, and avoid a hard failure over
     1000 candidates.
@@ -115,6 +118,7 @@ Maintainer verification before merge:
 
 - `cargo fmt --all -- --check`
 - `cargo check --locked -p rustok-forum --lib`
+- `cargo test --locked -p rustok-forum --lib`
 - `cargo test --locked -p rustok-forum --test topic_publication_lifecycle_sqlite`
 - `cargo test --locked -p rustok-forum --test moderation_semantics_sqlite`
 - `cargo test --locked -p rustok-forum --test moderation_semantics_postgres`

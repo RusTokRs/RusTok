@@ -138,9 +138,16 @@ impl ForumContentQuery {
                 .map_err(|error| async_graphql::Error::new(error.to_string()))?,
         };
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
+        let order = match order {
+            Some(order) => order,
+            None => forum_runtime(ctx)
+                .default_topic_order(tenant_id)
+                .await
+                .map_err(|error| async_graphql::Error::new(error.to_string()))?,
+        };
         let filter = crate::ListTopicsFilter {
             search,
-            order: order.unwrap_or_default(),
+            order,
             solved_only,
             category_id,
             status: None,

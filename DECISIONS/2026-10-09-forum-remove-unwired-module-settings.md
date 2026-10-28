@@ -6,7 +6,7 @@
 - Owners: `rustok-forum` (`dto/settings.rs`, `rustok-module.toml`, `README.md`), `apps/next-admin` (`module-settings-fields/forum.tsx`, which drops the subscription toggle and the anonymous-reading toggle, neither of which was read)
 - Extends: `DECISIONS/2026-10-09-forum-soft-default-settings.md`, `DECISIONS/2026-10-09-forum-remove-edit-grace-period-setting.md`
 - Supersedes: None
-- Superseded by: None
+- Superseded by: [2026-10-28 Forum default topic ordering](./2026-10-28-forum-default-topic-order.md) (only the remaining `default_topic_sort` decision).
 
 ## Context
 

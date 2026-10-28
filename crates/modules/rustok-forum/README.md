@@ -240,10 +240,11 @@ wrappers. Each one has an owner decision or a follow-up task in
   they can include discussions outside the viewer's audience and must never be used as
   a viewer-visible list total or pagination cursor. The Next.js category UI labels
   this distinction; per-viewer listing still comes from the exact audience owner.
-- Two declared `ForumModuleSettings` fields remain unread: `default_topic_sort`
-  (the list order is fixed, see the topic sort item) and `allow_user_topic_closing`
-  (authors cannot close or lock their own topics through this setting). Changing
-  either has no effect. The unread settings removed by
+- `default_topic_sort` now selects `latest_reply` (default) or `top`
+  for REST, GraphQL owner, storefront and unread topic lists when `order`
+  is omitted. Explicit `order` wins; unsupported saved values fail with a
+  typed configuration error. `allow_user_topic_closing` remains unwired:
+  authors cannot close or lock their own topics through this setting. The unread settings removed by
   `DECISIONS/2026-10-09-forum-remove-unwired-module-settings.md` are no longer declared.
 - `topics_per_page` and `replies_per_page` are the default page size for REST and GraphQL list requests that omit
   `per_page`. An explicit `per_page` is bounded to 1..=100 and wins over the setting. The module storefront transports
