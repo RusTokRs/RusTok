@@ -110,3 +110,4 @@ blog-form-featuredImage = URL обложки
 blog-form-seoTitle = SEO-заголовок (значение по умолчанию)
 blog-form-seoDescription = SEO-описание (значение по умолчанию)
 blog-error-categories = Не удалось загрузить категории
+blog-form-scheduledAt = Публикация по расписанию (RFC 3339 с часовым поясом)
