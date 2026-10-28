@@ -651,7 +651,13 @@ impl ModerationService {
         }
 
         let txn = self.db.begin().await?;
-        TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
+        // An archive committed after the pre-transaction audience/read check
+        // must not admit a new solution or alter its author's live statistics.
+        let locked_topic =
+            TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
+        if locked_topic.status == TopicStatus::Archived {
+            return Err(ForumError::TopicArchived);
+        }
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         let reply = ReplyService::find_reply_for_update_in_tx(&txn, tenant_id, reply_id).await?;
         if reply.topic_id != topic_id {
@@ -735,7 +741,11 @@ impl ModerationService {
         }
 
         let txn = self.db.begin().await?;
-        TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
+        let locked_topic =
+            TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
+        if locked_topic.status == TopicStatus::Archived {
+            return Err(ForumError::TopicArchived);
+        }
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         let solution = forum_solution::Entity::find()
             .filter(forum_solution::Column::TenantId.eq(tenant_id))

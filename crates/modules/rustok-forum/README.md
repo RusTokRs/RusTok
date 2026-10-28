@@ -127,8 +127,10 @@
   lifecycle and accepted-solution transitions, and exposes a dedicated read-path for
   user-level stats. Topic archive/reopen now recomputes all affected author
   topic/reply/solution counts in the write transaction and adjusts category
-  reply counts alongside topic counts. Historical drift predating this change
-  still requires operator reconciliation (FORUM-33).
+  reply counts alongside topic counts. Solution mark/clear also reject an
+  archived state after acquiring the topic row lock, rather than trusting only
+  a pre-transaction read. Historical drift predating this change still requires
+  operator reconciliation (FORUM-33).
 - Topic tag write-paths resolve existing global taxonomy tags before creating
   new forum-local terms, while forum responses still expose the same `Vec<String>`
   tag contract.

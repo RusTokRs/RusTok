@@ -164,6 +164,10 @@ async fn archived_thread_releases_and_restores_category_and_author_counters() ->
     assert_eq!(user_stat(&db, tenant, reply_author_id, "solution_count").await?, 1);
 
     moderation.archive_topic(tenant, topic_id, author.clone()).await?;
+    // Solution writes are forbidden on archived topics and cannot move
+    // statistics while the topic is hidden.
+    assert!(moderation.mark_solution(tenant, topic_id, reply.id, author.clone()).await.is_err());
+    assert!(moderation.clear_solution(tenant, topic_id, author.clone()).await.is_err());
     assert_eq!(category_count(&db, tenant, category_id, "topic_count").await?, 0);
     assert_eq!(category_count(&db, tenant, category_id, "reply_count").await?, 0);
     assert_eq!(user_stat(&db, tenant, author_id, "topic_count").await?, 0);

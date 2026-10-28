@@ -52,11 +52,13 @@ Findings are ordered by risk and by dependency (owner correctness before transpo
    creation/status journal inside the moderation transaction. Re-archiving and
    restoring a previously published thread never notifies again.
    Notification audience is reauthorized at fanout.
-2. **P1/P2, implemented in this branch:** Archive/reopen must adjust category
-   topic **and approved reply** totals and recompute author topic/reply/solution
-   counts in the same transaction. Preserve `forum_topics.reply_count` as the
-   approved-reply projection. Emit category and topic invalidations. Preexisting
-   drift still needs a separately reviewed reconciliation.
+2. **P1/P2, source-ready in this branch:** Archive/reopen adjusts category
+   topic **and approved reply** totals and recomputes author topic/reply/solution
+   counts in the same transaction. Solution mark/clear re-checks archived state
+   under the locked topic row, eliminating its stale pre-transaction status
+   acceptance. Preserve `forum_topics.reply_count` as the approved-reply
+   projection. Emit category and topic invalidations. Preexisting drift still
+   needs a separately reviewed reconciliation.
 3. **P1, implemented in this branch:** Replace retired taxonomy binding paths
    in the workflow with live owner files and a real canonical taxonomy test.
 4. **P1, outstanding:** Vote and subscription owner-audience authorization is
