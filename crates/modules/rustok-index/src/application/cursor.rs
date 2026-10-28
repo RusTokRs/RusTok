@@ -52,7 +52,8 @@ pub enum CursorCodecError {
     #[error("cursor encoding is invalid: {0}")]
     Base64(#[from] base64::DecodeError),
     #[error("cursor payload is too short")]
-    TooShort,    #[error("cursor token exceeds {max} encoded bytes: {actual}")]
+    TooShort,
+    #[error("cursor token exceeds {max} encoded bytes: {actual}")]
     TooLarge { actual: usize, max: usize },
 
     #[error("unsupported cursor version: {0}")]
@@ -479,5 +480,4 @@ mod tests {
             Err(CursorCodecError::TooLarge { .. })
         ));
     }
-
 }
