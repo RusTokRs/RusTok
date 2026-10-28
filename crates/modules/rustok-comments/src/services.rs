@@ -1623,6 +1623,109 @@ mod richtext_validation_tests {
     }
 
     #[tokio::test]
+    async fn ordinary_read_permissions_never_expose_other_users_or_moderation_queue() {
+        use rustok_api::Permission;
+
+        let service = setup_comments_service().await;
+        let tenant = Uuid::new_v4();
+        let target = Uuid::new_v4();
+        let author_id = Uuid::new_v4();
+        let other_id = Uuid::new_v4();
+        let author = SecurityContext::from_permissions(
+            UserRole::Customer,
+            Some(author_id),
+            [Permission::COMMENTS_CREATE, Permission::COMMENTS_READ, Permission::COMMENTS_LIST],
+        );
+        let other = SecurityContext::from_permissions(
+            UserRole::Customer,
+            Some(other_id),
+            [Permission::COMMENTS_READ, Permission::COMMENTS_LIST],
+        );
+        let created = service
+            .create_comment(
+                tenant,
+                author.clone(),
+                CreateCommentInput {
+                    target_type: "blog_post".into(),
+                    target_id: target,
+                    locale: "en".into(),
+                    body: test_document("private moderation text"),
+                    parent_comment_id: None,
+                    status: crate::dto::CommentStatus::Pending,
+                },
+            )
+            .await
+            .expect("comment created");
+        assert_eq!(
+            service.get_comment(tenant, author, created.id, "en", None)
+                .await.expect("own read").id,
+            created.id,
+            "an author can inspect their own pending comment"
+        );
+
+        assert!(matches!(
+            service.get_comment(tenant, other.clone(), created.id, "en", None).await,
+            Err(CommentsError::CommentNotFound(_))
+        ), "generic read is not an authorization to fetch someone else's pending comment");
+
+        let filter = ListCommentsFilter { locale: "en".into(), page: 1, per_page: 10 };
+        assert!(matches!(
+            service.list_comments_for_target(tenant, other.clone(), "blog_post", target, filter.clone(), None).await,
+            Err(CommentsError::Forbidden(_))
+        ));
+        assert!(matches!(
+            service.list_threads(tenant, other.clone(), crate::dto::ListThreadsFilter::default()).await,
+            Err(CommentsError::Forbidden(_))
+        ));
+        assert!(matches!(
+            service.get_thread_detail(
+                tenant,
+                other.clone(),
+                crate::dto::GetThreadDetailFilter {
+                    thread_id: created.thread_id,
+                    locale: "en".into(),
+                    fallback_locale: None,
+                    page: 1,
+                    per_page: 10,
+                },
+            ).await,
+            Err(CommentsError::Forbidden(_))
+        ));
+
+        // The public port remains deliberately approved-only; a moderator may
+        // still inspect and update the private queue.
+        assert_eq!(
+            crate::public_read::list_public_comments_for_target(
+                &service.db, tenant, "blog_post", target, filter, None,
+            ).await.expect("approved-only projection").1,
+            0
+        );
+        let moderator = SecurityContext::system();
+        assert_eq!(
+            service.list_comments_for_target(
+                tenant, moderator.clone(), "blog_post", target,
+                ListCommentsFilter { locale: "en".into(), page: 1, per_page: 10 }, None,
+            ).await.expect("moderator queue").1,
+            1
+        );
+
+        service.set_comment_status(
+            tenant, moderator, created.id, crate::dto::CommentStatus::Approved, "en", None,
+        ).await.expect("moderation must work");
+        assert!(matches!(
+            service.get_comment(tenant, other, created.id, "en", None).await,
+            Err(CommentsError::CommentNotFound(_))
+        ), "the Comments owner cannot infer whether an approved target is public");
+        assert_eq!(
+            crate::public_read::list_public_comments_for_target(
+                &service.db, tenant, "blog_post", target,
+                ListCommentsFilter { locale: "en".into(), page: 1, per_page: 10 }, None,
+            ).await.expect("public approved projection").1,
+            1
+        );
+    }
+
+    #[tokio::test]
     async fn rejects_empty_target_type() {
         let service = setup_comments_service().await;
         let tenant_id = Uuid::new_v4();
