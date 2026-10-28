@@ -14,14 +14,31 @@ import Link from 'next/link';
 import { Calendar, User } from 'lucide-react';
 import type { BlogPostSummary } from '../api/posts';
 
+interface BlogCardFilters {
+  tag?: string;
+  category?: string;
+  q?: string;
+}
+
+function blogFilterHref(locale: string, state: BlogCardFilters): string {
+  const params = new URLSearchParams();
+  if (state.category) params.set('category', state.category);
+  if (state.tag) params.set('tag', state.tag);
+  if (state.q) params.set('q', state.q);
+  const query = params.toString();
+  return query ? `/${locale}/blog?${query}` : `/${locale}/blog`;
+}
+
 export function PostCard({
   post,
   href,
   locale = 'en',
+  filters = {},
 }: {
   post: BlogPostSummary;
   href: string | null;
   locale?: string;
+  filters?: BlogCardFilters;
 }): React.JSX.Element {
   const isRu = locale === 'ru';
   const date = post.publishedAt
@@ -75,7 +92,7 @@ export function PostCard({
         <div className="flex flex-wrap items-center gap-2.5 text-xs text-muted-foreground">
           {post.categoryName && post.categoryId && (
             <Link
-              href={`/${locale}/blog?category=${encodeURIComponent(post.categoryId)}`}
+              href={blogFilterHref(locale, { ...filters, category: post.categoryId ?? undefined })}
               className="rounded-full bg-secondary px-2.5 py-0.5 font-medium text-secondary-foreground text-[11px] hover:bg-secondary/80 transition-colors"
             >
               {post.categoryName}
@@ -128,7 +145,7 @@ export function PostCard({
             {post.tags.slice(0, 3).map((tag) => (
               <Link
                 key={tag}
-                href={`/${locale}/blog?tag=${encodeURIComponent(tag)}`}
+                href={blogFilterHref(locale, { ...filters, tag })}
                 className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/20 transition-colors"
               >
                 #{tag}
