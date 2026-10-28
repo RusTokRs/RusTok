@@ -3,10 +3,12 @@ use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphq
 use serde::{Deserialize, Serialize};
 
 use crate::core;
-use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostList};
+use crate::model::{BlogCategoryOption, BlogPostDetail, BlogPostDraft, BlogPostList};
 
 pub type ApiError = GraphqlHttpError;
 
+const BLOG_CATEGORIES_QUERY: &str =
+    "query BlogCategoriesAdmin($filter: BlogCategoriesFilter) { blogCategories(filter: $filter) { items { id name } total } }";
 const BLOG_POSTS_QUERY: &str = "query BlogPostsAdmin($filter: PostsFilter) { posts(filter: $filter) { nextCursor items { id title effectiveLocale slug excerpt status createdAt publishedAt scheduledAt isPinned pinnedAt } } }";
 const BLOG_POST_QUERY: &str = "query BlogPostAdmin($id: UUID!, $locale: String) { post(id: $id, locale: $locale) { id requestedLocale effectiveLocale availableLocales title slug excerpt content { document html } contentPlainText status createdAt updatedAt publishedAt scheduledAt isPinned pinnedAt tags categoryId channelSlugs featuredImageUrl seoTitle seoDescription version } }";
 const CREATE_POST_MUTATION: &str =
@@ -23,6 +25,28 @@ const DELETE_POST_MUTATION: &str = "mutation DeletePost($id: UUID!) { deletePost
 #[derive(Debug, Deserialize)]
 struct BlogPostsResponse {
     posts: BlogPostList,
+}
+
+#[derive(Debug, Deserialize)]
+struct BlogCategoriesResponse {
+    #[serde(rename = "blogCategories")]
+    blog_categories: BlogCategoryPage,
+}
+#[derive(Debug, Deserialize)]
+struct BlogCategoryPage {
+    items: Vec<BlogCategoryOption>,
+    total: u64,
+}
+#[derive(Debug, Serialize)]
+struct CategoryFilter {
+    locale: Option<String>,
+    page: u64,
+    #[serde(rename = "perPage")]
+    per_page: u64,
+}
+#[derive(Debug, Serialize)]
+struct CategoryVariables {
+    filter: CategoryFilter,
 }
 
 #[derive(Debug, Deserialize)]
@@ -161,6 +185,39 @@ where
         None,
     )
     .await
+}
+
+pub async fn fetch_categories(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: Option<String>,
+) -> Result<Vec<BlogCategoryOption>, ApiError> {
+    let mut items = Vec::new();
+    for page in 1.. {
+        let result: BlogCategoriesResponse = request(
+            BLOG_CATEGORIES_QUERY,
+            CategoryVariables {
+                filter: CategoryFilter {
+                    locale: locale.clone(),
+                    page,
+                    per_page: 100,
+                },
+            },
+            token.clone(),
+            tenant_slug.clone(),
+        )
+        .await?;
+        items.extend(result.blog_categories.items);
+        if items.len() as u64 >= result.blog_categories.total {
+            return Ok(items);
+        }
+        if items.len() as u64 < page * 100 {
+            return Err(GraphqlHttpError::Graphql(
+                "Blog categories pagination returned incomplete rows".into(),
+            ));
+        }
+    }
+    unreachable!("Blog categories page count is bounded by owner taxonomy")
 }
 
 pub async fn fetch_posts(
