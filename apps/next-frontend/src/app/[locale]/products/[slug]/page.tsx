@@ -22,6 +22,11 @@ import {
 
 interface ProductPageProps {
   params: Promise<{ locale: string; slug: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}
+
+function pickParam(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
 }
 
 export async function generateMetadata({
@@ -60,8 +65,12 @@ export async function generateMetadata({
   });
 }
 
-export default async function ProductDetailPage({ params }: ProductPageProps) {
+export default async function ProductDetailPage({
+  params,
+  searchParams,
+}: ProductPageProps) {
   const { locale, slug } = await params;
+  const query = searchParams ? await searchParams : {};
   const path = `/products/${slug}`;
   const seoResolution = await resolveSeoPageContextForRoute({
     locale,
@@ -81,11 +90,21 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
     notFound();
   }
 
+  const rawQuantity = pickParam(query.quantity);
+  const parsedQuantity = rawQuantity ? parseInt(rawQuantity, 10) : undefined;
+
   const pricingData = await fetchStorefrontProductPricing(
     storefrontGraphql,
     slug,
     locale,
-    undefined,
+    {
+      currencyCode: pickParam(query.currency)?.trim().toUpperCase(),
+      regionId: pickParam(query.region_id)?.trim(),
+      priceListId: pickParam(query.price_list_id)?.trim(),
+      channelId: pickParam(query.channel_id)?.trim(),
+      channelSlug: pickParam(query.channel_slug)?.trim(),
+      quantity: Number.isFinite(parsedQuantity) ? parsedQuantity : undefined,
+    },
     tenantSlug
   );
 

@@ -107,12 +107,22 @@ const STOREFRONT_PRICING_PRODUCT_QUERY = `
   query StorefrontProductPricing(
     $locale: String,
     $handle: String!,
-    $currencyCode: String
+    $currencyCode: String,
+    $regionId: UUID,
+    $priceListId: UUID,
+    $channelId: UUID,
+    $channelSlug: String,
+    $quantity: Int
   ) {
     storefrontPricingProduct(
       locale: $locale,
       handle: $handle,
-      currencyCode: $currencyCode
+      currencyCode: $currencyCode,
+      regionId: $regionId,
+      priceListId: $priceListId,
+      channelId: $channelId,
+      channelSlug: $channelSlug,
+      quantity: $quantity
     ) {
       variants {
         id
@@ -365,15 +375,29 @@ export async function fetchStorefrontProduct(
   return response.data?.storefrontProduct ?? null;
 }
 
+export type StorefrontPricingOptions = {
+  currencyCode?: string;
+  regionId?: string;
+  priceListId?: string;
+  channelId?: string;
+  channelSlug?: string;
+  quantity?: number;
+};
+
 export async function fetchStorefrontProductPricing(
   graphql: ProductGraphqlExecutor,
   handle: string,
   locale?: string,
-  currencyCode?: string,
+  currencyOrOptions?: string | StorefrontPricingOptions,
   tenantSlug?: string | null,
 ): Promise<{ variants: StorefrontProductPricing[] } | null> {
   const cleanHandle = handle.trim();
   if (!cleanHandle) return null;
+
+  const options: StorefrontPricingOptions =
+    typeof currencyOrOptions === "string"
+      ? { currencyCode: currencyOrOptions }
+      : (currencyOrOptions ?? {});
 
   try {
     const response = await graphql<{
@@ -382,12 +406,25 @@ export async function fetchStorefrontProductPricing(
       locale?: string;
       handle: string;
       currencyCode?: string;
+      regionId?: string;
+      priceListId?: string;
+      channelId?: string;
+      channelSlug?: string;
+      quantity?: number;
     }>({
       query: STOREFRONT_PRICING_PRODUCT_QUERY,
       variables: {
         handle: cleanHandle,
         locale: locale?.trim() || undefined,
-        currencyCode: currencyCode?.trim() || undefined,
+        currencyCode: options.currencyCode?.trim().toUpperCase() || undefined,
+        regionId: options.regionId?.trim() || undefined,
+        priceListId: options.priceListId?.trim() || undefined,
+        channelId: options.channelId?.trim() || undefined,
+        channelSlug: options.channelSlug?.trim() || undefined,
+        quantity:
+          options.quantity != null && Number.isFinite(options.quantity)
+            ? options.quantity
+            : undefined,
       },
       tenant: tenantSlug ?? undefined,
     });

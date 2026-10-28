@@ -201,9 +201,28 @@ type CatalogCategoriesResponse = {
   };
 };
 
+export type ListProductsFilter = {
+  page?: number;
+  perPage?: number;
+  search?: string;
+  status?: string | null;
+  vendor?: string | null;
+};
+
+export function normalizeProductStatus(
+  status?: string | null
+): 'DRAFT' | 'ACTIVE' | 'ARCHIVED' | undefined {
+  if (!status) return undefined;
+  const s = String(status).trim().toUpperCase();
+  if (s === 'ACTIVE' || s === 'PUBLISHED') return 'ACTIVE';
+  if (s === 'DRAFT') return 'DRAFT';
+  if (s === 'ARCHIVED') return 'ARCHIVED';
+  return undefined;
+}
+
 export async function listProducts(
   opts: GqlOpts,
-  filter: { page?: number; perPage?: number; search?: string } = {},
+  filter: ListProductsFilter = {},
   locale?: string
 ) {
   if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
@@ -211,11 +230,20 @@ export async function listProducts(
   }
 
   const executor = opts.graphql ?? graphqlRequest;
+  const normalizedStatus = normalizeProductStatus(filter.status);
+  const gqlFilter = {
+    page: filter.page,
+    perPage: filter.perPage,
+    search: filter.search?.trim() || undefined,
+    status: normalizedStatus,
+    vendor: filter.vendor?.trim() || undefined
+  };
+
   const data = await executor<
     {
       tenantId: string;
       locale?: string;
-      filter: { page?: number; perPage?: number; search?: string };
+      filter: typeof gqlFilter;
     },
     ProductsResponse
   >(
@@ -223,7 +251,7 @@ export async function listProducts(
     {
       tenantId: opts.tenantId,
       locale,
-      filter
+      filter: gqlFilter
     },
     opts.token,
     opts.tenantSlug

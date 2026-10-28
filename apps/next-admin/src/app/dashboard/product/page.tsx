@@ -33,6 +33,8 @@ export default async function ProductPage({ searchParams }: PageProps) {
     pickParam(params.title)?.trim() ||
     pickParam(params.search)?.trim() ||
     undefined;
+  const status = pickParam(params.status)?.trim() || undefined;
+  const vendor = pickParam(params.vendor)?.trim() || undefined;
 
   const opts = {
     graphql: graphqlRequest,
@@ -45,7 +47,7 @@ export default async function ProductPage({ searchParams }: PageProps) {
   let error: string | null = null;
 
   try {
-    result = await listProducts(opts, { page, perPage, search });
+    result = await listProducts(opts, { page, perPage, search, status, vendor });
   } catch (err) {
     error = err instanceof Error ? err.message : 'Failed to load products.';
   }
