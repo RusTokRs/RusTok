@@ -24,7 +24,7 @@ owner/shape (noted).
 | AI | ✅ | ✅ | |
 | Auth (users/roles UI) | ✅ host features | ✅ host features | Shell-level, both |
 | Billing | — | ✅ host route | No Rust module crate; platform surface |
-| Blog | ✅ | ✅ | Both own post CRUD; Rust also exposes archive/restore and comment moderation, Next exposes categories, schedules, channels and image fields. Feature-level parity remains incomplete; see Blog scope below. |
+| Blog | ✅ | ✅ | Both implement post CRUD, lifecycle, channel scoping, image/SEO, scheduling and comment moderation. Category CRUD is currently Next-only; preview/pin and localization parity still require work. |
 | Brand | ✅ | ❌ | |
 | Cache | ✅ | ✅ | |
 | Channel | ✅ | ❌ | |
@@ -81,12 +81,12 @@ that every feature has equivalent controls.
 | --- | --- | --- | --- |
 | Post CRUD / publish / unpublish | Yes | Yes | Preserve revisions and honor rejected mutations |
 | Archive / restore | Yes | Yes | Archived posts must be restored before publishing |
-| Post categories | Read only on posts | Category CRUD and post selector | Taxonomy is canonical for category hierarchy and copy |
-| Channel visibility | Preserves channels when editing | Editable | Empty allowlist is unrestricted across public channels |
-| Scheduled publication | Read-only timestamp | Editor supports scheduling | Backend owns publish timing and state transitions |
-| Featured image | Read-only in post editor | Editable | Absolute HTTP(S) or safe root-relative URLs |
-| SEO | Shared owner SEO panel | Blog-localized SEO fields | Effective SEO is composed from base copy and explicit overrides |
-| Comments moderation | Yes | Not yet | Comments owner gates permissions, availability, retention |
+| Post categories | Post selector | Category CRUD and post selector | Taxonomy remains canonical; category management UI is still Next-only |
+| Channel visibility | Editable | Editable | Empty allowlist is unrestricted across public channels |
+| Scheduled publication | RFC3339 editor for create/draft | Local-time editor for create/draft | Backend owns publish timing and state transitions |
+| Featured image | Editable URL | Editable URL | Absolute HTTP(S) or safe root-relative URLs |
+| SEO | Blog-localized fields plus explicit owner SEO panel | Blog-localized SEO fields | Effective SEO composes base copy and explicit overrides |
+| Comments moderation | Yes | Yes | Comments owner gates permissions, availability, retention |
 | Preview tokens / pinned posts | No direct controls | No direct controls | Canonical Blog owner operations exist |
 
 The remaining gaps should not be concealed by parallel client-specific
