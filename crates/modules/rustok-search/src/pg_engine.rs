@@ -20,20 +20,20 @@ use crate::storefront_product_channel_visibility::storefront_channel_visibility_
 #[derive(Clone, Debug, Default)]
 pub struct SearchAudienceDocumentScope {
     gated_source_modules: Vec<String>,
-    authorized_document_ids: Vec<uuid::Uuid>,
+    authorized_documents: Vec<(String, uuid::Uuid)>,
 }
 
 impl SearchAudienceDocumentScope {
     pub fn is_unrestricted(&self) -> bool {
-        self.gated_source_modules.is_empty() && self.authorized_document_ids.is_empty()
+        self.gated_source_modules.is_empty() && self.authorized_documents.is_empty()
     }
 
     pub fn gated_source_modules(&self) -> &[String] {
         &self.gated_source_modules
     }
 
-    pub fn authorized_document_ids(&self) -> &[uuid::Uuid] {
-        &self.authorized_document_ids
+    pub fn authorized_documents(&self) -> &[(String, uuid::Uuid)] {
+        &self.authorized_documents
     }
 
     pub fn unrestricted() -> Self {
@@ -44,7 +44,7 @@ impl SearchAudienceDocumentScope {
     /// programming errors, because both values originate inside Search.
     pub fn new(
         gated_source_modules: Vec<String>,
-        authorized_document_ids: Vec<uuid::Uuid>,
+        authorized_documents: Vec<(String, uuid::Uuid)>,
     ) -> Result<Self> {
         let mut gated_source_modules = gated_source_modules
             .into_iter()
@@ -61,18 +61,21 @@ impl SearchAudienceDocumentScope {
         gated_source_modules.sort();
         gated_source_modules.dedup();
 
-        let mut authorized_document_ids = authorized_document_ids;
-        if authorized_document_ids.iter().any(uuid::Uuid::is_nil) {
-            return Err(Error::Internal(
-                "Search audience scope received a nil document identifier".to_string(),
-            ));
+        let mut authorized_documents = authorized_documents;
+        for (module, id) in &mut authorized_documents {
+            *module = module.trim().to_ascii_lowercase();
+            if id.is_nil() || !gated_source_modules.contains(module) {
+                return Err(Error::Internal(
+                    "Search audience scope received a foreign or nil authorized document".to_string(),
+                ));
+            }
         }
-        authorized_document_ids.sort_unstable();
-        authorized_document_ids.dedup();
+        authorized_documents.sort_unstable();
+        authorized_documents.dedup();
 
         Ok(Self {
             gated_source_modules,
-            authorized_document_ids,
+            authorized_documents,
         })
     }
 }
@@ -213,17 +216,29 @@ fn build_filter_clause(
         // other declared module keeps its normal visibility predicates, so public
         // modules are never bounded by the audience scan.
         let gated_params = bind_list(scope.gated_source_modules(), &mut values, &mut next_param);
-        if scope.authorized_document_ids().is_empty() {
+        if scope.authorized_documents().is_empty() {
             clauses.push(format!("source_module NOT IN ({gated_params})"));
         } else {
-            let authorized_params = bind_uuid_list(
-                scope.authorized_document_ids(),
-                &mut values,
-                &mut next_param,
-            );
-            clauses.push(format!(
-                "(source_module NOT IN ({gated_params}) OR document_id IN ({authorized_params}))"
-            ));
+            // A UUID approved by Blog must never authorize a Forum document
+            // carrying the same UUID (or vice versa). Bind owner + id together.
+            let mut permitted = vec![format!("source_module NOT IN ({gated_params})")];
+            for module in scope.gated_source_modules() {
+                let ids = scope.authorized_documents().iter()
+                    .filter(|(owner, _)| owner == module)
+                    .map(|(_, id)| *id)
+                    .collect::<Vec<_>>();
+                if ids.is_empty() {
+                    continue;
+                }
+                let owner_param = next_param;
+                values.push(module.clone().into());
+                next_param += 1;
+                let ids_params = bind_uuid_list(&ids, &mut values, &mut next_param);
+                permitted.push(format!(
+                    "(source_module = ${owner_param} AND document_id IN ({ids_params}))"
+                ));
+            }
+            clauses.push(format!("({})", permitted.join(" OR ")));
         }
     }
 
@@ -999,7 +1014,10 @@ mod tests {
     fn restricted_audience_scope_bounds_gated_modules_and_keeps_public_modules() {
         let scope = SearchAudienceDocumentScope::new(
             vec!["forum".to_string(), "events".to_string()],
-            vec![Uuid::from_u128(11), Uuid::from_u128(12)],
+            vec![
+                ("forum".to_string(), Uuid::from_u128(11)),
+                ("events".to_string(), Uuid::from_u128(12)),
+            ],
         )
         .expect("valid scope");
 
@@ -1007,9 +1025,31 @@ mod tests {
 
         assert_eq!(
             clause.clause,
-            "(source_module NOT IN ($4, $5) OR document_id IN ($6, $7))"
+            "(source_module NOT IN ($4, $5) OR (source_module = $6 AND document_id IN ($7)) OR (source_module = $8 AND document_id IN ($9)))"
         );
+        assert_eq!(clause.values.len(), 6);
+    }
+
+    #[test]
+    fn gated_document_permission_never_crosses_a_module_boundary() {
+        let shared_uuid = Uuid::from_u128(42);
+        let only_blog = SearchAudienceDocumentScope::new(
+            vec!["blog".to_string(), "forum".to_string()],
+            vec![("blog".to_string(), shared_uuid)],
+        ).expect("blog-only approval");
+        let clause = build_filter_clause(
+            &query_with_categories(vec![]), 4, None, Some(&only_blog),
+        );
+        assert!(clause.clause.contains("(source_module = $6 AND document_id IN ($7))"));
+        assert!(!clause.clause.contains("source_module = $8"));
         assert_eq!(clause.values.len(), 4);
+        assert!(
+            SearchAudienceDocumentScope::new(
+                vec!["blog".to_string()],
+                vec![("forum".to_string(), shared_uuid)]
+            ).is_err(),
+            "an unrelated module's authorization cannot enter the scope"
+        );
     }
 
     #[test]
@@ -1040,7 +1080,10 @@ mod tests {
                 .is_err()
         );
         assert!(
-            SearchAudienceDocumentScope::new(vec!["forum".to_string()], vec![Uuid::nil()]).is_err()
+            SearchAudienceDocumentScope::new(
+                vec!["forum".to_string()],
+                vec![("forum".to_string(), Uuid::nil())],
+            ).is_err()
         );
     }
 
