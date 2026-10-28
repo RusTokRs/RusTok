@@ -62,7 +62,7 @@ export function createColumns(gqlOpts: GqlOpts): ColumnDef<StockFeatures, PostSu
     enableColumnFilter: true,
     meta: {
       label: 'Status',
-      variant: 'multiSelect',
+      variant: 'select',
       options: STATUS_OPTIONS
     }
   },
