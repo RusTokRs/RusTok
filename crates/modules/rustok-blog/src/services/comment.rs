@@ -567,7 +567,11 @@ impl CommentService {
             enforce_scope(&security, Resource::Comments, Action::List)?;
             self.ensure_post_exists(tenant_id, post_id).await?;
         } else {
-            enforce_scope(&security, Resource::Comments, Action::List)?;
+            // Anonymous storefront reads already use the dedicated public
+            // Comments port and need no authenticated COMMENTS_LIST grant.
+            if !security.is_public_read() {
+                enforce_scope(&security, Resource::Comments, Action::List)?;
+            }
             if self.public_comments_mode(tenant_id).await? == BlogCommentsMode::Disabled {
                 return Err(BlogError::CommentsDisabled);
             }
