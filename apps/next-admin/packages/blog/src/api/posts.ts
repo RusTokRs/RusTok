@@ -135,13 +135,13 @@ export interface UpdatePostInput {
   locale?: string;
   title?: string;
   content?: RichTextDocument;
-  excerpt?: string;
+  excerpt?: string | null;
   slug?: string;
   tags?: string[];
   categoryId?: string | null;
-  featuredImageUrl?: string;
-  seoTitle?: string;
-  seoDescription?: string;
+  featuredImageUrl?: string | null;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
   channelSlugs?: string[];
   version: number;
   scheduledAt?: string | null;
@@ -211,6 +211,18 @@ mutation UpdatePost($id: UUID!, $tenantId: UUID!, $input: UpdatePostInput!) {
 }
 `;
 
+const ARCHIVE_POST_MUTATION = `
+mutation ArchivePost($id: UUID!, $tenantId: UUID!) {
+  archivePost(id: $id, tenantId: $tenantId)
+}
+`;
+
+const RESTORE_POST_MUTATION = `
+mutation RestorePost($id: UUID!, $tenantId: UUID!) {
+  restorePost(id: $id, tenantId: $tenantId)
+}
+`;
+
 const DELETE_POST_MUTATION = `
 mutation DeletePost($id: UUID!, $tenantId: UUID!) {
   deletePost(id: $id, tenantId: $tenantId)
@@ -245,6 +257,14 @@ interface CreatePostResponse {
 
 interface UpdatePostResponse {
   updatePost: boolean;
+}
+
+interface ArchivePostResponse {
+  archivePost: boolean;
+}
+
+interface RestorePostResponse {
+  restorePost: boolean;
 }
 
 interface DeletePostResponse {
@@ -323,7 +343,7 @@ export async function updatePost(
   input: UpdatePostInput,
   opts: GqlOpts = {}
 ): Promise<void> {
-  await graphqlRequest<
+  const data = await graphqlRequest<
     { id: string; tenantId: string; input: UpdatePostInput },
     UpdatePostResponse
   >(
@@ -332,40 +352,64 @@ export async function updatePost(
     opts.token,
     opts.tenantSlug
   );
+  if (!data.updatePost) throw new Error('Update post rejected by the Blog owner');
 }
 
 export async function deletePost(
   id: string,
   opts: GqlOpts = {}
 ): Promise<void> {
-  await graphqlRequest<{ id: string; tenantId: string }, DeletePostResponse>(
+  const data = await graphqlRequest<{ id: string; tenantId: string }, DeletePostResponse>(
     DELETE_POST_MUTATION,
     { id, tenantId: opts.tenantId! },
     opts.token,
     opts.tenantSlug
   );
+  if (!data.deletePost) throw new Error('deletePost rejected by the Blog owner');
 }
 
 export async function publishPost(
   id: string,
   opts: GqlOpts = {}
 ): Promise<void> {
-  await graphqlRequest<{ id: string; tenantId: string }, PublishPostResponse>(
+  const data = await graphqlRequest<{ id: string; tenantId: string }, PublishPostResponse>(
     PUBLISH_POST_MUTATION,
     { id, tenantId: opts.tenantId! },
     opts.token,
     opts.tenantSlug
   );
+  if (!data.publishPost) throw new Error('publishPost rejected by the Blog owner');
 }
 
 export async function unpublishPost(
   id: string,
   opts: GqlOpts = {}
 ): Promise<void> {
-  await graphqlRequest<{ id: string; tenantId: string }, UnpublishPostResponse>(
+  const data = await graphqlRequest<{ id: string; tenantId: string }, UnpublishPostResponse>(
     UNPUBLISH_POST_MUTATION,
     { id, tenantId: opts.tenantId! },
     opts.token,
     opts.tenantSlug
   );
+  if (!data.unpublishPost) throw new Error('unpublishPost rejected by the Blog owner');
+}
+
+export async function archivePost(id: string, opts: GqlOpts): Promise<void> {
+  const data = await graphqlRequest<{ id: string; tenantId: string }, ArchivePostResponse>(
+    ARCHIVE_POST_MUTATION,
+    { id, tenantId: opts.tenantId! },
+    opts.token,
+    opts.tenantSlug
+  );
+  if (!data.archivePost) throw new Error('Archive post rejected by the Blog owner');
+}
+
+export async function restorePost(id: string, opts: GqlOpts): Promise<void> {
+  const data = await graphqlRequest<{ id: string; tenantId: string }, RestorePostResponse>(
+    RESTORE_POST_MUTATION,
+    { id, tenantId: opts.tenantId! },
+    opts.token,
+    opts.tenantSlug
+  );
+  if (!data.restorePost) throw new Error('Restore post rejected by the Blog owner');
 }
