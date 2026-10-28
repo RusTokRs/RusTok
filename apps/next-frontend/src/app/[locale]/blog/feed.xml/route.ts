@@ -10,6 +10,7 @@
 
 import { NextResponse } from "next/server";
 import { storefrontGraphql } from "@/shared/lib/graphql";
+import { getSiteUrl } from "@/shared/seo/site";
 import {
   getStorefrontTenantId,
   getStorefrontTenantSlug,
@@ -61,20 +62,22 @@ export async function GET(
   }
 
   const isRu = locale === "ru";
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://rustok.dev";
+  const siteUrl = getSiteUrl();
   const blogUrl = `${siteUrl}/${locale}/blog`;
   const feedTitle = isRu ? "Блог RusToK" : "RusToK Blog";
   const feedDescription = isRu
     ? "Последние новости, статьи и технические публикации платформы RusToK."
     : "Latest stories, engineering insights, and platform updates from RusToK.";
 
-  const itemsXml = posts
+  // A published post without its first-publication timestamp is damaged owner
+  // state, not a reason for RSS to invent a new publication date per request.
+  // The canonical published-post list normally excludes such rows already.
+  const feedPosts = posts.filter((post) => Boolean(post.slug && post.publishedAt));
+  const itemsXml = feedPosts
     .map((post) => {
-      const slugSegment = post.slug ? encodeURIComponent(post.slug) : post.id;
+      const slugSegment = encodeURIComponent(post.slug!);
       const postUrl = `${blogUrl}/${slugSegment}`;
-      const pubDate = post.publishedAt
-        ? new Date(post.publishedAt).toUTCString()
-        : new Date().toUTCString();
+      const pubDate = new Date(post.publishedAt!).toUTCString();
       const categoryTag = post.categoryName
         ? `\n      <category>${cdata(post.categoryName)}</category>`
         : "";
