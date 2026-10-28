@@ -73,6 +73,13 @@ Run both `npm run verify:module-source-layout` and
   event bus.
 - Publish module-owned Leptos admin/storefront packages for installable UI
   surfaces.
+- On both Next and Leptos storefronts, a nonempty `?q=` selects the Search
+  owner's published Blog corpus rather than substring-filtering a Blog feed
+  page. `category` UUID and exact localized/canonical `tag` are applied in
+  Search SQL before its nine-result relevance/offset pagination; `?page=` is
+  consistent across frameworks. With no query, Blog retains its own
+  pinned-post keyset cursor. The indexed Blog document is an eventual read
+  model and the live Blog Search audience port rechecks publication/channel.
 - Keep Blog configuration limited to settings that have a canonical runtime owner;
   unused manifest-only settings are not declared.
 - Publish separate typed RBAC resources: `blog_posts:*`,
