@@ -82,7 +82,7 @@ mod tests {
         );
 
         let count = db
-            .query_one(sea_orm_migration::sea_orm::Statement::from_string(
+            .query_one_raw(sea_orm_migration::sea_orm::Statement::from_string(
                 DatabaseBackend::Sqlite,
                 "SELECT count(*) AS count FROM install_http_jobs WHERE status = 'running'"
                     .to_string(),
