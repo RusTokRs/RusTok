@@ -28,6 +28,7 @@ import * as z from 'zod';
 import type { PostResponse, GqlOpts } from '../api/posts';
 import { createPost, updatePost } from '../api/posts';
 import { listAllBlogCategories, type BlogCategory } from '../api/categories';
+import { BlogModerationPanel } from './moderation-panel';
 
 const formSchema = z.object({
   title: z.string().min(2, 'Title must be at least 2 characters.'),
@@ -223,7 +224,8 @@ export default function PostForm({
   }
 
   return (
-    <Card className='mx-auto w-full'>
+    <>
+      <Card className='mx-auto w-full'>
       <CardHeader>
         <CardTitle className='text-left text-2xl font-bold'>
           {pageTitle}
@@ -369,6 +371,15 @@ export default function PostForm({
           </Button>
         </Form>
       </CardContent>
-    </Card>
+      </Card>
+      {initialData && (
+        <BlogModerationPanel
+          key={initialData.id}
+          postId={initialData.id}
+          locale={initialData.requestedLocale}
+          gqlOpts={gqlOpts}
+        />
+      )}
+    </>
   );
 }
