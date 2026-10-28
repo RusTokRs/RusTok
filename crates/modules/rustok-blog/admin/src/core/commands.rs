@@ -240,6 +240,11 @@ pub struct BlogPostFormInput<'a> {
     pub content: &'a RichTextDocument,
     pub publish: bool,
     pub tags: &'a str,
+    pub category_id: &'a str,
+    pub channel_slugs: &'a str,
+    pub featured_image_url: &'a str,
+    pub seo_title: &'a str,
+    pub seo_description: &'a str,
 }
 
 pub fn build_blog_post_draft(input: BlogPostFormInput<'_>) -> BlogPostDraft {
@@ -252,6 +257,11 @@ pub fn build_blog_post_draft(input: BlogPostFormInput<'_>) -> BlogPostDraft {
         content: input.content.clone(),
         publish: input.publish,
         tags: parse_tags(input.tags),
+        category_id: optional_text(input.category_id),
+        channel_slugs: parse_ui_csv(input.channel_slugs),
+        featured_image_url: optional_text(input.featured_image_url),
+        seo_title: optional_text(input.seo_title),
+        seo_description: optional_text(input.seo_description),
     }
 }
 
@@ -265,6 +275,11 @@ pub struct BlogPostEditorFormState {
     pub content: RichTextDocument,
     pub locale: String,
     pub tags_input: String,
+    pub category_id: String,
+    pub channel_slugs_input: String,
+    pub featured_image_url: String,
+    pub seo_title: String,
+    pub seo_description: String,
     pub publish_now: bool,
 }
 
@@ -279,6 +294,11 @@ impl BlogPostEditorFormState {
             content: RichTextDocument::empty(),
             locale: default_locale.to_string(),
             tags_input: String::new(),
+            category_id: String::new(),
+            channel_slugs_input: String::new(),
+            featured_image_url: String::new(),
+            seo_title: String::new(),
+            seo_description: String::new(),
             publish_now: false,
         }
     }
@@ -297,6 +317,11 @@ impl BlogPostEditorFormState {
                 .unwrap_or_default(),
             locale: post.requested_locale.clone(),
             tags_input: tags_input_value(post.tags.as_slice()),
+            category_id: optional_text_or_default(post.category_id.clone()),
+            channel_slugs_input: tags_input_value(post.channel_slugs.as_slice()),
+            featured_image_url: optional_text_or_default(post.featured_image_url.clone()),
+            seo_title: optional_text_or_default(post.seo_title.clone()),
+            seo_description: optional_text_or_default(post.seo_description.clone()),
             publish_now: is_published_status(post.status.as_str()),
         }
     }
