@@ -21,6 +21,7 @@ import { resolveSeoPageContextForRoute } from "@/shared/seo/runtime";
 import {
   fetchPublishedPosts,
   fetchBlogCategories,
+  fetchBlogTags,
   PostCard,
   BlogPagination,
   type BlogPostSummary,
@@ -135,8 +136,16 @@ export default async function BlogListingPage({
     // fallback
   }
 
-  // Extract all distinct tags and categories fallback from results
-  const allTags = Array.from(new Set(posts.flatMap((p) => p.tags)));
+  // Taxonomy owns the complete tag dictionary; a post page is not a facet API.
+  let allTags: string[] = [];
+  try {
+    allTags = await fetchBlogTags(storefrontGraphql, tenantId, tenantSlug, locale);
+  } catch {
+    // Keep the listing accessible if taxonomy is unavailable; this fallback is
+    // explicitly limited to tags present on the fetched page.
+    allTags = Array.from(new Set(posts.flatMap((p) => p.tags)));
+  }
+  // Categories likewise fall back to their currently loaded post labels.
   if (allCategories.length === 0) {
     const categoriesMap = new Map<string, string>();
     for (const p of posts) {
