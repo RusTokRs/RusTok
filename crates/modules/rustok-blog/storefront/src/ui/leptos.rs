@@ -154,9 +154,28 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
     let search_query = use_route_query_value("q");
     let tag_query = use_route_query_value("tag");
     let category_query = use_route_query_value("category");
-    let active_search = search_query.get();
-    let active_tag = tag_query.get();
-    let active_category = category_query.get();
+    let active_search = search_query.get().filter(|value| !value.trim().is_empty());
+    let active_tag = tag_query.get().filter(|value| !value.trim().is_empty());
+    let active_category = category_query.get().filter(|value| !value.trim().is_empty());
+
+    let selected_slug = selected_post_slug.as_deref();
+    let remove_category_href = core::filter_query_href(
+        selected_slug, active_tag.as_deref(), None, active_search.as_deref(),
+    );
+    let remove_tag_href = core::filter_query_href(
+        selected_slug, None, active_category.as_deref(), active_search.as_deref(),
+    );
+    let remove_search_href = core::filter_query_href(
+        selected_slug, active_tag.as_deref(), active_category.as_deref(), None,
+    );
+    let clear_filters_href = core::filter_query_href(selected_slug, None, None, None);
+    let all_categories_href = remove_category_href.clone();
+    let tag_for_links = active_tag.clone();
+    let search_for_links = active_search.clone();
+    let slug_for_links = selected_post_slug.clone();
+    let tag_for_form = active_tag.clone();
+    let category_for_form = active_category.clone();
+    let slug_for_form = selected_post_slug.clone();
 
     let other_posts = if let Some(q) = active_search
         .as_deref()
@@ -194,22 +213,22 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                 {active_category.as_ref().map(|cat| view! {
                     <span class="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">
                         {format!("Category: {cat}")}
-                        <a href="?category=" class="ml-1 font-bold text-muted-foreground hover:text-foreground">"×"</a>
+                        <a href=remove_category_href.clone() class="ml-1 font-bold text-muted-foreground hover:text-foreground">"×"</a>
                     </span>
                 })}
                 {active_tag.map(|tag| view! {
                     <span class="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
                         {format!("#{tag}")}
-                        <a href="?tag=" class="ml-1 font-bold text-muted-foreground hover:text-foreground">"×"</a>
+                        <a href=remove_tag_href class="ml-1 font-bold text-muted-foreground hover:text-foreground">"×"</a>
                     </span>
                 })}
                 {active_search.as_ref().map(|q| view! {
                     <span class="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
                         {format!("Search: \"{q}\"")}
-                        <a href="?q=" class="ml-1 font-bold text-muted-foreground hover:text-foreground">"×"</a>
+                        <a href=remove_search_href class="ml-1 font-bold text-muted-foreground hover:text-foreground">"×"</a>
                     </span>
                 })}
-                <a href="?category=&tag=&q=" class="ml-auto text-xs text-muted-foreground hover:text-foreground underline">
+                <a href=clear_filters_href class="ml-auto text-xs text-muted-foreground hover:text-foreground underline">
                     {t(locale.as_deref(), "blog.filter.clear", "Clear all")}
                 </a>
             </div>
@@ -224,7 +243,7 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
         view! {
             <div class="flex flex-wrap items-center gap-2 pt-1">
                 <a
-                    href="?category="
+                    href=all_categories_href
                     class=if is_all_active {
                         "rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm"
                     } else {
@@ -238,7 +257,12 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                     .map(|(cat_id, cat_name)| {
                         let is_active = active_category.as_deref() == Some(&cat_id)
                             || active_category.as_deref() == Some(&cat_name);
-                        let cat_link = format!("?category={}", cat_id);
+                        let cat_link = core::filter_query_href(
+                            slug_for_links.as_deref(),
+                            tag_for_links.as_deref(),
+                            Some(cat_id.as_str()),
+                            search_for_links.as_deref(),
+                        );
                         view! {
                             <a
                                 href=cat_link
@@ -264,6 +288,9 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
         <div class="space-y-6" id="top">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <form method="GET" class="relative max-w-md w-full">
+                    {slug_for_form.map(|slug| view! { <input type="hidden" name="slug" value=slug /> })}
+                    {tag_for_form.map(|tag| view! { <input type="hidden" name="tag" value=tag /> })}
+                    {category_for_form.map(|category| view! { <input type="hidden" name="category" value=category /> })}
                     <input
                         type="search"
                         name="q"
