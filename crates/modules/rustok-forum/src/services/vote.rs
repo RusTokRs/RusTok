@@ -25,7 +25,7 @@ use crate::services::topic_vote_lock::{
     lock_active_topic_vote_write_in_tx, lock_topic_vote_scopes_in_tx,
 };
 use crate::services::topic_write_audience::topic_write_audience_allows_in_tx;
-use crate::state_machine::ReplyStatus;
+use crate::state_machine::{ReplyStatus, TopicStatus};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct VoteSummary {
@@ -252,6 +252,20 @@ impl VoteService {
             .require_internal_voting()?;
         let policy = ForumVotePolicy::resolve_in_tx(&self.settings, &txn, tenant_id).await?;
         policy.require_value_allowed(value)?;
+        // Match topic-vote rules and the category -> topic -> reply lock
+        // order. An approved reply must not be votable after its parent
+        // topic has been archived while authorization was evaluated.
+        let parent_topic = crate::services::TopicService::find_topic_for_update_in_tx(
+            &txn,
+            tenant_id,
+            parent.topic_id,
+        )
+        .await?;
+        if parent_topic.status == TopicStatus::Archived {
+            return Err(ForumError::Validation(
+                "Forum reply votes cannot be changed after topic archival".to_string(),
+            ));
+        }
         let reply =
             crate::services::ReplyService::find_reply_for_update_in_tx(&txn, tenant_id, reply_id)
                 .await?;

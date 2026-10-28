@@ -69,12 +69,14 @@ Findings are ordered by risk and by dependency (owner correctness before transpo
    category/topic audience is evaluated from the write transaction after
    acquiring the category-tree writer lock, including reply-parent lookup.
    Topic subscription updates use the same boundary; blind clears remain
-   possible after archival. This serializes Forum-owned policy changes with
-   writes, but host-owned trust/channel/group facts remain outside the
-   database snapshot and the vote/subscription route channel is still
-   unmodeled. Design a host-owned revision/fencing contract before claiming
-   full cross-owner atomicity. PostgreSQL revocation and cross-channel race
-   tests remain mandatory.
+   possible after archival. Reply votes now lock/check the parent topic and
+   refuse writes after archival, matching topic vote behavior.
+   This serializes Forum-owned policy changes with writes, but host-owned
+   trust/channel/group facts remain outside the database snapshot and the
+   vote/subscription route channel is still unmodeled. Design a host-owned
+   revision/fencing contract before claiming full cross-owner atomicity.
+   SQLite committed-revocation and PostgreSQL policy-lock overlap regressions
+   are source-ready; host-fact and route-channel races still need owner contracts.
 5. **P2, source-ready in this branch:** Reply first publication is derived
    from the Forum append-only creation/status journal before the status
    mutation, including `Rejected -> Approved` and `Hidden -> Approved`.

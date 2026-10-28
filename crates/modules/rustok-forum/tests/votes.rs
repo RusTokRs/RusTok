@@ -427,9 +427,22 @@ async fn topic_and_reply_votes_round_trip_through_read_paths() {
         .await
         .expect("archived topic must still allow removing the caller's vote");
     subscription_service
-        .clear_topic_subscription(tenant_id, topic.id, voter)
+        .clear_topic_subscription(tenant_id, topic.id, voter.clone())
         .await
         .expect("archived topic must still allow clearing its subscription");
+    let archived_reply_vote = vote_service
+        .set_reply_vote(
+            tenant_id,
+            reply.id,
+            voter.clone(),
+            write_context(tenant_id, &voter),
+            1,
+        )
+        .await;
+    assert!(
+        matches!(archived_reply_vote, Err(ForumError::Validation(_))),
+        "archived topic must reject new reply votes as well as topic votes"
+    );
 }
 
 #[tokio::test]

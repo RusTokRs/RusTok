@@ -189,7 +189,8 @@ wrappers. Each one has an owner decision or a follow-up task in
   [`DECISIONS/2026-10-09-forum-topic-owner-audience-read.md`](../../../DECISIONS/2026-10-09-forum-topic-owner-audience-read.md).
 - Vote and subscription writes evaluate the owner audience of the parent topic
   inside their write transaction under the Forum category-policy lock, and
-  reject self-voting unless `allow_self_voting` is enabled. See
+  reject self-voting unless `allow_self_voting` is enabled. Reply votes also
+  lock the parent topic and reject archived threads, matching topic votes. See
   [`DECISIONS/2026-10-09-forum-vote-subscription-write-audience.md`](../../../DECISIONS/2026-10-09-forum-vote-subscription-write-audience.md).
   Remaining gaps: route-channel scope is not part of the write gate, and
   externally provided trust/channel/group facts have no shared transaction
