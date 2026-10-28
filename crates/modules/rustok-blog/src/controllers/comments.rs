@@ -191,12 +191,13 @@ pub async fn get_comment(
 
     let comment = runtime
         .comment_service()
-        .get_comment_with_locale_fallback(
+        .get_comment_with_locale_fallback_on_channel(
             tenant.id,
             security_context(&auth),
             id,
             locale,
             Some(tenant.default_locale.as_str()),
+            request_context.channel_slug.as_deref(),
         )
         .await
         .map_err(crate::error::public::to_http_error)?;
