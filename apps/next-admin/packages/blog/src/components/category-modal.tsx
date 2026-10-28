@@ -15,7 +15,7 @@ import {
 } from '@/shared/ui/shadcn/dialog';
 import { Button } from '@/components/ui/button';
 import { Form } from '@/shared/ui/shadcn/form';
-import { FormInput, FormTextarea } from '@/shared/ui/forms';
+import { FormInput, FormTextarea, FormSelect } from '@/shared/ui/forms';
 
 import type { BlogCategory, GqlOpts } from '../api/categories';
 import { createBlogCategory, updateBlogCategory } from '../api/categories';
@@ -24,6 +24,7 @@ const categorySchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters.'),
   slug: z.string().optional(),
   description: z.string().optional(),
+  parentId: z.string().optional(),
   /** Canonical sibling position; the owner clamps it to the sibling count. */
   position: z.coerce.number().int().min(0).default(0)
 });
@@ -34,6 +35,7 @@ interface CategoryModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   category?: BlogCategory | null;
+  categories: BlogCategory[];
   locale: string;
   gqlOpts?: GqlOpts;
   onSuccess: () => void;
@@ -43,6 +45,7 @@ export function CategoryModal({
   open,
   onOpenChange,
   category,
+  categories,
   locale,
   gqlOpts = {},
   onSuccess
@@ -55,6 +58,7 @@ export function CategoryModal({
       name: '',
       slug: '',
       description: '',
+      parentId: '',
       position: 0
     }
   });
@@ -66,6 +70,7 @@ export function CategoryModal({
           name: category.name,
           slug: category.slug,
           description: category.description ?? '',
+          parentId: category.parentId ?? '',
           position: category.position
         });
       } else {
@@ -73,6 +78,7 @@ export function CategoryModal({
           name: '',
           slug: '',
           description: '',
+          parentId: '',
           position: 0
         });
       }
@@ -89,7 +95,7 @@ export function CategoryModal({
           {
             name: values.name,
             slug: values.slug || undefined,
-            description: values.description || undefined,
+            description: values.description?.trim() || null,
             locale
           },
           gqlOpts
@@ -100,7 +106,8 @@ export function CategoryModal({
           {
             name: values.name,
             slug: values.slug || undefined,
-            description: values.description || undefined,
+            description: values.description?.trim() || undefined,
+            parentId: values.parentId || undefined,
             position: values.position,
             locale
           },
@@ -154,6 +161,18 @@ export function CategoryModal({
             placeholder='Short description of this category'
             config={{ rows: 3 }}
           />
+
+          {!isEditing && (
+            <FormSelect
+              control={form.control}
+              name='parentId'
+              label='Parent category'
+              options={[
+                { label: 'Root category', value: '' },
+                ...categories.map((item) => ({ label: item.name, value: item.id }))
+              ]}
+            />
+          )}
 
           {!isEditing && (
             <FormInput
