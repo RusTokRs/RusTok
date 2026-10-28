@@ -226,12 +226,14 @@ impl BrandPort for BrandService {
                 "Slug exceeds maximum length of 100 characters".to_string(),
             ));
         }
-        if let Some(ref url) = input.website_url {
-            if url.len() > 512 {
-                return Err(BrandError::InvalidInput(
-                    "Website URL exceeds maximum length of 512 characters".to_string(),
-                ));
-            }
+        if input
+            .website_url
+            .as_ref()
+            .is_some_and(|url| url.len() > 512)
+        {
+            return Err(BrandError::InvalidInput(
+                "Website URL exceeds maximum length of 512 characters".to_string(),
+            ));
         }
         for t in &input.translations {
             if t.locale.trim().is_empty() {
@@ -366,12 +368,10 @@ impl BrandPort for BrandService {
             active.banner_media_id = Set(banner);
         }
         if let Some(url) = input.website_url {
-            if let Some(ref u) = url {
-                if u.len() > 512 {
-                    return Err(BrandError::InvalidInput(
-                        "Website URL exceeds maximum length of 512 characters".to_string(),
-                    ));
-                }
+            if url.as_ref().is_some_and(|u| u.len() > 512) {
+                return Err(BrandError::InvalidInput(
+                    "Website URL exceeds maximum length of 512 characters".to_string(),
+                ));
             }
             active.website_url = Set(url);
         }
