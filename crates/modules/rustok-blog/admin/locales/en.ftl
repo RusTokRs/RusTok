@@ -108,3 +108,4 @@ blog-form-featuredImage = Featured image URL
 blog-form-seoTitle = SEO title (Blog default)
 blog-form-seoDescription = SEO description (Blog default)
 blog-error-categories = Categories unavailable
+blog-form-scheduledAt = Schedule (RFC 3339 with timezone)
