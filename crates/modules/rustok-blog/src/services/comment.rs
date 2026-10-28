@@ -322,6 +322,24 @@ impl CommentService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> BlogResult<CommentResponse> {
+        self.get_comment_with_locale_fallback_on_channel(
+            tenant_id, security, comment_id, locale, fallback_locale, None,
+        )
+        .await
+    }
+
+    /// Ordinary readers may inspect their own comments; others' unpublished
+    /// moderation entries are never exposed by a generic COMMENTS_READ grant.
+    #[instrument(skip(self, security))]
+    pub async fn get_comment_with_locale_fallback_on_channel(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        comment_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        public_channel_slug: Option<&str>,
+    ) -> BlogResult<CommentResponse> {
         enforce_scope(&security, Resource::Comments, Action::Read)?;
         let record = self
             .require_comments_thread_port()?
@@ -334,6 +352,22 @@ impl CommentService {
             .map_err(comments_port_error_to_blog_error)?;
         let post_id = Self::ensure_blog_target(&record)?;
         self.ensure_post_exists(tenant_id, post_id).await?;
+        if !may_moderate_comments(&security) && security.user_id != Some(record.author_id) {
+            // A valid comment ID is not permission to inspect a pending/spam
+            // entry belonging to someone else. Even approved comments require
+            // a currently public post and enabled discussion policy.
+            if record.status != ApiCommentStatus::Approved {
+                return Err(BlogError::comment_not_found(comment_id));
+            }
+            if self.public_comments_mode(tenant_id).await? == BlogCommentsMode::Disabled
+                || self
+                    .ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
+                    .await
+                    .is_err()
+            {
+                return Err(BlogError::comment_not_found(comment_id));
+            }
+        }
         Self::map_comment_record(record)
     }
 
