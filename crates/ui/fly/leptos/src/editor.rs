@@ -386,36 +386,33 @@ pub fn FlyCanvasPreview(
     };
     let rendered = render_page(&document, &selection, &policy);
 
-    let on_canvas_click = {
-        let on_select = on_select;
-        move |event: leptos::ev::MouseEvent| {
-            if !is_interactive {
-                return;
-            }
-            #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
-            {
-                use wasm_bindgen::JsCast;
-                if let Some(on_select) = on_select {
-                    let target = event
-                        .target()
-                        .and_then(|t| t.dyn_into::<web_sys::Element>().ok());
-                    if let Some(target) = target {
-                        if let Ok(Some(element)) = target.closest("[data-fly-component-id]") {
-                            event.prevent_default();
-                            let id = element.get_attribute("data-fly-component-id");
-                            on_select.run(id);
-                            return;
-                        }
+    let on_canvas_click = move |event: leptos::ev::MouseEvent| {
+        if !is_interactive {
+            return;
+        }
+        #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+        {
+            use wasm_bindgen::JsCast;
+            if let Some(on_select) = on_select {
+                let target = event
+                    .target()
+                    .and_then(|t| t.dyn_into::<web_sys::Element>().ok());
+                if let Some(target) = target {
+                    if let Ok(Some(element)) = target.closest("[data-fly-component-id]") {
+                        event.prevent_default();
+                        let id = element.get_attribute("data-fly-component-id");
+                        on_select.run(id);
+                        return;
                     }
-                    on_select.run(None);
                 }
+                on_select.run(None);
             }
-            #[cfg(not(all(target_arch = "wasm32", feature = "wasm-client")))]
-            {
-                let _ = event;
-                if let Some(on_select) = on_select {
-                    on_select.run(None);
-                }
+        }
+        #[cfg(not(all(target_arch = "wasm32", feature = "wasm-client")))]
+        {
+            let _ = event;
+            if let Some(on_select) = on_select {
+                on_select.run(None);
             }
         }
     };
@@ -448,42 +445,37 @@ pub fn FlyCanvasPreview(
         }
     };
 
-    let on_canvas_focusout = {
-        let on_patch_content = on_patch_content;
-        move |event: leptos::ev::FocusEvent| {
-            if !is_interactive {
-                return;
-            }
-            #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
-            {
-                use wasm_bindgen::JsCast;
-                let target = event
-                    .target()
-                    .and_then(|t| t.dyn_into::<web_sys::Element>().ok());
-                if let Some(target) = target {
-                    if let Ok(Some(element)) = target.closest("[data-fly-component-id]") {
-                        let is_editable =
-                            element.get_attribute("contenteditable").as_deref() == Some("true");
-                        if is_editable {
-                            let _ = element.remove_attribute("contenteditable");
-                            if let Some(id) = element.get_attribute("data-fly-component-id") {
-                                if let Some(html_element) =
-                                    element.dyn_ref::<web_sys::HtmlElement>()
-                                {
-                                    let text = html_element.inner_text();
-                                    if let Some(on_patch_content) = on_patch_content {
-                                        on_patch_content.run((id, text));
-                                    }
+    let on_canvas_focusout = move |event: leptos::ev::FocusEvent| {
+        if !is_interactive {
+            return;
+        }
+        #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+        {
+            use wasm_bindgen::JsCast;
+            let target = event
+                .target()
+                .and_then(|t| t.dyn_into::<web_sys::Element>().ok());
+            if let Some(target) = target {
+                if let Ok(Some(element)) = target.closest("[data-fly-component-id]") {
+                    let is_editable =
+                        element.get_attribute("contenteditable").as_deref() == Some("true");
+                    if is_editable {
+                        let _ = element.remove_attribute("contenteditable");
+                        if let Some(id) = element.get_attribute("data-fly-component-id") {
+                            if let Some(html_element) = element.dyn_ref::<web_sys::HtmlElement>() {
+                                let text = html_element.inner_text();
+                                if let Some(on_patch_content) = on_patch_content {
+                                    on_patch_content.run((id, text));
                                 }
                             }
                         }
                     }
                 }
             }
-            #[cfg(not(all(target_arch = "wasm32", feature = "wasm-client")))]
-            {
-                let _ = (&event, &on_patch_content);
-            }
+        }
+        #[cfg(not(all(target_arch = "wasm32", feature = "wasm-client")))]
+        {
+            let _ = (&event, &on_patch_content);
         }
     };
 

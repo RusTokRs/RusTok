@@ -31,3 +31,6 @@ tokio = { workspace = true, features = ["full", "macros"] }
 
 [features]
 default = []
+
+[package.metadata.cargo-udeps.ignore]
+normal = ["rustok-outbox"]

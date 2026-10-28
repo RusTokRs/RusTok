@@ -50,4 +50,4 @@ uuid = { workspace = true, features = ["serde"] }
 tracing.workspace = true
 
 [package.metadata.cargo-udeps.ignore]
-normal = ["leptos-ui", "leptos-ui-routing", "leptos_axum", "rustok-party", "rustok-core", "rustok-graphql", "leptos-auth"]
+normal = ["leptos-auth", "leptos-ui", "leptos-ui-routing", "leptos_axum", "leptos_router", "rustok-api", "rustok-core", "rustok-graphql", "rustok-party", "rustok-ui-core", "rustok-ui-transport", "uuid"]

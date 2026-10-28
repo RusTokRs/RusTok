@@ -34,3 +34,5 @@ tokio = { workspace = true, features = ["full", "macros"] }
 [features]
 default = ["captcha-http"]
 captcha-http = ["dep:reqwest"]
+[package.metadata.cargo-udeps.ignore]
+normal = ["rustok-outbox"]
