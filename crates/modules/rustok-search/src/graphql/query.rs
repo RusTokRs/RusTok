@@ -431,19 +431,27 @@ impl SearchQueryRoot {
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let input = normalize_search_preview_input(input)?;
+        // Storefront callers may not select a tenant, including an explicit
+        // assertion equal to the current one. The Search surface policy must
+        // be executed, not merely covered by unit tests for its helper.
+        let tenant_id = resolve_surface_tenant_scope(
+            tenant,
+            parse_optional_uuid(input.tenant_id.as_deref())?,
+            policy,
+        )?;
         let request_context = ctx.data::<RequestContext>()?;
         let trusted_channel =
-            resolve_trusted_storefront_channel(request_context, tenant.id, input.channel_id)
+            resolve_trusted_storefront_channel(request_context, tenant_id, input.channel_id)
                 .map_err(|error| FieldError::new(error.to_string()))?;
         enforce_storefront_rate_limit(ctx, policy.surface).await?;
         let engine = PgSearchEngine::new(db.clone());
         let requested_limit = input.limit;
         let effective_limit = policy.effective_limit(requested_limit);
         let started_at = Instant::now();
-        let transform = SearchDictionaryService::transform_query(db, tenant.id, &input.query)
+        let transform = SearchDictionaryService::transform_query(db, tenant_id, &input.query)
             .await
             .map_err(map_search_module_error)?;
-        let settings = SearchSettingsService::load_effective(db, Some(tenant.id))
+        let settings = SearchSettingsService::load_effective(db, Some(tenant_id))
             .await
             .map_err(map_search_module_error)?;
         let resolved = resolve_preset_and_ranking(
@@ -457,7 +465,7 @@ impl SearchQueryRoot {
         )?;
 
         let search_query = SearchQuery {
-            tenant_id: Some(tenant.id),
+            tenant_id: Some(tenant_id),
             locale: input.locale,
             channel_id: trusted_channel.channel_id,
             original_query: transform.original_query,
