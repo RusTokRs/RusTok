@@ -14,6 +14,7 @@ export {
   createBlogComment,
   fetchPublishedPost,
   fetchPublishedPosts,
+  searchPublishedPosts,
   fetchBlogCategories,
   fetchBlogTags,
 } from "./api/posts";
