@@ -54,6 +54,11 @@ pub fn BlogAdmin() -> impl IntoView {
     // Keep the owner translation locale independent of admin list filters.
     let (list_locale, set_list_locale) = signal(default_locale.clone());
     let (tags_input, set_tags_input) = signal(String::new());
+    let (category_id, set_category_id) = signal(String::new());
+    let (channel_slugs_input, set_channel_slugs_input) = signal(String::new());
+    let (featured_image_url, set_featured_image_url) = signal(String::new());
+    let (seo_title, set_seo_title) = signal(String::new());
+    let (seo_description, set_seo_description) = signal(String::new());
     let (publish_now, set_publish_now) = signal(false);
     let (busy_key, set_busy_key) = signal(Option::<String>::None);
     let (submit_error, set_submit_error) = signal(Option::<WritePathIssue>::None);
@@ -70,6 +75,11 @@ pub fn BlogAdmin() -> impl IntoView {
                     content: set_content,
                     locale: set_locale,
                     tags_input: set_tags_input,
+                    category_id: set_category_id,
+                    channel_slugs_input: set_channel_slugs_input,
+                    featured_image_url: set_featured_image_url,
+                    seo_title: set_seo_title,
+                    seo_description: set_seo_description,
                     publish_now: set_publish_now,
                 },
                 default_locale.as_str(),
@@ -225,6 +235,11 @@ pub fn BlogAdmin() -> impl IntoView {
                                         content: set_content,
                                         locale: set_locale,
                                         tags_input: set_tags_input,
+                    category_id: set_category_id,
+                    channel_slugs_input: set_channel_slugs_input,
+                    featured_image_url: set_featured_image_url,
+                    seo_title: set_seo_title,
+                    seo_description: set_seo_description,
                                         publish_now: set_publish_now,
                                     },
                                     &post,
@@ -285,6 +300,11 @@ pub fn BlogAdmin() -> impl IntoView {
         let excerpt_value = excerpt.get_untracked();
         let content_value = content.get_untracked();
         let tags_value = tags_input.get_untracked();
+        let category_id_value = category_id.get_untracked();
+        let channel_slugs_value = channel_slugs_input.get_untracked();
+        let featured_image_value = featured_image_url.get_untracked();
+        let seo_title_value = seo_title.get_untracked();
+        let seo_description_value = seo_description.get_untracked();
         let draft = core::build_blog_post_draft(core::BlogPostFormInput {
             locale: &locale_value,
             version: editing_version.get_untracked(),
@@ -294,6 +314,11 @@ pub fn BlogAdmin() -> impl IntoView {
             content: &content_value,
             publish: publish_now.get_untracked(),
             tags: &tags_value,
+            category_id: &category_id_value,
+            channel_slugs: &channel_slugs_value,
+            featured_image_url: &featured_image_value,
+            seo_title: &seo_title_value,
+            seo_description: &seo_description_value,
         });
 
         let required_fields_message = t(
@@ -341,6 +366,11 @@ pub fn BlogAdmin() -> impl IntoView {
                                 content: set_content,
                                 locale: set_locale,
                                 tags_input: set_tags_input,
+                    category_id: set_category_id,
+                    channel_slugs_input: set_channel_slugs_input,
+                    featured_image_url: set_featured_image_url,
+                    seo_title: set_seo_title,
+                    seo_description: set_seo_description,
                                 publish_now: set_publish_now,
                             },
                             &post,
@@ -419,6 +449,11 @@ pub fn BlogAdmin() -> impl IntoView {
                                     content: set_content,
                                     locale: set_locale,
                                     tags_input: set_tags_input,
+                    category_id: set_category_id,
+                    channel_slugs_input: set_channel_slugs_input,
+                    featured_image_url: set_featured_image_url,
+                    seo_title: set_seo_title,
+                    seo_description: set_seo_description,
                                     publish_now: set_publish_now,
                                 },
                                 &post,
@@ -479,6 +514,11 @@ pub fn BlogAdmin() -> impl IntoView {
                                 content: set_content,
                                 locale: set_locale,
                                 tags_input: set_tags_input,
+                    category_id: set_category_id,
+                    channel_slugs_input: set_channel_slugs_input,
+                    featured_image_url: set_featured_image_url,
+                    seo_title: set_seo_title,
+                    seo_description: set_seo_description,
                                 publish_now: set_publish_now,
                             },
                             &post,
@@ -538,6 +578,11 @@ pub fn BlogAdmin() -> impl IntoView {
                                 content: set_content,
                                 locale: set_locale,
                                 tags_input: set_tags_input,
+                    category_id: set_category_id,
+                    channel_slugs_input: set_channel_slugs_input,
+                    featured_image_url: set_featured_image_url,
+                    seo_title: set_seo_title,
+                    seo_description: set_seo_description,
                                 publish_now: set_publish_now,
                             },
                             &post,
@@ -805,6 +850,39 @@ pub fn BlogAdmin() -> impl IntoView {
                                     placeholder=form_copy_view.tags_placeholder.clone()
                                     prop:value=tags_input
                                     on:input=move |ev| set_tags_input.set(event_target_value(&ev))
+                                />
+                            </label>
+
+                            <label class=shell_classes.locale_filter_label>
+                                <span class=form_field_classes.label_text>"Channels (comma separated; empty = all channels)"</span>
+                                <input type="text" class=form_field_classes.text_input
+                                    placeholder="default, mobile"
+                                    prop:value=channel_slugs_input
+                                    on:input=move |ev| set_channel_slugs_input.set(event_target_value(&ev))
+                                />
+                            </label>
+
+                            <label class=shell_classes.locale_filter_label>
+                                <span class=form_field_classes.label_text>"Featured image URL"</span>
+                                <input type="text" class=form_field_classes.text_input
+                                    placeholder="https://example.com/cover.jpg"
+                                    prop:value=featured_image_url
+                                    on:input=move |ev| set_featured_image_url.set(event_target_value(&ev))
+                                />
+                            </label>
+
+                            <label class=shell_classes.locale_filter_label>
+                                <span class=form_field_classes.label_text>"SEO title (Blog default)"</span>
+                                <input type="text" class=form_field_classes.text_input
+                                    prop:value=seo_title
+                                    on:input=move |ev| set_seo_title.set(event_target_value(&ev))
+                                />
+                            </label>
+                            <label class=shell_classes.locale_filter_label>
+                                <span class=form_field_classes.label_text>"SEO description (Blog default)"</span>
+                                <textarea class=form_field_classes.textarea_short
+                                    prop:value=seo_description
+                                    on:input=move |ev| set_seo_description.set(event_target_value(&ev))
                                 />
                             </label>
 
