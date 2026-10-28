@@ -79,9 +79,11 @@ Findings are ordered by risk and by dependency (owner correctness before transpo
    restart and import paths remain unverified.
 6. **P2, source-ready in this branch:** Topic/reply vote set/clear and topic
    solution mark/clear acknowledge successful owner writes without a subsequent
-   audience-selected topic/reply read. REST returns `204 No Content`; GraphQL
-   returns `Boolean!`. Owner authorization, tenant checks and write-failure
-   propagation are unchanged; mutations do not leak hidden content. Confirm
+   audience-selected topic/reply read. Reply vote clears now delete only the
+   actor's own row without probing the reply's existence. REST returns
+   `204 No Content`; GraphQL returns `Boolean!`. Owner authorization,
+   tenant checks and write-failure propagation are unchanged; mutations
+   do not leak hidden content. Confirm
    clients, schema and authorization races in the maintainer runtime run.
 7. **P2, outstanding:** Wire the canonical posting policy evaluator and its
    window facts into create transactions (not only cooldown). Verify

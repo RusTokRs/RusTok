@@ -27,7 +27,9 @@ These six commands return only the owning service's successful completion:
   moderation policy even when the audience read would deny them. The
   acknowledgment does not contain the hidden topic.
 - Vote clear remains an actor-scoped blind delete: hidden/absent targets
-  have identical results. Full object details require a **new** authorized
+  have identical results. In particular, reply vote clear must not lock or
+  load the reply row; it deletes only the tenant/reply/user vote tuple.
+  Full object details require a **new** authorized
   read, which can legitimately fail after a successful command.
 
 ## Transaction, tenant, channel and consumers

@@ -215,9 +215,11 @@ wrappers. Each one has an owner decision or a follow-up task in
   audience contract.
 - Topic/reply vote set/clear and topic solution mark/clear return only
   command acknowledgements: REST `204 No Content`, GraphQL `Boolean!`.
-  There is no post-commit object read that could turn success into a 404 or
-  disclose restricted content. Clients needing updated details must call a
-  separately authorized owner read. See the write acknowledgement ADR.
+  Reply vote clearing is now a blind actor-scoped deletion without probing the
+  reply row; an absent or restricted reply is indistinguishable at this
+  boundary. There is no post-commit object read that could turn success into
+  a 404 or disclose restricted content. Clients needing updated details must
+  call a separately authorized owner read. See the write acknowledgement ADR.
 - `ForumOwnerExportReader` is an operator-scope library reader. It is not
   audience-filtered and has no CLI or API transport.
 - Among the `ForumModuleSettings` values, `use_reactions`, `allow_downvotes`, and

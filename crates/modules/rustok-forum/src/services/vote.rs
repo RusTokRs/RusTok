@@ -285,8 +285,9 @@ impl VoteService {
         ForumEngagementMode::resolve_in_tx(&self.settings, &txn, tenant_id)
             .await?
             .require_internal_voting()?;
-        crate::services::ReplyService::find_reply_for_update_in_tx(&txn, tenant_id, reply_id)
-            .await?;
+        // Blindly delete only this principal's vote. Requiring the reply row
+        // here leaks whether an inaccessible or deleted reply still exists
+        // and contradicts the accepted vote-clear owner contract.
         forum_reply_vote::Entity::delete_many()
             .filter(forum_reply_vote::Column::TenantId.eq(tenant_id))
             .filter(forum_reply_vote::Column::ReplyId.eq(reply_id))

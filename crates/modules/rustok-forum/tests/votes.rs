@@ -357,6 +357,18 @@ async fn topic_and_reply_votes_round_trip_through_read_paths() {
         .clear_reply_vote(tenant_id, reply.id, voter.clone())
         .await
         .expect("reply vote should clear");
+    vote_service
+        .clear_reply_vote(tenant_id, reply.id, voter.clone())
+        .await
+        .expect("repeated reply clear must be idempotent");
+    vote_service
+        .clear_reply_vote(tenant_id, Uuid::new_v4(), voter.clone())
+        .await
+        .expect("missing reply clear must not disclose reply existence");
+    vote_service
+        .clear_reply_vote(Uuid::new_v4(), reply.id, voter.clone())
+        .await
+        .expect("foreign-tenant reply clear must not reach this tenant's vote");
 
     let topic_after_clear = topic_service
         .get(tenant_id, voter.clone(), topic.id, "en")
