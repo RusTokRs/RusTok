@@ -202,13 +202,7 @@ async fn apply(
     }
 
     let persistence = InstallerPersistenceService::new(ctx.db_clone());
-    if persistence.has_running_http_job().await.unwrap_or(false) {
-        return Err(http_error(HttpError::new(
-            StatusCode::CONFLICT,
-            "installer_running",
-            "An installation job is already running",
-        )));
-    }
+    require_no_running_http_install_job(persistence.has_running_http_job().await)?;
 
     let plan = bind_host_install_plan(&ctx, request.plan).await?;
     let job_id = rustok_core::generate_id();
@@ -287,6 +281,27 @@ async fn apply(
             status_url: format!("/api/install/jobs/{job_id}"),
         }),
     ))
+}
+
+/// Setup is a destructive control-plane operation: an unavailable job ledger
+/// cannot be interpreted as absence of an active installation.
+fn require_no_running_http_install_job(
+    existing_job: std::result::Result<bool, sea_orm::DbErr>,
+) -> Result<()> {
+    match existing_job {
+        Ok(false) => Ok(()),
+        Ok(true) => Err(http_error(HttpError::new(
+            StatusCode::CONFLICT,
+            "installer_running",
+            "An installation job is already running",
+        ))),
+        Err(error) => {
+            tracing::error!(%error, "Unable to inspect durable installer job admission");
+            Err(internal_error(
+                "Unable to verify whether an installer job is already running",
+            ))
+        }
+    }
 }
 
 async fn ensure_setup_not_completed(ctx: &ServerRuntimeContext) -> Result<()> {
@@ -620,6 +635,30 @@ mod tests {
     use super::*;
     use chrono::Utc;
     use uuid::Uuid;
+
+    #[test]
+    fn installer_job_admission_fails_closed_on_database_error() {
+        assert!(require_no_running_http_install_job(Ok(false)).is_ok());
+
+        let running = require_no_running_http_install_job(Ok(true)).unwrap_err();
+        assert!(matches!(
+            running,
+            Error::Http(ref response) if response.status == StatusCode::CONFLICT
+        ));
+
+        let db_error = sea_orm::DbErr::Custom(
+            "connection failed: postgres://root:secret@database/internal".to_string(),
+        );
+        let unavailable = require_no_running_http_install_job(Err(db_error)).unwrap_err();
+        match unavailable {
+            Error::Http(response) => {
+                assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+                assert!(!response.message.contains("secret"));
+                assert!(!response.message.contains("postgres://"));
+            }
+            other => panic!("unexpected installer admission failure: {other}"),
+        }
+    }
 
     #[test]
     fn installer_schema_missing_detects_common_relational_errors() {
