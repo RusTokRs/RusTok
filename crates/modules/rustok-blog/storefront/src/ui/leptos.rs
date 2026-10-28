@@ -543,18 +543,25 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
         <article class="rounded-2xl border border-border bg-background p-6">
             <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
                 {category_name.map(|name| {
-                    let cat_link = if let Some(cat_id) = category_id {
-                        format!("?category={}", cat_id)
+                    let category_label = if let Some(cat_id) = category_id {
+                        view! {
+                            <a
+                                href=core::filter_query_href(None, None, Some(&cat_id), None)
+                                class="rounded-full bg-secondary px-2.5 py-0.5 font-semibold text-secondary-foreground text-xs normal-case tracking-normal hover:bg-secondary/80 transition-colors"
+                            >
+                                {name}
+                            </a>
+                        }.into_any()
                     } else {
-                        format!("?category={}", core::percent_encode(&name))
+                        // A display name is not a UUID accepted by the Blog owner.
+                        view! {
+                            <span class="rounded-full bg-secondary px-2.5 py-0.5 font-semibold text-secondary-foreground text-xs normal-case tracking-normal">
+                                {name}
+                            </span>
+                        }.into_any()
                     };
                     view! {
-                        <a
-                            href=cat_link
-                            class="rounded-full bg-secondary px-2.5 py-0.5 font-semibold text-secondary-foreground text-xs normal-case tracking-normal hover:bg-secondary/80 transition-colors"
-                        >
-                            {name}
-                        </a>
+                        {category_label}
                         <span>{selected_post_header.meta.separator}</span>
                     }
                 })}
