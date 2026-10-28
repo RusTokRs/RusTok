@@ -50,6 +50,7 @@ export function PostCard({
             <Link href={href} className="block h-full w-full">
               <Image
                 src={post.featuredImageUrl}
+                unoptimized
                 alt={post.title}
                 width={800}
                 height={450}
@@ -59,6 +60,7 @@ export function PostCard({
           ) : (
             <Image
               src={post.featuredImageUrl}
+              unoptimized
               alt={post.title}
               width={800}
               height={450}
