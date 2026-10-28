@@ -174,6 +174,13 @@ fn public_internal_error() -> ServerFnError {
 }
 
 #[cfg(feature = "ssr")]
+fn parse_schedule(value: String) -> Result<chrono::DateTime<chrono::Utc>, ServerFnError> {
+    chrono::DateTime::parse_from_rfc3339(value.trim())
+        .map(|date| date.with_timezone(&chrono::Utc))
+        .map_err(|_| ServerFnError::new("scheduled_at requires an RFC 3339 timestamp with timezone"))
+}
+
+#[cfg(feature = "ssr")]
 fn parse_uuid(value: &str, field: &str) -> Result<uuid::Uuid, ServerFnError> {
     uuid::Uuid::parse_str(value.trim()).map_err(|_| ServerFnError::new(format!("Invalid {field}")))
 }
@@ -368,7 +375,7 @@ async fn blog_admin_create_post_native(
                     seo_description: draft.seo_description,
                     channel_slugs: Some(draft.channel_slugs),
                     metadata: None,
-                    scheduled_at: None,
+                    scheduled_at: draft.scheduled_at.map(parse_schedule).transpose()?,
                 },
             )
             .await
@@ -443,7 +450,14 @@ async fn blog_admin_update_post_native(
                     version: draft.version.ok_or_else(|| {
                         ServerFnError::new("Blog post revision is missing; reload before saving")
                     })?,
-                    scheduled_at: rustok_api::Patch::Keep,
+                    scheduled_at: if draft.schedule_editable {
+                        match draft.scheduled_at {
+                            Some(value) => rustok_api::Patch::Set(parse_schedule(value)?),
+                            None => rustok_api::Patch::Clear,
+                        }
+                    } else {
+                        rustok_api::Patch::Keep
+                    },
                 },
             )
             .await
