@@ -122,6 +122,22 @@ pub async fn list_public_comments_with_snapshot(
         .await
     {
         Ok((items, total)) => {
+            // The mode can change while the Comments provider read is in
+            // flight. Use the latest Blog policy for availability and forbid
+            // snapshot writes after discussion was disabled.
+            let comments_mode = match service.public_comments_mode(tenant_id).await {
+                Ok(mode) => mode,
+                Err(BlogError::CommentsPolicyUnavailable) => {
+                    return Ok(unavailable_comments());
+                }
+                Err(error) => return Err(error),
+            };
+            if matches!(
+                comments_mode,
+                crate::domain::comment_policy::BlogCommentsMode::Disabled
+            ) {
+                return Ok(disabled_comments());
+            }
             if let (Some(store), Some(projection_revision_before)) =
                 (snapshot_store, stable_cursor_before)
             {
@@ -206,6 +222,20 @@ pub async fn list_public_comments_with_snapshot(
                 .ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
                 .await?;
 
+            // Re-check the owner's discussion policy before returning an
+            // old cached snapshot. A post can remain published while its
+            // comments become disabled during a provider timeout.
+            match service.public_comments_mode(tenant_id).await {
+                Ok(crate::domain::comment_policy::BlogCommentsMode::Disabled) => {
+                    return Ok(disabled_comments());
+                }
+                Ok(_) => {}
+                Err(BlogError::CommentsPolicyUnavailable) => {
+                    return Ok(unavailable_comments());
+                }
+                Err(error) => return Err(error),
+            }
+
             if let Some(store) = snapshot_store {
                 let projection_revision = service
                     .public_comments_projection_cursor(tenant_id, post_id)
@@ -238,6 +268,24 @@ pub async fn list_public_comments_with_snapshot(
                 total: 0,
             })
         }
+    }
+}
+
+fn disabled_comments() -> PublicCommentsRead {
+    PublicCommentsRead {
+        availability: PublicCommentsAvailability::Disabled,
+        cached_snapshot: false,
+        items: Vec::new(),
+        total: 0,
+    }
+}
+
+fn unavailable_comments() -> PublicCommentsRead {
+    PublicCommentsRead {
+        availability: PublicCommentsAvailability::Unavailable,
+        cached_snapshot: false,
+        items: Vec::new(),
+        total: 0,
     }
 }
 
