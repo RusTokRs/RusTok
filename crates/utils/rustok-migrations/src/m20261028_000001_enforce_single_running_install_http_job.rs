@@ -12,7 +12,7 @@ use sea_orm_migration::sea_orm::DatabaseBackend;
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
-const CREATE_INDEX: &str = "CREATE UNIQUE INDEX IF NOT EXISTS ux_install_http_jobs_one_running ON install_http_jobs(status) WHERE status = 'running'";
+const CREATE_INDEX: &str = "CREATE UNIQUE INDEX ux_install_http_jobs_one_running ON install_http_jobs(status) WHERE status = 'running'";
 const DROP_INDEX: &str = "DROP INDEX IF EXISTS ux_install_http_jobs_one_running";
 
 #[async_trait::async_trait]
@@ -46,6 +46,45 @@ impl MigrationTrait for Migration {
 mod tests {
     use super::*;
     use sea_orm_migration::sea_orm::{ConnectionTrait, Database};
+
+    #[tokio::test]
+    async fn migration_rejects_duplicate_running_jobs_without_discarding_history() {
+        let db = Database::connect("sqlite::memory:").await.expect("sqlite database");
+        let manager = SchemaManager::new(&db);
+        super::super::m20260928_000001_create_install_http_jobs::Migration
+            .up(&manager)
+            .await
+            .expect("create installer job schema");
+
+        for id in [
+            "00000000-0000-0000-0000-000000000011",
+            "00000000-0000-0000-0000-000000000012",
+        ] {
+            let sql = format!(
+                "INSERT INTO install_http_jobs(id, status, submitted_at, started_at, updated_at) VALUES ('{id}', 'running', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            );
+            db.execute_unprepared(&sql)
+                .await
+                .expect("preexisting duplicate running jobs");
+        }
+
+        assert!(
+            Migration.up(&manager).await.is_err(),
+            "migration must block until an operator reconciles duplicate jobs"
+        );
+
+        let count = db
+            .query_one(sea_orm_migration::sea_orm::Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "SELECT count(*) AS count FROM install_http_jobs WHERE status = 'running'".to_string(),
+            ))
+            .await
+            .expect("read retained job history")
+            .expect("count row")
+            .try_get::<i64>("", "count")
+            .expect("count value");
+        assert_eq!(count, 2, "failed migration must not discard durable jobs");
+    }
 
     #[tokio::test]
     async fn a_second_running_job_is_rejected_while_finished_history_is_unbounded() {
