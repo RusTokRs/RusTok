@@ -113,16 +113,45 @@ via `canonical_search_result_url()` in `rustok-search::engine`.
 
 These are convenience improvements, not gaps. The core search functionality is complete.
 
+## 2026-10-28 storefront FTS completion in PR #4658
+
+The Next and Leptos `/blog?q=` integrations now use the canonical
+`storefrontSearch` endpoint with `sourceModules=["blog"]`,
+`entityTypes=["blog_post"]`, the trusted tenant/channel, the current
+locale, category UUID and exact tag filter. The search engine applies all
+filters **before** ranking/offset/total computation. Each framework renders
+Blog cards from the public Blog Search projection payload instead of
+filtering an arbitrary page of `publicBlogPosts`. Both use nine-result
+search pages, preserve `q`, `category` and `tag` in the URL, and reset the
+page when filters change. Unsearched Blog feeds still use their own
+pinned-post keyset pagination; Search never reuses a Blog keyset cursor.
+
+The canonical Search contract now accepts a Unicode-aware `tag` filter
+and PostgreSQL checks `facets.tag_keys`. Blog supplies those exact keys
+from Taxonomy-owned canonical identifiers, localized slugs and names, so
+matching is not an incidental substring of a fetched card. The Next
+facade exposes `searchPublishedPosts`; Leptos consumes the existing
+`rustok-search-storefront` transport with bounded limit/offset.
+
+**Deployment:** prior Search documents lack both `facets.category_id`
+and `facets.tag_keys`. A Blog scope reindex is required when deploying
+this update. No reindex, test or build has been executed during this PR
+source-only pass.
+
+**Remaining constraints:** broad dynamically gated Blog corpus queries
+may hit Search's current 1,000-candidate scan guard. A future indexed
+visibility/revalidation optimization is needed for arbitrarily broad
+queries. The Search locale predicate uses the exact locale of a
+translation; per-post locale-fallback ranking requires a separate
+Search contract decision rather than mixing result pages locally.
+
 ## 2026-10-28 audit clarification (implementation in PR #4658)
 
-The **backend Search projection** is real and owned by the canonical Search
-storage driver, with Blog supplying its own public documents and events. The
-backend alone is **not equivalent to working full-text search on the /blog
-listing**: Next and Leptos still apply `q` as a substring filter over the
-already fetched page of `publicBlogPosts`. This loses matching documents on
-later pages and makes their Blog keyset cursors unrelated to full-text results.
-Those storefront UIs must switch to the Search owner transport and Search's
-offset pagination; they are not declared fixed by this backend audit.
+The backend Search projection is owned by the canonical Search storage
+driver, with Blog supplying public documents and events. Earlier in the audit,
+Next and Leptos applied `q` only to a fetched `publicBlogPosts` page. The
+later storefront cutover described above corrects that limitation in this PR
+by using Search-ranked, server-filtered result pages.
 
 The audit found that Blog's category UUID existed in `payload.category_id`
 but Search's category filtering SQL reads `facets.category_id`. The facet
@@ -143,8 +172,7 @@ archived posts.
 The generic Search gated-audience scan currently has a **1,000 candidate
 limit** per request. Broad Blog searches may require narrower text/filters;
 this is a known performance/capability constraint, not infinite pagination.
-Search exposes category UUID filters, but not a combined exact Blog-tag filter;
-full-text plus tag filtering in the Blog listing requires explicit support,
-not local filtering of a single Search page.
+Search exposes category UUID filters and now an exact Blog-tag facet filter;
+the two are combined with full text in SQL before pagination.
 
 All regressions are added as source tests but have **not been executed**.
