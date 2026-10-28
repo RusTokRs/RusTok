@@ -57,6 +57,12 @@ pub fn BlogView() -> impl IntoView {
                 .and_then(|value| value.parse::<usize>().ok())
                 .unwrap_or(1)
                 .clamp(1, 100);
+            if q.is_some() {
+                // The Blog keyset cursor belongs to the ordinary feed, not
+                // to a relevance-ranked Search page. An old postsCursor in
+                // a bookmarked URL must never prevent a valid FTS request.
+                fetch_request.posts_after = None;
+            }
             (
                 fetch_request,
                 comments_pagination::comments_page_from_query(comments_page_query.get()),
