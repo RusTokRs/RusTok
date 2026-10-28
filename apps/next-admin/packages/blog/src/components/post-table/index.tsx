@@ -19,9 +19,10 @@ interface PostTableParams {
 }
 
 export function PostTable({ data, pager, gqlOpts }: PostTableParams) {
+  const { tenantId, tenantSlug, token } = gqlOpts;
   const columns = useMemo(
-    () => createColumns(gqlOpts),
-    [gqlOpts.tenantId, gqlOpts.tenantSlug, gqlOpts.token]
+    () => createColumns({ tenantId, tenantSlug, token }),
+    [tenantId, tenantSlug, token]
   );
   return (
     <DataTableShell
