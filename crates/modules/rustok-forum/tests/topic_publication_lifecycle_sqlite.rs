@@ -45,7 +45,7 @@ fn security(role: UserRole, user: Uuid) -> SecurityContext {
     SecurityContext::new(role, Some(user))
 }
 
-async fn category(db: &DatabaseConnection, tenant: Uuid, actor: SecurityContext) -> TestResult<Uuid> {
+async fn category(db: &DatabaseConnection, tenant: Uuid, actor: SecurityContext, moderated: bool) -> TestResult<Uuid> {
     Ok(CategoryService::new(db.clone())
         .create(tenant, actor, CreateCategoryInput {
             locale: "en".to_owned(),
@@ -56,7 +56,7 @@ async fn category(db: &DatabaseConnection, tenant: Uuid, actor: SecurityContext)
             color: None,
             parent_id: None,
             position: Some(0),
-            moderated: false,
+            moderated,
         })
         .await?
         .id)
@@ -118,7 +118,7 @@ async fn pending_approval_emits_creation_only_at_first_publication() -> TestResu
     let tenant = Uuid::new_v4();
     let author_id = Uuid::new_v4();
     let author = security(UserRole::Admin, author_id);
-    let category_id = category(&db, tenant, author.clone()).await?;
+    let category_id = category(&db, tenant, author.clone(), false).await?;
     let id = topic(&db, &events, tenant, author.clone(), category_id, true).await?;
     let moderation = ModerationService::new(db.clone(), events);
 
@@ -145,7 +145,7 @@ async fn archived_thread_releases_and_restores_category_and_author_counters() ->
     let reply_author_id = Uuid::new_v4();
     let author = security(UserRole::Admin, author_id);
     let reply_author = security(UserRole::Customer, reply_author_id);
-    let category_id = category(&db, tenant, author.clone()).await?;
+    let category_id = category(&db, tenant, author.clone(), false).await?;
     let topic_id = topic(&db, &events, tenant, author.clone(), category_id, false).await?;
     let reply = ReplyService::new(db.clone(), events.clone())
         .with_settings_providers(posting_cooldown::zero_cooldown_providers())
@@ -177,5 +177,61 @@ async fn archived_thread_releases_and_restores_category_and_author_counters() ->
     assert_eq!(user_stat(&db, tenant, author_id, "topic_count").await?, 1);
     assert_eq!(user_stat(&db, tenant, reply_author_id, "reply_count").await?, 1);
     assert_eq!(user_stat(&db, tenant, reply_author_id, "solution_count").await?, 1);
+    Ok(())
+}
+
+
+#[tokio::test]
+async fn rejected_pending_topic_publishes_once_after_first_archive_restore() -> TestResult<()> {
+    let (db, events) = setup().await?;
+    let tenant = Uuid::new_v4();
+    let admin = security(UserRole::Admin, Uuid::new_v4());
+    let category_id = category(&db, tenant, admin.clone(), false).await?;
+    let topic_id = topic(&db, &events, tenant, admin.clone(), category_id, true).await?;
+    let moderation = ModerationService::new(db.clone(), events);
+
+    moderation.archive_topic(tenant, topic_id, admin.clone()).await?;
+    assert_eq!(created_events(&db).await?, 0);
+    moderation.reopen_topic(tenant, topic_id, admin.clone()).await?;
+    assert_eq!(created_events(&db).await?, 1);
+    moderation.archive_topic(tenant, topic_id, admin.clone()).await?;
+    moderation.reopen_topic(tenant, topic_id, admin).await?;
+    assert_eq!(created_events(&db).await?, 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn reapproved_reply_does_not_emit_another_first_publication() -> TestResult<()> {
+    let (db, events) = setup().await?;
+    let tenant = Uuid::new_v4();
+    let admin = security(UserRole::Admin, Uuid::new_v4());
+    let replier = security(UserRole::Customer, Uuid::new_v4());
+    let category_id = category(&db, tenant, admin.clone(), true).await?;
+    let topic_id = topic(&db, &events, tenant, admin.clone(), category_id, false).await?;
+    let reply = ReplyService::new(db.clone(), events.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
+        .create(tenant, replier, topic_id, CreateReplyInput {
+            locale: "en".to_owned(),
+            content: rustok_api::RichTextDocument::single_paragraph("Moderated answer"),
+            parent_reply_id: None,
+        })
+        .await?;
+    assert_eq!(reply.status, "pending");
+
+    let moderation = ModerationService::new(db.clone(), events);
+    let count = || scalar(&db,
+        "SELECT COUNT(*) AS value FROM sys_events WHERE event_type = 'forum.topic.replied'".to_owned()
+    );
+    assert_eq!(count().await?, 0);
+    moderation.reject_reply(tenant, reply.id, topic_id, admin.clone()).await?;
+    moderation.approve_reply(tenant, reply.id, topic_id, admin.clone()).await?;
+    assert_eq!(count().await?, 1);
+    moderation.reject_reply(tenant, reply.id, topic_id, admin.clone()).await?;
+    moderation.approve_reply(tenant, reply.id, topic_id, admin.clone()).await?;
+    assert_eq!(count().await?, 1);
+    moderation.hide_reply(tenant, reply.id, topic_id, admin.clone()).await?;
+    moderation.approve_reply(tenant, reply.id, topic_id, admin).await?;
+    assert_eq!(count().await?, 1);
+    assert_eq!(category_count(&db, tenant, category_id, "reply_count").await?, 1);
     Ok(())
 }

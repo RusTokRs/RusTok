@@ -283,8 +283,10 @@ wrappers. Each one has an owner decision or a follow-up task in
   and `Approved` replies, so held content is excluded there. Moderators approve a pending topic with the reopen
   transition (`Pending` to `Open`, requires `ForumTopics:Moderate`) and reject it with the archive transition
   (`Pending` to `Archived`). A pending topic cannot be promoted to a Blog post. The creation
-  event is emitted on first publication (direct `Open` create or `Pending` to `Open`),
-  never on an archive restore. Dedicated approve/reject transports for topics remain unimplemented. See
+  event is emitted on first publication (direct `Open` create, `Pending` to `Open`,
+  or first-ever reopen of a rejected pending topic). A second archive/reopen
+  never duplicates that event; the append-only Forum status journal is the
+  publication-history source. Dedicated approve/reject transports remain unimplemented. See
   [`DECISIONS/2026-10-09-forum-topic-pre-moderation.md`](../../../DECISIONS/2026-10-09-forum-topic-pre-moderation.md) and
   [`DECISIONS/2026-10-09-forum-reply-pre-moderation-setting.md`](../../../DECISIONS/2026-10-09-forum-reply-pre-moderation-setting.md).
 - `show_locked_topics_in_lists = false` hides locked topics from the storefront topic list. The widget preview

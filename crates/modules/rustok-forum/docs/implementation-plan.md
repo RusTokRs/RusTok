@@ -45,10 +45,13 @@ explicitly authorizes a merge. No competing audit ledger is created.
 The remediation follows the canonical Forum owner, existing ADRs and `AGENTS.md`.
 Findings are ordered by risk and by dependency (owner correctness before transport/UI):
 
-1. **P1, implemented in this branch:** Publish `ForumTopicCreated` exactly on
-   first publication: immediate `Open` create or `Pending -> Open` approval,
-   never on initial `Pending` create or `Archived -> Open` restore. Retain the
-   transactional outbox and category notification audience reauthorization.
+1. **P1, source-ready in this branch:** Publish `ForumTopicCreated` only on
+   the first transition to public visibility (direct `Open` creation,
+   `Pending -> Open` approval, or a first-ever `Archived -> Open` restore
+   after `Pending -> Archived` rejection). Consult the immutable Forum
+   creation/status journal inside the moderation transaction. Re-archiving and
+   restoring a previously published thread never notifies again.
+   Notification audience is reauthorized at fanout.
 2. **P1/P2, implemented in this branch:** Archive/reopen must adjust category
    topic **and approved reply** totals and recompute author topic/reply/solution
    counts in the same transaction. Preserve `forum_topics.reply_count` as the
@@ -62,11 +65,12 @@ Findings are ordered by risk and by dependency (owner correctness before transpo
    ADR before changing all REST/GraphQL services and native/Next adapters.
    Add policy-revocation races on PostgreSQL, channel-crossing and denied
    topic-vs-missing non-disclosure regressions.
-5. **P2, outstanding:** `Rejected -> Approved` may emit a second
-   `ForumTopicReplied` after a previously approved reply is rejected. Introduce
-   durable first-publication identity or journal-derived exactly-once evidence;
-   do not infer it from the immediate previous status. Test repeated cycles,
-   lost responses and restart replay across both backends.
+5. **P2, source-ready in this branch:** Reply first publication is derived
+   from the Forum append-only creation/status journal before the status
+   mutation, including `Rejected -> Approved` and `Hidden -> Approved`.
+   Repeat visibility cycles must not duplicate `ForumTopicReplied`. SQLite
+   regressions are source-ready; PostgreSQL concurrency, restart and import
+   paths remain unverified.
 6. **P2, outstanding:** Post-commit read may turn successful vote clearing or
    solution moderation into HTTP 404. Define one acknowledgement contract for
    REST and GraphQL and update all caller DTOs/OpenAPI/UI together, retaining
@@ -96,6 +100,7 @@ Maintainer verification before merge:
 - `cargo test --locked -p rustok-forum --test topic_publication_lifecycle_sqlite`
 - `cargo test --locked -p rustok-forum --test moderation_semantics_sqlite`
 - `cargo test --locked -p rustok-forum --test moderation_semantics_postgres`
+- `cargo test --locked -p rustok-forum --test moderation_revision_concurrency_postgres`
 - `cargo test --locked -p rustok-forum --test counter_reconciliation_sqlite`
 - `cargo test --locked -p rustok-forum --test category_taxonomy_read_cutover`
 - `node scripts/verify/verify-forum-taxonomy-category-binding.mjs`

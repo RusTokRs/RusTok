@@ -1,7 +1,8 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, Statement,
+    TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -259,7 +260,11 @@ impl ModerationService {
         // Pending topics already contribute to authored/category topic counts,
         // but have never been published to subscribers. Restoring an archived
         // topic re-enters the counters without creating a second topic event.
-        let first_publication = current == TopicStatus::Pending && target == TopicStatus::Open;
+        // A rejected pending topic may be archived before ever becoming
+        // public. The append-only owner journal distinguishes that case from
+        // restoration of a previously published topic.
+        let first_publication = target == TopicStatus::Open
+            && !was_published_before_in_tx(&txn, tenant_id, "topic", topic_id).await?;
         let restores_counted_topic =
             current == TopicStatus::Archived && target == TopicStatus::Open;
         let archives_counted_topic =
@@ -774,6 +779,9 @@ impl ModerationService {
         target: ReplyStatus,
     ) -> ForumResult<()> {
         let txn = self.db.begin().await?;
+        // Topic archive and reply moderation both adjust category counters.
+        // Acquire the tenant category lock before the topic row in both paths.
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
         let topic = TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         if topic.status == TopicStatus::Archived {
@@ -795,12 +803,11 @@ impl ModerationService {
         let became_public = current != ReplyStatus::Approved && target == ReplyStatus::Approved;
         let stopped_being_public =
             current == ReplyStatus::Approved && target != ReplyStatus::Approved;
-        // Topic watchers were already notified when this reply first became
-        // public. Returning from `Hidden`/`Flagged` must not re-notify; only a
-        // first public appearance (from the pre-moderation states `Pending`
-        // and `Rejected`) publishes `ForumTopicReplied`.
-        let first_public_appearance = matches!(current, ReplyStatus::Pending | ReplyStatus::Rejected)
-            && target == ReplyStatus::Approved;
+        // A Rejected or Hidden reply may have been public previously. Read
+        // the canonical append-only journal before updating the row (and
+        // before its status-change trigger records the new Approved state).
+        let first_public_appearance = became_public
+            && !was_published_before_in_tx(&txn, tenant_id, "reply", reply_id).await?;
         let old_status = current.to_string();
         let new_status = target.to_string();
 
@@ -902,4 +909,88 @@ impl ModerationService {
 
 fn is_exact_topic_author(security: &SecurityContext, topic_author_id: Option<Uuid>) -> bool {
     topic_author_id.is_some() && security.user_id == topic_author_id
+}
+
+
+/// Checks immutable Forum-owned creation/status events, not the prunable host
+/// delivery outbox. Called while the parent topic row is locked, before the
+/// state change, so concurrent moderation cannot emit duplicate first-public
+/// events for the same subject.
+async fn was_published_before_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    aggregate_type: &'static str,
+    aggregate_id: Uuid,
+) -> ForumResult<bool> {
+    if !matches!(aggregate_type, "topic" | "reply") {
+        return Err(ForumError::Validation(
+            "Unsupported Forum publication aggregate type".to_string(),
+        ));
+    }
+    let statement = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            SELECT (CASE WHEN EXISTS (
+                SELECT 1
+                FROM forum_domain_events
+                WHERE tenant_id = $1
+                  AND aggregate_type = $2
+                  AND aggregate_id = $3
+                  AND (
+                    (event_type = 'forum.topic.created'
+                        AND payload->>'status' IN ('open', 'closed'))
+                    OR (event_type = 'forum.topic.status_changed'
+                        AND payload->>'new_status' = 'open')
+                    OR (event_type = 'forum.reply.created'
+                        AND payload->>'status' = 'approved')
+                    OR (event_type = 'forum.reply.status_changed'
+                        AND payload->>'new_status' = 'approved')
+                  )
+            ) THEN 1 ELSE 0 END)::BIGINT AS value
+            "#,
+            vec![
+                tenant_id.into(),
+                aggregate_type.into(),
+                aggregate_id.into(),
+            ],
+        ),
+        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            r#"
+            SELECT CAST(CASE WHEN EXISTS (
+                SELECT 1
+                FROM forum_domain_events
+                WHERE tenant_id = ?1
+                  AND aggregate_type = ?2
+                  AND aggregate_id = ?3
+                  AND (
+                    (event_type = 'forum.topic.created'
+                        AND json_extract(payload, '$.status') IN ('open', 'closed'))
+                    OR (event_type = 'forum.topic.status_changed'
+                        AND json_extract(payload, '$.new_status') = 'open')
+                    OR (event_type = 'forum.reply.created'
+                        AND json_extract(payload, '$.status') = 'approved')
+                    OR (event_type = 'forum.reply.status_changed'
+                        AND json_extract(payload, '$.new_status') = 'approved')
+                  )
+            ) THEN 1 ELSE 0 END AS INTEGER) AS value
+            "#,
+            vec![
+                tenant_id.into(),
+                aggregate_type.into(),
+                aggregate_id.into(),
+            ],
+        ),
+        backend => {
+            return Err(ForumError::Validation(format!(
+                "Forum publication history does not support database backend {backend:?}"
+            )));
+        }
+    };
+    let row = txn.query_one_raw(statement).await?.ok_or_else(|| {
+        ForumError::Validation("Forum publication history query returned no row".to_string())
+    })?;
+    let published: i64 = row.try_get("", "value")?;
+    Ok(published != 0)
 }
