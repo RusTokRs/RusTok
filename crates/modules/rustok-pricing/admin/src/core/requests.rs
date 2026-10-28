@@ -93,7 +93,9 @@ pub(crate) fn parse_optional_uuid_string(
         .map_err(|_| PricingAdminRequestError::new(format!("Invalid {field_name}")))?;
 
     if parsed.is_nil() {
-        return Err(PricingAdminRequestError::new(format!("Invalid {field_name}")));
+        return Err(PricingAdminRequestError::new(format!(
+            "Invalid {field_name}"
+        )));
     }
 
     Ok(Some(value))
@@ -333,11 +335,8 @@ mod tests {
             .expect_err("invalid UUID should fail");
         assert_eq!(error.to_string(), "Invalid price_list_id");
 
-        let nil_error = parse_optional_uuid_string(
-            Some(Uuid::nil().to_string()),
-            "price_list_id",
-        )
-        .expect_err("nil UUID should fail");
+        let nil_error = parse_optional_uuid_string(Some(Uuid::nil().to_string()), "price_list_id")
+            .expect_err("nil UUID should fail");
         assert_eq!(nil_error.to_string(), "Invalid price_list_id");
 
         assert_eq!(normalized_region_id(Uuid::nil().to_string()), None);

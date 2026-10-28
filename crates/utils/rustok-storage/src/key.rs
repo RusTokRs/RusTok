@@ -289,28 +289,24 @@ mod tests {
     #[test]
     fn key_segments_reject_uncontrolled_paths() {
         let now = Utc::now();
-        assert!(
-            ObjectKey::chronological(
-                "../media",
-                ObjectZone::Objects,
-                ObjectScope::Platform,
-                now,
-                Uuid::new_v4(),
-                "jpg"
-            )
-            .is_err()
-        );
-        assert!(
-            ObjectKey::chronological(
-                "media",
-                ObjectZone::Objects,
-                ObjectScope::Platform,
-                now,
-                Uuid::new_v4(),
-                "JPG"
-            )
-            .is_err()
-        );
+        assert!(ObjectKey::chronological(
+            "../media",
+            ObjectZone::Objects,
+            ObjectScope::Platform,
+            now,
+            Uuid::new_v4(),
+            "jpg"
+        )
+        .is_err());
+        assert!(ObjectKey::chronological(
+            "media",
+            ObjectZone::Objects,
+            ObjectScope::Platform,
+            now,
+            Uuid::new_v4(),
+            "JPG"
+        )
+        .is_err());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use crate::{
-    RuntimeContextScenario, RuntimeScenarioRenderMatrix, render_runtime_scenario_matrix,
-    render_runtime_scenario_matrix_with_providers,
+    render_runtime_scenario_matrix, render_runtime_scenario_matrix_with_providers,
+    RuntimeContextScenario, RuntimeScenarioRenderMatrix,
 };
 use fly::{
     FormProviderEndpointResolver, PageSelection, ProjectDocument, ProjectHash, RenderPolicy,
@@ -491,11 +491,10 @@ mod tests {
         );
         let diff = diff_runtime_scenario_render_snapshots(&previous, &next);
         assert_eq!(diff.status, RuntimeScenarioRegressionStatus::RequiresReview);
-        assert!(
-            diff.changes
-                .iter()
-                .any(|change| matches!(change, RuntimeScenarioRenderChange::HtmlChanged { .. }))
-        );
+        assert!(diff
+            .changes
+            .iter()
+            .any(|change| matches!(change, RuntimeScenarioRenderChange::HtmlChanged { .. })));
     }
 
     #[test]

@@ -4,7 +4,7 @@ use dioxus::html::input_data::MouseButton;
 use dioxus::html::point_interaction::{InteractionLocation, PointerInteraction};
 use dioxus::prelude::*;
 
-use rustok_grid::{KEYBOARD_RESIZE_STEP, calculate_resized_width, step_resized_width};
+use rustok_grid::{calculate_resized_width, step_resized_width, KEYBOARD_RESIZE_STEP};
 
 /// Pointer position and column width captured when a drag starts.
 #[derive(Clone, Copy, Debug, PartialEq)]

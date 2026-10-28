@@ -1,9 +1,7 @@
-use fly::{
-    DocumentKind, GrapesJsCodec, ProjectDocument, UniqueIdGenerator,
-};
+use fly::{DocumentKind, GrapesJsCodec, ProjectDocument, UniqueIdGenerator};
 use rustok_ui_core::normalize_ui_text;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PageStarterDescriptor {
@@ -663,7 +661,7 @@ fn escape_html(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fly::{RegistrySet, ValidationLimits, validate_project};
+    use fly::{validate_project, RegistrySet, ValidationLimits};
     use std::collections::HashSet;
 
     #[test]
@@ -705,13 +703,17 @@ mod tests {
         let mut ids1 = HashSet::new();
         doc1.project.visit_components(|c, _, _| {
             if let Some(id) = c.id.as_ref() {
-                assert!(ids1.insert(id.clone()), "Duplicate id {id} in instantiated page");
+                assert!(
+                    ids1.insert(id.clone()),
+                    "Duplicate id {id} in instantiated page"
+                );
                 assert!(!id.starts_with("sec-"), "Preset ID {id} was not remapped");
             }
         });
 
         let value2 = instantiate_starter_preset("saas_landing", "My SaaS").unwrap();
-        let doc2 = GrapesJsCodec::decode_value(value2).expect("second instantiated doc must decode");
+        let doc2 =
+            GrapesJsCodec::decode_value(value2).expect("second instantiated doc must decode");
 
         let mut ids2 = HashSet::new();
         doc2.project.visit_components(|c, _, _| {

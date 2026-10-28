@@ -1,10 +1,10 @@
 use crate::{
-    LandingPropertyValidationReport, LandingReadinessPolicy, LandingReadinessReport,
     domain::landing_readiness::materialize_landing_structural_document, evaluate_landing_readiness,
+    LandingPropertyValidationReport, LandingReadinessPolicy, LandingReadinessReport,
 };
 use fly::{
-    ComponentNode, ComponentObject, FlyError, FlyResult, PageHead, PageSelection, ProjectDocument,
-    RegistrySet, RenderPolicy, render_page,
+    render_page, ComponentNode, ComponentObject, FlyError, FlyResult, PageHead, PageSelection,
+    ProjectDocument, RegistrySet, RenderPolicy,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -771,12 +771,10 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["heading", "wrapper"]
         );
-        assert!(
-            manifest
-                .components
-                .iter()
-                .all(|component| component.provider.is_some())
-        );
+        assert!(manifest
+            .components
+            .iter()
+            .all(|component| component.provider.is_some()));
     }
 
     #[test]
@@ -920,11 +918,9 @@ mod tests {
         .artifact
         .expect("artifact");
         assert!(artifact.pages[0].body_html.contains("href=\"/about\""));
-        assert!(
-            artifact.pages[0]
-                .body_html
-                .contains("data-fly-action-kind=\"navigate_page\"")
-        );
+        assert!(artifact.pages[0]
+            .body_html
+            .contains("data-fly-action-kind=\"navigate_page\""));
     }
 
     #[test]
@@ -964,11 +960,9 @@ mod tests {
             artifact.pages[0].landing_sections[0].kind,
             LandingSectionKind::Hero
         );
-        assert!(
-            !artifact.pages[0].landing_sections[0]
-                .content_hash
-                .is_empty()
-        );
+        assert!(!artifact.pages[0].landing_sections[0]
+            .content_hash
+            .is_empty());
     }
 
     #[test]
@@ -1041,10 +1035,14 @@ mod tests {
                 { "type": "pricing_table" }
             ]
         }));
-        let report = LandingSectionValidationReport::for_document(&pricing_project).expect("report");
+        let report =
+            LandingSectionValidationReport::for_document(&pricing_project).expect("report");
         assert!(report.valid);
         assert_eq!(report.pages[0].sections.len(), 1);
-        assert_eq!(report.pages[0].sections[0].kind, LandingSectionKind::Pricing);
+        assert_eq!(
+            report.pages[0].sections[0].kind,
+            LandingSectionKind::Pricing
+        );
     }
 
     #[test]
@@ -1065,10 +1063,14 @@ mod tests {
                 }
             ]
         }));
-        let report = LandingSectionValidationReport::for_document(&newsletter_project).expect("report");
+        let report =
+            LandingSectionValidationReport::for_document(&newsletter_project).expect("report");
         assert!(report.valid);
         assert_eq!(report.pages[0].sections.len(), 1);
-        assert_eq!(report.pages[0].sections[0].kind, LandingSectionKind::Newsletter);
+        assert_eq!(
+            report.pages[0].sections[0].kind,
+            LandingSectionKind::Newsletter
+        );
 
         let lead_capture_project = project_with_section(json!({
             "id": "lead-capture-sec",
@@ -1086,10 +1088,13 @@ mod tests {
                 }
             ]
         }));
-        let report = LandingSectionValidationReport::for_document(&lead_capture_project).expect("report");
+        let report =
+            LandingSectionValidationReport::for_document(&lead_capture_project).expect("report");
         assert!(report.valid);
         assert_eq!(report.pages[0].sections.len(), 1);
-        assert_eq!(report.pages[0].sections[0].kind, LandingSectionKind::LeadCapture);
+        assert_eq!(
+            report.pages[0].sections[0].kind,
+            LandingSectionKind::LeadCapture
+        );
     }
 }
-

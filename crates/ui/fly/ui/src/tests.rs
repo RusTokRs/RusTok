@@ -3,7 +3,7 @@ use fly::{
     AssetCommand, ComponentNode, ComponentPatch, EditorCommand, ValidationDiagnostic,
     ValidationSeverity,
 };
-use serde_json::{Map, json};
+use serde_json::{json, Map};
 use std::collections::{BTreeMap, BTreeSet};
 
 fn legal_candidate() -> HitTestCandidate {

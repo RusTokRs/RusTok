@@ -6,7 +6,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::import_mapping::{
-    FORUM_IMPORT_SOURCE_NODEBB, ForumImportEntityKind, ForumImportExternalRef,
+    ForumImportEntityKind, ForumImportExternalRef, FORUM_IMPORT_SOURCE_NODEBB,
     MAX_FORUM_IMPORT_SOURCE_RECORDS_PER_BATCH,
 };
 use crate::import_relation_preparation::ForumPreparedImportRelationBatch;

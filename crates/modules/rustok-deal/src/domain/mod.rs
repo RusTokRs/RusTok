@@ -12,8 +12,8 @@
 //!
 //! In accordance with FBA, this module MUST NOT depend on database or transport frameworks.
 
-use serde::{Deserialize, Serialize};
 use crate::error::{DealError, DealResult};
+use serde::{Deserialize, Serialize};
 
 /// Domain lifecycle state for CRM Deals & Pipelines.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]

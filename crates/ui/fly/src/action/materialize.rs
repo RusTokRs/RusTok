@@ -1,18 +1,18 @@
 use super::model::{
-    ActionMaterialization, ComponentAction, ComponentForm, FLY_ACTION_DATA_ATTRIBUTE,
-    FLY_ACTION_FIELD, FLY_ACTION_KIND_ATTRIBUTE, FLY_FORM_FIELD, FormEncoding, FormMethod,
-    FormProviderEndpointResolver, GENERATED_INTERACTION_ATTRIBUTES,
+    ActionMaterialization, ComponentAction, ComponentForm, FormEncoding, FormMethod,
+    FormProviderEndpointResolver, FLY_ACTION_DATA_ATTRIBUTE, FLY_ACTION_FIELD,
+    FLY_ACTION_KIND_ATTRIBUTE, FLY_FORM_FIELD, GENERATED_INTERACTION_ATTRIBUTES,
 };
 use super::validation::{
-    FormIndex, action_diagnostic, collect_form_ids, decode_form, validate_action_contract,
+    action_diagnostic, collect_form_ids, decode_form, validate_action_contract, FormIndex,
 };
 use crate::{
-    ComponentObject, FLY_PAGE_LINK_FIELD, ProjectDocument, RuntimeLocaleSelection,
-    ValidationDiagnostic, ValidationSeverity,
     component_visit::visit_project_components_mut,
     interaction_route::{
-        InteractionRouteCatalog, build_interaction_href, interaction_locale_candidates,
+        build_interaction_href, interaction_locale_candidates, InteractionRouteCatalog,
     },
+    ComponentObject, ProjectDocument, RuntimeLocaleSelection, ValidationDiagnostic,
+    ValidationSeverity, FLY_PAGE_LINK_FIELD,
 };
 use serde_json::Value;
 

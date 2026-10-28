@@ -59,7 +59,7 @@ pub mod toolbar;
 pub use filter_inputs::{FilterCommitMode, GridFilterCell};
 pub use grid::{DataGrid, GridCell};
 pub use header::GridHeader;
-pub use pagination::{DEFAULT_PAGE_SIZE_OPTIONS, GridPaginationBar};
+pub use pagination::{GridPaginationBar, DEFAULT_PAGE_SIZE_OPTIONS};
 pub use resize_handle::ColumnResizeHandle;
 pub use row::GridRow;
 pub use toolbar::GridToolbar;
@@ -73,7 +73,7 @@ pub mod prelude {
     pub use crate::filter_inputs::{FilterCommitMode, GridFilterCell};
     pub use crate::grid::{DataGrid, GridCell};
     pub use crate::header::GridHeader;
-    pub use crate::pagination::{DEFAULT_PAGE_SIZE_OPTIONS, GridPaginationBar};
+    pub use crate::pagination::{GridPaginationBar, DEFAULT_PAGE_SIZE_OPTIONS};
     pub use crate::resize_handle::ColumnResizeHandle;
     pub use crate::row::GridRow;
     pub use crate::toolbar::GridToolbar;

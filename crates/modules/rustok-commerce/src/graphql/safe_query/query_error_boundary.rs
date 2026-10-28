@@ -1,8 +1,8 @@
-use ::async_graphql::{Error, ErrorExtensions};
-use ::rustok_api::{PortContext, PortError, PortErrorKind};
-use ::rustok_fulfillment::error::FulfillmentError;
-use ::rustok_order::error::OrderError;
-use ::rustok_payment::error::PaymentError;
+use async_graphql::{Error, ErrorExtensions};
+use rustok_api::{PortContext, PortError, PortErrorKind};
+use rustok_fulfillment::error::FulfillmentError;
+use rustok_order::error::OrderError;
+use rustok_payment::error::PaymentError;
 
 const QUERY_ERROR_BOUNDARY: &str = "commerce_graphql_query";
 const QUERY_REGION_ERROR_BOUNDARY: &str = "commerce_graphql_query_region";
@@ -16,7 +16,11 @@ impl std::fmt::Debug for QueryDiagnosticError {
 }
 
 fn text_presence_shape(value: &str) -> &'static str {
-    if value.is_empty() { "empty" } else { "present" }
+    if value.is_empty() {
+        "empty"
+    } else {
+        "present"
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -546,9 +550,9 @@ impl From<BoundaryError> for Error {
 
 #[cfg(test)]
 mod tests {
-    use super::{ShippingOptionGraphqlMessage, shipping_option_port_error};
-    use ::async_graphql::Error;
-    use ::rustok_api::{PortActor, PortContext, PortError};
+    use super::{shipping_option_port_error, ShippingOptionGraphqlMessage};
+    use async_graphql::Error;
+    use rustok_api::{PortActor, PortContext, PortError};
 
     #[test]
     fn shipping_option_owner_message_is_redacted() {

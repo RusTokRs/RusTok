@@ -1,8 +1,8 @@
 use fly::RegistrySet;
 use fly_ui::{
-    ContributionAssemblyDiagnostic, ContributionAssemblyPolicy, ContributionAssemblyResult,
-    ContributionAssemblySeverity, ModuleContributionManifest, Presentation,
-    build_admin_contribution_registry_from_manifests,
+    build_admin_contribution_registry_from_manifests, ContributionAssemblyDiagnostic,
+    ContributionAssemblyPolicy, ContributionAssemblyResult, ContributionAssemblySeverity,
+    ModuleContributionManifest, Presentation,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

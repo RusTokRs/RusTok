@@ -1,7 +1,7 @@
 use crate::{
-    ComputedContextValue, ContextExpression, ContextFieldDefinition, ContextSchemaCatalog,
-    ContextValueKind, ProjectDocument, ValidationDiagnostic, ValidationSeverity,
-    is_valid_context_path, materialize_context, validate_context_definitions,
+    is_valid_context_path, materialize_context, validate_context_definitions, ComputedContextValue,
+    ContextExpression, ContextFieldDefinition, ContextSchemaCatalog, ContextValueKind,
+    ProjectDocument, ValidationDiagnostic, ValidationSeverity,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -322,12 +322,10 @@ mod tests {
         assert!(!preflight.accepted);
         assert_eq!(preflight.missing_required, 1);
         assert_eq!(preflight.type_mismatches, 1);
-        assert!(
-            preflight
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.severity == ValidationSeverity::Error)
-        );
+        assert!(preflight
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.severity == ValidationSeverity::Error));
     }
 
     #[test]
@@ -343,11 +341,9 @@ mod tests {
         .expect("document");
         let contract = extract_runtime_context_contract(&document);
         assert!(!contract.is_valid());
-        assert!(
-            contract
-                .definition_diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.code == "runtime_context_field_path_invalid")
-        );
+        assert!(contract
+            .definition_diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "runtime_context_field_path_invalid"));
     }
 }

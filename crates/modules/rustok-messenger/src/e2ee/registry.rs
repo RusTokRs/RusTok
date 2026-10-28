@@ -1,8 +1,8 @@
+use chrono::Utc;
 use std::{
     collections::{HashMap, HashSet},
     sync::RwLock,
 };
-use chrono::Utc;
 use uuid::Uuid;
 
 use super::keys::{DeviceKey, OneTimePrekey, PrekeyBundle, UploadDeviceKeysInput};
@@ -135,9 +135,16 @@ impl DeviceKeyRegistry {
 
             // Prune old consumed keys if pool exceeds double capacity to avoid unbounded memory growth
             if pool.len() > MAX_PREKEY_POOL_SIZE * 2 {
-                let mut unconsumed: Vec<OneTimePrekey> = pool.iter().filter(|k| !k.consumed).cloned().collect();
+                let mut unconsumed: Vec<OneTimePrekey> =
+                    pool.iter().filter(|k| !k.consumed).cloned().collect();
                 // Retain up to 50 most recent consumed keys for audit
-                let recent_consumed: Vec<OneTimePrekey> = pool.iter().filter(|k| k.consumed).rev().take(50).cloned().collect();
+                let recent_consumed: Vec<OneTimePrekey> = pool
+                    .iter()
+                    .filter(|k| k.consumed)
+                    .rev()
+                    .take(50)
+                    .cloned()
+                    .collect();
                 unconsumed.extend(recent_consumed);
                 *pool = unconsumed;
             }

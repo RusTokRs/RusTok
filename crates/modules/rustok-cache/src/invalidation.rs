@@ -139,13 +139,28 @@ impl VersionedCacheInvalidation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CacheInvalidationPayloadError {
     EmptyChannel,
-    ChannelTooLarge { length: usize, maximum: usize },
+    ChannelTooLarge {
+        length: usize,
+        maximum: usize,
+    },
     EmptyKey,
-    KeyTooLarge { length: usize, maximum: usize },
-    PayloadTooLarge { length: usize, maximum: usize },
+    KeyTooLarge {
+        length: usize,
+        maximum: usize,
+    },
+    PayloadTooLarge {
+        length: usize,
+        maximum: usize,
+    },
     ZeroGeneration,
-    OffsetRegressed { current: u64, proposed: u64 },
-    AcknowledgementNotContiguous { current: Option<u64>, proposed: u64 },
+    OffsetRegressed {
+        current: u64,
+        proposed: u64,
+    },
+    AcknowledgementNotContiguous {
+        current: Option<u64>,
+        proposed: u64,
+    },
     MalformedPayload,
     /// The compact payload violates a transport bound and could never be published.
     TransportRejected(String),
@@ -489,17 +504,15 @@ mod tests {
         // Hex encoding doubles the key, so a key above half the transport bound cannot be published
         // as a compact payload. That must be an error here, not an `Ok` that `publish` then drops.
         let publishable_key = "k".repeat(MAX_INVALIDATION_KEY_BYTES / 2 - 64);
-        assert!(
-            VersionedCacheInvalidation::new(
-                "tenant.invalidate",
-                publishable_key.clone(),
-                7,
-                1_700_000_000_000,
-            )
-            .unwrap()
-            .to_message()
-            .is_ok()
-        );
+        assert!(VersionedCacheInvalidation::new(
+            "tenant.invalidate",
+            publishable_key.clone(),
+            7,
+            1_700_000_000_000,
+        )
+        .unwrap()
+        .to_message()
+        .is_ok());
 
         let unpublishable_key = "k".repeat(MAX_INVALIDATION_KEY_BYTES);
         let unpublishable = VersionedCacheInvalidation::new(
@@ -509,8 +522,11 @@ mod tests {
             1_700_000_000_000,
         )
         .unwrap();
-        let expected_length =
-            format!("v1:7:1700000000000:{}", hex::encode(unpublishable_key.as_bytes())).len();
+        let expected_length = format!(
+            "v1:7:1700000000000:{}",
+            hex::encode(unpublishable_key.as_bytes())
+        )
+        .len();
 
         assert_eq!(
             unpublishable.to_message().unwrap_err(),

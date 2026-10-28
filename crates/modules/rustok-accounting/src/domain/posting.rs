@@ -58,7 +58,9 @@ where
         }
         if trimmed_currency.len() < crate::domain::MIN_CURRENCY_CODE_LEN
             || trimmed_currency.len() > crate::domain::MAX_CURRENCY_CODE_LEN
-            || !trimmed_currency.chars().all(|ch| ch.is_ascii_alphanumeric())
+            || !trimmed_currency
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric())
         {
             return Err(AccountingError::InvalidCurrency(format!(
                 "Posting currency code must be 3-10 alphanumeric characters, got `{trimmed_currency}`"

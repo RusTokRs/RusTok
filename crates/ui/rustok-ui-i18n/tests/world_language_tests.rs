@@ -8,7 +8,7 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-use rustok_ui_i18n::{UiMessages, fluent_args};
+use rustok_ui_i18n::{fluent_args, UiMessages};
 
 fn strip_bidi_isolates(value: &str) -> String {
     value.replace(['\u{2068}', '\u{2069}'], "")

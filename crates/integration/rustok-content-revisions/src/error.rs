@@ -51,4 +51,3 @@ mod tests {
         assert!(converted.to_string().contains("db error"));
     }
 }
-

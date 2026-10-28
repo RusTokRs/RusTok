@@ -8,5 +8,5 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-pub use rustok_ui::{TocItem, extract_headings_from_html, slugify_heading};
+pub use rustok_ui::{extract_headings_from_html, slugify_heading, TocItem};
 pub use rustok_ui_leptos::toc::TableOfContents;

@@ -12,8 +12,8 @@
 use crate::fragment::reset_remapped_style_rule_identity;
 use crate::id_reference::remap_value_ids;
 use crate::{
-    ComponentNode, ComponentObject, EditorCommand, FlyError, FlyResult, ProjectDocument,
-    ProjectFragment, SymbolCommand, validate_identifier,
+    validate_identifier, ComponentNode, ComponentObject, EditorCommand, FlyError, FlyResult,
+    ProjectDocument, ProjectFragment, SymbolCommand,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -570,8 +570,8 @@ fn walk_symbol_graph(
 mod tests {
     use super::*;
     use crate::{
-        ComponentChildren, EditorCommand, FlyEditor, GrapesProject, ProjectPage, RegistrySet,
-        SymbolCommand, ValidationLimits, validate_project,
+        validate_project, ComponentChildren, EditorCommand, FlyEditor, GrapesProject, ProjectPage,
+        RegistrySet, SymbolCommand, ValidationLimits,
     };
     use serde_json::json;
 
@@ -900,12 +900,10 @@ mod tests {
             &RegistrySet::with_builtins(),
             ValidationLimits::default(),
         );
-        assert!(
-            report
-                .diagnostics
-                .iter()
-                .any(|item| item.code == "malformed_symbol_catalog")
-        );
+        assert!(report
+            .diagnostics
+            .iter()
+            .any(|item| item.code == "malformed_symbol_catalog"));
     }
 
     #[test]

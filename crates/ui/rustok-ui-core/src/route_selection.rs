@@ -348,7 +348,7 @@ pub fn is_legacy_admin_query_key(key: &str) -> bool {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{AdminQueryKey, sanitize_admin_route_query};
+    use super::{sanitize_admin_route_query, AdminQueryKey};
 
     fn query(entries: &[(&str, &str)]) -> BTreeMap<String, String> {
         entries

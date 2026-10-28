@@ -9,7 +9,7 @@
  */
 
 use leptos::prelude::*;
-use rustok_ui::{Size, spinner_classes};
+use rustok_ui::{spinner_classes, Size};
 
 /// Animated progress indicator.
 ///

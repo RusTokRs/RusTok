@@ -1,8 +1,8 @@
 use crate::{
+    diff_runtime_context_contracts_with_policy, materialize_context, remove_context_path,
     ContextMaterialization, ProjectDocument, RuntimeContextCompatibilityPolicy,
     RuntimeContextCompatibilityReport, RuntimeContextContractChangeKind, ValidationDiagnostic,
-    ValidationSeverity, diff_runtime_context_contracts_with_policy, materialize_context,
-    remove_context_path,
+    ValidationSeverity,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

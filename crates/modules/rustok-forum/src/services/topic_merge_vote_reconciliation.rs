@@ -309,7 +309,7 @@ impl ForumTopicMergeVoteReconciliationService {
             moved_source_only_count,
             deduplicated_equal_count,
             target_authority_conflict_count,
-            &reason,
+            reason,
         );
         forum_domain_event::ActiveModel {
             sequence_no: NotSet,

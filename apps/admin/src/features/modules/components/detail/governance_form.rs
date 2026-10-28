@@ -1,7 +1,7 @@
-use crate::Locale;
 use crate::entities::module::model::RegistryGovernanceActionLifecycle;
 use crate::features::modules::transport::{RegistryMutationResult, RegistryPublishStatus};
 use crate::shared::ui::{Button, Input};
+use crate::Locale;
 use leptos::prelude::*;
 
 use super::{

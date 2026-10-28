@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::ChannelTargetType;
 use crate::error::{ChannelError, ChannelResult};
 use crate::resolution::{RequestFacts, TargetSurface};
+use crate::ChannelTargetType;
 
 pub const CHANNEL_RESOLUTION_POLICY_SCHEMA_VERSION: i32 = 1;
 

@@ -1,6 +1,6 @@
 mod core;
 
-use self::core::{SearchScope, build_header_links, build_search_target_url, resolve_default_scope};
+use self::core::{build_header_links, build_search_target_url, resolve_default_scope, SearchScope};
 use crate::shared::ui::UiButton;
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
@@ -162,7 +162,11 @@ pub fn Header(
     #[prop(optional)] action_views: Vec<AnyView>,
 ) -> impl IntoView {
     let links = build_header_links(locale.as_str());
-    let messages_label = if locale.eq_ignore_ascii_case("ru") { "Сообщения" } else { "Messages" };
+    let messages_label = if locale.eq_ignore_ascii_case("ru") {
+        "Сообщения"
+    } else {
+        "Messages"
+    };
     let messages_href = format!("/{}/messages", locale);
     let navigation = if navigation_views.is_empty() {
         let m_href = messages_href.clone();

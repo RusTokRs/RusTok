@@ -1,7 +1,7 @@
 use rustok_events::{
-    CHECKOUT_OPERATION_ADMISSIONS, CHECKOUT_OPERATION_EVENT_SCHEMAS, CHECKOUT_OPERATION_OUTCOMES,
-    CHECKOUT_OPERATION_PARK_REASONS, CheckoutOperationEvent, ContractEventEnvelope,
-    ContractEventPayload, ValidateEvent, event_schema, event_schemas,
+    event_schema, event_schemas, CheckoutOperationEvent, ContractEventEnvelope,
+    ContractEventPayload, ValidateEvent, CHECKOUT_OPERATION_ADMISSIONS,
+    CHECKOUT_OPERATION_EVENT_SCHEMAS, CHECKOUT_OPERATION_OUTCOMES, CHECKOUT_OPERATION_PARK_REASONS,
 };
 use uuid::Uuid;
 

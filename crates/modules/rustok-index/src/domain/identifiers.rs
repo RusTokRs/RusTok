@@ -1,7 +1,7 @@
 use std::fmt;
 
 use icu_locale::{Locale, LocaleCanonicalizer};
-use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
+use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 use uuid::Uuid;
 
 use super::DomainError;

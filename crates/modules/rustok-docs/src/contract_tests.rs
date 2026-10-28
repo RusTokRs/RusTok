@@ -34,7 +34,8 @@ fn module_contract_metadata_matches() {
 #[test]
 fn fba_registry_contract_matches() {
     let raw = include_str!("../contracts/docs-fba-registry.json");
-    let val: serde_json::Value = serde_json::from_str(raw).expect("valid JSON in docs-fba-registry.json");
+    let val: serde_json::Value =
+        serde_json::from_str(raw).expect("valid JSON in docs-fba-registry.json");
     assert_eq!(val["module"], "docs");
     assert_eq!(val["role"], "provider");
     assert_eq!(val["crdt_engine"]["name"], "Loro");
@@ -63,8 +64,8 @@ fn fba_registry_contract_matches() {
 
 #[test]
 fn uer_protocol_urn_formatting() {
-    use uuid::Uuid;
     use crate::domain::{EntityDisplayMode, EntityRef};
+    use uuid::Uuid;
 
     let tenant_id = Uuid::new_v4();
     let product_id = Uuid::new_v4();

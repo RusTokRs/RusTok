@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use rustok_payment::{
-    PaymentAdminCollectionCommandPort, PaymentAdminCollectionCommandRuntime,
-    PaymentAdminRefundCommandPort, PaymentAdminRefundCommandRuntime, PaymentCollectionPort,
-    PaymentCollectionRuntime, providers::PaymentProviderRegistry,
+    providers::PaymentProviderRegistry, PaymentAdminCollectionCommandPort,
+    PaymentAdminCollectionCommandRuntime, PaymentAdminRefundCommandPort,
+    PaymentAdminRefundCommandRuntime, PaymentCollectionPort, PaymentCollectionRuntime,
 };
 use sea_orm::DatabaseConnection;
 

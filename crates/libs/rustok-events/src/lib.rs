@@ -36,70 +36,71 @@ mod types;
 pub mod validation;
 
 pub use blog_comments_schedule_audit::{
+    blog_comments_schedule_audit_event_schema, BlogCommentsDelegationScheduleAuditEvent,
     BLOG_COMMENTS_SCHEDULE_AUDIT_EVENT_SCHEMAS, BLOG_COMMENTS_SCHEDULE_AUDIT_EVENT_TYPE,
     BLOG_COMMENTS_SCHEDULE_AUDIT_SCHEMA_VERSION, BLOG_COMMENTS_SCHEDULE_AUDIT_STATE_KEY,
-    BlogCommentsDelegationScheduleAuditEvent, blog_comments_schedule_audit_event_schema,
 };
 pub use checkout_operation::{
+    checkout_operation_event_schema, CheckoutOperationEvent, CHECKOUT_OPERATION_ADMISSIONS,
     CHECKOUT_OPERATION_ADMISSION_CHANGED_EVENT_TYPE, CHECKOUT_OPERATION_ADMISSION_CLOSED,
     CHECKOUT_OPERATION_ADMISSION_OPEN, CHECKOUT_OPERATION_ADMISSION_SETTLING,
-    CHECKOUT_OPERATION_ADMISSIONS, CHECKOUT_OPERATION_EVENT_SCHEMA_VERSION,
-    CHECKOUT_OPERATION_EVENT_SCHEMAS, CHECKOUT_OPERATION_OUTCOME_COMPENSATED,
+    CHECKOUT_OPERATION_EVENT_SCHEMAS, CHECKOUT_OPERATION_EVENT_SCHEMA_VERSION,
+    CHECKOUT_OPERATION_OUTCOMES, CHECKOUT_OPERATION_OUTCOME_COMPENSATED,
     CHECKOUT_OPERATION_OUTCOME_COMPENSATION_REQUIRED, CHECKOUT_OPERATION_OUTCOME_FAILED,
-    CHECKOUT_OPERATION_OUTCOMES, CHECKOUT_OPERATION_PARK_REASON_ATTEMPTS_EXHAUSTED,
-    CHECKOUT_OPERATION_PARK_REASON_MANUAL_RECONCILIATION, CHECKOUT_OPERATION_PARK_REASONS,
-    CHECKOUT_OPERATION_PARKED_EVENT_TYPE, CHECKOUT_OPERATION_RECONCILED_EVENT_TYPE,
-    CheckoutOperationEvent, checkout_operation_event_schema,
+    CHECKOUT_OPERATION_PARKED_EVENT_TYPE, CHECKOUT_OPERATION_PARK_REASONS,
+    CHECKOUT_OPERATION_PARK_REASON_ATTEMPTS_EXHAUSTED,
+    CHECKOUT_OPERATION_PARK_REASON_MANUAL_RECONCILIATION, CHECKOUT_OPERATION_RECONCILED_EVENT_TYPE,
 };
 pub use contract::{
     ContractEventEnvelope, ContractEventPayload, EventContract, EventContractEnvelopeError,
 };
 pub use forms_submission::{
-    FORMS_SUBMISSION_EVENT_SCHEMAS, FormSubmissionEvent, forms_submission_event_schema,
+    forms_submission_event_schema, FormSubmissionEvent, FORMS_SUBMISSION_EVENT_SCHEMAS,
 };
 pub use forum_mention::{
-    FORUM_MENTION_EVENT_SCHEMAS, ForumMentionEvent, forum_mention_event_schema,
+    forum_mention_event_schema, ForumMentionEvent, FORUM_MENTION_EVENT_SCHEMAS,
 };
 pub use forum_search_projection::{
-    FORUM_SEARCH_PROJECTION_EVENT_SCHEMAS, ForumSearchProjectionEvent,
-    forum_search_projection_event_schema,
+    forum_search_projection_event_schema, ForumSearchProjectionEvent,
+    FORUM_SEARCH_PROJECTION_EVENT_SCHEMAS,
 };
 pub use marketplace_listing::{
-    MARKETPLACE_LISTING_EVENT_SCHEMAS, MarketplaceListingEvent, marketplace_listing_event_schema,
+    marketplace_listing_event_schema, MarketplaceListingEvent, MARKETPLACE_LISTING_EVENT_SCHEMAS,
 };
 pub use marketplace_seller::{
-    MARKETPLACE_SELLER_EVENT_SCHEMAS, MarketplaceSellerEvent, marketplace_seller_event_schema,
+    marketplace_seller_event_schema, MarketplaceSellerEvent, MARKETPLACE_SELLER_EVENT_SCHEMAS,
 };
 pub use product_index_refresh::{
+    product_index_refresh_event_schema, ProductIndexRefreshEvent,
     MAX_PRODUCT_INDEX_REFRESH_LOCALE_BYTES, PRODUCT_INDEX_LOCALE_REFRESH_REQUESTED_EVENT_TYPE,
-    PRODUCT_INDEX_REFRESH_EVENT_SCHEMA_VERSION, PRODUCT_INDEX_REFRESH_EVENT_SCHEMAS,
-    PRODUCT_INDEX_VARIANT_REFRESH_REQUESTED_EVENT_TYPE, ProductIndexRefreshEvent,
-    product_index_refresh_event_schema,
+    PRODUCT_INDEX_REFRESH_EVENT_SCHEMAS, PRODUCT_INDEX_REFRESH_EVENT_SCHEMA_VERSION,
+    PRODUCT_INDEX_VARIANT_REFRESH_REQUESTED_EVENT_TYPE,
 };
 pub use rbac_artifact_permission::{
-    RBAC_ARTIFACT_PERMISSION_EVENT_SCHEMAS, RbacArtifactPermissionEvent,
-    rbac_artifact_permission_event_schema,
+    rbac_artifact_permission_event_schema, RbacArtifactPermissionEvent,
+    RBAC_ARTIFACT_PERMISSION_EVENT_SCHEMAS,
 };
 pub use rbac_role_mutation::{
+    rbac_role_mutation_event_schema, RbacRoleMutationEvent,
     RBAC_EVENT_USER_ROLE_ASSIGNMENT_REPAIRED, RBAC_EVENT_USER_ROLE_REPLACED,
-    RBAC_ROLE_MUTATION_EVENT_SCHEMAS, RbacRoleMutationEvent, rbac_role_mutation_event_schema,
+    RBAC_ROLE_MUTATION_EVENT_SCHEMAS,
 };
 pub use reactions::{
-    MAX_REACTIONS_EVENT_KEYS, REACTIONS_ACTOR_STATE_CHANGED_EVENT_TYPE,
-    REACTIONS_EVENT_SCHEMA_VERSION, REACTIONS_EVENT_SCHEMAS,
-    REACTIONS_SUBJECT_RECONCILED_EVENT_TYPE, ReactionsEvent, reactions_event_schema,
+    reactions_event_schema, ReactionsEvent, MAX_REACTIONS_EVENT_KEYS,
+    REACTIONS_ACTOR_STATE_CHANGED_EVENT_TYPE, REACTIONS_EVENT_SCHEMAS,
+    REACTIONS_EVENT_SCHEMA_VERSION, REACTIONS_SUBJECT_RECONCILED_EVENT_TYPE,
 };
 pub use schema::{
-    EVENT_SCHEMAS, EventContractDigests, EventSchema, FieldSchema,
     contract_event_envelope_json_schema, contract_event_payload_json_schema,
     domain_event_json_schema, event_contract_digests, event_envelope_json_schema,
+    EventContractDigests, EventSchema, FieldSchema, EVENT_SCHEMAS,
 };
 pub use social_graph::{
-    SOCIAL_GRAPH_RELATION_EVENT_SCHEMAS, SocialGraphRelationEvent,
-    social_graph_relation_event_schema,
+    social_graph_relation_event_schema, SocialGraphRelationEvent,
+    SOCIAL_GRAPH_RELATION_EVENT_SCHEMAS,
 };
 pub use translation_workflow::{
-    TRANSLATION_WORKFLOW_EVENT_SCHEMAS, TranslationWorkflowEvent, translation_workflow_event_schema,
+    translation_workflow_event_schema, TranslationWorkflowEvent, TRANSLATION_WORKFLOW_EVENT_SCHEMAS,
 };
 pub use types::{DomainEvent, EventEnvelope, EventEnvelopeError};
 pub use validation::{EventValidationError, ValidateEvent};

@@ -321,8 +321,7 @@ mod tests {
             redis_url: String::new(),
             ..CacheAdminFormDraft::default()
         };
-        let error = build_cache_settings_payload(&draft)
-            .expect_err("a Redis mode needs a target");
+        let error = build_cache_settings_payload(&draft).expect_err("a Redis mode needs a target");
         assert!(error.contains("requires a Redis target"), "{error}");
 
         // A URL alone is enough, and surrounding whitespace is trimmed rather than stored.
@@ -351,9 +350,8 @@ mod tests {
 
         draft.redis_port = "6379".to_string();
         draft.redis_db = "900".to_string();
-        let db_error =
-            build_cache_settings_payload(&draft)
-                .expect_err("invalid database must not be defaulted");
+        let db_error = build_cache_settings_payload(&draft)
+            .expect_err("invalid database must not be defaulted");
         assert!(db_error.contains("redis_db"));
 
         draft.redis_db = "0".to_string();

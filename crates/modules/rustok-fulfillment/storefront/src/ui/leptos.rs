@@ -2,9 +2,9 @@ use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    SelectShippingOptionRequest, ShippingSelectionLabels, build_select_shipping_option_request,
-    delivery_group_key, format_line_items_label, format_provider_label,
-    format_shipping_option_price, is_shipping_option_selected, selection_action_label,
+    build_select_shipping_option_request, delivery_group_key, format_line_items_label,
+    format_provider_label, format_shipping_option_price, is_shipping_option_selected,
+    selection_action_label, SelectShippingOptionRequest, ShippingSelectionLabels,
 };
 use crate::model::{StorefrontDeliveryGroup, StorefrontShippingOption};
 
@@ -154,7 +154,8 @@ fn ShippingOptionButton(
     busy: ReadSignal<bool>,
     on_select_shipping_option: Callback<SelectShippingOptionRequest>,
 ) -> impl IntoView {
-    let is_selected = is_shipping_option_selected(selected_shipping_option_id.as_deref(), &option.id);
+    let is_selected =
+        is_shipping_option_selected(selected_shipping_option_id.as_deref(), &option.id);
     let option_for_click = option.clone();
     let group_for_click = group.clone();
     let on_click = move |_| {

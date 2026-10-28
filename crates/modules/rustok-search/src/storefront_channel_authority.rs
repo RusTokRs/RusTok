@@ -106,8 +106,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        StorefrontChannelAuthorityError, resolve_trusted_storefront_channel,
-        resolve_trusted_storefront_channel_input,
+        resolve_trusted_storefront_channel, resolve_trusted_storefront_channel_input,
+        StorefrontChannelAuthorityError,
     };
 
     fn request_context(

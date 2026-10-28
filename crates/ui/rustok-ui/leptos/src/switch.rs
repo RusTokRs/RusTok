@@ -9,7 +9,7 @@
  */
 
 use leptos::prelude::*;
-use rustok_ui::{SwitchSize, switch_classes};
+use rustok_ui::{switch_classes, SwitchSize};
 
 /// Switch toggle rendered as a `role="switch"` button.
 ///

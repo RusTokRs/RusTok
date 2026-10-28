@@ -1,6 +1,6 @@
 use std::{fmt, str::FromStr};
 
-use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
+use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 
 pub use rustok_ui_i18n::preferred_catalog_locale_from_accept_language as extract_locale_tag_from_header;
@@ -193,9 +193,9 @@ pub fn build_locale_candidates<'a>(
 #[cfg(test)]
 mod tests {
     use super::{
-        RuntimeLocale, StoredLocale, TenantLocale, UNKNOWN_PROVENANCE_LOCALE,
         build_locale_candidates, extract_locale_tag_from_header, is_valid_locale_tag,
-        locale_primary_language, locale_tags_match, normalize_locale_tag,
+        locale_primary_language, locale_tags_match, normalize_locale_tag, RuntimeLocale,
+        StoredLocale, TenantLocale, UNKNOWN_PROVENANCE_LOCALE,
     };
 
     #[test]

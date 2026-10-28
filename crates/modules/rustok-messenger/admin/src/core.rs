@@ -356,11 +356,23 @@ mod tests {
 
     #[test]
     fn admin_tab_from_and_as_str() {
-        assert_eq!(MessengerAdminTab::from_str("overview"), MessengerAdminTab::Overview);
-        assert_eq!(MessengerAdminTab::from_str("channels"), MessengerAdminTab::Channels);
+        assert_eq!(
+            MessengerAdminTab::from_str("overview"),
+            MessengerAdminTab::Overview
+        );
+        assert_eq!(
+            MessengerAdminTab::from_str("channels"),
+            MessengerAdminTab::Channels
+        );
         assert_eq!(MessengerAdminTab::from_str("e2ee"), MessengerAdminTab::E2ee);
-        assert_eq!(MessengerAdminTab::from_str("federation"), MessengerAdminTab::Federation);
-        assert_eq!(MessengerAdminTab::from_str("unknown"), MessengerAdminTab::Overview);
+        assert_eq!(
+            MessengerAdminTab::from_str("federation"),
+            MessengerAdminTab::Federation
+        );
+        assert_eq!(
+            MessengerAdminTab::from_str("unknown"),
+            MessengerAdminTab::Overview
+        );
 
         assert_eq!(MessengerAdminTab::Overview.as_str(), "overview");
         assert_eq!(MessengerAdminTab::Channels.as_str(), "channels");

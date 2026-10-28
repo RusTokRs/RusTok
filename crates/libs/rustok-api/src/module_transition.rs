@@ -83,9 +83,7 @@ pub struct ArtifactRollbackView {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        ArtifactRollbackView, ModuleTransitionCheckpointView, ModuleTransitionStateView,
-    };
+    use super::{ArtifactRollbackView, ModuleTransitionCheckpointView, ModuleTransitionStateView};
 
     #[test]
     fn rollback_view_uses_the_graphql_field_contract() {
@@ -98,7 +96,10 @@ mod tests {
         };
 
         let encoded = serde_json::to_value(rollback).expect("rollback view serializes");
-        assert_eq!(encoded["operationId"], "11111111-1111-1111-1111-111111111111");
+        assert_eq!(
+            encoded["operationId"],
+            "11111111-1111-1111-1111-111111111111"
+        );
         assert_eq!(
             encoded["sourceInstallationId"],
             "22222222-2222-2222-2222-222222222222"
@@ -137,4 +138,3 @@ mod tests {
         assert_eq!(encoded["securityEpoch"], 7);
     }
 }
-

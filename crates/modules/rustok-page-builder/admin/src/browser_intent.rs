@@ -4,12 +4,13 @@ use crate::editor::{
 };
 use crate::{AdminCanvasController, AdminCanvasEffect, AdminCanvasError};
 use fly::{
-    DesignToken, EditorCommand, GrapesJsCodec, PageCommand, PageLocator, PageMetadata, PagePatch,
-    ProjectHash, StyleRuleCommand, StyleRuleScope, ThemeCommand, blank_page, normalize_slug,
+    blank_page, normalize_slug, DesignToken, EditorCommand, GrapesJsCodec, PageCommand,
+    PageLocator, PageMetadata, PagePatch, ProjectHash, StyleRuleCommand, StyleRuleScope,
+    ThemeCommand,
 };
 use fly_browser::{BrowserIntentEnvelope, BrowserIntentError};
 use fly_ui::{
-    EditorShortcut, KeyStroke, StyleEntry, UiIntent, resolve_editor_shortcut, style_patch,
+    resolve_editor_shortcut, style_patch, EditorShortcut, KeyStroke, StyleEntry, UiIntent,
 };
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use serde::{Deserialize, Serialize};
@@ -706,11 +707,9 @@ mod tests {
         )
         .expect("remove theme token");
         assert!(removed.dirty);
-        assert!(
-            fly::decode_theme_tokens(controller.editor().document())
-                .expect("tokens decode")
-                .is_empty()
-        );
+        assert!(fly::decode_theme_tokens(controller.editor().document())
+            .expect("tokens decode")
+            .is_empty());
     }
 
     #[test]
@@ -849,15 +848,13 @@ mod tests {
         assert_eq!(link["page_id"], "about");
         assert_eq!(link["base_path"], "/site");
         controller.dispatch(UiIntent::Undo).expect("undo link");
-        assert!(
-            !controller
-                .editor()
-                .document()
-                .component("link")
-                .unwrap()
-                .extensions
-                .contains_key("flyPageLink")
-        );
+        assert!(!controller
+            .editor()
+            .document()
+            .component("link")
+            .unwrap()
+            .extensions
+            .contains_key("flyPageLink"));
     }
 
     #[test]

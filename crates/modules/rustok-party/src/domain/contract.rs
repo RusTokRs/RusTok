@@ -10,11 +10,11 @@
 
 //! Commercial contracts, credit limits, and deferred payment terms.
 
+use crate::error::{PartyError, PartyResult};
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use crate::error::{PartyError, PartyResult};
 
 /// Lifecycle state for commercial counterparty contracts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -93,10 +93,14 @@ impl Contract {
         let title = title.into().trim().to_string();
 
         if contract_number.is_empty() {
-            return Err(PartyError::Validation("Contract number cannot be empty".into()));
+            return Err(PartyError::Validation(
+                "Contract number cannot be empty".into(),
+            ));
         }
         if title.is_empty() {
-            return Err(PartyError::Validation("Contract title cannot be empty".into()));
+            return Err(PartyError::Validation(
+                "Contract title cannot be empty".into(),
+            ));
         }
 
         if let Some(to) = valid_to {
@@ -166,12 +170,16 @@ mod tests {
             Some(end),
             Some(Decimal::new(1_000_000, 0)),
             Some(30),
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(contract.status, ContractStatus::Draft);
         assert!(!contract.is_effective_on(NaiveDate::from_ymd_opt(2026, 6, 1).unwrap()));
 
-        contract.status.transition_to(ContractStatus::Active).unwrap();
+        contract
+            .status
+            .transition_to(ContractStatus::Active)
+            .unwrap();
         assert!(contract.is_effective_on(NaiveDate::from_ymd_opt(2026, 6, 1).unwrap()));
         assert!(!contract.is_effective_on(NaiveDate::from_ymd_opt(2027, 1, 1).unwrap()));
     }

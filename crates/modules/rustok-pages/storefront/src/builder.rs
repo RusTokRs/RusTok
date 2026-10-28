@@ -227,17 +227,16 @@ mod tests {
 
     #[test]
     fn invalid_builder_json_is_rejected() {
-        assert!(
-            decode_page_builder_body(&body(PAGE_BUILDER_DOCUMENT_FORMAT, "{invalid".to_string(),))
-                .is_err()
-        );
-        assert!(
-            decode_static_landing_payload(&body(
-                STATIC_LANDING_PAYLOAD_BODY_FORMAT,
-                "{invalid".to_string(),
-            ))
-            .is_err()
-        );
+        assert!(decode_page_builder_body(&body(
+            PAGE_BUILDER_DOCUMENT_FORMAT,
+            "{invalid".to_string(),
+        ))
+        .is_err());
+        assert!(decode_static_landing_payload(&body(
+            STATIC_LANDING_PAYLOAD_BODY_FORMAT,
+            "{invalid".to_string(),
+        ))
+        .is_err());
     }
 
     #[test]
@@ -265,4 +264,3 @@ mod tests {
         };
     }
 }
-

@@ -9,7 +9,7 @@
  */
 
 use dioxus::prelude::*;
-use rustok_ui::{Size, input_classes};
+use rustok_ui::{input_classes, Size};
 
 #[component]
 pub fn Input(

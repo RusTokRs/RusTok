@@ -9,7 +9,7 @@
  */
 
 use dioxus::prelude::*;
-use rustok_ui::{AlertVariant, alert_classes};
+use rustok_ui::{alert_classes, AlertVariant};
 
 #[component]
 pub fn Alert(

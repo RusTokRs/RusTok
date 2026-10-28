@@ -170,11 +170,9 @@ mod tests {
             context.claims,
             vec![Permission::FORUM_CATEGORIES_LIST.to_string()]
         );
-        assert!(
-            context
-                .correlation_id
-                .starts_with("forum-native-search-result-eligibility-")
-        );
+        assert!(context
+            .correlation_id
+            .starts_with("forum-native-search-result-eligibility-"));
     }
 
     #[test]

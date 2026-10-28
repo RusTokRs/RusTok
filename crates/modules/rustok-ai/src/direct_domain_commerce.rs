@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use rustok_ai_product::{
-    PRODUCT_ATTRIBUTES_TASK_SLUG, PRODUCT_COPY_TASK_SLUG, register_product_ai_vertical_handlers,
+    register_product_ai_vertical_handlers, PRODUCT_ATTRIBUTES_TASK_SLUG, PRODUCT_COPY_TASK_SLUG,
 };
 
 use super::direct_product_attributes::ProductAttributesHandler;

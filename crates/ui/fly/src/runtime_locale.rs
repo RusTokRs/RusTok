@@ -1,4 +1,4 @@
-use crate::{LocaleResolver, default_locale_resolver};
+use crate::{default_locale_resolver, LocaleResolver};
 use crate::{ValidationDiagnostic, ValidationSeverity};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -317,12 +317,10 @@ mod tests {
         }));
         assert_eq!(result.context["page"]["title"], "Привет");
         assert_eq!(result.fallback_values, 1);
-        assert!(
-            result
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.code == "runtime_localized_value_fallback")
-        );
+        assert!(result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "runtime_localized_value_fallback"));
     }
 
     #[test]
@@ -366,12 +364,10 @@ mod tests {
         let result = materialize_runtime_locale_context(&input);
         assert_eq!(result.context["label"], input["label"]);
         assert_eq!(result.unresolved_values, 1);
-        assert!(
-            result
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.code == "runtime_localized_value_unresolved")
-        );
+        assert!(result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "runtime_localized_value_unresolved"));
     }
 
     #[test]

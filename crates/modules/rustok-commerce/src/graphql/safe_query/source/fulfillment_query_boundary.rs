@@ -1,6 +1,6 @@
-use super::{BoundaryError, GRAPHQL_QUERY_FULFILLMENT_BOUNDARY, error::FulfillmentError};
-use ::rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
-use ::uuid::Uuid;
+use super::{error::FulfillmentError, BoundaryError, GRAPHQL_QUERY_FULFILLMENT_BOUNDARY};
+use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
+use uuid::Uuid;
 
 pub(super) fn fulfillment_query_context(
     tenant_id: Uuid,
@@ -165,7 +165,11 @@ fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
 }
 
 fn text_presence_shape(value: &str) -> &'static str {
-    if value.is_empty() { "empty" } else { "present" }
+    if value.is_empty() {
+        "empty"
+    } else {
+        "present"
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

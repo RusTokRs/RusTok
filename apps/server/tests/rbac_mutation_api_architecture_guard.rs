@@ -161,13 +161,11 @@ fn committed_role_replacement_delegates_authority_before_generation_bump() {
         );
     }
     for forbidden in ["users::Entity::", "roles::Entity::", "user_roles::Entity::"] {
-        assert!(
-            !committed
-                .split("#[cfg(test)]")
-                .next()
-                .unwrap()
-                .contains(forbidden)
-        );
+        assert!(!committed
+            .split("#[cfg(test)]")
+            .next()
+            .unwrap()
+            .contains(forbidden));
     }
     let delegate = committed
         .find("rustok_rbac::replace_persisted_user_role_on")
@@ -201,9 +199,7 @@ fn public_role_repair_surface_splits_read_only_plan_from_transactional_apply() {
     assert!(exports.contains("db: &sea_orm::DatabaseTransaction"));
     assert!(!exports.contains("pub use repair::{\n    repair_system_roles"));
     assert!(server.contains("rustok_rbac::plan_system_role_repair(db, tenant_id)"));
-    assert!(
-        server.contains("rustok_rbac::apply_system_role_repair_in_transaction(&tx, tenant_id)")
-    );
+    assert!(server.contains("rustok_rbac::apply_system_role_repair_in_transaction(&tx, tenant_id)"));
 }
 
 #[test]

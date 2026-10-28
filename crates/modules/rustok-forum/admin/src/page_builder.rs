@@ -3,10 +3,10 @@ use fly::{
     RegistrySet,
 };
 use fly_ui::{
-    ContributionAdapter, ContributionAssemblyPolicy, ContributionAssemblyResult,
-    ContributionDescriptor, ModuleContributionManifest, Presentation, PropertyEditorRequest,
-    RendererRequest, ResolvedPropertyEditor, ResolvedRenderer, UiError, UiResult,
-    build_admin_contribution_registry_from_manifests,
+    build_admin_contribution_registry_from_manifests, ContributionAdapter,
+    ContributionAssemblyPolicy, ContributionAssemblyResult, ContributionDescriptor,
+    ModuleContributionManifest, Presentation, PropertyEditorRequest, RendererRequest,
+    ResolvedPropertyEditor, ResolvedRenderer, UiError, UiResult,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -292,7 +292,7 @@ fn string_set(values: &[&str]) -> BTreeSet<String> {
 mod tests {
     use super::*;
     use fly_ui::{
-        PropertyEditorRequest, RendererRequest, edit_contribution_properties, render_contribution,
+        edit_contribution_properties, render_contribution, PropertyEditorRequest, RendererRequest,
     };
     use serde_json::to_value;
 
@@ -330,12 +330,10 @@ mod tests {
         let result = build_forum_admin_contribution_registry(&policy);
         assert!(result.is_valid(), "diagnostics: {:?}", result.diagnostics);
         assert!(result.registry.get(FORUM_WIDGET_CONTRIBUTION_ID).is_some());
-        assert!(
-            result
-                .registry
-                .get(FORUM_WIDGET_PREVIEW_CONTRIBUTION_ID)
-                .is_none()
-        );
+        assert!(result
+            .registry
+            .get(FORUM_WIDGET_PREVIEW_CONTRIBUTION_ID)
+            .is_none());
     }
 
     #[test]
@@ -422,11 +420,9 @@ mod tests {
         assert!(result.is_valid());
         assert_eq!(result.registered_contributions, 0);
         assert_eq!(result.skipped_contributions, 2);
-        assert!(
-            result
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.code == "contribution_permission_missing")
-        );
+        assert!(result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "contribution_permission_missing"));
     }
 }

@@ -1,8 +1,8 @@
 use crate::AdminCanvasController;
 use fly::{ComponentNode, EditorCommand};
 use fly_leptos::{
-    BrowserDropTarget, BrowserPoint, CoordinateTransform, DropAxis, DropZonePolicy,
-    hit_test_drop_targets,
+    hit_test_drop_targets, BrowserDropTarget, BrowserPoint, CoordinateTransform, DropAxis,
+    DropZonePolicy,
 };
 use fly_ui::{DragSource, DropPosition, HitTestCandidate, UiIntent};
 use serde::{Deserialize, Serialize};
@@ -359,7 +359,7 @@ fn drag_source_identity(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fly::{PageCommand, blank_page};
+    use fly::{blank_page, PageCommand};
     use fly_ui::{DragSource, UiIntent};
     use serde_json::json;
 
@@ -404,12 +404,10 @@ mod tests {
             })
             .expect("activate about");
         assert_eq!(controller.layer_items().len(), 1);
-        assert!(
-            controller
-                .palette_blocks()
-                .iter()
-                .any(|block| block.id == "section")
-        );
+        assert!(controller
+            .palette_blocks()
+            .iter()
+            .any(|block| block.id == "section"));
     }
 
     #[test]

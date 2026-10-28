@@ -196,9 +196,7 @@ pub fn same_redis_target(left: &str, right: &str) -> bool {
 /// not persist it, because the next reader would treat it as a real credential.
 fn strip_masked_url_password(url: &str) -> String {
     match parse_redis_url(url) {
-        Ok(parsed) if parsed.password() == Some(REDACTED_SECRET) => {
-            redis_url_without_password(url)
-        }
+        Ok(parsed) if parsed.password() == Some(REDACTED_SECRET) => redis_url_without_password(url),
         _ => url.to_string(),
     }
 }
@@ -322,7 +320,10 @@ impl CacheSettings {
             format!("redis_host '{host}' cannot be used in a Redis URL: {error}")
         })?;
         url.set_port(Some(self.redis_port)).map_err(|()| {
-            format!("redis_port {} cannot be used in a Redis URL", self.redis_port)
+            format!(
+                "redis_port {} cannot be used in a Redis URL",
+                self.redis_port
+            )
         })?;
         url.set_path(&format!("/{}", self.redis_db));
         if !self.redis_password.is_empty() {
@@ -556,10 +557,7 @@ mod tests {
             Some("redis://rustok:6379/0"),
             "resolved URLs are trimmed"
         );
-        assert_eq!(
-            resolve_redis_url_from(None, |_| Some(String::new())),
-            None
-        );
+        assert_eq!(resolve_redis_url_from(None, |_| Some(String::new())), None);
     }
 
     fn redis_settings(url: &str) -> CacheSettings {
@@ -639,7 +637,9 @@ mod tests {
 
         let settings = redis_settings("redis://cache.internal:6379/999");
         let errors = settings.validate().expect_err("db out of range");
-        assert!(errors.iter().any(|error| error.contains("between 0 and 255")));
+        assert!(errors
+            .iter()
+            .any(|error| error.contains("between 0 and 255")));
 
         let settings = redis_settings("redis://cache.internal:6379/not-a-db");
         let errors = settings.validate().expect_err("non numeric db");
@@ -712,8 +712,12 @@ mod tests {
 
     #[test]
     fn password_presence_is_the_redaction_trigger() {
-        assert!(redis_url_has_password("redis://app:s3cret@cache.internal:6379/0"));
-        assert!(redis_url_has_password("redis://:s3cret@cache.internal:6379/0"));
+        assert!(redis_url_has_password(
+            "redis://app:s3cret@cache.internal:6379/0"
+        ));
+        assert!(redis_url_has_password(
+            "redis://:s3cret@cache.internal:6379/0"
+        ));
         assert!(
             !redis_url_has_password("redis://cache.internal:6379/0"),
             "a credential-free URL needs no rewriting"

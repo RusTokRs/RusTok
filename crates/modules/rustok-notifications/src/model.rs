@@ -370,4 +370,3 @@ impl From<NotificationContractError> for rustok_core::Error {
 
 #[cfg(feature = "server")]
 pub use crate::domain::*;
-

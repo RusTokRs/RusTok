@@ -17,9 +17,9 @@ use crate::bundle::{build_fluent_bundle, parse_language_identifier};
 use crate::error::{BundleBuildError, I18nError};
 use crate::locale::locale_candidates;
 use crate::messages::{
-    ConcurrentFluentBundle, MessagePart, PreparedUiMessages, ResolvedMessage, UiMessages,
     effective_locale, normalize_default_locale, resolve_candidates_with_provider,
-    try_resolve_candidates_with_provider,
+    try_resolve_candidates_with_provider, ConcurrentFluentBundle, MessagePart, PreparedUiMessages,
+    ResolvedMessage, UiMessages,
 };
 
 struct LazyBundle {

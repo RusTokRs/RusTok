@@ -16,54 +16,55 @@ mod runtime_scenario_render;
 mod runtime_scenario_snapshot;
 
 pub use context_scenario::{
-    RuntimeContextScenario, RuntimeContextScenarioResult, RuntimeContextScenarioSuiteResult,
     preflight_runtime_context_scenarios, validate_runtime_context_scenarios,
+    RuntimeContextScenario, RuntimeContextScenarioResult, RuntimeContextScenarioSuiteResult,
 };
 
 pub use interaction_capability_gate::evaluate_runtime_publish_gate_with_capabilities;
 
 pub use landing_contract::{
-    ComponentRegistryContract, ComponentRegistryManifest, FLY_HTML_RENDERER_ID,
-    FLY_LANDING_SECTION_FIELD, FlyHtmlLandingRenderer, LandingRenderedPage, LandingRenderer,
-    LandingRendererManifest, LandingSectionIssue, LandingSectionIssueKind, LandingSectionKind,
-    LandingSectionPageManifest, LandingSectionSnapshot, LandingSectionValidationReport,
-    RegistryCompatibilityIssue, RegistryCompatibilityIssueKind, RegistryCompatibilityReport,
-    StaticLandingArtifact, StaticLandingBuildIdentity, StaticLandingBuildResult, StaticLandingPage,
     build_static_landing_artifact, build_static_landing_artifact_with_renderer,
+    ComponentRegistryContract, ComponentRegistryManifest, FlyHtmlLandingRenderer,
+    LandingRenderedPage, LandingRenderer, LandingRendererManifest, LandingSectionIssue,
+    LandingSectionIssueKind, LandingSectionKind, LandingSectionPageManifest,
+    LandingSectionSnapshot, LandingSectionValidationReport, RegistryCompatibilityIssue,
+    RegistryCompatibilityIssueKind, RegistryCompatibilityReport, StaticLandingArtifact,
+    StaticLandingBuildIdentity, StaticLandingBuildResult, StaticLandingPage, FLY_HTML_RENDERER_ID,
+    FLY_LANDING_SECTION_FIELD,
 };
 
 pub use landing_property::{
-    FLY_LANDING_PROPERTY_FIELD, LandingPropertyEditError, LandingPropertyIssue,
+    landing_property_schemas, LandingPropertyEditError, LandingPropertyIssue,
     LandingPropertyIssueKind, LandingPropertySchema, LandingPropertySnapshot,
     LandingPropertyTargetSnapshot, LandingPropertyValidationReport, LandingSectionPropertySnapshot,
-    landing_property_schemas,
+    FLY_LANDING_PROPERTY_FIELD,
 };
 
 pub use landing_readiness::{
-    LandingReadinessCategory, LandingReadinessCategorySummary, LandingReadinessIssue,
-    LandingReadinessPolicy, LandingReadinessReport, evaluate_landing_readiness,
-    evaluate_landing_readiness_with_context,
+    evaluate_landing_readiness, evaluate_landing_readiness_with_context, LandingReadinessCategory,
+    LandingReadinessCategorySummary, LandingReadinessIssue, LandingReadinessPolicy,
+    LandingReadinessReport,
 };
 
 pub use runtime_gate::{
-    CurrentContextGateMode, RuntimePublishGateEvaluation, RuntimePublishGatePolicy,
-    ScenarioGateMode, evaluate_runtime_publish_gate,
+    evaluate_runtime_publish_gate, CurrentContextGateMode, RuntimePublishGateEvaluation,
+    RuntimePublishGatePolicy, ScenarioGateMode,
 };
 
 pub use runtime_scenario_release::{
-    FLY_RUNTIME_SCENARIO_RELEASE_BASELINE, RuntimeScenarioReleaseBaseline,
+    evaluate_runtime_scenario_release, RuntimeScenarioReleaseBaseline,
     RuntimeScenarioReleaseEvaluation, RuntimeScenarioReleaseMode, RuntimeScenarioReleasePolicy,
-    RuntimeScenarioReleaseStatus, evaluate_runtime_scenario_release,
+    RuntimeScenarioReleaseStatus, FLY_RUNTIME_SCENARIO_RELEASE_BASELINE,
 };
 
 pub use runtime_scenario_render::{
-    RuntimeScenarioRenderCase, RuntimeScenarioRenderMatrix, render_runtime_scenario_matrix,
-    render_runtime_scenario_matrix_with_providers,
+    render_runtime_scenario_matrix, render_runtime_scenario_matrix_with_providers,
+    RuntimeScenarioRenderCase, RuntimeScenarioRenderMatrix,
 };
 
 pub use runtime_scenario_snapshot::{
-    FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT, RuntimeScenarioRegressionStatus,
+    diff_runtime_scenario_render_snapshots, RuntimeScenarioRegressionStatus,
     RuntimeScenarioRenderChange, RuntimeScenarioRenderChangeImpact, RuntimeScenarioRenderDiff,
     RuntimeScenarioRenderSnapshot, RuntimeScenarioRenderSnapshotCase,
-    diff_runtime_scenario_render_snapshots,
+    FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT,
 };

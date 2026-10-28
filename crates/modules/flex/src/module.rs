@@ -119,6 +119,8 @@ mod tests {
             "Capability-only custom fields runtime for attached and standalone extension flows"
         );
         assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
-        assert!(module.permissions().contains(&Permission::FLEX_SCHEMAS_MANAGE));
+        assert!(module
+            .permissions()
+            .contains(&Permission::FLEX_SCHEMAS_MANAGE));
     }
 }

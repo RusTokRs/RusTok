@@ -18,13 +18,13 @@ use std::fmt::Write as _;
 mod contract_tests;
 
 use axum::{
-    Json,
     body::Body,
     http::{
-        HeaderMap, StatusCode,
         header::{CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_NONE_MATCH},
+        HeaderMap, StatusCode,
     },
     response::{IntoResponse, Response},
+    Json,
 };
 use rustok_api::{PortError, PortErrorKind};
 use serde::{Deserialize, Serialize};
@@ -217,17 +217,17 @@ where
 pub mod browser_assets;
 
 pub use browser_assets::{
-    BrowserAssetError, BrowserAssetRegistry, IMMUTABLE_ASSET_CACHE_CONTROL,
-    MISSING_ASSET_CACHE_CONTROL, ReleaseAssetSet, ReleaseQualifiedAsset,
+    BrowserAssetError, BrowserAssetRegistry, ReleaseAssetSet, ReleaseQualifiedAsset,
+    IMMUTABLE_ASSET_CACHE_CONTROL, MISSING_ASSET_CACHE_CONTROL,
 };
 
 #[cfg(test)]
 mod tests {
     use super::{
-        BrowserAssetRegistry, CspNonce, IMMUTABLE_ASSET_CACHE_CONTROL, MISSING_ASSET_CACHE_CONTROL,
-        ReleaseQualifiedAsset, embedded_asset_response, port_error_to_http_error,
+        embedded_asset_response, port_error_to_http_error, BrowserAssetRegistry, CspNonce,
+        ReleaseQualifiedAsset, IMMUTABLE_ASSET_CACHE_CONTROL, MISSING_ASSET_CACHE_CONTROL,
     };
-    use axum::http::{HeaderMap, HeaderValue, StatusCode, header::IF_NONE_MATCH};
+    use axum::http::{header::IF_NONE_MATCH, HeaderMap, HeaderValue, StatusCode};
     use chrono::{Duration, Utc};
     use rustok_api::PortError;
 
@@ -236,12 +236,10 @@ mod tests {
         let nonce = CspNonce::generate();
 
         assert_eq!(nonce.as_str().len(), 32);
-        assert!(
-            nonce
-                .as_str()
-                .chars()
-                .all(|character| character.is_ascii_hexdigit())
-        );
+        assert!(nonce
+            .as_str()
+            .chars()
+            .all(|character| character.is_ascii_hexdigit()));
         assert_eq!(
             nonce.source_expression(),
             format!("'nonce-{}'", nonce.as_str())

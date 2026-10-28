@@ -152,7 +152,7 @@ pub fn featured_products(locale: &str) -> Vec<crate::entities::product::ProductC
 
 #[cfg(test)]
 mod tests {
-    use super::{MESSAGES, featured_products, locale_strings};
+    use super::{featured_products, locale_strings, MESSAGES};
 
     #[test]
     fn host_catalogs_are_valid_and_locale_specific() {

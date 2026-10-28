@@ -32,8 +32,8 @@ use crate::services::topic_field_service::TopicFieldService;
 use crate::services::user_field_service::UserFieldService;
 use flex::{
     CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionService, FieldDefinitionView,
-    FieldDefinitionViewSource, GenericAttachedFieldDefinitionService,
-    TAXONOMY_CATEGORY_ENTITY_TYPE, UpdateFieldDefinitionCommand,
+    FieldDefinitionViewSource, GenericAttachedFieldDefinitionService, UpdateFieldDefinitionCommand,
+    TAXONOMY_CATEGORY_ENTITY_TYPE,
 };
 
 struct UserFieldDefinitionService;

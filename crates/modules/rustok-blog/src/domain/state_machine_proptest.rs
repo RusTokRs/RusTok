@@ -25,7 +25,6 @@ fn status_strategy() -> impl Strategy<Value = BlogPostStatus> {
     })
 }
 
-
 proptest! {
     /// A post is published out of the draft state only.
     #[test]

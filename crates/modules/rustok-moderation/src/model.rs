@@ -508,8 +508,7 @@ impl ApplyModerationDecisionCommand {
         {
             return Err(ModerationCommandValidationError::InvalidDecisionHash);
         }
-        self.effect
-            .validate_for_decision_kind(self.decision_kind)?;
+        self.effect.validate_for_decision_kind(self.decision_kind)?;
         Ok(())
     }
 }
@@ -590,16 +589,12 @@ mod tests {
             effective_until: None,
         })
         .expect("valid effect");
-        assert!(
-            effect
-                .validate_for_decision_kind(ModerationDecisionKind::SuspendSubject)
-                .is_ok()
-        );
-        assert!(
-            effect
-                .validate_for_decision_kind(ModerationDecisionKind::Warning)
-                .is_err()
-        );
+        assert!(effect
+            .validate_for_decision_kind(ModerationDecisionKind::SuspendSubject)
+            .is_ok());
+        assert!(effect
+            .validate_for_decision_kind(ModerationDecisionKind::Warning)
+            .is_err());
     }
 
     #[test]
@@ -641,21 +636,11 @@ mod tests {
     #[test]
     fn subject_ref_validation_bounds() {
         assert_eq!(
-            ModerationSubjectRef::new(
-                "  ",
-                ModerationSubjectKind::ForumTopic,
-                Uuid::new_v4(),
-                1
-            ),
+            ModerationSubjectRef::new("  ", ModerationSubjectKind::ForumTopic, Uuid::new_v4(), 1),
             Err(ModerationCommandValidationError::EmptySubjectModule)
         );
         assert_eq!(
-            ModerationSubjectRef::new(
-                "forum",
-                ModerationSubjectKind::ForumTopic,
-                Uuid::nil(),
-                1
-            ),
+            ModerationSubjectRef::new("forum", ModerationSubjectKind::ForumTopic, Uuid::nil(), 1),
             Err(ModerationCommandValidationError::NilSubjectId)
         );
         assert_eq!(
@@ -676,15 +661,13 @@ mod tests {
             ),
             Err(ModerationCommandValidationError::InvalidSubjectRevision)
         );
-        assert!(
-            ModerationSubjectRef::new(
-                "forum",
-                ModerationSubjectKind::ForumTopic,
-                Uuid::new_v4(),
-                1
-            )
-            .is_ok()
-        );
+        assert!(ModerationSubjectRef::new(
+            "forum",
+            ModerationSubjectKind::ForumTopic,
+            Uuid::new_v4(),
+            1
+        )
+        .is_ok());
     }
 
     #[test]

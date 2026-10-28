@@ -48,6 +48,80 @@ pub fn validate_kind(kind: &str) -> Result<(), ValidationError> {
     }
 }
 
+/// Validate a tenant-localized content locale through the platform locale contract.
+///
+/// This intentionally shares the same accepted BCP47 subset and `und` rejection
+/// semantics as every other tenant/runtime locale boundary.
+pub fn validate_locale(locale: &str) -> Result<(), ValidationError> {
+    TenantLocale::new(locale)
+        .map(|_| ())
+        .map_err(|_| ValidationError::new("invalid_locale_format"))
+}
+
+/// Custom validator for position (should be non-negative)
+pub fn validate_position(position: &i32) -> Result<(), ValidationError> {
+    if *position < 0 {
+        return Err(ValidationError::new("position_must_be_non_negative"));
+    }
+    if *position > 100000 {
+        return Err(ValidationError::new("position_too_large"));
+    }
+    Ok(())
+}
+
+/// Custom validator for depth (should be reasonable)
+pub fn validate_depth(depth: &i32) -> Result<(), ValidationError> {
+    if *depth < 0 {
+        return Err(ValidationError::new("depth_must_be_non_negative"));
+    }
+    if *depth > 100 {
+        return Err(ValidationError::new("depth_too_large"));
+    }
+    Ok(())
+}
+
+/// Custom validator for reply count
+pub fn validate_reply_count(count: &i32) -> Result<(), ValidationError> {
+    if *count < 0 {
+        return Err(ValidationError::new("reply_count_must_be_non_negative"));
+    }
+    Ok(())
+}
+
+/// Custom validator for slug format
+///
+/// FIXED: More comprehensive slug validation
+pub fn validate_slug(slug: &str) -> Result<(), ValidationError> {
+    // Slug should be lowercase alphanumeric with hyphens
+    if slug.is_empty() {
+        return Err(ValidationError::new("slug_empty"));
+    }
+
+    if slug.len() > 255 {
+        return Err(ValidationError::new("slug_too_long"));
+    }
+
+    // Check if slug matches pattern: lowercase letters, numbers, hyphens
+    if !slug
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        return Err(ValidationError::new("slug_invalid_characters"));
+    }
+
+    // Should not start or end with hyphen
+    if slug.starts_with('-') || slug.ends_with('-') {
+        return Err(ValidationError::new("slug_hyphen_boundary"));
+    }
+
+    // Should not contain consecutive hyphens
+    if slug.contains("--") {
+        return Err(ValidationError::new("slug_consecutive_hyphens"));
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -63,7 +137,15 @@ mod tests {
     fn every_accepted_kind_is_declared_in_the_search_corpus() {
         // The Search projector writes `source_module = kind`, so an accepted kind that is
         // missing from the declaration would be indexed and then denied in public Search.
-        for kind in ["post", "page", "article", "custom", "block", "menu", "menu_item"] {
+        for kind in [
+            "post",
+            "page",
+            "article",
+            "custom",
+            "block",
+            "menu",
+            "menu_item",
+        ] {
             assert!(CONTENT_NODE_KINDS.contains(&kind));
         }
         assert!(validate_kind("secret_lab_note").is_err());
@@ -189,79 +271,3 @@ mod tests {
         assert!(validate_reply_count(&-1).is_err());
     }
 }
-
-/// Validate a tenant-localized content locale through the platform locale contract.
-///
-/// This intentionally shares the same accepted BCP47 subset and `und` rejection
-/// semantics as every other tenant/runtime locale boundary.
-pub fn validate_locale(locale: &str) -> Result<(), ValidationError> {
-    TenantLocale::new(locale)
-        .map(|_| ())
-        .map_err(|_| ValidationError::new("invalid_locale_format"))
-}
-
-/// Custom validator for position (should be non-negative)
-pub fn validate_position(position: &i32) -> Result<(), ValidationError> {
-    if *position < 0 {
-        return Err(ValidationError::new("position_must_be_non_negative"));
-    }
-    if *position > 100000 {
-        return Err(ValidationError::new("position_too_large"));
-    }
-    Ok(())
-}
-
-/// Custom validator for depth (should be reasonable)
-pub fn validate_depth(depth: &i32) -> Result<(), ValidationError> {
-    if *depth < 0 {
-        return Err(ValidationError::new("depth_must_be_non_negative"));
-    }
-    if *depth > 100 {
-        return Err(ValidationError::new("depth_too_large"));
-    }
-    Ok(())
-}
-
-/// Custom validator for reply count
-pub fn validate_reply_count(count: &i32) -> Result<(), ValidationError> {
-    if *count < 0 {
-        return Err(ValidationError::new("reply_count_must_be_non_negative"));
-    }
-    Ok(())
-}
-
-/// Custom validator for slug format
-///
-/// FIXED: More comprehensive slug validation
-pub fn validate_slug(slug: &str) -> Result<(), ValidationError> {
-    // Slug should be lowercase alphanumeric with hyphens
-    if slug.is_empty() {
-        return Err(ValidationError::new("slug_empty"));
-    }
-
-    if slug.len() > 255 {
-        return Err(ValidationError::new("slug_too_long"));
-    }
-
-    // Check if slug matches pattern: lowercase letters, numbers, hyphens
-    if !slug
-        .chars()
-        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-    {
-        return Err(ValidationError::new("slug_invalid_characters"));
-    }
-
-    // Should not start or end with hyphen
-    if slug.starts_with('-') || slug.ends_with('-') {
-        return Err(ValidationError::new("slug_hyphen_boundary"));
-    }
-
-    // Should not contain consecutive hyphens
-    if slug.contains("--") {
-        return Err(ValidationError::new("slug_consecutive_hyphens"));
-    }
-
-    Ok(())
-}
-
-

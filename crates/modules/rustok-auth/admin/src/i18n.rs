@@ -1,4 +1,4 @@
-use crate::core::{AuthTransportErrorKind, classify_auth_transport_error};
+use crate::core::{classify_auth_transport_error, AuthTransportErrorKind};
 
 rustok_ui_i18n::declare_module_i18n!();
 

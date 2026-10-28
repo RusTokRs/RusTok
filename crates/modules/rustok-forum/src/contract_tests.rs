@@ -57,4 +57,3 @@ fn module_contract_metadata_matches() {
     assert_eq!(module.kind(), rustok_core::ModuleKind::Optional);
     assert_eq!(module.dependencies(), &["content", "media", "taxonomy"]);
 }
-

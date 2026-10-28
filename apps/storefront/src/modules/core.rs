@@ -1,9 +1,9 @@
 use leptos::prelude::*;
 
-use super::{StorefrontComponentRegistration, StorefrontSlot, register_component};
+use super::{register_component, StorefrontComponentRegistration, StorefrontSlot};
 
 #[cfg(feature = "pages-inline-edit")]
-use super::{StorefrontPageRegistration, register_page};
+use super::{register_page, StorefrontPageRegistration};
 
 #[cfg(feature = "pages-inline-edit")]
 pub const PAGES_AUTHORING_ROUTE_SEGMENT: &str = "pages-authoring";

@@ -21,8 +21,8 @@
 //! stylesheet order, not by the order inside the `class` attribute.
 
 use crate::tokens::{
-    DISABLED_CONTROL_CLASSES, DISABLED_INPUT_CLASSES, FOCUS_RING_CLASSES, INPUT_FOCUS_RING_CLASSES,
-    TRANSITION_COLORS_CLASSES, radius, shadow,
+    radius, shadow, DISABLED_CONTROL_CLASSES, DISABLED_INPUT_CLASSES, FOCUS_RING_CLASSES,
+    INPUT_FOCUS_RING_CLASSES, TRANSITION_COLORS_CLASSES,
 };
 use crate::types::{
     AlertVariant, AvatarSize, BadgeVariant, ButtonVariant, CardVariant, Orientation, Size,

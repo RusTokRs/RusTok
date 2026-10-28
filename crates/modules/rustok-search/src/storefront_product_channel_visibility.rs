@@ -70,13 +70,6 @@ pub(crate) fn storefront_payload_visible_for_channel(
     })
 }
 
-pub(crate) fn product_payload_visible_for_storefront(
-    payload: &JsonValue,
-    channel: &TrustedStorefrontChannel,
-) -> bool {
-    storefront_payload_visible_for_channel(payload, "product", channel)
-}
-
 pub(crate) fn product_channel_visibility_sql(
     entity_type_column: &str,
     payload_column: &str,

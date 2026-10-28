@@ -113,8 +113,8 @@ pub struct CommerceDomainProviderInvocationTraceEntry {
     pub consumer_degraded_modes: Vec<String>,
 }
 
-pub fn commerce_domain_provider_invocation_trace()
--> Result<CommerceDomainProviderInvocationTrace, serde_json::Error> {
+pub fn commerce_domain_provider_invocation_trace(
+) -> Result<CommerceDomainProviderInvocationTrace, serde_json::Error> {
     serde_json::from_str(COMMERCE_DOMAIN_PROVIDER_INVOCATION_TRACE_JSON)
 }
 
@@ -159,33 +159,27 @@ mod tests {
             trace.generated_from,
             "crates/modules/rustok-commerce/contracts/commerce-fba-registry.json"
         );
-        assert!(
-            trace
-                .modules
-                .iter()
-                .any(|entry| entry.provider_module == "product"
-                    && entry.consumer_module == "commerce"
-                    && entry.ports.contains(&"ProductCatalogReadPort".to_string()))
-        );
+        assert!(trace
+            .modules
+            .iter()
+            .any(|entry| entry.provider_module == "product"
+                && entry.consumer_module == "commerce"
+                && entry.ports.contains(&"ProductCatalogReadPort".to_string())));
         assert_eq!(
             trace
                 .provider_entry("pricing")
                 .map(|entry| entry.contract_version.as_str()),
             Some("pricing.read_projection.v1")
         );
-        assert!(
-            trace
-                .consumer_entries("commerce")
-                .iter()
-                .any(|entry| entry.provider_module == "cart")
-        );
-        assert!(
-            trace
-                .modules
-                .iter()
-                .any(|entry| entry.provider_module == "tax"
-                    && entry.consumer_module == "cart"
-                    && entry.ports.contains(&"TaxCalculationPort".to_string()))
-        );
+        assert!(trace
+            .consumer_entries("commerce")
+            .iter()
+            .any(|entry| entry.provider_module == "cart"));
+        assert!(trace
+            .modules
+            .iter()
+            .any(|entry| entry.provider_module == "tax"
+                && entry.consumer_module == "cart"
+                && entry.ports.contains(&"TaxCalculationPort".to_string())));
     }
 }

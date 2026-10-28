@@ -240,16 +240,12 @@ mod tests {
             IndexValueType::Timestamp,
         ] {
             let registry = registry(value_type, true);
-            assert!(
-                registry
-                    .validate_query_with_aggregate_ordering(&query(OrderDirection::MinAsc, true))
-                    .is_ok()
-            );
-            assert!(
-                registry
-                    .validate_query_with_aggregate_ordering(&query(OrderDirection::MaxDesc, true))
-                    .is_ok()
-            );
+            assert!(registry
+                .validate_query_with_aggregate_ordering(&query(OrderDirection::MinAsc, true))
+                .is_ok());
+            assert!(registry
+                .validate_query_with_aggregate_ordering(&query(OrderDirection::MaxDesc, true))
+                .is_ok());
         }
     }
 

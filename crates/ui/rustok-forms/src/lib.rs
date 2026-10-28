@@ -103,8 +103,8 @@ pub mod validation;
 pub use dirty::DirtyTracker;
 #[doc(inline)]
 pub use error::{
-    FieldError, ValidationIssue, field_errors_to_issues, format_field_path, issues_to_field_errors,
-    parse_field_path,
+    field_errors_to_issues, format_field_path, issues_to_field_errors, parse_field_path,
+    FieldError, ValidationIssue,
 };
 #[doc(inline)]
 pub use field::{FieldConstraints, FieldDescriptor, FieldKind, FieldOption};
@@ -117,4 +117,4 @@ pub use state::{FormState, FormSubmissionStatus};
 #[doc(inline)]
 pub use step::FormStepTracker;
 #[doc(inline)]
-pub use validation::{FormValidator, rules as validation_rules};
+pub use validation::{rules as validation_rules, FormValidator};

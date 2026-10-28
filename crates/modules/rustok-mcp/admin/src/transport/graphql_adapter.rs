@@ -453,11 +453,15 @@ mod tests {
         let details = client_details_request("  test-id  ".to_string());
         assert_eq!(details.variables.id, "test-id");
 
-        let revoke = revoke_token_request("  token-123  ".to_string(), Some("  lost token  ".to_string()));
+        let revoke = revoke_token_request(
+            "  token-123  ".to_string(),
+            Some("  lost token  ".to_string()),
+        );
         assert_eq!(revoke.variables.token_id, "token-123");
         assert_eq!(revoke.variables.reason, Some("lost token".to_string()));
 
-        let deactivate = deactivate_client_request("  client-456  ".to_string(), Some("   ".to_string()));
+        let deactivate =
+            deactivate_client_request("  client-456  ".to_string(), Some("   ".to_string()));
         assert_eq!(deactivate.variables.client_id, "client-456");
         assert_eq!(deactivate.variables.reason, None);
 

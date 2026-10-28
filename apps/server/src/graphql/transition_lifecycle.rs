@@ -88,12 +88,10 @@ fn sanitize_state_details(
         ModuleTransitionStateView::RecoveredToPredecessor if state_details.is_some() => {
             Some("Transition recovered to the retained predecessor".to_string())
         }
-        ModuleTransitionStateView::InterventionRequired if state_details.is_some() => {
-            Some(
-                "Transition requires manual intervention; serving selection was not changed"
-                    .to_string(),
-            )
-        }
+        ModuleTransitionStateView::InterventionRequired if state_details.is_some() => Some(
+            "Transition requires manual intervention; serving selection was not changed"
+                .to_string(),
+        ),
         _ => state_details,
     }
 }
@@ -286,7 +284,7 @@ pub(crate) fn map_transition_coordinator_error(error: TransitionCoordinatorError
 
 #[cfg(test)]
 mod tests {
-    use super::{ModuleTransitionStateView, map_transition_coordinator_error};
+    use super::{map_transition_coordinator_error, ModuleTransitionStateView};
     use rustok_modules::{SecurityEpochConflictError, TransitionCoordinatorError};
 
     #[test]

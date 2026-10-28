@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 
 #[cfg(feature = "rhai")]
-use rhai::{Engine, Module, Scope, module_resolvers::StaticModuleResolver};
+use rhai::{module_resolvers::StaticModuleResolver, Engine, Module, Scope};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 #[cfg(feature = "rhai")]
@@ -783,8 +783,8 @@ mod tests {
     use rhai::Engine;
 
     use super::{
-        MAX_RHAI_WORKSPACE_IMPORT_DEPTH, RhaiWorkspace, RhaiWorkspaceError, RhaiWorkspaceFile,
-        RhaiWorkspaceFileKind,
+        RhaiWorkspace, RhaiWorkspaceError, RhaiWorkspaceFile, RhaiWorkspaceFileKind,
+        MAX_RHAI_WORKSPACE_IMPORT_DEPTH,
     };
     use crate::CapabilityName;
 
@@ -915,15 +915,13 @@ mod tests {
             .validate_rhai_test("tests/live.rhai")
             .expect("test should validate");
 
-        assert!(
-            engine
-                .eval::<bool>(
-                    workspace
-                        .test_source("tests/live.rhai")
-                        .expect("test source")
-                )
-                .expect("test import should resolve")
-        );
+        assert!(engine
+            .eval::<bool>(
+                workspace
+                    .test_source("tests/live.rhai")
+                    .expect("test source")
+            )
+            .expect("test import should resolve"));
         assert!(matches!(
             workspace.test_source("src/main.rhai"),
             Err(RhaiWorkspaceError::TestEntrypointMustBeTest(_))

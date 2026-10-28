@@ -1,11 +1,10 @@
 use super::model::{
-    ComponentAction, ComponentForm, FLY_ACTION_FIELD, FLY_FORM_FIELD, FormEncoding, FormMethod,
+    ComponentAction, ComponentForm, FormEncoding, FormMethod, FLY_ACTION_FIELD, FLY_FORM_FIELD,
 };
 use crate::{
-    ComponentObject, FLY_PAGE_LINK_FIELD, ProjectDocument, ValidationDiagnostic,
-    ValidationSeverity, component_visit::visit_project_components,
-    interaction_route::InteractionRouteCatalog,
-    safe_url::validate_safe_url as validate_shared_safe_url,
+    component_visit::visit_project_components, interaction_route::InteractionRouteCatalog,
+    safe_url::validate_safe_url as validate_shared_safe_url, ComponentObject, ProjectDocument,
+    ValidationDiagnostic, ValidationSeverity, FLY_PAGE_LINK_FIELD,
 };
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -267,9 +266,7 @@ pub(super) fn validate_action_contract(
         | ComponentAction::ToggleAccordion { target_id, .. } => {
             validate_identifier(target_id, "target component id")
         }
-        ComponentAction::SwitchTab { panel_id } => {
-            validate_identifier(panel_id, "target panel id")
-        }
+        ComponentAction::SwitchTab { panel_id } => validate_identifier(panel_id, "target panel id"),
         ComponentAction::SwitchSlide {
             slider_id,
             target_slide,

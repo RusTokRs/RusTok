@@ -79,7 +79,9 @@ pub enum ModuleGovernanceError {
     InvalidValidationJobEnqueueCommand,
     #[error("validation job claim requires a job ID and actor principal")]
     InvalidValidationJobClaimCommand,
-    #[error("validation job result requires a job ID, actor, coherent outcome, and check evidence")]
+    #[error(
+        "validation job result requires a job ID, actor, coherent outcome, and check evidence"
+    )]
     InvalidValidationJobResultCommand,
     #[error("validation job retry requires a job ID, actor, positive attempt, and error detail")]
     InvalidValidationJobRetryCommand,
@@ -175,7 +177,9 @@ pub enum ModuleGovernanceError {
     OwnerBindingNotFound,
     #[error("actor is not authorized to transfer this registry owner binding")]
     OwnerTransferUnauthorized,
-    #[error("registry owner-transfer idempotency key was reused for a different immutable command")]
+    #[error(
+        "registry owner-transfer idempotency key was reused for a different immutable command"
+    )]
     OwnerTransferIdempotencyConflict,
     #[error("registry owner is already bound to the requested principal")]
     OwnerUnchanged,

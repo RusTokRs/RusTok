@@ -145,12 +145,16 @@ fn parse_settings(value: Option<&str>) -> Result<Option<serde_json::Value>, Blog
 impl TryFrom<CreateBlogCategoryInput> for crate::dto::CreateCategoryInput {
     type Error = BlogError;
     fn try_from(input: CreateBlogCategoryInput) -> Result<Self, Self::Error> {
-        let settings = parse_settings(input.settings.as_deref())?
-            .unwrap_or_else(|| serde_json::json!({}));
+        let settings =
+            parse_settings(input.settings.as_deref())?.unwrap_or_else(|| serde_json::json!({}));
         Ok(Self {
-            locale: input.locale, name: input.name, slug: input.slug,
-            description: input.description, parent_id: input.parent_id,
-            position: input.position, settings,
+            locale: input.locale,
+            name: input.name,
+            slug: input.slug,
+            description: input.description,
+            parent_id: input.parent_id,
+            position: input.position,
+            settings,
         })
     }
 }
@@ -167,4 +171,3 @@ impl TryFrom<UpdateBlogCategoryInput> for crate::dto::UpdateCategoryInput {
         })
     }
 }
-

@@ -28,21 +28,39 @@ pub fn BillingAdminPage() -> impl IntoView {
 
     // Sample/initial data rows — in production, loaded via transport facade
     let sample_rows = vec![
-        BillingAdminTableRow::new("rec-1", "Default B2B Billing & Settlements Workspace", "active", "2026-01-01"),
-        BillingAdminTableRow::new("rec-2", "Secondary B2B Billing & Settlements Profile", "draft", "2026-01-02"),
+        BillingAdminTableRow::new(
+            "rec-1",
+            "Default B2B Billing & Settlements Workspace",
+            "active",
+            "2026-01-01",
+        ),
+        BillingAdminTableRow::new(
+            "rec-2",
+            "Secondary B2B Billing & Settlements Profile",
+            "draft",
+            "2026-01-02",
+        ),
     ];
     let rows_store = StoredValue::new(sample_rows);
 
     let filtered_rows = Memo::new(move |_| {
         let query = search_query.get();
         let rows = rows_store.get_value();
-        filter_rows(&rows, if query.trim().is_empty() { None } else { Some(&query) })
+        filter_rows(
+            &rows,
+            if query.trim().is_empty() {
+                None
+            } else {
+                Some(&query)
+            },
+        )
     });
 
     // Columns specification for shared DataGrid
     let columns = vec![
         GridColumnDef::checkbox(),
-        GridColumnDef::new("title", t(None, "billing-col-title", "Title")).filter(GridFilterType::text()),
+        GridColumnDef::new("title", t(None, "billing-col-title", "Title"))
+            .filter(GridFilterType::text()),
         GridColumnDef::new("status", t(None, "billing-col-status", "Status")),
         GridColumnDef::new("created_at", t(None, "billing-col-created", "Created At")),
         GridColumnDef::new("actions", t(None, "billing-col-actions", "Actions")),

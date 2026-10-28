@@ -22,8 +22,8 @@ pub fn normalize_term_locale(value: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        TAXONOMY_ROUTE_KEY_MAX_CHARS, TAXONOMY_SCOPE_VALUE_MAX_CHARS, normalize_term_locale,
-        normalize_term_route_key,
+        normalize_term_locale, normalize_term_route_key, TAXONOMY_ROUTE_KEY_MAX_CHARS,
+        TAXONOMY_SCOPE_VALUE_MAX_CHARS,
     };
 
     #[test]

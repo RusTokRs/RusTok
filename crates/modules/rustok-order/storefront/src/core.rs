@@ -163,62 +163,33 @@ pub fn localize_status(locale: Option<&str>, status: &str) -> String {
         .map(|l| l.trim().to_lowercase().starts_with("ru"))
         .unwrap_or(false);
     match trimmed.to_uppercase().as_str() {
-        "PENDING" => {
-            if is_ru {
-                "В обработке"
-            } else {
-                "Pending"
-            }
-            .to_string()
+        "PENDING" => if is_ru {
+            "В обработке"
+        } else {
+            "Pending"
         }
-        "CONFIRMED" => {
-            if is_ru {
-                "Подтвержден"
-            } else {
-                "Confirmed"
-            }
-            .to_string()
+        .to_string(),
+        "CONFIRMED" => if is_ru {
+            "Подтвержден"
+        } else {
+            "Confirmed"
         }
-        "PAID" => {
-            if is_ru {
-                "Оплачен"
-            } else {
-                "Paid"
-            }
-            .to_string()
+        .to_string(),
+        "PAID" => if is_ru { "Оплачен" } else { "Paid" }.to_string(),
+        "PROCESSING" => if is_ru { "Сборка" } else { "Processing" }.to_string(),
+        "SHIPPED" => if is_ru {
+            "Отправлен"
+        } else {
+            "Shipped"
         }
-        "PROCESSING" => {
-            if is_ru {
-                "Сборка"
-            } else {
-                "Processing"
-            }
-            .to_string()
+        .to_string(),
+        "DELIVERED" => if is_ru {
+            "Доставлен"
+        } else {
+            "Delivered"
         }
-        "SHIPPED" => {
-            if is_ru {
-                "Отправлен"
-            } else {
-                "Shipped"
-            }
-            .to_string()
-        }
-        "DELIVERED" => {
-            if is_ru {
-                "Доставлен"
-            } else {
-                "Delivered"
-            }
-            .to_string()
-        }
-        "CANCELLED" => {
-            if is_ru {
-                "Отменен"
-            } else {
-                "Cancelled"
-            }
-            .to_string()
-        }
+        .to_string(),
+        "CANCELLED" => if is_ru { "Отменен" } else { "Cancelled" }.to_string(),
         _ => trimmed.to_string(),
     }
 }
@@ -351,7 +322,10 @@ mod tests {
         assert_eq!(localize_status(Some("en"), "PAID"), "Paid");
         assert_eq!(localize_status(None, "CANCELLED"), "Cancelled");
         assert_eq!(localize_status(Some("ru"), "cancelled"), "Отменен");
-        assert_eq!(localize_status(Some("fr"), "custom_status"), "custom_status");
+        assert_eq!(
+            localize_status(Some("fr"), "custom_status"),
+            "custom_status"
+        );
     }
 
     #[test]
@@ -361,6 +335,9 @@ mod tests {
             complete: "Complete Order".into(),
         };
         assert_eq!(order_checkout_action_label(true, &labels), "Processing...");
-        assert_eq!(order_checkout_action_label(false, &labels), "Complete Order");
+        assert_eq!(
+            order_checkout_action_label(false, &labels),
+            "Complete Order"
+        );
     }
 }

@@ -245,7 +245,10 @@ mod tests {
         let blog_config = config.get_content_type("blog_post").unwrap();
         assert_eq!(blog_config.condition_field.as_deref(), Some("status"));
         assert_eq!(blog_config.condition_value.as_deref(), Some("published"));
-        assert!(matches!(blog_config.retention, RetentionPolicy::KeepLast(50)));
+        assert!(matches!(
+            blog_config.retention,
+            RetentionPolicy::KeepLast(50)
+        ));
     }
 
     #[test]
@@ -269,4 +272,3 @@ mod tests {
         assert_eq!(custom.ignored_fields, vec!["updated_at".to_string()]);
     }
 }
-

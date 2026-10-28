@@ -157,7 +157,7 @@ mod tests {
 
     #[test]
     fn comment_pages_are_one_based_and_bounded() {
-        use super::{MAX_COMMENTS_PER_PAGE, bounded_comment_page};
+        use super::{bounded_comment_page, MAX_COMMENTS_PER_PAGE};
 
         assert_eq!(bounded_comment_page(0, 20), (1, 20));
         assert_eq!(bounded_comment_page(2, 0), (2, 1));

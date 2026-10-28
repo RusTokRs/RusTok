@@ -1,6 +1,6 @@
 mod checkout_boundary {
-    use ::async_graphql::{Error, ErrorExtensions};
-    use ::rustok_api::{PortContext, PortError, PortErrorKind};
+    use async_graphql::{Error, ErrorExtensions};
+    use rustok_api::{PortContext, PortError, PortErrorKind};
 
     use crate::CommerceError;
 
@@ -210,7 +210,7 @@ mod checkout_boundary {
 }
 
 mod async_graphql_shim {
-    pub use ::async_graphql::{Context, Error, ErrorExtensions, Object};
+    pub use async_graphql::{Context, Error, ErrorExtensions, Object};
 
     pub type Result<T> = std::result::Result<T, super::checkout_boundary::BoundaryError>;
 }

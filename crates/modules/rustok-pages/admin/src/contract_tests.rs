@@ -6,8 +6,8 @@ use crate::browser_problem::{
     BROWSER_REVISION_CONFLICT_CODE,
 };
 use crate::core::{
-    SiteSymbolUsageInfo, SymbolValidationError, TemplateValidationError, compute_symbol_usage,
-    validate_symbol_id, validate_template_key,
+    compute_symbol_usage, validate_symbol_id, validate_template_key, SiteSymbolUsageInfo,
+    SymbolValidationError, TemplateValidationError,
 };
 use crate::model::PageTemplateSummary;
 use crate::starters::{instantiate_starter_preset, page_starters};
@@ -73,7 +73,10 @@ fn role_permission_contract_enforces_least_privilege() {
 #[test]
 fn starter_catalog_contract_is_consistent() {
     let starters = page_starters();
-    assert!(!starters.is_empty(), "Page starter catalog must not be empty");
+    assert!(
+        !starters.is_empty(),
+        "Page starter catalog must not be empty"
+    );
 
     let blank = starters.iter().find(|s| s.id == "blank");
     assert!(blank.is_some(), "Blank starter must always be available");
@@ -117,18 +120,33 @@ fn symbol_usage_contract_prevents_unsafe_deletion() {
 fn template_and_symbol_validation_contracts() {
     // Template key bounds
     assert_eq!(validate_template_key("default").unwrap(), "default");
-    assert_eq!(validate_template_key("").unwrap_err(), TemplateValidationError::EmptyKey);
-    assert_eq!(validate_template_key("invalid key!").unwrap_err(), TemplateValidationError::InvalidCharacters);
+    assert_eq!(
+        validate_template_key("").unwrap_err(),
+        TemplateValidationError::EmptyKey
+    );
+    assert_eq!(
+        validate_template_key("invalid key!").unwrap_err(),
+        TemplateValidationError::InvalidCharacters
+    );
 
     // Symbol ID bounds
     assert_eq!(validate_symbol_id("my-symbol").unwrap(), "my-symbol");
-    assert_eq!(validate_symbol_id("").unwrap_err(), SymbolValidationError::EmptyId);
-    assert_eq!(validate_symbol_id("bad id!").unwrap_err(), SymbolValidationError::InvalidCharacters);
+    assert_eq!(
+        validate_symbol_id("").unwrap_err(),
+        SymbolValidationError::EmptyId
+    );
+    assert_eq!(
+        validate_symbol_id("bad id!").unwrap_err(),
+        SymbolValidationError::InvalidCharacters
+    );
 }
 
 #[test]
 fn stable_problem_detail_conflict_codes() {
     assert_eq!(BROWSER_REVISION_CONFLICT_CODE, "REVISION_CONFLICT");
     assert_eq!(BROWSER_PROJECT_HASH_CONFLICT_CODE, "PROJECT_HASH_CONFLICT");
-    assert_eq!(BROWSER_DRAFT_GENERATION_CONFLICT_CODE, "DRAFT_GENERATION_CONFLICT");
+    assert_eq!(
+        BROWSER_DRAFT_GENERATION_CONFLICT_CODE,
+        "DRAFT_GENERATION_CONFLICT"
+    );
 }

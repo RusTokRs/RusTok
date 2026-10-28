@@ -178,11 +178,9 @@ mod tests {
             context.claims,
             vec![Permission::FORUM_TOPICS_READ.to_string()]
         );
-        assert!(
-            context
-                .correlation_id
-                .starts_with("forum-native-selected-topic-")
-        );
+        assert!(context
+            .correlation_id
+            .starts_with("forum-native-selected-topic-"));
     }
 
     #[test]
@@ -203,11 +201,9 @@ mod tests {
 
         assert_eq!(context.locale, "en");
         assert!(context.channel.is_none());
-        assert!(
-            context
-                .correlation_id
-                .starts_with("forum-graphql-mark-read-")
-        );
+        assert!(context
+            .correlation_id
+            .starts_with("forum-graphql-mark-read-"));
     }
 
     #[test]
@@ -227,11 +223,9 @@ mod tests {
         )
         .expect("trusted list context should compose");
 
-        assert!(
-            context
-                .correlation_id
-                .starts_with("forum-graphql-topic-list-")
-        );
+        assert!(context
+            .correlation_id
+            .starts_with("forum-graphql-topic-list-"));
         assert_eq!(context.deadline_ms, Some(5_000));
     }
 
@@ -261,15 +255,12 @@ mod tests {
         )
         .expect("GraphQL all-read context should compose");
 
-        assert!(
-            category
-                .correlation_id
-                .starts_with("forum-rest-mark-category-read-")
-        );
-        assert!(
-            all.correlation_id
-                .starts_with("forum-graphql-mark-all-read-")
-        );
+        assert!(category
+            .correlation_id
+            .starts_with("forum-rest-mark-category-read-"));
+        assert!(all
+            .correlation_id
+            .starts_with("forum-graphql-mark-all-read-"));
         assert_eq!(category.channel.as_deref(), Some("members"));
         assert_eq!(all.channel.as_deref(), Some("members"));
     }

@@ -54,7 +54,9 @@ pub struct SourceArchiveReceipt {
 pub enum SourceArchiveError {
     #[error("source root must be an absolute regular non-symlink directory")]
     InvalidSource,
-    #[error("source tree contains a link, special file, forbidden path, or unsupported USTAR path")]
+    #[error(
+        "source tree contains a link, special file, forbidden path, or unsupported USTAR path"
+    )]
     UnsafeSource,
     #[error("source archive exceeds a configured resource limit")]
     ResourceLimit,

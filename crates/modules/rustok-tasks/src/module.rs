@@ -11,8 +11,8 @@
 use async_trait::async_trait;
 use rustok_api::Permission;
 use rustok_core::module::{
-    MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry,
-    ModuleKind, ModuleRuntimeExtensions, RusToKModule,
+    MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry, ModuleKind,
+    ModuleRuntimeExtensions, RusToKModule,
 };
 use sea_orm_migration::MigrationTrait;
 
@@ -25,7 +25,6 @@ impl TasksModule {
         Self
     }
 }
-
 
 #[async_trait]
 impl RusToKModule for TasksModule {

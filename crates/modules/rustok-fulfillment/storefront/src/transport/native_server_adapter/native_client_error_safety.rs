@@ -1,7 +1,7 @@
 use uuid::Uuid;
 
 use super::super::{
-    SelectShippingOptionRequest, ShippingSelectionTransportError, build_shipping_selection_updates,
+    build_shipping_selection_updates, SelectShippingOptionRequest, ShippingSelectionTransportError,
 };
 
 const FULFILLMENT_STOREFRONT_NATIVE_CLIENT_OWNER: &str = "rustok_fulfillment.storefront";
@@ -120,7 +120,7 @@ impl NativeClientErrorContext {
 
 #[cfg(test)]
 mod tests {
-    use super::{FULFILLMENT_STOREFRONT_NATIVE_CLIENT_PUBLIC_MESSAGE, NativeClientErrorContext};
+    use super::{NativeClientErrorContext, FULFILLMENT_STOREFRONT_NATIVE_CLIENT_PUBLIC_MESSAGE};
     use crate::transport::ShippingSelectionTransportError;
 
     #[test]
@@ -159,7 +159,9 @@ mod tests {
         };
 
         let err = NativeClientErrorContext::validate_and_new(&request).unwrap_err();
-        assert!(matches!(err, ShippingSelectionTransportError::Validation(msg) if msg.contains("cart_id must not be a nil UUID")));
+        assert!(
+            matches!(err, ShippingSelectionTransportError::Validation(msg) if msg.contains("cart_id must not be a nil UUID"))
+        );
     }
 
     #[test]
@@ -181,8 +183,12 @@ mod tests {
         // Note: build_shipping_selection_updates will check availability first if the option is not in available list.
         // If nil UUID is available or passed, it must fail with nil UUID validation.
         let mut request_with_nil_available = request;
-        request_with_nil_available.delivery_groups[0].available_shipping_option_ids = vec![uuid::Uuid::nil().to_string()];
-        let err = NativeClientErrorContext::validate_and_new(&request_with_nil_available).unwrap_err();
-        assert!(matches!(err, ShippingSelectionTransportError::Validation(msg) if msg.contains("selected_shipping_option_id must not be a nil UUID")));
+        request_with_nil_available.delivery_groups[0].available_shipping_option_ids =
+            vec![uuid::Uuid::nil().to_string()];
+        let err =
+            NativeClientErrorContext::validate_and_new(&request_with_nil_available).unwrap_err();
+        assert!(
+            matches!(err, ShippingSelectionTransportError::Validation(msg) if msg.contains("selected_shipping_option_id must not be a nil UUID"))
+        );
     }
 }

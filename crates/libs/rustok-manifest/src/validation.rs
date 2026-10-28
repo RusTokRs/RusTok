@@ -1,6 +1,6 @@
-use std::collections::{HashMap, VecDeque};
 use crate::error::{ManifestError, Result};
 use crate::types::{ModulePackageManifest, ModuleUiSupportProvides, ModulesManifest};
+use std::collections::{HashMap, VecDeque};
 
 /// Canonical module slug validator.
 ///
@@ -89,13 +89,13 @@ fn validate_dependency_graph(manifest: &ModulesManifest) -> Result<()> {
         if let Some(deps) = &spec.depends_on {
             for dep in deps {
                 if !manifest.modules.contains_key(dep) {
-                    return Err(ManifestError::MissingDependency(
-                        slug.clone(),
-                        dep.clone(),
-                    ));
+                    return Err(ManifestError::MissingDependency(slug.clone(), dep.clone()));
                 }
                 // dep -> slug edge
-                adjacency.entry(dep.as_str()).or_default().push(slug.as_str());
+                adjacency
+                    .entry(dep.as_str())
+                    .or_default()
+                    .push(slug.as_str());
                 *in_degrees.entry(slug.as_str()).or_default() += 1;
             }
         }
@@ -125,7 +125,13 @@ fn validate_dependency_graph(manifest: &ModulesManifest) -> Result<()> {
     if visited_count != manifest.modules.len() {
         let cyclic_nodes: Vec<String> = in_degrees
             .into_iter()
-            .filter_map(|(node, degree)| if degree > 0 { Some(node.to_string()) } else { None })
+            .filter_map(|(node, degree)| {
+                if degree > 0 {
+                    Some(node.to_string())
+                } else {
+                    None
+                }
+            })
             .collect();
         return Err(ManifestError::CyclicDependency(cyclic_nodes.join(", ")));
     }

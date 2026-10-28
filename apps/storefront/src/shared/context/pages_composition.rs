@@ -193,40 +193,34 @@ mod tests {
     fn incomplete_terminal_or_nonce_bearing_documents_do_not_claim_cache_identity() {
         let mut incomplete = decision();
         incomplete.route_generation = None;
-        assert!(
-            pages_storefront_composition_etag(
-                "en",
-                &incomplete,
-                &None,
-                &navigation("About"),
-                "<html>about</html>",
-            )
-            .is_none()
-        );
+        assert!(pages_storefront_composition_etag(
+            "en",
+            &incomplete,
+            &None,
+            &navigation("About"),
+            "<html>about</html>",
+        )
+        .is_none());
 
         let mut terminal = decision();
         terminal.disposition = StorefrontPageRouteDisposition::Gone;
-        assert!(
-            pages_storefront_composition_etag(
-                "en",
-                &terminal,
-                &None,
-                &navigation("About"),
-                "<html>about</html>",
-            )
-            .is_none()
-        );
+        assert!(pages_storefront_composition_etag(
+            "en",
+            &terminal,
+            &None,
+            &navigation("About"),
+            "<html>about</html>",
+        )
+        .is_none());
 
-        assert!(
-            pages_storefront_composition_etag(
-                "en",
-                &decision(),
-                &None,
-                &navigation("About"),
-                "<html><script nonce=\"request-specific\"></script></html>",
-            )
-            .is_none()
-        );
+        assert!(pages_storefront_composition_etag(
+            "en",
+            &decision(),
+            &None,
+            &navigation("About"),
+            "<html><script nonce=\"request-specific\"></script></html>",
+        )
+        .is_none());
     }
 
     #[test]

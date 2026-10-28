@@ -1,10 +1,10 @@
 use futures_util::{Sink, Stream};
 use leptos::server_fn::{
-    Bytes,
-    client::{Client, browser::BrowserClient},
+    client::{browser::BrowserClient, Client},
     error::FromServerFnError,
     request::browser::BrowserRequest,
     response::browser::BrowserResponse,
+    Bytes,
 };
 
 /// Leptos browser client for authenticated first-party server functions.

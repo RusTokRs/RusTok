@@ -6,13 +6,13 @@ use ulid::Ulid;
 use uuid::Uuid;
 
 use super::domain_event::DomainEvent;
-use crate::validation::{EventValidationError, ValidateEvent, validators};
+use crate::validation::{validators, EventValidationError, ValidateEvent};
 
 /// Keeps the JSON event contract human-readable while encoding timestamps as
 /// UTC microseconds for non-human-readable formats such as MessagePack.
 pub(crate) mod timestamp_serde {
     use chrono::{DateTime, Utc};
-    use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
+    use serde::{de::Error as _, Deserialize, Deserializer, Serialize, Serializer};
 
     pub fn serialize<S>(timestamp: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error>
     where

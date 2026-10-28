@@ -37,7 +37,9 @@ pub enum DocsError {
     #[error("Validation error: {0}")]
     Validation(String),
 
-    #[error("Cycle detected: page '{page_id}' is already an ancestor of target parent '{parent_id}'")]
+    #[error(
+        "Cycle detected: page '{page_id}' is already an ancestor of target parent '{parent_id}'"
+    )]
     CycleDetected { page_id: Uuid, parent_id: Uuid },
 
     #[error("Storage error: {0}")]

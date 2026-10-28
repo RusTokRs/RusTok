@@ -1,8 +1,8 @@
 use crate::id_reference::{remap_map_ids, remap_value_ids};
 use crate::{
-    AssetCommand, AssetDescriptor, ComponentNode, EditorCommand, FLY_COMPONENT_RULE_FIELD,
-    FLY_RULE_ID_FIELD, FlyEditor, FlyError, FlyResult, IdGenerator, ProjectDocument,
-    StyleRuleCommand, StyleRuleDescriptor,
+    AssetCommand, AssetDescriptor, ComponentNode, EditorCommand, FlyEditor, FlyError, FlyResult,
+    IdGenerator, ProjectDocument, StyleRuleCommand, StyleRuleDescriptor, FLY_COMPONENT_RULE_FIELD,
+    FLY_RULE_ID_FIELD,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -268,10 +268,8 @@ mod tests {
         assert!(editor.document().project.assets.iter().any(|asset| {
             AssetDescriptor::from_value(asset.clone()).is_some_and(|asset| asset.id == "hero-asset")
         }));
-        assert!(
-            StyleRuleCatalog::from_document(editor.document())
-                .component_rule(&inserted_id, &StyleRuleScope::Base)
-                .is_some()
-        );
+        assert!(StyleRuleCatalog::from_document(editor.document())
+            .component_rule(&inserted_id, &StyleRuleScope::Base)
+            .is_some());
     }
 }

@@ -11,7 +11,7 @@
 use leptos::children::Children;
 use leptos::prelude::*;
 use rustok_ui::{
-    Orientation, merge_classes, tabs_content_classes, tabs_list_classes, tabs_trigger_classes,
+    merge_classes, tabs_content_classes, tabs_list_classes, tabs_trigger_classes, Orientation,
 };
 
 /// Tab container.

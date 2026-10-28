@@ -62,7 +62,7 @@ impl SearchProjectionDriver {
                 if page.documents.len() > MAX_SEARCH_PROJECTION_PAGE_SIZE {
                     return Err(Error::Validation(format!(
                         "{} Search projection source exceeded the bounded page size",
-                        self.source.source_module()
+                        self.source_module()
                     )));
                 }
                 for document in page.documents {
@@ -77,7 +77,7 @@ impl SearchProjectionDriver {
                     Some(_) => {
                         return Err(Error::Validation(format!(
                             "{} Search projection cursor did not advance",
-                            self.source.source_module()
+                            self.source_module()
                         )));
                     }
                     None => break,
@@ -106,7 +106,7 @@ impl SearchProjectionDriver {
         .await;
         record_operation(
             "rebuild_projection_scope",
-            self.source.source_module(),
+            self.source_module(),
             tenant_id,
             &result,
             started_at.elapsed(),
@@ -135,7 +135,7 @@ impl SearchProjectionDriver {
         if documents.len() > MAX_TARGET_ENTITY_DOCUMENTS {
             return Err(Error::Validation(format!(
                 "{} Search projection entity exceeded {MAX_TARGET_ENTITY_DOCUMENTS} locale documents",
-                self.source.source_module()
+                self.source_module()
             )));
         }
 
@@ -148,7 +148,7 @@ impl SearchProjectionDriver {
                 if document.entity_type != entity_type || document.document_id != entity_id {
                     return Err(Error::Validation(format!(
                         "{} Search projection entity response changed target identity",
-                        self.source.source_module()
+                        self.source_module()
                     )));
                 }
                 insert_document(&tx, "search_documents", document).await?;
@@ -158,7 +158,7 @@ impl SearchProjectionDriver {
         .await;
         record_operation(
             "refresh_projection_entity",
-            self.source.source_module(),
+            self.source_module(),
             tenant_id,
             &result,
             started_at.elapsed(),
@@ -186,7 +186,7 @@ impl SearchProjectionDriver {
             .await;
         record_operation(
             "delete_projection_entity",
-            self.source.source_module(),
+            self.source_module(),
             tenant_id,
             &result,
             started_at.elapsed(),
@@ -200,7 +200,7 @@ impl SearchProjectionDriver {
         let result = self.delete_scope(&self.db, tenant_id).await;
         record_operation(
             "delete_projection_scope",
-            self.source.source_module(),
+            self.source_module(),
             tenant_id,
             &result,
             started_at.elapsed(),
@@ -225,7 +225,7 @@ impl SearchProjectionDriver {
         if self.db.get_database_backend() != DbBackend::Postgres {
             return Err(Error::External(format!(
                 "SearchProjectionDriver requires PostgreSQL backend for `{}`",
-                self.source.source_module()
+                self.source_module()
             )));
         }
         Ok(())
@@ -233,12 +233,12 @@ impl SearchProjectionDriver {
 
     fn validate_document(&self, tenant_id: Uuid, document: &SearchProjectionDocument) -> Result<()> {
         if document.tenant_id != tenant_id
-            || document.source_module != self.source.source_module()
+            || document.source_module != self.source_module()
             || !document.is_public
         {
             return Err(Error::Validation(format!(
                 "{} Search projection source returned a foreign or non-public document",
-                self.source.source_module()
+                self.source_module()
             )));
         }
         // A module cannot seed the storage with an unbounded or blank entity type;
@@ -279,7 +279,7 @@ impl SearchProjectionDriver {
         let statement = Statement::from_sql_and_values(
             DbBackend::Postgres,
             "DELETE FROM search_documents WHERE tenant_id = $1 AND source_module = $2",
-            vec![tenant_id.into(), self.source.source_module().into()],
+            vec![tenant_id.into(), self.source_module().into()],
         );
         conn.execute_raw(statement).await.map_err(Error::Database)?;
         Ok(())
@@ -300,7 +300,7 @@ impl SearchProjectionDriver {
             "DELETE FROM search_documents WHERE tenant_id = $1 AND source_module = $2 AND entity_type = $3 AND document_id = $4",
             vec![
                 tenant_id.into(),
-                self.source.source_module().into(),
+                self.source_module().into(),
                 entity_type.to_string().into(),
                 entity_id.into(),
             ],

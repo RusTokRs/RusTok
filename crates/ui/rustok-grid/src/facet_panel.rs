@@ -10,8 +10,8 @@
 //! [`FacetPanelLabels`], because only the adapter knows the locale.
 
 use crate::facet::{
-    FacetValue, GridFacet, MAX_GRID_FACET_VALUES, MAX_GRID_FACETS, SELECTION_SEPARATOR,
-    selection_except, selection_key,
+    selection_except, selection_key, FacetValue, GridFacet, MAX_GRID_FACETS, MAX_GRID_FACET_VALUES,
+    SELECTION_SEPARATOR,
 };
 
 /// Copy and markers an adapter supplies for one panel rendering.

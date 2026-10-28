@@ -58,12 +58,16 @@ impl AccountType {
             opening_balance
                 .checked_add(debit_turnover)
                 .and_then(|val| val.checked_sub(credit_turnover))
-                .ok_or_else(|| AccountingError::InvariantViolation("Balance calculation overflow".into()))
+                .ok_or_else(|| {
+                    AccountingError::InvariantViolation("Balance calculation overflow".into())
+                })
         } else {
             opening_balance
                 .checked_add(credit_turnover)
                 .and_then(|val| val.checked_sub(debit_turnover))
-                .ok_or_else(|| AccountingError::InvariantViolation("Balance calculation overflow".into()))
+                .ok_or_else(|| {
+                    AccountingError::InvariantViolation("Balance calculation overflow".into())
+                })
         }
     }
 }
@@ -151,7 +155,8 @@ impl AccountDefinition {
                     "Currency code cannot be empty if specified".to_string(),
                 ));
             }
-            if trimmed_cur.len() < MIN_CURRENCY_CODE_LEN || trimmed_cur.len() > MAX_CURRENCY_CODE_LEN
+            if trimmed_cur.len() < MIN_CURRENCY_CODE_LEN
+                || trimmed_cur.len() > MAX_CURRENCY_CODE_LEN
                 || !trimmed_cur.chars().all(|ch| ch.is_ascii_alphanumeric())
             {
                 return Err(AccountingError::InvalidCurrency(format!(
@@ -192,11 +197,17 @@ mod tests {
         assert_eq!(closing_liability, 1300);
 
         // Negative turnover rejected
-        assert!(AccountType::Asset.calculate_closing_balance(1000, -1, 100).is_err());
-        assert!(AccountType::Asset.calculate_closing_balance(1000, 100, -1).is_err());
+        assert!(AccountType::Asset
+            .calculate_closing_balance(1000, -1, 100)
+            .is_err());
+        assert!(AccountType::Asset
+            .calculate_closing_balance(1000, 100, -1)
+            .is_err());
 
         // Overflow rejected
-        assert!(AccountType::Asset.calculate_closing_balance(i64::MAX, 1, 0).is_err());
+        assert!(AccountType::Asset
+            .calculate_closing_balance(i64::MAX, 1, 0)
+            .is_err());
     }
 
     #[test]

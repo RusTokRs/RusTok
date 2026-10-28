@@ -32,16 +32,12 @@ pub enum MessengerError {
     InvalidMessagePayload(String),
 
     #[error("Invalid sequence cursor: requested {requested}, current max {current_max}")]
-    InvalidSequence {
-        requested: i64,
-        current_max: i64,
-    },
+    InvalidSequence { requested: i64, current_max: i64 },
 
-    #[error("Sync cursor regression: target sequence {target_seq} is lower than current {current_seq}")]
-    CursorRegression {
-        target_seq: i64,
-        current_seq: i64,
-    },
+    #[error(
+        "Sync cursor regression: target sequence {target_seq} is lower than current {current_seq}"
+    )]
+    CursorRegression { target_seq: i64, current_seq: i64 },
 
     #[error("Invalid channel locale '{locale}': must be valid BCP 47 tag up to 32 characters")]
     InvalidLocale { locale: String },
@@ -144,9 +140,7 @@ impl From<MessengerError> for rustok_web::HttpError {
             MessengerError::Validation(msg) => {
                 rustok_web::HttpError::bad_request("validation_error", msg)
             }
-            MessengerError::NotFound(msg) => {
-                rustok_web::HttpError::not_found("not_found", msg)
-            }
+            MessengerError::NotFound(msg) => rustok_web::HttpError::not_found("not_found", msg),
             MessengerError::Internal(msg) => {
                 tracing::error!("Internal error in messenger module: {msg}");
                 rustok_web::HttpError::internal("An internal error occurred")
@@ -158,10 +152,9 @@ impl From<MessengerError> for rustok_web::HttpError {
 impl From<MessengerError> for rustok_api::PortError {
     fn from(err: MessengerError) -> Self {
         match err {
-            MessengerError::ConversationNotFound(id) => rustok_api::PortError::not_found(
-                "conversation",
-                id.to_string(),
-            ),
+            MessengerError::ConversationNotFound(id) => {
+                rustok_api::PortError::not_found("conversation", id.to_string())
+            }
             MessengerError::ConversationAccessDenied(id) => rustok_api::PortError::forbidden(
                 "conversation_access_denied",
                 format!("Access denied to conversation '{id}'"),

@@ -3,7 +3,7 @@ use leptos_auth::hooks::use_is_authenticated;
 use leptos_ui::{RichTextEditorFrame, RichTextFrameCopy};
 use rustok_api::RichTextDocument;
 
-use crate::core::{CommentComposerValidationError, validate_comment_submission};
+use crate::core::{validate_comment_submission, CommentComposerValidationError};
 
 #[derive(Clone, Debug)]
 pub struct CommentComposerCopy {

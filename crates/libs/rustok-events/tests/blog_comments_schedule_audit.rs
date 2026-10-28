@@ -1,7 +1,7 @@
 use rustok_events::{
-    BLOG_COMMENTS_SCHEDULE_AUDIT_EVENT_TYPE, BLOG_COMMENTS_SCHEDULE_AUDIT_SCHEMA_VERSION,
-    BLOG_COMMENTS_SCHEDULE_AUDIT_STATE_KEY, BlogCommentsDelegationScheduleAuditEvent,
-    ContractEventEnvelope, ContractEventPayload, ValidateEvent, event_schema,
+    event_schema, BlogCommentsDelegationScheduleAuditEvent, ContractEventEnvelope,
+    ContractEventPayload, ValidateEvent, BLOG_COMMENTS_SCHEDULE_AUDIT_EVENT_TYPE,
+    BLOG_COMMENTS_SCHEDULE_AUDIT_SCHEMA_VERSION, BLOG_COMMENTS_SCHEDULE_AUDIT_STATE_KEY,
 };
 use uuid::Uuid;
 

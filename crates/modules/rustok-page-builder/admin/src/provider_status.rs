@@ -1,6 +1,6 @@
 use fly_ui::{CapabilityState, EditorProviderState};
 use rustok_page_builder::health::{ProviderHealthSnapshot, ProviderHealthState};
-use rustok_page_builder::rollout::{BuilderCapabilityFlags, effective_provider_runtime_flags};
+use rustok_page_builder::rollout::{effective_provider_runtime_flags, BuilderCapabilityFlags};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PageBuilderAdminProviderState {

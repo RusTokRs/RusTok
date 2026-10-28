@@ -1,6 +1,6 @@
 use crate::{
-    FLY_LOCALES_FIELD, FLY_PAGE_METADATA_FIELD, LOCALIZED_VALUES_FIELD, ProjectDocument,
-    ProjectLocalePolicy, TranslationCatalog, normalize_locale_tag,
+    normalize_locale_tag, ProjectDocument, ProjectLocalePolicy, TranslationCatalog,
+    FLY_LOCALES_FIELD, FLY_PAGE_METADATA_FIELD, LOCALIZED_VALUES_FIELD,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -319,12 +319,10 @@ mod tests {
         assert!(!report.required_complete());
         assert!(!report.strict_ready());
         assert!(report.gaps.iter().any(|gap| gap.label == "hero"));
-        assert!(
-            report
-                .gaps
-                .iter()
-                .any(|gap| gap.label == "home.description")
-        );
+        assert!(report
+            .gaps
+            .iter()
+            .any(|gap| gap.label == "home.description"));
     }
 
     #[test]

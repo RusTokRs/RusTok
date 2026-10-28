@@ -9,8 +9,8 @@
  */
 
 use rustok_ui_i18n::{
-    BundleBuildError, UiMessages, build_fluent_bundle, build_fluent_catalog, normalize_locale_tag,
-    try_build_fluent_catalog,
+    build_fluent_bundle, build_fluent_catalog, normalize_locale_tag, try_build_fluent_catalog,
+    BundleBuildError, UiMessages,
 };
 
 // Syntactically LanguageIdentifier-shaped, but deliberately above the shared

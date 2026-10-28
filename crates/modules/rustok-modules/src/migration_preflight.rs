@@ -152,12 +152,10 @@ mod tests {
 
         let receipt = evaluate_migration_preflight(input);
         assert_eq!(receipt.mode, UpdateMode::Maintenance);
-        assert!(
-            receipt
-                .denial_reasons
-                .iter()
-                .any(|r| r.contains("irreversible"))
-        );
+        assert!(receipt
+            .denial_reasons
+            .iter()
+            .any(|r| r.contains("irreversible")));
     }
 
     #[test]
@@ -177,11 +175,9 @@ mod tests {
 
         let receipt = evaluate_migration_preflight(input);
         assert_eq!(receipt.mode, UpdateMode::Maintenance);
-        assert!(
-            receipt
-                .denial_reasons
-                .iter()
-                .any(|r| r.contains("Cross-revision"))
-        );
+        assert!(receipt
+            .denial_reasons
+            .iter()
+            .any(|r| r.contains("Cross-revision")));
     }
 }

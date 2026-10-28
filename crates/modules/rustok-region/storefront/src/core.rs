@@ -1,4 +1,4 @@
-use rustok_ui_core::{UiRouteQueryUpdate, normalize_ui_text};
+use rustok_ui_core::{normalize_ui_text, UiRouteQueryUpdate};
 
 use crate::model::{StorefrontRegion, StorefrontRegionCountryTaxPolicy, StorefrontRegionsData};
 

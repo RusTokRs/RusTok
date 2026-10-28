@@ -46,7 +46,9 @@ impl CheckoutOrderFailureKind {
             OrderError::OrderNotFound(_)
             | OrderError::OrderReturnNotFound(_)
             | OrderError::OrderChangeNotFound(_) => Self::NotFound,
-            OrderError::InvalidTransition { .. } | OrderError::IdempotencyConflict => Self::Conflict,
+            OrderError::InvalidTransition { .. } | OrderError::IdempotencyConflict => {
+                Self::Conflict
+            }
             OrderError::CommandReceiptCorrupt => Self::CorruptReceipt,
             OrderError::Database(_) => Self::Unavailable,
             OrderError::Core(_) => Self::Core,

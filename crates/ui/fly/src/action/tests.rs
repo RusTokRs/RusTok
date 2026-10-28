@@ -323,21 +323,15 @@ fn duplicate_forms_and_interaction_conflicts_are_rejected() {
     }))
     .expect("document");
     let diagnostics = validate_component_actions(&document);
-    assert!(
-        diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "duplicate_form_id")
-    );
-    assert!(
-        diagnostics
-            .iter()
-            .any(|diagnostic| { diagnostic.code == "component_navigation_contract_conflict" })
-    );
-    assert!(
-        diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "component_form_interaction_contract_conflict"
-        })
-    );
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == "duplicate_form_id"));
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| { diagnostic.code == "component_navigation_contract_conflict" }));
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| { diagnostic.code == "component_form_interaction_contract_conflict" }));
 }
 
 #[test]
@@ -412,11 +406,9 @@ fn anonymous_action_diagnostics_use_the_shared_canonical_path() {
     }))
     .expect("document");
     let diagnostics = validate_component_actions(&document);
-    assert!(
-        diagnostics
-            .iter()
-            .any(|diagnostic| { diagnostic.path == "project.pages[0].component.components[0]" })
-    );
+    assert!(diagnostics
+        .iter()
+        .any(|diagnostic| { diagnostic.path == "project.pages[0].component.components[0]" }));
 }
 
 #[test]
@@ -452,7 +444,10 @@ fn switch_tab_and_toggle_accordion_materialize_correctly() {
 
     let tab_btn = result.document.component("tab-btn").expect("tab-btn");
     assert_eq!(tab_btn.attributes[FLY_ACTION_KIND_ATTRIBUTE], "switch_tab");
-    assert_eq!(tab_btn.attributes["data-fly-action-target"], "overview-panel");
+    assert_eq!(
+        tab_btn.attributes["data-fly-action-target"],
+        "overview-panel"
+    );
     let tab_action: serde_json::Value = serde_json::from_str(
         tab_btn.attributes[FLY_ACTION_DATA_ATTRIBUTE]
             .as_str()
@@ -484,9 +479,18 @@ fn switch_tab_and_toggle_accordion_materialize_correctly() {
     assert_eq!(accordion_action["target_id"], "faq-content");
     assert_eq!(accordion_action["exclusive"], true);
 
-    let slider_btn = result.document.component("slider-next").expect("slider-next");
-    assert_eq!(slider_btn.attributes[FLY_ACTION_KIND_ATTRIBUTE], "switch_slide");
-    assert_eq!(slider_btn.attributes["data-fly-action-target"], "main-carousel");
+    let slider_btn = result
+        .document
+        .component("slider-next")
+        .expect("slider-next");
+    assert_eq!(
+        slider_btn.attributes[FLY_ACTION_KIND_ATTRIBUTE],
+        "switch_slide"
+    );
+    assert_eq!(
+        slider_btn.attributes["data-fly-action-target"],
+        "main-carousel"
+    );
     let slider_action: serde_json::Value = serde_json::from_str(
         slider_btn.attributes[FLY_ACTION_DATA_ATTRIBUTE]
             .as_str()
@@ -527,8 +531,13 @@ fn switch_tab_and_toggle_accordion_validation_rejects_empty_targets() {
     }))
     .expect("document");
     let diagnostics = validate_component_actions(&document);
-    assert!(diagnostics.iter().any(|d| d.code == "action_definition_invalid" && d.path == "component:bad-tab"));
-    assert!(diagnostics.iter().any(|d| d.code == "action_definition_invalid" && d.path == "component:bad-accordion"));
-    assert!(diagnostics.iter().any(|d| d.code == "action_definition_invalid" && d.path == "component:bad-slider"));
+    assert!(diagnostics
+        .iter()
+        .any(|d| d.code == "action_definition_invalid" && d.path == "component:bad-tab"));
+    assert!(diagnostics
+        .iter()
+        .any(|d| d.code == "action_definition_invalid" && d.path == "component:bad-accordion"));
+    assert!(diagnostics
+        .iter()
+        .any(|d| d.code == "action_definition_invalid" && d.path == "component:bad-slider"));
 }
-

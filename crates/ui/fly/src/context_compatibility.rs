@@ -1,7 +1,7 @@
 use crate::{
-    ContextValueKind, ProjectDocument, ProjectHash, RuntimeComputedContract,
-    RuntimeContextContract, RuntimeContextFieldContract, ValidationDiagnostic, ValidationSeverity,
-    extract_runtime_context_contract,
+    extract_runtime_context_contract, ContextValueKind, ProjectDocument, ProjectHash,
+    RuntimeComputedContract, RuntimeContextContract, RuntimeContextFieldContract,
+    ValidationDiagnostic, ValidationSeverity,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};

@@ -8,9 +8,9 @@ use rustok_build_source::{ArchiveLimits, CasArchiveError, CasArchiveReceipt, Cas
 use rustok_distribution::generate_static_distribution;
 
 use super::{
-    PreparedStaticDistributionWorkspace, StaticDistributionJobConfig, StaticDistributionJobError,
-    StaticDistributionJobRequest, create_directory_path, digest_bytes, io_error,
-    remove_owned_workspace, validate_directory, write_new_file,
+    create_directory_path, digest_bytes, io_error, remove_owned_workspace, validate_directory,
+    write_new_file, PreparedStaticDistributionWorkspace, StaticDistributionJobConfig,
+    StaticDistributionJobError, StaticDistributionJobRequest,
 };
 
 const MAX_CARGO_MANIFEST_BYTES: u64 = 2 * 1024 * 1024;

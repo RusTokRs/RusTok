@@ -55,11 +55,9 @@ fn test_confirmation_receipt_binding_and_validation() {
         2,
     );
 
-    assert!(
-        valid_confirmation
-            .validate_matches_preview(&preview)
-            .is_ok()
-    );
+    assert!(valid_confirmation
+        .validate_matches_preview(&preview)
+        .is_ok());
 
     let invalid_confirmation = TransitionConfirmationReceipt::new(
         op_id,

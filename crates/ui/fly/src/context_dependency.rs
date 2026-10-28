@@ -1,6 +1,6 @@
 use crate::{
-    BindingCatalog, BindingTarget, ContextSchemaCatalog, DynamicCatalog, ProjectDocument,
-    ValidationDiagnostic, ValidationSeverity, context_expression_dependencies,
+    context_expression_dependencies, BindingCatalog, BindingTarget, ContextSchemaCatalog,
+    DynamicCatalog, ProjectDocument, ValidationDiagnostic, ValidationSeverity,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -402,12 +402,10 @@ mod tests {
             graph.node("user.fullName").map(|node| node.consumers.len()),
             Some(1)
         );
-        assert!(
-            graph
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.code == "runtime_context_external_reference")
-        );
+        assert!(graph
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "runtime_context_external_reference"));
     }
 
     #[test]
@@ -427,11 +425,9 @@ mod tests {
         }))
         .expect("document");
         let graph = analyze_runtime_context_dependencies(&document);
-        assert!(
-            graph
-                .blocking_diagnostics()
-                .any(|diagnostic| diagnostic.code == "runtime_context_path_shadowed_by_computed")
-        );
+        assert!(graph
+            .blocking_diagnostics()
+            .any(|diagnostic| diagnostic.code == "runtime_context_path_shadowed_by_computed"));
     }
 
     #[test]

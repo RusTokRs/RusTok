@@ -29,15 +29,14 @@ mod contract_tests;
 pub use error::{ManifestError, Result};
 pub use types::{
     AdminBuildConfig, BuildConfig, Manifest, ModuleGraphqlProvides, ModuleHttpProvides,
-    ModulePackageAdminSupportProvides, ModulePackageAdminUiChildPage,
-    ModulePackageAdminUiProvides, ModulePackageCliProvides, ModulePackageCrateContract,
-    ModulePackageDependency, ModulePackageGraphqlProvides, ModulePackageHttpProvides,
-    ModulePackageI18nProvides, ModulePackageManifest, ModulePackageMarketplaceMetadata,
-    ModulePackageMetadata, ModulePackageProvides, ModulePackageStorefrontSupportProvides,
+    ModulePackageAdminSupportProvides, ModulePackageAdminUiChildPage, ModulePackageAdminUiProvides,
+    ModulePackageCliProvides, ModulePackageCrateContract, ModulePackageDependency,
+    ModulePackageGraphqlProvides, ModulePackageHttpProvides, ModulePackageI18nProvides,
+    ModulePackageManifest, ModulePackageMarketplaceMetadata, ModulePackageMetadata,
+    ModulePackageProvides, ModulePackageStorefrontSupportProvides,
     ModulePackageStorefrontUiComponent, ModulePackageStorefrontUiProvides, ModuleSpec,
-    ModuleUiComponentProvides, ModuleUiI18nProvides, ModuleUiProvides,
-    ModuleUiSupportProvides, ModulesManifest, ServerBuildConfig, Settings,
-    StorefrontBuildConfig,
+    ModuleUiComponentProvides, ModuleUiI18nProvides, ModuleUiProvides, ModuleUiSupportProvides,
+    ModulesManifest, ServerBuildConfig, Settings, StorefrontBuildConfig,
 };
 pub use validation::{
     is_valid_module_slug, is_valid_ownership, is_valid_trust_level, is_valid_ui_classification,
@@ -56,7 +55,8 @@ pub fn load_modules_manifest(path: impl AsRef<Path>) -> Result<ModulesManifest> 
     let path_ref = path.as_ref();
     let content = std::fs::read_to_string(path_ref)
         .map_err(|e| ManifestError::Io(path_ref.display().to_string(), e))?;
-    toml::from_str(&content).map_err(|e| ManifestError::TomlParse(path_ref.display().to_string(), e))
+    toml::from_str(&content)
+        .map_err(|e| ManifestError::TomlParse(path_ref.display().to_string(), e))
 }
 
 /// Parse `rustok-module.toml` from a string slice without validation.
@@ -69,15 +69,17 @@ pub fn load_module_package_manifest(path: impl AsRef<Path>) -> Result<ModulePack
     let path_ref = path.as_ref();
     let content = std::fs::read_to_string(path_ref)
         .map_err(|e| ManifestError::Io(path_ref.display().to_string(), e))?;
-    toml::from_str(&content).map_err(|e| ManifestError::TomlParse(path_ref.display().to_string(), e))
+    toml::from_str(&content)
+        .map_err(|e| ManifestError::TomlParse(path_ref.display().to_string(), e))
 }
 
 /// Compute deterministic SHA-256 hash of a ModulesManifest.
 #[cfg(feature = "snapshot-hash")]
 pub fn compute_modules_manifest_hash(manifest: &ModulesManifest) -> Result<String> {
     use sha2::{Digest, Sha256};
-    let json = serde_json::to_vec(manifest)
-        .map_err(|e| ManifestError::Validation(format!("JSON serialization error for hash: {e}")))?;
+    let json = serde_json::to_vec(manifest).map_err(|e| {
+        ManifestError::Validation(format!("JSON serialization error for hash: {e}"))
+    })?;
     let mut hasher = Sha256::new();
     hasher.update(&json);
     Ok(hex::encode(hasher.finalize()))
@@ -107,8 +109,7 @@ mod tests {
 
     #[test]
     fn loads_and_validates_comments_storefront_support_toml() {
-        let comments_manifest =
-            include_str!("../../../modules/rustok-comments/rustok-module.toml");
+        let comments_manifest = include_str!("../../../modules/rustok-comments/rustok-module.toml");
         let manifest = parse_module_package_manifest(comments_manifest).unwrap();
         validate_module_package_manifest(&manifest).unwrap();
         assert_eq!(manifest.module.slug, "comments");
@@ -161,8 +162,7 @@ mod tests {
 
     #[test]
     fn rejects_support_section_without_leptos_crate() {
-        let comments_manifest =
-            include_str!("../../../modules/rustok-comments/rustok-module.toml");
+        let comments_manifest = include_str!("../../../modules/rustok-comments/rustok-module.toml");
         let mut manifest = parse_module_package_manifest(comments_manifest).unwrap();
         manifest
             .provides

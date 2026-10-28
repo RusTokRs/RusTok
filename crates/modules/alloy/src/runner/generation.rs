@@ -8,10 +8,10 @@
 
 use crate::model::RustComponentSourceFile;
 use rustok_module_sdk::{WIT_PACKAGE, WIT_SOURCE, WIT_WORLD};
-use rustok_module_template::{ModuleTemplateError, ModuleTemplateInput, render};
+use rustok_module_template::{render, ModuleTemplateError, ModuleTemplateInput};
 use rustok_modules::{
-    MODULE_BUILD_COMPONENT_TARGET, MODULE_BUILD_RUNTIME_ABI, MODULE_BUILD_WIT_VERSION,
-    MODULE_BUILD_WIT_WORLD, ModuleBuildWitContract,
+    ModuleBuildWitContract, MODULE_BUILD_COMPONENT_TARGET, MODULE_BUILD_RUNTIME_ABI,
+    MODULE_BUILD_WIT_VERSION, MODULE_BUILD_WIT_WORLD,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -236,27 +236,21 @@ mod tests {
             .iter()
             .find(|file| file.path == "src/lib.rs")
             .expect("generated lib");
-        assert!(
-            source
-                .contents
-                .contains("impl rustok_module_sdk::Guest for Module")
-        );
-        assert!(
-            source
-                .contents
-                .contains("rustok_module_sdk::export!(Module);")
-        );
+        assert!(source
+            .contents
+            .contains("impl rustok_module_sdk::Guest for Module"));
+        assert!(source
+            .contents
+            .contains("rustok_module_sdk::export!(Module);"));
         assert!(source.contents.contains(WIT_PACKAGE));
         assert!(source.contents.contains(WIT_WORLD));
         assert!(source.contents.contains("let _ = input;"));
         assert_eq!(generated.runtime_abi, MODULE_BUILD_RUNTIME_ABI);
         assert_eq!(generated.component_target, MODULE_BUILD_COMPONENT_TARGET);
-        assert!(
-            generated
-                .files()
-                .iter()
-                .all(|file| !file.path.contains("Cargo.lock"))
-        );
+        assert!(generated
+            .files()
+            .iter()
+            .all(|file| !file.path.contains("Cargo.lock")));
         assert_eq!(
             generated.generated_source_digest,
             source_digest(generated.files()).expect("source digest")
@@ -302,23 +296,17 @@ mod tests {
         let generated = generate_rust_component(&request()).expect("generate Component source");
         let serialized = serde_json::to_string(&request()).expect("request serializes");
         assert!(!serialized.contains("Rhai"));
-        assert!(
-            !generated
-                .files()
-                .iter()
-                .any(|file| { file.path.contains("..") || file.path.starts_with("/") })
-        );
-        assert!(
-            generated
-                .files()
-                .iter()
-                .any(|file| file.path == "src/lib.rs")
-        );
-        assert!(
-            generated
-                .files()
-                .iter()
-                .any(|file| file.path == "module-build-policy.toml")
-        );
+        assert!(!generated
+            .files()
+            .iter()
+            .any(|file| { file.path.contains("..") || file.path.starts_with("/") }));
+        assert!(generated
+            .files()
+            .iter()
+            .any(|file| file.path == "src/lib.rs"));
+        assert!(generated
+            .files()
+            .iter()
+            .any(|file| file.path == "module-build-policy.toml"));
     }
 }

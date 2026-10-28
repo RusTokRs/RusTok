@@ -815,11 +815,9 @@ mod tests {
         );
         assert_eq!(security.actor_kind, SecurityActorKind::User);
         assert_eq!(security.user_id, Some(user_id));
-        assert!(
-            security
-                .permissions()
-                .contains(&Permission::BLOG_POSTS_READ)
-        );
+        assert!(security
+            .permissions()
+            .contains(&Permission::BLOG_POSTS_READ));
     }
 
     #[test]
@@ -829,32 +827,22 @@ mod tests {
         assert!(security.is_public_read());
         assert_eq!(security.user_id, None);
         assert_eq!(security.role, UserRole::Customer);
-        assert!(
-            security
-                .permissions()
-                .contains(&Permission::BLOG_POSTS_READ)
-        );
-        assert!(
-            security
-                .permissions()
-                .contains(&Permission::BLOG_CATEGORIES_LIST)
-        );
+        assert!(security
+            .permissions()
+            .contains(&Permission::BLOG_POSTS_READ));
+        assert!(security
+            .permissions()
+            .contains(&Permission::BLOG_CATEGORIES_LIST));
         assert!(security.permissions().contains(&Permission::PAGES_LIST));
-        assert!(
-            security
-                .permissions()
-                .contains(&Permission::new(Resource::ForumTopics, Action::Read))
-        );
-        assert!(
-            !security
-                .permissions()
-                .contains(&Permission::BLOG_CATEGORIES_UPDATE)
-        );
-        assert!(
-            !security
-                .permissions()
-                .contains(&Permission::BLOG_POSTS_UPDATE)
-        );
+        assert!(security
+            .permissions()
+            .contains(&Permission::new(Resource::ForumTopics, Action::Read)));
+        assert!(!security
+            .permissions()
+            .contains(&Permission::BLOG_CATEGORIES_UPDATE));
+        assert!(!security
+            .permissions()
+            .contains(&Permission::BLOG_POSTS_UPDATE));
     }
 
     #[test]
@@ -863,11 +851,9 @@ mod tests {
         assert_eq!(security.actor_kind, SecurityActorKind::System);
         assert_eq!(security.user_id, None);
         assert_eq!(security.role, UserRole::SuperAdmin);
-        assert!(
-            security
-                .permissions()
-                .contains(&Permission::BLOG_CATEGORIES_MANAGE)
-        );
+        assert!(security
+            .permissions()
+            .contains(&Permission::BLOG_CATEGORIES_MANAGE));
     }
 
     #[test]
@@ -940,20 +926,64 @@ mod tests {
         // stripping system/super-admin authority on the new resource.
         use rustok_api::Resource as R;
         for resource in [
-            R::Users, R::Tenants, R::Modules, R::Settings, R::FlexSchemas,
-            R::FlexEntries, R::Products, R::Categories, R::Orders, R::Customers,
-            R::Profiles, R::Groups, R::Regions, R::Payments, R::Fulfillments,
-            R::Inventory, R::Discounts, R::MarketplaceSellers,
-            R::MarketplaceListings, R::Posts, R::Pages, R::Forms, R::Navigation,
-            R::Nodes, R::Media, R::Seo, R::Comments, R::Tags, R::Taxonomy,
-            R::Analytics, R::Logs, R::Webhooks, R::BlogPosts, R::BlogCategories,
-            R::ForumCategories, R::ForumTopics, R::ForumReplies,
-            R::ModerationCases, R::Scripts, R::Mcp, R::AiProviders,
-            R::AiTaskProfiles, R::AiSessions, R::AiRuns, R::AiApprovals,
-            R::AiRouter, R::AiTextTasks, R::AiImageTasks, R::AiCodeTasks,
-            R::AiAlloyTasks, R::AiMultimodalTasks, R::Workflows,
-            R::WorkflowExecutions, R::Translations, R::TranslationMemory,
-            R::TranslationGlossaries, R::Conversations, R::Messages,
+            R::Users,
+            R::Tenants,
+            R::Modules,
+            R::Settings,
+            R::FlexSchemas,
+            R::FlexEntries,
+            R::Products,
+            R::Categories,
+            R::Orders,
+            R::Customers,
+            R::Profiles,
+            R::Groups,
+            R::Regions,
+            R::Payments,
+            R::Fulfillments,
+            R::Inventory,
+            R::Discounts,
+            R::MarketplaceSellers,
+            R::MarketplaceListings,
+            R::Posts,
+            R::Pages,
+            R::Forms,
+            R::Navigation,
+            R::Nodes,
+            R::Media,
+            R::Seo,
+            R::Comments,
+            R::Tags,
+            R::Taxonomy,
+            R::Analytics,
+            R::Logs,
+            R::Webhooks,
+            R::BlogPosts,
+            R::BlogCategories,
+            R::ForumCategories,
+            R::ForumTopics,
+            R::ForumReplies,
+            R::ModerationCases,
+            R::Scripts,
+            R::Mcp,
+            R::AiProviders,
+            R::AiTaskProfiles,
+            R::AiSessions,
+            R::AiRuns,
+            R::AiApprovals,
+            R::AiRouter,
+            R::AiTextTasks,
+            R::AiImageTasks,
+            R::AiCodeTasks,
+            R::AiAlloyTasks,
+            R::AiMultimodalTasks,
+            R::Workflows,
+            R::WorkflowExecutions,
+            R::Translations,
+            R::TranslationMemory,
+            R::TranslationGlossaries,
+            R::Conversations,
+            R::Messages,
         ] {
             assert!(
                 Rbac::has_permission(

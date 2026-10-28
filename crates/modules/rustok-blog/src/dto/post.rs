@@ -1,4 +1,4 @@
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{DateTime, FixedOffset, SecondsFormat, Utc};
 use rustok_api::{Patch, RichTextDocument, RichTextView};
 use serde::{Deserialize, Serialize};
@@ -129,7 +129,7 @@ pub struct PostResponse {
 #[cfg(test)]
 mod tests {
     use super::{CreatePostInput, PublishedPostCursor};
-    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
     use rustok_api::RichTextDocument;
     use uuid::Uuid;
 
@@ -228,20 +228,14 @@ mod tests {
         let oversized = "A".repeat(super::MAX_LIST_CURSOR_TOKEN_BYTES + 1);
         let public_error = PublishedPostCursor::decode(&oversized)
             .expect_err("an oversized public cursor is refused");
-        assert!(matches!(
-            public_error,
-            crate::BlogError::Validation(_)
-        ));
+        assert!(matches!(public_error, crate::BlogError::Validation(_)));
         let admin_error = super::AdminPostCursor::decode(
             &oversized,
             super::PostSortField::CreatedAt,
             super::PostSortOrder::Desc,
         )
         .expect_err("an oversized admin cursor is refused");
-        assert!(matches!(
-            admin_error,
-            crate::BlogError::Validation(_)
-        ));
+        assert!(matches!(admin_error, crate::BlogError::Validation(_)));
 
         // The bound accepts a real token with a wide margin.
         let cursor = PublishedPostCursor {

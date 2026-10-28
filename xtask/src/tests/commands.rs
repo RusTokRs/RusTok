@@ -1317,5 +1317,3 @@ ignored = [
 
     let _ = fs::remove_dir_all(&base);
 }
-
-

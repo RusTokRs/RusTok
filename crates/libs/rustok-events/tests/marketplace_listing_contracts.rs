@@ -1,6 +1,6 @@
 use rustok_events::{
-    ContractEventEnvelope, ContractEventPayload, MARKETPLACE_LISTING_EVENT_SCHEMAS,
-    MarketplaceListingEvent, ValidateEvent, event_schema, event_schemas,
+    event_schema, event_schemas, ContractEventEnvelope, ContractEventPayload,
+    MarketplaceListingEvent, ValidateEvent, MARKETPLACE_LISTING_EVENT_SCHEMAS,
 };
 use uuid::Uuid;
 

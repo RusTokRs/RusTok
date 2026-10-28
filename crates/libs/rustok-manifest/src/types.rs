@@ -1,5 +1,5 @@
-use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// Root composition manifest (`modules.toml`).
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

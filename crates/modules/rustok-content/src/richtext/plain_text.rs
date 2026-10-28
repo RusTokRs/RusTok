@@ -10,7 +10,7 @@
 
 use rustok_api::{RichTextDocument, RichTextNode};
 
-use super::{RichTextError, RichTextProfile, validate_and_normalize};
+use super::{validate_and_normalize, RichTextError, RichTextProfile};
 
 pub fn plain_text(
     document: &RichTextDocument,

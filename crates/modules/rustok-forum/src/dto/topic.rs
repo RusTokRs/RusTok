@@ -1,5 +1,5 @@
-use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine as _;
 use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -411,16 +411,14 @@ mod tests {
         ] {
             assert!(TopicListCursor::decode(&token).is_err());
         }
-        assert!(
-            TopicListCursor::decode(
-                &TopicListCursor {
-                    reply_count: -1,
-                    ..cursor
-                }
-                .encode()
-            )
-            .is_err()
-        );
+        assert!(TopicListCursor::decode(
+            &TopicListCursor {
+                reply_count: -1,
+                ..cursor
+            }
+            .encode()
+        )
+        .is_err());
     }
 
     #[test]

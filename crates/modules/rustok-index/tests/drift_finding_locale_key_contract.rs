@@ -1,8 +1,8 @@
 use rustok_index::{
-    EntityName, LocaleKey, ModuleName, SchemaRef, SchemaVersion,
     infrastructure::postgres::{
         IndexDriftDigestFindingRequest, IndexDriftFindingScope, IndexDriftFindingSeverity,
     },
+    EntityName, LocaleKey, ModuleName, SchemaRef, SchemaVersion,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -39,12 +39,10 @@ fn locale_bearing_key_bytes_remain_compatible_and_no_locale_is_distinct() {
         locale_request.finding_key()
     );
     assert_eq!(no_locale_request.finding_key().len(), DIGEST_BYTES);
-    assert!(
-        no_locale_request
-            .finding_key()
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
-    );
+    assert!(no_locale_request
+        .finding_key()
+        .bytes()
+        .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f')));
 }
 
 fn request(tenant_id: Uuid, scope: IndexDriftFindingScope) -> IndexDriftDigestFindingRequest {

@@ -3,12 +3,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use rustok_api::{PortError, normalize_locale_tag};
+use rustok_api::{normalize_locale_tag, PortError};
 
 use crate::domain::{
-    GroupAction, GroupFeatureStatus, GroupJoinPolicy, GroupMembershipEffectiveStatus,
-    GroupMembershipEnforcementSourceKind, GroupMembershipEnforcementState, GroupMembershipStatus,
-    GroupRole, GroupStatus, GroupVisibility, normalize_feature_key, normalize_group_handle,
+    normalize_feature_key, normalize_group_handle, GroupAction, GroupFeatureStatus,
+    GroupJoinPolicy, GroupMembershipEffectiveStatus, GroupMembershipEnforcementSourceKind,
+    GroupMembershipEnforcementState, GroupMembershipStatus, GroupRole, GroupStatus,
+    GroupVisibility,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -245,8 +246,9 @@ impl CreateGroupInput {
     pub fn validate(&self) -> Result<(), PortError> {
         normalize_group_handle(&self.handle)
             .map_err(|msg| PortError::validation("groups.invalid_handle", msg))?;
-        normalize_locale_tag(&self.locale)
-            .ok_or_else(|| PortError::validation("groups.invalid_locale", "invalid group locale"))?;
+        normalize_locale_tag(&self.locale).ok_or_else(|| {
+            PortError::validation("groups.invalid_locale", "invalid group locale")
+        })?;
         let title = self.title.trim();
         if title.is_empty() || title.chars().count() > 240 {
             return Err(PortError::validation(
@@ -254,7 +256,11 @@ impl CreateGroupInput {
                 "group title must contain between 1 and 240 characters",
             ));
         }
-        if self.summary.as_ref().is_some_and(|summary| summary.trim().chars().count() > 500) {
+        if self
+            .summary
+            .as_ref()
+            .is_some_and(|summary| summary.trim().chars().count() > 500)
+        {
             return Err(PortError::validation(
                 "groups.invalid_summary",
                 "group summary must not exceed 500 characters",
@@ -318,7 +324,11 @@ impl ListGroupsRequest {
                 "per_page must be between 1 and 100",
             ));
         }
-        if self.search.as_ref().is_some_and(|search| search.trim().chars().count() > 200) {
+        if self
+            .search
+            .as_ref()
+            .is_some_and(|search| search.trim().chars().count() > 200)
+        {
             return Err(PortError::validation(
                 "groups.invalid_search",
                 "search query must not exceed 200 characters",
@@ -403,7 +413,11 @@ impl UpsertGroupTranslationRequest {
                 "translation title must contain between 1 and 240 characters",
             ));
         }
-        if self.summary.as_ref().is_some_and(|summary| summary.trim().chars().count() > 500) {
+        if self
+            .summary
+            .as_ref()
+            .is_some_and(|summary| summary.trim().chars().count() > 500)
+        {
             return Err(PortError::validation(
                 "groups.invalid_summary",
                 "translation summary must not exceed 500 characters",
@@ -543,15 +557,66 @@ mod tests {
 
     #[test]
     fn requests_reject_nil_uuids() {
-        assert!(JoinGroupRequest { group_id: Uuid::nil() }.validate().is_err());
-        assert!(LeaveGroupRequest { group_id: Uuid::nil() }.validate().is_err());
-        assert!(GroupAccessRequest { group_id: Uuid::nil(), action: GroupAction::View }.validate().is_err());
-        assert!(ReadGroupMembershipRequest { group_id: Uuid::nil(), user_id: Uuid::new_v4() }.validate().is_err());
-        assert!(ReadGroupMembershipRequest { group_id: Uuid::new_v4(), user_id: Uuid::nil() }.validate().is_err());
-        assert!(ReadGroupMembershipEnforcementRequest { group_id: Uuid::nil(), user_id: Uuid::new_v4() }.validate().is_err());
-        assert!(ReadGroupMembershipEnforcementRequest { group_id: Uuid::new_v4(), user_id: Uuid::nil() }.validate().is_err());
-        assert!(ListGroupMembershipsRequest { group_id: Uuid::nil(), page: 1, per_page: 20 }.validate().is_err());
-        assert!(ListGroupMembershipsRequest { group_id: Uuid::new_v4(), page: 0, per_page: 20 }.validate().is_err());
-        assert!(ListGroupMembershipsRequest { group_id: Uuid::new_v4(), page: 1, per_page: 101 }.validate().is_err());
+        assert!(JoinGroupRequest {
+            group_id: Uuid::nil()
+        }
+        .validate()
+        .is_err());
+        assert!(LeaveGroupRequest {
+            group_id: Uuid::nil()
+        }
+        .validate()
+        .is_err());
+        assert!(GroupAccessRequest {
+            group_id: Uuid::nil(),
+            action: GroupAction::View
+        }
+        .validate()
+        .is_err());
+        assert!(ReadGroupMembershipRequest {
+            group_id: Uuid::nil(),
+            user_id: Uuid::new_v4()
+        }
+        .validate()
+        .is_err());
+        assert!(ReadGroupMembershipRequest {
+            group_id: Uuid::new_v4(),
+            user_id: Uuid::nil()
+        }
+        .validate()
+        .is_err());
+        assert!(ReadGroupMembershipEnforcementRequest {
+            group_id: Uuid::nil(),
+            user_id: Uuid::new_v4()
+        }
+        .validate()
+        .is_err());
+        assert!(ReadGroupMembershipEnforcementRequest {
+            group_id: Uuid::new_v4(),
+            user_id: Uuid::nil()
+        }
+        .validate()
+        .is_err());
+        assert!(ListGroupMembershipsRequest {
+            group_id: Uuid::nil(),
+            page: 1,
+            per_page: 20
+        }
+        .validate()
+        .is_err());
+        assert!(ListGroupMembershipsRequest {
+            group_id: Uuid::new_v4(),
+            page: 0,
+            per_page: 20
+        }
+        .validate()
+        .is_err());
+        assert!(ListGroupMembershipsRequest {
+            group_id: Uuid::new_v4(),
+            page: 1,
+            per_page: 101
+        }
+        .validate()
+        .is_err());
     }
 }

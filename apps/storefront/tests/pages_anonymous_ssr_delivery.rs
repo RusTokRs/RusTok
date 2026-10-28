@@ -63,8 +63,6 @@ fn anonymous_pages_host_source_has_no_executable_client_bootstrap() {
 
 #[test]
 fn anonymous_document_call_does_not_receive_a_script_nonce() {
-    assert!(
-        HOST_SOURCE
-            .contains("render_document(locale, \"RusToK Storefront\", \"\", app_html, None)")
-    );
+    assert!(HOST_SOURCE
+        .contains("render_document(locale, \"RusToK Storefront\", \"\", app_html, None)"));
 }

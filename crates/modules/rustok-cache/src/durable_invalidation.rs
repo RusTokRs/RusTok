@@ -264,12 +264,24 @@ pub enum DurableCacheInvalidationError {
     NilTenantId,
     ZeroTimestamp,
     EmptyCause,
-    CauseTooLong { length: usize, maximum: usize },
+    CauseTooLong {
+        length: usize,
+        maximum: usize,
+    },
     EmptyTraceId,
-    TraceIdTooLong { length: usize, maximum: usize },
+    TraceIdTooLong {
+        length: usize,
+        maximum: usize,
+    },
     ZeroSizeLimit,
-    UnsupportedFormatVersion { found: u16, supported: u16 },
-    TooLarge { length: usize, maximum: usize },
+    UnsupportedFormatVersion {
+        found: u16,
+        supported: u16,
+    },
+    TooLarge {
+        length: usize,
+        maximum: usize,
+    },
     Invalidation(CacheInvalidationPayloadError),
     Encode(String),
     Decode(String),
@@ -310,7 +322,10 @@ impl std::fmt::Display for DurableCacheInvalidationError {
                 write!(formatter, "durable invalidation encode failed: {message}")
             }
             Self::Transport(message) => {
-                write!(formatter, "durable invalidation transport failed: {message}")
+                write!(
+                    formatter,
+                    "durable invalidation transport failed: {message}"
+                )
             }
             Self::Decode(message) => {
                 write!(formatter, "durable invalidation decode failed: {message}")

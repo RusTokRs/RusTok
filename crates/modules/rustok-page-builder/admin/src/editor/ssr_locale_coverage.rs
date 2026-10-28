@@ -1,10 +1,10 @@
 use crate::editor::AdminEditorRuntime;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::i18n::t;
-#[cfg(test)]
-use fly::LocaleCoverageReport;
 #[cfg(not(target_arch = "wasm32"))]
 use fly::analyze_project_locale_coverage;
+#[cfg(test)]
+use fly::LocaleCoverageReport;
 #[cfg(not(target_arch = "wasm32"))]
 use fly::{LocaleCoverageGap, LocaleCoverageKind, LocaleCoverageSummary};
 use leptos::prelude::*;

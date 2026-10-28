@@ -984,7 +984,11 @@ impl FormValidator {
     where
         F: FnOnce(Self) -> Self,
     {
-        if condition { f(self) } else { self }
+        if condition {
+            f(self)
+        } else {
+            self
+        }
     }
 
     /// Explicitly append an error for a field.

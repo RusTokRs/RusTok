@@ -1,3 +1,3 @@
 pub mod nav;
 
-pub use nav::{NAV_SECTIONS, NavItem, NavSection};
+pub use nav::{NavItem, NavSection, NAV_SECTIONS};

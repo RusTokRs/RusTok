@@ -4,8 +4,9 @@
 
 use rustok_core::ModuleRegistry;
 
-use rustok_accounting::AccountingModule;
 use alloy::AlloyModule;
+use flex::FlexModule;
+use rustok_accounting::AccountingModule;
 use rustok_auth::AuthModule;
 use rustok_blog::BlogModule;
 use rustok_brand::BrandModule;
@@ -19,7 +20,6 @@ use rustok_customer::CustomerModule;
 use rustok_docs::DocsModule;
 use rustok_email::EmailModule;
 use rustok_events_module::EventsModule;
-use flex::FlexModule;
 use rustok_forms_module::FormsModule;
 use rustok_forum::ForumModule;
 use rustok_fulfillment::FulfillmentModule;

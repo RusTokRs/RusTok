@@ -47,4 +47,3 @@ fn index_admin_binds_authenticated_authority_to_the_resolved_tenant() {
         "both cancel and retry endpoints must reject nil job_uuid"
     );
 }
-

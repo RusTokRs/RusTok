@@ -45,10 +45,7 @@ impl DealAdminTableRow {
 }
 
 /// Pure in-memory search filter for CRM Deals & Pipelines admin records.
-pub fn filter_rows(
-    rows: &[DealAdminTableRow],
-    query: Option<&str>,
-) -> Vec<DealAdminTableRow> {
+pub fn filter_rows(rows: &[DealAdminTableRow], query: Option<&str>) -> Vec<DealAdminTableRow> {
     match query {
         Some(q) if !q.trim().is_empty() => {
             let normalized = q.trim().to_lowercase();

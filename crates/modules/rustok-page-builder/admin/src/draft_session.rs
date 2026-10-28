@@ -534,8 +534,9 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
                 if file_path.is_file() {
                     let content = fs::read_to_string(&file_path)
                         .map_err(|e| SsrDraftSessionError::Io(e.to_string()))?;
-                    let mut record: PersistentDraftSessionRecord = serde_json::from_str(&content)
-                        .map_err(|e| SsrDraftSessionError::Serialization(e.to_string()))?;
+                    let mut record: PersistentDraftSessionRecord =
+                        serde_json::from_str(&content)
+                            .map_err(|e| SsrDraftSessionError::Serialization(e.to_string()))?;
                     if record.controller.page_id() != controller.page_id() {
                         return Err(SsrDraftSessionError::PageMismatch {
                             expected: record.controller.page_id().to_string(),
@@ -807,7 +808,10 @@ impl MemoryKvDriver {
 
 impl DraftSessionKvDriver for MemoryKvDriver {
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>, SsrDraftSessionError> {
-        let entries = self.entries.read().map_err(|_| SsrDraftSessionError::Poisoned)?;
+        let entries = self
+            .entries
+            .read()
+            .map_err(|_| SsrDraftSessionError::Poisoned)?;
         let now = current_unix_secs();
         if let Some((bytes, expires)) = entries.get(key) {
             if *expires > now {
@@ -818,20 +822,29 @@ impl DraftSessionKvDriver for MemoryKvDriver {
     }
 
     fn set(&self, key: &str, value: &[u8], ttl_secs: u64) -> Result<(), SsrDraftSessionError> {
-        let mut entries = self.entries.write().map_err(|_| SsrDraftSessionError::Poisoned)?;
+        let mut entries = self
+            .entries
+            .write()
+            .map_err(|_| SsrDraftSessionError::Poisoned)?;
         let expires = current_unix_secs().saturating_add(ttl_secs);
         entries.insert(key.to_string(), (value.to_vec(), expires));
         Ok(())
     }
 
     fn delete(&self, key: &str) -> Result<(), SsrDraftSessionError> {
-        let mut entries = self.entries.write().map_err(|_| SsrDraftSessionError::Poisoned)?;
+        let mut entries = self
+            .entries
+            .write()
+            .map_err(|_| SsrDraftSessionError::Poisoned)?;
         entries.remove(key);
         Ok(())
     }
 
     fn scan_keys(&self, prefix: &str) -> Result<Vec<String>, SsrDraftSessionError> {
-        let entries = self.entries.read().map_err(|_| SsrDraftSessionError::Poisoned)?;
+        let entries = self
+            .entries
+            .read()
+            .map_err(|_| SsrDraftSessionError::Poisoned)?;
         Ok(entries
             .keys()
             .filter(|k| k.starts_with(prefix))
@@ -1037,7 +1050,9 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
 
     fn prune(&self) -> Result<usize, SsrDraftSessionError> {
         let mem = self.memory.prune()?;
-        let persistent = self.backend.prune_records(current_unix_secs(), self.memory.maximum_entries())?;
+        let persistent = self
+            .backend
+            .prune_records(current_unix_secs(), self.memory.maximum_entries())?;
         Ok(mem.max(persistent))
     }
 }
@@ -1178,23 +1193,28 @@ mod tests {
 
     #[test]
     fn file_store_persists_across_restart_and_validates_page() {
-        let temp_dir = std::env::temp_dir().join(format!("rustok_draft_test_{}", Uuid::new_v4().simple()));
-        let store = FileSsrDraftSessionStore::new(&temp_dir, Duration::from_secs(3600), 100).expect("store");
+        let temp_dir =
+            std::env::temp_dir().join(format!("rustok_draft_test_{}", Uuid::new_v4().simple()));
+        let store = FileSsrDraftSessionStore::new(&temp_dir, Duration::from_secs(3600), 100)
+            .expect("store");
         let mut ctrl = controller("home");
-        ctrl.dispatch(UiIntent::Select(Some("hero".to_string()))).unwrap();
+        ctrl.dispatch(UiIntent::Select(Some("hero".to_string())))
+            .unwrap();
         ctrl.dispatch(UiIntent::CopySelection).unwrap();
 
-        let committed = store.commit_with_context(
-            None,
-            None,
-            ctrl,
-            json!({ "theme": "dark" }),
-        ).expect("commit");
+        let committed = store
+            .commit_with_context(None, None, ctrl, json!({ "theme": "dark" }))
+            .expect("commit");
 
         // Simulate server restart by dropping store and re-instantiating against same dir
         drop(store);
-        let restarted_store = FileSsrDraftSessionStore::new(&temp_dir, Duration::from_secs(3600), 100).expect("restarted store");
-        let loaded = restarted_store.load(&committed.token, "home").expect("load").expect("snapshot exists");
+        let restarted_store =
+            FileSsrDraftSessionStore::new(&temp_dir, Duration::from_secs(3600), 100)
+                .expect("restarted store");
+        let loaded = restarted_store
+            .load(&committed.token, "home")
+            .expect("load")
+            .expect("snapshot exists");
 
         assert_eq!(loaded.generation, 1);
         assert!(loaded.controller.has_clipboard());
@@ -1211,8 +1231,10 @@ mod tests {
 
     #[test]
     fn file_store_rejects_unsafe_tokens() {
-        let temp_dir = std::env::temp_dir().join(format!("rustok_draft_test_{}", Uuid::new_v4().simple()));
-        let store = FileSsrDraftSessionStore::new(&temp_dir, Duration::from_secs(3600), 100).expect("store");
+        let temp_dir =
+            std::env::temp_dir().join(format!("rustok_draft_test_{}", Uuid::new_v4().simple()));
+        let store = FileSsrDraftSessionStore::new(&temp_dir, Duration::from_secs(3600), 100)
+            .expect("store");
         assert_eq!(store.load("../traversal", "home").unwrap(), None);
         assert_eq!(store.load("token with spaces!", "home").unwrap(), None);
         let _ = fs::remove_dir_all(&temp_dir);
@@ -1220,72 +1242,96 @@ mod tests {
 
     #[test]
     fn file_store_optimistic_generation_conflict() {
-        let temp_dir = std::env::temp_dir().join(format!("rustok_draft_test_{}", Uuid::new_v4().simple()));
-        let store = FileSsrDraftSessionStore::new(&temp_dir, Duration::from_secs(3600), 100).expect("store");
+        let temp_dir =
+            std::env::temp_dir().join(format!("rustok_draft_test_{}", Uuid::new_v4().simple()));
+        let store = FileSsrDraftSessionStore::new(&temp_dir, Duration::from_secs(3600), 100)
+            .expect("store");
         let ctrl = controller("home");
         let first = store.commit(None, None, ctrl.clone()).expect("commit 1");
         assert_eq!(first.generation, 1);
 
-        let second = store.commit(Some(&first.token), Some(first.generation), ctrl.clone()).expect("commit 2");
+        let second = store
+            .commit(Some(&first.token), Some(first.generation), ctrl.clone())
+            .expect("commit 2");
         assert_eq!(second.generation, 2);
 
         // Conflict: expected generation 1 when generation is now 2
         assert!(matches!(
             store.commit(Some(&first.token), Some(1), ctrl),
-            Err(SsrDraftSessionError::GenerationConflict { expected: 2, actual: 1 })
+            Err(SsrDraftSessionError::GenerationConflict {
+                expected: 2,
+                actual: 1
+            })
         ));
         let _ = fs::remove_dir_all(&temp_dir);
     }
 
     #[test]
     fn durable_store_serves_from_memory_and_survives_cold_restart() {
-        let temp_dir = std::env::temp_dir().join(format!("rustok_durable_test_{}", Uuid::new_v4().simple()));
-        let file_store = FileSsrDraftSessionStore::new(&temp_dir, Duration::from_secs(3600), 100).expect("file store");
+        let temp_dir =
+            std::env::temp_dir().join(format!("rustok_durable_test_{}", Uuid::new_v4().simple()));
+        let file_store = FileSsrDraftSessionStore::new(&temp_dir, Duration::from_secs(3600), 100)
+            .expect("file store");
         let mem_store = InMemorySsrDraftSessionStore::new(Duration::from_secs(3600), 100);
         let durable = DurableSsrDraftSessionStore::new(mem_store, file_store);
 
         let mut ctrl = controller("landing");
-        ctrl.dispatch(UiIntent::Select(Some("hero".to_string()))).unwrap();
+        ctrl.dispatch(UiIntent::Select(Some("hero".to_string())))
+            .unwrap();
         ctrl.dispatch(UiIntent::CopySelection).unwrap();
 
-        let committed = durable.commit_with_context(
-            None,
-            None,
-            ctrl,
-            json!({ "user": "admin" }),
-        ).expect("commit");
+        let committed = durable
+            .commit_with_context(None, None, ctrl, json!({ "user": "admin" }))
+            .expect("commit");
 
         // Immediately available in memory
-        assert!(durable.memory().load(&committed.token, "landing").unwrap().is_some());
+        assert!(durable
+            .memory()
+            .load(&committed.token, "landing")
+            .unwrap()
+            .is_some());
 
         // Simulate server process restart: new empty memory store, re-attached to same disk dir
         let cold_memory = InMemorySsrDraftSessionStore::new(Duration::from_secs(3600), 100);
-        let reattached_file = FileSsrDraftSessionStore::new(&temp_dir, Duration::from_secs(3600), 100).expect("file");
+        let reattached_file =
+            FileSsrDraftSessionStore::new(&temp_dir, Duration::from_secs(3600), 100).expect("file");
         let restarted_durable = DurableSsrDraftSessionStore::new(cold_memory, reattached_file);
 
         // Cold memory does not have the token initially
-        assert!(restarted_durable.memory().load(&committed.token, "landing").unwrap().is_none());
+        assert!(restarted_durable
+            .memory()
+            .load(&committed.token, "landing")
+            .unwrap()
+            .is_none());
 
         // Loading via durable store seamlessly retrieves from disk and warms memory
-        let loaded = restarted_durable.load(&committed.token, "landing").expect("load").expect("session");
+        let loaded = restarted_durable
+            .load(&committed.token, "landing")
+            .expect("load")
+            .expect("session");
         assert_eq!(loaded.generation, 1);
         assert_eq!(loaded.runtime_context["user"], "admin");
         assert!(loaded.controller.has_clipboard());
 
         // Now memory is warmed!
-        assert!(restarted_durable.memory().load(&committed.token, "landing").unwrap().is_some());
+        assert!(restarted_durable
+            .memory()
+            .load(&committed.token, "landing")
+            .unwrap()
+            .is_some());
 
         // Further commit increments generation across both layers
-        let updated = restarted_durable.commit(
-            Some(&committed.token),
-            Some(1),
-            loaded.controller,
-        ).expect("second commit");
+        let updated = restarted_durable
+            .commit(Some(&committed.token), Some(1), loaded.controller)
+            .expect("second commit");
         assert_eq!(updated.generation, 2);
 
         // Remove cleans up both
         restarted_durable.remove(&committed.token).expect("remove");
-        assert!(restarted_durable.load(&committed.token, "landing").unwrap().is_none());
+        assert!(restarted_durable
+            .load(&committed.token, "landing")
+            .unwrap()
+            .is_none());
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
@@ -1304,7 +1350,8 @@ mod tests {
         );
 
         let mut ctrl = controller("home");
-        ctrl.dispatch(UiIntent::Select(Some("hero".to_string()))).unwrap();
+        ctrl.dispatch(UiIntent::Select(Some("hero".to_string())))
+            .unwrap();
         ctrl.dispatch(UiIntent::CopySelection).unwrap();
 
         let committed = pod1_store

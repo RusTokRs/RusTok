@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::domain::{PostingDirection, validate_transaction_balance};
+use crate::domain::{validate_transaction_balance, PostingDirection};
 use crate::error::{AccountingError, AccountingResult};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -50,7 +50,9 @@ impl JournalPostingItem {
         }
         if trimmed_currency.len() < crate::domain::MIN_CURRENCY_CODE_LEN
             || trimmed_currency.len() > crate::domain::MAX_CURRENCY_CODE_LEN
-            || !trimmed_currency.chars().all(|ch| ch.is_ascii_alphanumeric())
+            || !trimmed_currency
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric())
         {
             return Err(AccountingError::InvalidCurrency(format!(
                 "Journal posting item currency_code must be 3-10 alphanumeric characters, got `{trimmed_currency}`"
@@ -70,7 +72,8 @@ impl JournalPostingItem {
             .is_some_and(|desc| desc.trim().len() > 1024)
         {
             return Err(AccountingError::Validation(
-                "Journal posting item description exceeds maximum length of 1024 characters".to_string(),
+                "Journal posting item description exceeds maximum length of 1024 characters"
+                    .to_string(),
             ));
         }
 
@@ -379,7 +382,10 @@ mod tests {
             .create_storno_input(Some("Order cancellation"))
             .unwrap();
 
-        assert_eq!(storno.transaction_number, Some("STORNO-INV-2026-001".into()));
+        assert_eq!(
+            storno.transaction_number,
+            Some("STORNO-INV-2026-001".into())
+        );
         assert_eq!(storno.lines.len(), 2);
 
         // First line was Debit 62.01, now Credit 62.01
@@ -387,7 +393,11 @@ mod tests {
         assert_eq!(storno.lines[0].direction, PostingDirection::Credit);
         assert_eq!(storno.lines[0].amount_minor, 120_000);
         assert_eq!(storno.lines[0].party_id, Some(party_id));
-        assert!(storno.lines[0].description.as_ref().unwrap().contains("STORNO (Order cancellation)"));
+        assert!(storno.lines[0]
+            .description
+            .as_ref()
+            .unwrap()
+            .contains("STORNO (Order cancellation)"));
 
         // Second line was Credit 90.01, now Debit 90.01
         assert_eq!(storno.lines[1].account_code, "90.01");
