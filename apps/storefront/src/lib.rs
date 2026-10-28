@@ -639,10 +639,66 @@ async fn app_css_handler() -> impl axum::response::IntoResponse {
 }
 
 #[cfg(feature = "ssr")]
+async fn render_blog_feed_response(
+    runtime: rustok_api::HostRuntimeContext,
+    locale: String,
+) -> Response {
+    let tenant = leptos_axum::extract::<rustok_api::TenantContext>().await.ok();
+    let request = leptos_axum::extract::<rustok_api::RequestContext>().await.ok();
+    let auth = leptos_axum::extract::<rustok_api::AuthContext>().await.ok();
+    match rustok_blog_storefront::render_rss_feed(
+        &runtime,
+        &locale,
+        tenant.as_ref(),
+        request.as_ref(),
+        auth.as_ref(),
+    )
+    .await
+    {
+        Ok(xml) => (
+            [
+                (axum::http::header::CONTENT_TYPE, "application/rss+xml; charset=utf-8"),
+                (CACHE_CONTROL, "no-store"),
+            ],
+            xml,
+        ).into_response(),
+        Err(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            [(CACHE_CONTROL, "no-store")],
+            "Blog RSS is temporarily unavailable",
+        ).into_response(),
+    }
+}
+
+#[cfg(feature = "ssr")]
 pub fn router(runtime: rustok_api::HostRuntimeContext) -> Router {
     let _ = any_spawner::Executor::init_tokio();
+    let rss_runtime = runtime.clone();
+    let localized_rss_runtime = runtime.clone();
     Router::new()
         .route("/assets/app.css", get(app_css_handler))
+        .route(
+            "/blog/feed.xml",
+            get(move || {
+                let runtime = rss_runtime.clone();
+                async move {
+                    render_blog_feed_response(runtime, DEFAULT_STOREFRONT_LOCALE.to_string()).await
+                }
+            }),
+        )
+        .route(
+            "/{locale}/blog/feed.xml",
+            get(move |Path(locale_prefix): Path<String>| {
+                let runtime = localized_rss_runtime.clone();
+                async move {
+                    let locale = resolve_storefront_locale(
+                        Some(locale_prefix.as_str()),
+                        &std::collections::HashMap::new(),
+                    );
+                    render_blog_feed_response(runtime, locale).await
+                }
+            }),
+        )
         .route(
             "/",
             get(
