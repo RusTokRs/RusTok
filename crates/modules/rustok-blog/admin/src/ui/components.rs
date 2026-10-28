@@ -455,6 +455,8 @@ pub(super) struct BlogPostFormSetters {
     pub(super) featured_image_url: WriteSignal<String>,
     pub(super) seo_title: WriteSignal<String>,
     pub(super) seo_description: WriteSignal<String>,
+    pub(super) scheduled_at: WriteSignal<String>,
+    pub(super) schedule_editable: WriteSignal<bool>,
     pub(super) publish_now: WriteSignal<bool>,
 }
 
@@ -483,6 +485,8 @@ fn apply_form_state(setters: BlogPostFormSetters, state: core::BlogPostEditorFor
     setters.featured_image_url.set(state.featured_image_url);
     setters.seo_title.set(state.seo_title);
     setters.seo_description.set(state.seo_description);
+    setters.scheduled_at.set(state.scheduled_at);
+    setters.schedule_editable.set(state.schedule_editable);
     setters.publish_now.set(state.publish_now);
 }
 
