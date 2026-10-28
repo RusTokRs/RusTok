@@ -146,6 +146,40 @@ pub async fn unpublish_post(
     .await
 }
 
+pub async fn pin_post(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    locale: Option<String>,
+) -> Result<BlogPostDetail, ApiError> {
+    let native_id = id.clone();
+    let native_locale = locale.clone();
+    execute_selected_transport(
+        "blog/admin/pin-post",
+        selected_transport_path(),
+        move || native_server_adapter::pin_post(native_id, native_locale),
+        move || graphql_adapter::pin_post(token, tenant_slug, id, locale),
+    )
+    .await
+}
+
+pub async fn unpin_post(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    locale: Option<String>,
+) -> Result<BlogPostDetail, ApiError> {
+    let native_id = id.clone();
+    let native_locale = locale.clone();
+    execute_selected_transport(
+        "blog/admin/unpin-post",
+        selected_transport_path(),
+        move || native_server_adapter::unpin_post(native_id, native_locale),
+        move || graphql_adapter::unpin_post(token, tenant_slug, id, locale),
+    )
+    .await
+}
+
 pub async fn archive_post(
     token: Option<String>,
     tenant_slug: Option<String>,
