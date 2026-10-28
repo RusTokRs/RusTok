@@ -761,16 +761,24 @@ mod in_process {
                 .await.expect("receipts migration");
             let tenant_id = Uuid::new_v4();
             let request = serde_json::json!({"actor": "commenter", "body": "same"});
-            let receipt = |key: &'static str| idempotency::admit(
-                &db,
-                OwnerOperationScope::Tenant(tenant_id),
-                "comments",
-                key,
-                "create_comment",
-                &request,
-            );
+            async fn admit_comment(
+                db: &sea_orm::DatabaseConnection,
+                tenant_id: Uuid,
+                request: &serde_json::Value,
+                key: &str,
+            ) -> Result<Admission, PortError> {
+                idempotency::admit(
+                    db,
+                    OwnerOperationScope::Tenant(tenant_id),
+                    "comments",
+                    key,
+                    "create_comment",
+                    request,
+                ).await
+            }
 
-            let lease = match receipt("temporarily-unavailable").await.expect("admit") {
+            let lease = match admit_comment(&db, tenant_id, &request, "temporarily-unavailable")
+                .await.expect("admit") {
                 Admission::Run(lease) => lease,
                 _ => panic!("first admission must run"),
             };
@@ -779,11 +787,11 @@ mod in_process {
                 &PortError::unavailable("comments.database", "temporary failure"),
             ).await;
             assert!(matches!(
-                receipt("temporarily-unavailable").await.expect("re-admit"),
+                admit_comment(&db, tenant_id, &request, "temporarily-unavailable").await.expect("re-admit"),
                 Admission::Run(_)
             ), "a retryable failure must not poison the durable command identity");
 
-            let lease = match receipt("invalid-input").await.expect("admit") {
+            let lease = match admit_comment(&db, tenant_id, &request, "invalid-input").await.expect("admit") {
                 Admission::Run(lease) => lease,
                 _ => panic!("first admission must run"),
             };
@@ -792,7 +800,7 @@ mod in_process {
                 &PortError::validation("comments.validation", "invalid rich text"),
             ).await;
             assert!(matches!(
-                receipt("invalid-input").await.expect("replay"),
+                admit_comment(&db, tenant_id, &request, "invalid-input").await.expect("replay"),
                 Admission::ReplayError(error) if !error.retryable
             ), "terminal validation failures must still replay deterministically");
         }
