@@ -181,15 +181,11 @@ impl MessengerQuery {
                 "Invalid conversation ID: nil UUID is not permitted",
             ));
         }
-        if let Some(seq) = since_seq {
-            if seq < 0 {
-                return Err(FieldError::new("since_seq cannot be negative"));
-            }
+        if since_seq.is_some_and(|seq| seq < 0) {
+            return Err(FieldError::new("since_seq cannot be negative"));
         }
-        if let Some(l) = limit {
-            if l <= 0 {
-                return Err(FieldError::new("limit must be positive"));
-            }
+        if limit.is_some_and(|l| l <= 0) {
+            return Err(FieldError::new("limit must be positive"));
         }
 
         let service = MessengerService::new(db.clone(), 1);

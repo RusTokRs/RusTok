@@ -335,13 +335,12 @@ impl TranslationMachineService {
         let transaction = self.database.begin().await?;
         {
             use sea_orm::{ConnectionTrait as _, DbBackend};
-            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-                if let Err(error) = transaction
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite)
+                && let Err(error) = transaction
                     .execute_unprepared("PRAGMA busy_timeout = 5000")
                     .await
-                {
-                    tracing::debug!(error = %error, "translation machine busy_timeout PRAGMA best-effort failed");
-                }
+            {
+                tracing::debug!(error = %error, "translation machine busy_timeout PRAGMA best-effort failed");
             }
         }
         machine_recovery::Entity::insert(machine_recovery::ActiveModel {

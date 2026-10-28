@@ -296,13 +296,12 @@ impl TranslationMemoryService {
         let transaction = self.database.begin().await?;
         {
             use sea_orm::{ConnectionTrait as _, DbBackend};
-            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-                if let Err(error) = transaction
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite)
+                && let Err(error) = transaction
                     .execute_unprepared("PRAGMA busy_timeout = 5000")
                     .await
-                {
-                    tracing::debug!(error = %error, "translation memory busy_timeout PRAGMA best-effort failed");
-                }
+            {
+                tracing::debug!(error = %error, "translation memory busy_timeout PRAGMA best-effort failed");
             }
         }
         let update = memory_entry::Entity::update_many()
@@ -376,13 +375,12 @@ impl TranslationMemoryService {
         let transaction = self.database.begin().await?;
         {
             use sea_orm::{ConnectionTrait as _, DbBackend};
-            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-                if let Err(error) = transaction
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite)
+                && let Err(error) = transaction
                     .execute_unprepared("PRAGMA busy_timeout = 5000")
                     .await
-                {
-                    tracing::debug!(error = %error, "translation memory busy_timeout PRAGMA best-effort failed");
-                }
+            {
+                tracing::debug!(error = %error, "translation memory busy_timeout PRAGMA best-effort failed");
             }
         }
         let update = memory_entry::Entity::update_many()
@@ -480,13 +478,12 @@ impl TranslationMemoryService {
         let transaction = self.database.begin().await?;
         {
             use sea_orm::{ConnectionTrait as _, DbBackend};
-            if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-                if let Err(error) = transaction
+            if matches!(transaction.get_database_backend(), DbBackend::Sqlite)
+                && let Err(error) = transaction
                     .execute_unprepared("PRAGMA busy_timeout = 5000")
                     .await
-                {
-                    tracing::debug!(error = %error, "translation memory busy_timeout PRAGMA best-effort failed");
-                }
+            {
+                tracing::debug!(error = %error, "translation memory busy_timeout PRAGMA best-effort failed");
             }
         }
         if let Some(replay) = insert_receipt(
@@ -1035,6 +1032,17 @@ fn actor_kind(context: &PortContext) -> &'static str {
     }
 }
 
+fn classification_label(classification: TranslationDataClassification) -> &'static str {
+    match classification {
+        TranslationDataClassification::Public => "public",
+        TranslationDataClassification::TenantPrivate => "tenant_private",
+        TranslationDataClassification::Personal => "personal",
+        TranslationDataClassification::Sensitive => "sensitive",
+        TranslationDataClassification::Secret => "secret",
+        TranslationDataClassification::ImmutableTransaction => "immutable_transaction",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{normalize_segment, token_dice_similarity};
@@ -1053,16 +1061,5 @@ mod tests {
         );
         assert_eq!(token_dice_similarity("hero returns", "hero arrives"), 5_000);
         assert_eq!(token_dice_similarity("hero", "villain"), 0);
-    }
-}
-
-fn classification_label(classification: TranslationDataClassification) -> &'static str {
-    match classification {
-        TranslationDataClassification::Public => "public",
-        TranslationDataClassification::TenantPrivate => "tenant_private",
-        TranslationDataClassification::Personal => "personal",
-        TranslationDataClassification::Sensitive => "sensitive",
-        TranslationDataClassification::Secret => "secret",
-        TranslationDataClassification::ImmutableTransaction => "immutable_transaction",
     }
 }

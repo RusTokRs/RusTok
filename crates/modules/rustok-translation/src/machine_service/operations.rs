@@ -313,13 +313,12 @@ pub(crate) async fn register_operation(
     let transaction = database.begin().await?;
     {
         use sea_orm::{ConnectionTrait as _, DbBackend};
-        if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-            if let Err(error) = transaction
+        if matches!(transaction.get_database_backend(), DbBackend::Sqlite)
+            && let Err(error) = transaction
                 .execute_unprepared("PRAGMA busy_timeout = 5000")
                 .await
-            {
-                tracing::debug!(error = %error, "translation machine busy_timeout PRAGMA best-effort failed");
-            }
+        {
+            tracing::debug!(error = %error, "translation machine busy_timeout PRAGMA best-effort failed");
         }
     }
     machine_operation::Entity::insert(machine_operation::ActiveModel {
@@ -491,13 +490,12 @@ pub(crate) async fn complete_operation(
     let transaction = database.begin().await?;
     {
         use sea_orm::{ConnectionTrait as _, DbBackend};
-        if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-            if let Err(error) = transaction
+        if matches!(transaction.get_database_backend(), DbBackend::Sqlite)
+            && let Err(error) = transaction
                 .execute_unprepared("PRAGMA busy_timeout = 5000")
                 .await
-            {
-                tracing::debug!(error = %error, "translation machine busy_timeout PRAGMA best-effort failed");
-            }
+        {
+            tracing::debug!(error = %error, "translation machine busy_timeout PRAGMA best-effort failed");
         }
     }
     let update = machine_operation::Entity::update_many()

@@ -73,13 +73,12 @@ pub async fn cancel_machine_operation(
     let transaction = database.begin().await?;
     {
         use sea_orm::{ConnectionTrait as _, DbBackend};
-        if matches!(transaction.get_database_backend(), DbBackend::Sqlite) {
-            if let Err(error) = transaction
+        if matches!(transaction.get_database_backend(), DbBackend::Sqlite)
+            && let Err(error) = transaction
                 .execute_unprepared("PRAGMA busy_timeout = 5000")
                 .await
-            {
-                tracing::debug!(error = %error, "translation machine busy_timeout PRAGMA best-effort failed");
-            }
+        {
+            tracing::debug!(error = %error, "translation machine busy_timeout PRAGMA best-effort failed");
         }
     }
     let cancellation_id = generate_id();
@@ -271,7 +270,7 @@ pub(crate) fn validate_machine_cancellation_replay(
     context: &PortContext,
     request_hash: &str,
 ) -> TranslationResult<()> {
-    if model.idempotency_key != require_idempotency_key(&context)? {
+    if model.idempotency_key != require_idempotency_key(context)? {
         return Err(TranslationError::MachineOperationTerminal(
             "cancelled".to_string(),
         ));

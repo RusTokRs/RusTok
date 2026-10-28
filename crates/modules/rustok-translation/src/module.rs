@@ -133,7 +133,6 @@ mod tests {
         assert_eq!(module.kind(), ModuleKind::Optional);
         assert!(module.dependencies().is_empty());
         assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
-        assert_eq!(module, TranslationModule::default());
         assert_eq!(module, TranslationModule);
     }
 

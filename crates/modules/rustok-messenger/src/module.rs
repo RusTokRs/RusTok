@@ -113,7 +113,7 @@ mod tests {
     #[test]
     fn module_constructor_and_default() {
         let m1 = MessengerModule::new();
-        let m2 = MessengerModule::default();
+        let m2 = MessengerModule;
         assert_eq!(m1, m2);
         assert_eq!(m1, MessengerModule);
     }
