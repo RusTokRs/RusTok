@@ -179,7 +179,7 @@ export default function PostForm({
           {
             title: values.title,
             slug: values.slug || undefined,
-            locale: values.locale,
+            locale: initialData.requestedLocale,
             content,
             excerpt: values.excerpt?.trim() || null,
             tags,
