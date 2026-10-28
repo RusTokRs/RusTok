@@ -42,6 +42,11 @@ semantics are unchanged. Large sortable text values may prevent emitting a
 continuation and surface a typed codec error rather than an unusable token;
 production consumers should avoid ordering by unbounded text.
 
+Targeted `IndexSourceLoadRequest` now also rejects nil entity ids for
+every requested key before any source call; schema-specific locale validation
+still belongs to the owner executor. Index CI enforces crate-scoped compilation
+and lib unit tests, with successful execution evidence still pending.
+
 This is **source-only, unverified** until scoped Rust checks and owner/runtime
 validation execute. It does not establish FS-07 Index crate audit completion.
 
