@@ -116,7 +116,10 @@ impl PostgresIndexDriftConfirmedCandidateWriter {
                 ))
             }
             Err(error) => {
-                transaction.rollback().await.map_err(|_| IndexDriftConfirmedCandidateRecordError::Storage)?;
+                transaction
+                    .rollback()
+                    .await
+                    .map_err(|_| IndexDriftConfirmedCandidateRecordError::Storage)?;
                 Err(error)
             }
         }
