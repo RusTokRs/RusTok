@@ -12,6 +12,7 @@ Leptos storefront UI package for the `rustok-blog` module.
 - Exposes the blog storefront root view used by `apps/storefront`.
 - Keeps blog-specific storefront UI inside the module package.
 - Participates in the manifest-driven UI composition path through `rustok-module.toml`.
+- Serves native RSS 2.0 through the Blog-owned feed projection, mounted as `/blog/feed.xml` and `/{locale}/blog/feed.xml` by the Leptos storefront host; deploys with `NEXT_PUBLIC_STOREFRONT_URL` or `NEXT_PUBLIC_SITE_URL` configured for absolute, trustworthy public links.
 - Owns dual-path read access for published posts and selected `?slug=` rendering.
 - Renders the selected post's approved public comments from the Comments-owned projection; pending, spam, trash, and deleted comments never enter the storefront DTO.
 - Composes the reusable Comments-owned public composer with a Blog-owned post-bound command; the browser cannot choose a generic Comments target.
