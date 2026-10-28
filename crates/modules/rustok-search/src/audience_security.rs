@@ -289,6 +289,23 @@ pub async fn resolve_audience_eligible_candidates(
     request_context: Option<RequestContext>,
     transport: StorefrontSearchTransport,
 ) -> Result<HashSet<Uuid>, PortError> {
+    Ok(resolve_audience_eligible_candidates_by_module(
+        registry, tenant_id, locale, candidates, auth, request_context, transport,
+    ).await?.into_iter().map(|(_, id)| id).collect())
+}
+
+/// Preserves each owner's identity during candidate authorization.
+/// IDs by themselves are insufficient: two gated modules may legitimately
+/// project documents with the same UUID, but only one owner may approve it.
+pub async fn resolve_audience_eligible_candidates_by_module(
+    registry: &SearchAudienceRegistry,
+    tenant_id: Uuid,
+    locale: &str,
+    candidates: &[SearchCandidateDescriptor],
+    auth: Option<AuthContext>,
+    request_context: Option<RequestContext>,
+    transport: StorefrontSearchTransport,
+) -> Result<HashSet<(String, Uuid)>, PortError> {
     if candidates.is_empty() {
         return Ok(HashSet::new());
     }
@@ -331,7 +348,7 @@ pub async fn resolve_audience_eligible_candidates(
                 allowed_ids.extend(
                     module_candidates
                         .iter()
-                        .map(|candidate| candidate.document_id),
+                        .map(|candidate| (source_module.to_string(), candidate.document_id)),
                 );
             }
             Some(SearchAudienceClass::Gated) => {
@@ -406,7 +423,7 @@ pub async fn resolve_audience_eligible_candidates(
                                 ),
                             ));
                         }
-                        allowed_ids.insert(allowed_id);
+                        allowed_ids.insert((source_module.to_string(), allowed_id));
                     }
                 }
             }
@@ -713,7 +730,7 @@ async fn authorize_gated_candidates(
     auth: Option<AuthContext>,
     request_context: Option<RequestContext>,
     transport: StorefrontSearchTransport,
-) -> CoreResult<Vec<Uuid>> {
+) -> CoreResult<Vec<(String, Uuid)>> {
     let mut scan_query = search_query.clone();
     scan_query.source_modules = gated_scope.to_vec();
     scan_query.offset = 0;
@@ -795,7 +812,7 @@ async fn authorize_gated_candidates(
         .filter(|locale| !locale.is_empty())
         .unwrap_or("en");
 
-    let allowed_ids = resolve_audience_eligible_candidates(
+    let allowed_ids = resolve_audience_eligible_candidates_by_module(
         registry,
         tenant_id,
         effective_locale,
