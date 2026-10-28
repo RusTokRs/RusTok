@@ -50,12 +50,13 @@ impl BlogQuery {
 
         let service = PostService::new(db.clone(), event_bus.clone());
         let post = match service
-            .get_post_with_locale_fallback(
+            .get_post_with_locale_fallback_on_channel(
                 tenant_id,
                 request_security_context(ctx),
                 id,
                 &locale,
                 Some(tenant.default_locale.as_str()),
+                public_channel_slug(ctx).as_deref(),
             )
             .await
         {
@@ -182,7 +183,7 @@ impl BlogQuery {
         let service = PostService::new(db.clone(), event_bus.clone());
         let list_started_at = Instant::now();
         let result = service
-            .list_posts_with_locale_fallback(
+            .list_posts_with_locale_fallback_on_channel(
                 tenant_id,
                 request_security_context(ctx),
                 crate::PostListQuery {
@@ -199,6 +200,7 @@ impl BlogQuery {
                     sort_order: Some(filter.sort_order.map(Into::into).unwrap_or_default()),
                 },
                 Some(tenant.default_locale.as_str()),
+                public_channel_slug(ctx).as_deref(),
             )
             .await
             .map_err(crate::error::public::to_graphql_error)?;
