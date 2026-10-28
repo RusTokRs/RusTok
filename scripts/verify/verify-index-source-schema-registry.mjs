@@ -60,6 +60,10 @@ requireMarkers('crates/modules/rustok-index/src/application/mod.rs', [
   'register_index_schema_source',
 ]);
 requireMarkers('crates/modules/rustok-index/src/lib.rs', [
+  'pub mod module;',
+]);
+requireMarkers('crates/modules/rustok-index/src/module.rs', [
+  'impl RusToKModule for IndexModule',
   'fn register_runtime_extensions(',
   'get_or_insert_with::<IndexSchemaSourceCatalog',
 ]);
