@@ -34,8 +34,12 @@ impl PostService {
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let post = self.find_post(tenant_id, post_id).await?;
+        // Public detail reads follow the same corpus contract as the public
+        // list and Search/SEO projections. A published row missing its stamp
+        // is damaged state, visible only to an editor who can repair it.
         if !can_read_non_public_posts(&security)
-            && storage_to_status(&post.status)? != BlogPostStatus::Published
+            && (storage_to_status(&post.status)? != BlogPostStatus::Published
+                || post.published_at.is_none())
         {
             return Err(BlogError::forbidden("Permission denied"));
         }
@@ -158,8 +162,9 @@ impl PostService {
             return Ok(None);
         };
 
-        if storage_to_status(&post.status)? != BlogPostStatus::Published
-            && !can_read_non_public_posts(&security)
+        if !can_read_non_public_posts(&security)
+            && (storage_to_status(&post.status)? != BlogPostStatus::Published
+                || post.published_at.is_none())
         {
             return Ok(None);
         }
