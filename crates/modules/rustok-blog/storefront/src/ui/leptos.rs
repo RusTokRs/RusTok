@@ -481,6 +481,10 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
     let category_id = post.category_id;
     let featured_image_url = post.featured_image_url;
     let share_slug = slug.clone();
+    let selected_tag_filter = use_route_query_value("tag").get();
+    let selected_category_filter = use_route_query_value("category").get();
+    let selected_search_filter = use_route_query_value("q").get();
+    let selected_slug_filter = slug.clone();
     let reading_minutes = core::calculate_reading_time(&content_plain_text);
     let reading_time_label = core::format_reading_time(reading_minutes, locale.as_deref());
     let selected_post_content = core::selected_post_content_view(excerpt, content_plain_text);
@@ -546,7 +550,12 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
                     let category_label = if let Some(cat_id) = category_id {
                         view! {
                             <a
-                                href=core::filter_query_href(None, None, Some(&cat_id), None)
+                                href=core::filter_query_href(
+                                    Some(selected_slug_filter.as_str()),
+                                    selected_tag_filter.as_deref(),
+                                    Some(&cat_id),
+                                    selected_search_filter.as_deref(),
+                                )
                                 class="rounded-full bg-secondary px-2.5 py-0.5 font-semibold text-secondary-foreground text-xs normal-case tracking-normal hover:bg-secondary/80 transition-colors"
                             >
                                 {name}
@@ -638,7 +647,12 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
                             .items
                             .into_iter()
                             .map(|tag| {
-                                let tag_link = format!("?tag={}", core::percent_encode(&tag));
+                                let tag_link = core::filter_query_href(
+                                    Some(slug.as_str()),
+                                    Some(tag.as_str()),
+                                    selected_category_filter.as_deref(),
+                                    selected_search_filter.as_deref(),
+                                );
                                 view! {
                                     <a
                                         href=tag_link
