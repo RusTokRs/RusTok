@@ -27,7 +27,11 @@ use crate::dto::{
 };
 use crate::entities::{blog_comment_projection_delivery, blog_post, blog_post_channel_visibility};
 use crate::error::{BlogError, BlogResult};
-use crate::services::{is_post_visible_for_channel, post::storage_to_status, rbac::enforce_scope};
+use crate::services::{
+    is_post_visible_for_channel,
+    post::{normalize_public_channel_slug, storage_to_status},
+    rbac::enforce_scope,
+};
 
 const TARGET_TYPE_BLOG_POST: &str = "blog_post";
 const PUBLIC_COMMENTS_PORT_ACTOR: &str = "rustok-blog.public-comments";
@@ -762,12 +766,12 @@ impl CommentService {
             return Err(BlogError::post_not_found(post_id));
         }
 
-        if let Some(channel_slug) = public_channel_slug {
+        if let Some(channel_slug) = normalize_public_channel_slug(public_channel_slug) {
             let channel_service = rustok_channel::ChannelService::new(self.db.clone());
             let Some(channel) = channel_service
-                .get_channel_by_slug(tenant_id, channel_slug)
+                .get_channel_by_slug(tenant_id, channel_slug.as_str())
                 .await
-                .map_err(|_| BlogError::post_not_found(post_id))?
+                .map_err(BlogError::from)?
             else {
                 return Err(BlogError::post_not_found(post_id));
             };
@@ -779,7 +783,7 @@ impl CommentService {
             let enabled = channel_service
                 .is_module_enabled_for_tenant(tenant_id, channel.id, "blog")
                 .await
-                .map_err(|_| BlogError::post_not_found(post_id))?;
+                .map_err(BlogError::from)?;
             if !enabled {
                 return Err(BlogError::post_not_found(post_id));
             }
