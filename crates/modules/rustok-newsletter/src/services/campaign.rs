@@ -41,17 +41,16 @@ impl CampaignService {
                 "Cannot have more than 50 content sources",
             ));
         }
-        if let Some(ref p) = input.preheader {
-            if p.len() > 512 {
-                return Err(NewsletterError::validation(
-                    "Preheader exceeds 512 characters",
-                ));
-            }
+        if input.preheader.as_ref().is_some_and(|p| p.len() > 512) {
+            return Err(NewsletterError::validation(
+                "Preheader exceeds 512 characters",
+            ));
         }
-        if let Some(segment_id) = input.segment_id {
-            if segment_id.is_nil() {
-                return Err(NewsletterError::validation("Segment ID must not be nil"));
-            }
+        if input
+            .segment_id
+            .is_some_and(|segment_id| segment_id.is_nil())
+        {
+            return Err(NewsletterError::validation("Segment ID must not be nil"));
         }
 
         let now = Utc::now();

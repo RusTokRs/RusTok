@@ -1244,11 +1244,7 @@ async fn assert_storefront_exact(
             )));
         }
     } else if !result.items.is_empty()
-        || execution
-            .result
-            .facets
-            .iter()
-            .any(|facet| !facet.buckets.is_empty())
+        || result.facets.iter().any(|facet| !facet.buckets.is_empty())
     {
         return Err(test_error(format!(
             "D16 storefront marker `{marker}` leaked items or visible facets"
