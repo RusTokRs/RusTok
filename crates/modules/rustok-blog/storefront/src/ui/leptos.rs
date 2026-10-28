@@ -11,7 +11,8 @@ use super::share::{BlogShareButtons, BlogStatusBadge};
 
 use crate::i18n::{comment_composer_copy, t};
 use crate::model::{
-    BlogCommentsAvailability, BlogPostDetail, BlogPostList, BlogPostListItem, StorefrontBlogData,
+    BlogCommentsAvailability, BlogPostAuthorProfile, BlogPostDetail, BlogPostList, BlogPostListItem,
+    StorefrontBlogData,
 };
 use rustok_search_storefront::model::{SearchPreviewFilters, SearchPreviewPayload};
 use crate::{comments_pagination, core, transport};
@@ -486,6 +487,18 @@ fn map_blog_search_results(result: SearchPreviewPayload) -> Result<BlogPostList,
             .map(|values| values.iter().filter_map(|value| value.as_str().map(ToOwned::to_owned))
                 .collect::<Vec<_>>())
             .unwrap_or_default();
+        let author_profile = match (get_string("author_id"), get_string("author_name")) {
+            (Some(user_id), Some(display_name)) if !display_name.trim().is_empty() => {
+                Some(BlogPostAuthorProfile {
+                    user_id,
+                    handle: String::new(),
+                    display_name,
+                    tags: Vec::new(),
+                    avatar_media_id: None,
+                })
+            }
+            _ => None,
+        };
         items.push(BlogPostListItem {
             id: item.id,
             title: item.title,
@@ -496,7 +509,7 @@ fn map_blog_search_results(result: SearchPreviewPayload) -> Result<BlogPostList,
             published_at: get_string("published_at"),
             tags,
             featured_image_url: get_string("featured_image_url"),
-            author_profile: None,
+            author_profile,
             category_id: get_string("category_id"),
             category_name: get_string("category_name"),
         });
