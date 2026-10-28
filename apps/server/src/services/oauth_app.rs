@@ -2246,10 +2246,9 @@ mod tests {
             .expect("embedded admin app was created");
         assert!(managed.is_active);
 
-        db.execute(&sea_orm::Statement::from_string(
-            DbBackend::Sqlite,
-            "CREATE TRIGGER abort_managed_app_deactivation BEFORE UPDATE OF is_active ON oauth_apps WHEN NEW.is_active = 0 BEGIN SELECT RAISE(ABORT, 'simulated deactivation failure'); END".to_string(),
-        ))
+        db.execute_unprepared(
+            "CREATE TRIGGER abort_managed_app_deactivation BEFORE UPDATE OF is_active ON oauth_apps WHEN NEW.is_active = 0 BEGIN SELECT RAISE(ABORT, 'simulated deactivation failure'); END",
+        )
         .await
         .expect("install fault injection trigger");
 
