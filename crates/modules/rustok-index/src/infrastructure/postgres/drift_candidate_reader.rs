@@ -158,7 +158,10 @@ impl IndexDriftCandidateReader for PostgresIndexDriftCandidateReader {
                 Ok(page)
             }
             Err(error) => {
-                transaction.rollback().await.map_err(|_| retryable_failure(STORAGE_UNAVAILABLE))?;
+                transaction
+                    .rollback()
+                    .await
+                    .map_err(|_| retryable_failure(STORAGE_UNAVAILABLE))?;
                 Err(error)
             }
         }
