@@ -44,7 +44,7 @@ export interface UpdateBlogCategoryInput {
   locale?: string;
   name?: string;
   slug?: string;
-  description?: string;
+  description?: string | null;
 }
 
 export interface BlogTag {
@@ -113,7 +113,9 @@ mutation CreateBlogCategory($tenantId: UUID, $input: CreateBlogCategoryInput!) {
 
 export const UPDATE_BLOG_CATEGORY_MUTATION = `
 mutation UpdateBlogCategory($id: UUID!, $tenantId: UUID, $input: UpdateBlogCategoryInput!) {
-  updateBlogCategory(id: $id, tenantId: $tenantId, input: $input)
+  updateBlogCategory(id: $id, tenantId: $tenantId, input: $input) {
+    id locale effectiveLocale name slug description parentId position createdAt updatedAt
+  }
 }
 `;
 
@@ -152,7 +154,7 @@ interface CreateBlogCategoryResponse {
 }
 
 interface UpdateBlogCategoryResponse {
-  updateBlogCategory: boolean;
+  updateBlogCategory: BlogCategory;
 }
 
 interface DeleteBlogCategoryResponse {
@@ -182,6 +184,22 @@ export async function listBlogCategories(
     opts.tenantSlug
   );
   return data.blogCategories;
+}
+
+/** Load every page; a single Blog Categories query is limited to 100 entries. */
+export async function listAllBlogCategories(
+  filter: Omit<BlogCategoriesFilter, 'page' | 'perPage'> = {},
+  opts: GqlOpts = {}
+): Promise<BlogCategory[]> {
+  const items: BlogCategory[] = [];
+  for (let page = 1; ; page += 1) {
+    const result = await listBlogCategories({ ...filter, page, perPage: 100 }, opts);
+    items.push(...result.items);
+    if (items.length >= result.total) return items;
+    if (result.items.length === 0) {
+      throw new Error('Blog category pagination returned an incomplete result');
+    }
+  }
 }
 
 export async function getBlogCategory(
@@ -220,7 +238,7 @@ export async function updateBlogCategory(
   id: string,
   input: UpdateBlogCategoryInput,
   opts: GqlOpts = {}
-): Promise<boolean> {
+): Promise<BlogCategory> {
   const data = await graphqlRequest<
     { id: string; tenantId?: string | null; input: UpdateBlogCategoryInput },
     UpdateBlogCategoryResponse
@@ -246,6 +264,7 @@ export async function deleteBlogCategory(
     opts.token,
     opts.tenantSlug
   );
+  if (!data.deleteBlogCategory) throw new Error('Category delete rejected by the owner');
   return data.deleteBlogCategory;
 }
 
