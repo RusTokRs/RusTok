@@ -68,6 +68,7 @@ struct SearchPreviewInput {
     statuses: Option<Vec<String>>,
     #[serde(rename = "categoryIds")]
     category_ids: Option<Vec<String>>,
+    tag: Option<String>,
     #[serde(rename = "attributeFilters")]
     attribute_filters: Option<Vec<SearchAttributeFilterInput>>,
     #[serde(rename = "sortAttributeCode")]
@@ -124,7 +125,19 @@ pub async fn fetch_search(
     preset_key: Option<String>,
     filters: SearchPreviewFilters,
 ) -> Result<SearchPreviewPayload, ApiError> {
-    fetch_storefront_search_graphql(query, locale, preset_key, filters).await
+    fetch_search_page(query, locale, preset_key, filters, None, 12, 0).await
+}
+
+pub async fn fetch_search_page(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    tag: Option<String>,
+    limit: usize,
+    offset: usize,
+) -> Result<SearchPreviewPayload, ApiError> {
+    fetch_storefront_search_graphql(query, locale, preset_key, filters, tag, limit, offset).await
 }
 
 async fn fetch_storefront_search_graphql(
@@ -132,6 +145,9 @@ async fn fetch_storefront_search_graphql(
     locale: Option<String>,
     preset_key: Option<String>,
     filters: SearchPreviewFilters,
+    tag: Option<String>,
+    limit: usize,
+    offset: usize,
 ) -> Result<SearchPreviewPayload, ApiError> {
     let response: StorefrontSearchResponse = request(
         STOREFRONT_SEARCH_QUERY,
@@ -140,14 +156,15 @@ async fn fetch_storefront_search_graphql(
                 query,
                 locale,
                 channel_id: filters.channel_id,
-                limit: Some(12),
-                offset: Some(0),
+                limit: Some(limit.clamp(1, 50) as i32),
+                offset: Some(offset.min(10_000) as i32),
                 preset_key,
                 entity_types: (!filters.entity_types.is_empty()).then_some(filters.entity_types),
                 source_modules: (!filters.source_modules.is_empty())
                     .then_some(filters.source_modules),
                 statuses: (!filters.statuses.is_empty()).then_some(filters.statuses),
                 category_ids: (!filters.category_ids.is_empty()).then_some(filters.category_ids),
+                tag,
                 attribute_filters: (!filters.attribute_filters.is_empty())
                     .then_some(search_attribute_filter_inputs(filters.attribute_filters)),
                 sort_attribute_code: filters.sort_attribute_code,
