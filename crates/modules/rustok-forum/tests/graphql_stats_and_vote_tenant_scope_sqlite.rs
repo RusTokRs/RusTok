@@ -8,7 +8,7 @@ use sea_orm::{ConnectOptions, ConnectionTrait, Database};
 use uuid::Uuid;
 
 #[tokio::test]
-async fn stats_and_vote_clears_reject_foreign_tenants_before_read_or_write() {
+async fn stats_and_vote_commands_reject_foreign_tenants_before_read_or_write() {
     let mut options = ConnectOptions::new(format!(
         "sqlite:file:forum_graphql_tenant_scope_{}?mode=memory&cache=shared",
         Uuid::new_v4(),
@@ -121,14 +121,17 @@ async fn stats_and_vote_clears_reject_foreign_tenants_before_read_or_write() {
     );
 
     // No Forum vote, topic, reply or settings tables exist in this fixture.
-    // A foreign-tenant clear must be rejected before consulting any of them.
-    for (mutation, target) in [
-        ("clearForumTopicVote", "topicId"),
-        ("clearForumReplyVote", "replyId"),
+    // Every explicit-tenant vote command must reject a foreign tenant
+    // before consulting any vote, topic, reply or settings table.
+    for (mutation, target, args) in [
+        ("clearForumTopicVote", "topicId", ""),
+        ("clearForumReplyVote", "replyId", ""),
+        ("setForumTopicVote", "topicId", ", value: 1"),
+        ("setForumReplyVote", "replyId", ", value: 1"),
     ] {
         let response = schema
             .execute(format!(
-                "mutation {{ {mutation}(tenantId: \"{foreign_id}\", {target}: \"{}\") }}",
+                "mutation {{ {mutation}(tenantId: \"{foreign_id}\", {target}: \"{}\"{args}) }}",
                 Uuid::new_v4(),
             ))
             .await;
