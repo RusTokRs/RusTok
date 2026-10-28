@@ -25,6 +25,13 @@
 
 ## Query continuation admission (FS-07 bounded remediation, 2026-10-28)
 
+The same bounded FS-07 continuation makes PostgreSQL drift/repair transaction
+rollback failures observable as typed storage errors instead of discarding the
+rollback result. This preserves the primary error only after rollback succeeds;
+it does not establish runtime failure-injection evidence or full-crate readiness.
+
+
+
 The encoded `Pagination::Cursor.after` value is limited to **64 KiB**
 (`MAX_QUERY_CURSOR_BYTES`) at query-shape validation, before any Base64 allocation
 or checksum work. Both ordinary and localized query cursor codecs reject
