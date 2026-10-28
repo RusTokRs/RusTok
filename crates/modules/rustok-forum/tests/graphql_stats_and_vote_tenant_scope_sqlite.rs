@@ -79,6 +79,27 @@ async fn stats_and_vote_clears_reject_foreign_tenants_before_read_or_write() {
     })
     .finish();
 
+    // These commands acknowledge completion rather than materializing a
+    // possibly hidden object after the owner write has already committed.
+    let sdl = schema.sdl();
+    for name in [
+        "setForumTopicVote",
+        "clearForumTopicVote",
+        "setForumReplyVote",
+        "clearForumReplyVote",
+        "markForumTopicSolution",
+        "clearForumTopicSolution",
+    ] {
+        let signature = sdl
+            .lines()
+            .find(|line| line.trim_start().starts_with(&format!("{name}(")))
+            .unwrap_or_else(|| panic!("{name} missing from GraphQL mutation contract"));
+        assert!(
+            signature.trim_end().ends_with(": Boolean!"),
+            "{name} must return a non-null acknowledgement, found {signature}"
+        );
+    }
+
     let own = schema.execute(format!(
         "{{ forumUserStats(tenantId: \"{tenant_id}\", userId: \"{user_id}\") {{ topicCount }} }}"
     )).await;
@@ -107,7 +128,7 @@ async fn stats_and_vote_clears_reject_foreign_tenants_before_read_or_write() {
     ] {
         let response = schema
             .execute(format!(
-                "mutation {{ {mutation}(tenantId: \"{foreign_id}\", {target}: \"{}\")  }}",
+                "mutation {{ {mutation}(tenantId: \"{foreign_id}\", {target}: \"{}\") }}",
                 Uuid::new_v4(),
             ))
             .await;
