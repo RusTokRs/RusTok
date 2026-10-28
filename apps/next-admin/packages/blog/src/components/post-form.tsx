@@ -27,7 +27,7 @@ import { toast } from 'sonner';
 import * as z from 'zod';
 import type { PostResponse, GqlOpts } from '../api/posts';
 import { createPost, updatePost } from '../api/posts';
-import { listBlogCategories, type BlogCategory } from '../api/categories';
+import { listAllBlogCategories, type BlogCategory } from '../api/categories';
 
 const formSchema = z.object({
   title: z.string().min(2, 'Title must be at least 2 characters.'),
@@ -82,10 +82,10 @@ export default function PostForm({
 
   useEffect(() => {
     let active = true;
-    listBlogCategories({ locale: defaultLocale }, gqlOpts)
+    listAllBlogCategories({ locale: defaultLocale }, gqlOpts)
       .then((res) => {
         if (active) {
-          setCategories(res.items);
+          setCategories(res);
         }
       })
       .catch(() => {});
