@@ -886,12 +886,12 @@ pub fn BlogAdmin() -> impl IntoView {
                                     }}
                                 </select>
                                 {move || categories_resource.get().and_then(|result| result.err()).map(|error| {
-                                    view! { <span class="text-xs text-destructive">{format!("Categories unavailable: {error}")}</span> }
+                                    view! { <span class="text-xs text-destructive">{format!("{}: {error}", t(ui_locale.as_deref(), "blog.error.categories", "Categories unavailable"))}</span> }
                                 })}
                             </label>
 
                             <label class=shell_classes.locale_filter_label>
-                                <span class=form_field_classes.label_text>"Channels (comma separated; empty = all channels)"</span>
+                                <span class=form_field_classes.label_text>{t(ui_locale.as_deref(), "blog.form.channels", "Channels (comma separated; empty = all channels)")}</span>
                                 <input type="text" class=form_field_classes.text_input
                                     placeholder="default, mobile"
                                     prop:value=channel_slugs_input
@@ -900,7 +900,7 @@ pub fn BlogAdmin() -> impl IntoView {
                             </label>
 
                             <label class=shell_classes.locale_filter_label>
-                                <span class=form_field_classes.label_text>"Featured image URL"</span>
+                                <span class=form_field_classes.label_text>{t(ui_locale.as_deref(), "blog.form.featuredImage", "Featured image URL")}</span>
                                 <input type="text" class=form_field_classes.text_input
                                     placeholder="https://example.com/cover.jpg"
                                     prop:value=featured_image_url
@@ -909,14 +909,14 @@ pub fn BlogAdmin() -> impl IntoView {
                             </label>
 
                             <label class=shell_classes.locale_filter_label>
-                                <span class=form_field_classes.label_text>"SEO title (Blog default)"</span>
+                                <span class=form_field_classes.label_text>{t(ui_locale.as_deref(), "blog.form.seoTitle", "SEO title (Blog default)")}</span>
                                 <input type="text" class=form_field_classes.text_input
                                     prop:value=seo_title
                                     on:input=move |ev| set_seo_title.set(event_target_value(&ev))
                                 />
                             </label>
                             <label class=shell_classes.locale_filter_label>
-                                <span class=form_field_classes.label_text>"SEO description (Blog default)"</span>
+                                <span class=form_field_classes.label_text>{t(ui_locale.as_deref(), "blog.form.seoDescription", "SEO description (Blog default)")}</span>
                                 <textarea class=form_field_classes.textarea_short
                                     prop:value=seo_description
                                     on:input=move |ev| set_seo_description.set(event_target_value(&ev))
