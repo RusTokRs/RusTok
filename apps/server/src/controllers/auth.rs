@@ -251,7 +251,29 @@ fn session_cookie_is_secure(
     peer_ip: std::net::IpAddr,
     settings: &RustokSettings,
 ) -> bool {
-    crate::common::extract_effective_proto(headers, Some(peer_ip), &settings.runtime.request_trust)
+    session_cookie_is_secure_for_environment(
+        headers,
+        peer_ip,
+        settings,
+        crate::common::is_production_environment(),
+    )
+}
+
+fn session_cookie_is_secure_for_environment(
+    headers: &axum::http::HeaderMap,
+    peer_ip: std::net::IpAddr,
+    settings: &RustokSettings,
+    is_production: bool,
+) -> bool {
+    // A refresh token must never be issued as a non-Secure cookie in
+    // production, even when an ingress proxy omits forwarding headers or
+    // forwarded header trust is intentionally disabled.
+    is_production
+        || crate::common::extract_effective_proto(
+            headers,
+            Some(peer_ip),
+            &settings.runtime.request_trust,
+        )
         .is_some_and(|value| value.eq_ignore_ascii_case("https"))
 }
 
@@ -959,6 +981,47 @@ mod tests {
         assert!(matches!(
             ensure_registration_enabled(&disabled),
             Err(crate::error::Error::Forbidden(message)) if message == "Registration is disabled"
+        ));
+    }
+
+    #[test]
+    fn production_refresh_cookie_is_always_secure_without_forwarded_headers() {
+        let settings = RustokSettings::default();
+        let headers = axum::http::HeaderMap::new();
+        let peer = std::net::IpAddr::from([192, 0, 2, 4]);
+
+        assert!(super::session_cookie_is_secure_for_environment(
+            &headers, peer, &settings, true,
+        ));
+        assert!(!super::session_cookie_is_secure_for_environment(
+            &headers, peer, &settings, false,
+        ));
+        assert!(super::build_session_cookie("opaque-token", 60, true).contains("; Secure"));
+        assert!(!super::build_session_cookie("opaque-token", 60, false).contains("; Secure"));
+    }
+
+    #[test]
+    fn trusted_https_proxy_keeps_refresh_cookie_secure_in_development() {
+        use crate::common::{ForwardedHeadersMode, RequestTrustSettings};
+
+        let mut settings = RustokSettings::default();
+        settings.runtime.request_trust = RequestTrustSettings {
+            forwarded_headers_mode: ForwardedHeadersMode::TrustedOnly,
+            trusted_proxy_cidrs: vec!["10.0.0.0/8".to_string()],
+        };
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            "x-forwarded-proto",
+            "http, https".parse().unwrap(),
+        );
+        let trusted_peer = std::net::IpAddr::from([10, 0, 0, 4]);
+        let untrusted_peer = std::net::IpAddr::from([192, 0, 2, 4]);
+
+        assert!(super::session_cookie_is_secure_for_environment(
+            &headers, trusted_peer, &settings, false,
+        ));
+        assert!(!super::session_cookie_is_secure_for_environment(
+            &headers, untrusted_peer, &settings, false,
         ));
     }
 
