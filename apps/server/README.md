@@ -42,6 +42,33 @@ overrides live under `settings.rustok.auth`:
 When `algorithm` is `RS256`, both RSA keys are required and boot-time config
 assembly must fail instead of silently falling back to `HS256`.
 
+## Request trust and client IP
+
+The host ignores `Forwarded` and `X-Forwarded-*` by default. To enable
+forwarded client identity, configure `rustok.runtime.request_trust` with
+`forwarded_headers_mode: trusted_only` and explicit
+`trusted_proxy_cidrs`. Never use a public client subnet as a trusted proxy.
+
+When the immediate peer is trusted, client identity is resolved from the
+rightmost `X-Forwarded-For` / RFC `Forwarded` hop towards the caller, stopping
+at the first untrusted address. This identity is also used for API rate-limit
+keys. Missing or malformed trusted-side hops fall back to the actual peer;
+an untrusted peer cannot supply an authoritative forwarding header. If both
+header formats are present, `X-Forwarded-For` takes precedence. For
+forwarded host and scheme, the host consumes the most recently appended
+(rightmost) value instead of trusting a potentially spoofed first value;
+forwarded schemes other than `http` and `https` are ignored.
+
+**Ingress requirement:** the edge proxy must discard untrusted incoming
+forwarded headers or append the actual observed client IP. A proxy that
+blindly passes through client-supplied forwarding headers without appending
+its observed peer cannot supply verifiable client identity. Keep the trusted
+CIDRs narrow, including only proxies under operator control.
+
+In production, refresh-session cookies are always marked `Secure`, even
+when forwarded-protocol headers are absent or not trusted. Outside production,
+the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
+
 ## Docs
 
 - [App docs](./docs/README.md)
