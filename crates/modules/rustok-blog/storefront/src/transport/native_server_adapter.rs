@@ -303,11 +303,15 @@ async fn storefront_blog_native(
             None
         };
 
+        // Match the GraphQL UUID coercion rule: invalid filters are errors, not
+        // silently widened queries returning posts from every category.
         let category_uuid = category_id
             .as_deref()
             .map(str::trim)
             .filter(|s| !s.is_empty())
-            .and_then(|s| uuid::Uuid::parse_str(s).ok());
+            .map(uuid::Uuid::parse_str)
+            .transpose()
+            .map_err(|_| ServerFnError::new("Invalid category_id"))?;
         let tag_normalized = tag
             .as_deref()
             .map(str::trim)
