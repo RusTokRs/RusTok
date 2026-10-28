@@ -5,7 +5,6 @@ import { DataTableColumnHeader } from '@/components/ui/table/data-table-column-h
 import type { ColumnDef, StockFeatures } from '@tanstack/react-table';
 import { Text, CircleDot } from 'lucide-react';
 import { CellAction } from './cell-action';
-import { STATUS_OPTIONS } from './options';
 import type { GqlOpts, PostSummary } from '../../api/posts';
 
 const statusVariant: Record<string, 'default' | 'secondary' | 'outline'> = {
@@ -59,12 +58,7 @@ export function createColumns(gqlOpts: GqlOpts): ColumnDef<StockFeatures, PostSu
         </Badge>
       );
     },
-    enableColumnFilter: true,
-    meta: {
-      label: 'Status',
-      variant: 'select',
-      options: STATUS_OPTIONS
-    }
+    enableColumnFilter: false
   },
   {
     accessorKey: 'authorId',
